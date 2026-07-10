@@ -23,6 +23,10 @@ export function BatchDownload(input: $models.DesktopSFTPBatchDownloadInput): $Ca
     return $Call.ByID(4273010992, input);
 }
 
+export function CancelDesktopTask(taskID: string): $CancellablePromise<boolean> {
+    return $Call.ByID(660779615, taskID);
+}
+
 export function CancelTransfer(taskID: string): $CancellablePromise<void> {
     return $Call.ByID(3900337609, taskID);
 }
@@ -139,6 +143,10 @@ export function Rename(input: $models.DesktopSFTPRenameInput): $CancellablePromi
     return $Call.ByID(1192695914, input).then(($result: any) => {
         return $$createType1($result);
     });
+}
+
+export function RetryDesktopTask(run: $models.DesktopTaskRun): $CancellablePromise<string> {
+    return $Call.ByID(893050791, run);
 }
 
 export function UploadFile(input: $models.DesktopSFTPUploadFileInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {

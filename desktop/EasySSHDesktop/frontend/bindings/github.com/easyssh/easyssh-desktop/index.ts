@@ -12,6 +12,7 @@ import * as DesktopSFTPService from "./desktopsftpservice.js";
 import * as DesktopScriptService from "./desktopscriptservice.js";
 import * as DesktopServerService from "./desktopserverservice.js";
 import * as DesktopService from "./desktopservice.js";
+import * as DesktopTaskService from "./desktoptaskservice.js";
 import * as DesktopTerminalService from "./desktopterminalservice.js";
 import * as DesktopUpdateService from "./desktopupdateservice.js";
 export {
@@ -26,6 +27,7 @@ export {
     DesktopScriptService,
     DesktopServerService,
     DesktopService,
+    DesktopTaskService,
     DesktopTerminalService,
     DesktopUpdateService
 };
@@ -123,6 +125,13 @@ export {
     DesktopServerListParams,
     DesktopServerListResult,
     DesktopServerStatus,
+    DesktopTaskCleanupResult,
+    DesktopTaskDetails,
+    DesktopTaskEvent,
+    DesktopTaskListInput,
+    DesktopTaskRun,
+    DesktopTaskRunList,
+    DesktopTaskStatistics,
     DesktopTerminalCloseInput,
     DesktopTerminalPingInput,
     DesktopTerminalPingResult,

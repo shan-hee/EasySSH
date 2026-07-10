@@ -35,10 +35,11 @@ func main() {
 
 	activityLogService := NewActivityLogService()
 	notificationService := NewDesktopNotificationService()
+	taskService := NewDesktopTaskService(notificationService)
 	serverService := NewDesktopServerService()
-	scriptService := NewDesktopScriptService(serverService, activityLogService)
+	scriptService := NewDesktopScriptService(serverService, activityLogService, taskService)
 	terminalService := NewDesktopTerminalService(serverService)
-	sftpService := NewDesktopSFTPService(serverService, activityLogService, notificationService)
+	sftpService := NewDesktopSFTPService(serverService, activityLogService, notificationService, taskService)
 	monitorService := NewDesktopMonitorService(serverService)
 	desktopGateway := NewDesktopGateway(serverService, scriptService, monitorService, sftpService)
 	dockerService := NewDesktopDockerService(serverService)
@@ -53,6 +54,7 @@ func main() {
 		Logger:       newDesktopWailsLogger(),
 		PanicHandler: handleDesktopPanic,
 		Services: []application.Service{
+			application.NewService(taskService),
 			application.NewService(serverService),
 			application.NewService(scriptService),
 			application.NewService(terminalService),
@@ -97,6 +99,7 @@ func main() {
 		BackgroundColour: application.NewRGBA(13, 17, 23, 0),
 		URL:              "/",
 	})
+	taskService.attachWindow(mainWindow)
 
 	var quitting atomic.Bool
 	mainWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {

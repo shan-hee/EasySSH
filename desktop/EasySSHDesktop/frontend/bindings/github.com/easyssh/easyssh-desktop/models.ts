@@ -1740,6 +1740,8 @@ export class DesktopNotification {
     "severity": string;
     "title": string;
     "message": string;
+    "source_type"?: string;
+    "source_id"?: string;
     "action_url"?: string;
     "read_at"?: string;
     "created_at": string;
@@ -3023,6 +3025,359 @@ export enum DesktopServerStatus {
     DesktopServerOffline = "offline",
 };
 
+export class DesktopTaskCleanupResult {
+    "deleted_count": number;
+    "deleted_events": number;
+    "deleted_notifications": number;
+    "retention_days": number;
+
+    /** Creates a new DesktopTaskCleanupResult instance. */
+    constructor($$source: Partial<DesktopTaskCleanupResult> = {}) {
+        if (!("deleted_count" in $$source)) {
+            this["deleted_count"] = 0;
+        }
+        if (!("deleted_events" in $$source)) {
+            this["deleted_events"] = 0;
+        }
+        if (!("deleted_notifications" in $$source)) {
+            this["deleted_notifications"] = 0;
+        }
+        if (!("retention_days" in $$source)) {
+            this["retention_days"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTaskCleanupResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTaskCleanupResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTaskCleanupResult($$parsedSource as Partial<DesktopTaskCleanupResult>);
+    }
+}
+
+export class DesktopTaskDetails {
+    "run": DesktopTaskRun;
+    "events": DesktopTaskEvent[];
+
+    /** Creates a new DesktopTaskDetails instance. */
+    constructor($$source: Partial<DesktopTaskDetails> = {}) {
+        if (!("run" in $$source)) {
+            this["run"] = (new DesktopTaskRun());
+        }
+        if (!("events" in $$source)) {
+            this["events"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTaskDetails instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTaskDetails {
+        const $$createField0_0 = $$createType51;
+        const $$createField1_0 = $$createType53;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("run" in $$parsedSource) {
+            $$parsedSource["run"] = $$createField0_0($$parsedSource["run"]);
+        }
+        if ("events" in $$parsedSource) {
+            $$parsedSource["events"] = $$createField1_0($$parsedSource["events"]);
+        }
+        return new DesktopTaskDetails($$parsedSource as Partial<DesktopTaskDetails>);
+    }
+}
+
+export class DesktopTaskEvent {
+    "id": number;
+    "task_run_id": string;
+    "user_id": string;
+    "level": string;
+    "message": string;
+    "data_json"?: string;
+    "created_at": string;
+
+    /** Creates a new DesktopTaskEvent instance. */
+    constructor($$source: Partial<DesktopTaskEvent> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("task_run_id" in $$source)) {
+            this["task_run_id"] = "";
+        }
+        if (!("user_id" in $$source)) {
+            this["user_id"] = "";
+        }
+        if (!("level" in $$source)) {
+            this["level"] = "";
+        }
+        if (!("message" in $$source)) {
+            this["message"] = "";
+        }
+        if (!("created_at" in $$source)) {
+            this["created_at"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTaskEvent instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTaskEvent {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTaskEvent($$parsedSource as Partial<DesktopTaskEvent>);
+    }
+}
+
+export class DesktopTaskListInput {
+    "status"?: string[];
+    "task_type"?: string[];
+    "trigger_type"?: string[];
+    "keyword"?: string;
+    "page": number;
+    "page_size": number;
+
+    /** Creates a new DesktopTaskListInput instance. */
+    constructor($$source: Partial<DesktopTaskListInput> = {}) {
+        if (!("page" in $$source)) {
+            this["page"] = 0;
+        }
+        if (!("page_size" in $$source)) {
+            this["page_size"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTaskListInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTaskListInput {
+        const $$createField0_0 = $$createType0;
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("status" in $$parsedSource) {
+            $$parsedSource["status"] = $$createField0_0($$parsedSource["status"]);
+        }
+        if ("task_type" in $$parsedSource) {
+            $$parsedSource["task_type"] = $$createField1_0($$parsedSource["task_type"]);
+        }
+        if ("trigger_type" in $$parsedSource) {
+            $$parsedSource["trigger_type"] = $$createField2_0($$parsedSource["trigger_type"]);
+        }
+        return new DesktopTaskListInput($$parsedSource as Partial<DesktopTaskListInput>);
+    }
+}
+
+export class DesktopTaskRun {
+    "id": string;
+    "user_id": string;
+    "definition_id"?: string;
+    "retry_of_id"?: string;
+    "source_type"?: string;
+    "source_id"?: string;
+    "task_type": string;
+    "title": string;
+    "description"?: string;
+    "trigger_type": string;
+    "runner": string;
+    "status": string;
+    "stage"?: string;
+    "server_id"?: string;
+    "server_name"?: string;
+    "resource"?: string;
+    "payload_json"?: string;
+    "result_json"?: string;
+    "progress": number;
+    "total_count": number;
+    "success_count": number;
+    "failure_count": number;
+    "bytes_total": number;
+    "bytes_processed": number;
+    "progress_json"?: string;
+    "cancelable": boolean;
+    "retryable": boolean;
+    "attempt": number;
+    "max_attempts": number;
+    "error_code"?: string;
+    "error_message"?: string;
+    "cancel_requested_at"?: string;
+    "started_at"?: string;
+    "finished_at"?: string;
+    "created_at": string;
+    "updated_at": string;
+
+    /** Creates a new DesktopTaskRun instance. */
+    constructor($$source: Partial<DesktopTaskRun> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("user_id" in $$source)) {
+            this["user_id"] = "";
+        }
+        if (!("task_type" in $$source)) {
+            this["task_type"] = "";
+        }
+        if (!("title" in $$source)) {
+            this["title"] = "";
+        }
+        if (!("trigger_type" in $$source)) {
+            this["trigger_type"] = "";
+        }
+        if (!("runner" in $$source)) {
+            this["runner"] = "";
+        }
+        if (!("status" in $$source)) {
+            this["status"] = "";
+        }
+        if (!("progress" in $$source)) {
+            this["progress"] = 0;
+        }
+        if (!("total_count" in $$source)) {
+            this["total_count"] = 0;
+        }
+        if (!("success_count" in $$source)) {
+            this["success_count"] = 0;
+        }
+        if (!("failure_count" in $$source)) {
+            this["failure_count"] = 0;
+        }
+        if (!("bytes_total" in $$source)) {
+            this["bytes_total"] = 0;
+        }
+        if (!("bytes_processed" in $$source)) {
+            this["bytes_processed"] = 0;
+        }
+        if (!("cancelable" in $$source)) {
+            this["cancelable"] = false;
+        }
+        if (!("retryable" in $$source)) {
+            this["retryable"] = false;
+        }
+        if (!("attempt" in $$source)) {
+            this["attempt"] = 0;
+        }
+        if (!("max_attempts" in $$source)) {
+            this["max_attempts"] = 0;
+        }
+        if (!("created_at" in $$source)) {
+            this["created_at"] = "";
+        }
+        if (!("updated_at" in $$source)) {
+            this["updated_at"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTaskRun instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTaskRun {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTaskRun($$parsedSource as Partial<DesktopTaskRun>);
+    }
+}
+
+export class DesktopTaskRunList {
+    "runs": DesktopTaskRun[];
+    "total": number;
+    "page": number;
+    "page_size": number;
+    "total_pages": number;
+
+    /** Creates a new DesktopTaskRunList instance. */
+    constructor($$source: Partial<DesktopTaskRunList> = {}) {
+        if (!("runs" in $$source)) {
+            this["runs"] = [];
+        }
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+        if (!("page" in $$source)) {
+            this["page"] = 0;
+        }
+        if (!("page_size" in $$source)) {
+            this["page_size"] = 0;
+        }
+        if (!("total_pages" in $$source)) {
+            this["total_pages"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTaskRunList instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTaskRunList {
+        const $$createField0_0 = $$createType54;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("runs" in $$parsedSource) {
+            $$parsedSource["runs"] = $$createField0_0($$parsedSource["runs"]);
+        }
+        return new DesktopTaskRunList($$parsedSource as Partial<DesktopTaskRunList>);
+    }
+}
+
+export class DesktopTaskStatistics {
+    "total": number;
+    "queued": number;
+    "running": number;
+    "canceling": number;
+    "succeeded": number;
+    "failed": number;
+    "partial_success": number;
+    "canceled": number;
+    "timeout": number;
+
+    /** Creates a new DesktopTaskStatistics instance. */
+    constructor($$source: Partial<DesktopTaskStatistics> = {}) {
+        if (!("total" in $$source)) {
+            this["total"] = 0;
+        }
+        if (!("queued" in $$source)) {
+            this["queued"] = 0;
+        }
+        if (!("running" in $$source)) {
+            this["running"] = 0;
+        }
+        if (!("canceling" in $$source)) {
+            this["canceling"] = 0;
+        }
+        if (!("succeeded" in $$source)) {
+            this["succeeded"] = 0;
+        }
+        if (!("failed" in $$source)) {
+            this["failed"] = 0;
+        }
+        if (!("partial_success" in $$source)) {
+            this["partial_success"] = 0;
+        }
+        if (!("canceled" in $$source)) {
+            this["canceled"] = 0;
+        }
+        if (!("timeout" in $$source)) {
+            this["timeout"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTaskStatistics instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTaskStatistics {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTaskStatistics($$parsedSource as Partial<DesktopTaskStatistics>);
+    }
+}
+
 export class DesktopTerminalCloseInput {
     "clientId": string;
 
@@ -3250,7 +3605,7 @@ export class DesktopUpdateCheckResult {
      * Creates a new DesktopUpdateCheckResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopUpdateCheckResult {
-        const $$createField7_0 = $$createType52;
+        const $$createField7_0 = $$createType56;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("artifact" in $$parsedSource) {
             $$parsedSource["artifact"] = $$createField7_0($$parsedSource["artifact"]);
@@ -3410,5 +3765,9 @@ const $$createType47 = DesktopScript.createFrom;
 const $$createType48 = $Create.Array($$createType47);
 const $$createType49 = DesktopServer.createFrom;
 const $$createType50 = $Create.Array($$createType49);
-const $$createType51 = DesktopUpdateAsset.createFrom;
-const $$createType52 = $Create.Nullable($$createType51);
+const $$createType51 = DesktopTaskRun.createFrom;
+const $$createType52 = DesktopTaskEvent.createFrom;
+const $$createType53 = $Create.Array($$createType52);
+const $$createType54 = $Create.Array($$createType51);
+const $$createType55 = DesktopUpdateAsset.createFrom;
+const $$createType56 = $Create.Nullable($$createType55);

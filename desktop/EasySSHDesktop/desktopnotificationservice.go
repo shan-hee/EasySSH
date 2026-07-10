@@ -16,14 +16,16 @@ import (
 )
 
 type DesktopNotification struct {
-	ID        string `json:"id"`
-	EventType string `json:"event_type"`
-	Severity  string `json:"severity"`
-	Title     string `json:"title"`
-	Message   string `json:"message"`
-	ActionURL string `json:"action_url,omitempty"`
-	ReadAt    string `json:"read_at,omitempty"`
-	CreatedAt string `json:"created_at"`
+	ID         string `json:"id"`
+	EventType  string `json:"event_type"`
+	Severity   string `json:"severity"`
+	Title      string `json:"title"`
+	Message    string `json:"message"`
+	SourceType string `json:"source_type,omitempty"`
+	SourceID   string `json:"source_id,omitempty"`
+	ActionURL  string `json:"action_url,omitempty"`
+	ReadAt     string `json:"read_at,omitempty"`
+	CreatedAt  string `json:"created_at"`
 }
 
 type DesktopNotificationList struct {
@@ -99,6 +101,10 @@ func (s *DesktopNotificationService) Delete(id string) error {
 }
 
 func (s *DesktopNotificationService) Publish(eventType, severity, title, message, actionURL string) error {
+	return s.publishLinked(eventType, severity, title, message, actionURL, "", "")
+}
+
+func (s *DesktopNotificationService) publishLinked(eventType, severity, title, message, actionURL, sourceType, sourceID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	items, err := readDesktopNotifications()
@@ -109,8 +115,8 @@ func (s *DesktopNotificationService) Publish(eventType, severity, title, message
 		severity = "info"
 	}
 	items = append(items, DesktopNotification{
-		ID: uuid.NewString(), EventType: eventType, Severity: severity, Title: title,
-		Message: message, ActionURL: actionURL, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		ID: uuid.NewString(), EventType: eventType, Severity: severity, Title: title, Message: message,
+		SourceType: sourceType, SourceID: sourceID, ActionURL: actionURL, CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
 	if len(items) > 500 {
 		items = items[len(items)-500:]
@@ -120,6 +126,33 @@ func (s *DesktopNotificationService) Publish(eventType, severity, title, message
 	}
 	s.updateTrayTooltipLocked(items)
 	return nil
+}
+
+func (s *DesktopNotificationService) deleteBySourceIDs(sourceType string, sourceIDs []string) (int64, error) {
+	sourceType = strings.TrimSpace(sourceType)
+	if sourceType == "" || len(sourceIDs) == 0 {
+		return 0, nil
+	}
+	targets := make(map[string]struct{}, len(sourceIDs))
+	for _, sourceID := range sourceIDs {
+		if sourceID = strings.TrimSpace(sourceID); sourceID != "" {
+			targets[sourceID] = struct{}{}
+		}
+	}
+	var deleted int64
+	err := s.update(func(items []DesktopNotification) []DesktopNotification {
+		filtered := items[:0]
+		for _, item := range items {
+			_, matchesID := targets[item.SourceID]
+			if item.SourceType == sourceType && matchesID {
+				deleted++
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		return filtered
+	})
+	return deleted, err
 }
 
 func (s *DesktopNotificationService) attachTray(tray *application.SystemTray) {

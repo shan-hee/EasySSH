@@ -124,12 +124,14 @@ type DesktopScriptService struct {
 	db             *sql.DB
 	serverService  *DesktopServerService
 	activityLogger *ActivityLogService
+	taskCenter     *DesktopTaskService
 }
 
-func NewDesktopScriptService(serverService *DesktopServerService, activityLogger *ActivityLogService) *DesktopScriptService {
+func NewDesktopScriptService(serverService *DesktopServerService, activityLogger *ActivityLogService, taskCenter *DesktopTaskService) *DesktopScriptService {
 	return &DesktopScriptService{
 		serverService:  serverService,
 		activityLogger: activityLogger,
+		taskCenter:     taskCenter,
 	}
 }
 
@@ -464,7 +466,19 @@ func (s *DesktopScriptService) StartBatchTask(id string) (DesktopBatchTaskStartR
 		}
 	}
 
-	go s.runBatchTask(id)
+	runID := ""
+	if s.taskCenter != nil {
+		runID, _ = s.taskCenter.create(desktopTaskCreateInput{
+			TaskType: task.TaskType, Title: task.TaskName, SourceType: "desktop_batch_task", SourceID: task.ID,
+			Resource: strings.Join(task.ServerIDs, ","), TotalCount: len(task.ServerIDs), Cancelable: false, Retryable: false,
+		})
+		if runID != "" {
+			_ = s.taskCenter.setPayload(runID, task)
+			_ = s.taskCenter.start(runID, "executing")
+		}
+	}
+
+	go s.runBatchTask(id, runID)
 
 	return DesktopBatchTaskStartResult{Message: "batch task started"}, nil
 }
@@ -569,10 +583,13 @@ func configureDesktopScriptDatabase(database *sql.DB) error {
 	return database.Ping()
 }
 
-func (s *DesktopScriptService) runBatchTask(taskID string) {
+func (s *DesktopScriptService) runBatchTask(taskID string, runID string) {
 	task, err := s.GetBatchTaskById(taskID)
 	if err != nil {
 		desktopLogPrintf("failed to load desktop batch task: %v", err)
+		if s.taskCenter != nil && runID != "" {
+			_ = s.taskCenter.complete(runID, "failed", "", "batch_task_load_failed", err.Error(), 0, 1)
+		}
 		return
 	}
 
@@ -580,6 +597,9 @@ func (s *DesktopScriptService) runBatchTask(taskID string) {
 	if err != nil {
 		desktopLogPrintf("failed to resolve desktop batch task command: %v", err)
 		_ = s.completeBatchTask(task.ID, 0, len(task.ServerIDs), "failed")
+		if s.taskCenter != nil && runID != "" {
+			_ = s.taskCenter.complete(runID, "failed", "", "batch_task_invalid", err.Error(), 0, len(task.ServerIDs))
+		}
 		return
 	}
 
@@ -593,8 +613,10 @@ func (s *DesktopScriptService) runBatchTask(taskID string) {
 				failedCount++
 			}
 			_ = s.updateBatchTaskProgress(task.ID, successCount, failedCount)
+			s.updateTaskCenterBatchProgress(runID, successCount, failedCount, len(task.ServerIDs))
 		}
 		_ = s.completeBatchTask(task.ID, successCount, failedCount, desktopBatchTaskCompletionStatus(successCount, failedCount))
+		s.completeTaskCenterBatch(runID, successCount, failedCount)
 		return
 	}
 
@@ -609,20 +631,46 @@ func (s *DesktopScriptService) runBatchTask(taskID string) {
 		}()
 	}
 
-	wg.Wait()
-	close(results)
-
 	successCount := 0
 	failedCount := 0
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
 	for ok := range results {
 		if ok {
 			successCount++
 		} else {
 			failedCount++
 		}
+		_ = s.updateBatchTaskProgress(task.ID, successCount, failedCount)
+		s.updateTaskCenterBatchProgress(runID, successCount, failedCount, len(task.ServerIDs))
 	}
 
 	_ = s.completeBatchTask(task.ID, successCount, failedCount, desktopBatchTaskCompletionStatus(successCount, failedCount))
+	s.completeTaskCenterBatch(runID, successCount, failedCount)
+}
+
+func (s *DesktopScriptService) updateTaskCenterBatchProgress(runID string, successCount int, failedCount int, total int) {
+	if s.taskCenter == nil || runID == "" {
+		return
+	}
+	processed := successCount + failedCount
+	_ = s.taskCenter.updateProgress(runID, desktopSFTPProgressPercent(int64(processed), int64(total)), "executing", int64(processed), int64(total), successCount, failedCount)
+}
+
+func (s *DesktopScriptService) completeTaskCenterBatch(runID string, successCount int, failedCount int) {
+	if s.taskCenter == nil || runID == "" {
+		return
+	}
+	status := "failed"
+	if successCount > 0 && failedCount == 0 {
+		status = "succeeded"
+	} else if successCount > 0 {
+		status = "partial_success"
+	}
+	result, _ := json.Marshal(map[string]int{"success_count": successCount, "failure_count": failedCount})
+	_ = s.taskCenter.complete(runID, status, string(result), "", "", successCount, failedCount)
 }
 
 func (s *DesktopScriptService) resolveBatchTaskCommand(task DesktopBatchTask) (string, error) {
