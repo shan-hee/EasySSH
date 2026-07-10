@@ -127,6 +127,12 @@ type DesktopSFTPBatchDeleteResult struct {
 	Total   int                              `json:"total"`
 }
 
+type DesktopSFTPDeletePathsResult struct {
+	Mode         string   `json:"mode"`
+	DeletedPaths []string `json:"deleted_paths"`
+	TaskID       string   `json:"task_id,omitempty"`
+}
+
 type DesktopSFTPUploadTaskListResult struct {
 	Tasks []DesktopSFTPUploadTaskStatus `json:"tasks"`
 }
@@ -172,6 +178,7 @@ const (
 	desktopSFTPTaskUpload   desktopSFTPTaskKind = "upload"
 	desktopSFTPTaskDownload desktopSFTPTaskKind = "download"
 	desktopSFTPTaskTransfer desktopSFTPTaskKind = "transfer"
+	desktopSFTPTaskDelete   desktopSFTPTaskKind = "delete"
 )
 
 var errDesktopSFTPTaskCancelled = errors.New("transfer cancelled")
@@ -194,16 +201,18 @@ type desktopSFTPAuthenticatedSSHClient struct {
 type DesktopSFTPService struct {
 	serverService    *DesktopServerService
 	activityLog      *ActivityLogService
+	notifications    *DesktopNotificationService
 	taskMu           sync.Mutex
 	tasks            map[string]*desktopSFTPTask
 	authenticatedMu  sync.Mutex
 	authenticatedSSH map[string]*desktopSFTPAuthenticatedSSHClient
 }
 
-func NewDesktopSFTPService(serverService *DesktopServerService, activityLog *ActivityLogService) *DesktopSFTPService {
+func NewDesktopSFTPService(serverService *DesktopServerService, activityLog *ActivityLogService, notifications *DesktopNotificationService) *DesktopSFTPService {
 	return &DesktopSFTPService{
 		serverService:    serverService,
 		activityLog:      activityLog,
+		notifications:    notifications,
 		tasks:            make(map[string]*desktopSFTPTask),
 		authenticatedSSH: make(map[string]*desktopSFTPAuthenticatedSSHClient),
 	}
@@ -325,13 +334,13 @@ func (s *DesktopSFTPService) completeTask(taskID string, message string) {
 	now := time.Now().UTC()
 
 	s.taskMu.Lock()
-	defer s.taskMu.Unlock()
-
 	task, ok := s.tasks[taskID]
 	if !ok {
+		s.taskMu.Unlock()
 		return
 	}
 	if task.Status == "cancelled" {
+		s.taskMu.Unlock()
 		return
 	}
 	if task.Total > 0 && task.Loaded < task.Total {
@@ -343,6 +352,12 @@ func (s *DesktopSFTPService) completeTask(taskID string, message string) {
 	task.endedAt = now
 	task.EndedAt = now.Format(time.RFC3339Nano)
 	task.UpdatedAt = task.EndedAt
+	snapshot := task.DesktopSFTPUploadTaskStatus
+	kind := task.kind
+	s.taskMu.Unlock()
+	if s.notifications != nil && kind != desktopSFTPTaskDelete {
+		_ = s.notifications.Publish("task.succeeded", "success", desktopSFTPTaskTitle(snapshot.Type, true), firstNonEmptyDesktopSFTP(message, snapshot.FileName), "")
+	}
 }
 
 func (s *DesktopSFTPService) failTask(taskID string, err error) {
@@ -353,13 +368,13 @@ func (s *DesktopSFTPService) failTask(taskID string, err error) {
 	}
 
 	s.taskMu.Lock()
-	defer s.taskMu.Unlock()
-
 	task, ok := s.tasks[taskID]
 	if !ok {
+		s.taskMu.Unlock()
 		return
 	}
 	if task.Status == "cancelled" {
+		s.taskMu.Unlock()
 		return
 	}
 	task.Status = "failed"
@@ -367,6 +382,32 @@ func (s *DesktopSFTPService) failTask(taskID string, err error) {
 	task.endedAt = now
 	task.EndedAt = now.Format(time.RFC3339Nano)
 	task.UpdatedAt = task.EndedAt
+	snapshot := task.DesktopSFTPUploadTaskStatus
+	kind := task.kind
+	s.taskMu.Unlock()
+	if s.notifications != nil && kind != desktopSFTPTaskDelete {
+		_ = s.notifications.Publish("task.failed", "error", desktopSFTPTaskTitle(snapshot.Type, false), firstNonEmptyDesktopSFTP(message, snapshot.FileName), "")
+	}
+}
+
+func desktopSFTPTaskTitle(taskType string, success bool) string {
+	action := "传输"
+	if strings.Contains(taskType, "upload") {
+		action = "上传"
+	}
+	if strings.Contains(taskType, "download") {
+		action = "下载"
+	}
+	if strings.Contains(taskType, "transfer") {
+		action = "跨服务器传输"
+	}
+	if strings.Contains(taskType, "delete") {
+		action = "删除"
+	}
+	if success {
+		return action + "完成"
+	}
+	return action + "失败"
 }
 
 func (s *DesktopSFTPService) cancelTask(taskID string, kind desktopSFTPTaskKind) error {
@@ -660,6 +701,13 @@ func (s *DesktopSFTPService) DeleteContext(ctx context.Context, input DesktopSFT
 			detail["error"] = err.Error()
 		}
 		s.recordSFTPActivity("sftp_delete", input.ServerID, remotePath, desktopSFTPActivityStatus(err), started, detail)
+		if s.notifications != nil {
+			if err != nil {
+				_ = s.notifications.Publish("task.failed", "error", "删除失败", remotePath+"："+err.Error(), "")
+			} else {
+				_ = s.notifications.Publish("task.succeeded", "success", "删除完成", remotePath, "")
+			}
+		}
 	}()
 
 	client, closer, err := s.openClientContext(ctx, input.ServerID)
@@ -682,10 +730,9 @@ func (s *DesktopSFTPService) DeleteContext(ctx context.Context, input DesktopSFT
 	snapshot = desktopSFTPFileInfoFromFileInfo(remotePath, info, "")
 
 	if info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
-		err = removeDesktopSFTPDirectory(client, remotePath)
-	} else {
-		err = client.Remove(remotePath)
+		return DesktopSFTPFileInfo{}, errors.New("directory deletion must use DeletePaths")
 	}
+	err = client.Remove(remotePath)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return DesktopSFTPFileInfo{}, ctxErr
@@ -697,6 +744,10 @@ func (s *DesktopSFTPService) DeleteContext(ctx context.Context, input DesktopSFT
 }
 
 func (s *DesktopSFTPService) BatchDelete(input DesktopSFTPBatchDeleteInput) (result DesktopSFTPBatchDeleteResult, err error) {
+	return s.batchDelete(input, false)
+}
+
+func (s *DesktopSFTPService) batchDelete(input DesktopSFTPBatchDeleteInput, allowRecursive bool) (result DesktopSFTPBatchDeleteResult, err error) {
 	started := time.Now().UTC()
 	normalizedPaths := make([]string, 0, len(input.Paths))
 	for _, itemPath := range input.Paths {
@@ -719,6 +770,16 @@ func (s *DesktopSFTPService) BatchDelete(input DesktopSFTPBatchDeleteInput) (res
 			status = DesktopActivityLogWarning
 		}
 		s.recordSFTPActivity("sftp_delete", input.ServerID, strings.Join(normalizedPaths, ","), status, started, detail)
+		if s.notifications != nil {
+			message := fmt.Sprintf("成功 %d，失败 %d", len(result.Success), len(result.Failed))
+			if err != nil || len(result.Failed) == len(normalizedPaths) {
+				_ = s.notifications.Publish("task.failed", "error", "批量删除失败", message, "")
+			} else if len(result.Failed) > 0 {
+				_ = s.notifications.Publish("task.partial_success", "warning", "批量删除部分成功", message, "")
+			} else {
+				_ = s.notifications.Publish("task.succeeded", "success", "批量删除完成", message, "")
+			}
+		}
 	}()
 
 	client, closer, err := s.openClient(input.ServerID)
@@ -741,6 +802,10 @@ func (s *DesktopSFTPService) BatchDelete(input DesktopSFTPBatchDeleteInput) (res
 		}
 
 		if info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			if !allowRecursive {
+				result.Failed = append(result.Failed, desktopSFTPBatchError(remotePath, errors.New("directory deletion must use DeletePaths")))
+				continue
+			}
 			err = removeDesktopSFTPDirectory(client, remotePath)
 		} else {
 			err = client.Remove(remotePath)
@@ -754,6 +819,98 @@ func (s *DesktopSFTPService) BatchDelete(input DesktopSFTPBatchDeleteInput) (res
 	}
 
 	return result, nil
+}
+
+func (s *DesktopSFTPService) DeletePaths(input DesktopSFTPBatchDeleteInput) (DesktopSFTPDeletePathsResult, error) {
+	normalizedPaths, err := normalizeDesktopSFTPDeletePaths(input.Paths)
+	if err != nil {
+		return DesktopSFTPDeletePathsResult{}, err
+	}
+	started := time.Now().UTC()
+	connected, fastDeleteErr := s.fastDeletePaths(input.ServerID, normalizedPaths)
+	if fastDeleteErr == nil {
+		s.recordSFTPActivity("sftp_delete", input.ServerID, strings.Join(normalizedPaths, ","), DesktopActivityLogSuccess, started, map[string]any{
+			"strategy": "ssh_rm_rf", "file_count": len(normalizedPaths),
+		})
+		return DesktopSFTPDeletePathsResult{Mode: "fast", DeletedPaths: normalizedPaths}, nil
+	}
+	if !connected {
+		return DesktopSFTPDeletePathsResult{}, fastDeleteErr
+	}
+
+	input.Paths = normalizedPaths
+	taskID := s.createTask(desktopSFTPTaskDelete, "", fmt.Sprintf("%d items", len(normalizedPaths)), int64(len(normalizedPaths)), input.ServerID, strings.Join(normalizedPaths, ","))
+	go func() {
+		_ = s.startTask(taskID, "running", int64(len(normalizedPaths)))
+		result, err := s.batchDelete(input, true)
+		_ = s.updateTaskProgress(taskID, int64(len(result.Success)+len(result.Failed)), int64(len(normalizedPaths)), "sftp_recursive")
+		if err != nil || len(result.Failed) == len(normalizedPaths) {
+			if err == nil {
+				err = errors.New("all paths failed to delete")
+			}
+			s.failTask(taskID, err)
+			return
+		}
+		s.completeTask(taskID, fmt.Sprintf("成功 %d，失败 %d", len(result.Success), len(result.Failed)))
+	}()
+	return DesktopSFTPDeletePathsResult{Mode: "recursive_task", DeletedPaths: []string{}, TaskID: taskID}, nil
+}
+
+func (s *DesktopSFTPService) fastDeletePaths(serverID string, remotePaths []string) (bool, error) {
+	sshClient, closer, err := s.openSSHClient(serverID)
+	if err != nil {
+		return false, err
+	}
+	defer closer()
+	session, err := sshClient.NewSession()
+	if err != nil {
+		return true, err
+	}
+	defer session.Close()
+	quoted := make([]string, 0, len(remotePaths))
+	for _, remotePath := range remotePaths {
+		quoted = append(quoted, desktopSFTPShellQuote(remotePath))
+	}
+	var stderr bytes.Buffer
+	session.Stderr = &stderr
+	if err := session.Run("rm -rf -- " + strings.Join(quoted, " ")); err != nil {
+		if message := strings.TrimSpace(stderr.String()); message != "" {
+			return true, fmt.Errorf("fast delete failed: %w: %s", err, message)
+		}
+		return true, fmt.Errorf("fast delete failed: %w", err)
+	}
+	return true, nil
+}
+
+func normalizeDesktopSFTPDeletePaths(paths []string) ([]string, error) {
+	if len(paths) == 0 {
+		return nil, errors.New("paths are required")
+	}
+	if len(paths) > 100 {
+		return nil, errors.New("at most 100 paths can be deleted at once")
+	}
+	protected := map[string]struct{}{"/": {}, "/bin": {}, "/boot": {}, "/dev": {}, "/etc": {}, "/home": {}, "/lib": {}, "/lib64": {}, "/proc": {}, "/root": {}, "/run": {}, "/sbin": {}, "/sys": {}, "/usr": {}, "/var": {}}
+	normalized := make([]string, 0, len(paths))
+	seen := make(map[string]struct{}, len(paths))
+	for _, remotePath := range paths {
+		remotePath = strings.TrimSpace(remotePath)
+		if strings.ContainsRune(remotePath, '\x00') {
+			return nil, errors.New("path must not contain null bytes")
+		}
+		if !strings.HasPrefix(remotePath, "/") {
+			return nil, errors.New("deletion requires absolute paths")
+		}
+		remotePath = sftputil.NormalizePath(remotePath)
+		if _, exists := protected[remotePath]; exists {
+			return nil, fmt.Errorf("refusing to delete protected path %s", remotePath)
+		}
+		if _, exists := seen[remotePath]; exists {
+			continue
+		}
+		seen[remotePath] = struct{}{}
+		normalized = append(normalized, remotePath)
+	}
+	return normalized, nil
 }
 
 func (s *DesktopSFTPService) CreateDirectory(input DesktopSFTPPathInput) (info DesktopSFTPFileInfo, err error) {

@@ -23,12 +23,12 @@ export function BatchDownload(input: $models.DesktopSFTPBatchDownloadInput): $Ca
     return $Call.ByID(4273010992, input);
 }
 
-export function CancelTransfer($0: string): $CancellablePromise<void> {
-    return $Call.ByID(3900337609, $0);
+export function CancelTransfer(taskID: string): $CancellablePromise<void> {
+    return $Call.ByID(3900337609, taskID);
 }
 
-export function CancelUploadTask($0: string): $CancellablePromise<void> {
-    return $Call.ByID(2976517630, $0);
+export function CancelUploadTask(taskID: string): $CancellablePromise<void> {
+    return $Call.ByID(2976517630, taskID);
 }
 
 export function Chmod(input: $models.DesktopSFTPChmodInput): $CancellablePromise<void> {
@@ -45,6 +45,12 @@ export function CreateDirectory(input: $models.DesktopSFTPPathInput): $Cancellab
     });
 }
 
+export function CreateDirectoryContext(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {
+    return $Call.ByID(3531003550, input).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function CreateUploadTask(): $CancellablePromise<{ [_ in string]?: string }> {
     return $Call.ByID(1482468324).then(($result: any) => {
         return $$createType2($result);
@@ -57,9 +63,21 @@ export function Delete(input: $models.DesktopSFTPPathInput): $CancellablePromise
     });
 }
 
+export function DeleteContext(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {
+    return $Call.ByID(3604300890, input).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+export function DeletePaths(input: $models.DesktopSFTPBatchDeleteInput): $CancellablePromise<$models.DesktopSFTPDeletePathsResult> {
+    return $Call.ByID(1097571877, input).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
 export function DirectTransfer(input: $models.DesktopSFTPDirectTransferInput): $CancellablePromise<$models.DesktopSFTPDirectTransferResult> {
     return $Call.ByID(3508449626, input).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType4($result);
     });
 }
 
@@ -69,7 +87,7 @@ export function DownloadFile(input: $models.DesktopSFTPDownloadFileInput): $Canc
 
 export function GetDiskUsage(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPDiskUsageResult> {
     return $Call.ByID(3684496188, input).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType5($result);
     });
 }
 
@@ -79,32 +97,42 @@ export function GetFileInfo(input: $models.DesktopSFTPPathInput): $CancellablePr
     });
 }
 
-export function GetUploadTask($0: string): $CancellablePromise<$models.DesktopSFTPUploadTaskStatus> {
-    return $Call.ByID(1928740572, $0).then(($result: any) => {
-        return $$createType7($result);
+export function GetTransferTask(taskID: string): $CancellablePromise<$models.DesktopSFTPUploadTaskStatus> {
+    return $Call.ByID(2480019214, taskID).then(($result: any) => {
+        return $$createType6($result);
     });
 }
 
-export function GetTransferTask($0: string): $CancellablePromise<$models.DesktopSFTPUploadTaskStatus> {
-    return $Call.ByID(2480019214, $0).then(($result: any) => {
-        return $$createType7($result);
+export function GetUploadTask(taskID: string): $CancellablePromise<$models.DesktopSFTPUploadTaskStatus> {
+    return $Call.ByID(1928740572, taskID).then(($result: any) => {
+        return $$createType6($result);
     });
 }
 
 export function ListDirectory(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPDirectoryListResult> {
     return $Call.ByID(3642171603, input).then(($result: any) => {
-        return $$createType4($result);
+        return $$createType7($result);
+    });
+}
+
+export function ListDirectoryContext(input: $models.DesktopSFTPPathInput): $CancellablePromise<$models.DesktopSFTPDirectoryListResult> {
+    return $Call.ByID(4000576922, input).then(($result: any) => {
+        return $$createType7($result);
     });
 }
 
 export function ListUploadTasks(): $CancellablePromise<$models.DesktopSFTPUploadTaskListResult> {
     return $Call.ByID(1257542041).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType8($result);
     });
 }
 
 export function ReadFile(input: $models.DesktopSFTPPathInput): $CancellablePromise<string> {
     return $Call.ByID(1777379530, input);
+}
+
+export function ReadFileContext(input: $models.DesktopSFTPPathInput): $CancellablePromise<string> {
+    return $Call.ByID(3333162581, input);
 }
 
 export function Rename(input: $models.DesktopSFTPRenameInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {
@@ -125,12 +153,19 @@ export function WriteFile(input: $models.DesktopSFTPWriteFileInput): $Cancellabl
     });
 }
 
+export function WriteFileContext(input: $models.DesktopSFTPWriteFileInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {
+    return $Call.ByID(3549676432, input).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = $models.DesktopSFTPBatchDeleteResult.createFrom;
 const $$createType1 = $models.DesktopSFTPFileInfo.createFrom;
 const $$createType2 = $Create.Map($Create.Any, $Create.Any);
-const $$createType3 = $models.DesktopSFTPDirectTransferResult.createFrom;
-const $$createType4 = $models.DesktopSFTPDirectoryListResult.createFrom;
-const $$createType5 = $models.DesktopSFTPUploadTaskListResult.createFrom;
-const $$createType6 = $models.DesktopSFTPDiskUsageResult.createFrom;
-const $$createType7 = $models.DesktopSFTPUploadTaskStatus.createFrom;
+const $$createType3 = $models.DesktopSFTPDeletePathsResult.createFrom;
+const $$createType4 = $models.DesktopSFTPDirectTransferResult.createFrom;
+const $$createType5 = $models.DesktopSFTPDiskUsageResult.createFrom;
+const $$createType6 = $models.DesktopSFTPUploadTaskStatus.createFrom;
+const $$createType7 = $models.DesktopSFTPDirectoryListResult.createFrom;
+const $$createType8 = $models.DesktopSFTPUploadTaskListResult.createFrom;

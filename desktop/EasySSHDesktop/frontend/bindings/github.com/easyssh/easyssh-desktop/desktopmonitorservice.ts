@@ -15,5 +15,11 @@ export function Collect(input: $models.DesktopMonitorCollectInput): $Cancellable
     });
 }
 
+export function CollectContext(input: $models.DesktopMonitorCollectInput): $CancellablePromise<$models.DesktopMonitorSnapshot> {
+    return $Call.ByID(498304254, input).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
 // Private type creation functions
 const $$createType0 = $models.DesktopMonitorSnapshot.createFrom;

@@ -1,4 +1,4 @@
-import { Dialogs } from "@wailsio/runtime"
+import { Call, Dialogs } from "@wailsio/runtime"
 import type { AuthMethod, SshWorkspaceApiClient } from "@easyssh/ssh-workspace/desktop"
 import { supportsKeyboardInteractive } from "@easyssh/ssh-workspace/desktop"
 import type {
@@ -8,6 +8,7 @@ import type {
   DiskUsageResponse,
   DirectoryListResponse,
   FileInfo,
+  SftpDeletePathsResult,
   UploadTaskStatus,
   UploadTaskListResponse,
 } from "@/lib/sftp-types"
@@ -328,6 +329,12 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
     },
     async delete(serverId, remotePath) {
       return normalizeFileInfo(await DesktopSFTPService.Delete({ serverId, path: remotePath }) as FileInfo)
+    },
+    async deletePaths(serverId, paths) {
+      return await Call.ByName(
+        "github.com/easyssh/easyssh-desktop.DesktopSFTPService.DeletePaths",
+        { serverId, paths },
+      ) as SftpDeletePathsResult
     },
     async batchDelete(serverId, paths) {
       return await DesktopSFTPService.BatchDelete({ serverId, paths }) as BatchDeleteResponse

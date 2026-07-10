@@ -76,7 +76,7 @@ export function createDesktopRuntime(runtime: DesktopRuntimeBindingInfo | null):
       permissions: false,
       audit: false,
       login_logs: false,
-      notifications: false,
+      notifications: true,
       oauth: false,
       security_policy: false,
     },

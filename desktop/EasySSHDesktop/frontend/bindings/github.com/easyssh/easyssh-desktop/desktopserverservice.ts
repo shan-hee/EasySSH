@@ -25,6 +25,12 @@ export function ExecuteCommand(input: $models.DesktopServerCommandInput): $Cance
     });
 }
 
+export function ExecuteCommandContext(input: $models.DesktopServerCommandInput): $CancellablePromise<$models.DesktopServerCommandResult> {
+    return $Call.ByID(3562182085, input).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
 export function GetById(id: string): $CancellablePromise<$models.DesktopServer> {
     return $Call.ByID(593733294, id).then(($result: any) => {
         return $$createType0($result);

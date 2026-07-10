@@ -7,6 +7,7 @@ import * as DesktopBackupService from "./desktopbackupservice.js";
 import * as DesktopDockerService from "./desktopdockerservice.js";
 import * as DesktopGateway from "./desktopgateway.js";
 import * as DesktopMonitorService from "./desktopmonitorservice.js";
+import * as DesktopNotificationService from "./desktopnotificationservice.js";
 import * as DesktopSFTPService from "./desktopsftpservice.js";
 import * as DesktopScriptService from "./desktopscriptservice.js";
 import * as DesktopServerService from "./desktopserverservice.js";
@@ -20,6 +21,7 @@ export {
     DesktopDockerService,
     DesktopGateway,
     DesktopMonitorService,
+    DesktopNotificationService,
     DesktopSFTPService,
     DesktopScriptService,
     DesktopServerService,
@@ -43,6 +45,7 @@ export {
     DesktopAISessionScope,
     DesktopAISessionStatus,
     DesktopAISessionView,
+    DesktopAITaskStatus,
     DesktopAITaskView,
     DesktopAIToolView,
     DesktopAIUpdateMessageInput,
@@ -84,6 +87,8 @@ export {
     DesktopMonitorNetworkInfo,
     DesktopMonitorSnapshot,
     DesktopMonitorSystemInfo,
+    DesktopNotification,
+    DesktopNotificationList,
     DesktopRuntimeInfo,
     DesktopSFTPAuthenticateInput,
     DesktopSFTPBatchDeleteInput,
@@ -91,9 +96,11 @@ export {
     DesktopSFTPBatchDownloadInput,
     DesktopSFTPBatchOperationError,
     DesktopSFTPChmodInput,
+    DesktopSFTPDeletePathsResult,
     DesktopSFTPDirectTransferInput,
     DesktopSFTPDirectTransferResult,
     DesktopSFTPDirectoryListResult,
+    DesktopSFTPDiskUsageResult,
     DesktopSFTPDownloadFileInput,
     DesktopSFTPFileInfo,
     DesktopSFTPPathInput,
@@ -130,7 +137,6 @@ export {
 } from "./models.js";
 
 export type {
-    DesktopAITaskStatus,
     DesktopCapability,
     DesktopPreferenceSnapshot
 } from "./models.js";
