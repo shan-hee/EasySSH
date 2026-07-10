@@ -3209,6 +3209,7 @@ const messages = {
     cleanupDialogDescription: "按保留天数删除当前账户的旧任务运行记录。",
     cleanupRetentionLabel: "保留天数",
     cleanupRetentionHint: "将删除完成时间早于保留期限的已结束任务，范围为 1 至 3650 天。",
+    cleanupDefaultPolicy: "系统每天自动执行默认清理：成功和已取消任务保留 90 天；失败、部分成功和超时任务保留 180 天；排队中、运行中和取消中的任务永久保留。任务事件、结果日志和关联通知随任务记录一并清理。",
     cleanupWarning: "此操作不可撤销。排队中、运行中和取消中的任务不会被清理。",
     cleanupCancel: "取消",
     cleanupConfirm: "确认清理",

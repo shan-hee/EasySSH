@@ -3,6 +3,8 @@ package taskcenter
 import (
 	"context"
 	"errors"
+	"log"
+	"sync"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/realtime"
@@ -13,6 +15,12 @@ import (
 var (
 	ErrNotFound      = errors.New("task run not found")
 	ErrNotCancelable = errors.New("task run is not cancelable")
+)
+
+const (
+	retentionCleanupInterval    = 24 * time.Hour
+	defaultSuccessRetentionDays = 90
+	defaultFailureRetentionDays = 180
 )
 
 type CompletionNotifier interface {
@@ -38,6 +46,8 @@ type Service interface {
 	Statistics(ctx context.Context, userID uuid.UUID) (*Statistics, error)
 	Events(ctx context.Context, userID, runID uuid.UUID) ([]TaskEvent, error)
 	Cleanup(ctx context.Context, userID uuid.UUID, retentionDays int) (*CleanupResult, error)
+	StartRetention(ctx context.Context)
+	StopRetention()
 	RequestCancel(ctx context.Context, userID, id uuid.UUID) error
 	RecoverInterrupted(ctx context.Context) error
 	SetNotifier(notifier CompletionNotifier)
@@ -51,6 +61,10 @@ type service struct {
 	canceler CancelHandler
 	updater  DefinitionStatusUpdater
 	events   *realtime.Hub
+
+	retentionMu     sync.Mutex
+	retentionCancel context.CancelFunc
+	retentionWG     sync.WaitGroup
 }
 
 func NewService(repo Repository, events *realtime.Hub) Service {
@@ -215,14 +229,92 @@ func (s *service) Cleanup(ctx context.Context, userID uuid.UUID, retentionDays i
 	if err != nil {
 		return nil, err
 	}
-	if s.events != nil {
-		payload := map[string]interface{}{"deleted_count": result.DeletedCount, "retention_days": retentionDays}
-		s.events.Publish(userID, "task.cleanup.completed", payload)
-		if result.DeletedNotifications > 0 {
-			s.events.Publish(userID, "notification.cleanup.completed", payload)
+	s.publishCleanup(userID, result, map[string]interface{}{"policy": "manual", "retention_days": retentionDays})
+	return result, nil
+}
+
+func (s *service) StartRetention(ctx context.Context) {
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
+	if s.retentionCancel != nil {
+		return
+	}
+	workerCtx, cancel := context.WithCancel(ctx)
+	s.retentionCancel = cancel
+	s.retentionWG.Add(1)
+	go s.runRetentionWorker(workerCtx)
+}
+
+func (s *service) StopRetention() {
+	s.retentionMu.Lock()
+	defer s.retentionMu.Unlock()
+	cancel := s.retentionCancel
+	if cancel == nil {
+		return
+	}
+	cancel()
+	s.retentionWG.Wait()
+	s.retentionCancel = nil
+}
+
+func (s *service) runRetentionWorker(ctx context.Context) {
+	defer s.retentionWG.Done()
+	s.applyDefaultRetention(ctx)
+	ticker := time.NewTicker(retentionCleanupInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			s.applyDefaultRetention(ctx)
+		case <-ctx.Done():
+			return
 		}
 	}
-	return result, nil
+}
+
+func (s *service) applyDefaultRetention(ctx context.Context) {
+	result, err := s.repo.CleanupDefaultRetention(ctx, time.Now())
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			log.Printf("[TaskCenter] default retention cleanup failed: %v", err)
+		}
+		return
+	}
+	if result.DeletedCount > 0 {
+		log.Printf("[TaskCenter] default retention cleanup completed: runs=%d events=%d notifications=%d", result.DeletedCount, result.DeletedEvents, result.DeletedNotifications)
+	}
+	for _, userID := range result.AffectedUserIDs {
+		s.publishDefaultRetention(userID)
+	}
+}
+
+func (s *service) publishDefaultRetention(userID uuid.UUID) {
+	if s.events == nil {
+		return
+	}
+	payload := map[string]interface{}{
+		"policy": "default", "success_retention_days": defaultSuccessRetentionDays, "failure_retention_days": defaultFailureRetentionDays,
+	}
+	s.events.Publish(userID, "task.cleanup.completed", payload)
+	s.events.Publish(userID, "notification.cleanup.completed", payload)
+}
+
+func (s *service) publishCleanup(userID uuid.UUID, result *CleanupResult, extra map[string]interface{}) {
+	if s.events == nil || result == nil {
+		return
+	}
+	payload := map[string]interface{}{
+		"deleted_count":         result.DeletedCount,
+		"deleted_events":        result.DeletedEvents,
+		"deleted_notifications": result.DeletedNotifications,
+	}
+	for key, value := range extra {
+		payload[key] = value
+	}
+	s.events.Publish(userID, "task.cleanup.completed", payload)
+	if result.DeletedNotifications > 0 {
+		s.events.Publish(userID, "notification.cleanup.completed", payload)
+	}
 }
 
 func (s *service) RequestCancel(ctx context.Context, userID, id uuid.UUID) error {

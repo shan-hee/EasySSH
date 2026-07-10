@@ -2653,6 +2653,7 @@ const messages = {
     cleanupDialogDescription: "Delete old task runs for the current account based on a retention period.",
     cleanupRetentionLabel: "Retention days",
     cleanupRetentionHint: "Completed runs older than the retention period will be deleted. Enter a value from 1 to 3650 days.",
+    cleanupDefaultPolicy: "The system runs the default cleanup daily: successful and canceled tasks are kept for 90 days; failed, partially successful, and timed-out tasks are kept for 180 days; queued, running, and canceling tasks are kept permanently. Task events, result logs, and linked notifications are removed with the task run.",
     cleanupWarning: "This action cannot be undone. Queued, running, and canceling tasks will not be deleted.",
     cleanupCancel: "Cancel",
     cleanupConfirm: "Clean up",

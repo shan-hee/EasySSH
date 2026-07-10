@@ -339,6 +339,7 @@ func main() {
 	if err := taskCenterService.RecoverInterrupted(context.Background()); err != nil {
 		log.Printf("⚠️ Warning: Failed to recover interrupted task runs: %v", err)
 	}
+	taskCenterService.StartRetention(context.Background())
 
 	// 注入执行器到批量任务服务
 	batchTaskService.SetExecutor(taskExecutor)
@@ -1100,6 +1101,9 @@ func main() {
 	<-quit
 
 	log.Println("🛑 Shutting down server...")
+
+	taskCenterService.StopRetention()
+	log.Println("✅ Task retention worker stopped")
 
 	// 停止任务调度器
 	taskScheduler.Stop()

@@ -413,6 +413,7 @@ export default function TaskCenterPage() {
               />
               <p className="text-sm text-muted-foreground">{t("cleanupRetentionHint")}</p>
             </div>
+            <p className="border-l-2 border-border pl-3 text-sm text-muted-foreground">{t("cleanupDefaultPolicy")}</p>
             <p className="text-sm text-destructive">{t("cleanupWarning")}</p>
           </div>
           <AlertDialogFooter>

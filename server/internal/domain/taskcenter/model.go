@@ -139,7 +139,8 @@ type Statistics struct {
 }
 
 type CleanupResult struct {
-	DeletedCount         int64 `json:"deleted_count"`
-	DeletedEvents        int64 `json:"deleted_events"`
-	DeletedNotifications int64 `json:"deleted_notifications"`
+	DeletedCount         int64       `json:"deleted_count"`
+	DeletedEvents        int64       `json:"deleted_events"`
+	DeletedNotifications int64       `json:"deleted_notifications"`
+	AffectedUserIDs      []uuid.UUID `json:"-"`
 }
