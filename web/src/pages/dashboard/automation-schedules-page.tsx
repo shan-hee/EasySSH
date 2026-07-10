@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
+import { cn } from "@/lib/utils"
 import { isApiError } from "@/lib/api-client"
 import {
 	 Dialog,
@@ -21,6 +22,12 @@ import {
  Plus,
  Search,
  FileText,
+ Clock,
+ Terminal,
+ Zap,
+ Upload,
+ Download,
+ Calendar,
 } from "lucide-react"
 import {
  scheduledTasksApi,
@@ -39,9 +46,6 @@ import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { formatInTimezone, getEffectiveLocale, getEffectiveTimezone } from "@/utils/datetime"
 import { useTranslation } from "react-i18next"
 import { createScheduledTaskColumns } from "./automation/schedules/components/scheduled-task-columns"
-import {
-  InlineStatusBadge,
-} from "@/components/logs/log-dashboard-widgets"
 import { ScheduledTaskDialog } from "./automation/schedules/components/scheduled-task-dialog"
 
 type ScheduledPayload = {
@@ -63,15 +67,6 @@ const parseScheduledPayload = (value?: string): ScheduledPayload => {
  }
 }
 
-const getTaskTypeLabel = (type: ScheduledTaskType, t: (key: string) => string) => {
- if (type === "command") return t("typeCommand")
- if (type === "script") return t("typeScript")
- if (type === "batch") return t("typeBatch")
- if (type === "sftp_upload") return "SFTP 上传"
- if (type === "sftp_download") return "SFTP 下载"
- return type
-}
-
 const getTaskTypeTone = (type: ScheduledTaskType) => {
  if (type === "command") return "blue" as const
  if (type === "script") return "violet" as const
@@ -84,6 +79,85 @@ const getTaskTypeTone = (type: ScheduledTaskType) => {
 const isSftpTaskType = (type: ScheduledTaskType) => (
  type === "sftp_upload" || type === "sftp_download"
 )
+
+// 时间线节点的色调样式：圆点、光晕、柔和底色、文字色
+const TONE_NODE: Record<string, { dot: string; glow: string; soft: string; text: string }> = {
+ blue: {
+ dot: "bg-blue-500",
+ glow: "shadow-[0_0_0_5px_rgba(59,130,246,0.18)]",
+ soft: "bg-blue-500/10 text-blue-700 dark:text-blue-300",
+ text: "text-blue-600 dark:text-blue-400",
+ },
+ violet: {
+ dot: "bg-violet-500",
+ glow: "shadow-[0_0_0_5px_rgba(139,92,246,0.18)]",
+ soft: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+ text: "text-violet-600 dark:text-violet-400",
+ },
+ amber: {
+ dot: "bg-amber-500",
+ glow: "shadow-[0_0_0_5px_rgba(245,158,11,0.18)]",
+ soft: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+ text: "text-amber-600 dark:text-amber-400",
+ },
+ emerald: {
+ dot: "bg-emerald-500",
+ glow: "shadow-[0_0_0_5px_rgba(16,185,129,0.18)]",
+ soft: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+ text: "text-emerald-600 dark:text-emerald-400",
+ },
+ cyan: {
+ dot: "bg-cyan-500",
+ glow: "shadow-[0_0_0_5px_rgba(6,182,212,0.18)]",
+ soft: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+ text: "text-cyan-600 dark:text-cyan-400",
+ },
+ slate: {
+ dot: "bg-slate-400",
+ glow: "shadow-[0_0_0_5px_rgba(100,116,139,0.16)]",
+ soft: "bg-muted text-muted-foreground",
+ text: "text-muted-foreground",
+ },
+}
+
+const getToneNode = (tone: string) => TONE_NODE[tone] || TONE_NODE.slate
+
+// 时间线卡片上的类型图标
+const getTaskTypeIcon = (type: ScheduledTaskType) => {
+ switch (type) {
+ case "command":
+ return <Terminal className="h-3 w-3" />
+ case "script":
+ return <FileText className="h-3 w-3" />
+ case "batch":
+ return <Zap className="h-3 w-3" />
+ case "sftp_upload":
+ return <Upload className="h-3 w-3" />
+ case "sftp_download":
+ return <Download className="h-3 w-3" />
+ default:
+ return <Calendar className="h-3 w-3" />
+ }
+}
+
+// 把"下次执行时间"转成"5 分钟后 / 2 小时后 / 明天"这样的相对表述，体现时间线的临近感
+const formatRelativeTime = (nextRunAt: string | undefined): string => {
+ if (!nextRunAt) return "—"
+ const target = new Date(nextRunAt).getTime()
+ const now = Date.now()
+ const diffMs = target - now
+ if (diffMs <= 0) return "已到期"
+ const mins = Math.round(diffMs / 60000)
+ if (mins < 1) return "即将执行"
+ if (mins < 60) return `${mins} 分钟后`
+ const hours = Math.round(mins / 60)
+ if (hours < 24) return `${hours} 小时后`
+ const days = Math.round(hours / 24)
+ if (days === 1) return "明天"
+ if (days < 7) return `${days} 天后`
+ const d = new Date(nextRunAt)
+ return `${d.getMonth() + 1}月${d.getDate()}日`
+}
 
 export default function AutomationSchedulesPage({ embedded = false }: { embedded?: boolean }) {
  const { ready } = useAuthReady()
@@ -531,7 +605,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  [...tasks]
  .filter((task) => task.enabled && task.next_run_at)
  .sort((a, b) => new Date(a.next_run_at || 0).getTime() - new Date(b.next_run_at || 0).getTime())
- .slice(0, 5)
+ .slice(0, 4)
  ), [tasks])
 
  return (
@@ -559,30 +633,66 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
          {t("newTask")}
        </Button>
      </div>
-     <div className="mt-4 grid gap-2 md:grid-cols-2 2xl:grid-cols-4">
-       {upcomingTasks.length === 0 ? (
-         <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground md:col-span-2 2xl:col-span-4">
-           {t("emptyAll")}
-         </div>
-       ) : upcomingTasks.slice(0, 4).map((task) => (
-         <div key={task.id} className="rounded-md border bg-background p-3">
-           <div className="flex items-start justify-between gap-3">
-             <div className="min-w-0">
-               <div className="truncate text-sm font-medium">{task.task_name}</div>
-               <div className="mt-1 truncate text-xs text-muted-foreground">{task.cron_expression}</div>
+     {upcomingTasks.length === 0 ? (
+       <div className="mt-4 flex items-center gap-3 rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
+         <Calendar className="h-5 w-5 shrink-0 opacity-50" />
+         <span>{t("emptyAll")}</span>
+       </div>
+     ) : (
+       <div className="mt-5 overflow-x-auto pb-2">
+         <div className="relative min-w-[720px]">
+           {/* 时间轨道：从"现在"锚点向右延伸的渐变线 */}
+           <div className="pointer-events-none absolute left-10 right-0 top-9 h-px bg-gradient-to-r from-emerald-500/60 via-border to-transparent" />
+           <div className="flex items-start">
+             {/* "现在"锚点 */}
+             <div className="flex w-20 shrink-0 flex-col items-center">
+               <span className="mb-2 h-5 rounded-full bg-emerald-500/10 px-2 text-[11px] font-medium leading-5 text-emerald-700 dark:text-emerald-300">
+                 现在
+               </span>
+               <div className="relative h-4 w-4">
+                 <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-60" />
+                 <span className="absolute inset-0 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]" />
+               </div>
              </div>
-             <InlineStatusBadge
-               label={getTaskTypeLabel(task.task_type, t)}
-               tone={getTaskTypeTone(task.task_type)}
-             />
-           </div>
-           <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-             <span>{formatDate(task.next_run_at)}</span>
-             <span className="tabular-nums">{(task.server_ids || []).length} 台</span>
+             {/* 任务节点：按临近顺序等距排列 */}
+             <div className="flex flex-1 justify-between">
+               {upcomingTasks.slice(0, 4).map((task, index) => {
+                 const tone = getTaskTypeTone(task.task_type)
+                 const node = getToneNode(tone)
+                 const isNext = index === 0
+                 return (
+                   <div key={task.id} className="flex w-[150px] shrink-0 flex-col items-center">
+                     <span
+                       className={cn(
+                         "mb-2 h-5 rounded-full px-2 text-[11px] font-medium leading-5 tabular-nums",
+                         isNext ? node.soft : "bg-muted/60 text-muted-foreground",
+                       )}
+                     >
+                       {formatRelativeTime(task.next_run_at)}
+                     </span>
+                     <div className={cn("relative h-4 w-4 rounded-full transition-transform", node.dot, isNext && node.glow)} />
+                     <div className="mt-3 w-[150px] rounded-lg border bg-background p-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+                       <div className="flex items-center gap-1.5">
+                         <span className={cn("shrink-0", node.text)}>{getTaskTypeIcon(task.task_type)}</span>
+                         <span className="truncate text-xs font-medium">{task.task_name}</span>
+                       </div>
+                       <div className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                         <Clock className="h-3 w-3 shrink-0" />
+                         <span className="truncate tabular-nums">{formatDate(task.next_run_at)}</span>
+                       </div>
+                       <div className="mt-2 flex items-center justify-between gap-1">
+                         <code className="truncate rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">{task.cron_expression}</code>
+                         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{(task.server_ids || []).length} 台</span>
+                       </div>
+                     </div>
+                   </div>
+                 )
+               })}
+             </div>
            </div>
          </div>
-       ))}
-     </div>
+       </div>
+     )}
    </Card>
 
    <div className="min-h-0 flex-1 overflow-hidden">
