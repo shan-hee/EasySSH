@@ -1,7 +1,7 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react"
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { TFunction } from "i18next"
 import type { ColumnDef } from "@tanstack/react-table"
-import { AlertTriangle, CheckCircle2, CircleStop, Clock3, Eye, Loader2, RotateCcw, Search } from "lucide-react"
+import { AlertTriangle, CheckCircle2, CircleStop, Clock3, Eye, Loader2, MoreHorizontal, RotateCcw, Search } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
@@ -13,6 +13,7 @@ import { DataTable } from "@/components/ui/data-table"
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -42,6 +43,7 @@ export default function TaskCenterPage() {
   const [keyword, setKeyword] = useState("")
   const deferredKeyword = useDeferredValue(keyword.trim())
   const [selected, setSelected] = useState<{ run: TaskRun; events: TaskEvent[] } | null>(null)
+  const handledRequestedRunRef = useRef<string | null>(null)
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -107,18 +109,24 @@ export default function TaskCenterPage() {
   const requestedRunID = searchParams.get("run")
   const clearRequestedRun = useCallback(() => {
     if (!requestedRunID) return
+    handledRequestedRunRef.current = requestedRunID
     const next = new URLSearchParams(searchParams)
     next.delete("run")
     setSearchParams(next, { replace: true })
   }, [requestedRunID, searchParams, setSearchParams])
 
   useEffect(() => {
-    if (!requestedRunID || selected?.run.id === requestedRunID) return
+    if (!requestedRunID) {
+      handledRequestedRunRef.current = null
+      return
+    }
+    if (handledRequestedRunRef.current === requestedRunID) return
+    handledRequestedRunRef.current = requestedRunID
     void taskCenterApi.get(requestedRunID).then(setSelected).catch((error) => {
       toast.error(getErrorMessage(error, t("detailsLoadFailed")))
       clearRequestedRun()
     })
-  }, [clearRequestedRun, requestedRunID, selected?.run.id, t])
+  }, [clearRequestedRun, requestedRunID, t])
 
   const runAction = useCallback(async (action: "cancel" | "retry", run: TaskRun) => {
     try {
@@ -195,26 +203,48 @@ export default function TaskCenterPage() {
       },
       {
         id: "actions",
-        header: "",
-        size: 56,
-        minSize: 56,
+        header: t("columnActions"),
+        size: 72,
+        minSize: 72,
         meta: meta({ align: "center" }),
-        cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={(event) => {
-              event.stopPropagation()
-              void openDetails(row.original)
-            }}
-            title={t("viewDetails")}
-          >
-            <Eye className="size-4" />
-          </Button>
-        ),
+        cell: ({ row }) => {
+          const run = row.original
+          const canCancel = run.cancelable && ["queued", "running"].includes(run.status)
+          const canRetry = run.retryable && ["failed", "partial_success", "canceled", "timeout"].includes(run.status)
+          return (
+            <div className="flex justify-center" onClick={(event) => event.stopPropagation()}>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" title={t("taskActions")} aria-label={t("taskActions")}>
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => void openDetails(run)}>
+                    <Eye className="size-4" />
+                    {t("viewDetails")}
+                  </DropdownMenuItem>
+                  {canCancel || canRetry ? <DropdownMenuSeparator /> : null}
+                  {canCancel ? (
+                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void runAction("cancel", run)}>
+                      <CircleStop className="size-4" />
+                      {t("cancelTask")}
+                    </DropdownMenuItem>
+                  ) : null}
+                  {canRetry ? (
+                    <DropdownMenuItem onClick={() => void runAction("retry", run)}>
+                      <RotateCcw className="size-4" />
+                      {t("retryTask")}
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )
+        },
       },
     ]
-  }, [i18n.language, openDetails, t])
+  }, [i18n.language, openDetails, runAction, t])
 
   return (
     <>
@@ -310,7 +340,7 @@ export default function TaskCenterPage() {
         setSelected(null)
         clearRequestedRun()
       }}>
-        <DialogContent className="max-h-[85vh] max-w-3xl overflow-hidden">
+        <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-5xl">
           <DialogHeader><DialogTitle>{selected?.run.title}</DialogTitle><DialogDescription>{selected?.run.resource || selected?.run.task_type}</DialogDescription></DialogHeader>
           {selected ? <TaskDetails run={selected.run} events={selected.events} onAction={runAction} t={t} locale={i18n.language} /> : null}
         </DialogContent>
