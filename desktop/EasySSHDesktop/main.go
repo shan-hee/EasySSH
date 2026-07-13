@@ -46,6 +46,16 @@ func main() {
 	aiService := NewDesktopAIService(serverService, sftpService, monitorService)
 	backupService := NewDesktopBackupService(notificationService, taskService)
 	updateService := NewDesktopUpdateService()
+	var mainWindow *application.WebviewWindow
+
+	showMainWindow := func() {
+		if mainWindow == nil {
+			return
+		}
+		mainWindow.Show()
+		mainWindow.UnMinimise()
+		mainWindow.Focus()
+	}
 
 	app := application.New(application.Options{
 		Name:         "EasySSH",
@@ -72,6 +82,12 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.easyssh.desktop",
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				showMainWindow()
+			},
+		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: false,
 		},
@@ -83,7 +99,7 @@ func main() {
 		log.Printf("failed to initialize desktop updater: %v", err)
 	}
 
-	mainWindow := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "EasySSH",
 		Width:     1320,
 		Height:    860,
@@ -111,13 +127,13 @@ func main() {
 	})
 
 	trayMenu := application.NewMenu()
-	trayMenu.Add("显示 EasySSH").OnClick(func(*application.Context) { mainWindow.Show().Focus() })
+	trayMenu.Add("显示 EasySSH").OnClick(func(*application.Context) { showMainWindow() })
 	trayMenu.AddSeparator()
 	trayMenu.Add("退出").OnClick(func(*application.Context) {
 		quitting.Store(true)
 		app.Quit()
 	})
-	tray := app.SystemTray.New().SetIcon(appIcon).SetMenu(trayMenu).OnClick(func() { mainWindow.Show().Focus() })
+	tray := app.SystemTray.New().SetIcon(appIcon).SetMenu(trayMenu).OnClick(showMainWindow)
 	tray.SetTooltip("EasySSH")
 	notificationService.attachTray(tray)
 
