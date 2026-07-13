@@ -596,9 +596,10 @@ func main() {
 			userRoutes.PUT("/me/monitor-datasource", authHandler.UpdateMonitorDataSource) // 更新监控数据源设置
 
 			// 用户AI配置路由
-			userRoutes.GET("/me/ai-config", userAIConfigHandler.GetUserAIConfig)       // 获取用户AI配置
-			userRoutes.PUT("/me/ai-config", userAIConfigHandler.SaveUserAIConfig)      // 保存用户AI配置
-			userRoutes.DELETE("/me/ai-config", userAIConfigHandler.DeleteUserAIConfig) // 删除用户AI配置
+			userRoutes.GET("/me/ai-config", userAIConfigHandler.GetUserAIConfig)           // 获取用户AI配置
+			userRoutes.PUT("/me/ai-config", userAIConfigHandler.SaveUserAIConfig)          // 保存用户AI配置
+			userRoutes.POST("/me/ai-config/models", userAIConfigHandler.ProbeUserAIModels) // 获取自定义AI可用模型
+			userRoutes.DELETE("/me/ai-config", userAIConfigHandler.DeleteUserAIConfig)     // 删除用户AI配置
 		}
 
 		// 用户管理路由（需要认证）

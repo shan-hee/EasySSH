@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AIModelSelector } from "@/components/ai-agent/ai-model-selector"
 import {
   Popover,
   PopoverContent,
@@ -20,7 +21,12 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "@/components/ui/sonner"
-import { userAIConfigApi, type UserAIConfig } from "@/lib/api/settings"
+import {
+  userAIConfigApi,
+  type ProbeAISystemModelsResponse,
+  type ProbeUserAIModelsRequest,
+  type UserAIConfig,
+} from "@/lib/api/settings"
 import type { SaveUserAIConfigRequest } from "@/lib/api/settings"
 import { cn } from "@/lib/utils"
 
@@ -28,6 +34,7 @@ export interface AIAssistantConfigAdapter {
   queryKey?: unknown[]
   getUserAIConfig: () => Promise<UserAIConfig>
   saveUserAIConfig: (config: SaveUserAIConfigRequest) => Promise<void>
+  probeModels: (config: ProbeUserAIModelsRequest) => Promise<ProbeAISystemModelsResponse>
 }
 
 interface AIAssistantConfigPopoverProps {
@@ -107,6 +114,8 @@ export function AIAssistantConfigPopover({
   const [form, setForm] = useState<AIConfigForm>(DEFAULT_FORM)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [probingModels, setProbingModels] = useState(false)
+  const [availableModels, setAvailableModels] = useState<string[]>([])
 
   const providerOptions = useMemo(
     () => [
@@ -120,6 +129,10 @@ export function AIAssistantConfigPopover({
 
   const isSystemActive = !customConfigOnly && form.use_system_config
   const isCustomActive = customConfigOnly || (!form.use_system_config && form.custom_enabled)
+
+  useEffect(() => {
+    setAvailableModels([])
+  }, [form.custom_provider, form.custom_api_key, form.custom_endpoint])
 
   const loadConfig = useCallback(async () => {
     setLoading(true)
@@ -189,6 +202,31 @@ export function AIAssistantConfigPopover({
     }
   }
 
+  const probeModels = async () => {
+    setAvailableModels([])
+    setProbingModels(true)
+    try {
+      const response = await (adapter?.probeModels ?? userAIConfigApi.probeModels)({
+        custom_provider: form.custom_provider,
+        custom_api_key: form.custom_api_key.trim(),
+        custom_endpoint: form.custom_endpoint.trim(),
+      })
+      const models = Array.from(
+        new Set((response.models || []).map((model) => model.trim()).filter(Boolean)),
+      )
+      setAvailableModels(models)
+      if (models.length > 0) {
+        toast.success(t("aiConfigProbeModelsSuccess", { count: models.length }))
+      } else {
+        toast.info(response.message || t("aiConfigProbeModelsEmpty"))
+      }
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, t("aiConfigProbeModelsFailed")))
+    } finally {
+      setProbingModels(false)
+    }
+  }
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
@@ -204,9 +242,6 @@ export function AIAssistantConfigPopover({
             <Settings2 className="size-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">{t("aiConfigPanelTitle")}</h3>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t("aiConfigPanelDescription")}
-          </p>
         </div>
 
         {loading || !config ? (
@@ -229,18 +264,13 @@ export function AIAssistantConfigPopover({
                       <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                         <Settings2 className="size-4" />
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h4 className="truncate text-sm font-medium">
-                            {t("aiConfigSystemTitle")}
-                          </h4>
-                          {isSystemActive && (
-                            <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
-                          )}
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {t("aiConfigSystemDescription")}
-                        </p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <h4 className="truncate text-sm font-medium">
+                          {t("aiConfigSystemTitle")}
+                        </h4>
+                        {isSystemActive && (
+                          <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
+                        )}
                       </div>
                     </div>
                     <Switch
@@ -264,18 +294,13 @@ export function AIAssistantConfigPopover({
                     <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                       <Bot className="size-4" />
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="truncate text-sm font-medium">
-                          {t("aiConfigCustomTitle")}
-                        </h4>
-                        {isCustomActive && (
-                          <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
-                        )}
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {t("aiConfigCustomDescription")}
-                      </p>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h4 className="truncate text-sm font-medium">
+                        {t("aiConfigCustomTitle")}
+                      </h4>
+                      {isCustomActive && (
+                        <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
+                      )}
                     </div>
                   </div>
                   {!customConfigOnly && (
@@ -314,9 +339,14 @@ export function AIAssistantConfigPopover({
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label htmlFor="assistant-ai-api-key" className="text-xs">
-                      {tAccount("aiAPIKeyLabel")}
-                    </Label>
+                    <div className="flex items-center justify-between gap-2">
+                      <Label htmlFor="assistant-ai-api-key" className="text-xs">
+                        {tAccount("aiAPIKeyLabel")}
+                      </Label>
+                      <span className="text-[11px] text-muted-foreground">
+                        {config.has_api_key ? tAccount("aiAPIKeySet") : tAccount("aiAPIKeyNotSet")}
+                      </span>
+                    </div>
                     <Input
                       id="assistant-ai-api-key"
                       type="password"
@@ -328,11 +358,6 @@ export function AIAssistantConfigPopover({
                       }
                       disabled={saving}
                     />
-                    <p className="text-[11px] text-muted-foreground">
-                      {config.has_api_key ? tAccount("aiAPIKeySet") : tAccount("aiAPIKeyNotSet")}
-                      {" · "}
-                      {tAccount("aiAPIKeyHint")}
-                    </p>
                   </div>
 
                   <div className="space-y-1.5">
@@ -349,29 +374,31 @@ export function AIAssistantConfigPopover({
                       }
                       disabled={saving}
                     />
-                    <p className="text-[11px] text-muted-foreground">
-                      {tAccount("aiEndpointHint")}
-                    </p>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <Label htmlFor="assistant-ai-models" className="text-xs">
-                      {tAccount("aiModelsLabel")}
-                    </Label>
-                    <Input
-                      id="assistant-ai-models"
-                      className="h-8 text-xs"
-                      placeholder={tAccount("aiModelsPlaceholder")}
-                      value={form.custom_models}
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, custom_models: event.target.value }))
-                      }
-                      disabled={saving}
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      {tAccount("aiModelsHint")}
-                    </p>
-                  </div>
+                  <AIModelSelector
+                    value={form.custom_models}
+                    availableModels={availableModels}
+                    onChange={(value) =>
+                      setForm((current) => ({ ...current, custom_models: value }))
+                    }
+                    onProbe={() => void probeModels()}
+                    probing={probingModels}
+                    disabled={saving}
+                    compact
+                    labels={{
+                      label: tAccount("aiModelsLabel"),
+                      manualPlaceholder: tAccount("aiModelsPlaceholder"),
+                      probe: t("aiConfigProbeModels"),
+                      probing: t("aiConfigProbingModels"),
+                      clear: t("aiConfigClearModels"),
+                      selectPlaceholder: t("aiConfigModelSelectPlaceholder"),
+                      selectSummary: (availableCount, selectedCount) =>
+                        t("aiConfigModelSelectSummary", { availableCount, selectedCount }),
+                      noOptions: t("aiConfigModelSelectNoOptions"),
+                      createModel: (value) => t("aiConfigModelSelectCreate", { value }),
+                    }}
+                  />
                 </div>
               </div>
             </div>

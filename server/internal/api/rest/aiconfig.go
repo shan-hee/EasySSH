@@ -2,14 +2,14 @@ package rest
 
 import (
 	"context"
+	"errors"
 	"net/http"
-	"sort"
 	"strings"
+	"time"
 
 	"github.com/easyssh/server/internal/domain/aiconfig"
-	sharedaiconfig "github.com/easyssh/shared/aiconfig"
+	"github.com/easyssh/shared/aiprovider"
 	"github.com/gin-gonic/gin"
-	openai "github.com/sashabaranov/go-openai"
 )
 
 // AIConfigHandler AI配置处理器
@@ -44,33 +44,31 @@ type AIModelsProbeResponseDTO struct {
 	Message   string   `json:"message,omitempty"`
 }
 
-func fetchOpenAICompatibleModels(provider, apiKey, endpoint string) ([]string, error) {
-	cfg := openai.DefaultConfig(apiKey)
-	if endpoint != "" {
-		cfg.BaseURL = sharedaiconfig.NormalizeOpenAIBaseURL(provider, endpoint)
-	}
+func probeAIModels(ctx context.Context, provider, apiKey, endpoint string) (AIModelsProbeResponseDTO, error) {
+	requestContext, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
 
-	client := openai.NewClientWithConfig(cfg)
-	resp, err := client.ListModels(context.Background())
+	models, err := aiprovider.NewFactory().ListModels(requestContext, aiprovider.Config{
+		Provider: provider,
+		APIKey:   apiKey,
+		Endpoint: endpoint,
+	})
+	if errors.Is(err, aiprovider.ErrModelListingUnsupported) {
+		return AIModelsProbeResponseDTO{
+			Available: false,
+			Models:    []string{},
+			Message:   "Anthropic model auto-fetch is not supported yet, please input models manually",
+		}, nil
+	}
 	if err != nil {
-		return nil, err
+		return AIModelsProbeResponseDTO{}, err
 	}
 
-	modelSet := make(map[string]struct{})
-	for _, m := range resp.Models {
-		id := strings.TrimSpace(m.ID)
-		if id == "" {
-			continue
-		}
-		modelSet[id] = struct{}{}
-	}
-
-	result := make([]string, 0, len(modelSet))
-	for model := range modelSet {
-		result = append(result, model)
-	}
-	sort.Strings(result)
-	return result, nil
+	return AIModelsProbeResponseDTO{
+		Available: true,
+		Models:    models,
+		Message:   "Model list fetched successfully",
+	}, nil
 }
 
 // GetSystemAIConfig 获取系统级AI配置
@@ -167,35 +165,15 @@ func (h *AIConfigHandler) ProbeSystemAIModels(c *gin.Context) {
 		provider = "openai"
 	}
 
-	switch provider {
-	case "openai", "openai-response", "gemini":
-		if apiKey == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "API key is required to probe models"})
-			return
-		}
-
-		models, err := fetchOpenAICompatibleModels(provider, apiKey, endpoint)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"available": false,
-				"models":    []string{},
-				"error":     err.Error(),
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, AIModelsProbeResponseDTO{
-			Available: true,
-			Models:    models,
-			Message:   "Model list fetched successfully",
+	response, err := probeAIModels(c.Request.Context(), provider, apiKey, endpoint)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"available": false,
+			"models":    []string{},
+			"error":     err.Error(),
 		})
-	case "anthropic":
-		c.JSON(http.StatusOK, AIModelsProbeResponseDTO{
-			Available: false,
-			Models:    []string{},
-			Message:   "Anthropic model auto-fetch is not supported yet, please input models manually",
-		})
-	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Unsupported provider"})
+		return
 	}
+
+	c.JSON(http.StatusOK, response)
 }

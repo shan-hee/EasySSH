@@ -245,6 +245,12 @@ export interface ProbeAISystemModelsResponse {
   message?: string
 }
 
+export interface ProbeUserAIModelsRequest {
+  custom_provider?: string
+  custom_api_key?: string
+  custom_endpoint?: string
+}
+
 /**
  * 系统设置 API 服务
  */
@@ -553,6 +559,16 @@ export const userAIConfigApi = {
     return apiFetch<void>("/users/me/ai-config", {
       method: "PUT",
       body: config,
+    })
+  },
+
+  /**
+   * 使用当前用户的自定义 AI 凭据获取可用模型
+   */
+  async probeModels(payload: ProbeUserAIModelsRequest): Promise<ProbeAISystemModelsResponse> {
+    return apiFetch<ProbeAISystemModelsResponse>("/users/me/ai-config/models", {
+      method: "POST",
+      body: payload,
     })
   },
 

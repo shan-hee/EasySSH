@@ -216,6 +216,59 @@ export class DesktopAIMessageView {
     }
 }
 
+export class DesktopAIModelsProbeRequest {
+    "custom_provider": string;
+    "custom_api_key"?: string;
+    "custom_endpoint"?: string;
+
+    /** Creates a new DesktopAIModelsProbeRequest instance. */
+    constructor($$source: Partial<DesktopAIModelsProbeRequest> = {}) {
+        if (!("custom_provider" in $$source)) {
+            this["custom_provider"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopAIModelsProbeRequest instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopAIModelsProbeRequest {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopAIModelsProbeRequest($$parsedSource as Partial<DesktopAIModelsProbeRequest>);
+    }
+}
+
+export class DesktopAIModelsProbeResponse {
+    "available": boolean;
+    "models": string[];
+    "message"?: string;
+
+    /** Creates a new DesktopAIModelsProbeResponse instance. */
+    constructor($$source: Partial<DesktopAIModelsProbeResponse> = {}) {
+        if (!("available" in $$source)) {
+            this["available"] = false;
+        }
+        if (!("models" in $$source)) {
+            this["models"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopAIModelsProbeResponse instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopAIModelsProbeResponse {
+        const $$createField1_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("models" in $$parsedSource) {
+            $$parsedSource["models"] = $$createField1_0($$parsedSource["models"]);
+        }
+        return new DesktopAIModelsProbeResponse($$parsedSource as Partial<DesktopAIModelsProbeResponse>);
+    }
+}
+
 export enum DesktopAIPermissionMode {
     /**
      * The Go zero value for the underlying type of the enum.

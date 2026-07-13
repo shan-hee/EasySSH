@@ -88,6 +88,18 @@ type DesktopSaveUserAIConfigRequest struct {
 	CustomModels    string `json:"custom_models"`
 }
 
+type DesktopAIModelsProbeRequest struct {
+	CustomProvider string `json:"custom_provider"`
+	CustomAPIKey   string `json:"custom_api_key,omitempty"`
+	CustomEndpoint string `json:"custom_endpoint,omitempty"`
+}
+
+type DesktopAIModelsProbeResponse struct {
+	Available bool     `json:"available"`
+	Models    []string `json:"models"`
+	Message   string   `json:"message,omitempty"`
+}
+
 type DesktopAISessionScope struct {
 	Kind              string `json:"kind,omitempty"`
 	TerminalSessionID string `json:"terminal_session_id,omitempty"`
@@ -393,6 +405,53 @@ func (s *DesktopAIService) SaveUserAIConfig(input DesktopSaveUserAIConfigRequest
 			updated_at = excluded.updated_at`,
 		boolToInt(input.CustomEnabled), provider, strings.TrimSpace(input.CustomEndpoint), apiKey, models, now)
 	return err
+}
+
+func (s *DesktopAIService) ProbeAIModels(input DesktopAIModelsProbeRequest) (DesktopAIModelsProbeResponse, error) {
+	current, err := s.loadConfig()
+	if err != nil {
+		return DesktopAIModelsProbeResponse{}, err
+	}
+
+	provider := strings.TrimSpace(input.CustomProvider)
+	apiKey := strings.TrimSpace(input.CustomAPIKey)
+	endpoint := strings.TrimSpace(input.CustomEndpoint)
+	if provider == "" {
+		provider = current.CustomProvider
+	}
+	if apiKey == "" {
+		apiKey = current.CustomAPIKey
+	}
+	if endpoint == "" {
+		endpoint = current.CustomEndpoint
+	}
+	if provider == "" {
+		provider = "openai"
+	}
+
+	requestContext, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	models, err := aiprovider.NewFactory().ListModels(requestContext, aiprovider.Config{
+		Provider: provider,
+		APIKey:   apiKey,
+		Endpoint: endpoint,
+	})
+	if errors.Is(err, aiprovider.ErrModelListingUnsupported) {
+		return DesktopAIModelsProbeResponse{
+			Available: false,
+			Models:    []string{},
+			Message:   "Anthropic model auto-fetch is not supported yet, please input models manually",
+		}, nil
+	}
+	if err != nil {
+		return DesktopAIModelsProbeResponse{}, err
+	}
+
+	return DesktopAIModelsProbeResponse{
+		Available: true,
+		Models:    models,
+		Message:   "Model list fetched successfully",
+	}, nil
 }
 
 func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (DesktopAIListSessionsResult, error) {

@@ -40,6 +40,8 @@ export {
     DesktopAIListSessionsParams,
     DesktopAIListSessionsResult,
     DesktopAIMessageView,
+    DesktopAIModelsProbeRequest,
+    DesktopAIModelsProbeResponse,
     DesktopAIPermissionMode,
     DesktopAIRegenerateMessageInput,
     DesktopAISendMessageInput,

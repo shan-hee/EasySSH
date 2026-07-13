@@ -70,6 +70,45 @@ func NewFactory() *Factory {
 	return &Factory{}
 }
 
+var ErrModelListingUnsupported = errors.New("AI provider does not support automatic model listing")
+
+func (f *Factory) ListModels(ctx context.Context, config Config) ([]string, error) {
+	provider := aiconfig.NormalizeProvider(config.Provider)
+	if provider == "anthropic" {
+		return nil, ErrModelListingUnsupported
+	}
+	if !aiconfig.IsOpenAICompatibleProvider(provider) {
+		return nil, errors.New("invalid AI provider")
+	}
+	if strings.TrimSpace(config.APIKey) == "" {
+		return nil, errors.New("AI API key is required")
+	}
+
+	response, err := createOpenAIClient(Config{
+		Provider: provider,
+		APIKey:   strings.TrimSpace(config.APIKey),
+		Endpoint: strings.TrimSpace(config.Endpoint),
+	}).ListModels(ctx)
+	if err != nil {
+		return nil, wrapOpenAIProviderError("failed to fetch AI models", err)
+	}
+
+	modelSet := make(map[string]struct{}, len(response.Models))
+	for _, model := range response.Models {
+		id := strings.TrimSpace(model.ID)
+		if id != "" {
+			modelSet[id] = struct{}{}
+		}
+	}
+
+	models := make([]string, 0, len(modelSet))
+	for model := range modelSet {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	return models, nil
+}
+
 func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest, onEvent func(Event) error) (TurnResult, error) {
 	if onEvent == nil {
 		onEvent = func(Event) error { return nil }

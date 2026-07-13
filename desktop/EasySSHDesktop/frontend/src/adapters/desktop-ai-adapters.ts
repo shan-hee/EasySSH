@@ -20,6 +20,7 @@ import * as DesktopAIService from "../../bindings/github.com/easyssh/easyssh-des
 import {
   DesktopAIConfirmTaskInput,
   DesktopAICreateSessionInput,
+  DesktopAIModelsProbeRequest,
   type DesktopAICreateSessionResponse,
   type DesktopAIListSessionsResult,
   DesktopAIPermissionMode,
@@ -63,6 +64,9 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
       saveUserAIConfig: async (config: SaveUserAIConfigRequest) => {
         await DesktopAIService.SaveUserAIConfig(config)
       },
+      probeModels: async (config) => DesktopAIService.ProbeAIModels(
+        new DesktopAIModelsProbeRequest(config),
+      ),
     },
     aiSession: {
       getSession: async (sessionId: string) => fromDesktopSessionResponse(await DesktopAIService.GetSession(sessionId)),

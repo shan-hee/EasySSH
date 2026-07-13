@@ -71,6 +71,12 @@ export function ListSessions(params: $models.DesktopAIListSessionsParams): $Canc
     });
 }
 
+export function ProbeAIModels(input: $models.DesktopAIModelsProbeRequest): $CancellablePromise<$models.DesktopAIModelsProbeResponse> {
+    return $Call.ByID(1358784739, input).then(($result: any) => {
+        return $$createType6($result);
+    });
+}
+
 export function RegenerateMessage(input: $models.DesktopAIRegenerateMessageInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
     return $Call.ByID(3319367080, input).then(($result: any) => {
         return $$createType1($result);
@@ -106,3 +112,4 @@ const $$createType2 = $models.DesktopAIConfigStatus.createFrom;
 const $$createType3 = $Create.Nullable($$createType1);
 const $$createType4 = $models.DesktopUserAIConfig.createFrom;
 const $$createType5 = $models.DesktopAIListSessionsResult.createFrom;
+const $$createType6 = $models.DesktopAIModelsProbeResponse.createFrom;
