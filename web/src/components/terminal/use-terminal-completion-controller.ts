@@ -38,6 +38,7 @@ import {
   isTabKey,
   isUpArrow,
   parseCompletionContext,
+  parseCompletionContextFromCommand,
   stripOuterQuote,
   unescapeShellToken,
 } from "@/lib/completion/utils"
@@ -109,6 +110,102 @@ const emptyCompletionState: TerminalCompletionState = {
 }
 
 const PATH_COMMAND_PREFIXES = new Set(["command", "env", "nice", "nohup", "sudo", "time"])
+const CURSOR_LEFT = "\x1b[D"
+const CURSOR_RIGHT = "\x1b[C"
+const CURSOR_HOME = new Set(["\x1b[H", "\x1b[1~", "\x1bOH"])
+const CURSOR_END = new Set(["\x1b[F", "\x1b[4~", "\x1bOF"])
+const FORWARD_DELETE = "\x1b[3~"
+
+interface CompletionInputShadow {
+  active: boolean
+  line: string
+  cursor: number
+}
+
+function applyInputToCompletionShadow(
+  current: CompletionInputShadow,
+  data: string,
+): CompletionInputShadow {
+  if (isEnterKey(data) || data === "\x03") {
+    return { active: true, line: "", cursor: 0 }
+  }
+  if (data === "\x01") {
+    return { ...current, active: true, cursor: 0 }
+  }
+  if (data === "\x05") {
+    return { ...current, active: true, cursor: current.line.length }
+  }
+  if (data === "\x15") {
+    return {
+      active: true,
+      line: current.line.slice(current.cursor),
+      cursor: 0,
+    }
+  }
+  if (data === "\x0b") {
+    return {
+      active: true,
+      line: current.line.slice(0, current.cursor),
+      cursor: current.cursor,
+    }
+  }
+  if (data === "\x17") {
+    let start = current.cursor
+    while (start > 0 && /\s/.test(current.line[start - 1])) start--
+    while (start > 0 && !/\s/.test(current.line[start - 1])) start--
+    return {
+      active: true,
+      line: current.line.slice(0, start) + current.line.slice(current.cursor),
+      cursor: start,
+    }
+  }
+  if (isBackspaceKey(data)) {
+    if (current.cursor <= 0) return { ...current, active: true }
+    return {
+      active: true,
+      line: current.line.slice(0, current.cursor - 1) + current.line.slice(current.cursor),
+      cursor: current.cursor - 1,
+    }
+  }
+  if (data === FORWARD_DELETE) {
+    if (current.cursor >= current.line.length) return { ...current, active: true }
+    return {
+      active: true,
+      line: current.line.slice(0, current.cursor) + current.line.slice(current.cursor + 1),
+      cursor: current.cursor,
+    }
+  }
+  if (data === CURSOR_LEFT) {
+    return { ...current, active: true, cursor: Math.max(0, current.cursor - 1) }
+  }
+  if (data === CURSOR_RIGHT) {
+    return { ...current, active: true, cursor: Math.min(current.line.length, current.cursor + 1) }
+  }
+  if (CURSOR_HOME.has(data)) {
+    return { ...current, active: true, cursor: 0 }
+  }
+  if (CURSOR_END.has(data)) {
+    return { ...current, active: true, cursor: current.line.length }
+  }
+
+  let text = data
+  if (text.startsWith("\x1b[200~") && text.endsWith("\x1b[201~")) {
+    text = text.slice(6, -6)
+  }
+  const hasControlCharacter = Array.from(text).some((character) => {
+    const code = character.charCodeAt(0)
+    return code < 32 || code === 127
+  })
+  if (!text || hasControlCharacter) {
+    return { ...current, active: false }
+  }
+
+  return {
+    active: true,
+    line: current.line.slice(0, current.cursor) + text + current.line.slice(current.cursor),
+    cursor: current.cursor + text.length,
+  }
+}
 
 function isPathArgumentCompletionContext(context: CompletionContext): boolean {
   for (let index = 0; index < context.tokens.length; index++) {
@@ -183,6 +280,7 @@ export function useTerminalCompletionController({
   const scriptProviderRef = useRef<ScriptProvider | null>(null)
   const sessionProviderRef = useRef<SessionProvider | null>(null)
   const pathProviderRef = useRef<PathProvider | null>(null)
+  const inputShadowRef = useRef<CompletionInputShadow>({ active: false, line: "", cursor: 0 })
   const autoCompleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const completionRequestVersionRef = useRef(0)
   const handleCompletionRequestRef = useRef<(
@@ -226,6 +324,45 @@ export function useTerminalCompletionController({
     completionShowIcon,
     completionTrigger,
   ])
+
+  const getCompletionContext = useCallback((
+    triggerKind?: CompletionContext["triggerKind"],
+  ): CompletionContext | null => {
+    if (!terminal) return null
+
+    const options = {
+      cwd: getPathCompletionCwd?.(),
+      triggerKind,
+    }
+    const shadow = inputShadowRef.current
+    if (!shadow.active) {
+      return parseCompletionContext(terminal, options)
+    }
+
+    const shadowContext = parseCompletionContextFromCommand(shadow.line, shadow.cursor, options)
+    const liveContext = parseCompletionContext(terminal, options)
+    return {
+      ...shadowContext,
+      promptText: liveContext.promptText,
+    }
+  }, [getPathCompletionCwd, terminal])
+
+  const updateInputShadow = useCallback((data: string) => {
+    if (!terminal) return
+
+    let current = inputShadowRef.current
+    if (!current.active) {
+      const context = parseCompletionContext(terminal, {
+        cwd: getPathCompletionCwd?.(),
+      })
+      current = {
+        active: true,
+        line: context.fullLine,
+        cursor: context.cursorPosition,
+      }
+    }
+    inputShadowRef.current = applyInputToCompletionShadow(current, data)
+  }, [getPathCompletionCwd, terminal])
 
   const syncProviderEnabledState = useCallback((engine: CompletionEngine) => {
     engine.setProviderEnabled("local", effectiveCompletionEnabled && providerLocalEnabled)
@@ -287,6 +424,7 @@ export function useTerminalCompletionController({
       autoCompleteTimerRef.current = null
     }
     completionRequestVersionRef.current++
+    inputShadowRef.current = { active: false, line: "", cursor: 0 }
     setCompletionState(emptyCompletionState)
     createCompletionEngine(sessionId)
   }, [createCompletionEngine, sessionId])
@@ -351,9 +489,8 @@ export function useTerminalCompletionController({
   const applyCompletionItem = useCallback((item: CompletionItem) => {
     if (!terminal) return
 
-    const context = parseCompletionContext(terminal, {
-      cwd: getPathCompletionCwd?.(),
-    })
+    const context = getCompletionContext()
+    if (!context) return
     const isFullLineCompletion = item.source === "script" || item.type === "history"
     let deleteCount: number
     let forwardDeleteCount = 0
@@ -388,8 +525,15 @@ export function useTerminalCompletionController({
       sendInputRef.current,
       forwardDeleteCount
     )
+    const replaceStart = Math.max(0, context.cursorPosition - deleteCount)
+    const replaceEnd = Math.min(context.fullLine.length, context.cursorPosition + forwardDeleteCount)
+    inputShadowRef.current = {
+      active: true,
+      line: context.fullLine.slice(0, replaceStart) + completionText + context.fullLine.slice(replaceEnd),
+      cursor: replaceStart + completionText.length,
+    }
     closeCompletion()
-  }, [closeCompletion, getPathCompletionCwd, sendInputRef, terminal])
+  }, [closeCompletion, getCompletionContext, sendInputRef, terminal])
 
   const handleCompletionRequest = useCallback(async (
     triggerKind: CompletionContext["triggerKind"] = "manual"
@@ -401,10 +545,10 @@ export function useTerminalCompletionController({
     const requestVersion = completionRequestVersionRef.current + 1
     completionRequestVersionRef.current = requestVersion
 
-    const context = parseCompletionContext(terminal, {
-      cwd: getPathCompletionCwd?.(),
-      triggerKind,
-    })
+    const context = getCompletionContext(triggerKind)
+    if (!context) {
+      return false
+    }
 
     try {
       const result = await completionEngineRef.current.getCompletions(context)
@@ -443,7 +587,7 @@ export function useTerminalCompletionController({
   }, [
     containerRef,
     effectiveCompletionEnabled,
-    getPathCompletionCwd,
+    getCompletionContext,
     resetCompletionState,
     terminal,
   ])
@@ -530,9 +674,11 @@ export function useTerminalCompletionController({
         closeCompletion()
       }
 
+      const contextBeforeInput = isEnterKey(data) ? getCompletionContext() : null
       sendInputRef.current(data)
       onCommandRef.current(data)
       invalidateCompletionRequest()
+      updateInputShadow(data)
 
       if (isEnterKey(data)) {
         if (autoCompleteTimerRef.current) {
@@ -540,10 +686,7 @@ export function useTerminalCompletionController({
           autoCompleteTimerRef.current = null
         }
 
-        const context = parseCompletionContext(terminal, {
-          cwd: getPathCompletionCwd?.(),
-        })
-        const command = context.fullLine.trim()
+        const command = contextBeforeInput?.fullLine.trim() || ""
 
         if (command && sessionProviderRef.current) {
           sessionProviderRef.current.addCommand(command)
@@ -583,9 +726,10 @@ export function useTerminalCompletionController({
       }
 
       const shouldTriggerAfterSpace = data === " " &&
-        isPathArgumentCompletionContext(parseCompletionContext(terminal, {
-          cwd: getPathCompletionCwd?.(),
-        }))
+        (() => {
+          const context = getCompletionContext()
+          return !!context && isPathArgumentCompletionContext(context)
+        })()
       if (data === " " && !shouldTriggerAfterSpace) {
         return
       }
@@ -597,10 +741,11 @@ export function useTerminalCompletionController({
           return
         }
 
-        const context = parseCompletionContext(terminal, {
-          cwd: getPathCompletionCwd?.(),
-          triggerKind: shouldTriggerAfterSpace ? "space" : "auto",
-        })
+        const context = getCompletionContext(shouldTriggerAfterSpace ? "space" : "auto")
+        if (!context) {
+          autoCompleteTimerRef.current = null
+          return
+        }
         const rawPrefix = context.fullLine.slice(
           0,
           Math.min(context.cursorPosition, context.fullLine.length)
@@ -630,12 +775,13 @@ export function useTerminalCompletionController({
     completionTrigger,
     completionUpdateSenderRef,
     effectiveCompletionEnabled,
-    getPathCompletionCwd,
+    getCompletionContext,
     invalidateCompletionRequest,
     isTerminalReadyRef,
     sendInputRef,
     terminal,
     terminalReady,
+    updateInputShadow,
   ])
 
   return {

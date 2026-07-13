@@ -218,6 +218,51 @@ export interface ParseCompletionContextOptions {
   triggerKind?: CompletionTriggerKind
 }
 
+function createCompletionContext(
+  command: string,
+  cursorPosition: number,
+  promptText: string,
+  options: ParseCompletionContextOptions,
+): CompletionContext {
+  const clampedCursorPosition = Math.max(0, Math.min(cursorPosition, command.length))
+  const tokenSpans = tokenizeCommandWithPositions(command)
+  const tokens = tokenSpans.map((token) => token.text)
+
+  let currentTokenIndex = 0
+  for (let i = 0; i < tokenSpans.length; i++) {
+    const token = tokenSpans[i]
+    if (clampedCursorPosition >= token.start && clampedCursorPosition <= token.end) {
+      currentTokenIndex = i
+      break
+    }
+    if (clampedCursorPosition > token.end) {
+      currentTokenIndex = i
+    }
+  }
+
+  const currentToken = tokenSpans[currentTokenIndex]
+  return {
+    fullLine: command,
+    promptText,
+    cwd: options.cwd,
+    triggerKind: options.triggerKind,
+    cursorPosition: clampedCursorPosition,
+    currentWord: currentToken?.text || "",
+    currentWordStart: currentToken?.start ?? clampedCursorPosition,
+    currentWordEnd: currentToken?.end ?? clampedCursorPosition,
+    tokens,
+    currentTokenIndex,
+  }
+}
+
+export function parseCompletionContextFromCommand(
+  command: string,
+  cursorPosition: number = command.length,
+  options: ParseCompletionContextOptions = {},
+): CompletionContext {
+  return createCompletionContext(command, cursorPosition, "", options)
+}
+
 export function parseCompletionContext(
   terminal: Terminal,
   options: ParseCompletionContextOptions = {}
@@ -231,38 +276,7 @@ export function parseCompletionContext(
   const promptLength = fullLine.length - command.length
   const cursorPosition = Math.max(0, cursorX - promptLength)
 
-  const tokenSpans = tokenizeCommandWithPositions(command)
-  const tokens = tokenSpans.map((token) => token.text)
-
-  // 找到光标所在的词
-  let currentTokenIndex = 0
-  for (let i = 0; i < tokenSpans.length; i++) {
-    const token = tokenSpans[i]
-    if (cursorPosition >= token.start && cursorPosition <= token.end) {
-      currentTokenIndex = i
-      break
-    }
-    if (cursorPosition > token.end) {
-      currentTokenIndex = i
-    }
-  }
-
-  // 获取当前词
-  const currentToken = tokenSpans[currentTokenIndex]
-  const currentWord = currentToken?.text || ""
-
-  return {
-    fullLine: command,
-    promptText,
-    cwd: options.cwd,
-    triggerKind: options.triggerKind,
-    cursorPosition,
-    currentWord,
-    currentWordStart: currentToken?.start ?? cursorPosition,
-    currentWordEnd: currentToken?.end ?? cursorPosition,
-    tokens,
-    currentTokenIndex,
-  }
+  return createCompletionContext(command, cursorPosition, promptText, options)
 }
 
 /**

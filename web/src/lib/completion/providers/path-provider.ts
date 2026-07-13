@@ -100,11 +100,13 @@ export class PathProvider implements CompletionProvider {
   name = "path"
   priority = 30
   enabled = true
+  timeoutMs = 1200
 
   private serverId?: string
   private api?: SftpDirectoryApi
   private getFallbackCwd?: () => string | undefined
   private directoryCache = new Map<string, CachedDirectory>()
+  private directoryRequests = new Map<string, Promise<PathDirectoryEntry[]>>()
 
   constructor(options: PathProviderOptions = {}) {
     this.updateOptions(options)
@@ -125,6 +127,7 @@ export class PathProvider implements CompletionProvider {
 
   clear(): void {
     this.directoryCache.clear()
+    this.directoryRequests.clear()
   }
 
   shouldTrigger(context: CompletionContext): boolean {
@@ -166,14 +169,25 @@ export class PathProvider implements CompletionProvider {
     if (cached && cached.expiresAt > now) {
       entries = cached.entries
     } else {
-      const response = await this.api.listDirectory(this.serverId, target.directory)
-      entries = response.files.map((file) => ({
-        name: file.name,
-        is_dir: file.is_dir,
-      }))
+      let request = this.directoryRequests.get(cacheKey)
+      if (!request) {
+        request = this.api.listDirectory(this.serverId, target.directory)
+          .then((response) => response.files.map((file) => ({
+            name: file.name,
+            is_dir: file.is_dir,
+          })))
+        this.directoryRequests.set(cacheKey, request)
+        const clearPendingRequest = () => {
+          if (this.directoryRequests.get(cacheKey) === request) {
+            this.directoryRequests.delete(cacheKey)
+          }
+        }
+        void request.then(clearPendingRequest, clearPendingRequest)
+      }
+      entries = await request
 
       this.directoryCache.set(cacheKey, {
-        expiresAt: now + DIRECTORY_CACHE_TTL_MS,
+        expiresAt: Date.now() + DIRECTORY_CACHE_TTL_MS,
         entries,
       })
     }

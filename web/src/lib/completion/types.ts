@@ -106,6 +106,8 @@ export interface CompletionProvider {
   priority: number
   /** 是否启用 */
   enabled: boolean
+  /** 单次查询最长等待时间；网络型提供者应设置，避免阻塞其他本地来源。 */
+  timeoutMs?: number
   /**
    * 获取补全项
    * @param context 补全上下文

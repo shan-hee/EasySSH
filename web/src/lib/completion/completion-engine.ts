@@ -102,7 +102,7 @@ export class CompletionEngine {
 
     // 并行请求所有启用的提供者
     const results = await Promise.allSettled(
-      enabledProviders.map((provider) => provider.getCompletions(context))
+      enabledProviders.map((provider) => this.getProviderCompletions(provider, context))
     )
 
     // 合并所有成功的结果
@@ -165,6 +165,30 @@ export class CompletionEngine {
     }
 
     return result
+  }
+
+  private async getProviderCompletions(
+    provider: CompletionProvider,
+    context: CompletionContext,
+  ): Promise<CompletionItem[]> {
+    if (!provider.timeoutMs || provider.timeoutMs <= 0) {
+      return provider.getCompletions(context)
+    }
+
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        provider.getCompletions(context),
+        new Promise<CompletionItem[]>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error(`${provider.name} completion timed out`)),
+            provider.timeoutMs,
+          )
+        }),
+      ])
+    } finally {
+      if (timeout) clearTimeout(timeout)
+    }
   }
 
   /**
