@@ -6,7 +6,7 @@
 name: "easyssh"
 arch: ${GOARCH}
 platform: "linux"
-version: "1.0.24"
+version: "1.0.25"
 section: "default"
 priority: "extra"
 maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
