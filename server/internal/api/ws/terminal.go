@@ -656,7 +656,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	if rowsStr := c.Query("rows"); rowsStr != "" {
 		fmt.Sscanf(rowsStr, "%d", &rows)
 	}
-	clientIP := c.ClientIP()
+	clientIP := middleware.LogClientIP(c)
 	clientPort := 0 // WebSocket无法获取客户端端口，使用0
 
 	// 升级到 WebSocket
@@ -1372,6 +1372,7 @@ func (h *TerminalHandler) upsertTerminalOperationRecord(input terminalOperationR
 		Title:        "SSH session",
 		Resource:     input.SessionID,
 		Source:       "terminal",
+		IP:           input.ClientIP,
 		StartedAt:    &input.StartedAt,
 		FinishedAt:   input.FinishedAt,
 		DurationMs:   durationMs,

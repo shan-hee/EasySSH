@@ -33,7 +33,7 @@ func Logger() gin.HandlerFunc {
 		statusCode := c.Writer.Status()
 
 		// 请求 IP
-		clientIP := c.ClientIP()
+		clientIP := LogClientIP(c)
 
 		// 日志格式
 		log.Printf("[GIN] %s | %3d | %13v | %15s | %-7s %s",

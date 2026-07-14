@@ -51,6 +51,7 @@ func AuditLogMiddleware(auditService auditlog.Service, cfg *AuditConfig) gin.Han
 				errorMsg = c.Errors.String()
 			}
 		}
+		clientIP := LogClientIP(c)
 
 		req := &auditlog.CreateAuditLogRequest{
 			UserID:    userID,
@@ -58,14 +59,14 @@ func AuditLogMiddleware(auditService auditlog.Service, cfg *AuditConfig) gin.Han
 			Action:    action,
 			Resource:  auditResource(c),
 			Status:    status,
-			IP:        c.ClientIP(),
+			IP:        clientIP,
 			UserAgent: c.Request.UserAgent(),
 			ErrorMsg:  errorMsg,
 			Duration:  time.Since(startTime).Milliseconds(),
 		}
 
 		if cfg.EnableDebugLog {
-			log.Printf("Audit: action=%s, user=%s, status=%s, ip=%s", action, username, status, c.ClientIP())
+			log.Printf("Audit: action=%s, user=%s, status=%s, ip=%s", action, username, status, clientIP)
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.AsyncTimeout)
