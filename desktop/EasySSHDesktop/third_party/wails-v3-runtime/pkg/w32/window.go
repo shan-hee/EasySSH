@@ -17,6 +17,7 @@ var (
 	getMenuProc    = user32.NewProc("GetMenu")
 	enableMenuItem = user32.NewProc("EnableMenuItem")
 	findWindow     = user32.NewProc("FindWindowW")
+	findWindowEx   = user32.NewProc("FindWindowExW")
 	sendMessage    = user32.NewProc("SendMessageW")
 	vkKeyScan      = user32.NewProc("VkKeyScanW") // Use W version for Unicode
 )
@@ -192,7 +193,7 @@ func MustStringToUTF16uintptr(input string) uintptr {
 }
 
 // MustStringToUTF16 converts s to UTF-16 encoding, stripping any embedded NULs and panicking on error.
-// 
+//
 // The returned slice is suitable for Windows API calls that expect a UTF-16 encoded string.
 func MustStringToUTF16(input string) []uint16 {
 	input = stripNulls(input)
@@ -347,6 +348,19 @@ func FindWindowW(className, windowName *uint16) HWND {
 	return HWND(ret)
 }
 
+// FindMessageOnlyWindowW searches the message-only window hierarchy.
+// FindWindowW only searches top-level windows and therefore cannot locate
+// windows created with HWND_MESSAGE as their parent.
+func FindMessageOnlyWindowW(className, windowName *uint16) HWND {
+	ret, _, _ := findWindowEx.Call(
+		uintptr(HWND_MESSAGE),
+		0,
+		uintptr(unsafe.Pointer(className)),
+		uintptr(unsafe.Pointer(windowName)),
+	)
+	return HWND(ret)
+}
+
 func SendMessageToWindow(hwnd HWND, msg string) {
 	// Convert data to UTF16 string
 	dataUTF16, err := StringToUTF16(msg)
@@ -357,7 +371,7 @@ func SendMessageToWindow(hwnd HWND, msg string) {
 	// Prepare COPYDATASTRUCT
 	cds := COPYDATASTRUCT{
 		DwData: WMCOPYDATA_SINGLE_INSTANCE_DATA,
-		CbData: uint32((len(dataUTF16) * 2) + 1), // +1 for null terminator
+		CbData: uint32(len(dataUTF16) * 2), // StringToUTF16 already includes the null terminator
 		LpData: uintptr(unsafe.Pointer(&dataUTF16[0])),
 	}
 

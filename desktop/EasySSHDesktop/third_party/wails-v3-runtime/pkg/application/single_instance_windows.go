@@ -42,13 +42,19 @@ func (l *windowsLock) acquire(uniqueID string) error {
 	l.windowName = id + "-siw"
 	mutexName := id + "-sim"
 
-	_, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr(mutexName))
+	handle, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr(mutexName))
 	if err != nil {
-		// Find the window
-		return alreadyRunningError
-	} else {
-		l.hwnd = createEventTargetWindow(l.className, l.windowName)
+		if handle != 0 {
+			_ = windows.CloseHandle(handle)
+		}
+		if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+			return alreadyRunningError
+		}
+		return err
 	}
+
+	l.handle = syscall.Handle(handle)
+	l.hwnd = createEventTargetWindow(l.className, l.windowName)
 
 	return nil
 }
@@ -67,7 +73,7 @@ func (l *windowsLock) release() {
 func (l *windowsLock) notify(data string) error {
 
 	// app is already running
-	hwnd := w32.FindWindowW(windows.StringToUTF16Ptr(l.className), windows.StringToUTF16Ptr(l.windowName))
+	hwnd := w32.FindMessageOnlyWindowW(windows.StringToUTF16Ptr(l.className), windows.StringToUTF16Ptr(l.windowName))
 
 	if hwnd == 0 {
 		return errors.New("unable to notify other instance")
