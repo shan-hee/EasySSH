@@ -11,6 +11,7 @@ import { useSystemConfig } from "@/contexts/system-config-context"
 import { authApi } from "@/lib/api/auth"
 import { FadeSlideIn } from "@/components/ui/fade-slide-in"
 import { getErrorMessage } from "@/lib/error-utils"
+import { AuthPageFooter } from "@/components/auth-page-footer"
 
 export function ForgotPasswordForm({
   className,
@@ -348,9 +349,7 @@ export function ForgotPasswordForm({
 
             {/* 版本信息 */}
             <FadeSlideIn disabled>
-              <div className="text-center text-xs text-zinc-500 dark:text-zinc-600">
-                {config?.system_name || "EasySSH"} v1.0.0 | © 2025 All rights reserved
-              </div>
+              <AuthPageFooter />
             </FadeSlideIn>
           </div>
         </FieldGroup>

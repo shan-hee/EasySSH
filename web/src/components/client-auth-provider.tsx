@@ -12,6 +12,8 @@ import {
   getAuthLockInfo,
   getCurrentBrowserPath,
 } from "@/lib/auth-redirect"
+import { clearAuthenticatedSessionState } from "@/lib/auth-session-activity"
+import { resumeSessionRefresh, suspendSessionRefresh } from "@/lib/session-refresh"
 
 interface ClientAuthContextType {
   user: User | null
@@ -73,7 +75,14 @@ export function ClientAuthProvider({ children }: { children: ReactNode }) {
   // 登出
   // 后端会自动清除 HttpOnly Cookie，同时前端清空内存中的 access_token
   const logout = useCallback(async () => {
-    await authApi.logout()
+    await suspendSessionRefresh()
+    try {
+      await authApi.logout()
+    } catch (error) {
+      resumeSessionRefresh()
+      throw error
+    }
+    clearAuthenticatedSessionState()
     clearToken()
     resetTerminals()
     markLoggedOut()

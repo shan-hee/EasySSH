@@ -19,10 +19,11 @@ import (
 
 // SessionInfo 会话信息
 type SessionInfo struct {
-	DeviceType string
-	DeviceName string
-	IPAddress  string
-	UserAgent  string
+	DeviceType    string
+	DeviceName    string
+	IPAddress     string
+	UserAgent     string
+	RememberLogin bool
 }
 
 // AuthenticateResult 认证结果
@@ -76,7 +77,7 @@ type Service interface {
 	RegisterOAuthUser(ctx context.Context, username, email, avatar, googleSub string, role UserRole) (*User, error)
 
 	// RefreshAccessToken 刷新访问令牌（返回新的访问令牌和刷新令牌）
-	RefreshAccessToken(ctx context.Context, refreshToken string) (accessToken, newRefreshToken string, err error)
+	RefreshAccessToken(ctx context.Context, refreshToken string, allowRememberLogin bool) (accessToken, newRefreshToken string, rememberLogin bool, err error)
 
 	// ChangePassword 修改密码
 	ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error
@@ -138,10 +139,10 @@ type Service interface {
 	// Authorization Code + PKCE
 
 	// CreateAuthorizationCode 为指定用户创建授权码
-	CreateAuthorizationCode(ctx context.Context, userID uuid.UUID, clientID, redirectURI, scope, codeChallenge, codeChallengeMethod string, expiresIn time.Duration) (string, error)
+	CreateAuthorizationCode(ctx context.Context, userID uuid.UUID, clientID, redirectURI, scope, codeChallenge, codeChallengeMethod string, rememberLogin bool, expiresIn time.Duration) (string, error)
 
 	// ExchangeAuthorizationCodeForTokens 使用授权码和 PKCE code_verifier 换取访问令牌和刷新令牌
-	ExchangeAuthorizationCodeForTokens(ctx context.Context, clientID, redirectURI, code, codeVerifier string, sessionInfo *SessionInfo) (*User, string, string, error)
+	ExchangeAuthorizationCodeForTokens(ctx context.Context, clientID, redirectURI, code, codeVerifier string, sessionInfo *SessionInfo) (*User, string, string, bool, error)
 }
 
 // authService 认证服务实现
@@ -173,6 +174,7 @@ type authorizationCodeRecord struct {
 	Scope               string
 	CodeChallenge       string
 	CodeChallengeMethod string
+	RememberLogin       bool
 	CreatedAt           time.Time
 }
 
@@ -383,16 +385,17 @@ func (s *authService) CreateSessionWithTokens(ctx context.Context, user *User, s
 	// 创建会话记录
 	if sessionInfo != nil {
 		session := &Session{
-			ID:           sessionID,
-			UserID:       user.ID,
-			RefreshToken: s.hashToken(refreshToken), // 存储哈希值
-			DeviceType:   sessionInfo.DeviceType,
-			DeviceName:   sessionInfo.DeviceName,
-			IPAddress:    sessionInfo.IPAddress,
-			Location:     "", // TODO: 可以集成 IP 地理位置服务
-			UserAgent:    sessionInfo.UserAgent,
-			LastActivity: time.Now(),
-			ExpiresAt:    time.Now().Add(s.sessionIdleDuration),
+			ID:            sessionID,
+			UserID:        user.ID,
+			RefreshToken:  s.hashToken(refreshToken), // 存储哈希值
+			DeviceType:    sessionInfo.DeviceType,
+			DeviceName:    sessionInfo.DeviceName,
+			IPAddress:     sessionInfo.IPAddress,
+			Location:      "", // TODO: 可以集成 IP 地理位置服务
+			UserAgent:     sessionInfo.UserAgent,
+			LastActivity:  time.Now(),
+			ExpiresAt:     time.Now().Add(s.sessionIdleDuration),
+			RememberLogin: sessionInfo.RememberLogin,
 		}
 
 		if err := s.repo.CreateSession(ctx, session); err != nil {
@@ -619,28 +622,28 @@ func (s *authService) RegisterOAuthUser(ctx context.Context, username, email, av
 	return user, nil
 }
 
-func (s *authService) RefreshAccessToken(ctx context.Context, refreshToken string) (string, string, error) {
+func (s *authService) RefreshAccessToken(ctx context.Context, refreshToken string, allowRememberLogin bool) (string, string, bool, error) {
 	tokenHashToFind := s.hashToken(refreshToken)
 	unlock := s.lockRefreshToken(tokenHashToFind)
 	defer unlock()
 
 	session, matchedPreviousToken, err := s.repo.FindSessionByRefreshTokenWithGrace(ctx, tokenHashToFind)
 	if err != nil || session == nil {
-		return "", "", ErrSessionNotFound
+		return "", "", false, ErrSessionNotFound
 	}
 
 	// 检查会话是否过期
 	if session.IsExpired() {
 		// 会话已过期，删除并拒绝刷新
 		_ = s.repo.DeleteSession(ctx, session.ID)
-		return "", "", ErrSessionExpired
+		return "", "", false, ErrSessionExpired
 	}
 
 	var newAccessToken, newRefreshToken string
 	if matchedPreviousToken {
 		newAccessToken, err = s.jwtService.RefreshTokenWithinGrace(refreshToken)
 		if err != nil {
-			return "", "", err
+			return "", "", false, err
 		}
 	} else {
 		newAccessToken, newRefreshToken, err = s.jwtService.RefreshToken(refreshToken)
@@ -648,7 +651,7 @@ func (s *authService) RefreshAccessToken(ctx context.Context, refreshToken strin
 			if errors.Is(err, ErrTokenFamilyRevoked) || errors.Is(err, ErrTokenReuseDetected) {
 				_ = s.repo.DeleteSession(ctx, session.ID)
 			}
-			return "", "", err
+			return "", "", false, err
 		}
 	}
 
@@ -656,6 +659,9 @@ func (s *authService) RefreshAccessToken(ctx context.Context, refreshToken strin
 	session.UpdateActivity()
 	// 与 JWT 刷新闲置窗口对齐：每次刷新将会话过期时间顺延
 	session.ExpiresAt = time.Now().Add(s.sessionIdleDuration)
+	if !allowRememberLogin {
+		session.RememberLogin = false
+	}
 
 	// 如果生成了新的 refresh token，更新会话中的 token 哈希
 	if newRefreshToken != "" {
@@ -670,10 +676,10 @@ func (s *authService) RefreshAccessToken(ctx context.Context, refreshToken strin
 	}
 
 	if err := s.repo.UpdateSession(ctx, session); err != nil {
-		return "", "", fmt.Errorf("%w: %v", ErrSessionSyncFailed, err)
+		return "", "", false, fmt.Errorf("%w: %v", ErrSessionSyncFailed, err)
 	}
 
-	return newAccessToken, newRefreshToken, nil
+	return newAccessToken, newRefreshToken, session.RememberLogin, nil
 }
 
 func (s *authService) ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error {
@@ -899,16 +905,17 @@ func (s *authService) InitializeAdmin(ctx context.Context, username, email, pass
 	// 创建会话记录
 	if sessionInfo != nil {
 		session := &Session{
-			ID:           sessionID,
-			UserID:       user.ID,
-			RefreshToken: s.hashToken(refreshToken), // 存储哈希值
-			DeviceType:   sessionInfo.DeviceType,
-			DeviceName:   sessionInfo.DeviceName,
-			IPAddress:    sessionInfo.IPAddress,
-			Location:     "", // TODO: 可以集成 IP 地理位置服务
-			UserAgent:    sessionInfo.UserAgent,
-			LastActivity: time.Now(),
-			ExpiresAt:    time.Now().Add(s.sessionIdleDuration), // 使用统一的会话闲置过期时间
+			ID:            sessionID,
+			UserID:        user.ID,
+			RefreshToken:  s.hashToken(refreshToken), // 存储哈希值
+			DeviceType:    sessionInfo.DeviceType,
+			DeviceName:    sessionInfo.DeviceName,
+			IPAddress:     sessionInfo.IPAddress,
+			Location:      "", // TODO: 可以集成 IP 地理位置服务
+			UserAgent:     sessionInfo.UserAgent,
+			LastActivity:  time.Now(),
+			ExpiresAt:     time.Now().Add(s.sessionIdleDuration), // 使用统一的会话闲置过期时间
+			RememberLogin: sessionInfo.RememberLogin,
 		}
 
 		if err := s.repo.CreateSession(ctx, session); err != nil {
@@ -1191,6 +1198,7 @@ func (s *authService) CreateAuthorizationCode(
 	ctx context.Context,
 	userID uuid.UUID,
 	clientID, redirectURI, scope, codeChallenge, codeChallengeMethod string,
+	rememberLogin bool,
 	expiresIn time.Duration,
 ) (string, error) {
 	if clientID == "" || redirectURI == "" || codeChallenge == "" || codeChallengeMethod == "" {
@@ -1220,6 +1228,7 @@ func (s *authService) CreateAuthorizationCode(
 		Scope:               scope,
 		CodeChallenge:       codeChallenge,
 		CodeChallengeMethod: strings.ToUpper(codeChallengeMethod),
+		RememberLogin:       rememberLogin,
 		CreatedAt:           time.Now(),
 	}, expiresIn)
 
@@ -1231,49 +1240,52 @@ func (s *authService) ExchangeAuthorizationCodeForTokens(
 	ctx context.Context,
 	clientID, redirectURI, code, codeVerifier string,
 	sessionInfo *SessionInfo,
-) (*User, string, string, error) {
+) (*User, string, string, bool, error) {
 	if clientID == "" || redirectURI == "" || code == "" || codeVerifier == "" {
-		return nil, "", "", errors.New("missing required parameters for token exchange")
+		return nil, "", "", false, errors.New("missing required parameters for token exchange")
 	}
 
 	record, ok := s.authCodes.Consume(code)
 	if !ok {
-		return nil, "", "", errors.New("invalid or expired authorization code")
+		return nil, "", "", false, errors.New("invalid or expired authorization code")
 	}
 
 	// 检查 client_id 和 redirect_uri 是否匹配
 	if record.ClientID != clientID {
-		return nil, "", "", errors.New("client_id does not match authorization code")
+		return nil, "", "", false, errors.New("client_id does not match authorization code")
 	}
 	if record.RedirectURI != redirectURI {
-		return nil, "", "", errors.New("redirect_uri does not match authorization code")
+		return nil, "", "", false, errors.New("redirect_uri does not match authorization code")
 	}
 
 	// PKCE 验证：目前仅支持 S256
 	if strings.ToUpper(record.CodeChallengeMethod) != "S256" {
-		return nil, "", "", errors.New("unsupported code_challenge_method in stored authorization code")
+		return nil, "", "", false, errors.New("unsupported code_challenge_method in stored authorization code")
 	}
 
 	// 计算 code_verifier 的 S256 摘要并进行 Base64URL 编码
 	verifierHash := sha256.Sum256([]byte(codeVerifier))
 	computedChallenge := base64.RawURLEncoding.EncodeToString(verifierHash[:])
 	if computedChallenge != record.CodeChallenge {
-		return nil, "", "", errors.New("code_verifier does not match code_challenge")
+		return nil, "", "", false, errors.New("code_verifier does not match code_challenge")
 	}
 
 	// 获取用户信息
 	user, err := s.repo.FindByID(ctx, record.UserID)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("failed to load user for authorization code: %w", err)
+		return nil, "", "", false, fmt.Errorf("failed to load user for authorization code: %w", err)
 	}
 
 	// 为用户创建会话并生成令牌
+	if sessionInfo != nil {
+		sessionInfo.RememberLogin = record.RememberLogin
+	}
 	accessToken, refreshToken, err := s.CreateSessionWithTokens(ctx, user, sessionInfo)
 	if err != nil {
-		return nil, "", "", err
+		return nil, "", "", false, err
 	}
 
-	return user, accessToken, refreshToken, nil
+	return user, accessToken, refreshToken, record.RememberLogin, nil
 }
 
 // === Session Management ===

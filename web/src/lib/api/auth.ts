@@ -1,5 +1,14 @@
 import { apiFetch } from "@/lib/api-client"
-import { isRefreshTokenError, refreshAccessToken } from "@/lib/session-refresh"
+import {
+  isRefreshTokenError,
+  refreshAccessToken,
+  suspendSessionRefresh,
+} from "@/lib/session-refresh"
+import {
+  hasAuthActivityTimedOut,
+  isAuthIdleExpired,
+  markAuthIdleExpired,
+} from "@/lib/auth-session-activity"
 
 /**
  * 用户基础信息
@@ -204,7 +213,25 @@ export const authApi = {
       method: "GET",
     })
 
-    if (status.is_authenticated || status.account_locked || !options.refresh) {
+    const sessionTimeout = status.system_config?.tab_session?.session_timeout ?? 30
+    if (hasAuthActivityTimedOut(sessionTimeout)) {
+      markAuthIdleExpired()
+    }
+    if (isAuthIdleExpired()) {
+      await suspendSessionRefresh()
+      void apiFetch<void>("/oauth/logout", { method: "POST" }).catch(() => undefined)
+      return {
+        ...status,
+        is_authenticated: false,
+        user: undefined,
+      }
+    }
+
+    if (
+      status.is_authenticated ||
+      status.account_locked ||
+      !options.refresh
+    ) {
       return status
     }
 
@@ -252,6 +279,7 @@ export const authApi = {
     code_challenge: string
     code_challenge_method: string
     state?: string
+    remember_login: boolean
   }): Promise<{ code?: string; state?: string; requires_2fa?: boolean; temp_token?: string }> {
     return apiFetch<{ code?: string; state?: string; requires_2fa?: boolean; temp_token?: string }>("/oauth/authorize", {
       method: "POST",
@@ -265,6 +293,7 @@ export const authApi = {
         state: params.state ?? "",
         email: params.email,
         password: params.password,
+        remember_login: params.remember_login,
       },
     })
   },
@@ -297,6 +326,7 @@ export const authApi = {
     code: string
     code_verifier: string
     redirect_uri: string
+    remember_login: boolean
   }): Promise<{
     access_token: string
     token_type: string
@@ -314,6 +344,7 @@ export const authApi = {
         code: params.code,
         code_verifier: params.code_verifier,
         redirect_uri: params.redirect_uri,
+        remember_login: params.remember_login,
       },
     })
   },

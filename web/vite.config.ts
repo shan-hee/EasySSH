@@ -4,12 +4,9 @@ import { join } from "node:path"
 import { fileURLToPath, URL } from "node:url"
 import { defineConfig, loadEnv } from "vite"
 
-let version = "1.0.0"
-
-try {
-  version = readFileSync(join(__dirname, "..", "VERSION"), "utf-8").trim()
-} catch {
-  console.warn("无法读取 VERSION 文件，使用默认版本:", version)
+const version = readFileSync(join(__dirname, "..", "VERSION"), "utf-8").trim()
+if (!version) {
+  throw new Error("VERSION 文件内容为空")
 }
 
 const buildDate = new Date().toISOString()

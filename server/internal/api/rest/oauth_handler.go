@@ -41,9 +41,10 @@ func NewOAuthHandler(
 
 // GoogleVerifyRequest Google 授权码验证请求
 type GoogleVerifyRequest struct {
-	Code         string `json:"code" binding:"required"`
-	CodeVerifier string `json:"code_verifier" binding:"required"`
-	RedirectURI  string `json:"redirect_uri" binding:"required"`
+	Code          string `json:"code" binding:"required"`
+	CodeVerifier  string `json:"code_verifier" binding:"required"`
+	RedirectURI   string `json:"redirect_uri" binding:"required"`
+	RememberLogin bool   `json:"remember_login"`
 }
 
 type GoogleLinkResponse struct {
@@ -78,6 +79,12 @@ func (h *OAuthHandler) GoogleVerify(c *gin.Context) {
 	// 检查 OAuth 是否启用
 	if !config.OAuthEnabled {
 		RespondError(c, http.StatusForbidden, "oauth_disabled", "Google OAuth is disabled")
+		return
+	}
+
+	rememberLogin, err := resolveRememberLogin(c, h.securityService, req.RememberLogin)
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to load login persistence policy")
 		return
 	}
 
@@ -196,10 +203,11 @@ func (h *OAuthHandler) GoogleVerify(c *gin.Context) {
 	// 提取设备信息
 	deviceType, deviceName, ipAddress, userAgent := extractDeviceInfo(c)
 	sessionInfo := &auth.SessionInfo{
-		DeviceType: deviceType,
-		DeviceName: deviceName,
-		IPAddress:  ipAddress,
-		UserAgent:  userAgent,
+		DeviceType:    deviceType,
+		DeviceName:    deviceName,
+		IPAddress:     ipAddress,
+		UserAgent:     userAgent,
+		RememberLogin: rememberLogin,
 	}
 
 	// 创建会话并生成令牌
@@ -211,7 +219,7 @@ func (h *OAuthHandler) GoogleVerify(c *gin.Context) {
 
 	// 设置 HttpOnly refresh_token Cookie
 	if refreshToken != "" {
-		setAuthCookies(c, refreshToken, h.securityService, h.refreshTokenTTL)
+		setAuthCookies(c, refreshToken, h.securityService, h.refreshTokenTTL, rememberLogin)
 	}
 	clearAccessTokenCookie(c, h.securityService)
 

@@ -73,21 +73,48 @@ func getCookieConfig(c *gin.Context, securityService security.Service) (secure b
 	return secure, domain, sameSite
 }
 
-// setAuthCookies 设置认证相关的 HttpOnly Cookie（仅用于 refresh_token）
-func setAuthCookies(c *gin.Context, refreshToken string, securityService security.Service, refreshTokenMaxAge int) {
+// setAuthCookies 设置认证相关的 HttpOnly Cookie（仅用于 refresh_token）。
+// rememberLogin=false 时使用浏览器会话 Cookie；true 时使用持久 Cookie。
+func setAuthCookies(c *gin.Context, refreshToken string, securityService security.Service, refreshTokenMaxAge int, rememberLogin bool) {
 	secure, domain, sameSite := getCookieConfig(c, securityService)
+	maxAge := 0
+	var expires time.Time
+	if rememberLogin {
+		maxAge = refreshTokenMaxAge
+		expires = time.Now().Add(time.Duration(refreshTokenMaxAge) * time.Second)
+	}
 
 	http.SetCookie(c.Writer, &http.Cookie{
-		Name:  RefreshTokenCookieName,
-		Value: refreshToken,
+		Name:    RefreshTokenCookieName,
+		Value:   refreshToken,
+		Expires: expires,
 		// 将 refresh_token Cookie 限定在 /api/v1/oauth 路径下，仅用于令牌刷新相关端点
 		Path:     "/api/v1/oauth",
 		Domain:   domain,
-		MaxAge:   refreshTokenMaxAge,
+		MaxAge:   maxAge,
 		Secure:   secure,
 		HttpOnly: true,
 		SameSite: sameSite,
 	})
+}
+
+func resolveRememberLogin(c *gin.Context, securityService security.Service, requested bool) (bool, error) {
+	if !requested {
+		return false, nil
+	}
+
+	if config, ok := middleware.GetSecurityConfigFromContext(c); ok {
+		return config.RememberLogin, nil
+	}
+	if securityService == nil {
+		return false, errors.New("security service is unavailable")
+	}
+
+	config, err := securityService.Get(c.Request.Context())
+	if err != nil {
+		return false, err
+	}
+	return config != nil && config.RememberLogin, nil
 }
 
 // clearAuthCookies 清除认证相关的 Cookie（仅清理当前版本使用的路径）
@@ -271,8 +298,9 @@ type OAuthAuthorizeRequest struct {
 	State               string `json:"state"`
 
 	// 登录凭证（邮箱 + 密码）
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email         string `json:"email" binding:"required,email"`
+	Password      string `json:"password" binding:"required"`
+	RememberLogin bool   `json:"remember_login"`
 }
 
 // OAuthAuthorizeResponse 授权码响应
@@ -572,6 +600,12 @@ func (h *AuthHandler) OAuthAuthorize(c *gin.Context) {
 		return
 	}
 
+	rememberLogin, err := resolveRememberLogin(c, h.securityService, req.RememberLogin)
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to load login persistence policy")
+		return
+	}
+
 	// 获取客户端 IP 和 User-Agent
 	clientIP := c.ClientIP()
 	userAgent := c.GetHeader("User-Agent")
@@ -643,6 +677,7 @@ func (h *AuthHandler) OAuthAuthorize(c *gin.Context) {
 		req.Scope,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
+		rememberLogin,
 		5*time.Minute,
 	)
 	if err != nil {
@@ -691,7 +726,7 @@ func (h *AuthHandler) OAuthToken(c *gin.Context) {
 			UserAgent:  userAgent,
 		}
 
-		user, accessToken, refreshToken, err := h.authService.ExchangeAuthorizationCodeForTokens(
+		user, accessToken, refreshToken, rememberLogin, err := h.authService.ExchangeAuthorizationCodeForTokens(
 			c.Request.Context(),
 			req.ClientID,
 			req.RedirectURI,
@@ -706,7 +741,7 @@ func (h *AuthHandler) OAuthToken(c *gin.Context) {
 
 		// 设置 HttpOnly refresh_token Cookie
 		if refreshToken != "" {
-			setAuthCookies(c, refreshToken, h.securityService, h.refreshTokenTTLSeconds)
+			setAuthCookies(c, refreshToken, h.securityService, h.refreshTokenTTLSeconds, rememberLogin)
 		}
 
 		// access_token 仅通过响应体返回，前端仅存内存；清理历史遗留的 access_token Cookie
@@ -736,7 +771,13 @@ func (h *AuthHandler) OAuthToken(c *gin.Context) {
 			return
 		}
 
-		newAccessToken, newRefreshToken, err := h.authService.RefreshAccessToken(c.Request.Context(), refreshToken)
+		allowRememberLogin, err := resolveRememberLogin(c, h.securityService, true)
+		if err != nil {
+			RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to load login persistence policy")
+			return
+		}
+
+		newAccessToken, newRefreshToken, rememberLogin, err := h.authService.RefreshAccessToken(c.Request.Context(), refreshToken, allowRememberLogin)
 		if err != nil {
 			if errors.Is(err, auth.ErrInvalidToken) ||
 				errors.Is(err, auth.ErrExpiredToken) ||
@@ -756,7 +797,7 @@ func (h *AuthHandler) OAuthToken(c *gin.Context) {
 
 		// 如有轮换，更新 refresh_token Cookie
 		if newRefreshToken != "" {
-			setAuthCookies(c, newRefreshToken, h.securityService, h.refreshTokenTTLSeconds)
+			setAuthCookies(c, newRefreshToken, h.securityService, h.refreshTokenTTLSeconds, rememberLogin)
 		}
 
 		// access_token 仅通过响应体返回，前端仅存内存；清理历史遗留的 access_token Cookie
@@ -1192,6 +1233,12 @@ func (h *AuthHandler) InitializeAdmin(c *gin.Context) {
 		IPAddress:  ipAddress,
 		UserAgent:  userAgent,
 	}
+	rememberLogin, err := resolveRememberLogin(c, h.securityService, true)
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to load login persistence policy")
+		return
+	}
+	sessionInfo.RememberLogin = rememberLogin
 
 	// 初始化管理员
 	user, accessToken, refreshToken, err := h.authService.InitializeAdmin(
@@ -1212,7 +1259,7 @@ func (h *AuthHandler) InitializeAdmin(c *gin.Context) {
 	}
 
 	// 设置 HttpOnly Cookie
-	setAuthCookies(c, refreshToken, h.securityService, h.refreshTokenTTLSeconds)
+	setAuthCookies(c, refreshToken, h.securityService, h.refreshTokenTTLSeconds, rememberLogin)
 	clearAccessTokenCookie(c, h.securityService)
 
 	// 返回用户信息和令牌
@@ -1253,6 +1300,7 @@ type Verify2FACodeRequest struct {
 	CodeChallenge       string `json:"code_challenge" binding:"required"`
 	CodeChallengeMethod string `json:"code_challenge_method" binding:"required"` // 期望为 "S256"
 	State               string `json:"state"`
+	RememberLogin       bool   `json:"remember_login"`
 }
 
 // Generate2FAResponse 生成 2FA secret 响应
@@ -1424,6 +1472,11 @@ func (h *AuthHandler) Verify2FACode(c *gin.Context) {
 		RespondError(c, http.StatusBadRequest, "invalid_request", "code_challenge and S256 code_challenge_method are required")
 		return
 	}
+	rememberLogin, err := resolveRememberLogin(c, h.securityService, req.RememberLogin)
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to load login persistence policy")
+		return
+	}
 
 	// 生成授权码（5 分钟有效）
 	code, err := h.authService.CreateAuthorizationCode(
@@ -1434,6 +1487,7 @@ func (h *AuthHandler) Verify2FACode(c *gin.Context) {
 		req.Scope,
 		req.CodeChallenge,
 		req.CodeChallengeMethod,
+		rememberLogin,
 		5*time.Minute,
 	)
 	if err != nil {

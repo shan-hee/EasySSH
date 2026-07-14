@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next"
 import { authApi } from "@/lib/api/auth"
 import { useAuthStore } from "@/stores/auth-store"
 import { useSystemConfig } from "@/contexts/system-config-context"
-import { getErrorMessage } from "@/lib/error-utils"
+import { getAuthErrorMessage } from "@/lib/auth-error"
 import { isApiError } from "@/lib/api-client"
 import {
   buildLockedLoginRedirectUrl,
@@ -16,11 +16,14 @@ import {
   getSafeInternalPath,
 } from "@/lib/auth-redirect"
 import { AuthI18nProvider } from "@/providers/auth-i18n-provider"
+import { beginAuthenticatedSession } from "@/lib/auth-session-activity"
+import { resumeSessionRefresh } from "@/lib/session-refresh"
 
 type GoogleOAuthState = {
   mode?: "login" | "link"
   next?: string | null
   returnTo?: string | null
+  rememberLogin?: boolean
 }
 
 // 解析 state 中携带的 next / mode 信息
@@ -142,12 +145,15 @@ function GoogleAuthCallbackInner() {
           code,
           code_verifier: codeVerifier,
           redirect_uri: redirectUri,
+          remember_login: parsedState.rememberLogin === true,
         })
         if (!response.access_token) {
           throw new Error("Missing access_token in Google callback response")
         }
 
         setToken(response.access_token, response.expires_in)
+        resumeSessionRefresh()
+        beginAuthenticatedSession()
 
         toast.success(t("loginToastSuccessTitle"), {
           description: t("loginToastSuccessDesc"),
@@ -161,7 +167,7 @@ function GoogleAuthCallbackInner() {
           navigate("/dashboard")
         }
       } catch (err) {
-        const message = getErrorMessage(err, t("loginGoogleRetryDesc"))
+        const message = getAuthErrorMessage(err, t, t("loginGoogleRetryDesc"))
         const apiError = isApiError(err) ? err : null
         const detail = apiError && typeof apiError.detail === "object" && apiError.detail !== null
           ? (apiError.detail as { error?: string; message?: string })

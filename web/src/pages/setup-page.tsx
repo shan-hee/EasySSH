@@ -12,6 +12,8 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { User, Mail, Lock, Check, Loader2, Settings, Rocket, Play, Code, Server } from "lucide-react"
 import LightRays from "@/components/LightRays"
 import { AuthI18nProvider } from "@/providers/auth-i18n-provider"
+import { beginAuthenticatedSession } from "@/lib/auth-session-activity"
+import { resumeSessionRefresh } from "@/lib/session-refresh"
 
 type RunMode = "demo" | "development" | "production"
 
@@ -93,6 +95,8 @@ function SetupPageInner() {
       })
 
       setToken(response.access_token, response.expires_in)
+      resumeSessionRefresh()
+      beginAuthenticatedSession()
 
       // 刷新全局系统配置与认证状态，确保 need_init=false 且后续跳转不会再回到 /setup
       await refreshConfig({ refreshAuth: true })

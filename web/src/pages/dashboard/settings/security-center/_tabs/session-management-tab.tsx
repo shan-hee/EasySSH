@@ -10,10 +10,12 @@ import { useSettingsForm } from "@/hooks/settings/use-settings-form"
 import { sessionManagementSchema } from "@/schemas/settings/security.schema"
 import { settingsApi } from "@/lib/api/settings"
 import { SettingsLoading } from "@/components/settings/settings-loading"
+import { useSystemConfig } from "@/contexts/system-config-context"
 
 export function SessionManagementTab() {
   const { t } = useTranslation("settingsSecuritySession")
   const { t: tCommon } = useTranslation("common")
+  const { refreshConfig } = useSystemConfig()
   const { form, isLoading, isSaving, handleSave, reload } = useSettingsForm({
     schema: sessionManagementSchema,
     loadFn: async () => {
@@ -48,6 +50,7 @@ export function SessionManagementTab() {
           jwt_refresh_reuse_detection: data.jwt_refresh_reuse_detection,
         }),
       ])
+      await refreshConfig()
     },
   })
 

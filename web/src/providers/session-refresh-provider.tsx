@@ -2,13 +2,26 @@ import type React from "react"
 import { useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import { useSystemConfig } from "@/contexts/system-config-context"
-import { buildLoginRedirectUrl, getCurrentBrowserPath } from "@/lib/auth-redirect"
+import {
+  buildLoginRedirectUrl,
+  buildSessionTimeoutLoginRedirectUrl,
+  getCurrentBrowserPath,
+} from "@/lib/auth-redirect"
 import {
   isRefreshTokenError,
   refreshAccessToken,
+  suspendSessionRefresh,
 } from "@/lib/session-refresh"
+import { authApi } from "@/lib/api/auth"
 import { useAuthStore } from "@/stores/auth-store"
 import { useTerminalStore } from "@/stores/terminal-store"
+import {
+  authSessionStorageKeys,
+  getLastAuthActivity,
+  isAuthIdleExpired,
+  markAuthIdleExpired,
+  recordAuthActivity,
+} from "@/lib/auth-session-activity"
 
 interface SessionRefreshProviderProps {
   children: React.ReactNode
@@ -23,12 +36,14 @@ const REFRESH_ON_RESUME_THRESHOLD_MS = 60_000
  */
 export function SessionRefreshProvider({ children }: SessionRefreshProviderProps) {
   const navigate = useNavigate()
-  const { authStatus, markLoggedOut } = useSystemConfig()
+  const { authStatus, config, markLoggedOut } = useSystemConfig()
   const accessToken = useAuthStore((state) => state.accessToken)
   const expiresAt = useAuthStore((state) => state.expiresAt)
   const clearToken = useAuthStore((state) => state.clearToken)
   const resetTerminals = useTerminalStore((state) => state.resetAll)
   const timerRef = useRef<number | null>(null)
+  const idleTimerRef = useRef<number | null>(null)
+  const idleExpirationStartedRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -127,6 +142,122 @@ export function SessionRefreshProvider({ children }: SessionRefreshProviderProps
     authStatus?.is_authenticated,
     clearToken,
     expiresAt,
+    markLoggedOut,
+    navigate,
+    resetTerminals,
+  ])
+
+  useEffect(() => {
+    if (!authStatus?.is_authenticated || !accessToken) {
+      return
+    }
+
+    const timeoutMinutes = config?.tab_session?.session_timeout ?? 30
+    const timeoutMs = timeoutMinutes * 60_000
+    let disposed = false
+    let lastRecordedAt = 0
+
+    const clearIdleTimer = () => {
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current)
+        idleTimerRef.current = null
+      }
+    }
+
+    const expireForInactivity = () => {
+      if (disposed || idleExpirationStartedRef.current) return
+      idleExpirationStartedRef.current = true
+      clearIdleTimer()
+      markAuthIdleExpired()
+
+      // 先在本地切断认证状态；服务端撤销失败时，本地超时标记会阻止刷新 Cookie 自动恢复会话。
+      clearToken()
+      resetTerminals()
+      markLoggedOut()
+      navigate(
+        buildSessionTimeoutLoginRedirectUrl(getCurrentBrowserPath()),
+        { replace: true },
+      )
+
+      void (async () => {
+        await suspendSessionRefresh()
+        try {
+          await authApi.logout()
+        } catch {
+          // 本地闲置退出标记会继续阻止 Cookie 恢复；后续进入登录页时会再次尝试服务端登出。
+        } finally {
+          clearToken()
+        }
+      })()
+    }
+
+    const scheduleIdleExpiration = () => {
+      if (disposed || isAuthIdleExpired()) {
+        expireForInactivity()
+        return
+      }
+
+      clearIdleTimer()
+      const lastActivity = getLastAuthActivity() ?? Date.now()
+      const remainingMs = lastActivity + timeoutMs - Date.now()
+      if (remainingMs <= 0) {
+        expireForInactivity()
+        return
+      }
+
+      idleTimerRef.current = window.setTimeout(expireForInactivity, remainingMs)
+    }
+
+    const handleUserActivity = () => {
+      if (disposed || isAuthIdleExpired()) return
+      const now = Date.now()
+      if (now - lastRecordedAt < 1_000) return
+      lastRecordedAt = now
+      recordAuthActivity(now)
+      scheduleIdleExpiration()
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === authSessionStorageKeys.idleExpired && event.newValue) {
+        expireForInactivity()
+        return
+      }
+      if (event.key === authSessionStorageKeys.activity && event.newValue) {
+        scheduleIdleExpiration()
+      }
+    }
+
+    if (getLastAuthActivity() === null) {
+      recordAuthActivity()
+    }
+    idleExpirationStartedRef.current = false
+    scheduleIdleExpiration()
+
+    const activityEvents: Array<keyof WindowEventMap> = [
+      "pointerdown",
+      "pointermove",
+      "keydown",
+      "touchstart",
+      "scroll",
+    ]
+    for (const eventName of activityEvents) {
+      window.addEventListener(eventName, handleUserActivity, { passive: true })
+    }
+    window.addEventListener("storage", handleStorage)
+
+    return () => {
+      disposed = true
+      clearIdleTimer()
+      for (const eventName of activityEvents) {
+        window.removeEventListener(eventName, handleUserActivity)
+      }
+      window.removeEventListener("storage", handleStorage)
+    }
+  }, [
+    accessToken,
+    authStatus?.is_authenticated,
+    clearToken,
+    config?.tab_session?.session_timeout,
     markLoggedOut,
     navigate,
     resetTerminals,

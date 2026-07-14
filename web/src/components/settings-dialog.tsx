@@ -83,6 +83,7 @@ import { useUpdateCheck } from "@/hooks/use-update-check"
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 import { generateCodeVerifier, deriveCodeChallenge } from "@/lib/pkce"
+import { appVersion, getCurrentYear } from "@/lib/app-metadata"
 
 /**
  * 从错误对象安全提取错误消息
@@ -146,7 +147,6 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
     () => getEffectiveTimezone(user, config),
     [user, config],
   )
-  const appVersion = viteEnv.VITE_APP_VERSION || "1.0.0"
   const hasUpdate = updateResult?.has_update ?? false
   const updateReleaseUrl = updateResult?.release_url
   const displayedCurrentVersion = updateResult?.current_version || appVersion
@@ -2487,6 +2487,7 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                       <p>
                         {tAccount("aboutFooterCopyright", {
                           name: config?.system_name || "EasySSH",
+                          year: getCurrentYear(),
                         })}
                       </p>
                       <p className="mt-1">

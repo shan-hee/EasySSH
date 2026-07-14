@@ -28,6 +28,7 @@ export interface Verify2FALoginRequest {
   codeChallenge: string
   codeChallengeMethod: string
   state?: string
+  rememberLogin: boolean
 }
 
 /**
@@ -84,6 +85,7 @@ export const twoFactorApi = {
         code_challenge: params.codeChallenge,
         code_challenge_method: params.codeChallengeMethod,
         state: params.state ?? "",
+        remember_login: params.rememberLogin,
       }),
     })
   },

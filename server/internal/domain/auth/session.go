@@ -19,8 +19,9 @@ type Session struct {
 	IPAddress                      string         `gorm:"size:45" json:"ip_address"`                                                             // IPv4/IPv6
 	Location                       string         `gorm:"size:200" json:"location"`                                                              // 地理位置
 	UserAgent                      string         `gorm:"type:text" json:"user_agent"`                                                           // 完整 User-Agent
-	LastActivity                   time.Time      `gorm:"not null" json:"last_activity"`                                                         // 最后活动时间
+	LastActivity                   time.Time      `gorm:"not null" json:"last_activity"`                                                         // 服务端令牌刷新活动时间，不代表浏览器用户输入活动
 	ExpiresAt                      time.Time      `gorm:"not null;index;index:idx_sessions_user_expires,priority:2,sort:desc" json:"expires_at"` // 过期时间，复合索引优化按用户查询活跃会话
+	RememberLogin                  bool           `gorm:"not null;default:false" json:"remember_login"`                                          // 是否使用持久 Refresh Token Cookie
 	CreatedAt                      time.Time      `json:"created_at"`
 	DeletedAt                      gorm.DeletedAt `gorm:"index" json:"-"` // 软删除
 
@@ -51,12 +52,7 @@ func (s *Session) IsExpired() bool {
 	return time.Now().After(s.ExpiresAt)
 }
 
-// IsActive 检查会话是否活跃(最近15分钟内有活动)
-func (s *Session) IsActive() bool {
-	return time.Since(s.LastActivity) < 15*time.Minute
-}
-
-// UpdateActivity 更新最后活动时间
+// UpdateActivity 更新服务端令牌刷新活动时间
 func (s *Session) UpdateActivity() {
 	s.LastActivity = time.Now()
 }

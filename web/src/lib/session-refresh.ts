@@ -19,7 +19,15 @@ export class RefreshTokenError extends Error {
   }
 }
 
+export class SessionRefreshSuspendedError extends Error {
+  constructor() {
+    super("Session refresh is suspended")
+    this.name = "SessionRefreshSuspendedError"
+  }
+}
+
 let refreshPromise: Promise<RefreshTokenResult> | null = null
+let refreshSuspended = false
 
 export function isRefreshTokenError(error: unknown): error is RefreshTokenError {
   return error instanceof RefreshTokenError
@@ -107,6 +115,10 @@ async function requestRefreshToken(): Promise<RefreshTokenResult> {
  * 同一页面内的启动恢复、定时刷新和并发 401 共用一个请求。
  */
 export async function refreshAccessToken(): Promise<RefreshTokenResult> {
+  if (refreshSuspended) {
+    throw new SessionRefreshSuspendedError()
+  }
+
   if (refreshPromise) {
     return refreshPromise
   }
@@ -117,6 +129,25 @@ export async function refreshAccessToken(): Promise<RefreshTokenResult> {
   } finally {
     refreshPromise = null
   }
+}
+
+/**
+ * 阻止新的刷新请求，并等待已经在途的刷新结束。
+ * 用于登出，避免刷新响应在登出清 Cookie 后再次写回认证 Cookie。
+ */
+export async function suspendSessionRefresh(): Promise<void> {
+  refreshSuspended = true
+  const activeRefresh = refreshPromise
+  if (!activeRefresh) return
+  try {
+    await activeRefresh
+  } catch {
+    // 登出仍应继续；刷新失败不改变暂停状态。
+  }
+}
+
+export function resumeSessionRefresh(): void {
+  refreshSuspended = false
 }
 
 /**

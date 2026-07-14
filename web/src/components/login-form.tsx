@@ -10,6 +10,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   InputOTP,
   InputOTPGroup,
@@ -23,12 +24,16 @@ import { authApi } from "@/lib/api/auth"
 import { twoFactorApi } from "@/lib/api/2fa"
 import { FadeSlideIn } from "@/components/ui/fade-slide-in"
 import { getErrorMessage } from "@/lib/error-utils"
+import { getAuthErrorCode, getAuthErrorMessage } from "@/lib/auth-error"
 import { isApiError } from "@/lib/api-client"
 import { generateCodeVerifier, deriveCodeChallenge } from "@/lib/pkce"
 import { useAuthStore } from "@/stores/auth-store"
 import { resetUnauthorizedRedirectFlag, resetAccountLockedRedirectFlag } from "@/lib/api-client"
 import { buildLoginRedirectUrl, getSafeAuthNextPath } from "@/lib/auth-redirect"
 import { useTranslation } from "react-i18next"
+import { beginAuthenticatedSession } from "@/lib/auth-session-activity"
+import { resumeSessionRefresh } from "@/lib/session-refresh"
+import { AuthPageFooter } from "@/components/auth-page-footer"
 
 export function LoginForm({
   className,
@@ -45,6 +50,7 @@ export function LoginForm({
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [rememberLogin, setRememberLogin] = useState(false)
 
   // 2FA 相关状态（PKCE + 2FA）
   const [requires2FA, setRequires2FA] = useState(false)
@@ -63,8 +69,16 @@ export function LoginForm({
   const [pkceState, setPkceState] = useState("")
   const [redirectUri, setRedirectUri] = useState("")
   const handledGoogleErrorRef = useRef<string | null>(null)
+  const handledSessionTimeoutRef = useRef(false)
 
   const { t: tAuth } = useTranslation("auth")
+  const rememberLoginAllowed = config?.tab_session?.remember_login === true
+
+  useEffect(() => {
+    if (!rememberLoginAllowed) {
+      setRememberLogin(false)
+    }
+  }, [rememberLoginAllowed])
 
   // 登录成功后的回跳路径,优先使用 /login?next=xxx 中的 next
   const getRedirectTarget = useCallback(() => {
@@ -117,6 +131,16 @@ export function LoginForm({
     navigate(buildLoginRedirectUrl(searchParams.get("next")), { replace: true })
   }, [navigate, searchParams, tAuth])
 
+  useEffect(() => {
+    if (searchParams.get("session_timeout") !== "true" || handledSessionTimeoutRef.current) {
+      return
+    }
+    handledSessionTimeoutRef.current = true
+    toast.warning(tAuth("loginSessionTimeoutTitle"), {
+      description: tAuth("loginSessionTimeoutDesc"),
+    })
+  }, [searchParams, tAuth])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     // 避免重复提交
@@ -148,6 +172,7 @@ export function LoginForm({
         code_challenge: challenge,
         code_challenge_method: "S256",
         state,
+        remember_login: rememberLoginAllowed && rememberLogin,
       })
 
       // 启用 2FA：进入第二步
@@ -178,6 +203,8 @@ export function LoginForm({
       }
 
       setToken(tokenResp.access_token, tokenResp.expires_in)
+      resumeSessionRefresh()
+      beginAuthenticatedSession()
 
       toast.success(tAuth("loginToastSuccessTitle"), {
         description: tAuth("loginToastSuccessDesc"),
@@ -188,10 +215,11 @@ export function LoginForm({
     } catch (error: unknown) {
       // 检查是否为账户锁定错误
       if (isApiError(error) && error.status === 429) {
-        const detail = error.detail as { error?: string; message?: string; unlock_at?: string } | undefined
-        if (detail?.error === "account_locked" || detail?.error === "ip_locked") {
+        const detail = error.detail as { unlock_at?: string } | undefined
+        const errorCode = getAuthErrorCode(error)
+        if (errorCode === "account_locked" || errorCode === "ip_locked") {
           setIsAccountLocked(true)
-          setLockMessage(getErrorMessage(error, tAuth("loginAccountLockedDesc")))
+          setLockMessage(getAuthErrorMessage(error, tAuth, tAuth("loginAccountLockedDesc")))
           if (detail?.unlock_at) {
             setUnlockAt(detail.unlock_at)
           }
@@ -200,14 +228,8 @@ export function LoginForm({
         }
       }
 
-      const defaultDesc = tAuth("loginToastFailedDesc")
-      let desc = getErrorMessage(error, defaultDesc)
-      if (desc === "AUTH_CODE_EMPTY" || desc === "ACCESS_TOKEN_MISSING") {
-        desc = defaultDesc
-      }
-
       toast.error(tAuth("loginToastFailedTitle"), {
-        description: desc,
+        description: getAuthErrorMessage(error, tAuth, tAuth("loginToastFailedDesc")),
       })
       setIsLoading(false)
     }
@@ -235,6 +257,7 @@ export function LoginForm({
         codeChallenge: codeChallenge,
         codeChallengeMethod: "S256",
         state: pkceState,
+        rememberLogin: rememberLoginAllowed && rememberLogin,
       })
 
       if (!verifyResp.code) {
@@ -254,6 +277,8 @@ export function LoginForm({
       }
 
       setToken(tokenResp.access_token, tokenResp.expires_in)
+      resumeSessionRefresh()
+      beginAuthenticatedSession()
 
       toast.success(tAuth("login2faToastSuccessTitle"), {
         description: tAuth("login2faToastSuccessDesc"),
@@ -263,7 +288,7 @@ export function LoginForm({
       navigate(getRedirectTarget())
     } catch (error: unknown) {
       toast.error(tAuth("login2faToastFailedTitle"), {
-        description: getErrorMessage(error, tAuth("login2faToastFailedDesc")),
+        description: getAuthErrorMessage(error, tAuth, tAuth("login2faToastFailedDesc")),
       })
     } finally {
       setIsLoading(false)
@@ -274,6 +299,8 @@ export function LoginForm({
     getRedirectTarget,
     isLoading,
     pkceState,
+    rememberLogin,
+    rememberLoginAllowed,
     redirectUri,
     refreshConfig,
     navigate,
@@ -307,6 +334,7 @@ export function LoginForm({
 
       const statePayload = {
         next,
+        rememberLogin: rememberLoginAllowed && rememberLogin,
       }
 
       const state = btoa(
@@ -394,7 +422,7 @@ export function LoginForm({
                 <FadeSlideIn delay={0.1} disabled>
                   <Field>
                     <FieldLabel htmlFor="2fa-code" className="text-zinc-700 dark:text-zinc-200">
-                    {tAuth("login2faCodePlaceholder")}
+                      {tAuth("login2faCodePlaceholder")}
                     </FieldLabel>
                     <div className="flex justify-center">
                       <InputOTP
@@ -402,25 +430,25 @@ export function LoginForm({
                         value={twoFactorCode}
                         onChange={(value) => setTwoFactorCode(value)}
                         autoFocus
-                    >
-                      <InputOTPGroup>
-                        <InputOTPSlot index={0} />
-                        <InputOTPSlot index={1} />
-                        <InputOTPSlot index={2} />
-                      </InputOTPGroup>
-                      <InputOTPSeparator />
-                      <InputOTPGroup>
-                        <InputOTPSlot index={3} />
-                        <InputOTPSlot index={4} />
-                        <InputOTPSlot index={5} />
-                      </InputOTPGroup>
-                    </InputOTP>
-                  </div>
+                      >
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                        </InputOTPGroup>
+                        <InputOTPSeparator />
+                        <InputOTPGroup>
+                          <InputOTPSlot index={3} />
+                          <InputOTPSlot index={4} />
+                          <InputOTPSlot index={5} />
+                        </InputOTPGroup>
+                      </InputOTP>
+                    </div>
                     <FieldDescription className="text-zinc-600 dark:text-zinc-500 text-xs text-center">
-                    {tAuth("login2faRequiredDesc")}
-                  </FieldDescription>
-                </Field>
-              </FadeSlideIn>
+                      {tAuth("login2faRequiredDesc")}
+                    </FieldDescription>
+                  </Field>
+                </FadeSlideIn>
 
                 {/* 验证按钮 */}
                 <FadeSlideIn delay={0.2} disabled>
@@ -433,7 +461,7 @@ export function LoginForm({
                     >
                       {isLoading ? (
                         <>
-                          <span className="mr-2">验证中</span>
+                          <span className="mr-2">{tAuth("login2faSubmitting")}</span>
                           {/* spinner 文案已在上方 label 中体现 */}
                           <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                         </>
@@ -586,9 +614,21 @@ export function LoginForm({
                 </Field>
               </FadeSlideIn>
 
-              {/* 忘记密码 */}
+              {/* 登录持久性与忘记密码 */}
               <FadeSlideIn delay={0.3} disabled>
-                <div className="flex items-center justify-end">
+                <div className="flex items-center justify-between gap-4">
+                  {rememberLoginAllowed ? (
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                      <Checkbox
+                        checked={rememberLogin}
+                        onCheckedChange={(checked) => setRememberLogin(checked === true)}
+                        aria-label={tAuth("loginRememberMe")}
+                      />
+                      <span>{tAuth("loginRememberMe")}</span>
+                    </label>
+                  ) : (
+                    <span />
+                  )}
                   <Button
                     type="button"
                     variant="link"
@@ -708,9 +748,7 @@ export function LoginForm({
 
             {/* 版本信息 */}
             <FadeSlideIn delay={0.6} disabled>
-              <div className="text-center text-xs text-zinc-500 dark:text-zinc-600">
-                {config?.system_name || "EasySSH"} v1.0.0 | © 2025 All rights reserved
-              </div>
+              <AuthPageFooter />
             </FadeSlideIn>
           </div>
           )}

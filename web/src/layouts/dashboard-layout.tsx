@@ -62,7 +62,7 @@ export default function DashboardLayout() {
     if (isRouteAllowed(runtime, pathname, isAdmin)) return
 
     navigate(getRouteFallback(pathname, runtime, isAdmin), { replace: true })
-  }, [error, isLoading, isRuntimeLoading, navigate, pathname, runtime, user?.role])
+  }, [authStatus?.is_authenticated, error, isLoading, isRuntimeLoading, navigate, pathname, runtime, user?.role])
 
   if (isLoading && !authStatus) {
     return (

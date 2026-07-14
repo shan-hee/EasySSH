@@ -70,6 +70,12 @@ export function buildLoginRedirectUrl(nextPath?: string | null): string {
   return query ? `/login?${query}` : "/login"
 }
 
+export function buildSessionTimeoutLoginRedirectUrl(nextPath?: string | null): string {
+  const url = new URL(buildLoginRedirectUrl(nextPath), "http://easyssh.local")
+  url.searchParams.set("session_timeout", "true")
+  return `${url.pathname}${url.search}`
+}
+
 export function buildLockedLoginRedirectUrl(
   lockInfo?: AuthLockInfo | null,
   nextPath?: string | null,
@@ -103,7 +109,6 @@ export function getAuthLockInfo(detail: unknown): AuthLockInfo | null {
     locked_until?: unknown
     lock_reason?: unknown
     unlock_at?: unknown
-    message?: unknown
   }
 
   return {
@@ -114,9 +119,7 @@ export function getAuthLockInfo(detail: unknown): AuthLockInfo | null {
         : undefined,
     lock_reason: typeof lockDetail.lock_reason === "string"
       ? lockDetail.lock_reason
-      : typeof lockDetail.message === "string"
-        ? lockDetail.message
-        : undefined,
+      : undefined,
   }
 }
 

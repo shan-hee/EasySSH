@@ -785,7 +785,7 @@ const messages = {
     aboutDocsButton: "Docs",
     aboutFeedbackButton: "Feedback",
     aboutFooterCopyright:
-      "© 2025 {name}. All rights reserved.",
+      "© {year} {name}. All rights reserved.",
     aboutFooterBuiltBy: "Built with ❤️ by Claude & Developer",
   },
   sftp: {
@@ -2511,6 +2511,7 @@ const messages = {
     loginUsernamePlaceholder: "Enter account",
     loginPasswordLabel: "Password",
     loginPasswordPlaceholder: "Enter password",
+    loginRememberMe: "Remember me",
     loginForgotPassword: "Forgot password?",
     loginForgotPasswordToastTitle: "Forgot password",
     loginForgotPasswordToastDesc: "Please contact administrator to reset password.",
@@ -2546,8 +2547,28 @@ const messages = {
     loginToastSuccessDesc: "Redirecting to dashboard...",
     loginToastFailedTitle: "Login failed",
     loginToastFailedDesc: "Please check your input and try again.",
+    loginSessionTimeoutTitle: "Session timed out",
+    loginSessionTimeoutDesc: "You were signed out after a period of inactivity. Please sign in again.",
+    authFooterCopyright: "© {year} All rights reserved.",
     loginToastUnauthorizedTitle: "Login failed",
     loginToastUnauthorizedDesc: "Please check your input and try again.",
+    errorInvalidCredentials: "Incorrect email or password.",
+    errorAccountLocked: "Your account is temporarily locked after too many failed attempts. Please try again later.",
+    errorIpLocked: "This IP address is temporarily locked after too many failed attempts. Please try again later.",
+    errorInvalidTempToken: "Login verification has expired. Please sign in again.",
+    errorInvalidTwoFactorCode: "Invalid verification code. Please try again.",
+    errorInvalidGrant: "Your login credentials have expired. Please sign in again.",
+    errorInvalidClient: "The login client configuration is invalid. Please contact an administrator.",
+    errorInvalidRequest: "The login request is invalid. Refresh the page and try again.",
+    errorInvalidToken: "Your login session has expired. Please sign in again.",
+    errorCsrfTokenInvalid: "The security check has expired. Refresh the page and try again.",
+    errorOAuthDisabled: "Google sign-in is disabled.",
+    errorOAuthNotConfigured: "Google sign-in is not configured. Please contact an administrator.",
+    errorEmailNotVerified: "The Google email address is not verified.",
+    errorRegistrationDisabled: "User registration is disabled. Please contact an administrator.",
+    errorOAuthAccountConflict: "This Google account is linked to another user.",
+    errorTooFrequent: "Too many requests. Please try again later.",
+    errorServiceUnavailable: "The authentication service is temporarily unavailable. Please try again later.",
     // Account lock related
     loginAccountLockedTitle: "Account Locked",
     loginAccountLockedDesc: "Your account has been locked. Please try again later or contact administrator.",
@@ -2774,16 +2795,16 @@ const messages = {
     sectionDescription: "Configure user sessions and tab management policies",
     fieldSessionTimeout: "Session timeout (minutes)",
     fieldSessionTimeoutDesc:
-      "Auto logout time after user inactivity (5-1440 minutes)",
+      "Sign out after no keyboard, pointer, or touch activity in any browser tab (5-1440 minutes)",
     fieldMaxTabs: "Maximum tabs",
     fieldMaxTabsDesc:
       "Maximum number of tabs a single user can open (1-200)",
     fieldInactiveMinutes: "Inactive disconnect reminder (minutes)",
     fieldInactiveMinutesDesc:
-      "Reminder time when a tab is inactive (5-1440 minutes)",
+      "Disconnect reminder for inactive terminal tabs; this does not affect the web login session (5-1440 minutes)",
     fieldRememberLogin: "Remember login state",
     fieldRememberLoginDesc:
-      "Allow users to remember login and sign in automatically next time",
+      "Show a Remember me option on the login page; when unchecked, the refresh token lasts only for the browser session",
     fieldHibernate: "Background tab hibernation",
     fieldHibernateDesc:
       "When enabled, background tabs will hibernate automatically to save resources",
@@ -2795,7 +2816,7 @@ const messages = {
       "Short-lived access token lifetime (5-1440 minutes). It refreshes automatically during normal use.",
     fieldJWTRefreshIdleExpire: "Idle login lifetime (days)",
     fieldJWTRefreshIdleExpireDesc:
-      "Users must sign in again after this many days without session refresh (1-90 days).",
+      "Require sign-in after the server refresh token is not refreshed for this many days; independent of user inactivity timeout above (1-90 days).",
     fieldJWTRefreshAbsoluteExpire: "Maximum login lifetime (days)",
     fieldJWTRefreshAbsoluteExpireDesc:
       "Users must sign in again after this upper bound even if they keep using the app (1-365 days).",
