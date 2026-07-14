@@ -125,6 +125,7 @@ const settingsNavItems: { id: SettingsSection; icon: typeof User }[] = [
 
 export const SettingsDialog = React.memo(function SettingsDialog({ children }: { children: React.ReactNode }) {
   const { t: tAccount } = useTranslation("accountSettings")
+  const { t: tCommon } = useTranslation("common")
   const { t: tUpdate } = useTranslation("headerActions")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const [open, setOpen] = React.useState(false)
@@ -300,8 +301,6 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
   }, [activeSection, open])
 
   React.useEffect(() => {
-    if (typeof window === "undefined") return
-
     const params = new URLSearchParams(window.location.search)
     const requestedSection = params.get("account_settings")
     const googleLinkResult = params.get("google_link")
@@ -313,7 +312,9 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
 
     if (googleLinkResult === "success") {
       toast.success(tAccount("securityGoogleLinkedToast"))
-      void refreshUser()
+      void refreshUser().catch((error: unknown) => {
+        toast.error(getErrorMessage(error, tAccount("securityGoogleLinkFailed")))
+      })
     } else if (googleLinkResult && googleLinkResult !== "success") {
       toast.error(params.get("google_message") || tAccount("securityGoogleLinkFailed"))
     }
@@ -634,7 +635,9 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
 
       // 2秒后自动登出
       setTimeout(() => {
-        logout()
+        void logout().catch(() => {
+          toast.error(tCommon("logoutFailed"))
+        })
       }, 2000)
     } catch (error: unknown) {
       // 获取错误消息并进行特殊翻译
@@ -651,7 +654,7 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
     } finally {
       setPasswordLoading(false)
     }
-  }, [passwordForm, logout, tAccount])
+  }, [passwordForm, logout, tAccount, tCommon])
 
   // 生成 2FA Secret（第一步）
   const handleGenerate2FA = React.useCallback(async () => {
@@ -1038,7 +1041,7 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
         set_active: true,  // 设为当前激活的数据源
       })
       toast.success(tAccount("monitorSaveSuccess"))
-      refreshUser() // 刷新用户数据
+      await refreshUser()
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, tAccount("monitorSaveFailed")))
     } finally {

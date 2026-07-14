@@ -1,8 +1,8 @@
 
-import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useState, useEffect, type ReactNode } from "react"
 import { useLocation } from "react-router-dom"
 import type { SystemConfig } from "@/lib/api/settings"
-import { authApi, type AuthStatusResponse } from "@/lib/api/auth"
+import { authApi, type AuthStatusResponse, type User } from "@/lib/api/auth"
 import { useAuthStore } from "@/stores/auth-store"
 
 /**
@@ -16,6 +16,7 @@ interface SystemConfigContextType {
   error: Error | null
   refreshConfig: (options?: { refreshAuth?: boolean }) => Promise<void>
   markLoggedOut: () => void
+  updateAuthUser: (user: User) => void
   authStatus: AuthStatusResponse | null
 }
 
@@ -56,6 +57,15 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   jwt_refresh_reuse_detection: true,
 }
 
+export function shouldRestoreAuthSession(pathname: string): boolean {
+  return (
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/")
+  )
+}
+
 /**
  * 系统配置提供者组件
  * 在应用启动时自动加载系统配置并提供给所有子组件
@@ -66,7 +76,7 @@ export function SystemConfigProvider({ children }: SystemConfigProviderProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
   const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null)
-  const setToken = useAuthStore((state) => state.setToken)
+  const clearToken = useAuthStore((state) => state.clearToken)
 
   const loadConfig = async (options: { refreshAuth?: boolean } = {}) => {
     try {
@@ -76,6 +86,9 @@ export function SystemConfigProvider({ children }: SystemConfigProviderProps) {
       // 仅通过 /auth/status 获取系统配置和认证状态（开发版约定始终返回 system_config）
       const status = await authApi.checkStatus({ refresh: options.refreshAuth ?? false })
       setAuthStatus(status)
+      if (!status.is_authenticated) {
+        clearToken()
+      }
 
       if (!status.system_config) {
         // 按当前开发版约定，system_config 应始终存在
@@ -98,7 +111,7 @@ export function SystemConfigProvider({ children }: SystemConfigProviderProps) {
     await loadConfig(options)
   }
 
-  const markLoggedOut = () => {
+  const markLoggedOut = useCallback(() => {
     const systemConfig = config ?? authStatus?.system_config ?? DEFAULT_SYSTEM_CONFIG
     setConfig(systemConfig)
     setAuthStatus({
@@ -109,35 +122,34 @@ export function SystemConfigProvider({ children }: SystemConfigProviderProps) {
     })
     setError(null)
     setIsLoading(false)
-  }
+  }, [
+    authStatus?.access_token_ttl_seconds,
+    authStatus?.need_init,
+    authStatus?.system_config,
+    config,
+  ])
+
+  const updateAuthUser = useCallback((user: User) => {
+    setAuthStatus((current) => {
+      if (!current?.is_authenticated) {
+        return current
+      }
+      return {
+        ...current,
+        user,
+      }
+    })
+  }, [])
 
   useEffect(() => {
-    const shouldRestoreSession =
-      pathname === "/" || pathname?.startsWith("/dashboard")
-    loadConfig({ refreshAuth: shouldRestoreSession })
+    loadConfig({ refreshAuth: shouldRestoreAuthSession(pathname) })
     // 初始加载时按入口路径决定是否尝试 refresh cookie 恢复会话。
     // 后续路由跳转由登录/登出流程显式调用 refreshConfig 控制。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 当 /auth/status 返回新的 access_token 时, 同步写入内存中的 token store
-  useEffect(() => {
-    if (!authStatus || !authStatus.is_authenticated || !authStatus.access_token) {
-      return
-    }
-
-    const ttlSeconds =
-      authStatus.access_token_expires_in ??
-      authStatus.access_token_ttl_seconds ??
-      0
-
-    if (ttlSeconds > 0) {
-      setToken(authStatus.access_token, ttlSeconds)
-    }
-  }, [authStatus, setToken])
-
   return (
-    <SystemConfigContext.Provider value={{ config, isLoading, error, refreshConfig, markLoggedOut, authStatus }}>
+    <SystemConfigContext.Provider value={{ config, isLoading, error, refreshConfig, markLoggedOut, updateAuthUser, authStatus }}>
       {children}
     </SystemConfigContext.Provider>
   )
@@ -169,6 +181,7 @@ export function StaticSystemConfigProvider({
         error: null,
         refreshConfig: async () => undefined,
         markLoggedOut: () => undefined,
+        updateAuthUser: () => undefined,
         authStatus: resolvedAuthStatus,
       }}
     >

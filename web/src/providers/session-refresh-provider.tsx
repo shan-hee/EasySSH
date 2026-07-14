@@ -1,28 +1,38 @@
-
 import type React from "react"
 import { useEffect, useRef } from "react"
+import { useNavigate } from "react-router-dom"
 import { useSystemConfig } from "@/contexts/system-config-context"
-import { performRefreshToken } from "@/lib/session-refresh"
+import { buildLoginRedirectUrl, getCurrentBrowserPath } from "@/lib/auth-redirect"
+import {
+  isRefreshTokenError,
+  refreshAccessToken,
+} from "@/lib/session-refresh"
+import { useAuthStore } from "@/stores/auth-store"
+import { useTerminalStore } from "@/stores/terminal-store"
 
 interface SessionRefreshProviderProps {
   children: React.ReactNode
 }
 
+const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000]
+const REFRESH_ON_RESUME_THRESHOLD_MS = 60_000
+
 /**
- * 会话自动刷新 Provider
- *
- * 基于后端返回的 access_token_ttl_seconds:
- * - 在用户已认证时,按 TTL 的 80% 安排一次定时刷新
- * - 失败时不做额外处理,交由 apiFetch 的 401 兜底逻辑负责跳转登录
+ * 根据 AuthStore 中的绝对过期时间安排 Access Token 刷新。
+ * 所有刷新调用最终都会进入 session-refresh 的全局 single-flight。
  */
 export function SessionRefreshProvider({ children }: SessionRefreshProviderProps) {
-  const { authStatus } = useSystemConfig()
+  const navigate = useNavigate()
+  const { authStatus, markLoggedOut } = useSystemConfig()
+  const accessToken = useAuthStore((state) => state.accessToken)
+  const expiresAt = useAuthStore((state) => state.expiresAt)
+  const clearToken = useAuthStore((state) => state.clearToken)
+  const resetTerminals = useTerminalStore((state) => state.resetAll)
   const timerRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (typeof window === "undefined") return
-
     let cancelled = false
+    let retryAttempt = 0
 
     const clearTimer = () => {
       if (timerRef.current !== null) {
@@ -31,56 +41,96 @@ export function SessionRefreshProvider({ children }: SessionRefreshProviderProps
       }
     }
 
-    // 先清理旧定时器
     clearTimer()
 
-    if (!authStatus || !authStatus.is_authenticated) {
+    if (
+      !authStatus?.is_authenticated ||
+      !accessToken ||
+      expiresAt === null
+    ) {
       return
     }
 
-    // 优先使用后端动态返回的当前 Access Token 剩余时间
-    let baseTtlSeconds = authStatus.access_token_expires_in
-    if (!baseTtlSeconds || baseTtlSeconds <= 0) {
-      // 兜底: 若后端未提供动态剩余时间,退回到统一配置 TTL
-      baseTtlSeconds = authStatus.access_token_ttl_seconds
+    const expireSession = () => {
+      clearTimer()
+      clearToken()
+      resetTerminals()
+      markLoggedOut()
+      navigate(buildLoginRedirectUrl(getCurrentBrowserPath()), { replace: true })
     }
 
-    if (!baseTtlSeconds || baseTtlSeconds <= 0) {
-      return
-    }
-
-    const SAFE_RATIO = 0.8
-    const MIN_DELAY_MS = 60 * 1000
-
-    const scheduleRefresh = (ttlSeconds: number) => {
+    const scheduleRetry = (refresh: () => Promise<void>) => {
       if (cancelled) return
+      const delay = RETRY_DELAYS_MS[Math.min(retryAttempt, RETRY_DELAYS_MS.length - 1)]
+      retryAttempt += 1
+      clearTimer()
+      timerRef.current = window.setTimeout(() => {
+        void refresh()
+      }, delay)
+    }
 
-      const delayMs = Math.max(ttlSeconds * SAFE_RATIO * 1000, MIN_DELAY_MS)
-
-      timerRef.current = window.setTimeout(async () => {
-        try {
-          // 统一调用刷新工具，内部会更新内存中的 access_token
-          const { expiresIn } = await performRefreshToken()
-
-          const nextTtl = expiresIn > 0 ? expiresIn : ttlSeconds
-          if (nextTtl > 0) {
-            scheduleRefresh(nextTtl)
-          }
-        } catch (error) {
-          // 刷新失败的具体处理交给 apiFetch 全局 401 逻辑
-          console.error("[SessionRefreshProvider] Scheduled refresh failed", error)
+    const runRefresh = async () => {
+      clearTimer()
+      try {
+        await refreshAccessToken()
+        retryAttempt = 0
+        // refreshAccessToken 会更新 expiresAt，由 effect 重建下一次定时器。
+      } catch (error) {
+        if (cancelled) return
+        if (isRefreshTokenError(error) && error.status === 401) {
+          expireSession()
+          return
         }
+        scheduleRetry(runRefresh)
+      }
+    }
+
+    const scheduleFromExpiry = () => {
+      if (cancelled) return
+      clearTimer()
+      const remainingMs = expiresAt - Date.now()
+      const delayMs = remainingMs <= 0
+        ? 0
+        : Math.max(1_000, Math.floor(remainingMs * 0.8))
+      timerRef.current = window.setTimeout(() => {
+        void runRefresh()
       }, delayMs)
     }
 
-    // 使用 /auth/status 返回的 TTL 作为首次倒计时基准
-    scheduleRefresh(baseTtlSeconds)
+    const refreshIfNeeded = () => {
+      if (cancelled) return
+      if (expiresAt - Date.now() <= REFRESH_ON_RESUME_THRESHOLD_MS) {
+        void runRefresh()
+        return
+      }
+      scheduleFromExpiry()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshIfNeeded()
+      }
+    }
+
+    scheduleFromExpiry()
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("online", refreshIfNeeded)
 
     return () => {
       cancelled = true
       clearTimer()
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("online", refreshIfNeeded)
     }
-  }, [authStatus])
+  }, [
+    accessToken,
+    authStatus?.is_authenticated,
+    clearToken,
+    expiresAt,
+    markLoggedOut,
+    navigate,
+    resetTerminals,
+  ])
 
   return <>{children}</>
 }

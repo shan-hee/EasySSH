@@ -1,5 +1,5 @@
 
-import { createContext, useContext, useState, useCallback, type ReactNode, type SetStateAction } from "react"
+import { createContext, useContext, useCallback, type ReactNode } from "react"
 import { useNavigate } from "react-router-dom"
 import { authApi, type User } from "@/lib/api/auth"
 import { useSystemConfig } from "@/contexts/system-config-context"
@@ -24,65 +24,32 @@ const ClientAuthContext = createContext<ClientAuthContextType | undefined>(undef
 
 // Bearer-only 主链路：access_token 仅存内存，refresh_token 仅存 HttpOnly Cookie
 
-interface ClientAuthProviderProps {
-  children: ReactNode
-  initialUser: User | null
-}
-
 /**
  * 客户端认证 Provider
- * 接收服务端验证的初始用户数据,避免客户端加载闪烁
- *
  * 注意: access_token 仅保存在内存中，refresh_token 由后端通过 HttpOnly Cookie 管理
  */
-export function ClientAuthProvider({ children, initialUser }: ClientAuthProviderProps) {
-  const initialUserKey = getUserSyncKey(initialUser)
-  const [authState, setAuthState] = useState(() => ({
-    initialUserKey,
-    user: initialUser,
-  }))
+export function ClientAuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
-  const { markLoggedOut } = useSystemConfig()
+  const { authStatus, markLoggedOut, updateAuthUser } = useSystemConfig()
   const clearToken = useAuthStore((state) => state.clearToken)
   const resetTerminals = useTerminalStore((state) => state.resetAll)
-
-  // 同步 initialUser 的变化（用于乐观渲染场景）。放在 render 阶段做受保护的派生，避免 effect 里同步 setState。
-  const shouldSyncInitialUser = initialUser !== null && authState.initialUserKey !== initialUserKey
-  const user = shouldSyncInitialUser ? initialUser : authState.user
-  if (shouldSyncInitialUser) {
-    setAuthState({
-      initialUserKey,
-      user: initialUser,
-    })
-  }
-
-  const setUser = useCallback((value: SetStateAction<User | null>) => {
-    setAuthState((current) => ({
-      ...current,
-      user: typeof value === "function"
-        ? (value as (currentUser: User | null) => User | null)(current.user)
-        : value,
-    }))
-  }, [])
-
-  const isAuthenticated = !!user
+  const user: User | null = authStatus?.is_authenticated
+    ? authStatus.user ?? null
+    : null
+  const isAuthenticated = user !== null
 
   // 刷新用户信息
-  // Cookie 由后端自动管理,前端只需调用 API
   const refreshUser = useCallback(async () => {
     try {
-      // API 请求会自动携带 HttpOnly Cookie
       const userData = await authApi.getCurrentUser()
-      setUser(userData)
+      updateAuthUser(userData)
     } catch (error) {
-      // 认证失败,清除用户状态
-      console.error("Failed to refresh user:", error)
-      setUser(null)
-
-      // 检查是否为账户锁定错误
       if (isApiError(error) && error.status === 403) {
         const detail = error.detail as { error?: string } | undefined
         if (detail?.error === 'account_locked') {
+          clearToken()
+          resetTerminals()
+          markLoggedOut()
           navigate(
             buildLockedLoginRedirectUrl(getAuthLockInfo(error.detail), getCurrentBrowserPath()),
             { replace: true },
@@ -91,24 +58,27 @@ export function ClientAuthProvider({ children, initialUser }: ClientAuthProvider
         }
       }
 
-      navigate(buildLoginRedirectUrl(getCurrentBrowserPath()), { replace: true })
+      if (isApiError(error) && (error.status === 401 || error.status === 404)) {
+        clearToken()
+        resetTerminals()
+        markLoggedOut()
+        navigate(buildLoginRedirectUrl(getCurrentBrowserPath()), { replace: true })
+        return
+      }
+
+      throw error
     }
-  }, [navigate, setUser])
+  }, [clearToken, markLoggedOut, navigate, resetTerminals, updateAuthUser])
 
   // 登出
   // 后端会自动清除 HttpOnly Cookie，同时前端清空内存中的 access_token
   const logout = useCallback(async () => {
-    try {
-      await authApi.logout()
-    } catch (error) {
-      console.error("Logout API call failed:", error)
-    }
-    setUser(null)
+    await authApi.logout()
     clearToken()
     resetTerminals()
     markLoggedOut()
     navigate("/login", { replace: true })
-  }, [clearToken, markLoggedOut, navigate, resetTerminals, setUser])
+  }, [clearToken, markLoggedOut, navigate, resetTerminals])
 
   return (
     <ClientAuthContext.Provider
@@ -137,8 +107,4 @@ export function useClientAuth() {
 
 export function useOptionalClientAuth() {
   return useContext(ClientAuthContext) ?? null
-}
-
-function getUserSyncKey(user: User | null) {
-  return user ? `${user.id}:${user.updated_at}` : null
 }

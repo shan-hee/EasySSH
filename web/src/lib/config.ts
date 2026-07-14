@@ -34,10 +34,6 @@ export function getApiUrl(): string {
  * 生产模式：使用当前页面的 host
  */
 export function getWsHost(): string {
-  if (typeof window === 'undefined') {
-    throw new Error('getWsHost() can only be called on client side')
-  }
-
   // 优先使用环境变量
   const envWsHost = viteEnv.VITE_WS_HOST
   if (envWsHost && envWsHost.trim() !== '') {
@@ -64,10 +60,6 @@ export function getWsHost(): string {
  * 纯 CSR 模式：直接使用原始路径，无需转换
  */
 export function getWsUrl(path: string): string {
-  if (typeof window === 'undefined') {
-    throw new Error('getWsUrl() can only be called on client side')
-  }
-
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const wsHost = getWsHost()
 

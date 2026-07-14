@@ -9,6 +9,9 @@ const messages = {
     confirm: "Confirm",
     cancel: "Cancel",
     logout: "Sign out",
+    logoutFailed: "Sign out failed. Check your connection and try again.",
+    retry: "Retry",
+    authStatusUnavailable: "The authentication service is unavailable. Check your connection and try again.",
     // Table / data grid
     tableClearFilters: "Clear filters",
     tableRefresh: "Refresh",

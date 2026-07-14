@@ -15,7 +15,7 @@ import {
   type SessionView,
   type ToolView,
 } from "@/lib/api/ai-agent"
-import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
+import { authenticatedFetch, getApiUrl } from "@/lib/api-client"
 
 type TransportState = "idle" | "connecting" | "ai_sdk_ui" | "desktop_local"
 const TARGET_SESSION_ID_BODY_KEY = "__easyssh_target_session_id"
@@ -192,7 +192,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   const chatTransport = useMemo(
     () => new DefaultChatTransport<UIMessage>({
       api: getSessionChatApi(null),
-      headers: () => getAuthHeaders(),
+      fetch: (input, init) => authenticatedFetch(input, init, { minValidityMs: 60_000 }),
       prepareSendMessagesRequest(options) {
         const body = options.body ?? {}
         const targetSessionIdValue = body[TARGET_SESSION_ID_BODY_KEY]

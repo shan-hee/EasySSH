@@ -1,6 +1,10 @@
-import type { ComponentProps, ReactNode } from "react"
+import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowLeft } from "@easyssh/ssh-workspace/desktop"
+import {
+  ArrowLeft,
+  DEFAULT_SYSTEM_CONFIG,
+  StaticSystemConfigProvider,
+} from "@easyssh/ssh-workspace/desktop"
 import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { Button } from "@/components/ui/button"
 import type { Locale } from "@/i18n"
@@ -12,7 +16,7 @@ import {
   DESKTOP_LOCAL_USERNAME,
 } from "../adapters/desktop-local-identity"
 
-function createDesktopUser(locale: Locale): NonNullable<ComponentProps<typeof ClientAuthProvider>["initialUser"]> {
+function createDesktopUser(locale: Locale) {
   // Desktop has no Web account system. This local owner object only satisfies
   // shared Dashboard component context while preserving single-user semantics.
   return {
@@ -28,14 +32,26 @@ function createDesktopUser(locale: Locale): NonNullable<ComponentProps<typeof Cl
 }
 
 export function DesktopWebViewShell({ locale, children }: { locale: Locale; children: ReactNode }) {
+  const user = createDesktopUser(locale)
   return (
-    <ClientAuthProvider key={locale} initialUser={createDesktopUser(locale)}>
-      <DashboardI18nProvider>
-        <section className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-          {children}
-        </section>
-      </DashboardI18nProvider>
-    </ClientAuthProvider>
+    <StaticSystemConfigProvider
+      config={DEFAULT_SYSTEM_CONFIG}
+      authStatus={{
+        need_init: false,
+        is_authenticated: true,
+        user,
+        system_config: DEFAULT_SYSTEM_CONFIG,
+        access_token_ttl_seconds: 0,
+      }}
+    >
+      <ClientAuthProvider key={locale}>
+        <DashboardI18nProvider>
+          <section className="flex h-full w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+            {children}
+          </section>
+        </DashboardI18nProvider>
+      </ClientAuthProvider>
+    </StaticSystemConfigProvider>
   )
 }
 

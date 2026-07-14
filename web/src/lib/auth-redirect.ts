@@ -133,11 +133,7 @@ export function getLoginNextPath(loginPath?: string | null): string | null {
   }
 }
 
-export function getCurrentBrowserPath(fallbackPath?: string | null): string | null {
-  if (typeof window === "undefined") {
-    return fallbackPath ?? null
-  }
-
+export function getCurrentBrowserPath(): string {
   return `${window.location.pathname}${window.location.search}${window.location.hash}`
 }
 

@@ -27,11 +27,16 @@ interface UseAuthStatusRedirectResult {
  */
 export function useAuthStatusRedirect(page: EntryPage): UseAuthStatusRedirectResult {
   const navigate = useNavigate()
-  const { authStatus, isLoading } = useSystemConfig()
+  const { authStatus, error, isLoading } = useSystemConfig()
   const [hasCompletedInitialCheck, setHasCompletedInitialCheck] = useState(false)
 
   useEffect(() => {
     if (isLoading) {
+      return
+    }
+
+    if (error && !authStatus) {
+      setHasCompletedInitialCheck(true)
       return
     }
 
@@ -46,7 +51,7 @@ export function useAuthStatusRedirect(page: EntryPage): UseAuthStatusRedirectRes
     }
 
     setHasCompletedInitialCheck(true)
-  }, [authStatus, isLoading, navigate, page])
+  }, [authStatus, error, isLoading, navigate, page])
 
   return {
     isChecking: page === "login" ? !hasCompletedInitialCheck : true,

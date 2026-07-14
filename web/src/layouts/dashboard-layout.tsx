@@ -1,6 +1,7 @@
 
 import { useEffect, useRef } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 import SidebarProviderServer from "@/components/sidebar-provider-server"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, useSidebar } from "@/components/ui/sidebar"
@@ -8,9 +9,10 @@ import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
 import { getAuthRedirectDecision, getCurrentBrowserPath } from "@/lib/auth-redirect"
-import type { User } from "@/lib/api/auth"
 import { useRuntime } from "@/shell/runtime/runtime-provider"
 import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-policy"
+import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -38,36 +40,61 @@ function MobileSidebarRouteCloser() {
  */
 export default function DashboardLayout() {
   const navigate = useNavigate()
+  const { t } = useTranslation("common")
   const { pathname } = useLocation()
-  const { authStatus, isLoading } = useSystemConfig()
+  const { authStatus, error, isLoading, refreshConfig } = useSystemConfig()
   const { runtime, isLoading: isRuntimeLoading } = useRuntime()
-  const initialUser: User | null =
-    authStatus && authStatus.is_authenticated && authStatus.user
-      ? authStatus.user
-      : null
+  const user = authStatus?.is_authenticated ? authStatus.user : null
 
   useEffect(() => {
-    if (isLoading) return
+    if (isLoading || (error && !authStatus?.is_authenticated)) return
 
-    const currentPath = getCurrentBrowserPath(pathname)
+    const currentPath = getCurrentBrowserPath()
     const decision = getAuthRedirectDecision("dashboard", authStatus, { currentPath })
     if (decision.type === "redirect") {
       navigate(decision.href, { replace: true })
     }
-  }, [authStatus, isLoading, navigate, pathname])
+  }, [authStatus, error, isLoading, navigate, pathname])
 
   useEffect(() => {
-    if (isLoading || isRuntimeLoading || !runtime) return
-    const isAdmin = initialUser?.role === "admin" || runtime.principal.role === "owner"
+    if (isLoading || (error && !authStatus?.is_authenticated) || isRuntimeLoading || !runtime) return
+    const isAdmin = user?.role === "admin" || runtime.principal.role === "owner"
     if (isRouteAllowed(runtime, pathname, isAdmin)) return
 
     navigate(getRouteFallback(pathname, runtime, isAdmin), { replace: true })
-  }, [initialUser?.role, isLoading, isRuntimeLoading, navigate, pathname, runtime])
+  }, [error, isLoading, isRuntimeLoading, navigate, pathname, runtime, user?.role])
 
-  // 乐观渲染：立即显示界面，后台验证
-  // 如果验证失败，会自动跳转到登录页
+  if (isLoading && !authStatus) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner className="size-10 text-muted-foreground" aria-label={t("loading")} />
+      </div>
+    )
+  }
+
+  if (error && !authStatus?.is_authenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div className="max-w-md space-y-4 text-center">
+          <p className="text-muted-foreground">{t("authStatusUnavailable")}</p>
+          <Button onClick={() => void refreshConfig({ refreshAuth: true })}>
+            {t("retry")}
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!authStatus?.is_authenticated || !authStatus.user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner className="size-10 text-muted-foreground" aria-label={t("loading")} />
+      </div>
+    )
+  }
+
   return (
-    <ClientAuthProvider initialUser={initialUser}>
+    <ClientAuthProvider>
       <DashboardI18nProvider>
         <SidebarProviderServer>
           <MobileSidebarRouteCloser />

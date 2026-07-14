@@ -43,7 +43,7 @@ function SetupPageInner() {
     }
 
     const decision = getAuthRedirectDecision("setup", authStatus, {
-      currentPath: getCurrentBrowserPath("/setup"),
+      currentPath: getCurrentBrowserPath(),
     })
     if (decision.type === "redirect") {
       navigate(decision.href, { replace: true })
@@ -92,10 +92,7 @@ function SetupPageInner() {
         run_mode: runMode, // 添加运行模式
       })
 
-      if (response.access_token) {
-        const expiresIn = typeof response.expires_in === "number" ? response.expires_in : 0
-        setToken(response.access_token, expiresIn)
-      }
+      setToken(response.access_token, response.expires_in)
 
       // 刷新全局系统配置与认证状态，确保 need_init=false 且后续跳转不会再回到 /setup
       await refreshConfig({ refreshAuth: true })

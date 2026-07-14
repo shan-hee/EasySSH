@@ -1,6 +1,10 @@
 import { getApiUrl as getApiUrlFromConfig } from "@/lib/config"
-import { getCurrentAccessToken } from "@/stores/auth-store"
-import { performRefreshToken } from "@/lib/session-refresh"
+import { useAuthStore } from "@/stores/auth-store"
+import {
+  ensureFreshAccessToken,
+  isRefreshTokenError,
+  refreshAccessToken,
+} from "@/lib/session-refresh"
 import { clearCSRFToken, ensureCSRFToken, updateCSRFTokenFromHeaders } from "@/lib/csrf"
 import {
   buildLockedLoginRedirectUrl,
@@ -16,23 +20,6 @@ export function getApiUrl(path: string = ""): string {
   return path ? `${baseUrl}${path}` : baseUrl
 }
 
-/**
- * 获取认证头
- */
-export function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-  }
-  const token = getCurrentAccessToken()
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`
-  }
-  return headers
-}
-
-// 全局刷新会话 Promise，避免并发重复刷新
-let refreshPromise: Promise<void> | null = null
-
 // 全局 401 处理标记，避免重复跳转
 let hasRedirectedFor401 = false
 
@@ -44,20 +31,15 @@ export function resetUnauthorizedRedirectFlag() {
   hasRedirectedFor401 = false
 }
 
-function handleGlobalUnauthorized(error: unknown) {
-  if (typeof window === 'undefined') return
-  const currentPath = getCurrentBrowserPath() ?? ""
-  // 已在登录页时收到 401，多数来自后台请求，忽略即可，避免重复刷新
+function handleGlobalUnauthorized() {
+  const currentPath = getCurrentBrowserPath()
   if (isLoginPath(currentPath)) {
-    console.error("[apiFetch] Unauthorized while already on /login, ignoring redirect", error)
     return
   }
 
   if (hasRedirectedFor401) return
   hasRedirectedFor401 = true
-
-  // 打一条调试日志，方便排查
-  console.error("[apiFetch] Unauthorized, redirecting to /login", error)
+  useAuthStore.getState().clearToken()
 
   try {
     window.location.href = buildLoginRedirectUrl(currentPath)
@@ -77,8 +59,7 @@ export function resetAccountLockedRedirectFlag() {
 }
 
 function handleAccountLocked(detail: unknown) {
-  if (typeof window === 'undefined') return
-  const currentPath = getCurrentBrowserPath() ?? ""
+  const currentPath = getCurrentBrowserPath()
   // 已在登录页时收到锁定错误，忽略
   if (isLoginPath(currentPath)) {
     return
@@ -86,32 +67,12 @@ function handleAccountLocked(detail: unknown) {
 
   if (hasRedirectedForLocked) return
   hasRedirectedForLocked = true
-
-  console.error("[apiFetch] Account locked, redirecting to /login", detail)
+  useAuthStore.getState().clearToken()
 
   try {
     window.location.href = buildLockedLoginRedirectUrl(getAuthLockInfo(detail), currentPath)
   } catch {
     window.location.href = "/login?locked=true"
-  }
-}
-
-async function refreshSession(): Promise<void> {
-  if (typeof window === 'undefined') {
-    // 仅在浏览器端执行刷新；服务端不做刷新以免无法设置浏览器 Cookie
-    throw new Error('Refresh not supported on server')
-  }
-  if (refreshPromise) return refreshPromise
-
-  refreshPromise = (async () => {
-    await performRefreshToken()
-  })()
-
-  try {
-    await refreshPromise
-  } finally {
-    // 单次刷新完成后释放锁
-    refreshPromise = null
   }
 }
 
@@ -144,15 +105,44 @@ function shouldOmitAuthHeader(url: string): boolean {
   )
 }
 
-function shouldIncludeCookies(url: string): boolean {
+function getURLPathname(url: string): string {
+  try {
+    return new URL(url, "http://easyssh.local").pathname
+  } catch {
+    return url
+  }
+}
+
+function getCanonicalAPIPath(url: string): string {
+  const pathname = getURLPathname(url)
+  const apiPrefixIndex = pathname.indexOf("/api/v1/")
+  return apiPrefixIndex >= 0
+    ? pathname.slice(apiPrefixIndex + "/api/v1".length)
+    : pathname
+}
+
+function isAuthCredentialEndpoint(url: string): boolean {
+  const pathname = getCanonicalAPIPath(url)
   return (
-    url.includes("/oauth/token") ||
-    url.includes("/oauth/logout") ||
-    url.includes("/oauth/google/verify") ||
-    url.includes("/users/me/oauth/google/link") ||
-    url.includes("/auth/logout") ||
-    url.includes("/auth/register") ||
-    url.includes("/auth/initialize-admin")
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/oauth/") ||
+    pathname.startsWith("/users/me/oauth/")
+  )
+}
+
+function matchesEndpoint(url: string, endpoint: string): boolean {
+  return getCanonicalAPIPath(url) === endpoint
+}
+
+function requiresCSRFToken(url: string, method: HttpMethod): boolean {
+  if (method === "GET") return false
+
+  return (
+    matchesEndpoint(url, "/oauth/token") ||
+    matchesEndpoint(url, "/oauth/logout") ||
+    matchesEndpoint(url, "/auth/logout") ||
+    matchesEndpoint(url, "/oauth/google/verify") ||
+    matchesEndpoint(url, "/users/me/oauth/google/link")
   )
 }
 
@@ -161,7 +151,6 @@ function shouldHandleUnauthorizedGlobally(url: string): boolean {
     url.includes("/oauth/authorize") ||
     url.includes("/oauth/token") ||
     url.includes("/oauth/google/verify") ||
-    url.includes("/users/me/oauth/google/link") ||
     url.includes("/auth/2fa/verify") ||
     url.includes("/auth/status")
   )
@@ -238,38 +227,36 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     } catch (error) {
       const method = fetchOptions.method ?? "GET"
       if (
-        typeof window !== "undefined" &&
         method !== "GET" &&
-        shouldIncludeCookies(path) &&
+        requiresCSRFToken(path, method) &&
         isCSRFTokenInvalid(error)
       ) {
         clearCSRFToken()
         return await apiFetchInternal<T>(path, { ...fetchOptions, timeout })
       }
 
-      // 401 处理：仅在浏览器端尝试用 Cookie 刷新并重放一次
-      if (typeof window !== 'undefined' && isApiError(error) && error.status === 401) {
+      if (isApiError(error) && error.status === 401) {
         const handleUnauthorizedGlobally = shouldHandleUnauthorizedGlobally(path)
         if (!handleUnauthorizedGlobally) {
           throw error
         }
 
         try {
-          await refreshSession()
-          // 刷新成功，重放原请求一次（不进入重试退避）。
-          // 如果重放后仍然是 401，则认为会话已失效，统一跳转登录页。
-          try {
-            return await apiFetchInternal<T>(path, { ...fetchOptions, timeout })
-          } catch (retryError) {
-            if (isApiError(retryError) && retryError.status === 401) {
-              handleGlobalUnauthorized(retryError)
-            }
-            throw retryError
-          }
+          await refreshAccessToken()
         } catch (refreshError) {
-          // 刷新失败，统一跳转登录页
-          handleGlobalUnauthorized(refreshError)
-          throw error
+          if (isRefreshTokenError(refreshError) && refreshError.status === 401) {
+            handleGlobalUnauthorized()
+          }
+          throw refreshError
+        }
+
+        try {
+          return await apiFetchInternal<T>(path, { ...fetchOptions, timeout })
+        } catch (replayError) {
+          if (isApiError(replayError) && replayError.status === 401) {
+            handleGlobalUnauthorized()
+          }
+          throw replayError
         }
       }
       lastError = error
@@ -307,7 +294,7 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
   }
   const method = options.method ?? "GET"
 
-  if (shouldIncludeCookies(url) && method !== "GET") {
+  if (requiresCSRFToken(url, method)) {
     const apiBase = getApiUrl()
     ;(headers as Record<string, string>)["X-CSRF-Token"] = await ensureCSRFToken(apiBase)
   }
@@ -315,7 +302,7 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
   // 如有可用的 access_token，则自动附加 Bearer 认证头
   // 注意：登录建链与刷新端点不附加 Authorization，避免干扰 PKCE / Token 交换
   if (!shouldOmitAuthHeader(url)) {
-    const currentToken = getCurrentAccessToken()
+    const currentToken = useAuthStore.getState().accessToken
     if (currentToken) {
       const headersRecord = headers as Record<string, string>
       const hasAuthHeader =
@@ -337,20 +324,9 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
   // 合并用户提供的 signal 和超时 signal
   const signal = options.signal || controller.signal
 
-  // 选择 credentials 策略：
-  // - 默认 same-origin，业务 API 只走 Bearer，不自动携带 Cookie
-  // - 仅对会建立/刷新/清理 refresh_token Cookie 的认证端点，在跨域时使用 include
-  let credentials: RequestCredentials = 'same-origin'
-  try {
-    if (typeof window !== 'undefined') {
-      const reqUrl = new URL(url, window.location.href)
-      if (reqUrl.origin !== window.location.origin && shouldIncludeCookies(url)) {
-        credentials = 'include'
-      }
-    }
-  } catch {
-    // ignore URL parsing errors
-  }
+  const credentials: RequestCredentials = isAuthCredentialEndpoint(url)
+    ? "include"
+    : "same-origin"
 
   const init: RequestInit = {
     method,
@@ -400,7 +376,6 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
         detail !== null
       ) {
         const errorDetail = detail as { error?: string }
-        console.log("[apiFetch] 403 error detail:", errorDetail)
         if (errorDetail.error === 'account_locked') {
           handleAccountLocked(detail)
         }
@@ -434,4 +409,80 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
     }
     throw error
   }
+}
+
+interface AuthenticatedFetchOptions {
+  minValidityMs?: number
+  retryUnauthorized?: boolean
+}
+
+/**
+ * 为 Blob、SSE 等不能使用 apiFetch JSON 解包的请求提供统一鉴权。
+ */
+export async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  options: AuthenticatedFetchOptions = {},
+): Promise<Response> {
+  const {
+    minValidityMs = 30_000,
+    retryUnauthorized = true,
+  } = options
+
+  try {
+    await ensureFreshAccessToken(minValidityMs)
+  } catch (refreshError) {
+    if (isRefreshTokenError(refreshError) && refreshError.status === 401) {
+      handleGlobalUnauthorized()
+    }
+    throw refreshError
+  }
+
+  const request = () => {
+    const headers = new Headers(init.headers)
+    const token = useAuthStore.getState().accessToken
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`)
+    }
+    if (!headers.has("Accept")) {
+      headers.set("Accept", "application/json")
+    }
+
+    return fetch(input, {
+      ...init,
+      headers,
+      credentials: init.credentials ?? "same-origin",
+    })
+  }
+
+  let response = await request()
+  if (response.status === 401 && retryUnauthorized) {
+    try {
+      await refreshAccessToken()
+    } catch (refreshError) {
+      if (isRefreshTokenError(refreshError) && refreshError.status === 401) {
+        handleGlobalUnauthorized()
+      }
+      throw refreshError
+    }
+
+    response = await request()
+    if (response.status === 401) {
+      handleGlobalUnauthorized()
+    }
+  }
+
+  if (response.status === 403 && shouldHandleAccountLockedGlobally(String(input))) {
+    const detail = await response.clone().json().catch(() => null)
+    if (
+      detail &&
+      typeof detail === "object" &&
+      "error" in detail &&
+      (detail as { error?: string }).error === "account_locked"
+    ) {
+      handleAccountLocked(detail)
+    }
+  }
+
+  return response
 }

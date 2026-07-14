@@ -1,4 +1,4 @@
-import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
+import { authenticatedFetch, getApiUrl } from "@/lib/api-client"
 
 export interface RealtimeEvent<TData = Record<string, unknown>> {
   id: string
@@ -29,10 +29,12 @@ class RealtimeEventStream {
     const controller = new AbortController()
     this.controller = controller
 
-    void fetch(getApiUrl("/events/stream"), {
-      headers: { ...getAuthHeaders(), Accept: "text/event-stream" },
+    void authenticatedFetch(getApiUrl("/events/stream"), {
+      headers: { Accept: "text/event-stream" },
       cache: "no-store",
       signal: controller.signal,
+    }, {
+      minValidityMs: 60_000,
     }).then(async (response) => {
       if (!response.ok) throw new Error(`Realtime stream failed with HTTP ${response.status}`)
       if (!response.body) throw new Error("Realtime stream response body is unavailable")

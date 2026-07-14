@@ -211,11 +211,9 @@ const (
 
 // RegisterRequest 注册请求
 type RegisterRequest struct {
-	Username         string  `json:"username"` // 可选，为空时自动生成
-	Email            string  `json:"email" binding:"required,email"`
-	Password         string  `json:"password" binding:"required,min=6"`
-	VerificationCode string  `json:"verification_code" binding:"required,len=6"` // 邮箱验证码
-	RunMode          RunMode `json:"run_mode,omitempty"`                         // 运行模式（可选，仅用于初始化管理员）
+	Email            string `json:"email" binding:"required,email"`
+	Password         string `json:"password" binding:"required,min=6"`
+	VerificationCode string `json:"verification_code" binding:"required,len=6"` // 邮箱验证码
 }
 
 // InitializeAdminRequest 初始化管理员请求
@@ -249,12 +247,17 @@ type UpdateProfileRequest struct {
 	Timezone         string  `json:"timezone,omitempty"`          // 用户时区偏好，如 Asia/Shanghai
 }
 
-// AuthResponse 认证响应
-type AuthResponse struct {
+// AuthSessionResponse 建立登录会话后的认证响应。
+type AuthSessionResponse struct {
 	User        interface{} `json:"user"`
 	AccessToken string      `json:"access_token"`
 	TokenType   string      `json:"token_type"`
 	ExpiresIn   int         `json:"expires_in"` // 秒
+}
+
+// RegisterResponse 普通注册响应；注册成功后不创建登录会话。
+type RegisterResponse struct {
+	User interface{} `json:"user"`
 }
 
 // OAuthAuthorizeRequest PKCE 授权请求（开发版：采用 JSON 提交邮箱密码）
@@ -528,37 +531,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// 提取设备信息，用于创建会话
-	deviceType, deviceName, ipAddress, userAgent := extractDeviceInfo(c)
-	sessionInfo := &auth.SessionInfo{
-		DeviceType: deviceType,
-		DeviceName: deviceName,
-		IPAddress:  ipAddress,
-		UserAgent:  userAgent,
-	}
-
-	// 创建会话并生成令牌（带 session_id）
-	accessToken, refreshToken, err := h.authService.CreateSessionWithTokens(c.Request.Context(), user, sessionInfo)
-	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
-		return
-	}
-
-	// 设置 HttpOnly refresh_token Cookie（与登录流程保持一致）
-	if strings.TrimSpace(refreshToken) != "" {
-		setAuthCookies(c, refreshToken, h.securityService, h.refreshTokenTTLSeconds)
-	}
-	clearAccessTokenCookie(c, h.securityService)
-
 	// 在上下文中记录用户信息，便于审计日志使用
 	c.Set("user_id", user.ID.String())
 	c.Set("username", user.Username)
 
-	RespondCreated(c, AuthResponse{
-		User:        user.ToPublic(),
-		AccessToken: accessToken,
-		TokenType:   "Bearer",
-		ExpiresIn:   h.accessTokenTTLSeconds,
+	RespondCreated(c, RegisterResponse{
+		User: user.ToPublic(),
 	})
 }
 
@@ -1132,9 +1110,7 @@ func (h *AuthHandler) CheckStatus(c *gin.Context) {
 			}
 		}
 
-		// 刷新逻辑由前端 apiFetch 统一处理:
-		// 收到 401 时自动调用 /api/v1/oauth/token (grant_type=refresh_token) 并重放原请求，
-		// 因此此处不再直接读取 refresh_token Cookie。
+		// 本端点只查询当前 Bearer Token 状态，不读取或轮换 refresh_token Cookie。
 	}
 
 	// 附带公共系统配置（未登录场景下也可使用）
@@ -1240,8 +1216,8 @@ func (h *AuthHandler) InitializeAdmin(c *gin.Context) {
 	clearAccessTokenCookie(c, h.securityService)
 
 	// 返回用户信息和令牌
-	RespondSuccess(c, AuthResponse{
-		User:        user,
+	RespondSuccess(c, AuthSessionResponse{
+		User:        user.ToPublic(),
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
 		ExpiresIn:   h.accessTokenTTLSeconds,

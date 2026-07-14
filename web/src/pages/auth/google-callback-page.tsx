@@ -147,9 +147,7 @@ function GoogleAuthCallbackInner() {
           throw new Error("Missing access_token in Google callback response")
         }
 
-        const expiresIn =
-          typeof response.expires_in === "number" ? response.expires_in : 0
-        setToken(response.access_token, expiresIn)
+        setToken(response.access_token, response.expires_in)
 
         toast.success(t("loginToastSuccessTitle"), {
           description: t("loginToastSuccessDesc"),
@@ -163,7 +161,6 @@ function GoogleAuthCallbackInner() {
           navigate("/dashboard")
         }
       } catch (err) {
-        console.error("Google callback login error:", err)
         const message = getErrorMessage(err, t("loginGoogleRetryDesc"))
         const apiError = isApiError(err) ? err : null
         const detail = apiError && typeof apiError.detail === "object" && apiError.detail !== null

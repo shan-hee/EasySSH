@@ -1,6 +1,4 @@
-import { getApiUrl, getAuthHeaders } from "@/lib/api-client"
-import { apiFetch } from "@/lib/api-client"
-import { performRefreshToken } from "@/lib/session-refresh"
+import { apiFetch, authenticatedFetch, getApiUrl } from "@/lib/api-client"
 
 export type TransferJobKind = "sftp_upload" | "sftp_download" | "sftp_transfer"
 export type TransferJobStatus =
@@ -169,15 +167,7 @@ export const transferJobsApi = {
 
   async downloadArtifact(id: string): Promise<Blob> {
     const url = getApiUrl(`/transfer-jobs/${encodeURIComponent(id)}/artifact`)
-    const request = () => fetch(url, {
-      headers: getAuthHeaders(),
-      credentials: "same-origin",
-    })
-    let response = await request()
-    if (response.status === 401) {
-      await performRefreshToken()
-      response = await request()
-    }
+    const response = await authenticatedFetch(url)
     if (!response.ok) {
       await throwArtifactDownloadError(response)
     }

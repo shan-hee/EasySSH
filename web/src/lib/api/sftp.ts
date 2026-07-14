@@ -1,7 +1,7 @@
 import { apiFetch } from "@/lib/api-client"
 import { getApiUrl } from "../config"
-import { getCurrentAccessToken } from "@/stores/auth-store"
 import { createAuthTicket } from "@/lib/auth-ticket"
+import { ensureFreshAccessToken } from "@/lib/session-refresh"
 import type {
   TerminalAuthMethod,
   TerminalAuthPrompt,
@@ -366,6 +366,7 @@ export const sftpApi = {
     wsTaskId?: string,
     onXhr?: (xhr: XMLHttpRequest) => void
   ): Promise<FileInfo | null> {
+    const accessToken = await ensureFreshAccessToken(60_000)
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       const apiUrl = getApiUrl()
@@ -446,10 +447,7 @@ export const sftpApi = {
       // 发送请求
       xhr.open("POST", url)
       // 附带 Bearer Token（与其他 API 一致）
-      const token = getCurrentAccessToken()
-      if (token) {
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`)
-      }
+      xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`)
       xhr.send(formData)
     })
   },
@@ -465,6 +463,7 @@ export const sftpApi = {
     wsTaskId?: string,
     onXhr?: (xhr: XMLHttpRequest) => void
   ): Promise<FileInfo | null> {
+    const accessToken = await ensureFreshAccessToken(60_000)
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       const apiUrl = getApiUrl()
@@ -533,10 +532,7 @@ export const sftpApi = {
       }
 
       xhr.open("POST", url)
-      const token = getCurrentAccessToken()
-      if (token) {
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`)
-      }
+      xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`)
       xhr.send(formData)
     })
   },

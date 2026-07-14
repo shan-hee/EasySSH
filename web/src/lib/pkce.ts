@@ -19,14 +19,7 @@ export function generateCodeVerifier(length = 64): string {
   const size = Math.min(Math.max(length, minLength), maxLength)
 
   const randomBytes = new Uint8Array(size)
-  if (typeof window !== "undefined" && window.crypto?.getRandomValues) {
-    window.crypto.getRandomValues(randomBytes)
-  } else {
-    // 非浏览器环境仅用于兜底（不推荐），使用简单随机数
-    for (let i = 0; i < size; i++) {
-      randomBytes[i] = Math.floor(Math.random() * 256)
-    }
-  }
+  window.crypto.getRandomValues(randomBytes)
 
   return base64UrlEncode(randomBytes)
 }
@@ -35,14 +28,9 @@ export function generateCodeVerifier(length = 64): string {
  * 根据 code_verifier 计算 S256 的 code_challenge
  */
 export async function deriveCodeChallenge(codeVerifier: string): Promise<string> {
-  if (typeof window === "undefined" || !window.crypto?.subtle) {
-    throw new Error("PKCE code_challenge derivation requires browser crypto.subtle")
-  }
-
   const encoder = new TextEncoder()
   const data = encoder.encode(codeVerifier)
   const digest = await window.crypto.subtle.digest("SHA-256", data)
   const hashArray = new Uint8Array(digest)
   return base64UrlEncode(hashArray)
 }
-

@@ -1,4 +1,4 @@
-import { apiFetch, getApiUrl, getAuthHeaders } from "@/lib/api-client"
+import { apiFetch, authenticatedFetch, getApiUrl } from "@/lib/api-client"
 
 /**
  * CPU 概览
@@ -96,14 +96,14 @@ export const monitoringApi = {
     onError?: (error: Error) => void
   ): () => void {
     const url = getApiUrl("/monitoring/resources/stream")
-    const headers = getAuthHeaders()
-
     // 使用 fetch 而不是 EventSource（因为需要携带 Authorization header）
     const controller = new AbortController()
 
-    fetch(url, {
-      headers,
+    authenticatedFetch(url, {
+      headers: { Accept: "text/event-stream" },
       signal: controller.signal,
+    }, {
+      minValidityMs: 60_000,
     })
       .then(async (response) => {
         if (!response.ok) {

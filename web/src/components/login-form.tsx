@@ -130,10 +130,7 @@ export function LoginForm({
       const challenge = await deriveCodeChallenge(verifier)
       const state = generateCodeVerifier(32)
 
-      const ru =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/auth/callback`
-          : "/auth/callback"
+      const ru = `${window.location.origin}/auth/callback`
 
       // 保存 PKCE 参数供 2FA 步骤复用
       setCodeVerifier(verifier)
@@ -180,8 +177,7 @@ export function LoginForm({
         throw new Error("ACCESS_TOKEN_MISSING")
       }
 
-      const expiresIn = typeof tokenResp.expires_in === "number" ? tokenResp.expires_in : 0
-      setToken(tokenResp.access_token, expiresIn)
+      setToken(tokenResp.access_token, tokenResp.expires_in)
 
       toast.success(tAuth("loginToastSuccessTitle"), {
         description: tAuth("loginToastSuccessDesc"),
@@ -190,8 +186,6 @@ export function LoginForm({
       await refreshConfig({ refreshAuth: true })
       navigate(getRedirectTarget(), { replace: true })
     } catch (error: unknown) {
-      console.error("Login error:", error)
-
       // 检查是否为账户锁定错误
       if (isApiError(error) && error.status === 429) {
         const detail = error.detail as { error?: string; message?: string; unlock_at?: string } | undefined
@@ -259,8 +253,7 @@ export function LoginForm({
         throw new Error("Missing access_token in token response")
       }
 
-      const expiresIn = typeof tokenResp.expires_in === "number" ? tokenResp.expires_in : 0
-      setToken(tokenResp.access_token, expiresIn)
+      setToken(tokenResp.access_token, tokenResp.expires_in)
 
       toast.success(tAuth("login2faToastSuccessTitle"), {
         description: tAuth("login2faToastSuccessDesc"),
@@ -269,7 +262,6 @@ export function LoginForm({
       await refreshConfig({ refreshAuth: true })
       navigate(getRedirectTarget())
     } catch (error: unknown) {
-      console.error("2FA verification error:", error)
       toast.error(tAuth("login2faToastFailedTitle"), {
         description: getErrorMessage(error, tAuth("login2faToastFailedDesc")),
       })
@@ -309,16 +301,12 @@ export function LoginForm({
     }
 
     try {
-      const redirectUri =
-        typeof window !== "undefined"
-          ? `${window.location.origin}/auth/google/callback`
-          : "/auth/google/callback"
+      const redirectUri = `${window.location.origin}/auth/google/callback`
 
       const next = getSafeAuthNextPath(searchParams.get("next"))
 
       const statePayload = {
         next,
-        ts: Date.now(),
       }
 
       const state = btoa(
@@ -343,7 +331,6 @@ export function LoginForm({
 
       window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
     } catch (error) {
-      console.error("Failed to start Google OAuth login:", error)
       toast.error(tAuth("loginGoogleFailedTitle"), {
         description: getErrorMessage(error, tAuth("loginGoogleFailedDesc")),
       })

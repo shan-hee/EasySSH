@@ -6,6 +6,7 @@ import {
   Settings,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { toast } from "sonner"
 
 import { SmartAvatar } from "@/components/ui/smart-avatar"
 import {
@@ -46,10 +47,10 @@ export const NavUser = React.memo(function NavUser({
   const handleLogout = React.useCallback(async () => {
     try {
       await logout()
-    } catch (error) {
-      console.error("Logout failed:", error)
+    } catch {
+      toast.error(tCommon("logoutFailed"))
     }
-  }, [logout])
+  }, [logout, tCommon])
 
   
   return (

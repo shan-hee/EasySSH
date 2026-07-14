@@ -9,6 +9,9 @@ const messages = {
     confirm: "确认",
     cancel: "取消",
     logout: "退出登录",
+    logoutFailed: "退出登录失败，请检查网络后重试",
+    retry: "重试",
+    authStatusUnavailable: "暂时无法连接认证服务，请检查网络后重试",
     // 表格 / 数据网格
     tableClearFilters: "清除筛选",
     tableRefresh: "刷新",

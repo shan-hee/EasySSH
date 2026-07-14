@@ -7,25 +7,40 @@ export interface RefreshTokenResult {
   expiresIn: number
 }
 
-/**
- * 统一的 refresh_token 刷新逻辑
- *
- * - 仅在浏览器端调用（服务端会抛错）
- * - 向 /oauth/token 发起 grant_type=refresh_token 请求
- * - 解析响应并写入全局 AuthStore
- * - 返回 accessToken 和 expiresIn（秒，若后端未提供则为 0）
- */
-export async function performRefreshToken(): Promise<RefreshTokenResult> {
-  if (typeof window === "undefined") {
-    throw new Error("Refresh not supported on server")
+export class RefreshTokenError extends Error {
+  status: number
+  detail: unknown
+
+  constructor(status: number, detail: unknown) {
+    super(`Refresh failed: ${status}`)
+    this.name = "RefreshTokenError"
+    this.status = status
+    this.detail = detail
   }
+}
+
+let refreshPromise: Promise<RefreshTokenResult> | null = null
+
+export function isRefreshTokenError(error: unknown): error is RefreshTokenError {
+  return error instanceof RefreshTokenError
+}
+
+async function readResponseDetail(response: Response): Promise<unknown> {
+  const contentType = response.headers.get("content-type") || ""
+  try {
+    return contentType.includes("application/json")
+      ? await response.json()
+      : await response.text()
+  } catch {
+    return null
+  }
+}
+
+async function requestRefreshToken(): Promise<RefreshTokenResult> {
 
   // 统一走 API 前缀 /api/v1，后端在 /api/v1/oauth/token 暴露刷新端点
   const apiBase = getApiUrl()
   const url = `${apiBase}/oauth/token`
-  // 为兼容开发环境跨端口直连，始终使用 include 携带 Cookie
-  const credentials: RequestCredentials = "include"
-
   const requestRefresh = async () => {
     const csrfToken = await ensureCSRFToken(apiBase)
     const res = await fetch(url, {
@@ -36,7 +51,7 @@ export async function performRefreshToken(): Promise<RefreshTokenResult> {
         "X-CSRF-Token": csrfToken,
       },
       body: JSON.stringify({ grant_type: "refresh_token" }),
-      credentials,
+      credentials: "include",
     })
     updateCSRFTokenFromHeaders(res.headers, { trusted: true })
     return res
@@ -57,7 +72,7 @@ export async function performRefreshToken(): Promise<RefreshTokenResult> {
   }
 
   if (!res.ok) {
-    throw new Error(`Refresh failed: ${res.status}`)
+    throw new RefreshTokenError(res.status, await readResponseDetail(res))
   }
 
   const json = (await res.json()) as
@@ -70,7 +85,10 @@ export async function performRefreshToken(): Promise<RefreshTokenResult> {
       : (json as { access_token?: string; expires_in?: number })
 
   if (!payload.access_token) {
-    throw new Error("Missing access_token in refresh response")
+    throw new RefreshTokenError(500, {
+      error: "invalid_refresh_response",
+      message: "Missing access_token in refresh response",
+    })
   }
 
   const expiresIn =
@@ -82,4 +100,38 @@ export async function performRefreshToken(): Promise<RefreshTokenResult> {
     accessToken: payload.access_token,
     expiresIn,
   }
+}
+
+/**
+ * 唯一的 refresh_token 刷新入口。
+ * 同一页面内的启动恢复、定时刷新和并发 401 共用一个请求。
+ */
+export async function refreshAccessToken(): Promise<RefreshTokenResult> {
+  if (refreshPromise) {
+    return refreshPromise
+  }
+
+  refreshPromise = requestRefreshToken()
+  try {
+    return await refreshPromise
+  } finally {
+    refreshPromise = null
+  }
+}
+
+/**
+ * 确保当前 Access Token 在指定时间窗口内仍然有效。
+ * 无法判断过期时间时沿用现有 token；没有 token 或临近过期时统一刷新。
+ */
+export async function ensureFreshAccessToken(minValidityMs = 30_000): Promise<string> {
+  const { accessToken, expiresAt } = useAuthStore.getState()
+  if (
+    accessToken &&
+    (expiresAt === null || expiresAt - Date.now() > minValidityMs)
+  ) {
+    return accessToken
+  }
+
+  const result = await refreshAccessToken()
+  return result.accessToken
 }

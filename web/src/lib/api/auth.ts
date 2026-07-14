@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api-client"
-import { performRefreshToken } from "@/lib/session-refresh"
+import { isRefreshTokenError, refreshAccessToken } from "@/lib/session-refresh"
 
 /**
  * 用户基础信息
@@ -42,11 +42,9 @@ export interface User {
  * 注册请求
  */
 export interface RegisterRequest {
-  username?: string  // 可选，为空时自动生成
   email: string
   password: string
   verification_code: string
-  run_mode?: "demo" | "development" | "production"
 }
 
 export interface InitializeAdminRequest {
@@ -87,15 +85,13 @@ export interface ResetPasswordRequest {
  */
 export interface RegisterResponse {
   user: User
-  access_token?: string
-  token_type?: string
-  expires_in?: number
 }
 
-// 刷新令牌响应
-// 当前仅使用 expires_in 字段,用于基于后端返回的有效期安排下一次刷新
-export interface RefreshTokenResponse {
-  expires_in?: number
+export interface AuthSessionResponse {
+  user: User
+  access_token: string
+  token_type: string
+  expires_in: number
 }
 
 /**
@@ -106,9 +102,8 @@ export interface AuthStatusResponse {
   is_authenticated: boolean // 是否已登录
   user?: User               // 已登录时返回用户信息
   system_config?: import("@/lib/api/settings").SystemConfig // 系统公共配置（可选）
-  access_token?: string     // 可选：后端通过 refresh_token 自动续期时返回新的 access_token
   access_token_ttl_seconds?: number // Access Token 统一配置的有效期(秒)
-  access_token_expires_in?: number  // 当前 Access Token 剩余有效期(秒),用于前端定时刷新
+  access_token_expires_in?: number  // 当前 Bearer Token 剩余有效期(秒)，仅用于状态描述
   account_locked?: boolean  // 账户是否被锁定
   locked_until?: string     // 锁定解除时间
   lock_reason?: string      // 锁定原因
@@ -162,7 +157,7 @@ export const authApi = {
 
   /**
    * 用户登出
-   * 主流程调用 /oauth/logout，以便携带 Path=/api/v1/oauth 的 refresh_token Cookie
+   * 调用 /oauth/logout，同时撤销服务端会话并清理 refresh_token Cookie
    */
   async logout(): Promise<void> {
     return apiFetch<void>("/oauth/logout", {
@@ -172,7 +167,7 @@ export const authApi = {
 
   /**
    * 获取当前用户信息
-   * Cookie 会自动携带,无需传递 token
+   * 通过 Authorization Bearer 获取当前用户
    */
   async getCurrentUser(): Promise<User> {
     return apiFetch<User>("/users/me")
@@ -180,10 +175,10 @@ export const authApi = {
 
   /**
    * 更新用户资料
-   * Cookie 会自动携带,无需传递 token
+   * 通过 Authorization Bearer 更新用户资料
    */
-  async updateProfile(data: Partial<User> & { verification_code?: string }): Promise<User> {
-    return apiFetch<User>("/users/me", {
+  async updateProfile(data: Partial<User> & { verification_code?: string }): Promise<void> {
+    return apiFetch<void>("/users/me", {
       method: "PUT",
       body: data,
     })
@@ -191,7 +186,7 @@ export const authApi = {
 
   /**
    * 修改密码
-   * Cookie 会自动携带,无需传递 token
+   * 通过 Authorization Bearer 修改密码
    */
   async changePassword(data: { old_password: string; new_password: string }): Promise<void> {
     return apiFetch<void>("/users/me/password", {
@@ -209,8 +204,7 @@ export const authApi = {
       method: "GET",
     })
 
-    // 已认证或运行在服务端环境时，直接返回
-    if (status.is_authenticated || typeof window === "undefined" || !options.refresh) {
+    if (status.is_authenticated || status.account_locked || !options.refresh) {
       return status
     }
 
@@ -219,25 +213,27 @@ export const authApi = {
     // 无法通过 document.cookie 在 /login 或 /dashboard 等路径检测是否存在，
     // 因此这里不再依赖前端读取 Cookie，而是直接尝试调用统一的 refresh 工具。
     try {
-      // 统一调用刷新工具，内部会更新内存中的 access_token
-      await performRefreshToken()
+      await refreshAccessToken()
 
       // 第二步：在拥有新的 access_token 情况下再次查询状态
       status = await apiFetch<AuthStatusResponse>("/auth/status", {
         method: "GET",
       })
       return status
-    } catch {
-      // 刷新过程中出现异常时，不影响原始状态，按未认证处理
-      return status
+    } catch (error) {
+      // Refresh Token 明确无效时按未认证处理；网络或服务异常保留错误语义。
+      if (isRefreshTokenError(error) && error.status === 401) {
+        return status
+      }
+      throw error
     }
   },
 
   /**
    * 初始化管理员账户
    */
-  async initializeAdmin(data: InitializeAdminRequest): Promise<RegisterResponse> {
-    return apiFetch<RegisterResponse>("/auth/initialize-admin", {
+  async initializeAdmin(data: InitializeAdminRequest): Promise<AuthSessionResponse> {
+    return apiFetch<AuthSessionResponse>("/auth/initialize-admin", {
       method: "POST",
       body: data,
     })
@@ -281,8 +277,8 @@ export const authApi = {
     client_id: string
     redirect_uri: string
     code_verifier: string
-  }): Promise<{ access_token: string; token_type: string; expires_in?: number }> {
-    return apiFetch<{ access_token: string; token_type: string; expires_in?: number }>("/oauth/token", {
+  }): Promise<{ access_token: string; token_type: string; expires_in: number }> {
+    return apiFetch<{ access_token: string; token_type: string; expires_in: number }>("/oauth/token", {
       method: "POST",
       body: {
         grant_type: "authorization_code",

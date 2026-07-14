@@ -22,8 +22,8 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
+import { authenticatedFetch } from "@/lib/api-client"
 import { getApiUrl } from "@/lib/config"
-import { getCurrentAccessToken } from "@/stores/auth-store"
 
 export type BackupContent = "config" | "database"
 export type ConflictStrategy = "skip" | "overwrite" | "error"
@@ -132,7 +132,7 @@ export function BackupRestoreTab({
   const [backupPassword, setBackupPassword] = useState("")
   const [restorePassword, setRestorePassword] = useState("")
 
-  const activeAdapter = adapter || createWebBackupRestoreAdapter(authHeaders)
+  const activeAdapter = adapter || createWebBackupRestoreAdapter()
   const supportsConfig = activeAdapter.supportsConfig !== false
   const supportsSensitive = activeAdapter.supportsSensitive !== false
   const visibleContentOptions = supportsConfig
@@ -161,15 +161,6 @@ export function BackupRestoreTab({
       setRestorePassword("")
     }
   }, [supportsSensitive])
-
-  function authHeaders() {
-    const headers: HeadersInit = {}
-    const token = getCurrentAccessToken()
-    if (token) {
-      ;(headers as Record<string, string>)["Authorization"] = `Bearer ${token}`
-    }
-    return headers
-  }
 
   const toggleExportContent = (value: BackupContent, checked: boolean) => {
     setExportContent((current) => ({
@@ -499,14 +490,13 @@ export function BackupRestoreTab({
   )
 }
 
-function createWebBackupRestoreAdapter(authHeaders: () => HeadersInit): BackupRestoreAdapter {
+function createWebBackupRestoreAdapter(): BackupRestoreAdapter {
   return {
     async exportBackup(options) {
       const headers = {
-        ...((authHeaders() as Record<string, string>) || {}),
         "Content-Type": "application/json",
       }
-      const response = await fetch(`${getApiUrl()}/backup/export`, {
+      const response = await authenticatedFetch(`${getApiUrl()}/backup/export`, {
         method: "POST",
         headers,
         body: JSON.stringify(options),
@@ -533,9 +523,8 @@ function createWebBackupRestoreAdapter(authHeaders: () => HeadersInit): BackupRe
         formData.append("backup_password", options.backup_password)
       }
 
-      const response = await fetch(`${getApiUrl()}/backup/restore`, {
+      const response = await authenticatedFetch(`${getApiUrl()}/backup/restore`, {
         method: "POST",
-        headers: authHeaders(),
         body: formData,
       })
 
