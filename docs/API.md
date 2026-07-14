@@ -74,15 +74,19 @@ OpenAPI 规范定义了以下模块：
 ### 通信方式（Authorization Code + PKCE + Bearer）
 
 - 登录采用标准的 Authorization Code + PKCE 流程：
-  - 前端调用 `POST /oauth/authorize`（JSON），提交邮箱/密码 + PKCE 参数（`code_challenge(S256)` 等），后端返回授权码或 2FA 临时令牌。
-  - 如启用 2FA：前端再调用 `POST /api/v1/auth/2fa/verify` 完成双因子认证并签发授权码。
+  - 前端调用 `POST /oauth/authorize`（JSON），提交邮箱/密码 + PKCE 参数（`code_challenge(S256)` 等）及 `remember_login`，后端返回授权码或 2FA 临时令牌。
+  - 如启用 2FA：前端再调用 `POST /api/v1/auth/2fa/verify` 完成双因子认证并签发授权码；该请求继续携带同一 `remember_login` 选择。
   - 前端使用授权码调用 `POST /oauth/token`：
-    - `grant_type=authorization_code`：返回短期 `access_token`，同时通过 HttpOnly Cookie 写入长期 `refresh_token`。
+    - `grant_type=authorization_code`：返回短期 `access_token`，同时通过 HttpOnly Cookie 写入 `refresh_token`；Cookie 是浏览器会话级还是持久级由 `remember_login` 决定。
 - 业务 API 调用统一使用 `Authorization: Bearer <access_token>` 进行认证，不再从 Cookie 读取 access_token。
 - 刷新接口统一使用 `POST /oauth/token`，`grant_type=refresh_token`：
   - 前端只需携带 Cookie（内含 refresh_token），后端返回新的 access_token，并按需轮换 refresh_token Cookie。
+  - Refresh Token 轮换继承服务端 session 中的 `remember_login`，不会把浏览器会话 Cookie 意外改成持久 Cookie。
+- `system_config.tab_session.remember_login=false` 时，登录页不显示“记住登录状态”，Refresh Token 强制使用浏览器会话 Cookie；开启后，只有用户主动勾选才设置持久 Cookie。
+- `system_config.tab_session.session_timeout` 按所有浏览器标签页共享的真实用户活动计时；后台 Access Token 自动刷新不计为用户活动。
+- `GET /auth/status` 只查询当前 Bearer Token 的认证状态，不读取或轮换 refresh_token，也不会返回新的 access_token。
 - 登出接口推荐使用 `POST /oauth/logout`，这样浏览器才能携带 Path 为 `/api/v1/oauth` 的 refresh cookie。
-- 开发模式：设置 `VITE_BACKEND_URL=http://localhost:<后端端口>`，前端请求 `<base>/api/v1`；`apiFetch` 只会对建立/刷新/清理 refresh cookie 的认证端点在跨域时携带 Cookie。
+- 开发模式：设置 `VITE_BACKEND_URL=http://localhost:<后端端口>`，前端请求 `<base>/api/v1`；`/auth/**`、`/oauth/**` 与 `/users/me/oauth/**` 统一使用 `credentials: include`，普通业务 API 继续只使用 Bearer Token。
 - 生产模式：前端静态文件由后端托管，同源访问 `/api/v1` 与 `/oauth/*`。
 
 ### 环境变量配置
@@ -124,6 +128,7 @@ const authorizeResp = await apiFetch('/oauth/authorize', {
     state,
     email,
     password,
+    remember_login: true,
   },
 });
 
