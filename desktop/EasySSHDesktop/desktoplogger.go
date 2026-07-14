@@ -35,10 +35,9 @@ func initDesktopLogger() error {
 	}
 
 	logPath := filepath.Join(logDir, desktopLogFileName)
-	if err := rotateDesktopLogFile(logPath); err != nil {
-		return err
-	}
-
+	// Do not rotate during startup: a short-lived second instance must be able
+	// to open the active log before it notifies the first instance. Size-based
+	// rotation is handled by desktopLogWriter immediately before a write.
 	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
