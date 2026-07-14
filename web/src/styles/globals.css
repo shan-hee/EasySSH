@@ -182,6 +182,39 @@
 }
 
 @layer components {
+  .segmented-spinner line {
+    animation: segmented-spinner-fade 1.0s linear infinite;
+  }
+
+  .segmented-spinner line:nth-of-type(1) { animation-delay: -1.1s; }
+  .segmented-spinner line:nth-of-type(2) { animation-delay: -1s; }
+  .segmented-spinner line:nth-of-type(3) { animation-delay: -0.9s; }
+  .segmented-spinner line:nth-of-type(4) { animation-delay: -0.8s; }
+  .segmented-spinner line:nth-of-type(5) { animation-delay: -0.7s; }
+  .segmented-spinner line:nth-of-type(6) { animation-delay: -0.6s; }
+  .segmented-spinner line:nth-of-type(7) { animation-delay: -0.5s; }
+  .segmented-spinner line:nth-of-type(8) { animation-delay: -0.4s; }
+  .segmented-spinner line:nth-of-type(9) { animation-delay: -0.3s; }
+  .segmented-spinner line:nth-of-type(10) { animation-delay: -0.2s; }
+  .segmented-spinner line:nth-of-type(11) { animation-delay: -0.1s; }
+  .segmented-spinner line:nth-of-type(12) { animation-delay: 0s; }
+
+  @keyframes segmented-spinner-fade {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0.12;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .segmented-spinner line {
+      animation: none;
+      opacity: 0.55;
+    }
+  }
+
   .prism-code {
     white-space: pre-wrap;
     word-break: break-word;

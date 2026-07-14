@@ -1,6 +1,7 @@
 
 import { useAuthStatusRedirect } from "@/hooks/use-auth-status-redirect"
 import { useSystemConfig } from "@/contexts/system-config-context"
+import { Spinner } from "@/components/ui/spinner"
 import { getEffectiveLocale } from "@/utils/datetime"
 import zhCN from "@/i18n/messages/zh-CN"
 import enUS from "@/i18n/messages/en-US"
@@ -22,7 +23,10 @@ export default function Home() {
   return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+        <Spinner
+          aria-label={messages.common.loading}
+          className="mx-auto mb-4 size-10 text-muted-foreground"
+        />
         <p className="text-muted-foreground">{messages.common.loading}</p>
       </div>
     </div>
