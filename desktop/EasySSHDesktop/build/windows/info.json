@@ -1,10 +1,10 @@
 {
 	"fixed": {
-		"file_version": "1.0.25"
+		"file_version": "1.0.26"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "1.0.25",
+			"ProductVersion": "1.0.26",
 			"CompanyName": "EasySSH",
 			"FileDescription": "Cross-platform SSH/SFTP workspace",
 			"LegalCopyright": "(c) 2026, EasySSH",
