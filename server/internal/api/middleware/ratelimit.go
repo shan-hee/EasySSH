@@ -57,7 +57,7 @@ func LoginRateLimitMiddleware(securityService security.Service) gin.HandlerFunc 
 			}
 		}
 
-		key := "login:" + c.ClientIP()
+		key := "login:" + LogClientIP(c)
 		allowed, limitContext, err := checkRateLimit(c, key, limit, time.Minute)
 		if err != nil {
 			_ = c.Error(err)
@@ -83,7 +83,7 @@ func TwoFARateLimitMiddleware(securityService security.Service) gin.HandlerFunc 
 			}
 		}
 
-		key := "2fa:" + c.ClientIP()
+		key := "2fa:" + LogClientIP(c)
 		allowed, limitContext, err := checkRateLimit(c, key, limit, time.Minute)
 		if err != nil {
 			_ = c.Error(err)
@@ -109,7 +109,7 @@ func APIRateLimitMiddleware(securityService security.Service) gin.HandlerFunc {
 			}
 		}
 
-		key := "api:" + c.ClientIP()
+		key := "api:" + LogClientIP(c)
 		allowed, limitContext, err := checkRateLimit(c, key, limit, time.Minute)
 		if err != nil {
 			_ = c.Error(err)

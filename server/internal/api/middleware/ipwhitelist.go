@@ -12,8 +12,8 @@ import (
 // 只有在配置了 IP 白名单时才进行验证
 func OptionalIPWhitelistMiddleware(securityService security.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 由 Gin 根据 TrustedProxies 配置解析客户端 IP，避免无条件信任 X-Forwarded-*。
-		clientIP := c.ClientIP()
+		// 暂时与日志、审计和会话记录使用相同的客户端 IP 解析逻辑。
+		clientIP := LogClientIP(c)
 
 		// 将客户端 IP 存入上下文
 		c.Set("client_ip", clientIP)

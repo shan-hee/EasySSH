@@ -184,8 +184,8 @@ func extractDeviceInfo(c *gin.Context) (deviceType, deviceName, ipAddress, userA
 		deviceName = "Unknown Browser"
 	}
 
-	// 获取 IP 地址（考虑代理）
-	ipAddress = c.ClientIP()
+	// 会话中的 IP 用于账户安全页面和登录通知展示，与请求日志保持一致。
+	ipAddress = middleware.LogClientIP(c)
 	if ipAddress == "" {
 		ipAddress = "Unknown"
 	}
@@ -606,8 +606,8 @@ func (h *AuthHandler) OAuthAuthorize(c *gin.Context) {
 		return
 	}
 
-	// 获取客户端 IP 和 User-Agent
-	clientIP := c.ClientIP()
+	// 与日志、审计和会话记录使用相同的客户端 IP 解析逻辑。
+	clientIP := middleware.LogClientIP(c)
 	userAgent := c.GetHeader("User-Agent")
 
 	// 认证用户（使用邮箱，支持账户锁定检查）

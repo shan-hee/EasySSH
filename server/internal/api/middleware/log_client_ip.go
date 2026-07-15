@@ -9,10 +9,10 @@ import (
 
 const maxForwardedIPEntries = 32
 
-// LogClientIP 返回用于请求日志和审计记录展示的客户端 IP。
+// LogClientIP 返回用于日志、审计、会话和安全功能的客户端 IP。
 //
-// 该函数会优先采用反向代理传入的合法 IP，因此代理头仍可能被伪造。
-// 访问控制、IP 白名单和限流必须继续使用 Gin 的 c.ClientIP()。
+// 该函数会优先采用反向代理传入的合法 IP，因此只能在入口代理
+// 会覆盖客户端传入的 X-Real-IP 并且后端不能被绕过时用于安全决策。
 func LogClientIP(c *gin.Context) string {
 	if c == nil || c.Request == nil {
 		return ""
