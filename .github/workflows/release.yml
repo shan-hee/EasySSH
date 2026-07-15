@@ -1,9 +1,8 @@
 name: Release
 
 # 发版唯一入口：推送 v* 标签
-# 流程：版本校验 → 镜像 (linux/amd64) + 桌面端 (Windows amd64) → 创建 GitHub Release
-# 注：测试在本地完成后再发版，流水线不跑 CI；
-#     需要其他架构时在 Actions 页面手动运行 docker-build / desktop-build 并选择平台
+# 流程：版本校验 → 自动化测试 → 镜像 (linux/amd64) + 桌面端 (Windows amd64) → 创建 GitHub Release
+# 需要其他架构时在 Actions 页面手动运行 docker-build / desktop-build 并选择平台
 on:
   push:
     tags:
@@ -39,10 +38,56 @@ jobs:
 
           echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
 
-  # 2. 构建并推送 Docker 镜像（内部含 Trivy 安全关卡，扫描不通过不会推送）
+  # 2. 发版前自动化测试
+  test:
+    name: 🧪 自动化测试
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+
+      - name: 🔧 设置 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+
+      - name: 🔧 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: 🔧 安装 Web 依赖
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: 🧪 运行 Web 测试
+        working-directory: web
+        run: pnpm test
+
+      - name: 🔧 设置 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            shared/go.sum
+
+      - name: 🧪 运行 Shared 测试
+        working-directory: shared
+        run: go test ./...
+
+      - name: 🧪 运行 Server 测试
+        working-directory: server
+        run: go test ./...
+
+  # 3. 构建并推送 Docker 镜像（内部含逐架构 Trivy 安全关卡）
   docker:
     name: 🐳 镜像
-    needs: validate
+    needs: [validate, test]
     uses: ./.github/workflows/docker-build.yml
     with:
       version: ${{ needs.validate.outputs.version }}
@@ -54,17 +99,17 @@ jobs:
       security-events: write
       actions: read
 
-  # 3. 构建 Windows 桌面端 (默认 amd64)
+  # 4. 构建 Windows 桌面端 (默认 amd64)
   desktop:
     name: 💻 桌面端
-    needs: validate
+    needs: [validate, test]
     uses: ./.github/workflows/desktop-build.yml
     with:
       arch: 'amd64'
     permissions:
       contents: read
 
-  # 4. 全部成功后创建 GitHub Release
+  # 5. 全部成功后创建 GitHub Release
   release:
     name: 🎉 创建 Release
     needs: [validate, docker, desktop]
@@ -165,6 +210,7 @@ jobs:
         run: |
           VERSION="${{ needs.validate.outputs.version }}"
           TAG="v${VERSION}"
+          DOCKER_DIGEST="${{ needs.docker.outputs.digest }}"
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${TAG}"
           MANIFEST_URL_BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
           WINDOWS_DESKTOP_ZIP="EasySSH-windows-amd64-desktop.zip"
@@ -188,6 +234,8 @@ jobs:
             "notes": ${RELEASE_NOTES_JSON},
             "web": {
               "docker_image": "shanhee/easyssh:${TAG}",
+              "docker_digest": "${DOCKER_DIGEST}",
+              "docker_reference": "shanhee/easyssh@${DOCKER_DIGEST}",
               "docker_compose": "docker compose pull && docker compose up -d",
               "docker_compose_file": "${MANIFEST_URL_BASE}/docker-compose.yml"
             },

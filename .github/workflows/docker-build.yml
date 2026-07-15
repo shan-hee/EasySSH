@@ -20,6 +20,10 @@ on:
         required: false
         type: boolean
         default: true
+    outputs:
+      digest:
+        description: '已扫描并发布的多架构镜像摘要'
+        value: ${{ jobs.build.outputs.digest }}
 
   workflow_dispatch:
     inputs:
@@ -49,6 +53,9 @@ jobs:
   build:
     name: 🐳 Docker Image
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     permissions:
       contents: read
       security-events: write
@@ -75,6 +82,7 @@ jobs:
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "staging_image=${DOCKER_IMAGE}:build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Extract Docker metadata
         id: meta
@@ -86,6 +94,7 @@ jobs:
             type=raw,value=latest,enable=${{ inputs['update-latest'] }}
 
       - name: Setup QEMU
+        if: contains(inputs.platforms, 'arm64')
         uses: docker/setup-qemu-action@v3
 
       - name: Setup Docker Buildx
@@ -101,45 +110,7 @@ jobs:
           username: shanhee
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: 🏗️ 构建镜像 (本地, 用于安全扫描)
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: ${{ env.DOCKER_IMAGE }}:scan
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: 🔍 Trivy 扫描 (生成报告)
-        continue-on-error: true
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.DOCKER_IMAGE }}:scan
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Upload Trivy results to GitHub Security
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: 🚧 Trivy 安全关卡 (存在可修复的 CRITICAL 漏洞则终止发布)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.DOCKER_IMAGE }}:scan
-          format: 'table'
-          severity: 'CRITICAL'
-          ignore-unfixed: true
-          exit-code: '1'
-
-      - name: 🏗️ 构建并推送多架构镜像
+      - name: 🏗️ 构建并推送待扫描镜像
         id: build
         uses: docker/build-push-action@v5
         with:
@@ -147,13 +118,101 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ inputs.platforms }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: ${{ steps.version.outputs.staging_image }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
+          provenance: mode=max
+
+      - name: 🔍 Trivy 扫描 amd64 (生成报告)
+        if: contains(inputs.platforms, 'linux/amd64')
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@master
+        env:
+          TRIVY_PLATFORM: linux/amd64
+        with:
+          image-ref: ${{ steps.version.outputs.staging_image }}@${{ steps.build.outputs.digest }}
+          format: 'sarif'
+          output: 'trivy-results-amd64.sarif'
+          severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: true
+
+      - name: Upload amd64 Trivy results to GitHub Security
+        if: contains(inputs.platforms, 'linux/amd64')
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: 'trivy-results-amd64.sarif'
+          category: 'trivy-linux-amd64'
+
+      - name: 🚧 Trivy amd64 安全关卡
+        if: contains(inputs.platforms, 'linux/amd64')
+        uses: aquasecurity/trivy-action@master
+        env:
+          TRIVY_PLATFORM: linux/amd64
+        with:
+          image-ref: ${{ steps.version.outputs.staging_image }}@${{ steps.build.outputs.digest }}
+          format: 'table'
+          severity: 'CRITICAL'
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: 🔍 Trivy 扫描 arm64 (生成报告)
+        if: contains(inputs.platforms, 'linux/arm64')
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@master
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          image-ref: ${{ steps.version.outputs.staging_image }}@${{ steps.build.outputs.digest }}
+          format: 'sarif'
+          output: 'trivy-results-arm64.sarif'
+          severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: true
+
+      - name: Upload arm64 Trivy results to GitHub Security
+        if: contains(inputs.platforms, 'linux/arm64')
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: 'trivy-results-arm64.sarif'
+          category: 'trivy-linux-arm64'
+
+      - name: 🚧 Trivy arm64 安全关卡
+        if: contains(inputs.platforms, 'linux/arm64')
+        uses: aquasecurity/trivy-action@master
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          image-ref: ${{ steps.version.outputs.staging_image }}@${{ steps.build.outputs.digest }}
+          format: 'table'
+          severity: 'CRITICAL'
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: 🚀 提升已扫描镜像为正式标签
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          STAGING_IMAGE: ${{ steps.version.outputs.staging_image }}
+        run: |
+          set -euo pipefail
+
+          TAG_ARGS=()
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then
+              TAG_ARGS+=(--tag "$tag")
+            fi
+          done <<< "$IMAGE_TAGS"
+
+          if [ ${#TAG_ARGS[@]} -eq 0 ]; then
+            echo "::error::未生成任何正式镜像标签"
+            exit 1
+          fi
+
+          docker buildx imagetools create \
+            "${TAG_ARGS[@]}" \
+            "${STAGING_IMAGE}@${IMAGE_DIGEST}"
 
       - name: 📊 生成构建摘要
         run: |

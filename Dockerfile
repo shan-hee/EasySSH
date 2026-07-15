@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # ============================================
 # EasySSH 统一 Dockerfile
 # 多阶段构建：Vite 前端静态构建 + Go 后端
@@ -8,15 +10,19 @@ FROM node:24-alpine AS frontend-builder
 
 WORKDIR /app/web
 
+ENV PNPM_HOME=/pnpm \
+    PATH=/pnpm:$PATH
+
 # 使用固定 pnpm 版本，保证构建一致性
 RUN corepack enable && corepack prepare pnpm@11.1.3 --activate
 
-# 先安装依赖（利用 Docker 层缓存）
-COPY VERSION /app/VERSION
+# 先安装依赖（利用 Docker 层与 BuildKit store 缓存）
 COPY web/package.json web/pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store
 
 # 复制源码并执行 Vite 静态构建
+COPY VERSION /app/VERSION
 COPY web/ ./
 RUN pnpm run build
 
@@ -31,7 +37,8 @@ RUN apk add --no-cache git ca-certificates tzdata
 # 先下载依赖，提升增量构建速度
 COPY shared/go.mod shared/go.sum /app/shared/
 COPY server/go.mod server/go.sum ./
-RUN go mod download && go mod verify
+RUN --mount=type=cache,id=easyssh-go-mod,target=/go/pkg/mod \
+    go mod download && go mod verify
 
 # 复制后端源码，并把前端静态产物注入到 static 目录
 COPY shared/ /app/shared/
@@ -40,10 +47,12 @@ COPY --from=frontend-builder /app/web/dist ./static
 
 # 构建后端可执行文件（默认 amd64，可通过 TARGETARCH 覆盖）
 ARG TARGETARCH
-RUN CGO_ENABLED=0 \
+RUN --mount=type=cache,id=easyssh-go-mod,target=/go/pkg/mod \
+    --mount=type=cache,id=easyssh-go-build,target=/root/.cache/go-build \
+    CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=${TARGETARCH:-amd64} \
-    go build -ldflags="-s -w" -o easyssh-api ./cmd/api
+    go build -trimpath -buildvcs=false -ldflags="-s -w" -o easyssh-api ./cmd/api
 
 # Stage 3: 运行时镜像
 FROM alpine:3.22

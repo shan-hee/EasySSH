@@ -15,6 +15,11 @@ README.md
 LICENSE
 CHANGELOG.md
 
+# Docker 镜像只需要 VERSION、web、server 和 shared
+desktop/
+docker/
+scripts/
+
 # IDE 和编辑器
 .vscode
 .idea
@@ -35,6 +40,10 @@ web/.env*.local
 # 后端相关
 server/tmp
 server/vendor
+server/api
+server/bin
+server/data
+server/backups
 server/*.exe
 server/*.dll
 server/*.so
