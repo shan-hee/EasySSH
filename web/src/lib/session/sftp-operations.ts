@@ -27,6 +27,55 @@ export interface SftpOperationNotifier {
   error?: (message: string) => unknown
 }
 
+export function formatSftpOperationError(
+  error: unknown,
+  t: TranslateFunction,
+  fallbackKey: string,
+  detailKey?: string,
+): string {
+  const message = getErrorMessage(error, "").trim()
+  const normalizedMessage = message.toLowerCase()
+
+  if (
+    normalizedMessage.includes("binding call failed") ||
+    normalizedMessage.includes("unknown bound method")
+  ) {
+    return t("toastServiceUnavailable")
+  }
+
+  if (!message || !detailKey) {
+    return t(fallbackKey)
+  }
+
+  return t(detailKey, { message })
+}
+
+export function formatSftpDeleteOperationError(
+  error: unknown,
+  t: TranslateFunction,
+  batch = false,
+): string {
+  const message = getErrorMessage(error, "").trim()
+  const normalizedMessage = message.toLowerCase()
+
+  if (
+    normalizedMessage.includes("binding call failed") ||
+    normalizedMessage.includes("unknown bound method")
+  ) {
+    return t("toastServiceUnavailable")
+  }
+
+  if (batch) {
+    return message
+      ? t("toastBatchDeleteFailedWithMessage", { message })
+      : t("toastBatchDeleteFailed")
+  }
+
+  return t("toastDeleteFailed", {
+    message: message || t("toastUnknownError"),
+  })
+}
+
 export const upsertFileItem = <T extends { name: string }>(items: T[], item: T): T[] => {
   const index = items.findIndex((file) => file.name === item.name)
   if (index === -1) {
@@ -76,7 +125,7 @@ export async function performDelete<T extends { name: string }>({
     success: (result) => result?.mode === "recursive_task"
       ? t("toastDeleteTaskCreated", { file: fileName })
       : t("toastDeleteSuccessSingle", { file: fileName }),
-    error: (error) => getErrorMessage(error, t("toastDeleteFailed", { message: "" })),
+    error: (error) => formatSftpDeleteOperationError(error, t),
   })
 
   await deletePromise
@@ -113,7 +162,12 @@ export async function performCreateFolder<T extends { name: string }>({
   notifier.promise(createPromise, {
     loading: t("toastCreateFolderLoading", { name }),
     success: t("toastCreateFolderSuccess", { name }),
-    error: (error) => getErrorMessage(error, t("toastCreateFolderFailed")),
+    error: (error) => formatSftpOperationError(
+      error,
+      t,
+      "toastCreateFolderFailed",
+      "toastCreateFolderFailedWithMessage",
+    ),
   })
 
   return createPromise
@@ -150,7 +204,12 @@ export async function performCreateFile<T extends { name: string }>({
   notifier.promise(createPromise, {
     loading: t("toastSaveFileLoading", { file: name }),
     success: t("toastSaveFileSuccess", { file: name }),
-    error: (error) => getErrorMessage(error, t("toastSaveFileFailed")),
+    error: (error) => formatSftpOperationError(
+      error,
+      t,
+      "toastSaveFileFailed",
+      "toastSaveFileFailedWithMessage",
+    ),
   })
 
   return createPromise
@@ -193,7 +252,12 @@ export async function performRename<T extends { name: string }>({
   notifier.promise(renamePromise, {
     loading: t("toastRenameLoading", { oldName }),
     success: t("toastRenameSuccess", { oldName, newName }),
-    error: (error) => getErrorMessage(error, t("toastRenameFailed")),
+    error: (error) => formatSftpOperationError(
+      error,
+      t,
+      "toastRenameFailed",
+      "toastRenameFailedWithMessage",
+    ),
   })
 
   return renamePromise
@@ -232,7 +296,12 @@ export async function performSaveFile<T extends { name: string }>({
   notifier.promise(savePromise, {
     loading: t("toastSaveFileLoading", { file: fileName }),
     success: t("toastSaveFileSuccess", { file: fileName }),
-    error: (error) => getErrorMessage(error, t("toastSaveFileFailed")),
+    error: (error) => formatSftpOperationError(
+      error,
+      t,
+      "toastSaveFileFailed",
+      "toastSaveFileFailedWithMessage",
+    ),
   })
 
   return savePromise
@@ -314,7 +383,7 @@ export async function performBatchDelete<T extends { name: string }>({
     success: (result) => result.mode === "recursive_task"
       ? t("toastBatchDeleteTaskCreated", { count: fileNames.length })
       : t("toastBatchDeleteSuccess", { count: result.success.length }),
-    error: (error) => getErrorMessage(error, t("toastBatchDeleteFailed")),
+    error: (error) => formatSftpDeleteOperationError(error, t, true),
   })
 
   return batchDeletePromise

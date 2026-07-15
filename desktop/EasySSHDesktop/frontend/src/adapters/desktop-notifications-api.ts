@@ -1,4 +1,4 @@
-import { Call } from "@wailsio/runtime"
+import { DesktopNotificationService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 
 export interface DesktopNotification {
   id: string
@@ -16,19 +16,17 @@ export interface DesktopNotificationList {
   unread_count: number
 }
 
-const serviceName = "github.com/easyssh/easyssh-desktop.DesktopNotificationService"
-
 export const desktopNotificationsApi = {
   list(limit = 40) {
-    return Call.ByName(`${serviceName}.List`, limit) as Promise<DesktopNotificationList>
+    return DesktopNotificationService.List(limit) as Promise<DesktopNotificationList>
   },
   markRead(id: string) {
-    return Call.ByName(`${serviceName}.MarkRead`, id) as Promise<void>
+    return DesktopNotificationService.MarkRead(id) as Promise<void>
   },
   markAllRead() {
-    return Call.ByName(`${serviceName}.MarkAllRead`) as Promise<void>
+    return DesktopNotificationService.MarkAllRead() as Promise<void>
   },
   remove(id: string) {
-    return Call.ByName(`${serviceName}.Delete`, id) as Promise<void>
+    return DesktopNotificationService.Delete(id) as Promise<void>
   },
 }

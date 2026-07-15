@@ -109,10 +109,10 @@ export function DesktopUpdatePanel({ autoCheck = true, checkRequest = 0, onReque
   const restartToUpdate = useCallback(async () => {
     try {
       await desktopUpdateApi.restartToUpdate()
-    } catch (error) {
-      toast.error(getErrorMessage(error))
+    } catch {
+      toast.error(t("updateRestartFailedTitle"))
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     void loadStatus()

@@ -87,8 +87,8 @@ export function DesktopInlineUpdateAction({
     if (status === "ready") {
       setBusy(true)
       void desktopUpdateApi.restartToUpdate()
-        .catch((error) => {
-          toast.error(getErrorMessage(error))
+        .catch(() => {
+          toast.error(t("updateRestartFailedTitle"))
         })
         .finally(() => {
           if (mountedRef.current) {

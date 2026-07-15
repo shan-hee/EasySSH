@@ -14,8 +14,11 @@ import {
   type SetStateAction,
 } from "react"
 import type { FileAction } from "@/components/sftp/file-action-menu"
-import { getErrorMessage } from "@/lib/error-utils"
-import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
+import {
+  formatSftpDeleteOperationError,
+  formatSftpOperationError,
+  type BatchDeleteResult,
+} from "@/lib/session/sftp-operations"
 import type { SshWorkspaceNotifier } from "@/lib/session/workspace"
 import { joinSftpRemotePath, sftpRemoteBaseName, type SftpFileItem } from "@/lib/sftp-file-utils"
 
@@ -362,7 +365,12 @@ export function useSftpFileActionController({
         setSelectedFiles([])
       } catch (error: unknown) {
         console.error("[SftpManager] 批量下载失败:", error)
-        notifier.error(getErrorMessage(error, tSftp("toastBatchDownloadFailed")))
+        notifier.error(formatSftpOperationError(
+          error,
+          tSftp,
+          "toastBatchDownloadFailed",
+          "toastBatchDownloadFailedWithMessage",
+        ))
       }
     } else {
       paths.forEach((path) => onDownload(path))
@@ -395,7 +403,7 @@ export function useSftpFileActionController({
         setSelectedFiles([])
       } catch (error: unknown) {
         console.error("[SftpManager] 批量删除失败:", error)
-        notifier.error(getErrorMessage(error, tSftp("toastBatchDeleteFailed")))
+        notifier.error(formatSftpDeleteOperationError(error, tSftp, true))
       }
     } else {
       selectedFiles.forEach((fileName) => onDelete(fileName, filteredFiles.find((item) => item.name === fileName)?.type === "directory"))
@@ -530,10 +538,12 @@ export function useSftpFileActionController({
     notifier.promise(chmodPromise, {
       loading: tSftp("toastChmodLoading", { file: fileName }),
       success: tSftp("toastChmodSuccess", { file: fileName }),
-      error: (error) => {
-        const message = error instanceof Error ? error.message : String(error)
-        return tSftp("toastChmodFailed", { message })
-      },
+      error: (error) => formatSftpOperationError(
+        error,
+        tSftp,
+        "toastChmodFailedGeneric",
+        "toastChmodFailed",
+      ),
     })
 
     return chmodPromise
