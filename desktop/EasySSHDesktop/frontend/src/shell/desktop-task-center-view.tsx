@@ -1,8 +1,8 @@
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
+import { TaskCenterView } from "@/components/task-center/task-center-view"
 import type { Locale } from "@/i18n"
-import TaskCenterPage from "@/pages/dashboard/task-center-page"
 import { createDesktopTaskCenterApi, subscribeDesktopTaskEvents } from "../adapters/desktop-task-center-api"
 import { DesktopReturnHeader, DesktopWebViewShell } from "./desktop-view-shell"
 
@@ -24,11 +24,10 @@ export function DesktopTaskCenterView({
     <DesktopWebViewShell locale={locale}>
       <div className="flex min-h-0 flex-1 flex-col">
         <DesktopReturnHeader title={t("title")} onReturnToTerminal={onReturnToTerminal} />
-        <TaskCenterPage
+        <TaskCenterView
           api={api}
           subscribeEvents={subscribeDesktopTaskEvents}
           hidePageHeader
-          showSchedules={false}
           requestedRunID={requestedRunID}
           onClearRequestedRun={onClearRequestedRun}
         />

@@ -1,7 +1,13 @@
 import { Events } from "@wailsio/runtime"
 
-import type { TaskCenterApi, TaskRun, TaskRunListParams, TaskRunStatus } from "@/lib/api/task-center"
-import type { RealtimeEvent, RealtimeEventListener } from "@/lib/api/realtime-events"
+import type {
+  RealtimeEvent,
+  RealtimeEventListener,
+  TaskCenterApi,
+  TaskRun,
+  TaskRunListParams,
+  TaskRunStatus,
+} from "@/components/task-center/task-center-contracts"
 import {
   DesktopTaskListInput,
   DesktopTaskService,

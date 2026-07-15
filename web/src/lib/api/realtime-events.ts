@@ -1,13 +1,7 @@
 import { authenticatedFetch, getApiUrl } from "@/lib/api-client"
+import type { RealtimeEvent, RealtimeEventListener } from "@/components/task-center/task-center-contracts"
 
-export interface RealtimeEvent<TData = Record<string, unknown>> {
-  id: string
-  type: string
-  data: TData
-  created_at: string
-}
-
-export type RealtimeEventListener = (event: RealtimeEvent) => void
+export type { RealtimeEvent, RealtimeEventListener } from "@/components/task-center/task-center-contracts"
 
 class RealtimeEventStream {
   private readonly listeners = new Set<RealtimeEventListener>()
