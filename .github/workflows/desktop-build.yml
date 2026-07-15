@@ -47,7 +47,7 @@ jobs:
           go-version-file: desktop/EasySSHDesktop/go.mod
           cache-dependency-path: desktop/EasySSHDesktop/go.sum
 
-      # 桌面端前端用 npm，共享 web workspace 用 pnpm，两者都需要
+      # 桌面端前端与共享 web workspace 统一使用 pnpm
       - name: 🔧 设置 pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -58,7 +58,9 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: |
+            web/pnpm-lock.yaml
+            desktop/EasySSHDesktop/frontend/pnpm-lock.yaml
 
       - name: 🔧 安装 wails3 CLI (与 go.mod 版本一致)
         run: |
@@ -89,6 +91,8 @@ jobs:
           name: ${{ steps.artifact.outputs.artifact_name }}
           path: desktop/EasySSHDesktop/bin/${{ steps.artifact.outputs.zip_name }}
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
 
       - name: 📊 生成构建摘要
         run: |

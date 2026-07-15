@@ -42,7 +42,7 @@ tasks:
     summary: Builds the application natively on Linux
     internal: true
     deps:
-      - task: common:go:mod:tidy
+      - task: common:go:mod:download
       - task: common:build:frontend
         vars:
           BUILD_FLAGS:

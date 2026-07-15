@@ -3,14 +3,29 @@ version: '3'
 tasks:
   go:mod:tidy:
     summary: Runs `go mod tidy`
-    internal: true
     cmds:
       - go mod tidy
 
+  go:mod:download:
+    summary: Downloads and verifies Go modules without rewriting go.mod or go.sum
+    internal: true
+    cmds:
+      - go mod download
+      - go mod verify
+
   install:frontend:deps:
     summary: Install frontend dependencies
+    dir: frontend
+    sources:
+      - package.json
+      - pnpm-lock.yaml
+    generates:
+      - node_modules
+    preconditions:
+      - sh: pnpm --version
+        msg: "pnpm not found. The desktop frontend requires pnpm."
     cmds:
-      - task: install:frontend:deps:{{.PACKAGE_MANAGER}}
+      - pnpm install --frozen-lockfile
 
   install:web:deps:
     summary: Install shared web workspace dependencies
@@ -25,68 +40,24 @@ tasks:
       - sh: pnpm --version
         msg: "pnpm not found. The shared web workspace requires pnpm."
     cmds:
-      - pnpm install
-
-  install:frontend:deps:npm:
-    dir: frontend
-    sources:
-      - package.json
-      - package-lock.json
-    generates:
-      - node_modules
-    preconditions:
-      - sh: npm version
-        msg: "Looks like npm isn't installed. Npm is part of the Node installer: https://nodejs.org/en/download/"
-    cmds:
-      - npm install
-
-  install:frontend:deps:bun:
-    dir: frontend
-    sources:
-      - package.json
-      - bun.lock
-      - bun.lockb
-    generates:
-      - node_modules
-    preconditions:
-      - sh: bun --version
-        msg: "bun not found"
-    cmds:
-      - bun install
-
-  install:frontend:deps:pnpm:
-    dir: frontend
-    sources:
-      - package.json
-      - pnpm-lock.yaml
-    generates:
-      - node_modules
-    preconditions:
-      - sh: pnpm --version
-        msg: "pnpm not found"
-    cmds:
-      - pnpm install
-
-  install:frontend:deps:yarn:
-    dir: frontend
-    sources:
-      - package.json
-      - yarn.lock
-    status:
-      - test -d node_modules || test -f .pnp.cjs
-    preconditions:
-      - sh: yarn --version
-        msg: "yarn not found"
-    cmds:
-      - yarn install
+      - pnpm install --frozen-lockfile
 
   build:frontend:
-    label: build:frontend (DEV={{.DEV}} RUNNER={{.PACKAGE_MANAGER}})
+    label: build:frontend (DEV={{.DEV}})
     summary: Build the frontend project
     dir: frontend
     sources:
-      - "**/*"
-      - exclude: node_modules/**/*
+      - "src/**/*"
+      - "public/**/*"
+      - "bindings/**/*"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vite.config.ts"
+      - "tsconfig.json"
+      - "../../../web/src/**/*"
+      - "../../../web/packages/ssh-workspace/src/**/*"
+      - "../../../web/package.json"
+      - "../../../web/pnpm-lock.yaml"
     generates:
       - dist/**/*
     deps:
@@ -106,46 +77,15 @@ tasks:
       PRODUCTION: '{{if eq .DEV "true"}}false{{else}}true{{end}}'
 
   frontend:run:
-    summary: Run a frontend script with selected runner
-    cmds:
-      - task: frontend:run:{{.PACKAGE_MANAGER}}
-        vars:
-          SCRIPT: "{{.SCRIPT}}"
-    vars:
-      SCRIPT: "{{.SCRIPT}}"
-
-  frontend:run:npm:
-    dir: frontend
-    cmds:
-      - npm run {{.SCRIPT}} -q
-    vars:
-      SCRIPT: "{{.SCRIPT}}"
-
-  frontend:run:yarn:
-    dir: frontend
-    cmds:
-      - yarn {{.SCRIPT}}
-    vars:
-      SCRIPT: "{{.SCRIPT}}"
-
-  frontend:run:pnpm:
+    summary: Run a desktop frontend script with pnpm
     dir: frontend
     cmds:
       - pnpm run {{.SCRIPT}}
     vars:
       SCRIPT: "{{.SCRIPT}}"
 
-  frontend:run:bun:
-    dir: frontend
-    cmds:
-      - bun run {{.SCRIPT}}
-    vars:
-      SCRIPT: "{{.SCRIPT}}"
-
   frontend:vendor:puppertino:
     summary: Fetches Puppertino CSS into frontend/public for consistent mobile styling
-    sources:
-      - frontend/public/puppertino/puppertino.css
     generates:
       - frontend/public/puppertino/puppertino.css
     cmds:
@@ -183,12 +123,9 @@ tasks:
     label: generate:bindings (BUILD_FLAGS={{.BUILD_FLAGS}})
     summary: Generates bindings for the frontend
     deps:
-      - task: go:mod:tidy
+      - task: go:mod:download
     sources:
-      - "**/*.[jt]s"
-      - exclude: frontend/**/*
-      - frontend/bindings/**/*  # Rerun when switching between dev/production mode causes changes in output
-      - "**/*.go"
+      - "*.go"
       - go.mod
       - go.sum
     generates:
@@ -213,28 +150,9 @@ tasks:
     deps:
       - task: install:frontend:deps
       - task: install:web:deps
-    cmds:
-      - task: frontend:dev:{{.PACKAGE_MANAGER}}
-
-  frontend:dev:npm:
-    dir: frontend
-    cmds:
-      - npm run dev -- --port {{.VITE_PORT}} --strictPort
-
-  frontend:dev:yarn:
-    dir: frontend
-    cmds:
-      - yarn dev --port {{.VITE_PORT}} --strictPort
-
-  frontend:dev:pnpm:
     dir: frontend
     cmds:
       - pnpm dev --port {{.VITE_PORT}} --strictPort
-
-  frontend:dev:bun:
-    dir: frontend
-    cmds:
-      - bun run dev --port {{.VITE_PORT}} --strictPort
 
   update:build-assets:
     summary: Updates the build assets
