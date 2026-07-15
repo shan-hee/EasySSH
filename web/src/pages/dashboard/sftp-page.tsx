@@ -13,7 +13,6 @@ import { ServerConnectionConfigs } from "@/components/servers/server-connection-
 import { SftpSessionCard } from "@/components/sftp/sftp-session-card"
 import { SftpWorkspaceShell } from "@/components/sftp/sftp-workspace-shell"
 import { DragPreviewToolbar, SortableSession, type CrossSessionDragData } from "@/components/sftp/sftp-session-sortable"
-import { cn } from "@/lib/utils"
 import {
  DndContext,
  closestCenter,
@@ -710,7 +709,7 @@ export default function SftpPage() {
  } catch (err) {
      toast.error(formatSftpAuthError(err, getErrorMessage(err, tSftp("toastTransferFailed")), tTerminal))
    }
-	 }, [tSftp, directTransfer, loadDirectoryWithCredentialRetry, setSessions])
+	 }, [tSftp, tTerminal, directTransfer, loadDirectoryWithCredentialRetry, setSessions])
 
 	 // 快速创建并连接到服务器
 	 const handleQuickConnect = async (server: ApiServer) => {

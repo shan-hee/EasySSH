@@ -677,6 +677,7 @@ export function TerminalComponent({
     setTabState,
     sftpPathBySessionId,
     tSftp,
+    tTerminal,
     workspaceSessions,
   ])
 

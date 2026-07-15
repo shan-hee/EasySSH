@@ -178,30 +178,27 @@ export function useSftpSession(
   }), [fileTransferApi, fileTransferOptions]);
 
   const internalFileTransfer = useFileTransfer(effectiveFileTransferOptions);
-  const uploadFileWithCredentialRetry = transferManager?.uploadFile
-    ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["uploadFile"]>>) => (
-        runSftpOperation(() => Promise.resolve(transferManager.uploadFile!(...args)))
-      )
-    : internalFileTransfer.uploadFile;
-  const downloadFileWithCredentialRetry = transferManager?.downloadFile
-    ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["downloadFile"]>>) => (
-        runSftpOperation(() => Promise.resolve(transferManager.downloadFile!(...args)))
-      )
-    : internalFileTransfer.downloadFile;
-  const batchDownloadWithCredentialRetry = transferManager?.batchDownload
-    ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["batchDownload"]>>) => (
-        runSftpOperation(() => transferManager.batchDownload!(...args))
-      )
-    : internalFileTransfer.batchDownload;
-  const fileTransfer = {
+  const fileTransfer = useMemo(() => ({
     tasks: transferManager?.tasks ?? internalFileTransfer.tasks,
-    uploadFile: uploadFileWithCredentialRetry,
-    downloadFile: downloadFileWithCredentialRetry,
-    batchDownload: batchDownloadWithCredentialRetry,
+    uploadFile: transferManager?.uploadFile
+      ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["uploadFile"]>>) => (
+          runSftpOperation(() => Promise.resolve(transferManager.uploadFile!(...args)))
+        )
+      : internalFileTransfer.uploadFile,
+    downloadFile: transferManager?.downloadFile
+      ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["downloadFile"]>>) => (
+          runSftpOperation(() => Promise.resolve(transferManager.downloadFile!(...args)))
+        )
+      : internalFileTransfer.downloadFile,
+    batchDownload: transferManager?.batchDownload
+      ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["batchDownload"]>>) => (
+          runSftpOperation(() => transferManager.batchDownload!(...args))
+        )
+      : internalFileTransfer.batchDownload,
     cancelTask: transferManager?.cancelTask ?? internalFileTransfer.cancelTask,
     removeTask: transferManager?.removeTask ?? internalFileTransfer.removeTask,
     clearCompleted: transferManager?.clearCompleted ?? internalFileTransfer.clearCompleted,
-  };
+  }), [internalFileTransfer, runSftpOperation, transferManager]);
 
   const operationApi = useMemo<SftpSessionApi>(() => ({
     ...sessionApi,
