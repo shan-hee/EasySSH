@@ -3,6 +3,7 @@ package runtime
 import (
 	"time"
 
+	"github.com/easyssh/server/internal/domain/aichat/provider"
 	"github.com/easyssh/shared/aichatui"
 )
 
@@ -39,6 +40,11 @@ const (
 	EventSessionStarted        EventType = "session.started"
 	EventAssistantDelta        EventType = "assistant.delta"
 	EventAssistantCompleted    EventType = "assistant.completed"
+	EventProviderToolStarted   EventType = "provider.tool.started"
+	EventProviderToolDelta     EventType = "provider.tool.arguments.delta"
+	EventProviderToolCompleted EventType = "provider.tool.completed"
+	EventProviderUsageUpdated  EventType = "provider.usage.updated"
+	EventProviderCompleted     EventType = "provider.response.completed"
 	EventTaskCreated           EventType = "task.created"
 	EventTaskUpdated           EventType = "task.updated"
 	EventConfirmationRequested EventType = "confirmation.requested"
@@ -65,9 +71,12 @@ type MessageView = aichatui.MessageView
 type TaskView = aichatui.TaskView
 
 type AssistantEventData struct {
-	MessageID string `json:"message_id"`
-	Delta     string `json:"delta,omitempty"`
-	Content   string `json:"content,omitempty"`
+	MessageID string                     `json:"message_id"`
+	Delta     string                     `json:"delta,omitempty"`
+	Content   string                     `json:"content,omitempty"`
+	Reasoning string                     `json:"reasoning,omitempty"`
+	Usage     *provider.Usage            `json:"usage,omitempty"`
+	Metadata  *provider.ProviderMetadata `json:"provider_metadata,omitempty"`
 }
 
 type ConfirmationView struct {
@@ -78,11 +87,16 @@ type ConfirmationView struct {
 }
 
 type ErrorView struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code       string `json:"code"`
+	Message    string `json:"message"`
+	Provider   string `json:"provider,omitempty"`
+	StatusCode int    `json:"status_code,omitempty"`
+	RequestID  string `json:"request_id,omitempty"`
+	Retryable  bool   `json:"retryable"`
 }
 
 type UIMessage = aichatui.UIMessage
+type Attachment = provider.Attachment
 
 type SessionListItem struct {
 	ID             string        `json:"id"`
@@ -133,6 +147,7 @@ type Event struct {
 	UIMessage    *UIMessage          `json:"ui_message,omitempty"`
 	Confirmation *ConfirmationView   `json:"confirmation,omitempty"`
 	Error        *ErrorView          `json:"error,omitempty"`
+	Provider     *provider.Event     `json:"provider_event,omitempty"`
 }
 
 type CreateSessionInput struct {
@@ -143,6 +158,7 @@ type CreateSessionInput struct {
 
 type SendUserMessageInput struct {
 	Content        string
+	Attachments    []provider.Attachment
 	Context        string
 	Model          string
 	PermissionMode string

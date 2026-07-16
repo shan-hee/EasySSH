@@ -2,8 +2,9 @@ package rest
 
 import (
 	"context"
-	"errors"
+	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 	"github.com/easyssh/shared/aiprovider"
 	"github.com/gin-gonic/gin"
 )
+
+const aiModelProbeTimeout = 20 * time.Second
 
 // AIConfigHandler AI配置处理器
 type AIConfigHandler struct {
@@ -45,7 +48,7 @@ type AIModelsProbeResponseDTO struct {
 }
 
 func probeAIModels(ctx context.Context, provider, apiKey, endpoint string) (AIModelsProbeResponseDTO, error) {
-	requestContext, cancel := context.WithTimeout(ctx, 20*time.Second)
+	requestContext, cancel := context.WithTimeout(ctx, aiModelProbeTimeout)
 	defer cancel()
 
 	models, err := aiprovider.NewFactory().ListModels(requestContext, aiprovider.Config{
@@ -53,13 +56,6 @@ func probeAIModels(ctx context.Context, provider, apiKey, endpoint string) (AIMo
 		APIKey:   apiKey,
 		Endpoint: endpoint,
 	})
-	if errors.Is(err, aiprovider.ErrModelListingUnsupported) {
-		return AIModelsProbeResponseDTO{
-			Available: false,
-			Models:    []string{},
-			Message:   "Anthropic model auto-fetch is not supported yet, please input models manually",
-		}, nil
-	}
 	if err != nil {
 		return AIModelsProbeResponseDTO{}, err
 	}
@@ -69,6 +65,26 @@ func probeAIModels(ctx context.Context, provider, apiKey, endpoint string) (AIMo
 		Models:    models,
 		Message:   "Model list fetched successfully",
 	}, nil
+}
+
+func respondAIModelProbeError(c *gin.Context, source, provider, endpoint string, err error) {
+	log.Printf("[%s] model probe failed: provider=%s endpoint=%s error=%v", source, provider, endpointForLog(endpoint), err)
+	c.JSON(http.StatusBadRequest, gin.H{
+		"available": false,
+		"models":    []string{},
+		"error":     err.Error(),
+	})
+}
+
+func endpointForLog(endpoint string) string {
+	parsed, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return "<invalid endpoint>"
+	}
+	parsed.User = nil
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 // GetSystemAIConfig 获取系统级AI配置
@@ -167,11 +183,7 @@ func (h *AIConfigHandler) ProbeSystemAIModels(c *gin.Context) {
 
 	response, err := probeAIModels(c.Request.Context(), provider, apiKey, endpoint)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"available": false,
-			"models":    []string{},
-			"error":     err.Error(),
-		})
+		respondAIModelProbeError(c, "AIConfig", provider, endpoint, err)
 		return
 	}
 

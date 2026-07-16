@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxAIChatRequestBytes int64 = 32 * 1024 * 1024
+
 type AISessionHandler struct {
 	manager *runtime.Manager
 }
@@ -52,6 +54,7 @@ type AISDKChatRequest struct {
 	PermissionMode string                    `json:"permission_mode,omitempty" binding:"omitempty,oneof=readonly balanced privileged"`
 	Scope          runtime.SessionScope      `json:"scope,omitempty"`
 	Approval       *AISDKChatApprovalRequest `json:"approval,omitempty"`
+	Attachments    []runtime.Attachment      `json:"attachments,omitempty"`
 }
 
 type RenameAISessionRequest struct {
@@ -182,6 +185,7 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 		return
 	}
 
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAIChatRequestBytes)
 	var req AISDKChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondError(c, http.StatusBadRequest, "validation_error", err.Error())
@@ -221,6 +225,7 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			sessionID,
 			runtime.SendUserMessageInput{
 				Content:        action.content,
+				Attachments:    action.attachments,
 				Context:        req.Context,
 				Model:          req.Model,
 				PermissionMode: req.PermissionMode,
@@ -435,10 +440,11 @@ func (h *AISessionHandler) CloseSession(c *gin.Context) {
 }
 
 type aiSDKChatAction struct {
-	kind      string
-	content   string
-	messageID string
-	approvals []aiSDKChatApproval
+	kind        string
+	content     string
+	attachments []runtime.Attachment
+	messageID   string
+	approvals   []aiSDKChatApproval
 }
 
 type aiSDKChatApproval struct {
@@ -468,10 +474,10 @@ func resolveAISDKChatAction(req AISDKChatRequest) (aiSDKChatAction, error) {
 	}
 
 	content := latestUserMessageText(req.Messages)
-	if content == "" {
+	if content == "" && len(req.Attachments) == 0 {
 		return aiSDKChatAction{}, errors.New("message content is required")
 	}
-	return aiSDKChatAction{kind: "message", content: content}, nil
+	return aiSDKChatAction{kind: "message", content: content, attachments: req.Attachments}, nil
 }
 
 func latestUserMessageText(messages []runtime.UIMessage) string {

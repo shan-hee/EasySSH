@@ -62,8 +62,11 @@ func NormalizeAnthropicBaseURL(endpoint string) string {
 	}
 
 	lower := strings.ToLower(baseURL)
-	if strings.HasSuffix(lower, "/messages") {
-		baseURL = baseURL[:len(baseURL)-len("/messages")]
+	for _, suffix := range []string{"/v1/messages", "/messages", "/v1"} {
+		if strings.HasSuffix(lower, suffix) {
+			baseURL = baseURL[:len(baseURL)-len(suffix)]
+			break
+		}
 	}
 
 	return baseURL

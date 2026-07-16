@@ -497,8 +497,11 @@ func (m *Manager) SendUserMessage(ctx context.Context, userID uuid.UUID, session
 
 func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UUID, sessionID string, input SendUserMessageInput) error {
 	content := strings.TrimSpace(input.Content)
-	if content == "" {
+	if content == "" && len(input.Attachments) == 0 {
 		return ErrEmptyMessageContent
+	}
+	if err := provider.ValidateAttachments(input.Attachments); err != nil {
+		return err
 	}
 	model := strings.TrimSpace(input.Model)
 	contextText := strings.TrimSpace(input.Context)
@@ -538,14 +541,16 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 		s.scope = scope
 	}
 	s.messages = append(s.messages, provider.Message{
-		Role:    "user",
-		Content: content,
+		Role:        "user",
+		Content:     content,
+		Attachments: append([]provider.Attachment(nil), input.Attachments...),
 	})
 	s.messageViews = append(s.messageViews, MessageView{
-		ID:        uuid.NewString(),
-		Role:      "user",
-		Content:   content,
-		CreatedAt: now,
+		ID:          uuid.NewString(),
+		Role:        "user",
+		Content:     content,
+		Attachments: attachmentViews(input.Attachments),
+		CreatedAt:   now,
 	})
 	s.pendingContext = contextText
 	s.status = SessionStatusRunning
@@ -854,6 +859,9 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		m.failSessionTurn(s, "config_error", err.Error(), runID)
 		return
 	}
+	config.Limits = provider.NormalizeLimits(config.Limits)
+	turnCtx, turnCancel := context.WithTimeout(ctx, config.Limits.TurnTimeout)
+	defer turnCancel()
 
 	model := strings.TrimSpace(s.model)
 	if model == "" {
@@ -864,7 +872,11 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		return
 	}
 
-	for round := 0; ; round++ {
+	var turnUsage provider.Usage
+	var estimatedCostMicros int64
+	totalToolCalls := 0
+	toolCallCounts := make(map[string]int)
+	for round := 0; round < config.Limits.MaxToolRounds; round++ {
 		tools := m.visibleToolsForSession(s)
 		systemPrompt := buildToolSystemPrompt(s.permissionMode, tools, s.scope)
 
@@ -887,36 +899,87 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		m.mu.RUnlock()
 
 		assistantMessageID := uuid.NewString()
-		result, err := m.factory.StreamTurn(ctx, config, provider.TurnRequest{
-			Model:    model,
-			Messages: reqMessages,
-			Tools:    tools,
+		result, err := m.factory.StreamTurn(turnCtx, config, provider.TurnRequest{
+			Model:           model,
+			Messages:        reqMessages,
+			Tools:           tools,
+			MaxOutputTokens: config.Limits.MaxOutputTokens,
 		}, func(evt provider.Event) error {
-			if evt.Type != provider.EventTextDelta || evt.Delta == "" {
+			switch evt.Type {
+			case provider.EventTextDelta:
+				if evt.Delta == "" {
+					return nil
+				}
+				m.appendAssistantDelta(s, assistantMessageID, evt.Delta)
+			case provider.EventReasoningDelta:
+				if evt.Delta == "" {
+					return nil
+				}
+				m.appendAssistantReasoningDelta(s, assistantMessageID, evt.Delta)
+			case provider.EventToolCallStarted, provider.EventToolCallArgumentsDelta, provider.EventToolCallCompleted,
+				provider.EventUsageUpdated, provider.EventResponseCompleted:
+				eventType := EventProviderCompleted
+				switch evt.Type {
+				case provider.EventToolCallStarted:
+					eventType = EventProviderToolStarted
+				case provider.EventToolCallArgumentsDelta:
+					eventType = EventProviderToolDelta
+				case provider.EventToolCallCompleted:
+					eventType = EventProviderToolCompleted
+				case provider.EventUsageUpdated:
+					eventType = EventProviderUsageUpdated
+				}
+				evtCopy := evt
+				m.emitEvent(s, Event{
+					ID: uuid.NewString(), Type: eventType, SessionID: s.id, CreatedAt: time.Now(), Provider: &evtCopy,
+				})
+				return nil
+			default:
 				return nil
 			}
-
-			m.appendAssistantDelta(s, assistantMessageID, evt.Delta)
 			m.emitEvent(s, Event{
-				ID:        uuid.NewString(),
-				Type:      EventAssistantDelta,
-				SessionID: s.id,
-				CreatedAt: time.Now(),
-				Assistant: &AssistantEventData{
-					MessageID: assistantMessageID,
-					Delta:     evt.Delta,
-				},
+				ID: uuid.NewString(), Type: EventAssistantDelta, SessionID: s.id, CreatedAt: time.Now(),
+				Assistant: &AssistantEventData{MessageID: assistantMessageID, Delta: evt.Delta},
 				UIMessage: m.uiMessageForAssistantDelta(s, assistantMessageID),
 			})
 			return nil
 		})
 		if err != nil {
-			if ctx.Err() != nil {
+			if errors.Is(turnCtx.Err(), context.Canceled) {
 				m.completeTurn(s, false, runID)
 				return
 			}
-			m.failSessionTurn(s, "provider_error", err.Error(), runID)
+			if errors.Is(turnCtx.Err(), context.DeadlineExceeded) {
+				m.failSessionTurn(s, "turn_timeout", "AI 对话总执行时间超出限制", runID)
+				return
+			}
+			m.failSessionTurnWithError(s, err, runID)
 			return
+		}
+
+		turnUsage.Add(result.Usage)
+		estimatedCostMicros += result.Metadata.EstimatedCostMicros
+		if turnUsage.TotalTokens > config.Limits.MaxTurnTokens {
+			m.failSessionTurn(s, "token_budget_exceeded", "AI 对话累计 Token 超出限制", runID)
+			return
+		}
+		if estimatedCostMicros > config.Limits.MaxEstimatedCostMicros {
+			m.failSessionTurn(s, "cost_budget_exceeded", "AI 对话预估费用超出限制", runID)
+			return
+		}
+
+		totalToolCalls += len(result.ToolCalls)
+		if totalToolCalls > config.Limits.MaxToolCalls {
+			m.failSessionTurn(s, "tool_call_limit_exceeded", "AI 工具调用次数超出限制", runID)
+			return
+		}
+		for _, call := range result.ToolCalls {
+			fingerprint := provider.ToolCallFingerprint(call)
+			toolCallCounts[fingerprint]++
+			if toolCallCounts[fingerprint] > config.Limits.MaxRepeatedToolCalls {
+				m.failSessionTurn(s, "repeated_tool_call", "AI 重复调用相同工具和参数，已停止执行", runID)
+				return
+			}
 		}
 
 		m.finalizeAssistantTurn(s, assistantMessageID, result)
@@ -927,7 +990,15 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 
 		autoTasks, pendingConfirm := m.materializeTasks(s, assistantMessageID, result.ToolCalls)
 		for _, taskID := range autoTasks {
-			m.executeTask(ctx, s, taskID)
+			m.executeTask(turnCtx, s, taskID)
+			if errors.Is(turnCtx.Err(), context.DeadlineExceeded) {
+				m.failSessionTurn(s, "turn_timeout", "AI 对话总执行时间超出限制", runID)
+				return
+			}
+			if errors.Is(turnCtx.Err(), context.Canceled) {
+				m.completeTurn(s, false, runID)
+				return
+			}
 		}
 
 		if pendingConfirm {
@@ -955,10 +1026,13 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 			return
 		}
 	}
+	m.failSessionTurn(s, "tool_round_limit_exceeded", "AI 工具调用轮次超出限制", runID)
 }
 
 func (m *Manager) resolvePendingTasks(ctx context.Context, cancel context.CancelFunc, runID string, sessionID string, inputs []ConfirmTaskInput) {
 	defer cancel()
+	turnCtx, turnCancel := context.WithTimeout(ctx, provider.DefaultLimits().TurnTimeout)
+	defer turnCancel()
 
 	s, ok := m.getSessionByID(sessionID)
 	if !ok {
@@ -966,14 +1040,18 @@ func (m *Manager) resolvePendingTasks(ctx context.Context, cancel context.Cancel
 	}
 
 	for _, input := range inputs {
-		if ctx.Err() != nil {
+		if turnCtx.Err() != nil {
 			return
 		}
 		if input.Decision == DecisionConfirm {
-			m.executeTask(ctx, s, input.TaskID)
+			m.executeTask(turnCtx, s, input.TaskID)
 		} else {
 			m.rejectTask(s, input.TaskID)
 		}
+	}
+	if errors.Is(turnCtx.Err(), context.DeadlineExceeded) {
+		m.failSessionTurn(s, "turn_timeout", "AI 对话总执行时间超出限制", runID)
+		return
 	}
 
 	m.mu.Lock()
@@ -981,7 +1059,7 @@ func (m *Manager) resolvePendingTasks(ctx context.Context, cancel context.Cancel
 		m.mu.Unlock()
 		return
 	}
-	if ctx.Err() != nil {
+	if turnCtx.Err() != nil {
 		m.mu.Unlock()
 		return
 	}
@@ -1008,7 +1086,7 @@ func (m *Manager) resolvePendingTasks(ctx context.Context, cancel context.Cancel
 	m.mu.Unlock()
 
 	m.saveSnapshot(context.Background(), snapshot)
-	m.runSessionWithContext(sessionID, ctx, cancel, runID)
+	m.runSessionWithContext(sessionID, turnCtx, cancel, runID)
 }
 
 func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
@@ -1250,8 +1328,8 @@ func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCa
 
 func (m *Manager) finalizeAssistantTurn(s *session, messageID string, result provider.TurnResult) {
 	m.mu.Lock()
-	if result.Content != "" {
-		s.upsertAssistantMessage(messageID, result.Content)
+	if result.Content != "" || result.Reasoning != "" {
+		s.upsertAssistantMessage(messageID, result.Content, result.Reasoning, result.Usage, result.Metadata)
 	}
 	s.messages = append(s.messages, provider.Message{
 		Role:      "assistant",
@@ -1272,6 +1350,9 @@ func (m *Manager) finalizeAssistantTurn(s *session, messageID string, result pro
 		Assistant: &AssistantEventData{
 			MessageID: messageID,
 			Content:   content,
+			Reasoning: result.Reasoning,
+			Usage:     &result.Usage,
+			Metadata:  &result.Metadata,
 		},
 		UIMessage: m.uiMessageForAssistantMessage(s, messageID),
 	})
@@ -1280,6 +1361,13 @@ func (m *Manager) finalizeAssistantTurn(s *session, messageID string, result pro
 func (m *Manager) appendAssistantDelta(s *session, messageID, delta string) {
 	m.mu.Lock()
 	s.appendAssistantDelta(messageID, delta)
+	s.updatedAt = time.Now()
+	m.mu.Unlock()
+}
+
+func (m *Manager) appendAssistantReasoningDelta(s *session, messageID, delta string) {
+	m.mu.Lock()
+	s.appendAssistantReasoningDelta(messageID, delta)
 	s.updatedAt = time.Now()
 	m.mu.Unlock()
 }
@@ -1331,6 +1419,30 @@ func (m *Manager) failSessionTurn(s *session, code, message string, runID string
 		Error: &ErrorView{
 			Code:    code,
 			Message: message,
+		},
+	})
+	m.completeTurn(s, false, runID)
+}
+
+func (m *Manager) failSessionTurnWithError(s *session, err error, runID string) {
+	var providerErr *provider.ProviderError
+	if !errors.As(err, &providerErr) {
+		m.failSessionTurn(s, "provider_error", err.Error(), runID)
+		return
+	}
+
+	m.mu.Lock()
+	if s.closed || s.currentRunID != runID {
+		m.mu.Unlock()
+		return
+	}
+	s.pendingContext = ""
+	m.mu.Unlock()
+	m.emitEvent(s, Event{
+		ID: uuid.NewString(), Type: EventError, SessionID: s.id, CreatedAt: time.Now(),
+		Error: &ErrorView{
+			Code: providerErr.Code, Message: providerErr.Message, Provider: providerErr.Provider,
+			StatusCode: providerErr.StatusCode, RequestID: providerErr.RequestID, Retryable: providerErr.Retryable,
 		},
 	})
 	m.completeTurn(s, false, runID)
@@ -1659,24 +1771,63 @@ func (s *session) appendAssistantDelta(messageID, delta string) {
 	})
 }
 
-func (s *session) upsertAssistantMessage(messageID, content string) {
+func (s *session) appendAssistantReasoningDelta(messageID, delta string) {
 	for i := range s.messageViews {
 		if s.messageViews[i].ID == messageID {
-			s.messageViews[i].Content = content
+			s.messageViews[i].Reasoning += delta
 			return
 		}
 	}
 
-	if content == "" {
+	s.messageViews = append(s.messageViews, MessageView{
+		ID: messageID, Role: "assistant", Reasoning: delta, CreatedAt: time.Now(),
+	})
+}
+
+func (s *session) upsertAssistantMessage(messageID, content, reasoning string, usage provider.Usage, metadata provider.ProviderMetadata) {
+	for i := range s.messageViews {
+		if s.messageViews[i].ID == messageID {
+			s.messageViews[i].Content = content
+			s.messageViews[i].Reasoning = reasoning
+			s.messageViews[i].Usage = usageView(usage)
+			s.messageViews[i].ProviderMetadata = providerMetadataView(metadata)
+			return
+		}
+	}
+
+	if content == "" && reasoning == "" {
 		return
 	}
 
 	s.messageViews = append(s.messageViews, MessageView{
-		ID:        messageID,
-		Role:      "assistant",
-		Content:   content,
-		CreatedAt: time.Now(),
+		ID: messageID, Role: "assistant", Content: content, Reasoning: reasoning,
+		Usage: usageView(usage), ProviderMetadata: providerMetadataView(metadata), CreatedAt: time.Now(),
 	})
+}
+
+func attachmentViews(attachments []provider.Attachment) []aichatui.AttachmentView {
+	result := make([]aichatui.AttachmentView, 0, len(attachments))
+	for _, attachment := range attachments {
+		result = append(result, aichatui.AttachmentView{
+			ID: attachment.ID, Name: attachment.Name, MediaType: attachment.MediaType, Data: attachment.Data, Size: attachment.Size,
+		})
+	}
+	return result
+}
+
+func usageView(usage provider.Usage) *aichatui.UsageView {
+	return &aichatui.UsageView{
+		InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens, CachedTokens: usage.CachedTokens,
+		CacheWriteTokens: usage.CacheWriteTokens, ReasoningTokens: usage.ReasoningTokens, TotalTokens: usage.TotalTokens,
+	}
+}
+
+func providerMetadataView(metadata provider.ProviderMetadata) *aichatui.ProviderMetadata {
+	return &aichatui.ProviderMetadata{
+		Provider: metadata.Provider, API: metadata.API, Endpoint: metadata.Endpoint, RequestID: metadata.RequestID,
+		ResponseID: metadata.ResponseID, Model: metadata.Model, FinishReason: metadata.FinishReason,
+		ServiceTier: metadata.ServiceTier, EstimatedCostMicros: metadata.EstimatedCostMicros, CostEstimateKind: metadata.CostEstimateKind,
+	}
 }
 
 func (s *session) hasPendingConfirmation() bool {

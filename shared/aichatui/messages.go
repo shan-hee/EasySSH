@@ -18,10 +18,48 @@ const (
 )
 
 type MessageView struct {
-	ID        string    `json:"id"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID               string            `json:"id"`
+	Role             string            `json:"role"`
+	Content          string            `json:"content"`
+	Reasoning        string            `json:"reasoning,omitempty"`
+	Attachments      []AttachmentView  `json:"attachments,omitempty"`
+	Usage            *UsageView        `json:"usage,omitempty"`
+	ProviderMetadata *ProviderMetadata `json:"provider_metadata,omitempty"`
+	CreatedAt        time.Time         `json:"created_at"`
+}
+
+type AttachmentView struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
+	Size      int64  `json:"size"`
+}
+
+func (a AttachmentView) DataURL() string {
+	return "data:" + a.MediaType + ";base64," + a.Data
+}
+
+type UsageView struct {
+	InputTokens      int64 `json:"input_tokens"`
+	OutputTokens     int64 `json:"output_tokens"`
+	CachedTokens     int64 `json:"cached_tokens,omitempty"`
+	CacheWriteTokens int64 `json:"cache_write_tokens,omitempty"`
+	ReasoningTokens  int64 `json:"reasoning_tokens,omitempty"`
+	TotalTokens      int64 `json:"total_tokens"`
+}
+
+type ProviderMetadata struct {
+	Provider            string `json:"provider"`
+	API                 string `json:"api"`
+	Endpoint            string `json:"endpoint,omitempty"`
+	RequestID           string `json:"request_id,omitempty"`
+	ResponseID          string `json:"response_id,omitempty"`
+	Model               string `json:"model,omitempty"`
+	FinishReason        string `json:"finish_reason,omitempty"`
+	ServiceTier         string `json:"service_tier,omitempty"`
+	EstimatedCostMicros int64  `json:"estimated_cost_micros,omitempty"`
+	CostEstimateKind    string `json:"cost_estimate_kind,omitempty"`
 }
 
 type TaskView struct {
@@ -135,6 +173,22 @@ type timelineItem struct {
 func Message(message MessageView, streaming bool) (UIMessage, bool) {
 	switch message.Role {
 	case "user", "system":
+		parts := make([]map[string]interface{}, 0, len(message.Attachments)+1)
+		if strings.TrimSpace(message.Content) != "" {
+			parts = append(parts, map[string]interface{}{
+				"type":  "text",
+				"text":  message.Content,
+				"state": "done",
+			})
+		}
+		for _, attachment := range message.Attachments {
+			parts = append(parts, map[string]interface{}{
+				"type":      "file",
+				"filename":  attachment.Name,
+				"mediaType": attachment.MediaType,
+				"url":       attachment.DataURL(),
+			})
+		}
 		return UIMessage{
 			ID:   message.ID,
 			Role: message.Role,
@@ -143,13 +197,7 @@ func Message(message MessageView, streaming bool) (UIMessage, bool) {
 				"createdAt":    message.CreatedAt,
 				"originalRole": message.Role,
 			},
-			Parts: []map[string]interface{}{
-				{
-					"type":  "text",
-					"text":  message.Content,
-					"state": "done",
-				},
-			},
+			Parts: parts,
 		}, true
 	case "assistant":
 		return AssistantMessage(message, streaming), true
@@ -159,22 +207,32 @@ func Message(message MessageView, streaming bool) (UIMessage, bool) {
 }
 
 func AssistantMessage(message MessageView, streaming bool) UIMessage {
+	metadata := map[string]interface{}{
+		"source":       "message",
+		"createdAt":    message.CreatedAt,
+		"pending":      streaming,
+		"originalRole": message.Role,
+	}
+	if message.Usage != nil {
+		metadata["usage"] = message.Usage
+	}
+	if message.ProviderMetadata != nil {
+		metadata["provider"] = message.ProviderMetadata
+	}
 	return UIMessage{
-		ID:   message.ID,
-		Role: "assistant",
-		Metadata: map[string]interface{}{
-			"source":       "message",
-			"createdAt":    message.CreatedAt,
-			"pending":      streaming,
-			"originalRole": message.Role,
-		},
-		Parts: AssistantParts(message, streaming),
+		ID:       message.ID,
+		Role:     "assistant",
+		Metadata: metadata,
+		Parts:    AssistantParts(message, streaming),
 	}
 }
 
 func AssistantParts(message MessageView, streaming bool) []map[string]interface{} {
 	toolStatus, withoutToolStatus := ExtractLastTaggedContent(message.Content, "tool-status")
 	reasoning, text := ExtractLastTaggedContent(withoutToolStatus, "think")
+	if strings.TrimSpace(message.Reasoning) != "" {
+		reasoning = message.Reasoning
+	}
 	state := "done"
 	if streaming {
 		state = "streaming"

@@ -2,12 +2,10 @@ package provider
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/easyssh/shared/aiprovider"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,7 +31,9 @@ func TestFactoryNormalizesOpenAITextAndChunkedToolCalls(t *testing.T) {
 		Config{Provider: "openai", APIKey: "test-key", Endpoint: server.URL},
 		TurnRequest{Model: "test-model", Messages: []Message{{Role: "user", Content: "列出在线服务器"}}},
 		func(event Event) error {
-			events = append(events, event)
+			if event.Type == EventTextDelta {
+				events = append(events, event)
+			}
 			return nil
 		},
 	)
@@ -79,48 +79,45 @@ func TestFactoryKeepsOpenAIToolCallOrderWithoutIndexes(t *testing.T) {
 	require.JSONEq(t, `{"server_id":"srv-1"}`, string(result.ToolCalls[1].Arguments))
 }
 
-func TestConvertToAnthropicMessagesNormalizesSystemToolUseAndToolResult(t *testing.T) {
+func TestFactoryUsesOpenAIResponsesAPI(t *testing.T) {
 	t.Parallel()
 
-	messages, systemPrompt := aiprovider.ConvertToAnthropicMessages([]aiprovider.Message{
-		{Role: "system", Content: "你是 EasySSH 助手"},
-		{Role: "user", Content: "查服务器"},
-		{
-			Role:    "assistant",
-			Content: "我会调用工具。",
-			ToolCalls: []aiprovider.ToolCall{{
-				ID:        "toolu-1",
-				Name:      "list_servers",
-				Arguments: json.RawMessage(`{"status":"online"}`),
-			}},
-		},
-		{Role: "tool", ToolCallID: "toolu-1", Content: "共 2 台"},
-	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/responses", r.URL.Path)
+		w.Header().Set("Content-Type", "text/event-stream")
 
-	require.Equal(t, "你是 EasySSH 助手", systemPrompt)
-	require.Len(t, messages, 3)
-	require.Equal(t, "user", string(messages[0].Role))
-	require.Len(t, messages[0].Content, 1)
-	require.Equal(t, "查服务器", messages[0].Content[0].GetText())
+		writeSSEData(t, w, `{"type":"response.created","sequence_number":0,"response":{"id":"resp-1","model":"test-model","status":"in_progress"}}`)
+		writeSSEData(t, w, `{"type":"response.output_text.delta","sequence_number":1,"item_id":"msg-1","output_index":0,"content_index":0,"delta":"正在查询"}`)
+		writeSSEData(t, w, `{"type":"response.output_item.added","sequence_number":2,"output_index":1,"item":{"id":"fc-1","type":"function_call","call_id":"call-1","name":"get_server_info","arguments":""}}`)
+		writeSSEData(t, w, `{"type":"response.function_call_arguments.delta","sequence_number":3,"item_id":"fc-1","output_index":1,"delta":"{\"server_id\":\"srv-1\"}"}`)
+		writeSSEData(t, w, `{"type":"response.output_item.done","sequence_number":4,"output_index":1,"item":{"id":"fc-1","type":"function_call","call_id":"call-1","name":"get_server_info","arguments":"{\"server_id\":\"srv-1\"}"}}`)
+		writeSSEData(t, w, `{"type":"response.completed","sequence_number":5,"response":{"id":"resp-1","model":"test-model","status":"completed","service_tier":"default","usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":2,"cache_write_tokens":0},"output_tokens":4,"output_tokens_details":{"reasoning_tokens":1},"total_tokens":14}}}`)
+	}))
+	defer server.Close()
 
-	require.Equal(t, "assistant", string(messages[1].Role))
-	require.Len(t, messages[1].Content, 2)
-	require.Equal(t, "我会调用工具。", messages[1].Content[0].GetText())
-	require.Equal(t, "toolu-1", messages[1].Content[1].MessageContentToolUse.ID)
-	require.Equal(t, "list_servers", messages[1].Content[1].MessageContentToolUse.Name)
-	require.JSONEq(t, `{"status":"online"}`, string(messages[1].Content[1].MessageContentToolUse.Input))
+	result, err := NewFactory().StreamTurn(
+		context.Background(),
+		Config{Provider: "openai-response", APIKey: "test-key", Endpoint: server.URL},
+		TurnRequest{Model: "test-model", Messages: []Message{{Role: "user", Content: "查询服务器"}}},
+		func(Event) error { return nil },
+	)
 
-	require.Equal(t, "user", string(messages[2].Role))
-	require.Len(t, messages[2].Content, 1)
-	require.NotNil(t, messages[2].Content[0].MessageContentToolResult.ToolUseID)
-	require.Equal(t, "toolu-1", *messages[2].Content[0].MessageContentToolResult.ToolUseID)
+	require.NoError(t, err)
+	require.Equal(t, "正在查询", result.Content)
+	require.Equal(t, "responses", result.Metadata.API)
+	require.Equal(t, "resp-1", result.Metadata.ResponseID)
+	require.Equal(t, int64(14), result.Usage.TotalTokens)
+	require.Len(t, result.ToolCalls, 1)
+	require.Equal(t, "call-1", result.ToolCalls[0].ID)
+	require.Equal(t, "get_server_info", result.ToolCalls[0].Name)
+	require.JSONEq(t, `{"server_id":"srv-1"}`, string(result.ToolCalls[0].Arguments))
 }
 
 func TestFactoryNormalizesAnthropicTextAndToolUse(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/messages", r.URL.Path)
+		require.Equal(t, "/v1/messages", r.URL.Path)
 		w.Header().Set("Content-Type", "text/event-stream")
 
 		writeSSEEvent(t, w, "message_start", `{"type":"message_start","message":{"id":"msg-1","type":"message","role":"assistant","content":[],"model":"claude-test","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}`)
@@ -143,7 +140,9 @@ func TestFactoryNormalizesAnthropicTextAndToolUse(t *testing.T) {
 		Config{Provider: "anthropic", APIKey: "test-key", Endpoint: server.URL},
 		TurnRequest{Model: "claude-test", Messages: []Message{{Role: "user", Content: "列出在线服务器"}}},
 		func(event Event) error {
-			events = append(events, event)
+			if event.Type == EventTextDelta {
+				events = append(events, event)
+			}
 			return nil
 		},
 	)

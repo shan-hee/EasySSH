@@ -180,11 +180,7 @@ func (h *UserAIConfigHandler) ProbeUserAIModels(c *gin.Context) {
 
 	response, err := probeAIModels(c.Request.Context(), provider, apiKey, endpoint)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"available": false,
-			"models":    []string{},
-			"error":     err.Error(),
-		})
+		respondAIModelProbeError(c, "UserAIConfig", provider, endpoint, err)
 		return
 	}
 

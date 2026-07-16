@@ -53,7 +53,7 @@
 - **框架**：Gin 1.12.0 + GORM 1.30.0
 - **数据库**：SQLite（默认）/ PostgreSQL / MySQL
 - **SSH/SFTP**：golang.org/x/crypto + pkg/sftp 1.13.6
-- **AI 集成**：go-anthropic v2.16.3 + go-openai v1.41.2
+- **AI 集成**：Anthropic 官方 Go SDK + OpenAI 官方 Go SDK（Chat Completions / Responses API）
 - **WebSocket**：Gorilla WebSocket 1.5.3
 - **任务调度**：robfig/cron v3.0.1
 

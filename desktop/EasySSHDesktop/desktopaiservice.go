@@ -52,8 +52,6 @@ const (
 	DesktopAITaskCancelled      DesktopAITaskStatus = "cancelled"
 )
 
-const desktopAIMaxToolRounds = 8
-
 type desktopAIConfirmStrategy string
 
 const (
@@ -117,11 +115,45 @@ type DesktopAIToolView struct {
 	Dangerous   bool   `json:"dangerous"`
 }
 
-type DesktopAIMessageView struct {
+type DesktopAIImageAttachment struct {
 	ID        string `json:"id"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	CreatedAt string `json:"created_at"`
+	Name      string `json:"name"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
+	Size      int64  `json:"size"`
+}
+
+type DesktopAIUsage struct {
+	InputTokens      int64 `json:"input_tokens"`
+	OutputTokens     int64 `json:"output_tokens"`
+	CachedTokens     int64 `json:"cached_tokens,omitempty"`
+	CacheWriteTokens int64 `json:"cache_write_tokens,omitempty"`
+	ReasoningTokens  int64 `json:"reasoning_tokens,omitempty"`
+	TotalTokens      int64 `json:"total_tokens"`
+}
+
+type DesktopAIProviderMetadata struct {
+	Provider            string `json:"provider"`
+	API                 string `json:"api"`
+	Endpoint            string `json:"endpoint,omitempty"`
+	RequestID           string `json:"request_id,omitempty"`
+	ResponseID          string `json:"response_id,omitempty"`
+	Model               string `json:"model,omitempty"`
+	FinishReason        string `json:"finish_reason,omitempty"`
+	ServiceTier         string `json:"service_tier,omitempty"`
+	EstimatedCostMicros int64  `json:"estimated_cost_micros,omitempty"`
+	CostEstimateKind    string `json:"cost_estimate_kind,omitempty"`
+}
+
+type DesktopAIMessageView struct {
+	ID               string                     `json:"id"`
+	Role             string                     `json:"role"`
+	Content          string                     `json:"content"`
+	Reasoning        string                     `json:"reasoning,omitempty"`
+	Attachments      []DesktopAIImageAttachment `json:"attachments,omitempty"`
+	Usage            *DesktopAIUsage            `json:"usage,omitempty"`
+	ProviderMetadata *DesktopAIProviderMetadata `json:"provider_metadata,omitempty"`
+	CreatedAt        string                     `json:"created_at"`
 }
 
 type DesktopAITaskView struct {
@@ -197,12 +229,13 @@ type DesktopAICreateSessionResponse struct {
 }
 
 type DesktopAISendMessageInput struct {
-	SessionID      string                  `json:"session_id"`
-	Content        string                  `json:"content"`
-	Context        string                  `json:"context,omitempty"`
-	Model          string                  `json:"model,omitempty"`
-	PermissionMode DesktopAIPermissionMode `json:"permission_mode,omitempty"`
-	Scope          *DesktopAISessionScope  `json:"scope,omitempty"`
+	SessionID      string                     `json:"session_id"`
+	Content        string                     `json:"content"`
+	Context        string                     `json:"context,omitempty"`
+	Model          string                     `json:"model,omitempty"`
+	PermissionMode DesktopAIPermissionMode    `json:"permission_mode,omitempty"`
+	Scope          *DesktopAISessionScope     `json:"scope,omitempty"`
+	Attachments    []DesktopAIImageAttachment `json:"attachments,omitempty"`
 }
 
 type DesktopAIUpdateMessageInput struct {
@@ -436,13 +469,6 @@ func (s *DesktopAIService) ProbeAIModels(input DesktopAIModelsProbeRequest) (Des
 		APIKey:   apiKey,
 		Endpoint: endpoint,
 	})
-	if errors.Is(err, aiprovider.ErrModelListingUnsupported) {
-		return DesktopAIModelsProbeResponse{
-			Available: false,
-			Models:    []string{},
-			Message:   "Anthropic model auto-fetch is not supported yet, please input models manually",
-		}, nil
-	}
 	if err != nil {
 		return DesktopAIModelsProbeResponse{}, err
 	}
@@ -601,8 +627,12 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	}
 
 	content := strings.TrimSpace(input.Content)
-	if content == "" {
+	if content == "" && len(input.Attachments) == 0 {
 		return DesktopAICreateSessionResponse{}, errors.New("AI message content is required")
+	}
+	providerAttachments := desktopAIProviderAttachments(input.Attachments)
+	if err := aiprovider.ValidateAttachments(providerAttachments); err != nil {
+		return DesktopAICreateSessionResponse{}, err
 	}
 
 	record, err := s.loadSession(sessionID)
@@ -647,10 +677,8 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	record.Status = DesktopAISessionRunning
 	record.UpdatedAt = now
 	userMessage := DesktopAIMessageView{
-		ID:        newDesktopAIID("msg"),
-		Role:      "user",
-		Content:   content,
-		CreatedAt: now,
+		ID: newDesktopAIID("msg"), Role: "user", Content: content,
+		Attachments: append([]DesktopAIImageAttachment(nil), input.Attachments...), CreatedAt: now,
 	}
 	record.Messages = append(record.Messages, userMessage)
 	if record.Title == "" {
@@ -663,27 +691,41 @@ func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record des
 	sessionID := record.ID
 	requestContext, requestID := s.beginAIRequest(ctx, sessionID)
 	defer s.finishAIRequest(sessionID, requestID)
+	return s.completeDesktopAITurnWithContext(requestContext, record, config, contextText, model)
+}
+
+func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext context.Context, record desktopAISessionRecord, config desktopAIConfigRecord, contextText string, model string) (DesktopAICreateSessionResponse, error) {
+	sessionID := record.ID
+	limits := aiprovider.DefaultLimits()
+	turnContext, cancelTurn := context.WithTimeout(requestContext, limits.TurnTimeout)
+	defer cancelTurn()
 
 	if err := s.saveSession(record); err != nil {
 		return DesktopAICreateSessionResponse{}, err
 	}
 	s.emitAISessionSnapshot(record)
 
-	for round := 0; round < desktopAIMaxToolRounds; round++ {
+	var turnUsage aiprovider.Usage
+	var estimatedCostMicros int64
+	totalToolCalls := 0
+	toolCallCounts := make(map[string]int)
+	for round := 0; round < limits.MaxToolRounds; round++ {
 		assistantMessageID := newDesktopAIID("msg")
 		assistantStartedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		var assistantContentBuilder strings.Builder
-		turnResult, err := s.completeChat(requestContext, config, record, contextText, model, func(delta string) error {
-			if delta == "" {
+		var assistantReasoningBuilder strings.Builder
+		turnResult, err := s.completeChat(turnContext, config, record, contextText, model, func(event aiprovider.Event) error {
+			switch event.Type {
+			case aiprovider.EventTextDelta:
+				assistantContentBuilder.WriteString(event.Delta)
+			case aiprovider.EventReasoningDelta:
+				assistantReasoningBuilder.WriteString(event.Delta)
+			default:
 				return nil
 			}
-
-			assistantContentBuilder.WriteString(delta)
 			assistantMessage := DesktopAIMessageView{
-				ID:        assistantMessageID,
-				Role:      "assistant",
-				Content:   assistantContentBuilder.String(),
-				CreatedAt: assistantStartedAt,
+				ID: assistantMessageID, Role: "assistant", Content: assistantContentBuilder.String(),
+				Reasoning: assistantReasoningBuilder.String(), CreatedAt: assistantStartedAt,
 			}
 			s.emitAISessionEvent(DesktopAISessionEvent{
 				SessionID: sessionID,
@@ -694,11 +736,11 @@ func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record des
 		})
 		completedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		if err != nil {
-			record.Status = DesktopAISessionIdle
-			record.UpdatedAt = completedAt
-			_ = s.saveSession(record)
-			s.emitAISessionSnapshot(record)
-			if errors.Is(err, context.Canceled) || errors.Is(requestContext.Err(), context.Canceled) {
+			if errors.Is(err, context.Canceled) || errors.Is(turnContext.Err(), context.Canceled) {
+				record.Status = DesktopAISessionIdle
+				record.UpdatedAt = completedAt
+				_ = s.saveSession(record)
+				s.emitAISessionSnapshot(record)
 				view := record.toView()
 				return DesktopAICreateSessionResponse{
 					SessionID:        view.ID,
@@ -706,21 +748,37 @@ func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record des
 					DefaultTransport: view.DefaultTransport,
 				}, nil
 			}
-			return DesktopAICreateSessionResponse{}, err
+			if errors.Is(turnContext.Err(), context.DeadlineExceeded) {
+				return s.failDesktopAITurn(record, errors.New("AI 对话总执行时间超出限制"))
+			}
+			return s.failDesktopAITurn(record, err)
+		}
+		turnUsage.Add(turnResult.Usage)
+		estimatedCostMicros += turnResult.Metadata.EstimatedCostMicros
+		if turnUsage.TotalTokens > limits.MaxTurnTokens {
+			return s.failDesktopAITurn(record, aiprovider.NewLimitError("token_budget_exceeded", "AI 对话累计 Token 超出限制"))
+		}
+		if estimatedCostMicros > limits.MaxEstimatedCostMicros {
+			return s.failDesktopAITurn(record, aiprovider.NewLimitError("cost_budget_exceeded", "AI 对话预估费用超出限制"))
+		}
+		totalToolCalls += len(turnResult.ToolCalls)
+		if totalToolCalls > limits.MaxToolCalls {
+			return s.failDesktopAITurn(record, aiprovider.NewLimitError("tool_call_limit_exceeded", "AI 工具调用次数超出限制"))
+		}
+		for _, call := range turnResult.ToolCalls {
+			toolCallCounts[call.Fingerprint()]++
+			if toolCallCounts[call.Fingerprint()] > limits.MaxRepeatedToolCalls {
+				return s.failDesktopAITurn(record, aiprovider.NewLimitError("repeated_tool_call", "AI 重复调用相同工具和参数，已停止执行"))
+			}
 		}
 		if strings.TrimSpace(turnResult.Content) == "" && len(turnResult.ToolCalls) == 0 {
-			record.Status = DesktopAISessionIdle
-			record.UpdatedAt = completedAt
-			_ = s.saveSession(record)
-			s.emitAISessionSnapshot(record)
-			return DesktopAICreateSessionResponse{}, errors.New("AI provider returned no text")
+			return s.failDesktopAITurn(record, errors.New("AI provider returned no text"))
 		}
 
 		assistantMessage := DesktopAIMessageView{
-			ID:        assistantMessageID,
-			Role:      "assistant",
-			Content:   strings.TrimSpace(turnResult.Content),
-			CreatedAt: completedAt,
+			ID: assistantMessageID, Role: "assistant", Content: strings.TrimSpace(turnResult.Content),
+			Reasoning: strings.TrimSpace(turnResult.Reasoning), Usage: desktopAIUsage(&turnResult.Usage),
+			ProviderMetadata: desktopAIProviderMetadata(&turnResult.Metadata), CreatedAt: completedAt,
 		}
 		record.Messages = append(record.Messages, assistantMessage)
 		record.UpdatedAt = completedAt
@@ -750,11 +808,14 @@ func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record des
 
 		for _, taskID := range autoTaskIDs {
 			var executeErr error
-			record, executeErr = s.executeDesktopAITask(requestContext, record, taskID)
+			record, executeErr = s.executeDesktopAITask(turnContext, record, taskID)
 			if executeErr != nil {
 				return DesktopAICreateSessionResponse{}, executeErr
 			}
-			if errors.Is(requestContext.Err(), context.Canceled) {
+			if errors.Is(turnContext.Err(), context.DeadlineExceeded) {
+				return s.failDesktopAITurn(record, errors.New("AI 对话总执行时间超出限制"))
+			}
+			if errors.Is(turnContext.Err(), context.Canceled) {
 				view := record.toView()
 				return DesktopAICreateSessionResponse{
 					SessionID:        view.ID,
@@ -785,7 +846,15 @@ func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record des
 	record.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	_ = s.saveSession(record)
 	s.emitAISessionSnapshot(record)
-	return DesktopAICreateSessionResponse{}, errors.New("AI tool call loop exceeded limit")
+	return DesktopAICreateSessionResponse{}, aiprovider.NewLimitError("tool_round_limit_exceeded", "AI 工具调用轮次超出限制")
+}
+
+func (s *DesktopAIService) failDesktopAITurn(record desktopAISessionRecord, turnErr error) (DesktopAICreateSessionResponse, error) {
+	record.Status = DesktopAISessionIdle
+	record.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	_ = s.saveSession(record)
+	s.emitAISessionSnapshot(record)
+	return DesktopAICreateSessionResponse{}, turnErr
 }
 
 func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfirmTaskInput) (DesktopAICreateSessionResponse, error) {
@@ -816,6 +885,7 @@ func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfi
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	var confirmedTurnContext context.Context
 	if decision == "reject" {
 		record.Tasks[taskIndex].Status = DesktopAITaskCancelled
 		record.Tasks[taskIndex].Result = "用户已拒绝执行该操作。"
@@ -826,8 +896,11 @@ func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfi
 		}
 		s.emitAISessionSnapshot(record)
 	} else {
-		requestContext, requestID := s.beginAIRequest(ctx, sessionID)
+		turnContext, cancelTurn := context.WithTimeout(ctx, aiprovider.DefaultLimits().TurnTimeout)
+		defer cancelTurn()
+		requestContext, requestID := s.beginAIRequest(turnContext, sessionID)
 		defer s.finishAIRequest(sessionID, requestID)
+		confirmedTurnContext = requestContext
 
 		record.Status = DesktopAISessionRunning
 		record.Tasks[taskIndex].Status = DesktopAITaskRunning
@@ -841,6 +914,9 @@ func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfi
 		record, err = s.executeDesktopAITask(requestContext, record, taskID)
 		if err != nil {
 			return DesktopAICreateSessionResponse{}, err
+		}
+		if errors.Is(requestContext.Err(), context.DeadlineExceeded) {
+			return s.failDesktopAITurn(record, errors.New("AI 对话总执行时间超出限制"))
 		}
 		if errors.Is(requestContext.Err(), context.Canceled) {
 			view := record.toView()
@@ -889,6 +965,9 @@ func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfi
 	record.Model = model
 	record.Status = DesktopAISessionRunning
 	record.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if decision == "confirm" {
+		return s.completeDesktopAITurnWithContext(confirmedTurnContext, record, config, "", model)
+	}
 	return s.completeDesktopAITurn(ctx, record, config, "", model)
 }
 
@@ -1265,7 +1344,7 @@ func (s *DesktopAIService) saveSession(record desktopAISessionRecord) error {
 	scopeJSON := mustDesktopAIJSON(record.Scope)
 	messagesJSON := mustDesktopAIJSON(record.Messages)
 	tasksJSON := mustDesktopAIJSON(record.Tasks)
-	uiMessagesJSON := mustDesktopAIJSON(desktopAIUIMessages(record.Messages, record.Tasks))
+	uiMessagesJSON := "[]"
 	_, err = database.Exec(`
 		INSERT INTO desktop_ai_sessions
 			(id, title, custom_title, model, permission_mode, scope_json, status, messages_json, tasks_json, ui_messages_json, created_at, updated_at)
@@ -1354,20 +1433,22 @@ func (s *DesktopAIService) activeDesktopAISessionStatus(sessionID string, status
 	return status
 }
 
-func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAIConfigRecord, record desktopAISessionRecord, contextText string, model string, onDelta func(string) error) (aiprovider.TurnResult, error) {
+func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAIConfigRecord, record desktopAISessionRecord, contextText string, model string, onEvent func(aiprovider.Event) error) (aiprovider.TurnResult, error) {
 	factory := aiprovider.NewFactory()
 	result, err := factory.StreamTurn(ctx, aiprovider.Config{
 		Provider: config.CustomProvider,
 		APIKey:   strings.TrimSpace(config.CustomAPIKey),
 		Endpoint: strings.TrimSpace(config.CustomEndpoint),
 		Model:    model,
+		Limits:   aiprovider.DefaultLimits(),
 	}, aiprovider.TurnRequest{
-		Model:    model,
-		Messages: desktopAIProviderMessages(record, contextText),
-		Tools:    desktopAIProviderToolSpecs(desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)),
+		Model:           model,
+		Messages:        desktopAIProviderMessages(record, contextText),
+		Tools:           desktopAIProviderToolSpecs(desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)),
+		MaxOutputTokens: aiprovider.DefaultLimits().MaxOutputTokens,
 	}, func(event aiprovider.Event) error {
-		if event.Type == aiprovider.EventTextDelta && onDelta != nil {
-			return onDelta(event.Delta)
+		if onEvent != nil {
+			return onEvent(event)
 		}
 		return nil
 	})
@@ -1398,8 +1479,8 @@ func desktopAIProviderMessages(record desktopAISessionRecord, contextText string
 			content = content + "\n\n" + contextText
 		}
 		providerMessage := aiprovider.Message{
-			Role:    message.Role,
-			Content: content,
+			Role: message.Role, Content: content,
+			Attachments: desktopAIProviderAttachments(message.Attachments),
 		}
 		if message.Role == "assistant" {
 			providerMessage.ToolCalls = desktopAIProviderToolCalls(record.Tasks, message.ID)
@@ -1545,7 +1626,7 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if errors.Is(ctx.Err(), context.Canceled) {
+	if ctx.Err() != nil {
 		cancelDesktopAIActiveTasks(&record, now)
 		record.Status = DesktopAISessionIdle
 		record.UpdatedAt = now
@@ -1582,7 +1663,7 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 
 	result, err := s.executeDesktopAITool(ctx, record.Tasks[taskIndex].ToolName, record.Tasks[taskIndex].Arguments)
 	now = time.Now().UTC().Format(time.RFC3339Nano)
-	if errors.Is(ctx.Err(), context.Canceled) || errors.Is(err, context.Canceled) {
+	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		cancelDesktopAIActiveTasks(&record, now)
 		record.Status = DesktopAISessionIdle
 	} else if err != nil {
@@ -2293,11 +2374,16 @@ func desktopAIUIMessages(messages []DesktopAIMessageView, tasks []DesktopAITaskV
 func toAichatUIMessages(messages []DesktopAIMessageView) []aichatui.MessageView {
 	result := make([]aichatui.MessageView, 0, len(messages))
 	for _, message := range messages {
+		attachments := make([]aichatui.AttachmentView, 0, len(message.Attachments))
+		for _, attachment := range message.Attachments {
+			attachments = append(attachments, aichatui.AttachmentView{
+				ID: attachment.ID, Name: attachment.Name, MediaType: attachment.MediaType, Data: attachment.Data, Size: attachment.Size,
+			})
+		}
 		result = append(result, aichatui.MessageView{
-			ID:        message.ID,
-			Role:      message.Role,
-			Content:   message.Content,
-			CreatedAt: parseDesktopAITime(message.CreatedAt),
+			ID: message.ID, Role: message.Role, Content: message.Content, Reasoning: message.Reasoning,
+			Attachments: attachments, Usage: desktopAIUsageView(message.Usage),
+			ProviderMetadata: desktopAIProviderMetadataView(message.ProviderMetadata), CreatedAt: parseDesktopAITime(message.CreatedAt),
 		})
 	}
 	return result
@@ -2305,15 +2391,76 @@ func toAichatUIMessages(messages []DesktopAIMessageView) []aichatui.MessageView 
 
 func desktopAIUIMessagePtr(message DesktopAIMessageView, streaming bool) *aichatui.UIMessage {
 	uiMessage, ok := aichatui.Message(aichatui.MessageView{
-		ID:        message.ID,
-		Role:      message.Role,
-		Content:   message.Content,
-		CreatedAt: parseDesktopAITime(message.CreatedAt),
+		ID: message.ID, Role: message.Role, Content: message.Content, Reasoning: message.Reasoning,
+		Attachments: desktopAIAttachmentViews(message.Attachments), Usage: desktopAIUsageView(message.Usage),
+		ProviderMetadata: desktopAIProviderMetadataView(message.ProviderMetadata), CreatedAt: parseDesktopAITime(message.CreatedAt),
 	}, streaming)
 	if !ok {
 		return nil
 	}
 	return &uiMessage
+}
+
+func desktopAIAttachmentViews(attachments []DesktopAIImageAttachment) []aichatui.AttachmentView {
+	result := make([]aichatui.AttachmentView, 0, len(attachments))
+	for _, attachment := range attachments {
+		result = append(result, aichatui.AttachmentView{
+			ID: attachment.ID, Name: attachment.Name, MediaType: attachment.MediaType, Data: attachment.Data, Size: attachment.Size,
+		})
+	}
+	return result
+}
+
+func desktopAIUsageView(usage *DesktopAIUsage) *aichatui.UsageView {
+	if usage == nil {
+		return nil
+	}
+	return &aichatui.UsageView{
+		InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens, CachedTokens: usage.CachedTokens,
+		CacheWriteTokens: usage.CacheWriteTokens, ReasoningTokens: usage.ReasoningTokens, TotalTokens: usage.TotalTokens,
+	}
+}
+
+func desktopAIProviderMetadataView(metadata *DesktopAIProviderMetadata) *aichatui.ProviderMetadata {
+	if metadata == nil {
+		return nil
+	}
+	return &aichatui.ProviderMetadata{
+		Provider: metadata.Provider, API: metadata.API, Endpoint: metadata.Endpoint, RequestID: metadata.RequestID,
+		ResponseID: metadata.ResponseID, Model: metadata.Model, FinishReason: metadata.FinishReason,
+		ServiceTier: metadata.ServiceTier, EstimatedCostMicros: metadata.EstimatedCostMicros, CostEstimateKind: metadata.CostEstimateKind,
+	}
+}
+
+func desktopAIProviderAttachments(attachments []DesktopAIImageAttachment) []aiprovider.Attachment {
+	result := make([]aiprovider.Attachment, 0, len(attachments))
+	for _, attachment := range attachments {
+		result = append(result, aiprovider.Attachment{
+			ID: attachment.ID, Name: attachment.Name, MediaType: attachment.MediaType, Data: attachment.Data, Size: attachment.Size,
+		})
+	}
+	return result
+}
+
+func desktopAIUsage(usage *aiprovider.Usage) *DesktopAIUsage {
+	if usage == nil {
+		return nil
+	}
+	return &DesktopAIUsage{
+		InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens, CachedTokens: usage.CachedTokens,
+		CacheWriteTokens: usage.CacheWriteTokens, ReasoningTokens: usage.ReasoningTokens, TotalTokens: usage.TotalTokens,
+	}
+}
+
+func desktopAIProviderMetadata(metadata *aiprovider.ProviderMetadata) *DesktopAIProviderMetadata {
+	if metadata == nil {
+		return nil
+	}
+	return &DesktopAIProviderMetadata{
+		Provider: metadata.Provider, API: metadata.API, Endpoint: metadata.Endpoint, RequestID: metadata.RequestID,
+		ResponseID: metadata.ResponseID, Model: metadata.Model, FinishReason: metadata.FinishReason,
+		ServiceTier: metadata.ServiceTier, EstimatedCostMicros: metadata.EstimatedCostMicros, CostEstimateKind: metadata.CostEstimateKind,
+	}
 }
 
 func toAichatUITasks(tasks []DesktopAITaskView) []aichatui.TaskView {

@@ -11,16 +11,47 @@ import (
 type Config = aiprovider.Config
 type EventType = aiprovider.EventType
 type Event = aiprovider.Event
+type Attachment = aiprovider.Attachment
+type Usage = aiprovider.Usage
+type ProviderMetadata = aiprovider.ProviderMetadata
+type ProviderError = aiprovider.ProviderError
+type Limits = aiprovider.Limits
+
+func DefaultLimits() Limits { return aiprovider.DefaultLimits() }
+
+func NormalizeLimits(limits Limits) Limits { return aiprovider.NormalizeLimits(limits) }
+
+func EstimateCostMicros(usage Usage, pricing aiprovider.Pricing) int64 {
+	return aiprovider.EstimateCostMicros(usage, pricing)
+}
+
+func ValidateAttachments(attachments []Attachment) error {
+	return aiprovider.ValidateAttachments(attachments)
+}
+
+func ToolCallFingerprint(toolCall registry.ToolCall) string {
+	return (aiprovider.ToolCall{
+		Name:      toolCall.Name,
+		Arguments: json.RawMessage(toolCall.Arguments),
+	}).Fingerprint()
+}
 
 const (
-	EventTextDelta EventType = aiprovider.EventTextDelta
+	EventTextDelta              EventType = aiprovider.EventTextDelta
+	EventReasoningDelta         EventType = aiprovider.EventReasoningDelta
+	EventToolCallStarted        EventType = aiprovider.EventToolCallStarted
+	EventToolCallArgumentsDelta EventType = aiprovider.EventToolCallArgumentsDelta
+	EventToolCallCompleted      EventType = aiprovider.EventToolCallCompleted
+	EventUsageUpdated           EventType = aiprovider.EventUsageUpdated
+	EventResponseCompleted      EventType = aiprovider.EventResponseCompleted
 )
 
 type Message struct {
-	Role       string
-	Content    string
-	ToolCalls  []registry.ToolCall
-	ToolCallID string
+	Role        string
+	Content     string
+	Attachments []aiprovider.Attachment
+	ToolCalls   []registry.ToolCall
+	ToolCallID  string
 }
 
 type Factory struct {
@@ -28,14 +59,18 @@ type Factory struct {
 }
 
 type TurnRequest struct {
-	Messages []Message
-	Model    string
-	Tools    []registry.ToolSpec
+	Messages        []Message
+	Model           string
+	Tools           []registry.ToolSpec
+	MaxOutputTokens int64
 }
 
 type TurnResult struct {
 	Content   string
+	Reasoning string
 	ToolCalls []registry.ToolCall
+	Usage     aiprovider.Usage
+	Metadata  aiprovider.ProviderMetadata
 }
 
 func NewFactory() *Factory {
@@ -52,9 +87,10 @@ func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest
 
 func toSharedTurnRequest(req TurnRequest) aiprovider.TurnRequest {
 	return aiprovider.TurnRequest{
-		Messages: toSharedMessages(req.Messages),
-		Model:    req.Model,
-		Tools:    toSharedToolSpecs(req.Tools),
+		Messages:        toSharedMessages(req.Messages),
+		Model:           req.Model,
+		Tools:           toSharedToolSpecs(req.Tools),
+		MaxOutputTokens: req.MaxOutputTokens,
 	}
 }
 
@@ -65,10 +101,11 @@ func toSharedMessages(messages []Message) []aiprovider.Message {
 	result := make([]aiprovider.Message, 0, len(messages))
 	for _, message := range messages {
 		result = append(result, aiprovider.Message{
-			Role:       message.Role,
-			Content:    message.Content,
-			ToolCalls:  toSharedToolCalls(message.ToolCalls),
-			ToolCallID: message.ToolCallID,
+			Role:        message.Role,
+			Content:     message.Content,
+			Attachments: append([]aiprovider.Attachment(nil), message.Attachments...),
+			ToolCalls:   toSharedToolCalls(message.ToolCalls),
+			ToolCallID:  message.ToolCallID,
 		})
 	}
 	return result
@@ -109,7 +146,10 @@ func toSharedToolSpecs(tools []registry.ToolSpec) []aiprovider.ToolSpec {
 func fromSharedTurnResult(result aiprovider.TurnResult) TurnResult {
 	return TurnResult{
 		Content:   result.Content,
+		Reasoning: result.Reasoning,
 		ToolCalls: fromSharedToolCalls(result.ToolCalls),
+		Usage:     result.Usage,
+		Metadata:  result.Metadata,
 	}
 }
 
