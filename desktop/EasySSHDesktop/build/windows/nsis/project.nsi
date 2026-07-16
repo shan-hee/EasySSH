@@ -22,7 +22,7 @@ Unicode true
 ## !define INFO_PROJECTNAME    "EasySSH" # Default "EasySSH"
 ## !define INFO_COMPANYNAME    "EasySSH" # Default "EasySSH"
 ## !define INFO_PRODUCTNAME    "EasySSH" # Default "EasySSH"
-## !define INFO_PRODUCTVERSION "1.0.27"     # Default "1.0.27"
+## !define INFO_PRODUCTVERSION "1.0.28"     # Default "1.0.28"
 ## !define INFO_COPYRIGHT      "(c) 2026, EasySSH" # Default "(c) 2026, EasySSH"
 ###
 ## !define PRODUCT_EXECUTABLE  "Application.exe"      # Default "${INFO_PROJECTNAME}.exe"
