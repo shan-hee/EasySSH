@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Check, ChevronsUpDown, Plus, Search, Trash2, X, Loader2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -76,6 +76,12 @@ export function AIModelSelector({
     const normalizedQuery = query.trim().toLowerCase()
     return !!normalizedQuery && !modelOptions.some((model) => model.toLowerCase() === normalizedQuery)
   }, [modelOptions, query])
+
+  useEffect(() => {
+    if (availableModels.length > 0) {
+      setOpen(true)
+    }
+  }, [availableModels.length])
 
   const setSelectedModels = (models: string[]) => {
     onChange(Array.from(new Set(models.map((model) => model.trim()).filter(Boolean))).join(","))

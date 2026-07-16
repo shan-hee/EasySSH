@@ -1,4 +1,5 @@
 import { getApiUrl as getApiUrlFromConfig } from "@/lib/config"
+import { resolveAPIErrorMessage } from "@/lib/api-error"
 import { useAuthStore } from "@/stores/auth-store"
 import {
   ensureFreshAccessToken,
@@ -381,7 +382,8 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
         }
       }
 
-      throw Object.assign(new Error(`API ${res.status} ${res.statusText}`), {
+      const fallbackMessage = `API ${res.status} ${res.statusText}`
+      throw Object.assign(new Error(resolveAPIErrorMessage(detail, fallbackMessage)), {
         status: res.status,
         detail,
       })
