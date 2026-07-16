@@ -61,6 +61,8 @@ type TransferTask struct {
 	TargetServerName string
 	TargetPath       string
 	UserID           uuid.UUID
+	ClientIP         string
+	UserAgent        string
 	StartTime        time.Time
 	CancelFunc       context.CancelFunc
 	Status           string // "pending", "running", "completed", "failed", "cancelled"
@@ -283,6 +285,8 @@ func (h *SFTPTransferHandler) StartDirectTransfer(
 	ctx context.Context,
 	taskID string,
 	userID uuid.UUID,
+	clientIP string,
+	userAgent string,
 	sourceServerID uuid.UUID,
 	sourcePath string,
 	targetServerID uuid.UUID,
@@ -326,6 +330,8 @@ func (h *SFTPTransferHandler) StartDirectTransfer(
 		TargetServerName: targetServer.Name,
 		TargetPath:       targetPath,
 		UserID:           userID,
+		ClientIP:         clientIP,
+		UserAgent:        userAgent,
 		StartTime:        time.Now(),
 		CancelFunc:       cancel,
 		Status:           "running",
@@ -557,6 +563,8 @@ func (h *SFTPTransferHandler) upsertTransferOperationRecord(task *TransferTask, 
 		Title:          filepath.Base(task.SourcePath),
 		Resource:       fmt.Sprintf("%s -> %s", task.SourcePath, task.TargetPath),
 		Source:         "sftp",
+		IP:             task.ClientIP,
+		UserAgent:      task.UserAgent,
 		StartedAt:      &task.StartTime,
 		FinishedAt:     finishedAt,
 		DurationMs:     durationMs,
