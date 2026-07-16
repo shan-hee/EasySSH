@@ -114,6 +114,9 @@ function hasRenderableContent(message: UIMessage) {
     if (isReasoningUIPart(part) || isToolUIPart(part)) {
       return true
     }
+    if (part.type === "file") {
+      return true
+    }
     if (part.type === "data-error") {
       return getDataMessage(part, "message").trim() !== ""
     }
@@ -610,6 +613,35 @@ function MessagePartView({
         onConfirmTask={onConfirmTask}
         compact={compact}
       />
+    )
+  }
+
+  if (part.type === "file") {
+    if (part.mediaType.startsWith("image/")) {
+      return (
+        <figure className="max-w-md overflow-hidden rounded-lg border border-border/70 bg-muted/20">
+          <img
+            src={part.url}
+            alt={part.filename || tText("attachedImage")}
+            className="max-h-[28rem] w-full object-contain"
+          />
+          {part.filename && (
+            <figcaption className="border-t border-border/60 px-3 py-1.5 text-xs text-muted-foreground">
+              {part.filename}
+            </figcaption>
+          )}
+        </figure>
+      )
+    }
+    return (
+      <a
+        href={part.url}
+        download={part.filename}
+        className="inline-flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs hover:bg-muted/60"
+      >
+        <FileText className="size-4" />
+        <span>{part.filename || tText("attachedFile")}</span>
+      </a>
     )
   }
 

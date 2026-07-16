@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type SyntheticEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent, type SyntheticEvent } from "react"
 import { ArrowLeft, Check, History, Loader2, Pencil, Plus, RefreshCw, Search, Send, Server as ServerIcon, Settings2, Shield, Square, SquarePen, Trash2, X } from "lucide-react"
 
 import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
@@ -11,6 +11,7 @@ import {
   buildAgentMessageContext,
   createComposerAttachment,
   sortReferencedServers,
+  toAgentImageAttachments,
   type ComposerAttachment,
 } from "@/components/ai-agent/composer"
 import { PageHeader } from "@/components/page-header"
@@ -386,7 +387,7 @@ export function AIAssistantWorkspaceView({
     agentSession.tasks.length === 0
   )
   const createSessionDisabled = !ready || isLoading || !isConfigured || sessionCreating
-  const canAttemptSubmit = Boolean(draft.trim())
+  const canAttemptSubmit = Boolean(draft.trim()) || attachments.some((attachment) => attachment.source === "image")
 
   const buildMessageContext = useCallback(
     (messageText: string) => buildAgentMessageContext({
@@ -438,7 +439,7 @@ export function AIAssistantWorkspaceView({
     const contextText = buildMessageContext(normalizedDraft)
     const blockReasons: string[] = []
 
-    if (!normalizedDraft) {
+    if (!normalizedDraft && !attachments.some((attachment) => attachment.source === "image")) {
       blockReasons.push("empty_message")
     }
     if (!ready) {
@@ -461,7 +462,7 @@ export function AIAssistantWorkspaceView({
     }
 
     if (blockReasons.length > 0) {
-      if (normalizedDraft) {
+      if (normalizedDraft || attachments.length > 0) {
         if (!ready || isLoading) {
           toast.info(t("checkingConfig"))
         } else if (!isConfigured) {
@@ -507,7 +508,14 @@ export function AIAssistantWorkspaceView({
       prependSessionListItem(response)
     }
 
-    const sent = await sendMessage(normalizedDraft, contextText, selectedModel || undefined, permissionMode, submittedScope)
+    const sent = await sendMessage(
+      normalizedDraft,
+      contextText,
+      selectedModel || undefined,
+      permissionMode,
+      submittedScope,
+      toAgentImageAttachments(submittedAttachments)
+    )
     if (!sent) {
       setDraft((current) => current || messageText)
       setAttachments((current) => current.length > 0 ? current : submittedAttachments)
@@ -853,19 +861,14 @@ export function AIAssistantWorkspaceView({
     setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId))
   }, [])
 
-  const handleAttachmentSelection = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const fileList = event.target.files
-
-    if (!fileList || fileList.length === 0) {
+  const addAttachmentFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) {
       return
     }
-
-    const files = Array.from(fileList)
     const remainingSlots = MAX_COMPOSER_ATTACHMENTS - attachments.length
 
     if (remainingSlots <= 0) {
       toast.info(t("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
-      event.target.value = ""
       return
     }
 
@@ -893,9 +896,26 @@ export function AIAssistantWorkspaceView({
       ])
     } finally {
       setAttachmentsLoading(false)
-      event.target.value = ""
     }
   }, [attachments.length, t])
+
+  const handleAttachmentSelection = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ""
+    await addAttachmentFiles(files)
+  }, [addAttachmentFiles])
+
+  const handleAttachmentPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (files.length === 0) {
+      return
+    }
+    event.preventDefault()
+    void addAttachmentFiles(files)
+  }, [addAttachmentFiles])
 
   const actionButtonClass = "size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-zinc-900"
 
@@ -1210,6 +1230,7 @@ export function AIAssistantWorkspaceView({
                   ref={fileInputRef}
                   type="file"
                   multiple
+                  accept="image/jpeg,image/png,image/gif,image/webp,text/*,.json,.yaml,.yml,.xml,.csv,.md,.log,.sh,.py,.js,.ts,.tsx,.go,.rs,.java,.sql"
                   className="hidden"
                   onChange={(event) => void handleAttachmentSelection(event)}
                 />
@@ -1242,6 +1263,7 @@ export function AIAssistantWorkspaceView({
                         onChange={handleDraftChange}
                         onClick={handleDraftCaretChange}
                         onKeyDown={handleComposerKeyDown}
+                        onPaste={handleAttachmentPaste}
                         onKeyUp={handleDraftKeyUp}
                         onSelect={handleDraftCaretChange}
                         placeholder={hasTimeline ? t("composerPlaceholder") : t("inputPlaceholderWithMention")}

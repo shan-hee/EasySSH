@@ -7,7 +7,7 @@ import {
   type ComposerAttachment,
 } from "./attachments"
 
-type ComposerTranslate = TFunction
+type ComposerTranslate = TFunction<"aiAssistant">
 
 export function sortReferencedServers(servers: ManagedServer[]) {
   return [...servers].sort((left, right) => {
@@ -53,6 +53,8 @@ export function buildAgentMessageContext({
         if (attachment.truncated) {
           attachmentLines.push(t("attachmentContextTruncated", { count: ATTACHMENT_TEXT_PREVIEW_LIMIT }))
         }
+      } else if (attachment.source === "image") {
+        attachmentLines.push(t("attachmentContextImage"))
       } else {
         attachmentLines.push(t("attachmentContextMetadataOnly"))
       }

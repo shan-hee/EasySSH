@@ -1,10 +1,11 @@
 
-import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type PointerEvent } from "react"
+import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent, type PointerEvent } from "react"
 import { Link } from "react-router-dom"
 import {
   Check,
   History,
   Loader2,
+  Plus,
   Pencil,
   Search,
   Settings2,
@@ -19,6 +20,13 @@ import { useTranslation } from "react-i18next"
 
 import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
+import {
+  ComposerReferenceChips,
+  MAX_COMPOSER_ATTACHMENTS,
+  createComposerAttachment,
+  toAgentImageAttachments,
+  type ComposerAttachment,
+} from "@/components/ai-agent/composer"
 import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -211,6 +219,8 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
   const deleteSession = adapters?.deleteAISession ?? deleteAISession
 
   const [input, setInput] = useState("")
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false)
   const [model, setModel] = useState("auto")
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("balanced")
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -228,6 +238,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
   const [isOpenSettled, setIsOpenSettled] = useState(false)
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLElement>(null)
   const sessionCreatingRef = useRef(false)
   const dragStartXRef = useRef(0)
@@ -327,10 +338,10 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
     pendingConfirmationTasks.length === 0
   const assistantLoadingState = shouldShowLoadingIndicator ? "waiting" : false
   const canSend =
-    !!input.trim() &&
+    (!!input.trim() || attachments.some((attachment) => attachment.source === "image")) &&
     isConfigured &&
     !isConfigLoading &&
-    !sessionCreating &&
+    !sessionCreating && !attachmentsLoading &&
     (canSendToSession || (!session && transport === "idle") || session?.status === "closed")
   const createSessionDisabled = !isConfigured || isConfigLoading || sessionCreating
   const isCurrentSessionBlank = Boolean(
@@ -761,9 +772,53 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
     return deleteUserMessage(messageId)
   }, [deleteUserMessage, requestConfirm, tAI])
 
+  const addAttachmentFiles = useCallback(async (files: File[]) => {
+    const remainingSlots = MAX_COMPOSER_ATTACHMENTS - attachments.length
+    if (files.length === 0 || remainingSlots <= 0) {
+      return
+    }
+    setAttachmentsLoading(true)
+    try {
+      const next = await Promise.all(
+        files.slice(0, remainingSlots).map(async (file) => {
+          try {
+            return await createComposerAttachment(file)
+          } catch {
+            return null
+          }
+        })
+      )
+      setAttachments((current) => [
+        ...current,
+        ...next.filter((attachment): attachment is ComposerAttachment => attachment !== null),
+      ])
+    } finally {
+      setAttachmentsLoading(false)
+    }
+  }, [attachments.length])
+
+  const handleAttachmentSelection = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ""
+    void addAttachmentFiles(files)
+  }, [addAttachmentFiles])
+
+  const handleAttachmentPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (files.length === 0) {
+      return
+    }
+    event.preventDefault()
+    void addAttachmentFiles(files)
+  }, [addAttachmentFiles])
+
   const handleSubmit = useCallback(async (messageText = input) => {
     const normalizedInput = messageText.trim()
-    if (!normalizedInput || !isConfigured || isConfigLoading || sessionCreatingRef.current) {
+    const submittedAttachments = attachments
+    if ((!normalizedInput && !submittedAttachments.some((attachment) => attachment.source === "image")) || !isConfigured || isConfigLoading || sessionCreatingRef.current) {
       return
     }
 
@@ -772,6 +827,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
     }
 
     setInput("")
+    setAttachments([])
 
     if (!session || session.status === "closed") {
       sessionCreatingRef.current = true
@@ -791,6 +847,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
 
       if (!response) {
         setInput((current) => current || messageText)
+        setAttachments((current) => current.length > 0 ? current : submittedAttachments)
         return
       }
 
@@ -803,13 +860,16 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
       terminalContextText,
       activeModel,
       permissionMode,
-      terminalScope
+      terminalScope,
+      toAgentImageAttachments(submittedAttachments)
     )
     if (!sent) {
       setInput((current) => current || messageText)
+      setAttachments((current) => current.length > 0 ? current : submittedAttachments)
     }
   }, [
     activeModel,
+    attachments,
     canSendToSession,
     input,
     isConfigLoading,
@@ -1141,6 +1201,24 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
             </div>
           )}
 
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            className="hidden"
+            onChange={handleAttachmentSelection}
+          />
+
+          <ComposerReferenceChips
+            attachments={attachments}
+            onClearServers={() => undefined}
+            onRemoveAttachment={(attachmentId) => setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId))}
+            onToggleServer={() => undefined}
+            selectedServers={[]}
+            t={tAI}
+          />
+
           <PromptInput
             onSubmit={(message) => handleSubmit(message.text)}
             className="rounded-xl border-border/80 bg-background/90 shadow-lg ring-1 ring-border/50"
@@ -1149,6 +1227,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
               ref={inputRef}
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onPaste={handleAttachmentPaste}
               placeholder={
                 isConfigLoading
                   ? tAI("checkingConfig")
@@ -1170,6 +1249,18 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
 
             <PromptInputToolbar className="gap-2 px-2 py-1.5">
               <PromptInputTools className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-md"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || !isConfigured}
+                  aria-label={tAI("attachFile")}
+                  title={tAI("attachFile")}
+                >
+                  {attachmentsLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+                </Button>
                 {isConfigured ? (
                   <>
                     <PromptInputModelSelect

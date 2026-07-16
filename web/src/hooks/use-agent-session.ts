@@ -10,6 +10,7 @@ import {
   getLatestAISession,
   updateAIMessage,
   type AgentSessionScope,
+  type AgentImageAttachment,
   type CreateSessionResponse,
   type PermissionMode,
   type SessionView,
@@ -35,6 +36,7 @@ export interface AgentSessionAdapter {
     model?: string
     permission_mode?: PermissionMode
     scope?: AgentSessionScope
+    attachments?: AgentImageAttachment[]
   }) => Promise<CreateSessionResponse>
   updateMessage: (input: {
     session_id: string
@@ -201,6 +203,13 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           : ""
         const requestBody = { ...body }
         delete requestBody[TARGET_SESSION_ID_BODY_KEY]
+        const latestMessage = options.messages.at(-1)
+        const requestMessages = latestMessage
+          ? [{
+              ...latestMessage,
+              parts: latestMessage.parts.filter((part) => part.type !== "file"),
+            }]
+          : []
 
         return {
           api: targetSessionId ? getSessionChatApi(targetSessionId) : options.api,
@@ -209,7 +218,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           body: {
             ...requestBody,
             id: options.id,
-            messages: options.messages,
+            messages: requestMessages,
             trigger: options.trigger,
             messageId: options.messageId,
           },
@@ -443,11 +452,12 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     contextText?: string,
     model?: string,
     permissionMode?: PermissionMode,
-    scope?: AgentSessionScope
+    scope?: AgentSessionScope,
+    attachments: AgentImageAttachment[] = []
   ) => {
     const activeSessionId = sessionRef.current?.id
     const normalizedContent = content.trim()
-    if (!activeSessionId || !normalizedContent) {
+    if (!activeSessionId || (!normalizedContent && attachments.length === 0)) {
       return false
     }
 
@@ -467,18 +477,28 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           model,
           permission_mode: permissionMode,
           scope,
+          attachments,
         })
         applySessionResponse(response, { syncMessages: Boolean(adapter.subscribeSessionEvents) })
         return true
       }
 
-      await chat.sendMessage({ text: normalizedContent }, {
+      await chat.sendMessage({
+        text: normalizedContent,
+        files: attachments.map((attachment) => ({
+          type: "file" as const,
+          filename: attachment.name,
+          mediaType: attachment.media_type,
+          url: `data:${attachment.media_type};base64,${attachment.data}`,
+        })),
+      }, {
         body: {
           [TARGET_SESSION_ID_BODY_KEY]: activeSessionId,
           context: contextText,
           model,
           permission_mode: permissionMode,
           scope,
+          attachments,
         },
       })
       return true

@@ -14,6 +14,36 @@ export type AgentSessionStatus = "idle" | "running" | "waiting_confirmation" | "
 export type AgentTaskStatus = "queued" | "waiting_confirm" | "running" | "succeeded" | "failed" | "cancelled"
 export type AgentTransportType = "ai_sdk_ui" | "desktop_local"
 
+export interface AgentImageAttachment {
+  id: string
+  name: string
+  media_type: string
+  data: string
+  size: number
+}
+
+export interface AgentUsage {
+  input_tokens: number
+  output_tokens: number
+  cached_tokens?: number
+  cache_write_tokens?: number
+  reasoning_tokens?: number
+  total_tokens: number
+}
+
+export interface AgentProviderMetadata {
+  provider: string
+  api: string
+  endpoint?: string
+  request_id?: string
+  response_id?: string
+  model?: string
+  finish_reason?: string
+  service_tier?: string
+  estimated_cost_micros?: number
+  cost_estimate_kind?: string
+}
+
 export interface ToolView {
   name: string
   display_name?: string
@@ -25,6 +55,10 @@ export interface MessageView {
   id: string
   role: "user" | "assistant" | "system" | "tool"
   content: string
+  reasoning?: string
+  attachments?: AgentImageAttachment[]
+  usage?: AgentUsage
+  provider_metadata?: AgentProviderMetadata
   created_at: string
 }
 

@@ -89,6 +89,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           model: input.model,
           permission_mode: toDesktopPermissionMode(input.permission_mode),
           scope: toDesktopSessionScope(input.scope),
+          attachments: input.attachments,
         }))
       ),
       updateMessage: async (input) => fromDesktopSessionResponse(
@@ -282,6 +283,10 @@ function fromDesktopMessage(message: DesktopAIMessageView): MessageView {
     id: message.id,
     role: fromDesktopMessageRole(message.role),
     content: message.content,
+    reasoning: message.reasoning,
+    attachments: message.attachments,
+    usage: message.usage ?? undefined,
+    provider_metadata: message.provider_metadata ?? undefined,
     created_at: message.created_at,
   }
 }

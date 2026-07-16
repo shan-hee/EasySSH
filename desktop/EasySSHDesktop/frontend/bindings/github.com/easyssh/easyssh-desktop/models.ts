@@ -183,10 +183,78 @@ export class DesktopAIListSessionsResult {
     }
 }
 
+export class DesktopAIImageAttachment {
+    "id": string;
+    "name": string;
+    "media_type": string;
+    "data": string;
+    "size": number;
+
+    constructor($$source: Partial<DesktopAIImageAttachment> = {}) {
+        this["id"] = "";
+        this["name"] = "";
+        this["media_type"] = "";
+        this["data"] = "";
+        this["size"] = 0;
+        Object.assign(this, $$source);
+    }
+
+    static createFrom($$source: any = {}): DesktopAIImageAttachment {
+        return new DesktopAIImageAttachment(typeof $$source === 'string' ? JSON.parse($$source) : $$source);
+    }
+}
+
+export class DesktopAIUsage {
+    "input_tokens": number;
+    "output_tokens": number;
+    "cached_tokens"?: number;
+    "cache_write_tokens"?: number;
+    "reasoning_tokens"?: number;
+    "total_tokens": number;
+
+    constructor($$source: Partial<DesktopAIUsage> = {}) {
+        this["input_tokens"] = 0;
+        this["output_tokens"] = 0;
+        this["total_tokens"] = 0;
+        Object.assign(this, $$source);
+    }
+
+    static createFrom($$source: any = {}): DesktopAIUsage {
+        return new DesktopAIUsage(typeof $$source === 'string' ? JSON.parse($$source) : $$source);
+    }
+}
+
+export class DesktopAIProviderMetadata {
+    "provider": string;
+    "api": string;
+    "endpoint"?: string;
+    "request_id"?: string;
+    "response_id"?: string;
+    "model"?: string;
+    "finish_reason"?: string;
+    "service_tier"?: string;
+    "estimated_cost_micros"?: number;
+    "cost_estimate_kind"?: string;
+
+    constructor($$source: Partial<DesktopAIProviderMetadata> = {}) {
+        this["provider"] = "";
+        this["api"] = "";
+        Object.assign(this, $$source);
+    }
+
+    static createFrom($$source: any = {}): DesktopAIProviderMetadata {
+        return new DesktopAIProviderMetadata(typeof $$source === 'string' ? JSON.parse($$source) : $$source);
+    }
+}
+
 export class DesktopAIMessageView {
     "id": string;
     "role": string;
     "content": string;
+    "reasoning"?: string;
+    "attachments"?: DesktopAIImageAttachment[];
+    "usage"?: DesktopAIUsage | null;
+    "provider_metadata"?: DesktopAIProviderMetadata | null;
     "created_at": string;
 
     /** Creates a new DesktopAIMessageView instance. */
@@ -212,6 +280,15 @@ export class DesktopAIMessageView {
      */
     static createFrom($$source: any = {}): DesktopAIMessageView {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("attachments" in $$parsedSource) {
+            $$parsedSource["attachments"] = ($$parsedSource["attachments"] ?? []).map(DesktopAIImageAttachment.createFrom);
+        }
+        if ($$parsedSource["usage"]) {
+            $$parsedSource["usage"] = DesktopAIUsage.createFrom($$parsedSource["usage"]);
+        }
+        if ($$parsedSource["provider_metadata"]) {
+            $$parsedSource["provider_metadata"] = DesktopAIProviderMetadata.createFrom($$parsedSource["provider_metadata"]);
+        }
         return new DesktopAIMessageView($$parsedSource as Partial<DesktopAIMessageView>);
     }
 }
@@ -320,6 +397,7 @@ export class DesktopAISendMessageInput {
     "model"?: string;
     "permission_mode"?: DesktopAIPermissionMode;
     "scope"?: DesktopAISessionScope | null;
+    "attachments"?: DesktopAIImageAttachment[];
 
     /** Creates a new DesktopAISendMessageInput instance. */
     constructor($$source: Partial<DesktopAISendMessageInput> = {}) {
@@ -341,6 +419,9 @@ export class DesktopAISendMessageInput {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("scope" in $$parsedSource) {
             $$parsedSource["scope"] = $$createField5_0($$parsedSource["scope"]);
+        }
+        if ("attachments" in $$parsedSource) {
+            $$parsedSource["attachments"] = ($$parsedSource["attachments"] ?? []).map(DesktopAIImageAttachment.createFrom);
         }
         return new DesktopAISendMessageInput($$parsedSource as Partial<DesktopAISendMessageInput>);
     }
