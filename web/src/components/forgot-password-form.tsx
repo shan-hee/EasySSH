@@ -159,10 +159,10 @@ export function ForgotPasswordForm({
                   />
                 </div>
                 <div className="space-y-1">
-                  <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+                  <h1 className="text-2xl font-bold text-foreground">
                     重置密码
                   </h1>
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  <p className="text-sm text-muted-foreground">
                     输入您的邮箱地址以重置密码
                   </p>
                 </div>
@@ -176,11 +176,11 @@ export function ForgotPasswordForm({
               {/* 邮箱输入 */}
               <FadeSlideIn disabled>
                 <Field>
-                  <FieldLabel htmlFor="email" className="text-zinc-700 dark:text-zinc-200">
+                  <FieldLabel htmlFor="email" className="text-foreground">
                     邮箱地址
                   </FieldLabel>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 dark:text-zinc-500" />
+                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="email"
                       type="email"
@@ -189,7 +189,7 @@ export function ForgotPasswordForm({
                       autoComplete="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 bg-white/80 dark:bg-zinc-900/50 border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-zinc-400 dark:focus:ring-zinc-600"
+                      className="border-input bg-card/80 pl-10 text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-ring/50"
                       required
                     />
                   </div>
@@ -199,12 +199,12 @@ export function ForgotPasswordForm({
               {/* 验证码输入 */}
               <FadeSlideIn disabled>
                 <Field>
-                  <FieldLabel htmlFor="verificationCode" className="text-zinc-700 dark:text-zinc-200">
+                  <FieldLabel htmlFor="verificationCode" className="text-foreground">
                     验证码
                   </FieldLabel>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
-                      <ShieldCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 dark:text-zinc-500" />
+                      <ShieldCheck className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="verificationCode"
                         type="text"
@@ -213,7 +213,7 @@ export function ForgotPasswordForm({
                         autoComplete="off"
                         value={verificationCode}
                         onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        className="pl-10 bg-white/80 dark:bg-zinc-900/50 border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-zinc-400 dark:focus:ring-zinc-600"
+                        className="border-input bg-card/80 pl-10 text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-ring/50"
                         required
                         maxLength={6}
                       />
@@ -240,11 +240,11 @@ export function ForgotPasswordForm({
               {/* 新密码输入 */}
               <FadeSlideIn disabled>
                 <Field>
-                  <FieldLabel htmlFor="newPassword" className="text-zinc-700 dark:text-zinc-200">
+                  <FieldLabel htmlFor="newPassword" className="text-foreground">
                     新密码
                   </FieldLabel>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 dark:text-zinc-500" />
+                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="newPassword"
                       type={showPassword ? "text" : "password"}
@@ -253,14 +253,14 @@ export function ForgotPasswordForm({
                       autoComplete="new-password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="pl-10 pr-10 bg-white/80 dark:bg-zinc-900/50 border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-zinc-400 dark:focus:ring-zinc-600"
+                      className="border-input bg-card/80 pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-ring/50"
                       required
                       minLength={8}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -275,11 +275,11 @@ export function ForgotPasswordForm({
               {/* 确认密码输入 */}
               <FadeSlideIn disabled>
                 <Field>
-                  <FieldLabel htmlFor="confirmPassword" className="text-zinc-700 dark:text-zinc-200">
+                  <FieldLabel htmlFor="confirmPassword" className="text-foreground">
                     确认新密码
                   </FieldLabel>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 dark:text-zinc-500" />
+                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="confirmPassword"
                       type={showConfirmPassword ? "text" : "password"}
@@ -288,14 +288,14 @@ export function ForgotPasswordForm({
                       autoComplete="new-password"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="pl-10 pr-10 bg-white/80 dark:bg-zinc-900/50 border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-zinc-400 dark:focus:ring-zinc-600"
+                      className="border-input bg-card/80 pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-ring/50"
                       required
                       minLength={8}
                     />
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                     >
                       {showConfirmPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -334,12 +334,12 @@ export function ForgotPasswordForm({
           <div className="space-y-3">
             {/* 返回登录 */}
             <FadeSlideIn disabled>
-              <div className="text-center text-sm text-zinc-600 dark:text-zinc-400">
+              <div className="text-center text-sm text-muted-foreground">
                 记起密码了？
                 <Button
                   type="button"
                   variant="link"
-                  className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 p-0 h-auto ml-1 no-underline hover:no-underline transition-colors"
+                  className="ml-1 h-auto p-0 text-muted-foreground no-underline transition-colors hover:text-foreground hover:no-underline"
                   onClick={() => navigate("/login")}
                 >
                   返回登录

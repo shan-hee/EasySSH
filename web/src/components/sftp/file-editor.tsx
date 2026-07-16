@@ -308,13 +308,13 @@ export function FileEditor({
     <div className="fixed inset-0 z-[9999] flex min-w-0 flex-col overflow-hidden bg-background">
         <div
           className={cn(
-            "flex h-full min-w-0 flex-col overflow-hidden bg-white dark:bg-zinc-900",
+            "flex h-full min-w-0 flex-col overflow-hidden bg-card",
           )}
         >
           {/* 编辑器工具栏 */}
           <div
             className={cn(
-              "flex min-w-0 items-center justify-between gap-2 px-3 py-2 border-b bg-zinc-50 border-zinc-200 dark:bg-zinc-900/50 dark:border-zinc-800",
+              "flex min-w-0 items-center justify-between gap-2 border-b border-border bg-muted/50 px-3 py-2",
             )}
           >
             {/* 左侧：文件信息 */}
@@ -339,7 +339,7 @@ export function FileEditor({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-7 px-2 gap-1.5 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                  "h-7 gap-1.5 px-2 text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
                 onClick={handleFind}
                 title={tSftp("editorActionFindTooltip")}
@@ -354,7 +354,7 @@ export function FileEditor({
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 px-2 gap-1.5 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                    "h-7 gap-1.5 px-2 text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                   onClick={handleReplace}
                   title={tSftp("editorActionReplaceTooltip")}
@@ -370,7 +370,7 @@ export function FileEditor({
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 px-2 gap-1.5 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                    "h-7 gap-1.5 px-2 text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                   onClick={formatCode}
                   title={tSftp("editorActionFormatTooltip")}
@@ -381,7 +381,7 @@ export function FileEditor({
               )}
 
               <div className={cn(
-                "h-6 w-px mx-1 bg-zinc-200 dark:bg-zinc-800",
+                "mx-1 h-6 w-px bg-border",
               )} />
 
               {/* Reset */}
@@ -390,7 +390,7 @@ export function FileEditor({
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 px-2 gap-1.5 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                    "h-7 gap-1.5 px-2 text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                   onClick={handleReset}
                   disabled={!isModified}
@@ -407,7 +407,7 @@ export function FileEditor({
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-7 px-2 gap-1.5 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                    "h-7 gap-1.5 px-2 text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                   onClick={onDownload}
                   title={tSftp("editorActionDownloadTooltip")}
@@ -422,7 +422,7 @@ export function FileEditor({
                   variant="default"
                   size="sm"
                   className={cn(
-                    "h-7 px-2 gap-1.5 bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700",
+                    "h-7 gap-1.5 px-2",
                   )}
                   onClick={handleSave}
                   disabled={!isModified || isSaving}
@@ -440,7 +440,7 @@ export function FileEditor({
               {toolbarActions}
 
               <div className={cn(
-                "h-6 w-px mx-1 bg-zinc-200 dark:bg-zinc-800",
+                "mx-1 h-6 w-px bg-border",
               )} />
 
               {/* Exit fullscreen */}
@@ -448,7 +448,7 @@ export function FileEditor({
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-7 w-7 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                  "h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
                 onClick={toggleFullscreen}
                 title={tSftp("editorFullscreenExitTooltip")}
@@ -461,7 +461,7 @@ export function FileEditor({
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "h-7 w-7 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                  "h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground",
                 )}
                 onClick={onClose}
                 title={tSftp("editorCloseTooltip")}
@@ -512,7 +512,7 @@ export function FileEditor({
               loading={
                 <div className="flex items-center justify-center h-full">
                   <div className={cn(
-                    "text-sm text-zinc-400 dark:text-zinc-500",
+                    "text-sm text-muted-foreground",
                   )}>
                     {tSftp("editorLoading")}
                   </div>
@@ -524,7 +524,7 @@ export function FileEditor({
           {/* 底部状态栏 */}
           <div
             className={cn(
-              "flex min-w-0 items-center justify-between gap-3 px-3 py-1 border-t text-xs bg-zinc-50 border-zinc-200 text-zinc-600 dark:bg-zinc-900/50 dark:border-zinc-800 dark:text-zinc-500",
+              "flex min-w-0 items-center justify-between gap-3 border-t border-border bg-muted/50 px-3 py-1 text-xs text-muted-foreground",
             )}
           >
             <div className="flex min-w-0 items-center gap-3">
@@ -565,7 +565,7 @@ export function FileEditor({
       {/* Editor toolbar */}
       <div
         className={cn(
-          "flex min-w-0 items-center justify-between gap-2 px-3 py-2 border-b bg-zinc-50 border-zinc-200 dark:bg-zinc-900/50 dark:border-zinc-800",
+          "flex min-w-0 items-center justify-between gap-2 border-b border-border bg-muted/50 px-3 py-2",
         )}
       >
         {/* Left: file info */}
@@ -574,7 +574,7 @@ export function FileEditor({
             variant="ghost"
             size="icon"
             className={cn(
-              "h-7 w-7 shrink-0 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+              "h-7 w-7 shrink-0 text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={onClose}
             title={resolvedCloseButtonLabel}
@@ -602,7 +602,7 @@ export function FileEditor({
             variant="ghost"
             size="icon"
             className={cn(
-              "h-7 w-7 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+              "h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={handleFind}
             title={tSftp("editorActionFindTooltip")}
@@ -616,7 +616,7 @@ export function FileEditor({
               variant="ghost"
               size="icon"
               className={cn(
-                "h-7 w-7 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                "h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
               onClick={handleReplace}
               title={tSftp("editorActionReplaceTooltip")}
@@ -632,7 +632,7 @@ export function FileEditor({
               variant="ghost"
               size="icon"
               className={cn(
-                "h-7 w-7 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                "h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
               onClick={formatCode}
               title={tSftp("editorActionFormatTooltip")}
@@ -643,7 +643,7 @@ export function FileEditor({
           )}
 
           <div className={cn(
-            "h-6 w-px mx-1 bg-zinc-200 dark:bg-zinc-800",
+            "mx-1 h-6 w-px bg-border",
           )} />
 
           {/* Reset */}
@@ -652,7 +652,7 @@ export function FileEditor({
               variant="ghost"
               size="icon"
               className={cn(
-                "h-7 w-7 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                "h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
               onClick={handleReset}
               disabled={!isModified}
@@ -669,7 +669,7 @@ export function FileEditor({
               variant="ghost"
               size="icon"
               className={cn(
-                "h-7 w-7 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+                "h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
               onClick={onDownload}
               title={tSftp("editorActionDownloadTooltip")}
@@ -684,7 +684,7 @@ export function FileEditor({
               variant="default"
               size="icon"
               className={cn(
-                "h-7 w-7 bg-blue-500 hover:bg-blue-600 text-white dark:bg-blue-600 dark:hover:bg-blue-700",
+                "h-7 w-7",
               )}
               onClick={handleSave}
               disabled={!isModified || isSaving}
@@ -698,7 +698,7 @@ export function FileEditor({
           {toolbarActions}
 
           <div className={cn(
-            "h-6 w-px mx-1 bg-zinc-200 dark:bg-zinc-800",
+            "mx-1 h-6 w-px bg-border",
           )} />
 
           {/* Fullscreen */}
@@ -706,7 +706,7 @@ export function FileEditor({
             variant="ghost"
             size="icon"
             className={cn(
-              "h-7 w-7 hover:bg-zinc-100 text-zinc-600 dark:hover:bg-zinc-800 dark:text-zinc-400 dark:hover:text-white",
+              "h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground",
             )}
             onClick={toggleFullscreen}
             title={tSftp("editorFullscreenEnterTooltip")}
@@ -758,7 +758,7 @@ export function FileEditor({
           loading={
             <div className="flex items-center justify-center h-full">
               <div className={cn(
-                "text-sm text-zinc-400 dark:text-zinc-500",
+                "text-sm text-muted-foreground",
               )}>
                 {tSftp("editorLoading")}
               </div>
@@ -770,7 +770,7 @@ export function FileEditor({
       {/* 底部状态栏 */}
       <div
         className={cn(
-          "flex min-w-0 items-center justify-between gap-3 px-3 py-1 border-t text-xs bg-zinc-50 border-zinc-200 text-zinc-600 dark:bg-zinc-900/50 dark:border-zinc-800 dark:text-zinc-500",
+          "flex min-w-0 items-center justify-between gap-3 border-t border-border bg-muted/50 px-3 py-1 text-xs text-muted-foreground",
         )}
       >
         <div className="flex min-w-0 items-center gap-3">

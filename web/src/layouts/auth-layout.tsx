@@ -7,15 +7,13 @@ import { AuthI18nProvider } from "@/providers/auth-i18n-provider"
 export default function AuthLayout() {
   const { resolvedTheme } = useTheme()
 
-  // 根据主题选择光线颜色和参数
   const isLightTheme = resolvedTheme === "light"
   const raysColor = isLightTheme ? "#3b82f6" : "#ffffff"
   const raysOpacity = isLightTheme ? "opacity-30" : "opacity-60"
 
   return (
     <AuthI18nProvider>
-      <div className="relative bg-zinc-50 dark:bg-zinc-950 flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10 overflow-hidden">
-        {/* 光线背景 - 始终保持不变 */}
+      <div className="relative flex min-h-svh flex-col items-center justify-center gap-6 overflow-hidden bg-background p-6 md:p-10">
         <div className="absolute inset-0 z-0">
           <LightRays
             raysOrigin="top-center"

@@ -399,13 +399,13 @@ export function LoginForm({
                   />
                 </div>
                 <div className="space-y-1">
-                  <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+                  <h1 className="text-2xl font-bold text-foreground">
                     {requires2FA
                       ? tAuth("login2faRequiredTitle")
                       : tAuth("loginTitle") + " " + (config?.system_name || "EasySSH")}
                   </h1>
                   {requires2FA && (
-                    <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    <p className="text-sm text-muted-foreground">
                       {tAuth("login2faRequiredDesc")}
                     </p>
                   )}
@@ -421,7 +421,7 @@ export function LoginForm({
               <div className="space-y-4">
                 <FadeSlideIn delay={0.1} disabled>
                   <Field>
-                    <FieldLabel htmlFor="2fa-code" className="text-zinc-700 dark:text-zinc-200">
+                    <FieldLabel htmlFor="2fa-code" className="text-foreground">
                       {tAuth("login2faCodePlaceholder")}
                     </FieldLabel>
                     <div className="flex justify-center">
@@ -444,7 +444,7 @@ export function LoginForm({
                         </InputOTPGroup>
                       </InputOTP>
                     </div>
-                    <FieldDescription className="text-zinc-600 dark:text-zinc-500 text-xs text-center">
+                    <FieldDescription className="text-center text-xs text-muted-foreground">
                       {tAuth("login2faRequiredDesc")}
                     </FieldDescription>
                   </Field>
@@ -489,7 +489,7 @@ export function LoginForm({
 
                 {/* 备份码提示 */}
                 <FadeSlideIn delay={0.4} disabled>
-                  <div className="text-center text-xs text-zinc-600 dark:text-zinc-500">
+                  <div className="text-center text-xs text-muted-foreground">
                     {tAuth("login2faBackupHint")}
                   </div>
                 </FadeSlideIn>
@@ -560,11 +560,11 @@ export function LoginForm({
               {/* 邮箱输入 */}
               <FadeSlideIn delay={0.1} disabled>
                 <Field>
-                  <FieldLabel htmlFor="email" className="text-zinc-700 dark:text-zinc-200">
+                  <FieldLabel htmlFor="email" className="text-foreground">
                     {tAuth("loginEmailLabel")}
                   </FieldLabel>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 dark:text-zinc-500" />
+                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="email"
                       type="email"
@@ -573,7 +573,7 @@ export function LoginForm({
                       autoComplete="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="pl-10 bg-white/80 dark:bg-zinc-900/50 border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-zinc-400 dark:focus:ring-zinc-600"
+                      className="border-input bg-card/80 pl-10 text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-ring/50"
                       required
                     />
                   </div>
@@ -583,11 +583,11 @@ export function LoginForm({
               {/* 密码输入 */}
               <FadeSlideIn delay={0.2} disabled>
                 <Field>
-                  <FieldLabel htmlFor="password" className="text-zinc-700 dark:text-zinc-200">
+                  <FieldLabel htmlFor="password" className="text-foreground">
                     {tAuth("loginPasswordLabel")}
                   </FieldLabel>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500 dark:text-zinc-500" />
+                    <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
@@ -596,13 +596,13 @@ export function LoginForm({
                       autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10 pr-10 bg-white/80 dark:bg-zinc-900/50 border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-zinc-400 dark:focus:ring-zinc-600"
+                      className="border-input bg-card/80 pl-10 pr-10 text-foreground placeholder:text-muted-foreground focus:border-ring focus:ring-ring/50"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
                     >
                       {showPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -618,7 +618,7 @@ export function LoginForm({
               <FadeSlideIn delay={0.3} disabled>
                 <div className="flex items-center justify-between gap-4">
                   {rememberLoginAllowed ? (
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
                       <Checkbox
                         checked={rememberLogin}
                         onCheckedChange={(checked) => setRememberLogin(checked === true)}
@@ -632,7 +632,7 @@ export function LoginForm({
                   <Button
                     type="button"
                     variant="link"
-                    className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 p-0 h-auto no-underline hover:no-underline transition-colors"
+                    className="h-auto p-0 text-sm text-muted-foreground no-underline transition-colors hover:text-foreground hover:no-underline"
                     onClick={() => navigate("/forgot-password")}
                   >
                     {tAuth("loginForgotPassword")}
@@ -666,11 +666,11 @@ export function LoginForm({
                 <>
                   <FadeSlideIn delay={0.5} disabled>
                     <div className="flex items-center gap-3">
-                      <div className="flex-1 border-t border-zinc-300 dark:border-zinc-700" />
-                      <span className="text-xs uppercase text-zinc-500 dark:text-zinc-500">
+                      <div className="flex-1 border-t border-border" />
+                      <span className="text-xs uppercase text-muted-foreground">
                         {tAuth("loginDividerOr")}
                       </span>
-                      <div className="flex-1 border-t border-zinc-300 dark:border-zinc-700" />
+                      <div className="flex-1 border-t border-border" />
                     </div>
                   </FadeSlideIn>
 
@@ -718,13 +718,13 @@ export function LoginForm({
 
             {/* 注册提示 */}
             <FadeSlideIn delay={0.5} disabled>
-              <div className="text-center text-sm text-zinc-600 dark:text-zinc-400">
+              <div className="text-center text-sm text-muted-foreground">
                 {tAuth("loginNoAccount")}
                 {config?.allow_registration ? (
                   <Button
                     type="button"
                     variant="link"
-                    className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 p-0 h-auto ml-1 no-underline hover:no-underline transition-colors"
+                    className="ml-1 h-auto p-0 text-muted-foreground no-underline transition-colors hover:text-foreground hover:no-underline"
                     onClick={() => navigate("/register")}
                   >
                     {tAuth("loginRegisterNow")}
@@ -733,7 +733,7 @@ export function LoginForm({
                   <Button
                     type="button"
                     variant="link"
-                    className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 p-0 h-auto ml-1 no-underline hover:no-underline transition-colors"
+                    className="ml-1 h-auto p-0 text-muted-foreground no-underline transition-colors hover:text-foreground hover:no-underline"
                     onClick={() => {
                       toast.info(tAuth("loginApplyAccountToastTitle"), {
                         description: tAuth("loginApplyAccountToastDesc"),
