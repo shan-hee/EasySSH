@@ -34,26 +34,23 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// 如果不存在，创建默认配置
-			jwtDefaults := DefaultJWTSessionConfig()
+			oauthDefaults := DefaultOAuthTokenConfig()
 			config = SystemConfig{
-				SystemName:                   "EasySSH",
-				DefaultLanguage:              "zh-CN",
-				DefaultTimezone:              "Asia/Shanghai",
-				DateFormat:                   "YYYY-MM-DD HH:mm:ss",
-				DefaultDownloadMode:          "fast",
-				SkipExcludedOnUpload:         true,
-				MaxFileUploadSize:            100,
-				DownloadExcludePatterns:      DefaultDownloadExcludePatterns(),
-				TransferStoragePath:          DefaultTransferStoragePath(),
-				TransferRetentionDays:        DefaultTransferRetentionDays(),
-				TransferMaxStorageGB:         DefaultTransferMaxStorageGB(),
-				TransferMaxConcurrency:       DefaultTransferMaxConcurrency(),
-				TransferCleanupEnabled:       true,
-				JWTAccessExpireMinutes:       jwtDefaults.AccessExpireMinutes,
-				JWTRefreshIdleExpireDays:     jwtDefaults.RefreshIdleExpireDays,
-				JWTRefreshAbsoluteExpireDays: jwtDefaults.RefreshAbsoluteExpireDays,
-				JWTRefreshRotate:             jwtDefaults.RefreshRotate,
-				JWTRefreshReuseDetection:     jwtDefaults.RefreshReuseDetection,
+				SystemName:              "EasySSH",
+				DefaultLanguage:         "zh-CN",
+				DefaultTimezone:         "Asia/Shanghai",
+				DateFormat:              "YYYY-MM-DD HH:mm:ss",
+				DefaultDownloadMode:     "fast",
+				SkipExcludedOnUpload:    true,
+				MaxFileUploadSize:       100,
+				DownloadExcludePatterns: DefaultDownloadExcludePatterns(),
+				TransferStoragePath:     DefaultTransferStoragePath(),
+				TransferRetentionDays:   DefaultTransferRetentionDays(),
+				TransferMaxStorageGB:    DefaultTransferMaxStorageGB(),
+				TransferMaxConcurrency:  DefaultTransferMaxConcurrency(),
+				TransferCleanupEnabled:  true,
+				OAuthAccessTokenMinutes: oauthDefaults.AccessTokenMinutes,
+				OAuthRefreshTokenDays:   oauthDefaults.RefreshTokenDays,
 			}
 
 			// 创建默认配置

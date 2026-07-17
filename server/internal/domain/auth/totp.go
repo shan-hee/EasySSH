@@ -2,9 +2,11 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base32"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
@@ -15,8 +17,8 @@ type TOTPService interface {
 	// GenerateSecret 生成 TOTP secret
 	GenerateSecret(username string) (string, string, error)
 
-	// ValidateCode 验证 TOTP 代码
-	ValidateCode(secret, code string) bool
+	// ValidateCode 验证 TOTP 代码，并返回匹配的时间步。
+	ValidateCode(secret, code string) (int64, bool)
 
 	// GenerateBackupCodes 生成备份码
 	GenerateBackupCodes() ([]string, error)
@@ -48,9 +50,29 @@ func (s *totpService) GenerateSecret(username string) (string, string, error) {
 	return key.Secret(), key.URL(), nil
 }
 
-// ValidateCode 验证 TOTP 代码
-func (s *totpService) ValidateCode(secret, code string) bool {
-	return totp.Validate(code, secret)
+// ValidateCode 验证 TOTP 代码并返回匹配的时间步。
+// 保持 pquerna/otp 默认的前后一个时间步容差，但显式返回实际命中的 counter，
+// 供持久层原子消费并阻止同一 TOTP 重放。
+func (s *totpService) ValidateCode(secret, code string) (int64, bool) {
+	nowCounter := time.Now().UTC().Unix() / 30
+	matchedCounter := int64(-1)
+	opts := totp.ValidateOpts{
+		Period:    30,
+		Skew:      0,
+		Digits:    otp.DigitsSix,
+		Algorithm: otp.AlgorithmSHA1,
+	}
+	for _, offset := range []int64{-1, 0, 1} {
+		counter := nowCounter + offset
+		expected, err := totp.GenerateCodeCustom(secret, time.Unix(counter*30, 0).UTC(), opts)
+		if err != nil {
+			continue
+		}
+		if subtle.ConstantTimeCompare([]byte(expected), []byte(code)) == 1 && counter > matchedCounter {
+			matchedCounter = counter
+		}
+	}
+	return matchedCounter, matchedCounter >= 0
 }
 
 // GenerateBackupCodes 生成 8 个备份码

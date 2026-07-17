@@ -20,7 +20,7 @@ func NewSecurityHandler(service security.Service) *SecurityHandler {
 	return &SecurityHandler{service: service}
 }
 
-// SetSystemConfigService 设置系统配置服务，用于在会话设置接口中合并 JWT 过期与刷新配置。
+// SetSystemConfigService 设置系统配置服务，用于在会话设置接口中合并 OAuth/OIDC 令牌配置。
 func (h *SecurityHandler) SetSystemConfigService(service systemconfig.Service) {
 	h.systemConfigService = service
 }
@@ -292,12 +292,9 @@ func (h *SecurityHandler) GetTabSessionConfig(c *gin.Context) {
 
 	if h.systemConfigService != nil {
 		if systemCfg, err := h.systemConfigService.Get(c.Request.Context()); err == nil {
-			jwtCfg := systemCfg.JWTSessionConfig()
-			response["jwt_access_expire_minutes"] = jwtCfg.AccessExpireMinutes
-			response["jwt_refresh_idle_expire_days"] = jwtCfg.RefreshIdleExpireDays
-			response["jwt_refresh_absolute_expire_days"] = jwtCfg.RefreshAbsoluteExpireDays
-			response["jwt_refresh_rotate"] = jwtCfg.RefreshRotate
-			response["jwt_refresh_reuse_detection"] = jwtCfg.RefreshReuseDetection
+			oauthTokenCfg := systemCfg.OAuthTokenConfig()
+			response["oauth_access_token_minutes"] = oauthTokenCfg.AccessTokenMinutes
+			response["oauth_refresh_token_days"] = oauthTokenCfg.RefreshTokenDays
 		}
 	}
 

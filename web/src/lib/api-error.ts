@@ -15,6 +15,9 @@ function resolveDetailMessage(detail: unknown): string | undefined {
   if (typeof record.message === "string" && record.message.trim()) {
     return record.message.trim()
   }
+  if (typeof record.error_description === "string" && record.error_description.trim()) {
+    return record.error_description.trim()
+  }
   if (typeof record.error === "string" && record.error.trim()) {
     return record.error.trim()
   }

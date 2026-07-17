@@ -33,19 +33,15 @@ type SystemConfig struct {
 
 	// 注册配置
 	AllowRegistration bool   `gorm:"not null;default:false" json:"allow_registration"`
-	DefaultRole       string `gorm:"size:20;not null;default:'user'" json:"default_role"` // 新用户默认角色: user, viewer
+	DefaultRole       string `gorm:"size:64;not null;default:'user'" json:"default_role"`
 
 	// OAuth 配置
-	OAuthEnabled       bool   `gorm:"not null;default:false" json:"oauth_enabled"`
+	OAuthEnabled       bool   `gorm:"column:oauth_enabled;not null;default:false" json:"oauth_enabled"`
 	GoogleClientID     string `gorm:"size:255" json:"google_client_id"`
 	GoogleClientSecret string `gorm:"size:255" json:"-"` // 加密存储，不返回给前端
 
-	// JWT 过期与刷新（JWT_SECRET 仍由 .env 管理）
-	JWTAccessExpireMinutes       int  `gorm:"not null;default:15" json:"jwt_access_expire_minutes"`        // Access Token 有效期（分钟）
-	JWTRefreshIdleExpireDays     int  `gorm:"not null;default:7" json:"jwt_refresh_idle_expire_days"`      // Refresh Token 闲置过期（天）
-	JWTRefreshAbsoluteExpireDays int  `gorm:"not null;default:30" json:"jwt_refresh_absolute_expire_days"` // Refresh Token 绝对过期（天）
-	JWTRefreshRotate             bool `gorm:"not null;default:true" json:"jwt_refresh_rotate"`             // 是否轮换 Refresh Token
-	JWTRefreshReuseDetection     bool `gorm:"not null;default:true" json:"jwt_refresh_reuse_detection"`    // 是否启用复用检测
+	OAuthAccessTokenMinutes int `gorm:"column:oauth_access_token_minutes;not null;default:15" json:"oauth_access_token_minutes"`
+	OAuthRefreshTokenDays   int `gorm:"column:oauth_refresh_token_days;not null;default:30" json:"oauth_refresh_token_days"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -57,49 +53,34 @@ func (SystemConfig) TableName() string {
 	return "system_config"
 }
 
-// JWTSessionConfig JWT 过期与刷新设置（不包含 JWT_SECRET）。
-type JWTSessionConfig struct {
-	AccessExpireMinutes       int  `json:"jwt_access_expire_minutes"`
-	RefreshIdleExpireDays     int  `json:"jwt_refresh_idle_expire_days"`
-	RefreshAbsoluteExpireDays int  `json:"jwt_refresh_absolute_expire_days"`
-	RefreshRotate             bool `json:"jwt_refresh_rotate"`
-	RefreshReuseDetection     bool `json:"jwt_refresh_reuse_detection"`
+type OAuthTokenConfig struct {
+	AccessTokenMinutes int `json:"oauth_access_token_minutes"`
+	RefreshTokenDays   int `json:"oauth_refresh_token_days"`
 }
 
-// DefaultJWTSessionConfig 默认 JWT 过期与刷新设置。
-func DefaultJWTSessionConfig() *JWTSessionConfig {
-	return &JWTSessionConfig{
-		AccessExpireMinutes:       15,
-		RefreshIdleExpireDays:     7,
-		RefreshAbsoluteExpireDays: 30,
-		RefreshRotate:             true,
-		RefreshReuseDetection:     true,
+func DefaultOAuthTokenConfig() *OAuthTokenConfig {
+	return &OAuthTokenConfig{
+		AccessTokenMinutes: 15,
+		RefreshTokenDays:   30,
 	}
 }
 
-// JWTSessionConfig 返回配置中的 JWT 设置，并对旧数据中的空值做兜底。
-func (c *SystemConfig) JWTSessionConfig() *JWTSessionConfig {
-	defaults := DefaultJWTSessionConfig()
+func (c *SystemConfig) OAuthTokenConfig() *OAuthTokenConfig {
+	defaults := DefaultOAuthTokenConfig()
 	if c == nil {
 		return defaults
 	}
 
-	settings := &JWTSessionConfig{
-		AccessExpireMinutes:       c.JWTAccessExpireMinutes,
-		RefreshIdleExpireDays:     c.JWTRefreshIdleExpireDays,
-		RefreshAbsoluteExpireDays: c.JWTRefreshAbsoluteExpireDays,
-		RefreshRotate:             c.JWTRefreshRotate,
-		RefreshReuseDetection:     c.JWTRefreshReuseDetection,
+	settings := &OAuthTokenConfig{
+		AccessTokenMinutes: c.OAuthAccessTokenMinutes,
+		RefreshTokenDays:   c.OAuthRefreshTokenDays,
 	}
 
-	if settings.AccessExpireMinutes <= 0 {
-		settings.AccessExpireMinutes = defaults.AccessExpireMinutes
+	if settings.AccessTokenMinutes <= 0 {
+		settings.AccessTokenMinutes = defaults.AccessTokenMinutes
 	}
-	if settings.RefreshIdleExpireDays <= 0 {
-		settings.RefreshIdleExpireDays = defaults.RefreshIdleExpireDays
-	}
-	if settings.RefreshAbsoluteExpireDays <= 0 {
-		settings.RefreshAbsoluteExpireDays = defaults.RefreshAbsoluteExpireDays
+	if settings.RefreshTokenDays <= 0 {
+		settings.RefreshTokenDays = defaults.RefreshTokenDays
 	}
 
 	return settings

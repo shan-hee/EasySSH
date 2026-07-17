@@ -3,17 +3,15 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/easyssh/server/internal/domain/oauthprovider"
 	secretcrypto "github.com/easyssh/server/internal/pkg/crypto"
-	"github.com/easyssh/server/internal/pkg/ttlcache"
 	"github.com/google/uuid"
 )
 
@@ -49,14 +47,8 @@ type Service interface {
 	// ip 和 userAgent 用于账户锁定和登录检测
 	AuthenticateUserWithContext(ctx context.Context, email, password, ip, userAgent string) (*AuthenticateResult, error)
 
-	// CreateSessionWithTokens 为已认证用户创建会话并生成访问令牌/刷新令牌
-	CreateSessionWithTokens(ctx context.Context, user *User, sessionInfo *SessionInfo) (accessToken, refreshToken string, err error)
-
-	// Logout 用户登出
-	Logout(ctx context.Context, accessToken string) error
-
-	// LogoutWithRefreshToken 登出时同时将 Access Token 和 Refresh Token 加入黑名单
-	LogoutWithRefreshToken(ctx context.Context, accessToken, refreshToken string) error
+	RecordOAuthSession(ctx context.Context, user *User, sessionID uuid.UUID, requestID string, sessionInfo *SessionInfo, expiresAt time.Time) error
+	TouchOAuthSession(ctx context.Context, requestID string, expiresAt time.Time) error
 
 	// GetUserByID 根据 ID 获取用户
 	GetUserByID(ctx context.Context, userID uuid.UUID) (*User, error)
@@ -75,9 +67,6 @@ type Service interface {
 
 	// RegisterOAuthUser 通过 OAuth 注册用户（不需要密码）
 	RegisterOAuthUser(ctx context.Context, username, email, avatar, googleSub string, role UserRole) (*User, error)
-
-	// RefreshAccessToken 刷新访问令牌（返回新的访问令牌和刷新令牌）
-	RefreshAccessToken(ctx context.Context, refreshToken string, allowRememberLogin bool) (accessToken, newRefreshToken string, rememberLogin bool, err error)
 
 	// ChangePassword 修改密码
 	ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error
@@ -98,7 +87,7 @@ type Service interface {
 	HasAdmin(ctx context.Context) (bool, error)
 
 	// InitializeAdmin 初始化管理员账户（仅在没有管理员时）
-	InitializeAdmin(ctx context.Context, username, email, password, runMode string, sessionInfo *SessionInfo) (*User, string, string, error)
+	InitializeAdmin(ctx context.Context, username, email, password, runMode string) (*User, error)
 
 	// 2FA 相关方法
 
@@ -135,47 +124,18 @@ type Service interface {
 	// UpdateMonitorDataSource 更新监控数据源设置
 	// setActive: 是否将此数据源设为当前激活的数据源
 	UpdateMonitorDataSource(ctx context.Context, userID uuid.UUID, dataSource, endpoint, token string, setActive bool) error
-
-	// Authorization Code + PKCE
-
-	// CreateAuthorizationCode 为指定用户创建授权码
-	CreateAuthorizationCode(ctx context.Context, userID uuid.UUID, clientID, redirectURI, scope, codeChallenge, codeChallengeMethod string, rememberLogin bool, expiresIn time.Duration) (string, error)
-
-	// ExchangeAuthorizationCodeForTokens 使用授权码和 PKCE code_verifier 换取访问令牌和刷新令牌
-	ExchangeAuthorizationCodeForTokens(ctx context.Context, clientID, redirectURI, code, codeVerifier string, sessionInfo *SessionInfo) (*User, string, string, bool, error)
 }
 
 // authService 认证服务实现
 type authService struct {
 	repo                  Repository
-	jwtService            JWTService
+	oauthProvider         *oauthprovider.Service
 	totpService           TOTPService
 	emailService          EmailService          // 可选的邮件服务
 	accountLockService    AccountLockService    // 账户锁定服务（可选）
 	loginDetectionService LoginDetectionService // 登录检测服务（可选）
 	encryptor             *secretcrypto.Encryptor
-	runMode               string        // 存储运行模式
-	sessionIdleDuration   time.Duration // 会话闲置过期时间（用于 user_sessions.ExpiresAt）
-	refreshGraceDuration  time.Duration // refresh token 轮换后的短暂并发宽限窗口
-	refreshLocks          map[string]*refreshLock
-	refreshLocksMu        sync.Mutex
-	authCodes             *ttlcache.Cache[authorizationCodeRecord]
-}
-
-type refreshLock struct {
-	mu   sync.Mutex
-	refs int
-}
-
-type authorizationCodeRecord struct {
-	UserID              uuid.UUID
-	ClientID            string
-	RedirectURI         string
-	Scope               string
-	CodeChallenge       string
-	CodeChallengeMethod string
-	RememberLogin       bool
-	CreatedAt           time.Time
+	runMode               string // 存储运行模式
 }
 
 // EmailService 邮件服务接口（可选依赖）
@@ -191,21 +151,16 @@ type EmailService interface {
 }
 
 // NewService 创建认证服务
-// sessionIdleDuration 用于 user_sessions.ExpiresAt，通常应与 JWT 刷新闲置过期时间保持一致
-func NewService(repo Repository, jwtService JWTService, sessionIdleDuration time.Duration, encryptor *secretcrypto.Encryptor) Service {
+func NewService(repo Repository, oauthProvider *oauthprovider.Service, encryptor *secretcrypto.Encryptor) Service {
 	return &authService{
 		repo:                  repo,
-		jwtService:            jwtService,
+		oauthProvider:         oauthProvider,
 		totpService:           NewTOTPService(),
 		emailService:          nil, // 默认不启用邮件服务
 		accountLockService:    nil, // 默认不启用账户锁定
 		loginDetectionService: nil, // 默认不启用登录检测
 		encryptor:             encryptor,
 		runMode:               "production",
-		sessionIdleDuration:   sessionIdleDuration,
-		refreshGraceDuration:  30 * time.Second,
-		refreshLocks:          make(map[string]*refreshLock),
-		authCodes:             ttlcache.New[authorizationCodeRecord](time.Minute),
 	}
 }
 
@@ -371,137 +326,42 @@ func (s *authService) AuthenticateUserWithContext(ctx context.Context, email, pa
 	return result, nil
 }
 
-// CreateSessionWithTokens 为已认证用户创建会话并生成访问/刷新令牌
-func (s *authService) CreateSessionWithTokens(ctx context.Context, user *User, sessionInfo *SessionInfo) (string, string, error) {
-	// 为当前登录生成会话ID，用于 access_token 中标记当前会话
-	sessionID := uuid.New()
-
-	// 生成令牌（在 access_token 中嵌入 session_id）
-	accessToken, refreshToken, err := s.jwtService.GenerateTokensForSession(user, sessionID)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to generate tokens: %w", err)
+func (s *authService) RecordOAuthSession(ctx context.Context, user *User, sessionID uuid.UUID, requestID string, sessionInfo *SessionInfo, expiresAt time.Time) error {
+	if user == nil || sessionID == uuid.Nil || strings.TrimSpace(requestID) == "" {
+		return errors.New("oauth session identity is incomplete")
 	}
-
-	// 创建会话记录
-	if sessionInfo != nil {
-		session := &Session{
-			ID:            sessionID,
-			UserID:        user.ID,
-			RefreshToken:  s.hashToken(refreshToken), // 存储哈希值
-			DeviceType:    sessionInfo.DeviceType,
-			DeviceName:    sessionInfo.DeviceName,
-			IPAddress:     sessionInfo.IPAddress,
-			Location:      "", // TODO: 可以集成 IP 地理位置服务
-			UserAgent:     sessionInfo.UserAgent,
-			LastActivity:  time.Now(),
-			ExpiresAt:     time.Now().Add(s.sessionIdleDuration),
-			RememberLogin: sessionInfo.RememberLogin,
-		}
-
-		if err := s.repo.CreateSession(ctx, session); err != nil {
-			// 会话创建失败不应阻止登录，记录错误
-			fmt.Printf("Failed to create session: %v\n", err)
-		}
+	if sessionInfo == nil {
+		sessionInfo = &SessionInfo{}
 	}
-
-	// 异步发送登录通知邮件（不影响登录流程）
-	if s.emailService != nil && user.NotifyEmailLogin && sessionInfo != nil {
+	session := &Session{
+		ID: sessionID, UserID: user.ID, OAuthRequestID: requestID,
+		DeviceType: sessionInfo.DeviceType, DeviceName: sessionInfo.DeviceName,
+		IPAddress: sessionInfo.IPAddress, UserAgent: sessionInfo.UserAgent,
+		LastActivity: time.Now(), ExpiresAt: expiresAt, RememberLogin: sessionInfo.RememberLogin,
+	}
+	if err := s.repo.CreateSession(ctx, session); err != nil {
+		return err
+	}
+	if s.emailService != nil && user.NotifyEmailLogin {
 		go func() {
-			// 使用新的上下文，避免影响主流程
 			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-
-			// 发送邮件
-			if err := s.emailService.SendLoginNotification(
-				notifyCtx,
-				user.Email,
-				user.Username,
-				sessionInfo.IPAddress,
-				"", // location
-				sessionInfo.DeviceName,
-				time.Now(),
-			); err != nil {
-				// 记录错误但不影响登录
-				fmt.Printf("Failed to send login notification email: %v\n", err)
-			}
+			_ = s.emailService.SendLoginNotification(notifyCtx, user.Email, user.Username, sessionInfo.IPAddress, "", sessionInfo.DeviceName, time.Now())
 		}()
 	}
-
-	return accessToken, refreshToken, nil
-}
-
-// hashToken 对 token 进行哈希处理
-func (s *authService) hashToken(token string) string {
-	hash := sha256.Sum256([]byte(token))
-	return fmt.Sprintf("%x", hash)
-}
-
-func (s *authService) lockRefreshToken(tokenHash string) func() {
-	s.refreshLocksMu.Lock()
-	lock := s.refreshLocks[tokenHash]
-	if lock == nil {
-		lock = &refreshLock{}
-		s.refreshLocks[tokenHash] = lock
-	}
-	lock.refs++
-	s.refreshLocksMu.Unlock()
-
-	lock.mu.Lock()
-
-	return func() {
-		lock.mu.Unlock()
-
-		s.refreshLocksMu.Lock()
-		lock.refs--
-		if lock.refs == 0 {
-			delete(s.refreshLocks, tokenHash)
-		}
-		s.refreshLocksMu.Unlock()
-	}
-}
-
-func (s *authService) Logout(ctx context.Context, accessToken string) error {
-	// 将 Access Token 加入黑名单
-	// 设置过期时间为令牌的剩余有效时间
-	if err := s.jwtService.BlacklistToken(accessToken, 24*time.Hour); err != nil {
-		return fmt.Errorf("failed to blacklist access token: %w", err)
-	}
 	return nil
 }
 
-// LogoutWithRefreshToken 登出时同时将 Access Token 和 Refresh Token 加入黑名单
-// 确保被撤销的 Refresh Token 无法再用于获取新的 Access Token
-func (s *authService) LogoutWithRefreshToken(ctx context.Context, accessToken, refreshToken string) error {
-	// 将 Access Token 加入黑名单
-	if accessToken != "" {
-		if err := s.jwtService.BlacklistToken(accessToken, 24*time.Hour); err != nil {
-			// 记录错误但不阻止后续操作
-			fmt.Printf("Warning: failed to blacklist access token: %v\n", err)
-		}
+func (s *authService) TouchOAuthSession(ctx context.Context, requestID string, expiresAt time.Time) error {
+	session, err := s.repo.FindSessionByOAuthRequestID(ctx, requestID)
+	if err != nil {
+		return err
 	}
-
-	// 将 Refresh Token 加入黑名单
-	// Refresh Token 的有效期较长，需要使用更长的黑名单过期时间
-	if refreshToken != "" {
-		// 尝试解析 Refresh Token 获取其绝对过期时间
-		claims, err := s.jwtService.ValidateToken(refreshToken)
-		if err == nil && claims.AbsoluteExpiry > 0 {
-			// 使用 Refresh Token 的绝对过期时间作为黑名单过期时间
-			ttl := time.Until(time.Unix(claims.AbsoluteExpiry, 0))
-			if ttl > 0 {
-				if err := s.jwtService.BlacklistToken(refreshToken, ttl); err != nil {
-					fmt.Printf("Warning: failed to blacklist refresh token: %v\n", err)
-				}
-			}
-		} else {
-			// 如果无法解析，使用默认的 30 天（通常 Refresh Token 的最大有效期）
-			if err := s.jwtService.BlacklistToken(refreshToken, 30*24*time.Hour); err != nil {
-				fmt.Printf("Warning: failed to blacklist refresh token: %v\n", err)
-			}
-		}
+	session.UpdateActivity()
+	if !expiresAt.IsZero() {
+		session.ExpiresAt = expiresAt
 	}
-
-	return nil
+	return s.repo.UpdateSession(ctx, session)
 }
 
 func (s *authService) GetUserByID(ctx context.Context, userID uuid.UUID) (*User, error) {
@@ -622,66 +482,6 @@ func (s *authService) RegisterOAuthUser(ctx context.Context, username, email, av
 	return user, nil
 }
 
-func (s *authService) RefreshAccessToken(ctx context.Context, refreshToken string, allowRememberLogin bool) (string, string, bool, error) {
-	tokenHashToFind := s.hashToken(refreshToken)
-	unlock := s.lockRefreshToken(tokenHashToFind)
-	defer unlock()
-
-	session, matchedPreviousToken, err := s.repo.FindSessionByRefreshTokenWithGrace(ctx, tokenHashToFind)
-	if err != nil || session == nil {
-		return "", "", false, ErrSessionNotFound
-	}
-
-	// 检查会话是否过期
-	if session.IsExpired() {
-		// 会话已过期，删除并拒绝刷新
-		_ = s.repo.DeleteSession(ctx, session.ID)
-		return "", "", false, ErrSessionExpired
-	}
-
-	var newAccessToken, newRefreshToken string
-	if matchedPreviousToken {
-		newAccessToken, err = s.jwtService.RefreshTokenWithinGrace(refreshToken)
-		if err != nil {
-			return "", "", false, err
-		}
-	} else {
-		newAccessToken, newRefreshToken, err = s.jwtService.RefreshToken(refreshToken)
-		if err != nil {
-			if errors.Is(err, ErrTokenFamilyRevoked) || errors.Is(err, ErrTokenReuseDetected) {
-				_ = s.repo.DeleteSession(ctx, session.ID)
-			}
-			return "", "", false, err
-		}
-	}
-
-	// 更新会话活动时间 + 滑动闲置过期
-	session.UpdateActivity()
-	// 与 JWT 刷新闲置窗口对齐：每次刷新将会话过期时间顺延
-	session.ExpiresAt = time.Now().Add(s.sessionIdleDuration)
-	if !allowRememberLogin {
-		session.RememberLogin = false
-	}
-
-	// 如果生成了新的 refresh token，更新会话中的 token 哈希
-	if newRefreshToken != "" {
-		previousTokenValidUntil := time.Now().Add(s.refreshGraceDuration)
-		session.PreviousRefreshToken = tokenHashToFind
-		session.PreviousRefreshTokenValidUntil = &previousTokenValidUntil
-		session.RefreshToken = s.hashToken(newRefreshToken)
-	} else if matchedPreviousToken {
-		// 如果禁用轮换但命中旧 token 宽限，清理宽限字段，避免长期保留旧哈希。
-		session.PreviousRefreshToken = ""
-		session.PreviousRefreshTokenValidUntil = nil
-	}
-
-	if err := s.repo.UpdateSession(ctx, session); err != nil {
-		return "", "", false, fmt.Errorf("%w: %v", ErrSessionSyncFailed, err)
-	}
-
-	return newAccessToken, newRefreshToken, session.RememberLogin, nil
-}
-
 func (s *authService) ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error {
 	// 查找用户
 	user, err := s.repo.FindByID(ctx, userID)
@@ -710,7 +510,7 @@ func (s *authService) ChangePassword(ctx context.Context, userID uuid.UUID, oldP
 	}
 
 	// 安全措施：密码修改后撤销所有会话，强制用户重新登录
-	if err := s.repo.DeleteAllUserSessions(ctx, userID); err != nil {
+	if err := s.revokeAllUserSessions(ctx, userID); err != nil {
 		// 记录错误但不阻止密码修改成功
 		fmt.Printf("Warning: failed to revoke all sessions after password change for user %s: %v\n", userID, err)
 	}
@@ -760,7 +560,7 @@ func (s *authService) ResetPassword(ctx context.Context, userID uuid.UUID, newPa
 
 	// 安全措施：密码重置后撤销所有会话，强制用户重新登录
 	// 这确保了即使攻击者有之前的有效会话，也无法继续使用
-	if err := s.repo.DeleteAllUserSessions(ctx, userID); err != nil {
+	if err := s.revokeAllUserSessions(ctx, userID); err != nil {
 		// 记录错误但不阻止密码重置成功
 		fmt.Printf("Warning: failed to revoke all sessions after password reset for user %s: %v\n", userID, err)
 	}
@@ -834,20 +634,20 @@ func (s *authService) HasAdmin(ctx context.Context) (bool, error) {
 }
 
 // InitializeAdmin 初始化管理员账户（仅在没有管理员时）
-func (s *authService) InitializeAdmin(ctx context.Context, username, email, password, runMode string, sessionInfo *SessionInfo) (*User, string, string, error) {
+func (s *authService) InitializeAdmin(ctx context.Context, username, email, password, runMode string) (*User, error) {
 	// 检查是否已存在管理员
 	hasAdmin, err := s.repo.HasAdmin(ctx)
 	if err != nil {
-		return nil, "", "", fmt.Errorf("failed to check admin existence: %w", err)
+		return nil, fmt.Errorf("failed to check admin existence: %w", err)
 	}
 
 	if hasAdmin {
-		return nil, "", "", errors.New("admin already exists")
+		return nil, errors.New("admin already exists")
 	}
 
 	// 参数验证：邮箱和密码是必须的，用户名可选（为空则自动生成）
 	if email == "" || password == "" {
-		return nil, "", "", errors.New("email and password are required")
+		return nil, errors.New("email and password are required")
 	}
 
 	// 如果没有提供用户名，自动生成
@@ -857,7 +657,7 @@ func (s *authService) InitializeAdmin(ctx context.Context, username, email, pass
 
 	// 密码策略验证
 	if err := ValidatePasswordWithDefault(password); err != nil {
-		return nil, "", "", err
+		return nil, err
 	}
 
 	// 生成头像
@@ -878,12 +678,12 @@ func (s *authService) InitializeAdmin(ctx context.Context, username, email, pass
 
 	// 设置密码（bcrypt 加密）
 	if err := user.SetPassword(password); err != nil {
-		return nil, "", "", fmt.Errorf("failed to hash password: %w", err)
+		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
 	// 保存到数据库
 	if err := s.repo.Create(ctx, user); err != nil {
-		return nil, "", "", fmt.Errorf("failed to create admin: %w", err)
+		return nil, fmt.Errorf("failed to create admin: %w", err)
 	}
 
 	// 保存运行模式到服务实例
@@ -895,36 +695,7 @@ func (s *authService) InitializeAdmin(ctx context.Context, username, email, pass
 		fmt.Printf("⚠️  Warning: failed to initialize with run mode %s: %v\n", runMode, err)
 	}
 
-	// 生成会话ID并创建令牌（在 access_token 中嵌入 session_id）
-	sessionID := uuid.New()
-	accessToken, refreshToken, err := s.jwtService.GenerateTokensForSession(user, sessionID)
-	if err != nil {
-		return nil, "", "", fmt.Errorf("failed to generate tokens: %w", err)
-	}
-
-	// 创建会话记录
-	if sessionInfo != nil {
-		session := &Session{
-			ID:            sessionID,
-			UserID:        user.ID,
-			RefreshToken:  s.hashToken(refreshToken), // 存储哈希值
-			DeviceType:    sessionInfo.DeviceType,
-			DeviceName:    sessionInfo.DeviceName,
-			IPAddress:     sessionInfo.IPAddress,
-			Location:      "", // TODO: 可以集成 IP 地理位置服务
-			UserAgent:     sessionInfo.UserAgent,
-			LastActivity:  time.Now(),
-			ExpiresAt:     time.Now().Add(s.sessionIdleDuration), // 使用统一的会话闲置过期时间
-			RememberLogin: sessionInfo.RememberLogin,
-		}
-
-		if err := s.repo.CreateSession(ctx, session); err != nil {
-			// 会话创建失败不应阻止初始化，记录错误
-			fmt.Printf("Failed to create session: %v\n", err)
-		}
-	}
-
-	return user, accessToken, refreshToken, nil
+	return user, nil
 }
 
 // initializeByRunMode 根据运行模式执行不同的初始化逻辑
@@ -1003,7 +774,7 @@ func (s *authService) initializeProductionMode(ctx context.Context, adminUser *U
 	fmt.Println("")
 	fmt.Println("📝 Remember to:")
 	fmt.Println("   - Configure SSL/TLS certificates")
-	fmt.Println("   - Set strong JWT secrets")
+	fmt.Println("   - Set a strong OAuth provider global secret")
 	fmt.Println("   - Enable firewall rules")
 	fmt.Println("   - Regular security updates")
 	fmt.Println("")
@@ -1029,6 +800,9 @@ func (s *authService) Generate2FASecret(ctx context.Context, userID uuid.UUID) (
 	if err != nil {
 		return "", "", err
 	}
+	if user.TwoFactorEnabled {
+		return "", "", errors.New("2FA is already enabled")
+	}
 
 	// 生成 TOTP secret
 	secret, qrCodeURL, err := s.totpService.GenerateSecret(user.Username)
@@ -1045,6 +819,9 @@ func (s *authService) Generate2FASecret(ctx context.Context, userID uuid.UUID) (
 	user.TwoFactorSecret = encryptedSecret
 	if err := s.repo.Update(ctx, user); err != nil {
 		return "", "", fmt.Errorf("failed to save TOTP secret: %w", err)
+	}
+	if err := s.repo.ClearTwoFactorCounters(ctx, user.ID); err != nil {
+		return "", "", fmt.Errorf("failed to reset TOTP replay state: %w", err)
 	}
 
 	return secret, qrCodeURL, nil
@@ -1074,8 +851,9 @@ func (s *authService) Enable2FA(ctx context.Context, userID uuid.UUID, code stri
 	}
 
 	// 验证 TOTP 代码
-	if !s.totpService.ValidateCode(secret, code) {
-		return nil, errors.New("invalid 2FA code")
+	_, valid := s.totpService.ValidateCode(secret, code)
+	if !valid {
+		return nil, ErrInvalidTwoFactorCode
 	}
 
 	// 生成备份码
@@ -1136,8 +914,16 @@ func (s *authService) Disable2FA(ctx context.Context, userID uuid.UUID, code str
 	}
 
 	// 验证 2FA 代码
-	if !s.totpService.ValidateCode(secret, code) {
-		return errors.New("invalid 2FA code")
+	counter, valid := s.totpService.ValidateCode(secret, code)
+	if !valid {
+		return ErrInvalidTwoFactorCode
+	}
+	consumed, err := s.repo.ConsumeTwoFactorCounter(ctx, user.ID, counter)
+	if err != nil {
+		return fmt.Errorf("failed to consume TOTP code: %w", err)
+	}
+	if !consumed {
+		return ErrInvalidTwoFactorCode
 	}
 
 	// 禁用 2FA
@@ -1167,8 +953,12 @@ func (s *authService) Verify2FACode(ctx context.Context, userID uuid.UUID, code 
 	}
 
 	// 首先尝试验证 TOTP 代码
-	if s.totpService.ValidateCode(secret, code) {
-		return true, nil
+	if counter, valid := s.totpService.ValidateCode(secret, code); valid {
+		consumed, err := s.repo.ConsumeTwoFactorCounter(ctx, user.ID, counter)
+		if err != nil {
+			return false, fmt.Errorf("failed to consume TOTP code: %w", err)
+		}
+		return consumed, nil
 	}
 
 	// 如果 TOTP 验证失败，尝试验证备份码
@@ -1179,113 +969,15 @@ func (s *authService) Verify2FACode(ctx context.Context, userID uuid.UUID, code 
 		}
 
 		if valid {
-			// 更新剩余的备份码
-			user.BackupCodes = updatedCodes
-			if err := s.repo.Update(ctx, user); err != nil {
-				return false, fmt.Errorf("failed to update backup codes: %w", err)
+			consumed, err := s.repo.ConsumeBackupCodes(ctx, user.ID, user.BackupCodes, updatedCodes)
+			if err != nil {
+				return false, fmt.Errorf("failed to consume backup code: %w", err)
 			}
-			return true, nil
+			return consumed, nil
 		}
 	}
 
 	return false, nil
-}
-
-// === Authorization Code + PKCE ===
-
-// CreateAuthorizationCode 为指定用户创建授权码（单实例内存存储）
-func (s *authService) CreateAuthorizationCode(
-	ctx context.Context,
-	userID uuid.UUID,
-	clientID, redirectURI, scope, codeChallenge, codeChallengeMethod string,
-	rememberLogin bool,
-	expiresIn time.Duration,
-) (string, error) {
-	if clientID == "" || redirectURI == "" || codeChallenge == "" || codeChallengeMethod == "" {
-		return "", errors.New("missing required parameters for authorization code")
-	}
-
-	// 目前仅支持 S256
-	if strings.ToUpper(codeChallengeMethod) != "S256" {
-		return "", errors.New("unsupported code_challenge_method, only S256 is supported")
-	}
-
-	// 生成高熵随机授权码
-	codeUUID, err := uuid.NewRandom()
-	if err != nil {
-		return "", fmt.Errorf("failed to generate authorization code: %w", err)
-	}
-	code := codeUUID.String()
-
-	if expiresIn <= 0 {
-		expiresIn = 5 * time.Minute
-	}
-
-	s.authCodes.Set(code, authorizationCodeRecord{
-		UserID:              userID,
-		ClientID:            clientID,
-		RedirectURI:         redirectURI,
-		Scope:               scope,
-		CodeChallenge:       codeChallenge,
-		CodeChallengeMethod: strings.ToUpper(codeChallengeMethod),
-		RememberLogin:       rememberLogin,
-		CreatedAt:           time.Now(),
-	}, expiresIn)
-
-	return code, nil
-}
-
-// ExchangeAuthorizationCodeForTokens 使用授权码和 PKCE code_verifier 换取访问令牌和刷新令牌
-func (s *authService) ExchangeAuthorizationCodeForTokens(
-	ctx context.Context,
-	clientID, redirectURI, code, codeVerifier string,
-	sessionInfo *SessionInfo,
-) (*User, string, string, bool, error) {
-	if clientID == "" || redirectURI == "" || code == "" || codeVerifier == "" {
-		return nil, "", "", false, errors.New("missing required parameters for token exchange")
-	}
-
-	record, ok := s.authCodes.Consume(code)
-	if !ok {
-		return nil, "", "", false, errors.New("invalid or expired authorization code")
-	}
-
-	// 检查 client_id 和 redirect_uri 是否匹配
-	if record.ClientID != clientID {
-		return nil, "", "", false, errors.New("client_id does not match authorization code")
-	}
-	if record.RedirectURI != redirectURI {
-		return nil, "", "", false, errors.New("redirect_uri does not match authorization code")
-	}
-
-	// PKCE 验证：目前仅支持 S256
-	if strings.ToUpper(record.CodeChallengeMethod) != "S256" {
-		return nil, "", "", false, errors.New("unsupported code_challenge_method in stored authorization code")
-	}
-
-	// 计算 code_verifier 的 S256 摘要并进行 Base64URL 编码
-	verifierHash := sha256.Sum256([]byte(codeVerifier))
-	computedChallenge := base64.RawURLEncoding.EncodeToString(verifierHash[:])
-	if computedChallenge != record.CodeChallenge {
-		return nil, "", "", false, errors.New("code_verifier does not match code_challenge")
-	}
-
-	// 获取用户信息
-	user, err := s.repo.FindByID(ctx, record.UserID)
-	if err != nil {
-		return nil, "", "", false, fmt.Errorf("failed to load user for authorization code: %w", err)
-	}
-
-	// 为用户创建会话并生成令牌
-	if sessionInfo != nil {
-		sessionInfo.RememberLogin = record.RememberLogin
-	}
-	accessToken, refreshToken, err := s.CreateSessionWithTokens(ctx, user, sessionInfo)
-	if err != nil {
-		return nil, "", "", false, err
-	}
-
-	return user, accessToken, refreshToken, record.RememberLogin, nil
 }
 
 // === Session Management ===
@@ -1316,11 +1008,11 @@ func (s *authService) RevokeSession(ctx context.Context, userID uuid.UUID, sessi
 		return errors.New("session not found or does not belong to user")
 	}
 
-	// 注意：refresh token 在数据库中存储的是哈希值，无法直接加入黑名单
-	// 但是当用户尝试使用该 refresh token 时，会在 RefreshAccessToken 中检查会话是否存在
-	// 所以只需要删除会话记录即可
-
-	// 删除会话
+	if s.oauthProvider != nil {
+		if err := s.oauthProvider.RevokeRequest(ctx, targetSession.OAuthRequestID); err != nil {
+			return fmt.Errorf("failed to revoke oauth grant: %w", err)
+		}
+	}
 	return s.repo.DeleteSession(ctx, sessionID)
 }
 
@@ -1335,6 +1027,11 @@ func (s *authService) RevokeAllOtherSessions(ctx context.Context, userID uuid.UU
 	// 删除除当前会话外的所有会话
 	for _, session := range sessions {
 		if session.ID != currentSessionID {
+			if s.oauthProvider != nil {
+				if err := s.oauthProvider.RevokeRequest(ctx, session.OAuthRequestID); err != nil {
+					return fmt.Errorf("failed to revoke oauth grant for session %s: %w", session.ID, err)
+				}
+			}
 			if err := s.repo.DeleteSession(ctx, session.ID); err != nil {
 				return fmt.Errorf("failed to delete session %s: %w", session.ID, err)
 			}
@@ -1342,6 +1039,21 @@ func (s *authService) RevokeAllOtherSessions(ctx context.Context, userID uuid.UU
 	}
 
 	return nil
+}
+
+func (s *authService) revokeAllUserSessions(ctx context.Context, userID uuid.UUID) error {
+	sessions, err := s.repo.ListUserSessions(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, session := range sessions {
+		if s.oauthProvider != nil {
+			if err := s.oauthProvider.RevokeRequest(ctx, session.OAuthRequestID); err != nil {
+				return err
+			}
+		}
+	}
+	return s.repo.DeleteAllUserSessions(ctx, userID)
 }
 
 // === Notification Settings ===

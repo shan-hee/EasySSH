@@ -7,18 +7,19 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
-	ErrUserNotFound       = errors.New("user not found")
-	ErrUserAlreadyExists  = errors.New("user already exists")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrSessionNotFound    = errors.New("session not found or has been revoked")
-	ErrSessionExpired     = errors.New("session has expired")
-	ErrSessionSyncFailed  = errors.New("session state sync failed")
-	ErrIPLocked           = errors.New("IP address is temporarily locked due to too many failed attempts")
-	ErrAccountLocked      = errors.New("account is temporarily locked due to too many failed attempts")
-	ErrLastLoginMethod    = errors.New("cannot unlink the only login method")
+	ErrUserNotFound         = errors.New("user not found")
+	ErrUserAlreadyExists    = errors.New("user already exists")
+	ErrInvalidCredentials   = errors.New("invalid credentials")
+	ErrSessionNotFound      = errors.New("session not found or has been revoked")
+	ErrSessionExpired       = errors.New("session has expired")
+	ErrIPLocked             = errors.New("IP address is temporarily locked due to too many failed attempts")
+	ErrAccountLocked        = errors.New("account is temporarily locked due to too many failed attempts")
+	ErrLastLoginMethod      = errors.New("cannot unlink the only login method")
+	ErrInvalidTwoFactorCode = errors.New("invalid 2FA code")
 )
 
 // Repository 用户数据访问接口
@@ -41,6 +42,15 @@ type Repository interface {
 	// Update 更新用户信息
 	Update(ctx context.Context, user *User) error
 
+	// ConsumeTwoFactorCounter 原子消费一个新的 TOTP 时间步。
+	ConsumeTwoFactorCounter(ctx context.Context, userID uuid.UUID, counter int64) (bool, error)
+
+	// ClearTwoFactorCounters 清除旧 TOTP 密钥对应的重放记录。
+	ClearTwoFactorCounters(ctx context.Context, userID uuid.UUID) error
+
+	// ConsumeBackupCodes 通过比较并交换原子更新备用码集合。
+	ConsumeBackupCodes(ctx context.Context, userID uuid.UUID, currentCodes, updatedCodes string) (bool, error)
+
 	// Delete 删除用户（软删除）
 	Delete(ctx context.Context, id uuid.UUID) error
 
@@ -58,11 +68,7 @@ type Repository interface {
 	// CreateSession 创建会话
 	CreateSession(ctx context.Context, session *Session) error
 
-	// FindSessionByRefreshToken 根据 refresh token 查找会话
-	FindSessionByRefreshToken(ctx context.Context, tokenHash string) (*Session, error)
-
-	// FindSessionByRefreshTokenWithGrace 根据当前或宽限期内的上一个 refresh token 查找会话
-	FindSessionByRefreshTokenWithGrace(ctx context.Context, tokenHash string) (*Session, bool, error)
+	FindSessionByOAuthRequestID(ctx context.Context, requestID string) (*Session, error)
 
 	// ListUserSessions 获取用户的所有活跃会话
 	ListUserSessions(ctx context.Context, userID uuid.UUID) ([]*Session, error)
@@ -72,9 +78,6 @@ type Repository interface {
 
 	// DeleteSession 删除会话（撤销）
 	DeleteSession(ctx context.Context, sessionID uuid.UUID) error
-
-	// DeleteSessionByRefreshToken 根据 refresh token 删除会话
-	DeleteSessionByRefreshToken(ctx context.Context, tokenHash string) error
 
 	// DeleteAllUserSessions 删除用户的所有会话（登出所有设备）
 	DeleteAllUserSessions(ctx context.Context, userID uuid.UUID) error
@@ -167,6 +170,38 @@ func (r *gormRepository) Update(ctx context.Context, user *User) error {
 	return r.db.WithContext(ctx).Save(user).Error
 }
 
+func (r *gormRepository) ConsumeTwoFactorCounter(ctx context.Context, userID uuid.UUID, counter int64) (bool, error) {
+	replay := TOTPReplay{UserID: userID, Counter: counter}
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&replay)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return false, nil
+	}
+	// 只保留当前时间步附近的记录；严格小于 counter-2，避免删除仍在容差窗口内的验证码。
+	if err := r.db.WithContext(ctx).
+		Where("user_id = ? AND counter < ?", userID, counter-2).
+		Delete(&TOTPReplay{}).Error; err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *gormRepository) ClearTwoFactorCounters(ctx context.Context, userID uuid.UUID) error {
+	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&TOTPReplay{}).Error
+}
+
+func (r *gormRepository) ConsumeBackupCodes(ctx context.Context, userID uuid.UUID, currentCodes, updatedCodes string) (bool, error) {
+	result := r.db.WithContext(ctx).Model(&User{}).
+		Where("id = ? AND two_factor_enabled = ? AND backup_codes = ?", userID, true, currentCodes).
+		Update("backup_codes", updatedCodes)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
 func (r *gormRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	result := r.db.WithContext(ctx).Delete(&User{}, id)
 	if result.Error != nil {
@@ -224,39 +259,15 @@ func (r *gormRepository) CreateSession(ctx context.Context, session *Session) er
 	return r.db.WithContext(ctx).Create(session).Error
 }
 
-// FindSessionByRefreshToken 根据 refresh token 查找会话
-func (r *gormRepository) FindSessionByRefreshToken(ctx context.Context, tokenHash string) (*Session, error) {
+func (r *gormRepository) FindSessionByOAuthRequestID(ctx context.Context, requestID string) (*Session, error) {
 	var session Session
-	if err := r.db.WithContext(ctx).Where("refresh_token = ?", tokenHash).First(&session).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("oauth_request_id = ?", requestID).First(&session).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSessionNotFound
 		}
 		return nil, err
 	}
 	return &session, nil
-}
-
-// FindSessionByRefreshTokenWithGrace 根据当前 refresh token 或短暂宽限期内的上一个 refresh token 查找会话。
-func (r *gormRepository) FindSessionByRefreshTokenWithGrace(ctx context.Context, tokenHash string) (*Session, bool, error) {
-	now := time.Now()
-
-	var session Session
-	if err := r.db.WithContext(ctx).Where("refresh_token = ?", tokenHash).First(&session).Error; err == nil {
-		return &session, false, nil
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, false, err
-	}
-
-	if err := r.db.WithContext(ctx).
-		Where("previous_refresh_token = ? AND previous_refresh_token_valid_until > ?", tokenHash, now).
-		First(&session).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, false, ErrSessionNotFound
-		}
-		return nil, false, err
-	}
-
-	return &session, true, nil
 }
 
 // ListUserSessions 获取用户的所有活跃会话（未过期）
@@ -279,18 +290,6 @@ func (r *gormRepository) UpdateSession(ctx context.Context, session *Session) er
 // DeleteSession 删除会话（撤销）
 func (r *gormRepository) DeleteSession(ctx context.Context, sessionID uuid.UUID) error {
 	result := r.db.WithContext(ctx).Delete(&Session{}, sessionID)
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return ErrSessionNotFound
-	}
-	return nil
-}
-
-// DeleteSessionByRefreshToken 根据 refresh token 删除会话
-func (r *gormRepository) DeleteSessionByRefreshToken(ctx context.Context, tokenHash string) error {
-	result := r.db.WithContext(ctx).Where("refresh_token = ?", tokenHash).Delete(&Session{})
 	if result.Error != nil {
 		return result.Error
 	}

@@ -117,7 +117,7 @@ func (s *service) validate(config *SystemConfig) error {
 		return errors.New("transfer max concurrency must be between 1 and 16")
 	}
 
-	if err := s.validateJWTSessionConfig(config.JWTSessionConfig()); err != nil {
+	if err := s.validateOAuthTokenConfig(config.OAuthTokenConfig()); err != nil {
 		return err
 	}
 
@@ -128,18 +128,12 @@ func googleClientSecretAAD() []byte {
 	return crypto.SecretAAD("system_config", "system", "google_client_secret")
 }
 
-func (s *service) validateJWTSessionConfig(config *JWTSessionConfig) error {
-	if config.AccessExpireMinutes < 5 || config.AccessExpireMinutes > 1440 {
-		return errors.New("JWT access token expiration must be between 5 and 1440 minutes")
+func (s *service) validateOAuthTokenConfig(config *OAuthTokenConfig) error {
+	if config.AccessTokenMinutes < 5 || config.AccessTokenMinutes > 1440 {
+		return errors.New("OAuth access token expiration must be between 5 and 1440 minutes")
 	}
-	if config.RefreshIdleExpireDays < 1 || config.RefreshIdleExpireDays > 90 {
-		return errors.New("JWT refresh token idle expiration must be between 1 and 90 days")
-	}
-	if config.RefreshAbsoluteExpireDays < 1 || config.RefreshAbsoluteExpireDays > 365 {
-		return errors.New("JWT refresh token absolute expiration must be between 1 and 365 days")
-	}
-	if config.RefreshAbsoluteExpireDays < config.RefreshIdleExpireDays {
-		return errors.New("JWT refresh token absolute expiration must be greater than or equal to idle expiration")
+	if config.RefreshTokenDays < 1 || config.RefreshTokenDays > 365 {
+		return errors.New("OAuth refresh token expiration must be between 1 and 365 days")
 	}
 	return nil
 }

@@ -17,7 +17,7 @@ import (
 const CSRFTokenHeader = "X-CSRF-Token"
 
 func CSRFMiddleware(cfg *config.Config) gin.HandlerFunc {
-	key := sha256.Sum256([]byte(cfg.JWT.Secret + ":" + cfg.Server.EncryptionKey))
+	key := sha256.Sum256([]byte(cfg.OAuth.GlobalSecret + ":" + cfg.Server.EncryptionKey))
 	secure, domain, sameSite := csrfCookieConfig(cfg)
 	protect := csrf.Protect(
 		key[:],
@@ -199,7 +199,24 @@ func shouldSkipUnsafeCSRF(r *http.Request) bool {
 	}
 
 	path := r.URL.Path
-	if path == "/api/v1/oauth/token" || path == "/api/v1/oauth/logout" || path == "/api/v1/auth/logout" {
+	if path == "/api/v1/oauth/token" {
+		// 标准 OAuth Client 使用表单参数、PKCE 或 HTTP Basic，不依赖浏览器 Cookie，不能强制 EasySSH 的 CSRF Cookie。
+		// 只有内置 Web Client 省略 refresh_token、改用 HttpOnly Cookie 刷新时才保留 CSRF 校验。
+		if strings.TrimSpace(r.Header.Get("Authorization")) != "" {
+			return true
+		}
+		if strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "application/x-www-form-urlencoded") {
+			if err := r.ParseForm(); err == nil {
+				if strings.EqualFold(strings.TrimSpace(r.Form.Get("grant_type")), "authorization_code") ||
+					strings.TrimSpace(r.Form.Get("refresh_token")) != "" ||
+					strings.TrimSpace(r.Form.Get("client_secret")) != "" {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if path == "/api/v1/oauth/logout" {
 		return false
 	}
 

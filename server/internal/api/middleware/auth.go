@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/easyssh/server/internal/domain/auth"
+	"github.com/easyssh/server/internal/domain/oauthprovider"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -56,14 +57,13 @@ func ticketExpectationForRequest(c *gin.Context) (auth.TicketExpectation, bool) 
 	}
 }
 
-func applyClaimsToContext(c *gin.Context, claims *auth.Claims) {
-	c.Set("user_id", claims.UserID.String())
-	c.Set("username", claims.Username)
-	c.Set("email", claims.Email)
-	c.Set("role", string(claims.Role))
-
-	if claims.SessionID != (uuid.UUID{}) {
-		c.Set("session_id", claims.SessionID.String())
+func applyIdentityToContext(c *gin.Context, identity *oauthprovider.Identity) {
+	c.Set("user_id", identity.UserID.String())
+	c.Set("username", identity.Username)
+	c.Set("email", identity.Email)
+	c.Set("role", identity.Role)
+	if identity.SessionID != uuid.Nil {
+		c.Set("session_id", identity.SessionID.String())
 	}
 }
 
@@ -79,36 +79,21 @@ func applyTicketToContext(c *gin.Context, t *auth.Ticket) {
 }
 
 // AuthMiddleware 认证中间件（支持 Authorization Bearer / 一次性 Ticket）
-func AuthMiddleware(jwtService auth.JWTService, ticketService auth.TicketService, userRepo auth.Repository) gin.HandlerFunc {
+func AuthMiddleware(oauthProvider *oauthprovider.Service, ticketService auth.TicketService, userRepo auth.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1) 优先 Bearer（用于常规 API 调用）
 		tokenString := extractBearerToken(c)
 		if tokenString != "" {
-			claims, err := jwtService.ValidateToken(tokenString)
+			identity, err := oauthProvider.ValidateAccessToken(c.Request.Context(), tokenString)
 			if err != nil {
-				if errors.Is(err, auth.ErrExpiredToken) {
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"error":   "token_expired",
-						"message": "Token has expired",
-					})
-				} else if errors.Is(err, auth.ErrTokenBlacklisted) {
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"error":   "token_blacklisted",
-						"message": "Token has been revoked",
-					})
-				} else {
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"error":   "invalid_token",
-						"message": "Invalid token",
-					})
-				}
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token", "message": "Invalid or expired token"})
 				c.Abort()
 				return
 			}
 
 			// 检查用户是否被锁定
 			if userRepo != nil {
-				user, err := userRepo.FindByID(c.Request.Context(), claims.UserID)
+				user, err := userRepo.FindByID(c.Request.Context(), identity.UserID)
 				if err != nil {
 					c.JSON(http.StatusUnauthorized, gin.H{
 						"error":   "user_not_found",
@@ -126,9 +111,10 @@ func AuthMiddleware(jwtService auth.JWTService, ticketService auth.TicketService
 					c.Abort()
 					return
 				}
+				identity.Role = string(user.Role)
 			}
 
-			applyClaimsToContext(c, claims)
+			applyIdentityToContext(c, identity)
 			c.Next()
 			return
 		}
@@ -146,7 +132,7 @@ func AuthMiddleware(jwtService auth.JWTService, ticketService auth.TicketService
 					c.Abort()
 					return
 				}
-				t, err := ticketService.Consume(ticket, expect)
+				t, err := ticketService.Consume(c.Request.Context(), ticket, expect)
 				if err != nil {
 					code := "invalid_ticket"
 					msg := "Invalid ticket"
@@ -180,51 +166,8 @@ func AuthMiddleware(jwtService auth.JWTService, ticketService auth.TicketService
 	}
 }
 
-// RequireRole 角色权限中间件
-func RequireRole(roles ...auth.UserRole) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// 获取用户角色
-		roleValue, exists := c.Get("role")
-		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "User role not found",
-			})
-			c.Abort()
-			return
-		}
-
-		userRole := auth.UserRole(roleValue.(string))
-
-		// 检查角色是否匹配
-		hasRole := false
-		for _, role := range roles {
-			if userRole == role {
-				hasRole = true
-				break
-			}
-		}
-
-		if !hasRole {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "Insufficient permissions",
-			})
-			c.Abort()
-			return
-		}
-
-		c.Next()
-	}
-}
-
-// RequireAdmin 管理员权限中间件
-func RequireAdmin() gin.HandlerFunc {
-	return RequireRole(auth.RoleAdmin)
-}
-
 // OptionalAuth 可选认证中间件（不强制要求认证）
-func OptionalAuth(jwtService auth.JWTService, ticketService auth.TicketService, userRepo auth.Repository) gin.HandlerFunc {
+func OptionalAuth(oauthProvider *oauthprovider.Service, ticketService auth.TicketService, userRepo auth.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString := extractBearerToken(c)
 
@@ -234,7 +177,7 @@ func OptionalAuth(jwtService auth.JWTService, ticketService auth.TicketService, 
 			if ticketService != nil {
 				if ticket := extractTicket(c); ticket != "" {
 					if expect, ok := ticketExpectationForRequest(c); ok {
-						if t, err := ticketService.Consume(ticket, expect); err == nil {
+						if t, err := ticketService.Consume(c.Request.Context(), ticket, expect); err == nil {
 							applyTicketToContext(c, t)
 						}
 					}
@@ -245,7 +188,7 @@ func OptionalAuth(jwtService auth.JWTService, ticketService auth.TicketService, 
 		}
 
 		// 验证 token
-		claims, err := jwtService.ValidateToken(tokenString)
+		identity, err := oauthProvider.ValidateAccessToken(c.Request.Context(), tokenString)
 		if err != nil {
 			c.Next()
 			return
@@ -253,7 +196,7 @@ func OptionalAuth(jwtService auth.JWTService, ticketService auth.TicketService, 
 
 		// 检查用户是否被锁定（可选认证时，锁定用户视为未认证，但设置锁定标记）
 		if userRepo != nil {
-			user, err := userRepo.FindByID(c.Request.Context(), claims.UserID)
+			user, err := userRepo.FindByID(c.Request.Context(), identity.UserID)
 			if err != nil {
 				c.Next()
 				return
@@ -266,9 +209,10 @@ func OptionalAuth(jwtService auth.JWTService, ticketService auth.TicketService, 
 				c.Next()
 				return
 			}
+			identity.Role = string(user.Role)
 		}
 
-		applyClaimsToContext(c, claims)
+		applyIdentityToContext(c, identity)
 
 		c.Next()
 	}

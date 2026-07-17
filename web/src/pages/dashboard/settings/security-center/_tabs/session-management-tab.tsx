@@ -26,11 +26,8 @@ export function SessionManagementTab() {
         inactive_minutes: data.inactive_minutes,
         remember_login: data.remember_login,
         hibernate: data.hibernate,
-        jwt_access_expire_minutes: data.jwt_access_expire_minutes ?? 15,
-        jwt_refresh_idle_expire_days: data.jwt_refresh_idle_expire_days ?? 7,
-        jwt_refresh_absolute_expire_days: data.jwt_refresh_absolute_expire_days ?? 30,
-        jwt_refresh_rotate: data.jwt_refresh_rotate ?? true,
-        jwt_refresh_reuse_detection: data.jwt_refresh_reuse_detection ?? true,
+        oauth_access_token_minutes: data.oauth_access_token_minutes ?? 15,
+        oauth_refresh_token_days: data.oauth_refresh_token_days ?? 30,
       }
     },
     saveFn: async (data) => {
@@ -42,12 +39,9 @@ export function SessionManagementTab() {
           remember_login: data.remember_login,
           hibernate: data.hibernate,
         }),
-        settingsApi.saveJWTSessionConfig({
-          jwt_access_expire_minutes: data.jwt_access_expire_minutes,
-          jwt_refresh_idle_expire_days: data.jwt_refresh_idle_expire_days,
-          jwt_refresh_absolute_expire_days: data.jwt_refresh_absolute_expire_days,
-          jwt_refresh_rotate: data.jwt_refresh_rotate,
-          jwt_refresh_reuse_detection: data.jwt_refresh_reuse_detection,
+        settingsApi.saveOAuthTokenConfig({
+          oauth_access_token_minutes: data.oauth_access_token_minutes,
+          oauth_refresh_token_days: data.oauth_refresh_token_days,
         }),
       ])
       await refreshConfig()
@@ -60,9 +54,8 @@ export function SessionManagementTab() {
 
   const sessionTimeout = form.watch("session_timeout")
   const maxTabs = form.watch("max_tabs")
-  const accessExpireMinutes = form.watch("jwt_access_expire_minutes")
-  const refreshIdleDays = form.watch("jwt_refresh_idle_expire_days")
-  const refreshAbsoluteDays = form.watch("jwt_refresh_absolute_expire_days")
+  const accessTokenMinutes = form.watch("oauth_access_token_minutes")
+  const refreshTokenDays = form.watch("oauth_refresh_token_days")
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
@@ -161,15 +154,15 @@ export function SessionManagementTab() {
           </SettingsSection>
 
           <SettingsSection
-            title={t("jwtSectionTitle")}
-            description={t("jwtSectionDescription")}
+            title={t("oauthSectionTitle")}
+            description={t("oauthSectionDescription")}
             icon={<KeyRound className="h-5 w-5" />}
           >
             <FormInput
               form={form}
-              name="jwt_access_expire_minutes"
-              label={t("fieldJWTAccessExpire")}
-              description={t("fieldJWTAccessExpireDesc")}
+              name="oauth_access_token_minutes"
+              label={t("fieldOAuthAccessToken")}
+              description={t("fieldOAuthAccessTokenDesc")}
               type="number"
               min={5}
               max={1440}
@@ -179,21 +172,9 @@ export function SessionManagementTab() {
 
             <FormInput
               form={form}
-              name="jwt_refresh_idle_expire_days"
-              label={t("fieldJWTRefreshIdleExpire")}
-              description={t("fieldJWTRefreshIdleExpireDesc")}
-              type="number"
-              min={1}
-              max={90}
-              step={1}
-              required
-            />
-
-            <FormInput
-              form={form}
-              name="jwt_refresh_absolute_expire_days"
-              label={t("fieldJWTRefreshAbsoluteExpire")}
-              description={t("fieldJWTRefreshAbsoluteExpireDesc")}
+              name="oauth_refresh_token_days"
+              label={t("fieldOAuthRefreshToken")}
+              description={t("fieldOAuthRefreshTokenDesc")}
               type="number"
               min={1}
               max={365}
@@ -201,49 +182,18 @@ export function SessionManagementTab() {
               required
             />
 
-            <FormSwitch
-              form={form}
-              name="jwt_refresh_rotate"
-              label={t("fieldJWTRefreshRotate")}
-              description={t("fieldJWTRefreshRotateDesc")}
-            />
-
-            <FormSwitch
-              form={form}
-              name="jwt_refresh_reuse_detection"
-              label={t("fieldJWTRefreshReuseDetection")}
-              description={t("fieldJWTRefreshReuseDetectionDesc")}
-            />
-
             <div className="rounded-lg border p-4 bg-muted/50">
-              <p className="text-sm font-medium mb-2">{t("jwtPreviewTitle")}</p>
+              <p className="text-sm font-medium mb-2">{t("oauthPreviewTitle")}</p>
               <div className="text-sm text-muted-foreground space-y-1">
                 <p>
-                  {t("previewJWTAccessPrefix")}
-                  <span className="font-semibold text-foreground">{accessExpireMinutes}</span>
-                  {t("previewJWTAccessSuffix")}
+                  {t("previewOAuthAccessPrefix")}
+                  <span className="font-semibold text-foreground">{accessTokenMinutes}</span>
+                  {t("previewOAuthAccessSuffix")}
                 </p>
                 <p>
-                  {t("previewJWTRefreshIdlePrefix")}
-                  <span className="font-semibold text-foreground">{refreshIdleDays}</span>
-                  {t("previewJWTRefreshIdleSuffix")}
-                </p>
-                <p>
-                  {t("previewJWTRefreshAbsolutePrefix")}
-                  <span className="font-semibold text-foreground">{refreshAbsoluteDays}</span>
-                  {t("previewJWTRefreshAbsoluteSuffix")}
-                </p>
-                <p>
-                  {t("previewJWTRefreshRotatePrefix")}
-                  <span className="font-semibold text-foreground">
-                    {form.watch("jwt_refresh_rotate") ? t("previewEnabled") : t("previewDisabled")}
-                  </span>
-                </p>
-                <p>
-                  {t("previewJWTReuseDetectionPrefix")}
-                  <span className="font-semibold text-foreground">
-                    {form.watch("jwt_refresh_reuse_detection") ? t("previewEnabled") : t("previewDisabled")}
-                  </span>
+                  {t("previewOAuthRefreshPrefix")}
+                  <span className="font-semibold text-foreground">{refreshTokenDays}</span>
+                  {t("previewOAuthRefreshSuffix")}
                 </p>
               </div>
             </div>
@@ -251,7 +201,7 @@ export function SessionManagementTab() {
             <Alert>
               <InfoIcon className="h-4 w-4" />
               <AlertDescription>
-                {t("jwtAlertContent")}
+                {t("oauthAlertContent")}
               </AlertDescription>
             </Alert>
           </SettingsSection>

@@ -22,13 +22,6 @@ export interface Enable2FAResponse {
 export interface Verify2FALoginRequest {
   tempToken: string
   code: string
-  clientId: string
-  redirectUri: string
-  scope?: string
-  codeChallenge: string
-  codeChallengeMethod: string
-  state?: string
-  rememberLogin: boolean
 }
 
 /**
@@ -79,13 +72,6 @@ export const twoFactorApi = {
       body: JSON.stringify({
         temp_token: params.tempToken,
         code: params.code,
-        client_id: params.clientId,
-        redirect_uri: params.redirectUri,
-        scope: params.scope ?? "openid profile easyssh",
-        code_challenge: params.codeChallenge,
-        code_challenge_method: params.codeChallengeMethod,
-        state: params.state ?? "",
-        remember_login: params.rememberLogin,
       }),
     })
   },

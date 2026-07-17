@@ -50,11 +50,8 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
     session_timeout: 30,
     remember_login: true,
   },
-  jwt_access_expire_minutes: 15,
-  jwt_refresh_idle_expire_days: 7,
-  jwt_refresh_absolute_expire_days: 30,
-  jwt_refresh_rotate: true,
-  jwt_refresh_reuse_detection: true,
+  oauth_access_token_minutes: 15,
+  oauth_refresh_token_days: 30,
 }
 
 export function shouldRestoreAuthSession(pathname: string): boolean {

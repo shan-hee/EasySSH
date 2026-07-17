@@ -18,6 +18,7 @@ export interface User {
   username: string
   email: string
   role: string  // 基础类型使用string,UserDetail中会强化为UserRole
+	permissions?: string[]
   avatar?: string
   language?: string
   timezone?: string
@@ -267,30 +268,32 @@ export const authApi = {
   },
 
   /**
-   * 使用 Authorization Code + PKCE 方式发起登录（开发版 JSON 接口）
-   * 注意：仅在浏览器端调用
+   * 向 Provider 登录交互端点提交凭证；标准 GET 授权入口会先跳转到该登录页。
    */
   async authorizeWithPkce(params: {
     email: string
     password: string
+    response_type?: string
     client_id: string
     redirect_uri: string
     scope?: string
     code_challenge: string
     code_challenge_method: string
     state?: string
+    nonce?: string
     remember_login: boolean
   }): Promise<{ code?: string; state?: string; requires_2fa?: boolean; temp_token?: string }> {
     return apiFetch<{ code?: string; state?: string; requires_2fa?: boolean; temp_token?: string }>("/oauth/authorize", {
       method: "POST",
       body: {
-        response_type: "code",
+        response_type: params.response_type ?? "code",
         client_id: params.client_id,
         redirect_uri: params.redirect_uri,
         scope: params.scope ?? "openid profile easyssh",
         code_challenge: params.code_challenge,
         code_challenge_method: params.code_challenge_method,
         state: params.state ?? "",
+        nonce: params.nonce ?? "",
         email: params.email,
         password: params.password,
         remember_login: params.remember_login,

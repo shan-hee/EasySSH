@@ -126,7 +126,6 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 	{"POST", "/oauth/authorize"}:        auditlog.ActionLogin,
 	{"POST", "/api/v1/oauth/authorize"}: auditlog.ActionLogin,
 	{"POST", "/api/v1/oauth/logout"}:    auditlog.ActionLogout,
-	{"POST", "/api/v1/auth/logout"}:     auditlog.ActionLogout,
 
 	{"POST", "/api/v1/servers"}:          auditlog.ActionServerCreate,
 	{"PUT", "/api/v1/servers/:id"}:       auditlog.ActionServerUpdate,

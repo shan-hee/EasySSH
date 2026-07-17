@@ -65,7 +65,6 @@ export function LoginForm({
 
   // PKCE 状态，在 2FA 流程中复用
   const [codeVerifier, setCodeVerifier] = useState("")
-  const [codeChallenge, setCodeChallenge] = useState("")
   const [pkceState, setPkceState] = useState("")
   const [redirectUri, setRedirectUri] = useState("")
   const handledGoogleErrorRef = useRef<string | null>(null)
@@ -73,6 +72,16 @@ export function LoginForm({
 
   const { t: tAuth } = useTranslation("auth")
   const rememberLoginAllowed = config?.tab_session?.remember_login === true
+  const isOAuthAuthorization = searchParams.has("oauth_client_id")
+
+  const redirectWithAuthorizationCode = useCallback((code: string, state: string, callbackURL: string) => {
+    const callback = new URL(callbackURL)
+    callback.searchParams.set("code", code)
+    if (state) {
+      callback.searchParams.set("state", state)
+    }
+    window.location.assign(callback.toString())
+  }, [])
 
   useEffect(() => {
     if (!rememberLoginAllowed) {
@@ -149,16 +158,30 @@ export function LoginForm({
     setIsLoading(true)
 
     try {
-      // 1. 生成 code_verifier 和 code_challenge
-      const verifier = generateCodeVerifier()
-      const challenge = await deriveCodeChallenge(verifier)
-      const state = generateCodeVerifier(32)
-
-      const ru = `${window.location.origin}/auth/callback`
+      // 内置 Web Client 自行生成 PKCE；外部 Client 的 verifier 由 Client 自己保管，登录页只接收 challenge。
+      const verifier = isOAuthAuthorization ? "" : generateCodeVerifier()
+      const challenge = isOAuthAuthorization
+        ? searchParams.get("oauth_code_challenge") ?? ""
+        : await deriveCodeChallenge(verifier)
+      const state = isOAuthAuthorization
+        ? searchParams.get("oauth_state") ?? ""
+        : generateCodeVerifier(32)
+      const clientID = isOAuthAuthorization
+        ? searchParams.get("oauth_client_id") ?? ""
+        : "easyssh-web"
+      const responseType = isOAuthAuthorization
+        ? searchParams.get("oauth_response_type") ?? "code"
+        : "code"
+      const ru = isOAuthAuthorization
+        ? searchParams.get("oauth_redirect_uri") ?? ""
+        : `${window.location.origin}/auth/callback`
+      const scope = isOAuthAuthorization
+        ? searchParams.get("oauth_scope") ?? "openid profile easyssh"
+        : "openid profile easyssh"
+      const nonce = isOAuthAuthorization ? searchParams.get("oauth_nonce") ?? "" : ""
 
       // 保存 PKCE 参数供 2FA 步骤复用
       setCodeVerifier(verifier)
-      setCodeChallenge(challenge)
       setPkceState(state)
       setRedirectUri(ru)
 
@@ -166,12 +189,16 @@ export function LoginForm({
       const authorizeResp = await authApi.authorizeWithPkce({
         email,
         password,
-        client_id: "easyssh-web",
+        response_type: responseType,
+        client_id: clientID,
         redirect_uri: ru,
-        scope: "openid profile easyssh",
+        scope,
         code_challenge: challenge,
-        code_challenge_method: "S256",
+        code_challenge_method: isOAuthAuthorization
+          ? searchParams.get("oauth_code_challenge_method") ?? "S256"
+          : "S256",
         state,
+        nonce,
         remember_login: rememberLoginAllowed && rememberLogin,
       })
 
@@ -191,9 +218,14 @@ export function LoginForm({
         throw new Error("AUTH_CODE_EMPTY")
       }
 
+      if (isOAuthAuthorization) {
+        redirectWithAuthorizationCode(authorizeResp.code, state, ru)
+        return
+      }
+
       const tokenResp = await authApi.exchangeCodeForToken({
         code: authorizeResp.code,
-        client_id: "easyssh-web",
+        client_id: clientID,
         redirect_uri: ru,
         code_verifier: verifier,
       })
@@ -251,18 +283,16 @@ export function LoginForm({
       const verifyResp = await twoFactorApi.verifyLogin({
         tempToken,
         code: twoFactorCode,
-        clientId: "easyssh-web",
-        redirectUri,
-        scope: "openid profile easyssh",
-        codeChallenge: codeChallenge,
-        codeChallengeMethod: "S256",
-        state: pkceState,
-        rememberLogin: rememberLoginAllowed && rememberLogin,
       })
 
       if (!verifyResp.code) {
         // 内部异常，给用户看统一的失败提示
         throw new Error("2FA verification succeeded but no authorization code was returned")
+      }
+
+      if (isOAuthAuthorization) {
+        redirectWithAuthorizationCode(verifyResp.code, pkceState, redirectUri)
+        return
       }
 
       const tokenResp = await authApi.exchangeCodeForToken({
@@ -294,13 +324,12 @@ export function LoginForm({
       setIsLoading(false)
     }
   }, [
-    codeChallenge,
     codeVerifier,
     getRedirectTarget,
     isLoading,
+    isOAuthAuthorization,
     pkceState,
-    rememberLogin,
-    rememberLoginAllowed,
+    redirectWithAuthorizationCode,
     redirectUri,
     refreshConfig,
     navigate,
@@ -662,7 +691,7 @@ export function LoginForm({
               </FadeSlideIn>
 
               {/* Google 登录 */}
-              {config?.oauth_enabled && config?.google_client_id && (
+              {!isOAuthAuthorization && config?.oauth_enabled && config?.google_client_id && (
                 <>
                   <FadeSlideIn delay={0.5} disabled>
                     <div className="flex items-center gap-3">

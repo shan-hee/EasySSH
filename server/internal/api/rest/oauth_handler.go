@@ -8,15 +8,18 @@ import (
 
 	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/oauth"
+	"github.com/easyssh/server/internal/domain/oauthprovider"
 	"github.com/easyssh/server/internal/domain/security"
 	"github.com/easyssh/server/internal/domain/systemconfig"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/ory/fosite"
 )
 
 // OAuthHandler OAuth 处理器
 type OAuthHandler struct {
 	authService         auth.Service
+	oauthProvider       *oauthprovider.Service
 	systemConfigService systemconfig.Service
 	securityService     security.Service // 安全配置服务
 	accessTokenTTL      int
@@ -26,12 +29,14 @@ type OAuthHandler struct {
 // NewOAuthHandler 创建 OAuth 处理器
 func NewOAuthHandler(
 	authService auth.Service,
+	oauthProvider *oauthprovider.Service,
 	systemConfigService systemconfig.Service,
 	securityService security.Service,
 	accessTokenTTL, refreshTokenTTL int,
 ) *OAuthHandler {
 	return &OAuthHandler{
 		authService:         authService,
+		oauthProvider:       oauthProvider,
 		systemConfigService: systemConfigService,
 		securityService:     securityService,
 		accessTokenTTL:      accessTokenTTL,
@@ -210,12 +215,21 @@ func (h *OAuthHandler) GoogleVerify(c *gin.Context) {
 		RememberLogin: rememberLogin,
 	}
 
-	// 创建会话并生成令牌
-	accessToken, refreshToken, err := h.authService.CreateSessionWithTokens(c.Request.Context(), user, sessionInfo)
+	sessionID := uuid.New()
+	tokenResponse, oauthSession, requestID, err := h.oauthProvider.IssueTokenPair(c.Request.Context(), oauthprovider.Identity{
+		UserID: user.ID, Username: user.Username, Email: user.Email, Role: string(user.Role), SessionID: sessionID,
+	}, rememberLogin, h.oauthProvider.DefaultWebRedirectURI())
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to generate tokens")
 		return
 	}
+	if err := h.authService.RecordOAuthSession(c.Request.Context(), user, sessionID, requestID, sessionInfo, oauthSession.GetExpiresAt(fosite.RefreshToken)); err != nil {
+		_ = h.oauthProvider.RevokeRequest(c.Request.Context(), requestID)
+		RespondError(c, http.StatusInternalServerError, "session_persistence_failed", "Failed to persist OAuth session")
+		return
+	}
+	accessToken, _ := tokenResponse["access_token"].(string)
+	refreshToken, _ := tokenResponse["refresh_token"].(string)
 
 	// 设置 HttpOnly refresh_token Cookie
 	if refreshToken != "" {
