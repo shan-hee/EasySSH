@@ -20,7 +20,7 @@ export interface NavigationItemDefinition {
   icon?: LucideIcon
   requiredCapabilities?: AppCapability[]
   profiles?: RuntimeProfile[]
-  adminOnly?: boolean
+	requiredPermission?: string
   isActive?: boolean
 }
 
@@ -84,7 +84,7 @@ const systemOrg: NavigationItemDefinition[] = [
     titleKey: "userManagement",
     url: "/dashboard/users",
     icon: Users,
-    adminOnly: true,
+	requiredPermission: "user:manage",
     profiles: ["web"],
     requiredCapabilities: ["users"],
   },
@@ -92,7 +92,7 @@ const systemOrg: NavigationItemDefinition[] = [
     titleKey: "logs",
     url: "/dashboard/logs",
     icon: FileText,
-    adminOnly: true,
+	requiredPermission: "audit:view",
     profiles: ["web"],
     requiredCapabilities: ["audit"],
   },
@@ -100,7 +100,7 @@ const systemOrg: NavigationItemDefinition[] = [
     titleKey: "systemSettings",
     url: "/dashboard/settings",
     icon: Settings,
-    adminOnly: true,
+	requiredPermission: "system:settings",
     profiles: ["web"],
     requiredCapabilities: ["settings"],
   },
@@ -108,27 +108,30 @@ const systemOrg: NavigationItemDefinition[] = [
 
 export function buildNavigationGroups({
   runtime,
-  isAdmin,
+	isOwner,
+	permissions,
   t,
 }: {
   runtime: RuntimeInfo | null | undefined
-  isAdmin: boolean
+	isOwner: boolean
+	permissions: readonly string[]
   t: NavigationTranslation
 }): NavigationGroups {
   return {
-    workbench: translateNavigationItems(workbench, runtime, isAdmin, t),
-    systemOrg: translateNavigationItems(systemOrg, runtime, isAdmin, t),
+    workbench: translateNavigationItems(workbench, runtime, isOwner, permissions, t),
+    systemOrg: translateNavigationItems(systemOrg, runtime, isOwner, permissions, t),
   }
 }
 
 function translateNavigationItems(
   items: NavigationItemDefinition[],
   runtime: RuntimeInfo | null | undefined,
-  isAdmin: boolean,
+	isOwner: boolean,
+	permissions: readonly string[],
   t: NavigationTranslation,
 ): NavigationItem[] {
   return items.flatMap((item) => {
-    if (item.adminOnly && !isAdmin) {
+		if (item.requiredPermission && !isOwner && !permissions.includes(item.requiredPermission)) {
       return []
     }
     if (!matchesCapabilities(runtime, item.requiredCapabilities)) {

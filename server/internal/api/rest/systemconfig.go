@@ -1,7 +1,9 @@
 package rest
 
 import (
+	"context"
 	"net/http"
+	"strings"
 
 	"github.com/easyssh/server/internal/domain/systemconfig"
 	"github.com/gin-gonic/gin"
@@ -9,12 +11,17 @@ import (
 
 // SystemConfigHandler 系统配置处理器
 type SystemConfigHandler struct {
-	service systemconfig.Service
+	service     systemconfig.Service
+	roleService interface {
+		RoleExists(ctx context.Context, key string) (bool, error)
+	}
 }
 
 // NewSystemConfigHandler 创建系统配置处理器
-func NewSystemConfigHandler(service systemconfig.Service) *SystemConfigHandler {
-	return &SystemConfigHandler{service: service}
+func NewSystemConfigHandler(service systemconfig.Service, roleService interface {
+	RoleExists(ctx context.Context, key string) (bool, error)
+}) *SystemConfigHandler {
+	return &SystemConfigHandler{service: service, roleService: roleService}
 }
 
 // GetSystemConfigResponseV2 获取系统配置响应（新版）
@@ -47,12 +54,9 @@ type SystemConfigDTOV2 struct {
 	GoogleClientID        string `json:"google_client_id"`
 	GoogleClientSecret    string `json:"google_client_secret,omitempty"`
 	HasGoogleClientSecret bool   `json:"has_google_client_secret,omitempty"`
-	// JWT 过期与刷新（不包含 JWT_SECRET）
-	JWTAccessExpireMinutes       int  `json:"jwt_access_expire_minutes"`
-	JWTRefreshIdleExpireDays     int  `json:"jwt_refresh_idle_expire_days"`
-	JWTRefreshAbsoluteExpireDays int  `json:"jwt_refresh_absolute_expire_days"`
-	JWTRefreshRotate             bool `json:"jwt_refresh_rotate"`
-	JWTRefreshReuseDetection     bool `json:"jwt_refresh_reuse_detection"`
+	// OAuth/OIDC 令牌生命周期（不包含 OAUTH_GLOBAL_SECRET）
+	OAuthAccessTokenMinutes int `json:"oauth_access_token_minutes"`
+	OAuthRefreshTokenDays   int `json:"oauth_refresh_token_days"`
 }
 
 // GetSystemConfig 获取系统配置
@@ -96,6 +100,9 @@ func (h *SystemConfigHandler) SaveSystemConfig(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.validateDefaultRole(c, config.DefaultRole) {
+		return
+	}
 
 	if err := h.service.Save(c.Request.Context(), config); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -107,33 +114,30 @@ func (h *SystemConfigHandler) SaveSystemConfig(c *gin.Context) {
 
 // toDTO 将模型转换为DTO
 func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemConfigDTOV2 {
-	jwtConfig := config.JWTSessionConfig()
+	oauthTokenConfig := config.OAuthTokenConfig()
 	dto := &SystemConfigDTOV2{
-		SystemName:                   config.SystemName,
-		SystemLogo:                   config.SystemLogo,
-		SystemFavicon:                config.SystemFavicon,
-		DefaultLanguage:              config.DefaultLanguage,
-		DefaultTimezone:              config.DefaultTimezone,
-		DateFormat:                   config.DateFormat,
-		DownloadExcludePatterns:      config.DownloadExcludePatterns,
-		DefaultDownloadMode:          config.DefaultDownloadMode,
-		SkipExcludedOnUpload:         config.SkipExcludedOnUpload,
-		MaxFileUploadSize:            config.MaxFileUploadSize,
-		TransferStoragePath:          config.TransferStoragePath,
-		TransferRetentionDays:        config.TransferRetentionDays,
-		TransferMaxStorageGB:         config.TransferMaxStorageGB,
-		TransferMaxConcurrency:       config.TransferMaxConcurrency,
-		TransferCleanupEnabled:       config.TransferCleanupEnabled,
-		AllowRegistration:            config.AllowRegistration,
-		DefaultRole:                  config.DefaultRole,
-		OAuthEnabled:                 config.OAuthEnabled,
-		GoogleClientID:               config.GoogleClientID,
-		HasGoogleClientSecret:        config.GoogleClientSecret != "",
-		JWTAccessExpireMinutes:       jwtConfig.AccessExpireMinutes,
-		JWTRefreshIdleExpireDays:     jwtConfig.RefreshIdleExpireDays,
-		JWTRefreshAbsoluteExpireDays: jwtConfig.RefreshAbsoluteExpireDays,
-		JWTRefreshRotate:             jwtConfig.RefreshRotate,
-		JWTRefreshReuseDetection:     jwtConfig.RefreshReuseDetection,
+		SystemName:              config.SystemName,
+		SystemLogo:              config.SystemLogo,
+		SystemFavicon:           config.SystemFavicon,
+		DefaultLanguage:         config.DefaultLanguage,
+		DefaultTimezone:         config.DefaultTimezone,
+		DateFormat:              config.DateFormat,
+		DownloadExcludePatterns: config.DownloadExcludePatterns,
+		DefaultDownloadMode:     config.DefaultDownloadMode,
+		SkipExcludedOnUpload:    config.SkipExcludedOnUpload,
+		MaxFileUploadSize:       config.MaxFileUploadSize,
+		TransferStoragePath:     config.TransferStoragePath,
+		TransferRetentionDays:   config.TransferRetentionDays,
+		TransferMaxStorageGB:    config.TransferMaxStorageGB,
+		TransferMaxConcurrency:  config.TransferMaxConcurrency,
+		TransferCleanupEnabled:  config.TransferCleanupEnabled,
+		AllowRegistration:       config.AllowRegistration,
+		DefaultRole:             config.DefaultRole,
+		OAuthEnabled:            config.OAuthEnabled,
+		GoogleClientID:          config.GoogleClientID,
+		HasGoogleClientSecret:   config.GoogleClientSecret != "",
+		OAuthAccessTokenMinutes: oauthTokenConfig.AccessTokenMinutes,
+		OAuthRefreshTokenDays:   oauthTokenConfig.RefreshTokenDays,
 	}
 
 	return dto
@@ -142,31 +146,28 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 // fromDTO 将DTO转换为模型
 func (h *SystemConfigHandler) fromDTO(dto *SystemConfigDTOV2) (*systemconfig.SystemConfig, error) {
 	config := &systemconfig.SystemConfig{
-		SystemName:                   dto.SystemName,
-		SystemLogo:                   dto.SystemLogo,
-		SystemFavicon:                dto.SystemFavicon,
-		DefaultLanguage:              dto.DefaultLanguage,
-		DefaultTimezone:              dto.DefaultTimezone,
-		DateFormat:                   dto.DateFormat,
-		DownloadExcludePatterns:      dto.DownloadExcludePatterns,
-		DefaultDownloadMode:          dto.DefaultDownloadMode,
-		SkipExcludedOnUpload:         dto.SkipExcludedOnUpload,
-		MaxFileUploadSize:            dto.MaxFileUploadSize,
-		TransferStoragePath:          dto.TransferStoragePath,
-		TransferRetentionDays:        dto.TransferRetentionDays,
-		TransferMaxStorageGB:         dto.TransferMaxStorageGB,
-		TransferMaxConcurrency:       dto.TransferMaxConcurrency,
-		TransferCleanupEnabled:       dto.TransferCleanupEnabled,
-		AllowRegistration:            dto.AllowRegistration,
-		DefaultRole:                  dto.DefaultRole,
-		OAuthEnabled:                 dto.OAuthEnabled,
-		GoogleClientID:               dto.GoogleClientID,
-		GoogleClientSecret:           dto.GoogleClientSecret,
-		JWTAccessExpireMinutes:       dto.JWTAccessExpireMinutes,
-		JWTRefreshIdleExpireDays:     dto.JWTRefreshIdleExpireDays,
-		JWTRefreshAbsoluteExpireDays: dto.JWTRefreshAbsoluteExpireDays,
-		JWTRefreshRotate:             dto.JWTRefreshRotate,
-		JWTRefreshReuseDetection:     dto.JWTRefreshReuseDetection,
+		SystemName:              dto.SystemName,
+		SystemLogo:              dto.SystemLogo,
+		SystemFavicon:           dto.SystemFavicon,
+		DefaultLanguage:         dto.DefaultLanguage,
+		DefaultTimezone:         dto.DefaultTimezone,
+		DateFormat:              dto.DateFormat,
+		DownloadExcludePatterns: dto.DownloadExcludePatterns,
+		DefaultDownloadMode:     dto.DefaultDownloadMode,
+		SkipExcludedOnUpload:    dto.SkipExcludedOnUpload,
+		MaxFileUploadSize:       dto.MaxFileUploadSize,
+		TransferStoragePath:     dto.TransferStoragePath,
+		TransferRetentionDays:   dto.TransferRetentionDays,
+		TransferMaxStorageGB:    dto.TransferMaxStorageGB,
+		TransferMaxConcurrency:  dto.TransferMaxConcurrency,
+		TransferCleanupEnabled:  dto.TransferCleanupEnabled,
+		AllowRegistration:       dto.AllowRegistration,
+		DefaultRole:             dto.DefaultRole,
+		OAuthEnabled:            dto.OAuthEnabled,
+		GoogleClientID:          dto.GoogleClientID,
+		GoogleClientSecret:      dto.GoogleClientSecret,
+		OAuthAccessTokenMinutes: dto.OAuthAccessTokenMinutes,
+		OAuthRefreshTokenDays:   dto.OAuthRefreshTokenDays,
 	}
 
 	return config, nil
@@ -206,6 +207,9 @@ func (h *SystemConfigHandler) PatchBasicInfo(c *gin.Context) {
 	existingConfig.OAuthEnabled = dto.OAuthEnabled
 	existingConfig.GoogleClientID = dto.GoogleClientID
 	existingConfig.GoogleClientSecret = dto.GoogleClientSecret
+	if !h.validateDefaultRole(c, existingConfig.DefaultRole) {
+		return
+	}
 
 	if err := h.service.Save(c.Request.Context(), existingConfig); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -213,6 +217,24 @@ func (h *SystemConfigHandler) PatchBasicInfo(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Basic info updated successfully"})
+}
+
+func (h *SystemConfigHandler) validateDefaultRole(c *gin.Context, key string) bool {
+	key = strings.TrimSpace(key)
+	if h.roleService == nil || key == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Default role is required"})
+		return false
+	}
+	exists, err := h.roleService.RoleExists(c.Request.Context(), key)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return false
+	}
+	if !exists {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Default role does not exist"})
+		return false
+	}
+	return true
 }
 
 // PatchFileTransferConfig 部分更新文件传输配置
@@ -256,15 +278,15 @@ func (h *SystemConfigHandler) PatchFileTransferConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "File transfer config updated successfully"})
 }
 
-// PatchJWTSessionConfig 部分更新 JWT 过期与刷新配置。
-// @Summary 部分更新 JWT 会话配置
+// PatchOAuthTokenConfig 部分更新 OAuth/OIDC 令牌生命周期配置。
+// @Summary 部分更新 OAuth/OIDC 令牌配置
 // @Tags 系统设置
 // @Accept json
 // @Produce json
-// @Param request body SystemConfigDTOV2 true "JWT 会话配置"
+// @Param request body SystemConfigDTOV2 true "OAuth/OIDC 令牌配置"
 // @Success 200 {object} map[string]string
-// @Router /api/v1/settings/system/jwt-session [patch]
-func (h *SystemConfigHandler) PatchJWTSessionConfig(c *gin.Context) {
+// @Router /api/v1/settings/system/oauth-token [patch]
+func (h *SystemConfigHandler) PatchOAuthTokenConfig(c *gin.Context) {
 	var dto SystemConfigDTOV2
 	if err := c.ShouldBindJSON(&dto); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
@@ -277,16 +299,13 @@ func (h *SystemConfigHandler) PatchJWTSessionConfig(c *gin.Context) {
 		return
 	}
 
-	existingConfig.JWTAccessExpireMinutes = dto.JWTAccessExpireMinutes
-	existingConfig.JWTRefreshIdleExpireDays = dto.JWTRefreshIdleExpireDays
-	existingConfig.JWTRefreshAbsoluteExpireDays = dto.JWTRefreshAbsoluteExpireDays
-	existingConfig.JWTRefreshRotate = dto.JWTRefreshRotate
-	existingConfig.JWTRefreshReuseDetection = dto.JWTRefreshReuseDetection
+	existingConfig.OAuthAccessTokenMinutes = dto.OAuthAccessTokenMinutes
+	existingConfig.OAuthRefreshTokenDays = dto.OAuthRefreshTokenDays
 
 	if err := h.service.Save(c.Request.Context(), existingConfig); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "JWT session configuration saved successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "OAuth token configuration saved successfully"})
 }

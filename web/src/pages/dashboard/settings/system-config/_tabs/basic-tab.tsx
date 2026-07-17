@@ -1,5 +1,5 @@
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { SettingsSection } from "@/components/settings/settings-section"
 import { FormInput, FormSelect, FormSwitch } from "@/components/settings/form-field"
@@ -17,11 +17,17 @@ import { useSettingsForm } from "@/hooks/settings/use-settings-form"
 import { basicInfoSchema } from "@/schemas/settings/system-config.schema"
 import { settingsApi } from "@/lib/api/settings"
 import { SettingsLoading } from "@/components/settings/settings-loading"
+import { rolesApi, type Role } from "@/lib/api"
 
 export function BasicTab() {
   const { t } = useTranslation("settingsSystemBasic")
   const { t: tCommon } = useTranslation("common")
   const [hasGoogleClientSecret, setHasGoogleClientSecret] = useState(false)
+	const [roles, setRoles] = useState<Role[]>([])
+
+	useEffect(() => {
+		void rolesApi.list().then((response) => setRoles(response.data || [])).catch(() => setRoles([]))
+	}, [])
 
   const languageOptions = [
     { label: t("languageZhCN"), value: "zh-CN" },
@@ -229,14 +235,13 @@ export function BasicTab() {
                 </div>
                 <Select
                   value={form.watch("default_role")}
-                  onValueChange={(val) => form.setValue("default_role", val as "user" | "viewer")}
+					onValueChange={(val) => form.setValue("default_role", val)}
                 >
                   <SelectTrigger className="w-[140px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="user">{t("roleUser")}</SelectItem>
-                    <SelectItem value="viewer">{t("roleViewer")}</SelectItem>
+					{roles.filter((role) => role.key !== "admin").map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

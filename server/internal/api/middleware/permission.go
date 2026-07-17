@@ -3,63 +3,80 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strings"
 
-	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-// PermissionService 用于权限校验的最小接口（避免引入具体实现依赖）
 type PermissionService interface {
-	RoleHasPermission(ctx context.Context, role auth.UserRole, code string) (bool, error)
+	Authorize(ctx context.Context, userID uuid.UUID, roleKey, permissionCode, resource string) (bool, error)
 }
 
-// RequirePermission 需要具备指定权限（按角色映射）
+type ResourceIDExtractor func(*gin.Context) string
+
 func RequirePermission(permissionService PermissionService, code string) gin.HandlerFunc {
+	return requirePermission(permissionService, code, "", nil)
+}
+
+func RequireResourcePermission(permissionService PermissionService, code, resourceType string, extractor ResourceIDExtractor) gin.HandlerFunc {
+	return requirePermission(permissionService, code, strings.TrimSpace(resourceType), extractor)
+}
+
+func PathResourceID(parameter string) ResourceIDExtractor {
+	return func(c *gin.Context) string { return strings.TrimSpace(c.Param(parameter)) }
+}
+
+func RequestResourceID(name string) ResourceIDExtractor {
+	return func(c *gin.Context) string {
+		if value := strings.TrimSpace(c.Param(name)); value != "" {
+			return value
+		}
+		if value := strings.TrimSpace(c.Query(name)); value != "" {
+			return value
+		}
+		return strings.TrimSpace(c.PostForm(name))
+	}
+}
+
+func requirePermission(permissionService PermissionService, code, resourceType string, extractor ResourceIDExtractor) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if permissionService == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{
-				"error":   "permission_service_unavailable",
-				"message": "Permission service not available",
-			})
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "permission_service_unavailable", "message": "Permission service not available"})
 			c.Abort()
 			return
 		}
 
-		roleValue, exists := c.Get("role")
-		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "User role not found",
-			})
+		userIDValue, userExists := c.Get("user_id")
+		roleValue, roleExists := c.Get("role")
+		userIDString, userOK := userIDValue.(string)
+		roleKey, roleOK := roleValue.(string)
+		userID, err := uuid.Parse(userIDString)
+		if !userExists || !roleExists || !userOK || !roleOK || err != nil || strings.TrimSpace(roleKey) == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Invalid authorization identity"})
 			c.Abort()
 			return
 		}
 
-		roleStr, ok := roleValue.(string)
-		if !ok {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "Invalid user role",
-			})
-			c.Abort()
-			return
+		resource := ""
+		if extractor != nil {
+			resourceID := strings.TrimSpace(extractor(c))
+			if resourceType == "" || resourceID == "" || strings.Contains(resourceID, "/") {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_resource", "message": "Resource identifier is required"})
+				c.Abort()
+				return
+			}
+			resource = resourceType + "/" + resourceID
 		}
 
-		allowed, err := permissionService.RoleHasPermission(c.Request.Context(), auth.UserRole(roleStr), code)
+		allowed, err := permissionService.Authorize(c.Request.Context(), userID, roleKey, code, resource)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":   "permission_check_failed",
-				"message": err.Error(),
-			})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "permission_check_failed", "message": err.Error()})
 			c.Abort()
 			return
 		}
-
 		if !allowed {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "Insufficient permissions",
-			})
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "Insufficient permissions"})
 			c.Abort()
 			return
 		}

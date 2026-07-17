@@ -15,7 +15,7 @@ export const basicInfoSchema = z.object({
   date_format: z.string().min(1, "settingsValidation.dateFormatRequired"),
   // 注册配置
   allow_registration: z.boolean().default(false),
-  default_role: z.enum(["user", "viewer"]).default("user"),
+	default_role: z.string().min(2).max(64).default("user"),
   // OAuth 配置
   oauth_enabled: z.boolean().default(false),
   google_client_id: z.string().optional(),

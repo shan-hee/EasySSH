@@ -1,14 +1,15 @@
-
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { PageHeader } from "@/components/page-header"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
+import { Edit, KeyRound, Lock, Plus, RefreshCw, Shield, Trash2, Unlock, Users } from "lucide-react"
 import { toast } from "sonner"
-import { getErrorMessage } from "@/lib/error-utils"
+
+import { PageHeader } from "@/components/page-header"
+import { DataTable } from "@/components/ui/data-table"
+import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -17,50 +18,34 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Eye,
-  FileText,
-  FolderKey,
-  KeyRound,
-  Plus,
-  RefreshCw,
-  Server,
-  Settings,
-  Shield,
-  Terminal,
-  Trash2,
-  Users,
-} from "lucide-react"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { permissionsApi, usersApi, type Permission, type UserDetail, type UserRole } from "@/lib/api"
-import { DataTable } from "@/components/ui/data-table"
-import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
-import { useUserColumns } from "./users/components/user-columns"
-import { usePermissionColumns, staticPermissions } from "./users/components/permission-columns"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import {
-  InlineStatusBadge,
-} from "@/components/logs/log-dashboard-widgets"
+  permissionsApi,
+  resourceGrantsApi,
+  rolesApi,
+  usersApi,
+  type Permission,
+  type ResourceGrant,
+  type Role,
+  type RoleRequest,
+  type UserDetail,
+  type UserRole,
+} from "@/lib/api"
+import { getErrorMessage } from "@/lib/error-utils"
+import { usePermissionColumns } from "./users/components/permission-columns"
+import { useUserColumns } from "./users/components/user-columns"
 
-function isLockedUser(user: UserDetail) {
-  if (!user.locked_until) return false
-  return new Date(user.locked_until) > new Date()
-}
+type UserForm = { username: string; email: string; password: string; role: UserRole }
+type RoleForm = { key: string; name: string; description: string; parent_key: string; permission_codes: string[] }
 
-function formatUserTime(value?: string) {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
-}
+const emptyUserForm: UserForm = { username: "", email: "", password: "", role: "user" }
+const emptyRoleForm: RoleForm = { key: "", name: "", description: "", parent_key: "", permission_codes: [] }
 
 export default function UsersPage() {
   const { t } = useTranslation("users")
@@ -68,107 +53,42 @@ export default function UsersPage() {
   const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
 
-  // Tab 状态
-  const [activeTab, setActiveTab] = useState<"users" | "permissions">("users")
-
-  // 数据状态
   const [users, setUsers] = useState<UserDetail[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
+  const [permissions, setPermissions] = useState<Permission[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
-  // 统计状态
-  const [statistics, setStatistics] = useState({
-    totalUsers: 0,
-    adminUsers: 0,
-    normalUsers: 0,
-    viewerUsers: 0,
-  })
-
-  // 对话框状态
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false)
-  const [isLockDialogOpen, setIsLockDialogOpen] = useState(false)
-  const [editingUserId, setEditingUserId] = useState<string | null>(null)
-  const [passwordUserId, setPasswordUserId] = useState<string | null>(null)
-  const [lockUserId, setLockUserId] = useState<string | null>(null)
-  const [lockUsername, setLockUsername] = useState<string>("")
-
-  // 新建用户表单
-  const [newUser, setNewUser] = useState({
-    username: "",
-    email: "",
-    password: "",
-    role: "user" as UserRole,
-  })
-
-  // 编辑用户表单
-  const [editUser, setEditUser] = useState({
-    username: "",
-    email: "",
-    role: "user" as UserRole,
-  })
-
-  // 修改密码表单
+  const [userDialog, setUserDialog] = useState<"create" | "edit" | null>(null)
+  const [editingUserID, setEditingUserID] = useState("")
+  const [userForm, setUserForm] = useState<UserForm>(emptyUserForm)
+  const [passwordUserID, setPasswordUserID] = useState("")
   const [newPassword, setNewPassword] = useState("")
+  const [lockTarget, setLockTarget] = useState<{ id: string; username: string } | null>(null)
+  const [lockReason, setLockReason] = useState("")
+  const [lockMinutes, setLockMinutes] = useState("60")
 
-  // 锁定用户表单
-  const [lockForm, setLockForm] = useState<{
-    reason: string
-    duration_minutes: number
-    custom_value?: number
-    custom_unit?: "minutes" | "hours" | "days"
-  }>({
-    reason: "",
-    duration_minutes: 60,
-  })
+  const [roleDialog, setRoleDialog] = useState<"create" | "edit" | null>(null)
+  const [editingRoleID, setEditingRoleID] = useState("")
+  const [roleForm, setRoleForm] = useState<RoleForm>(emptyRoleForm)
 
-  // 权限管理状态
-  const [permissions, setPermissions] = useState<Permission[]>(staticPermissions)
-  const [isPermCreateDialogOpen, setIsPermCreateDialogOpen] = useState(false)
-  const [isPermEditDialogOpen, setIsPermEditDialogOpen] = useState(false)
-  const [editingPermission, setEditingPermission] = useState<Permission | null>(null)
+  const [grantSubjectType, setGrantSubjectType] = useState<"role" | "user">("role")
+  const [grantSubjectID, setGrantSubjectID] = useState("")
+  const [grantPermissionCode, setGrantPermissionCode] = useState("")
+  const [grantResourceID, setGrantResourceID] = useState("")
+  const [resourceGrants, setResourceGrants] = useState<ResourceGrant[]>([])
 
-  // 新建/编辑权限表单
-  const [permForm, setPermForm] = useState<{
-    name: string
-    code: string
-    description: string
-    module: Permission["module"]
-    roles: Permission["roles"]
-  }>({
-    name: "",
-    code: "",
-    description: "",
-    module: "server",
-    roles: ["admin"],
-  })
-
-  // 加载用户列表
-  const loadUsers = useCallback(async () => {
+  const loadData = useCallback(async () => {
     try {
-      const [usersRes, statsRes] = await Promise.all([
+      const [userResponse, roleResponse, permissionResponse] = await Promise.all([
         usersApi.list({ page: 1, limit: 100 }),
-        usersApi.getStatistics(),
+        rolesApi.list(),
+        permissionsApi.list(),
       ])
-
-      // 现在 apiFetch 不会解包包含分页元数据的响应，直接访问 data 字段
-      const usersList = Array.isArray(usersRes?.data) ? usersRes.data : []
-      const statsData = statsRes?.data || statsRes || {}
-
-      setUsers(usersList)
-      setStatistics({
-        totalUsers: statsData.total_users || 0,
-        adminUsers: statsData.by_role?.admin || 0,
-        normalUsers: statsData.by_role?.user || 0,
-        viewerUsers: statsData.by_role?.viewer || 0,
-      })
-    } catch (error: unknown) {
-      console.error("加载用户列表失败:", error)
-
-      // 确保状态为空数组
-      setUsers([])
-
+      setUsers(Array.isArray(userResponse.data) ? userResponse.data : [])
+      setRoles(Array.isArray(roleResponse.data) ? roleResponse.data : [])
+      setPermissions(Array.isArray(permissionResponse.data) ? permissionResponse.data : [])
+    } catch (error) {
       toast.error(getErrorMessage(error, t("toastLoadFailed")))
     } finally {
       setLoading(false)
@@ -176,1254 +96,304 @@ export default function UsersPage() {
     }
   }, [t])
 
-  // 加载权限列表
-  const loadPermissions = useCallback(async () => {
-    try {
-      const res = await permissionsApi.list({ page: 1, limit: 200 })
-      const list = Array.isArray(res?.data) ? res.data : []
-      setPermissions(list)
-    } catch (error: unknown) {
-      console.error("加载权限列表失败:", error)
-      // 保留静态兜底数据，避免页面空白
-      setPermissions(staticPermissions)
-      toast.error(getErrorMessage(error, t("permToastLoadFailed")))
-    }
-  }, [t])
-
-  // 刷新数据
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await loadUsers()
-  }
-
-  // 初始加载（仅在已认证且全局状态就绪时触发）
   useEffect(() => {
-    if (!ready) return
-    loadUsers()
-    loadPermissions()
-  }, [ready, loadPermissions, loadUsers])
+    if (ready) void loadData()
+  }, [ready, loadData])
 
-  // 创建用户
-  const handleCreateUser = async () => {
-    if (!newUser.username || !newUser.email || !newUser.password) {
+  useEffect(() => {
+    if (!grantSubjectID) {
+      setResourceGrants([])
+      return
+    }
+    void resourceGrantsApi
+      .list(grantSubjectType, grantSubjectID)
+      .then((response) => setResourceGrants(response.data || []))
+      .catch((error) => toast.error(getErrorMessage(error, t("rbacGrantLoadFailed"))))
+  }, [grantSubjectID, grantSubjectType, t])
+
+  const refresh = () => {
+    setRefreshing(true)
+    void loadData()
+  }
+
+  const openCreateUser = () => {
+    setEditingUserID("")
+    setUserForm({ ...emptyUserForm, role: roles.find((role) => role.key === "user")?.key || roles[0]?.key || "" })
+    setUserDialog("create")
+  }
+
+  const openEditUser = (user: UserDetail) => {
+    setEditingUserID(user.id)
+    setUserForm({ username: user.username, email: user.email, password: "", role: user.role })
+    setUserDialog("edit")
+  }
+
+  const saveUser = async () => {
+    if (!userForm.username || !userForm.email || !userForm.role || (userDialog === "create" && !userForm.password)) {
       toast.error(t("toastFormIncomplete"))
       return
     }
-
     try {
-      await usersApi.create(newUser)
-      toast.success(t("toastCreateSuccess"))
-      setIsCreateDialogOpen(false)
-
-      // 重置表单
-      setNewUser({
-        username: "",
-        email: "",
-        password: "",
-        role: "user",
-      })
-
-      // 重新加载列表
-      await loadUsers()
-    } catch (error: unknown) {
-      console.error("创建用户失败:", error)
-      toast.error(getErrorMessage(error, t("toastCreateFailed")))
+      if (userDialog === "create") {
+        await usersApi.create(userForm)
+        toast.success(t("toastCreateSuccess"))
+      } else {
+        await usersApi.update(editingUserID, { username: userForm.username, email: userForm.email, role: userForm.role })
+        toast.success(t("toastUpdateSuccess"))
+      }
+      setUserDialog(null)
+      await loadData()
+    } catch (error) {
+      toast.error(getErrorMessage(error, userDialog === "create" ? t("toastCreateFailed") : t("toastUpdateFailed")))
     }
   }
 
-  // 编辑用户
-  const handleEdit = (user: UserDetail) => {
-    setEditingUserId(user.id)
-    setEditUser({
-      username: user.username,
-      email: user.email,
-      role: user.role as UserRole,
-    })
-    setIsEditDialogOpen(true)
-  }
-
-  // 更新用户
-  const handleUpdateUser = async () => {
-    if (!editingUserId) return
-
-    if (!editUser.username || !editUser.email) {
-      toast.error(t("toastFormIncomplete"))
-      return
-    }
-
+  const deleteUser = async (id: string, username: string) => {
+    if (!(await requestConfirm({ description: t("confirmDeleteSingle", { username }), variant: "destructive" }))) return
     try {
-      await usersApi.update(editingUserId, editUser)
-      toast.success(t("toastUpdateSuccess"))
-      setIsEditDialogOpen(false)
-      setEditingUserId(null)
-
-      // 重新加载列表
-      await loadUsers()
-    } catch (error: unknown) {
-      console.error("更新用户失败:", error)
-      toast.error(getErrorMessage(error, t("toastUpdateFailed")))
-    }
-  }
-
-  // 删除用户
-  const handleDelete = async (userId: string, username: string) => {
-    const confirmed = await requestConfirm({
-      description: t("confirmDeleteSingle", { username }),
-      variant: "destructive",
-    })
-    if (!confirmed) {
-      return
-    }
-
-    try {
-      await usersApi.delete(userId)
+      await usersApi.delete(id)
       toast.success(t("toastDeleteSuccess"))
-      await loadUsers()
-    } catch (error: unknown) {
-      console.error("删除用户失败:", error)
+      await loadData()
+    } catch (error) {
       toast.error(getErrorMessage(error, t("toastDeleteFailed")))
     }
   }
 
-  // 批量删除用户
-  const handleBatchDelete = async (userIds: string[]) => {
-    const confirmed = await requestConfirm({
-      description: t("confirmDeleteBatch", { count: userIds.length }),
-      variant: "destructive",
-    })
-    if (!confirmed) {
-      return
-    }
-
+  const changePassword = async () => {
+    if (!newPassword) return
     try {
-      await Promise.all(userIds.map(id => usersApi.delete(id)))
-      toast.success(t("toastBatchDeleteSuccess", { count: userIds.length }))
-      await loadUsers()
-    } catch (error: unknown) {
-      console.error("批量删除用户失败:", error)
-      toast.error(getErrorMessage(error, t("toastDeleteFailed")))
-    }
-  }
-
-  // 修改密码
-  const handleChangePassword = async () => {
-    if (!passwordUserId) return
-
-    if (!newPassword || newPassword.length < 6) {
-      toast.error(t("toastPasswordTooShort"))
-      return
-    }
-
-    try {
-      await usersApi.changePassword(passwordUserId, { new_password: newPassword })
+      await usersApi.changePassword(passwordUserID, { new_password: newPassword })
       toast.success(t("toastPasswordChangeSuccess"))
-      setIsPasswordDialogOpen(false)
-      setPasswordUserId(null)
+      setPasswordUserID("")
       setNewPassword("")
-    } catch (error: unknown) {
-      console.error("修改密码失败:", error)
+    } catch (error) {
       toast.error(getErrorMessage(error, t("toastPasswordChangeFailed")))
     }
   }
 
-  // 处理修改密码
-  const handleOpenPasswordDialog = (userId: string) => {
-    setPasswordUserId(userId)
-    setIsPasswordDialogOpen(true)
-  }
-
-  // 解锁用户
-  const handleUnlock = async (userId: string, username: string) => {
-    const confirmed = await requestConfirm({
-      description: t("confirmUnlock", { username }),
-    })
-    if (!confirmed) {
-      return
-    }
-
+  const lockUser = async () => {
+    if (!lockTarget) return
     try {
-      await usersApi.unlock(userId)
-      toast.success(t("toastUnlockSuccess"))
-      await loadUsers()
-    } catch (error: unknown) {
-      console.error("解锁用户失败:", error)
-      toast.error(getErrorMessage(error, t("toastUnlockFailed")))
-    }
-  }
-
-  // 打开锁定对话框
-  const handleOpenLockDialog = (userId: string, username: string) => {
-    setLockUserId(userId)
-    setLockUsername(username)
-    setLockForm({ reason: "", duration_minutes: 60 })
-    setIsLockDialogOpen(true)
-  }
-
-  // 锁定用户
-  const handleLockUser = async () => {
-    if (!lockUserId) return
-
-    // 计算最终锁定时长（分钟）
-    let finalDurationMinutes = lockForm.duration_minutes
-
-    // 自定义时长
-    if (lockForm.duration_minutes === -1) {
-      const customValue = lockForm.custom_value || 0
-      const customUnit = lockForm.custom_unit || "minutes"
-
-      if (customValue < 1) {
-        toast.error(t("toastLockDurationInvalid"))
-        return
-      }
-
-      switch (customUnit) {
-        case "hours":
-          finalDurationMinutes = customValue * 60
-          break
-        case "days":
-          finalDurationMinutes = customValue * 60 * 24
-          break
-        default:
-          finalDurationMinutes = customValue
-      }
-    }
-
-    if (finalDurationMinutes < 1) {
-      toast.error(t("toastLockDurationInvalid"))
-      return
-    }
-
-    try {
-      await usersApi.lock(lockUserId, {
-        reason: lockForm.reason,
-        duration_minutes: finalDurationMinutes,
-      })
+      await usersApi.lock(lockTarget.id, { reason: lockReason, duration_minutes: Number(lockMinutes) })
       toast.success(t("toastLockSuccess"))
-      setIsLockDialogOpen(false)
-      setLockUserId(null)
-      setLockUsername("")
-      setLockForm({ reason: "", duration_minutes: 60 })
-      await loadUsers()
-    } catch (error: unknown) {
-      console.error("锁定用户失败:", error)
+      setLockTarget(null)
+      await loadData()
+    } catch (error) {
       toast.error(getErrorMessage(error, t("toastLockFailed")))
     }
   }
 
-  // 重置权限表单
-  const resetPermForm = () => {
-    setPermForm({
-      name: "",
-      code: "",
-      description: "",
-      module: "server",
-      roles: ["admin"],
-    })
-  }
-
-  // 打开新建权限对话框
-  const handleOpenPermCreateDialog = () => {
-    resetPermForm()
-    setIsPermCreateDialogOpen(true)
-  }
-
-  // 创建权限
-  const handleCreatePermission = async () => {
-    if (!permForm.name || !permForm.code) {
-      toast.error(t("permToastFormIncomplete"))
-      return
-    }
-
-    // 检查代码是否重复
-    if (permissions.some(p => p.code === permForm.code)) {
-      toast.error(t("permToastCodeExists"))
-      return
-    }
-
+  const unlockUser = async (id: string) => {
     try {
-      await permissionsApi.create(permForm)
-      toast.success(t("permToastCreateSuccess"))
-      setIsPermCreateDialogOpen(false)
-      resetPermForm()
-      await loadPermissions()
-    } catch (error: unknown) {
-      console.error("创建权限失败:", error)
-      toast.error(getErrorMessage(error, t("permToastCreateFailed")))
+      await usersApi.unlock(id)
+      toast.success(t("toastUnlockSuccess"))
+      await loadData()
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("toastUnlockFailed")))
     }
   }
 
-  // 打开编辑权限对话框
-  const handleEditPermission = (permission: Permission) => {
-    setEditingPermission(permission)
-    setPermForm({
-      name: permission.name,
-      code: permission.code,
-      description: permission.description,
-      module: permission.module,
-      roles: [...permission.roles],
+  const openCreateRole = () => {
+    setEditingRoleID("")
+    setRoleForm(emptyRoleForm)
+    setRoleDialog("create")
+  }
+
+  const openEditRole = (role: Role) => {
+    setEditingRoleID(role.id)
+    setRoleForm({
+      key: role.key,
+      name: role.name,
+      description: role.description,
+      parent_key: role.parent_key || "",
+      permission_codes: [...role.permission_codes],
     })
-    setIsPermEditDialogOpen(true)
+    setRoleDialog("edit")
   }
 
-  // 更新权限
-  const handleUpdatePermission = async () => {
-    if (!editingPermission) return
-
-    if (!permForm.name || !permForm.code) {
-      toast.error(t("permToastFormIncomplete"))
-      return
-    }
-
-    // 检查代码是否与其他权限重复
-    if (permissions.some(p => p.code === permForm.code && p.id !== editingPermission.id)) {
-      toast.error(t("permToastCodeExists"))
-      return
-    }
-
-    try {
-      await permissionsApi.update(editingPermission.id, permForm)
-      toast.success(t("permToastUpdateSuccess"))
-      setIsPermEditDialogOpen(false)
-      setEditingPermission(null)
-      resetPermForm()
-      await loadPermissions()
-    } catch (error: unknown) {
-      console.error("更新权限失败:", error)
-      toast.error(getErrorMessage(error, t("permToastUpdateFailed")))
-    }
-  }
-
-  // 删除权限
-  const handleDeletePermission = async (permissionId: string, name: string) => {
-    const confirmed = await requestConfirm({
-      description: t("permConfirmDelete", { name }),
-      variant: "destructive",
-    })
-    if (!confirmed) {
-      return
-    }
-
-    try {
-      await permissionsApi.delete(permissionId)
-      toast.success(t("permToastDeleteSuccess"))
-      await loadPermissions()
-    } catch (error: unknown) {
-      console.error("删除权限失败:", error)
-      toast.error(getErrorMessage(error, t("permToastDeleteFailed")))
-    }
-  }
-
-  // 批量删除权限
-  const handleBatchDeletePermissions = async (permissionIds: string[]) => {
-    const confirmed = await requestConfirm({
-      description: t("permConfirmDeleteBatch", { count: permissionIds.length }),
-      variant: "destructive",
-    })
-    if (!confirmed) {
-      return
-    }
-
-    try {
-      await Promise.all(permissionIds.map((id) => permissionsApi.delete(id)))
-      toast.success(t("permToastBatchDeleteSuccess", { count: permissionIds.length }))
-      await loadPermissions()
-    } catch (error: unknown) {
-      console.error("批量删除权限失败:", error)
-      toast.error(getErrorMessage(error, t("permToastDeleteFailed")))
-    }
-  }
-
-  // 切换角色选择
-  const toggleRole = (role: "admin" | "user" | "viewer") => {
-    if (permForm.roles.includes(role)) {
-      // 至少保留一个角色
-      if (permForm.roles.length > 1) {
-        setPermForm({ ...permForm, roles: permForm.roles.filter(r => r !== role) })
-      }
-    } else {
-      setPermForm({ ...permForm, roles: [...permForm.roles, role] })
-    }
-  }
-
-  // 创建列定义
-  const columns = useUserColumns({
-    onEdit: handleEdit,
-    onDelete: handleDelete,
-    onChangePassword: handleOpenPasswordDialog,
-    onLock: handleOpenLockDialog,
-    onUnlock: handleUnlock,
-  })
-
-  // 角色筛选选项
-  const roleFilters = [
-    {
-      column: "role",
-      title: t("filterRoleTitle"),
-      options: [
-        { label: t("filterRoleAdmin"), value: "admin", icon: Shield },
-        { label: t("filterRoleUser"), value: "user", icon: Users },
-        { label: t("filterRoleViewer"), value: "viewer", icon: Eye },
-      ],
-    },
-  ]
-
-  // 权限列定义
-  const permissionColumns = usePermissionColumns({
-    onEdit: handleEditPermission,
-    onDelete: handleDeletePermission,
-  })
-
-  // 模块筛选选项
-  const moduleFilters = [
-    {
-      column: "module",
-      title: t("permFilterModule"),
-      options: [
-        { label: t("permModuleServer"), value: "server", icon: Server },
-        { label: t("permModuleFile"), value: "file", icon: FolderKey },
-        { label: t("permModuleTerminal"), value: "terminal", icon: Terminal },
-        { label: t("permModuleAudit"), value: "audit", icon: FileText },
-        { label: t("permModuleSystem"), value: "system", icon: Settings },
-      ],
-    },
-  ]
-
-  const lockedUsers = useMemo(() => users.filter(isLockedUser), [users])
-
-  const roleDistribution = useMemo(() => [
-    { label: t("filterRoleAdmin"), value: statistics.adminUsers, tone: "violet" as const },
-    { label: t("filterRoleUser"), value: statistics.normalUsers, tone: "blue" as const },
-    { label: t("filterRoleViewer"), value: statistics.viewerUsers, tone: "slate" as const },
-  ], [statistics.adminUsers, statistics.normalUsers, statistics.viewerUsers, t])
-
-  const permissionModuleStats = useMemo(() => {
-    const labels: Record<Permission["module"], string> = {
-      server: t("permModuleServer"),
-      file: t("permModuleFile"),
-      terminal: t("permModuleTerminal"),
-      audit: t("permModuleAudit"),
-      system: t("permModuleSystem"),
-    }
-
-    return (["server", "file", "terminal", "audit", "system"] as Permission["module"][]).map((module) => ({
-      module,
-      label: labels[module],
-      count: permissions.filter((permission) => permission.module === module).length,
+  const togglePermission = (code: string) => {
+    setRoleForm((current) => ({
+      ...current,
+      permission_codes: current.permission_codes.includes(code)
+        ? current.permission_codes.filter((item) => item !== code)
+        : [...current.permission_codes, code],
     }))
-  }, [permissions, t])
+  }
 
-  const rolePermissionCoverage = useMemo(() => ([
-    { label: t("filterRoleAdmin"), role: "admin" as const, tone: "violet" as const },
-    { label: t("filterRoleUser"), role: "user" as const, tone: "blue" as const },
-    { label: t("filterRoleViewer"), role: "viewer" as const, tone: "slate" as const },
-  ].map((item) => ({
-    ...item,
-    count: permissions.filter((permission) => permission.roles.includes(item.role)).length,
-    percent: permissions.length > 0
-      ? Math.round((permissions.filter((permission) => permission.roles.includes(item.role)).length / permissions.length) * 100)
-      : 0,
-  }))), [permissions, t])
+  const saveRole = async () => {
+    if (!roleForm.name || (roleDialog === "create" && !roleForm.key)) {
+      toast.error(t("rbacRoleFormIncomplete"))
+      return
+    }
+    const request: RoleRequest = {
+      key: roleDialog === "create" ? roleForm.key : undefined,
+      name: roleForm.name,
+      description: roleForm.description,
+      parent_key: roleForm.parent_key || null,
+      permission_codes: roleForm.permission_codes,
+    }
+    try {
+      if (roleDialog === "create") await rolesApi.create(request)
+      else await rolesApi.update(editingRoleID, request)
+      toast.success(roleDialog === "create" ? t("rbacRoleCreateSuccess") : t("rbacRoleUpdateSuccess"))
+      setRoleDialog(null)
+      await loadData()
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("rbacRoleSaveFailed")))
+    }
+  }
 
-  const recentLoginItems = useMemo(() => (
-    [...users]
-      .filter((user) => user.last_login_at)
-      .sort((a, b) => new Date(b.last_login_at || 0).getTime() - new Date(a.last_login_at || 0).getTime())
-      .slice(0, 5)
-      .map((user) => ({
-        id: user.id,
-        icon: user.role === "admin" ? Shield : user.role === "viewer" ? Eye : Users,
-        title: user.username,
-        description: user.email,
-        time: formatUserTime(user.last_login_at),
-        tone: user.role === "admin" ? "violet" as const : user.role === "viewer" ? "slate" as const : "blue" as const,
-      }))
-  ), [users])
+  const deleteRole = async (role: Role) => {
+    if (!(await requestConfirm({ description: t("rbacRoleDeleteConfirm", { name: role.name }), variant: "destructive" }))) return
+    try {
+      await rolesApi.delete(role.id)
+      toast.success(t("rbacRoleDeleteSuccess"))
+      await loadData()
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("rbacRoleDeleteFailed")))
+    }
+  }
 
-  const workspaceTabs = () => (
-    <TabsList className="h-8 w-full sm:w-fit">
-      <TabsTrigger value="users" className="gap-2 px-3">
-        <Users className="h-4 w-4" />
-        {t("tabUsers")}
-      </TabsTrigger>
-      <TabsTrigger value="permissions" className="gap-2 px-3">
-        <KeyRound className="h-4 w-4" />
-        {t("tabPermissions")}
-      </TabsTrigger>
-    </TabsList>
-  )
+  const selectedPermission = permissions.find((permission) => permission.code === grantPermissionCode)
+  const resourceType = selectedPermission?.resource.split("/")[0] || ""
+
+  const grantResource = async () => {
+    if (!grantSubjectID || !grantPermissionCode || !resourceType || !grantResourceID) {
+      toast.error(t("rbacGrantFormIncomplete"))
+      return
+    }
+    try {
+      await resourceGrantsApi.grant({
+        subject_type: grantSubjectType,
+        subject_id: grantSubjectID,
+        permission_code: grantPermissionCode,
+        resource_type: resourceType,
+        resource_id: grantResourceID,
+      })
+      const response = await resourceGrantsApi.list(grantSubjectType, grantSubjectID)
+      setResourceGrants(response.data || [])
+      setGrantResourceID("")
+      toast.success(t("rbacGrantSuccess"))
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("rbacGrantFailed")))
+    }
+  }
+
+  const revokeGrant = async (grant: ResourceGrant) => {
+    try {
+      await resourceGrantsApi.revoke({
+        subject_type: grant.subject_type,
+        subject_id: grant.subject_id,
+        permission_code: grant.permission_code,
+        resource_type: grant.resource_type,
+        resource_id: grant.resource_id,
+      })
+      setResourceGrants((current) => current.filter((item) => item.id !== grant.id))
+      toast.success(t("rbacRevokeSuccess"))
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("rbacRevokeFailed")))
+    }
+  }
+
+  const userColumns = useUserColumns({
+    onEdit: openEditUser,
+    onDelete: deleteUser,
+    onChangePassword: setPasswordUserID,
+    onLock: (id, username) => setLockTarget({ id, username }),
+    onUnlock: (id) => void unlockUser(id),
+  })
+  const permissionColumns = usePermissionColumns()
+
+  const roleFilters = useMemo(() => [{
+    column: "role",
+    title: t("filterRoleTitle"),
+    options: roles.map((role) => ({ label: role.name, value: role.key, icon: Shield })),
+  }], [roles, t])
 
   return (
-    <>
+    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:p-6">
       {confirmDialog}
       <PageHeader title={t("pageTitle")} />
+      <p className="text-sm text-muted-foreground">{t("rbacPageDescription")}</p>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 pt-0 scrollbar-custom sm:gap-4 sm:p-4 sm:pt-0">
-        <div className="flex shrink-0 flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-          <p>集中维护团队成员、角色权限和账号风险，保持小团队协作边界清晰。</p>
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]" />
-            <span>组织状态正常</span>
-          </div>
-        </div>
-
-        <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
-          <Card className="gap-0 p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold">角色分布</h2>
-              <InlineStatusBadge label={`${statistics.totalUsers} 人`} tone="emerald" />
-            </div>
-            <div className="mt-4 space-y-3 text-sm">
-              {roleDistribution.map((item) => {
-                const percent = statistics.totalUsers > 0 ? Math.round((item.value / statistics.totalUsers) * 100) : 0
-                return (
-                  <div key={item.label} className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <InlineStatusBadge label={item.label} tone={item.tone} />
-                      <span className="text-muted-foreground tabular-nums">{item.value} / {percent}%</span>
-                    </div>
-                    <Progress value={percent} className="h-1.5" />
-                  </div>
-                )
-              })}
-            </div>
-          </Card>
-
-          <Card className="gap-0 p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold">权限覆盖</h2>
-              <InlineStatusBadge label={`${permissions.length} 项`} tone="amber" />
-            </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-              <div className="space-y-3 text-sm">
-                {rolePermissionCoverage.map((item) => (
-                  <div key={item.role} className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-3">
-                      <InlineStatusBadge label={item.label} tone={item.tone} />
-                      <span className="text-muted-foreground tabular-nums">{item.count} / {item.percent}%</span>
-                    </div>
-                    <Progress value={item.percent} className="h-1.5" />
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                {permissionModuleStats.map((item) => (
-                  <div key={item.module} className="rounded-md bg-muted/50 p-3">
-                    <div className="truncate text-xs text-muted-foreground">{item.label}</div>
-                    <div className="mt-1 font-semibold tabular-nums">{item.count}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-
-          <Card className="gap-0 p-4 sm:p-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-base font-semibold">账号动态</h2>
-              <InlineStatusBadge label={lockedUsers.length === 0 ? "无锁定" : `${lockedUsers.length} 个锁定`} tone={lockedUsers.length === 0 ? "emerald" : "rose"} />
-            </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-              <div>
-                <div className="mb-2 text-sm font-medium">账号风险</div>
-                <div className="space-y-2">
-                  {lockedUsers.length === 0 ? (
-                    <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">暂无锁定账户</div>
-                  ) : lockedUsers.slice(0, 3).map((user) => (
-                    <div key={user.id} className="rounded-md bg-muted/50 px-3 py-2 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="truncate font-medium">{user.username}</span>
-                        <InlineStatusBadge label="锁定" tone="rose" />
-                      </div>
-                      <div className="mt-1 truncate text-xs text-muted-foreground">{user.lock_reason || formatUserTime(user.locked_until)}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="mb-2 text-sm font-medium">最近登录</div>
-                <div className="space-y-2">
-                  {recentLoginItems.length === 0 ? (
-                    <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">暂无登录记录</div>
-                  ) : recentLoginItems.slice(0, 3).map((item) => {
-                    const Icon = item.icon
-                    return (
-                      <div key={item.id} className="flex items-start gap-3 rounded-md px-1 py-2 hover:bg-accent">
-                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-medium">{item.title}</div>
-                          <div className="truncate text-xs text-muted-foreground">{item.description}</div>
-                        </div>
-                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{item.time}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "users" | "permissions")} className="flex min-h-[520px] shrink-0 flex-col xl:min-h-0 xl:flex-1">
-          {/* 用户列表 Tab */}
-          <TabsContent value="users" className="min-h-0 flex-1 overflow-hidden">
-            <DataTable
-                data={users}
-                columns={columns}
-                loading={loading || refreshing}
-                emptyMessage={t("tableEmpty")}
-                enableRowSelection={true}
-                className="min-h-0"
-                scrollContainerClassName="min-h-[360px]"
-                density="compact"
-                toolbar={(table) => (
-                  <DataTableToolbar
-                    table={table}
-                    searchKey="username"
-                    searchPlaceholder={t("searchPlaceholder")}
-                    filters={roleFilters}
-                    onRefresh={handleRefresh}
-                    showRefresh={false}
-                    isRefreshing={refreshing}
-                  >
-                    <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      {t("btnNewUser")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRefresh}
-                      disabled={refreshing}
-                      className="h-8"
-                    >
-                      <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-                      {tCommon("tableRefresh")}
-                    </Button>
-                    {workspaceTabs()}
-                  </DataTableToolbar>
-                )}
-                batchActions={(table) => (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => {
-                      const selectedRows = table.getFilteredSelectedRowModel().rows
-                      const userIds = selectedRows.map(row => row.original.id)
-                      handleBatchDelete(userIds)
-                    }}
-                    className="h-7"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    {t("batchDelete")}
-                  </Button>
-                )}
-            />
-          </TabsContent>
-
-          {/* 权限列表 Tab */}
-          <TabsContent value="permissions" className="min-h-0 flex-1 overflow-hidden">
-            <DataTable
-                data={permissions}
-                columns={permissionColumns}
-                loading={loading}
-                emptyMessage={t("permTableEmpty")}
-                enableRowSelection={true}
-                className="min-h-0"
-                scrollContainerClassName="min-h-[360px]"
-                density="compact"
-                toolbar={(table) => (
-                  <DataTableToolbar
-                    table={table}
-                    searchKey="name"
-                    searchPlaceholder={t("permSearchPlaceholder")}
-                    filters={moduleFilters}
-                    showRefresh={false}
-                  >
-                    <Button size="sm" onClick={handleOpenPermCreateDialog}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      {t("permBtnNew")}
-                    </Button>
-                    {workspaceTabs()}
-                  </DataTableToolbar>
-                )}
-                batchActions={(table) => (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => {
-                      const selectedRows = table.getFilteredSelectedRowModel().rows
-                      const permissionIds = selectedRows.map(row => row.original.id)
-                      handleBatchDeletePermissions(permissionIds)
-                    }}
-                    className="h-7"
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    {t("batchDelete")}
-                  </Button>
-                )}
-            />
-          </TabsContent>
-        </Tabs>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card><CardHeader className="pb-2"><CardDescription>{t("statsTotalUsers")}</CardDescription><CardTitle>{users.length}</CardTitle></CardHeader></Card>
+        <Card><CardHeader className="pb-2"><CardDescription>{t("rbacRoleCount")}</CardDescription><CardTitle>{roles.length}</CardTitle></CardHeader></Card>
+        <Card><CardHeader className="pb-2"><CardDescription>{t("rbacPermissionCount")}</CardDescription><CardTitle>{permissions.length}</CardTitle></CardHeader></Card>
+        <Card><CardHeader className="pb-2"><CardDescription>{t("rbacResourceGrantCount")}</CardDescription><CardTitle>{resourceGrants.length}</CardTitle></CardHeader></Card>
       </div>
 
-      {/* 新建用户对话框 */}
-      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("dialogCreateTitle")}</DialogTitle>
-            <DialogDescription>{t("dialogCreateDescription")}</DialogDescription>
-          </DialogHeader>
+      <Tabs defaultValue="users" className="flex min-h-0 flex-1 flex-col">
+        <TabsList className="w-fit">
+          <TabsTrigger value="users"><Users className="mr-2 h-4 w-4" />{t("tabUsers")}</TabsTrigger>
+          <TabsTrigger value="roles"><Shield className="mr-2 h-4 w-4" />{t("rbacRolesTab")}</TabsTrigger>
+          <TabsTrigger value="permissions"><KeyRound className="mr-2 h-4 w-4" />{t("tabPermissions")}</TabsTrigger>
+          <TabsTrigger value="resources"><Lock className="mr-2 h-4 w-4" />{t("rbacResourcesTab")}</TabsTrigger>
+        </TabsList>
 
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">
-                {t("fieldUsername")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="username"
-                placeholder={t("placeholderUsername")}
-                value={newUser.username}
-                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="email">
-                {t("fieldEmail")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder={t("placeholderEmail")}
-                value={newUser.email}
-                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="password">
-                {t("fieldPassword")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder={t("placeholderPassword")}
-                value={newUser.password}
-                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="role">
-                {t("fieldRole")} <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                value={newUser.role}
-                onValueChange={(value: UserRole) => setNewUser({ ...newUser, role: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">{t("roleAdminFull")}</SelectItem>
-                  <SelectItem value="user">{t("roleUserFull")}</SelectItem>
-                  <SelectItem value="viewer">{t("roleViewerFull")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-              {t("dialogCancel")}
-            </Button>
-            <Button onClick={handleCreateUser}>{t("dialogCreateSubmit")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 编辑用户对话框 */}
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("dialogEditTitle")}</DialogTitle>
-            <DialogDescription>{t("dialogEditDescription")}</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-username">
-                {t("fieldUsername")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="edit-username"
-                placeholder={t("placeholderUsername")}
-                value={editUser.username}
-                onChange={(e) => setEditUser({ ...editUser, username: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-email">
-                {t("fieldEmail")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="edit-email"
-                type="email"
-                placeholder={t("placeholderEmail")}
-                value={editUser.email}
-                onChange={(e) => setEditUser({ ...editUser, email: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-role">
-                {t("fieldRole")} <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                value={editUser.role}
-                onValueChange={(value: UserRole) => setEditUser({ ...editUser, role: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">{t("roleAdminFull")}</SelectItem>
-                  <SelectItem value="user">{t("roleUserFull")}</SelectItem>
-                  <SelectItem value="viewer">{t("roleViewerFull")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
-              {t("dialogCancel")}
-            </Button>
-            <Button onClick={handleUpdateUser}>{t("dialogEditSubmit")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 修改密码对话框 */}
-      <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("dialogPasswordTitle")}</DialogTitle>
-            <DialogDescription>{t("dialogPasswordDescription")}</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="new-password">
-                {t("fieldNewPassword")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="new-password"
-                type="password"
-                placeholder={t("placeholderNewPassword")}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsPasswordDialogOpen(false)
-                setNewPassword("")
-              }}
-            >
-              {t("dialogCancel")}
-            </Button>
-            <Button onClick={handleChangePassword}>{t("dialogPasswordSubmit")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 锁定用户对话框 */}
-      <Dialog open={isLockDialogOpen} onOpenChange={setIsLockDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("dialogLockTitle")}</DialogTitle>
-            <DialogDescription>
-              {t("dialogLockDescription", { username: lockUsername })}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="lock-duration">
-                {t("fieldLockDuration")} <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                value={String(lockForm.duration_minutes)}
-                onValueChange={(value) => {
-                  const minutes = parseInt(value, 10)
-                  setLockForm({ ...lockForm, duration_minutes: minutes })
-                }}
-              >
-                <SelectTrigger id="lock-duration">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="15">{t("lockDuration15min")}</SelectItem>
-                  <SelectItem value="30">{t("lockDuration30min")}</SelectItem>
-                  <SelectItem value="60">{t("lockDuration1hour")}</SelectItem>
-                  <SelectItem value="180">{t("lockDuration3hours")}</SelectItem>
-                  <SelectItem value="360">{t("lockDuration6hours")}</SelectItem>
-                  <SelectItem value="720">{t("lockDuration12hours")}</SelectItem>
-                  <SelectItem value="1440">{t("lockDuration24hours")}</SelectItem>
-                  <SelectItem value="4320">{t("lockDuration3days")}</SelectItem>
-                  <SelectItem value="10080">{t("lockDuration7days")}</SelectItem>
-                  <SelectItem value="43200">{t("lockDuration30days")}</SelectItem>
-                  <SelectItem value="525600">{t("lockDurationPermanent")}</SelectItem>
-                  <SelectItem value="-1">{t("lockDurationCustom")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* 自定义时长输入 */}
-            {lockForm.duration_minutes === -1 && (
-              <div className="space-y-2">
-                <Label htmlFor="custom-duration">
-                  {t("fieldCustomDuration")} <span className="text-destructive">*</span>
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="custom-duration"
-                    type="number"
-                    min="1"
-                    placeholder={t("placeholderCustomDuration")}
-                    value={lockForm.custom_value || ""}
-                    onChange={(e) =>
-                      setLockForm({ ...lockForm, custom_value: parseInt(e.target.value, 10) || 0 })
-                    }
-                    className="flex-1"
-                  />
-                  <Select
-                    value={lockForm.custom_unit || "minutes"}
-                    onValueChange={(value) =>
-                      setLockForm({ ...lockForm, custom_unit: value as "minutes" | "hours" | "days" })
-                    }
-                  >
-                    <SelectTrigger className="w-28">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="minutes">{t("unitMinutes")}</SelectItem>
-                      <SelectItem value="hours">{t("unitHours")}</SelectItem>
-                      <SelectItem value="days">{t("unitDays")}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+        <TabsContent value="users" className="min-h-0 flex-1 overflow-hidden">
+          <DataTable
+            data={users}
+            columns={userColumns}
+            loading={loading || refreshing}
+            emptyMessage={t("tableEmpty")}
+            enableRowSelection
+            density="compact"
+            className="min-h-0"
+            toolbar={(table) => (
+              <DataTableToolbar table={table} searchKey="username" searchPlaceholder={t("searchPlaceholder")} filters={roleFilters} showRefresh={false}>
+                <Button size="sm" onClick={openCreateUser}><Plus className="mr-2 h-4 w-4" />{t("btnNewUser")}</Button>
+                <Button variant="outline" size="sm" onClick={refresh} disabled={refreshing}><RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />{tCommon("tableRefresh")}</Button>
+              </DataTableToolbar>
             )}
+          />
+        </TabsContent>
 
-            <div className="space-y-2">
-              <Label htmlFor="lock-reason">{t("fieldLockReason")}</Label>
-              <Input
-                id="lock-reason"
-                placeholder={t("placeholderLockReason")}
-                value={lockForm.reason}
-                onChange={(e) => setLockForm({ ...lockForm, reason: e.target.value })}
-              />
-            </div>
+        <TabsContent value="roles" className="min-h-0 flex-1 overflow-auto">
+          <div className="mb-3 flex justify-end"><Button size="sm" onClick={openCreateRole}><Plus className="mr-2 h-4 w-4" />{t("rbacNewRole")}</Button></div>
+          <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+            {roles.map((role) => (
+              <Card key={role.id}>
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <div><CardTitle className="flex items-center gap-2">{role.name}{role.system && <Badge variant="secondary">System</Badge>}</CardTitle><CardDescription className="font-mono">{role.key}</CardDescription></div>
+					{!role.system && <div className="flex gap-1"><Button variant="ghost" size="icon" onClick={() => openEditRole(role)}><Edit className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => void deleteRole(role)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div>}
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3"><p className="text-sm text-muted-foreground">{role.description || t("rbacNoDescription")}</p>{role.parent_key && <p className="text-xs">{t("rbacInheritedFrom")}: <code>{role.parent_key}</code></p>}<div className="flex flex-wrap gap-1">{role.effective_permission_codes.map((code) => <Badge key={code} variant={role.permission_codes.includes(code) ? "default" : "outline"} className="font-mono text-[10px]">{code}</Badge>)}</div></CardContent>
+              </Card>
+            ))}
           </div>
+        </TabsContent>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setIsLockDialogOpen(false)
-                setLockUserId(null)
-                setLockUsername("")
-                setLockForm({ reason: "", duration_minutes: 60 })
-              }}
-            >
-              {t("dialogCancel")}
-            </Button>
-            <Button variant="destructive" onClick={handleLockUser}>
-              {t("dialogLockSubmit")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <TabsContent value="permissions" className="min-h-0 flex-1 overflow-hidden">
+          <DataTable data={permissions} columns={permissionColumns} loading={loading} emptyMessage={t("permTableEmpty")} density="compact" toolbar={(table) => <DataTableToolbar table={table} searchKey="name" searchPlaceholder={t("permSearchPlaceholder")} showRefresh={false} />} />
+        </TabsContent>
 
-      {/* 新建权限对话框 */}
-      <Dialog open={isPermCreateDialogOpen} onOpenChange={setIsPermCreateDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>{t("permDialogCreateTitle")}</DialogTitle>
-            <DialogDescription>{t("permDialogCreateDescription")}</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="perm-name">
-                {t("permFieldName")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="perm-name"
-                placeholder={t("permPlaceholderName")}
-                value={permForm.name}
-                onChange={(e) => setPermForm({ ...permForm, name: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="perm-code">
-                {t("permFieldCode")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="perm-code"
-                placeholder={t("permPlaceholderCode")}
-                value={permForm.code}
-                onChange={(e) => setPermForm({ ...permForm, code: e.target.value })}
-                className="font-mono"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="perm-description">{t("permFieldDescription")}</Label>
-              <Input
-                id="perm-description"
-                placeholder={t("permPlaceholderDescription")}
-                value={permForm.description}
-                onChange={(e) => setPermForm({ ...permForm, description: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="perm-module">
-                {t("permFieldModule")} <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                value={permForm.module}
-                onValueChange={(value: Permission["module"]) => setPermForm({ ...permForm, module: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="server">
-                    <div className="flex items-center gap-2">
-                      <Server className="h-4 w-4" />
-                      {t("permModuleServer")}
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="file">
-                    <div className="flex items-center gap-2">
-                      <FolderKey className="h-4 w-4" />
-                      {t("permModuleFile")}
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="terminal">
-                    <div className="flex items-center gap-2">
-                      <Terminal className="h-4 w-4" />
-                      {t("permModuleTerminal")}
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="audit">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      {t("permModuleAudit")}
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="system">
-                    <div className="flex items-center gap-2">
-                      <Settings className="h-4 w-4" />
-                      {t("permModuleSystem")}
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("permFieldRoles")} <span className="text-destructive">*</span></Label>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant={permForm.roles.includes("admin") ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => toggleRole("admin")}
-                  className="gap-1"
-                >
-                  <Shield className="h-3 w-3" />
-                  {t("filterRoleAdmin")}
-                </Button>
-                <Button
-                  type="button"
-                  variant={permForm.roles.includes("user") ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => toggleRole("user")}
-                  className="gap-1"
-                >
-                  <Users className="h-3 w-3" />
-                  {t("filterRoleUser")}
-                </Button>
-                <Button
-                  type="button"
-                  variant={permForm.roles.includes("viewer") ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => toggleRole("viewer")}
-                  className="gap-1"
-                >
-                  <Eye className="h-3 w-3" />
-                  {t("filterRoleViewer")}
-                </Button>
+        <TabsContent value="resources" className="min-h-0 flex-1 overflow-auto">
+          <Card>
+            <CardHeader><CardTitle>{t("rbacResourceGrantTitle")}</CardTitle><CardDescription>{t("rbacResourceGrantDescription")}</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <Select value={grantSubjectType} onValueChange={(value) => { setGrantSubjectType(value as "role" | "user"); setGrantSubjectID("") }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="role">{t("rbacSubjectRole")}</SelectItem><SelectItem value="user">{t("rbacSubjectUser")}</SelectItem></SelectContent></Select>
+                <Select value={grantSubjectID} onValueChange={setGrantSubjectID}><SelectTrigger><SelectValue placeholder={t("rbacSelectSubject")} /></SelectTrigger><SelectContent>{grantSubjectType === "role" ? roles.map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>) : users.map((user) => <SelectItem key={user.id} value={user.id}>{user.username}</SelectItem>)}</SelectContent></Select>
+                <Select value={grantPermissionCode} onValueChange={setGrantPermissionCode}><SelectTrigger><SelectValue placeholder={t("rbacSelectPermission")} /></SelectTrigger><SelectContent>{permissions.filter((permission) => permission.resource === "server/*").map((permission) => <SelectItem key={permission.code} value={permission.code}>{permission.name}</SelectItem>)}</SelectContent></Select>
+                <Input value={grantResourceID} onChange={(event) => setGrantResourceID(event.target.value)} placeholder={t("rbacResourceIDPlaceholder")} />
               </div>
-            </div>
-          </div>
+              <div className="flex justify-end"><Button onClick={() => void grantResource()}>{t("rbacGrantButton")}</Button></div>
+              <div className="space-y-2">{resourceGrants.map((grant) => <div key={grant.id} className="flex items-center justify-between rounded-md border p-3"><div><div className="font-mono text-sm">{grant.permission_code}</div><div className="text-xs text-muted-foreground">{grant.resource_type}/{grant.resource_id}</div></div><Button variant="ghost" size="sm" onClick={() => void revokeGrant(grant)}><Unlock className="mr-2 h-4 w-4" />{t("rbacRevokeButton")}</Button></div>)}</div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPermCreateDialogOpen(false)}>
-              {t("dialogCancel")}
-            </Button>
-            <Button onClick={handleCreatePermission}>{t("permDialogCreateSubmit")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <Dialog open={userDialog !== null} onOpenChange={(open) => !open && setUserDialog(null)}><DialogContent><DialogHeader><DialogTitle>{userDialog === "create" ? t("dialogCreateTitle") : t("dialogEditTitle")}</DialogTitle></DialogHeader><div className="space-y-3"><Label>{t("fieldUsername")}</Label><Input value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} /><Label>{t("fieldEmail")}</Label><Input type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} />{userDialog === "create" && <><Label>{t("fieldPassword")}</Label><Input type="password" value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} /></>}<Label>{t("fieldRole")}</Label><Select value={userForm.role} onValueChange={(role) => setUserForm({ ...userForm, role })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{roles.map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>)}</SelectContent></Select></div><DialogFooter><Button variant="outline" onClick={() => setUserDialog(null)}>{t("dialogCancel")}</Button><Button onClick={() => void saveUser()}>{t("dialogCreateSubmit")}</Button></DialogFooter></DialogContent></Dialog>
 
-      {/* 编辑权限对话框 */}
-      <Dialog open={isPermEditDialogOpen} onOpenChange={setIsPermEditDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>{t("permDialogEditTitle")}</DialogTitle>
-            <DialogDescription>{t("permDialogEditDescription")}</DialogDescription>
-          </DialogHeader>
+      <Dialog open={Boolean(passwordUserID)} onOpenChange={(open) => !open && setPasswordUserID("")}><DialogContent><DialogHeader><DialogTitle>{t("dialogPasswordTitle")}</DialogTitle></DialogHeader><Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><DialogFooter><Button variant="outline" onClick={() => setPasswordUserID("")}>{t("dialogCancel")}</Button><Button onClick={() => void changePassword()}>{t("dialogPasswordSubmit")}</Button></DialogFooter></DialogContent></Dialog>
 
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-perm-name">
-                {t("permFieldName")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="edit-perm-name"
-                placeholder={t("permPlaceholderName")}
-                value={permForm.name}
-                onChange={(e) => setPermForm({ ...permForm, name: e.target.value })}
-              />
-            </div>
+      <Dialog open={Boolean(lockTarget)} onOpenChange={(open) => !open && setLockTarget(null)}><DialogContent><DialogHeader><DialogTitle>{t("dialogLockTitle")}</DialogTitle><DialogDescription>{lockTarget?.username}</DialogDescription></DialogHeader><Label>{t("fieldLockDuration")}</Label><Input type="number" min={1} value={lockMinutes} onChange={(event) => setLockMinutes(event.target.value)} /><Label>{t("fieldLockReason")}</Label><Input value={lockReason} onChange={(event) => setLockReason(event.target.value)} /><DialogFooter><Button variant="outline" onClick={() => setLockTarget(null)}>{t("dialogCancel")}</Button><Button variant="destructive" onClick={() => void lockUser()}>{t("dialogLockSubmit")}</Button></DialogFooter></DialogContent></Dialog>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-perm-code">
-                {t("permFieldCode")} <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="edit-perm-code"
-                placeholder={t("permPlaceholderCode")}
-                value={permForm.code}
-                onChange={(e) => setPermForm({ ...permForm, code: e.target.value })}
-                className="font-mono"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-perm-description">{t("permFieldDescription")}</Label>
-              <Input
-                id="edit-perm-description"
-                placeholder={t("permPlaceholderDescription")}
-                value={permForm.description}
-                onChange={(e) => setPermForm({ ...permForm, description: e.target.value })}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="edit-perm-module">
-                {t("permFieldModule")} <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                value={permForm.module}
-                onValueChange={(value: Permission["module"]) => setPermForm({ ...permForm, module: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="server">
-                    <div className="flex items-center gap-2">
-                      <Server className="h-4 w-4" />
-                      {t("permModuleServer")}
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="file">
-                    <div className="flex items-center gap-2">
-                      <FolderKey className="h-4 w-4" />
-                      {t("permModuleFile")}
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="terminal">
-                    <div className="flex items-center gap-2">
-                      <Terminal className="h-4 w-4" />
-                      {t("permModuleTerminal")}
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="audit">
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4" />
-                      {t("permModuleAudit")}
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="system">
-                    <div className="flex items-center gap-2">
-                      <Settings className="h-4 w-4" />
-                      {t("permModuleSystem")}
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>{t("permFieldRoles")} <span className="text-destructive">*</span></Label>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant={permForm.roles.includes("admin") ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => toggleRole("admin")}
-                  className="gap-1"
-                >
-                  <Shield className="h-3 w-3" />
-                  {t("filterRoleAdmin")}
-                </Button>
-                <Button
-                  type="button"
-                  variant={permForm.roles.includes("user") ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => toggleRole("user")}
-                  className="gap-1"
-                >
-                  <Users className="h-3 w-3" />
-                  {t("filterRoleUser")}
-                </Button>
-                <Button
-                  type="button"
-                  variant={permForm.roles.includes("viewer") ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => toggleRole("viewer")}
-                  className="gap-1"
-                >
-                  <Eye className="h-3 w-3" />
-                  {t("filterRoleViewer")}
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsPermEditDialogOpen(false)}>
-              {t("dialogCancel")}
-            </Button>
-            <Button onClick={handleUpdatePermission}>{t("permDialogEditSubmit")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+      <Dialog open={roleDialog !== null} onOpenChange={(open) => !open && setRoleDialog(null)}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{roleDialog === "create" ? t("rbacCreateRoleTitle") : t("rbacEditRoleTitle")}</DialogTitle><DialogDescription>{t("rbacRoleDialogDescription")}</DialogDescription></DialogHeader><div className="grid gap-3 sm:grid-cols-2">{roleDialog === "create" && <div><Label>{t("rbacRoleKey")}</Label><Input className="font-mono" value={roleForm.key} onChange={(event) => setRoleForm({ ...roleForm, key: event.target.value })} placeholder="ops-readonly" /></div>}<div><Label>{t("rbacRoleName")}</Label><Input value={roleForm.name} onChange={(event) => setRoleForm({ ...roleForm, name: event.target.value })} /></div><div className="sm:col-span-2"><Label>{t("rbacRoleDescription")}</Label><Textarea value={roleForm.description} onChange={(event) => setRoleForm({ ...roleForm, description: event.target.value })} /></div><div className="sm:col-span-2"><Label>{t("rbacParentRole")}</Label><Select value={roleForm.parent_key || "none"} onValueChange={(value) => setRoleForm({ ...roleForm, parent_key: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("rbacNoParent")}</SelectItem>{roles.filter((role) => role.id !== editingRoleID).map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>)}</SelectContent></Select></div><div className="sm:col-span-2"><Label>{t("rbacDirectPermissions")}</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{permissions.map((permission) => <Label key={permission.code} className="flex cursor-pointer items-start gap-2 rounded-md border p-3"><Checkbox checked={roleForm.permission_codes.includes(permission.code)} onCheckedChange={() => togglePermission(permission.code)} /><span><span className="block text-sm font-medium">{permission.name}</span><code className="text-xs text-muted-foreground">{permission.code}</code></span></Label>)}</div></div></div><DialogFooter><Button variant="outline" onClick={() => setRoleDialog(null)}>{t("dialogCancel")}</Button><Button onClick={() => void saveRole()}>{t("rbacSaveRole")}</Button></DialogFooter></DialogContent></Dialog>
+    </div>
   )
 }

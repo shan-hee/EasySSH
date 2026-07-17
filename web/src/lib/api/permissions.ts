@@ -1,65 +1,76 @@
-import { apiFetch } from "@/lib/api-client"
-import type { UserRole } from "./users"
+import {
+  openapiClient,
+  requireOpenAPIData,
+  throwOpenAPIError,
+} from "@/lib/openapi-client"
+import type { components } from "@/types/openapi"
 
-export type PermissionModule = "server" | "file" | "terminal" | "audit" | "system"
-
-export interface Permission {
-  id: string
-  name: string
-  code: string
-  description: string
-  module: PermissionModule
-  roles: UserRole[]
-  created_at: string
-  updated_at?: string
-}
-
-export interface PermissionListResponse {
-  data: Permission[]
-  total: number
-  page: number
-  page_size: number
-  total_pages: number
-}
-
-export interface CreatePermissionRequest {
-  name: string
-  code: string
-  description: string
-  module: PermissionModule
-  roles: UserRole[]
-}
-
-export type UpdatePermissionRequest = CreatePermissionRequest
+export type PermissionModule = components["schemas"]["PermissionModule"]
+export type Permission = components["schemas"]["Permission"]
+export type Role = components["schemas"]["Role"]
+export type RoleRequest = components["schemas"]["RoleRequest"]
+export type ResourceGrant = components["schemas"]["ResourceGrant"]
+export type ResourceGrantRequest = components["schemas"]["ResourceGrantRequest"]
 
 export const permissionsApi = {
-  async list(params?: { page?: number; limit?: number; module?: string; q?: string }): Promise<PermissionListResponse> {
-    const queryParams = new URLSearchParams()
-    if (params?.page) queryParams.append("page", params.page.toString())
-    if (params?.limit) queryParams.append("limit", params.limit.toString())
-    if (params?.module) queryParams.append("module", params.module)
-    if (params?.q) queryParams.append("q", params.q)
-    const query = queryParams.toString()
-    return apiFetch<PermissionListResponse>(`/permissions${query ? `?${query}` : ""}`)
+  async list(params?: { module?: PermissionModule; q?: string }) {
+    const { data, error, response } = await openapiClient.GET("/permissions", {
+      params: { query: params },
+    })
+    if (error) throwOpenAPIError(error, response)
+    return requireOpenAPIData(data, response)
+  },
+}
+
+export const rolesApi = {
+  async list() {
+    const { data, error, response } = await openapiClient.GET("/roles")
+    if (error) throwOpenAPIError(error, response)
+    return requireOpenAPIData(data, response)
   },
 
-  async create(data: CreatePermissionRequest): Promise<{ data: Permission; message: string }> {
-    return apiFetch<{ data: Permission; message: string }>(`/permissions`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    })
+  async create(body: RoleRequest) {
+    const { data, error, response } = await openapiClient.POST("/roles", { body })
+    if (error) throwOpenAPIError(error, response)
+    return requireOpenAPIData(data, response)
   },
 
-  async update(id: string, data: UpdatePermissionRequest): Promise<{ data: Permission; message: string }> {
-    return apiFetch<{ data: Permission; message: string }>(`/permissions/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
+  async update(id: string, body: RoleRequest) {
+    const { data, error, response } = await openapiClient.PUT("/roles/{id}", {
+      params: { path: { id } },
+      body,
     })
+    if (error) throwOpenAPIError(error, response)
+    return requireOpenAPIData(data, response)
   },
 
-  async delete(id: string): Promise<{ message: string }> {
-    return apiFetch<{ message: string }>(`/permissions/${id}`, {
-      method: "DELETE",
+  async delete(id: string) {
+    const { data, error, response } = await openapiClient.DELETE("/roles/{id}", {
+      params: { path: { id } },
     })
+    if (error) throwOpenAPIError(error, response)
+    return requireOpenAPIData(data, response)
+  },
+}
+
+export const resourceGrantsApi = {
+  async list(subjectType: "user" | "role", subjectId: string) {
+    const { data, error, response } = await openapiClient.GET("/resource-grants", {
+      params: { query: { subject_type: subjectType, subject_id: subjectId } },
+    })
+    if (error) throwOpenAPIError(error, response)
+    return requireOpenAPIData(data, response)
+  },
+
+  async grant(body: ResourceGrantRequest) {
+    const { data, error, response } = await openapiClient.POST("/resource-grants", { body })
+    if (error) throwOpenAPIError(error, response)
+    return requireOpenAPIData(data, response)
+  },
+
+  async revoke(body: ResourceGrantRequest) {
+    const { data, error, response } = await openapiClient.POST("/resource-grants/revoke", { body })
+    if (error) throwOpenAPIError(error, response)
+    return requireOpenAPIData(data, response)
   },
 }

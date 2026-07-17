@@ -1,15 +1,15 @@
 package rest
 
 import (
+	"errors"
 	"net/http"
 
-	"github.com/easyssh/server/internal/domain/auth"
+	api "github.com/easyssh/server/internal/api/openapi"
 	"github.com/easyssh/server/internal/domain/permission"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
-// PermissionHandler 权限管理处理器
 type PermissionHandler struct {
 	service permission.Service
 }
@@ -18,151 +18,160 @@ func NewPermissionHandler(service permission.Service) *PermissionHandler {
 	return &PermissionHandler{service: service}
 }
 
-type ListPermissionsRequest struct {
-	Page   int    `form:"page"`
-	Limit  int    `form:"limit"`
-	Module string `form:"module"`
-	Q      string `form:"q"`
-}
-
-type CreatePermissionRequest struct {
-	Name        string            `json:"name" binding:"required,min=1,max=100"`
-	Code        string            `json:"code" binding:"required,min=1,max=100"`
-	Description string            `json:"description"`
-	Module      permission.Module `json:"module" binding:"required,oneof=server file terminal audit system"`
-	Roles       []auth.UserRole   `json:"roles" binding:"required,min=1,dive,oneof=admin user viewer"`
-}
-
-type UpdatePermissionRequest struct {
-	Name        string            `json:"name" binding:"required,min=1,max=100"`
-	Code        string            `json:"code" binding:"required,min=1,max=100"`
-	Description string            `json:"description"`
-	Module      permission.Module `json:"module" binding:"required,oneof=server file terminal audit system"`
-	Roles       []auth.UserRole   `json:"roles" binding:"required,min=1,dive,oneof=admin user viewer"`
-}
-
-// ListPermissions 获取权限列表
-// GET /api/v1/permissions
 func (h *PermissionHandler) ListPermissions(c *gin.Context) {
-	var req ListPermissionsRequest
-	if err := c.ShouldBindQuery(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
-		return
-	}
-	if req.Page == 0 {
-		req.Page = 1
-	}
-	if req.Limit == 0 {
-		req.Limit = 100
-	}
-
-	perms, total, err := h.service.List(c.Request.Context(), req.Page, req.Limit, req.Module, req.Q)
-	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-		return
-	}
-
-	totalPages := int(total) / req.Limit
-	if int(total)%req.Limit > 0 {
-		totalPages++
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"data":        perms,
-		"total":       total,
-		"page":        req.Page,
-		"page_size":   req.Limit,
-		"total_pages": totalPages,
-	})
+	permissions := h.service.ListPermissions(c.Query("module"), c.Query("q"))
+	c.JSON(http.StatusOK, gin.H{"data": permissions, "total": len(permissions)})
 }
 
-// CreatePermission 创建权限
-// POST /api/v1/permissions
-func (h *PermissionHandler) CreatePermission(c *gin.Context) {
-	var req CreatePermissionRequest
+func (h *PermissionHandler) ListRoles(c *gin.Context) {
+	roles, err := h.service.ListRoles(c.Request.Context())
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, "ROLE_LIST_FAILED", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": roles, "total": len(roles)})
+}
+
+func (h *PermissionHandler) GetRole(c *gin.Context) {
+	id, ok := parseRoleID(c)
+	if !ok {
+		return
+	}
+	role, err := h.service.GetRole(c.Request.Context(), id)
+	if err != nil {
+		h.respondRoleError(c, err)
+		return
+	}
+	RespondSuccess(c, role)
+}
+
+func (h *PermissionHandler) CreateRole(c *gin.Context) {
+	var req api.RoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondError(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 		return
 	}
-
-	p, err := h.service.Create(c.Request.Context(), req.Name, req.Code, req.Description, req.Module, req.Roles)
-	if err != nil {
-		if err == permission.ErrPermissionCodeExists {
-			RespondError(c, http.StatusConflict, "PERMISSION_EXISTS", "Permission code already exists")
-			return
-		}
-		if err == permission.ErrInvalidPermission {
-			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+	if req.Key == nil || *req.Key == "" || req.Name == "" {
+		RespondError(c, http.StatusBadRequest, "INVALID_ROLE", "Role key is required")
 		return
 	}
-
-	c.JSON(http.StatusCreated, gin.H{
-		"data":    p,
-		"message": "Permission created successfully",
-	})
+	role, err := h.service.CreateRole(c.Request.Context(), *req.Key, req.Name, req.Description, req.ParentKey, req.PermissionCodes)
+	if err != nil {
+		h.respondRoleError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, role)
 }
 
-// UpdatePermission 更新权限
-// PUT /api/v1/permissions/:id
-func (h *PermissionHandler) UpdatePermission(c *gin.Context) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "INVALID_ID", "Invalid permission ID format")
+func (h *PermissionHandler) UpdateRole(c *gin.Context) {
+	id, ok := parseRoleID(c)
+	if !ok {
 		return
 	}
-
-	var req UpdatePermissionRequest
+	var req api.RoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondError(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
 		return
 	}
-
-	p, err := h.service.Update(c.Request.Context(), id, req.Name, req.Code, req.Description, req.Module, req.Roles)
+	role, err := h.service.UpdateRole(c.Request.Context(), id, req.Name, req.Description, req.ParentKey, req.PermissionCodes)
 	if err != nil {
-		if err == permission.ErrPermissionNotFound {
-			RespondError(c, http.StatusNotFound, "PERMISSION_NOT_FOUND", "Permission not found")
-			return
-		}
-		if err == permission.ErrPermissionCodeExists {
-			RespondError(c, http.StatusConflict, "PERMISSION_EXISTS", "Permission code already exists")
-			return
-		}
-		if err == permission.ErrInvalidPermission {
-			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
+		h.respondRoleError(c, err)
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"data":    p,
-		"message": "Permission updated successfully",
-	})
+	c.JSON(http.StatusOK, role)
 }
 
-// DeletePermission 删除权限
-// DELETE /api/v1/permissions/:id
-func (h *PermissionHandler) DeletePermission(c *gin.Context) {
+func (h *PermissionHandler) DeleteRole(c *gin.Context) {
+	id, ok := parseRoleID(c)
+	if !ok {
+		return
+	}
+	if err := h.service.DeleteRole(c.Request.Context(), id); err != nil {
+		h.respondRoleError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Role deleted successfully"})
+}
+
+func (h *PermissionHandler) ListResourceGrants(c *gin.Context) {
+	grants, err := h.service.ListResourceGrants(c.Request.Context(), c.Query("subject_type"), c.Query("subject_id"))
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "INVALID_RESOURCE_GRANT", err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": grants, "total": len(grants)})
+}
+
+func (h *PermissionHandler) GrantResource(c *gin.Context) {
+	grant, ok := bindResourceGrant(c)
+	if !ok {
+		return
+	}
+	created, err := h.service.GrantResource(c.Request.Context(), grant)
+	if err != nil {
+		h.respondGrantError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, created)
+}
+
+func (h *PermissionHandler) RevokeResource(c *gin.Context) {
+	grant, ok := bindResourceGrant(c)
+	if !ok {
+		return
+	}
+	if err := h.service.RevokeResource(c.Request.Context(), grant); err != nil {
+		h.respondGrantError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Resource permission revoked successfully"})
+}
+
+func bindResourceGrant(c *gin.Context) (permission.ResourceGrant, bool) {
+	var req api.ResourceGrantRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "INVALID_REQUEST", err.Error())
+		return permission.ResourceGrant{}, false
+	}
+	return permission.ResourceGrant{
+		SubjectType: string(req.SubjectType), SubjectID: req.SubjectId, PermissionCode: req.PermissionCode,
+		ResourceType: req.ResourceType, ResourceID: req.ResourceId,
+	}, true
+}
+
+func parseRoleID(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		RespondError(c, http.StatusBadRequest, "INVALID_ID", "Invalid permission ID format")
-		return
+		RespondError(c, http.StatusBadRequest, "INVALID_ROLE_ID", "Invalid role ID")
+		return uuid.Nil, false
 	}
+	return id, true
+}
 
-	if err := h.service.Delete(c.Request.Context(), id); err != nil {
-		if err == permission.ErrPermissionNotFound {
-			RespondError(c, http.StatusNotFound, "PERMISSION_NOT_FOUND", "Permission not found")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-		return
+func (h *PermissionHandler) respondRoleError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, permission.ErrRoleNotFound):
+		RespondError(c, http.StatusNotFound, "ROLE_NOT_FOUND", err.Error())
+	case errors.Is(err, permission.ErrRoleKeyExists):
+		RespondError(c, http.StatusConflict, "ROLE_KEY_EXISTS", err.Error())
+	case errors.Is(err, permission.ErrRoleInUse), errors.Is(err, permission.ErrSystemRole):
+		RespondError(c, http.StatusConflict, "ROLE_IN_USE", err.Error())
+	case errors.Is(err, permission.ErrInvalidRole), errors.Is(err, permission.ErrInvalidPermission):
+		RespondError(c, http.StatusBadRequest, "INVALID_ROLE", err.Error())
+	default:
+		RespondError(c, http.StatusInternalServerError, "ROLE_OPERATION_FAILED", err.Error())
 	}
+}
 
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Permission deleted successfully",
-	})
+func (h *PermissionHandler) respondGrantError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, permission.ErrResourceGrantExists):
+		RespondError(c, http.StatusConflict, "RESOURCE_GRANT_EXISTS", err.Error())
+	case errors.Is(err, permission.ErrResourceGrantNotFound):
+		RespondError(c, http.StatusNotFound, "RESOURCE_GRANT_NOT_FOUND", err.Error())
+	case errors.Is(err, permission.ErrInvalidResourceGrant), errors.Is(err, permission.ErrInvalidPermission):
+		RespondError(c, http.StatusBadRequest, "INVALID_RESOURCE_GRANT", err.Error())
+	default:
+		RespondError(c, http.StatusInternalServerError, "RESOURCE_GRANT_FAILED", err.Error())
+	}
 }

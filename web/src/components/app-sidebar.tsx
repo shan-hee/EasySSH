@@ -28,14 +28,15 @@ export const AppSidebar = React.memo(function AppSidebar({ ...props }: React.Com
   const { runtime } = useRuntime()
   const { t: tNav } = useTranslation("nav")
 
-  // 检查用户是否为管理员
-  const isAdmin = user?.role === "admin" || runtime?.principal.role === "owner"
+	const isOwner = runtime?.principal.role === "owner"
+	const permissions = React.useMemo(() => user?.permissions || [], [user?.permissions])
 
   const navigationGroups = React.useMemo(() => buildNavigationGroups({
     runtime,
-    isAdmin,
+		isOwner,
+		permissions,
     t: tNav,
-  }), [isAdmin, runtime, tNav])
+	}), [isOwner, permissions, runtime, tNav])
 
   // 动态构建 teams 数据
   const teamsData = React.useMemo(() => [{

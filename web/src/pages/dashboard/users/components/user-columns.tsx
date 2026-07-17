@@ -103,6 +103,13 @@ export function useUserColumns(options?: UserColumnsOptions): ColumnDef<UserDeta
             {t("filterRoleViewer")}
           </Badge>
         )
+		default:
+			return (
+				<Badge variant="outline">
+					<Shield className="mr-1 h-3 w-3" />
+					{role}
+				</Badge>
+			)
     }
   }
 

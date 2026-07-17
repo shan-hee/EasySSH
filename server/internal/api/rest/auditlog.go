@@ -21,13 +21,9 @@ func NewAuditLogHandler(auditService auditlog.Service) *AuditLogHandler {
 	}
 }
 
-// ListAll 查询全部日志列表（管理员）
+// ListAll 查询全部日志列表（由 audit:view 策略授权）
 // GET /api/v1/logs?page=1&page_size=20&category=activity
 func (h *AuditLogHandler) ListAll(c *gin.Context) {
-	if !requireAdmin(c) {
-		return
-	}
-
 	req, ok := parseAuditLogListRequest(c, true)
 	if !ok {
 		return
@@ -42,13 +38,9 @@ func (h *AuditLogHandler) ListAll(c *gin.Context) {
 	respondLogList(c, logs, total, req)
 }
 
-// GetAnyByID 获取单条日志（管理员）
+// GetAnyByID 获取单条日志（由 audit:view 策略授权）
 // GET /api/v1/logs/:id
 func (h *AuditLogHandler) GetAnyByID(c *gin.Context) {
-	if !requireAdmin(c) {
-		return
-	}
-
 	log, ok := h.getLogByID(c)
 	if !ok {
 		return
@@ -57,13 +49,9 @@ func (h *AuditLogHandler) GetAnyByID(c *gin.Context) {
 	RespondSuccess(c, log)
 }
 
-// GetAllStatistics 获取全部日志统计（管理员）
+// GetAllStatistics 获取全部日志统计（由 audit:view 策略授权）
 // GET /api/v1/logs/statistics?days=30&category=activity
 func (h *AuditLogHandler) GetAllStatistics(c *gin.Context) {
-	if !requireAdmin(c) {
-		return
-	}
-
 	req, ok := parseAuditLogStatisticsRequest(c, true)
 	if !ok {
 		return
@@ -78,13 +66,9 @@ func (h *AuditLogHandler) GetAllStatistics(c *gin.Context) {
 	RespondSuccess(c, stats)
 }
 
-// CleanupOldLogs 清理旧日志（管理员）
+// CleanupOldLogs 清理旧日志（由 audit:view 策略授权）
 // DELETE /api/v1/logs/cleanup?retention_days=90
 func (h *AuditLogHandler) CleanupOldLogs(c *gin.Context) {
-	if !requireAdmin(c) {
-		return
-	}
-
 	retentionStr := c.DefaultQuery("retention_days", "90")
 	retentionDays, err := strconv.Atoi(retentionStr)
 	if err != nil || retentionDays <= 0 {
@@ -250,17 +234,4 @@ func respondLogList(c *gin.Context, logs []*auditlog.AuditLog, total int64, req 
 		"page_size":   req.PageSize,
 		"total_pages": totalPages,
 	})
-}
-
-func requireAdmin(c *gin.Context) bool {
-	role, exists := c.Get("role")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "User role not found")
-		return false
-	}
-	if role != "admin" {
-		RespondError(c, http.StatusForbidden, "forbidden", "Admin permission required")
-		return false
-	}
-	return true
 }

@@ -27,7 +27,7 @@ type QuickCommand = {
   icon: React.ComponentType<{ className?: string }>
   profiles?: RuntimeProfile[]
   requiredCapabilities?: AppCapability[]
-  adminOnly?: boolean
+  requiredPermission?: string
 }
 
 function getServerLabel(server: Server) {
@@ -55,20 +55,24 @@ export function QuickAccessSearch() {
     { label: t("quickAccessCommandAi"), href: "/dashboard/ai-assistant", icon: Bot, requiredCapabilities: ["ai"] },
     { label: t("quickAccessCommandScripts"), href: "/dashboard/scripts", icon: FileText, requiredCapabilities: ["scripts"] },
     { label: t("quickAccessCommandTasks"), href: "/dashboard/tasks", icon: CalendarClock, profiles: ["web"], requiredCapabilities: ["automation"] },
-    { label: t("quickAccessCommandSettings"), href: "/dashboard/settings", icon: Settings, profiles: ["web"], requiredCapabilities: ["settings"], adminOnly: true },
+    { label: t("quickAccessCommandSettings"), href: "/dashboard/settings", icon: Settings, profiles: ["web"], requiredCapabilities: ["settings"], requiredPermission: "system:settings" },
   ], [t])
 
-  const isAdmin = user?.role === "admin" || runtime?.principal.role === "owner"
+  const isOwner = runtime?.principal.role === "owner"
 
-  const visibleCommands = React.useMemo(() => commands.filter((command) => {
-    if (command.adminOnly && !isAdmin) {
-      return false
-    }
-    if (command.profiles && (!runtime || !command.profiles.includes(runtime.profile))) {
-      return false
-    }
-    return hasAllCapabilities(runtime, command.requiredCapabilities)
-  }), [commands, isAdmin, runtime])
+  const visibleCommands = React.useMemo(() => {
+    const permissions = user?.permissions ?? []
+
+    return commands.filter((command) => {
+      if (command.requiredPermission && !isOwner && !permissions.includes(command.requiredPermission)) {
+        return false
+      }
+      if (command.profiles && (!runtime || !command.profiles.includes(runtime.profile))) {
+        return false
+      }
+      return hasAllCapabilities(runtime, command.requiredCapabilities)
+    })
+  }, [commands, isOwner, runtime, user])
 
   React.useEffect(() => {
     if (!open) {

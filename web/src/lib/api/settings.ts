@@ -91,15 +91,12 @@ export interface SystemConfig {
   transfer_cleanup_enabled?: boolean
 
   tab_session?: TabSessionConfig
-  jwt_access_expire_minutes?: number
-  jwt_refresh_idle_expire_days?: number
-  jwt_refresh_absolute_expire_days?: number
-  jwt_refresh_rotate?: boolean
-  jwt_refresh_reuse_detection?: boolean
+  oauth_access_token_minutes?: number
+  oauth_refresh_token_days?: number
 
   // 注册配置
   allow_registration?: boolean
-  default_role?: "user" | "viewer"
+	default_role?: string
 
   // OAuth 配置
   oauth_enabled?: boolean
@@ -124,19 +121,13 @@ export interface TabSessionConfig {
   hibernate: boolean
   session_timeout: number
   remember_login: boolean
-  jwt_access_expire_minutes?: number
-  jwt_refresh_idle_expire_days?: number
-  jwt_refresh_absolute_expire_days?: number
-  jwt_refresh_rotate?: boolean
-  jwt_refresh_reuse_detection?: boolean
+  oauth_access_token_minutes?: number
+  oauth_refresh_token_days?: number
 }
 
-export interface JWTSessionConfig {
-  jwt_access_expire_minutes: number
-  jwt_refresh_idle_expire_days: number
-  jwt_refresh_absolute_expire_days: number
-  jwt_refresh_rotate: boolean
-  jwt_refresh_reuse_detection: boolean
+export interface OAuthTokenConfig {
+  oauth_access_token_minutes: number
+  oauth_refresh_token_days: number
 }
 
 /**
@@ -399,10 +390,10 @@ export const settingsApi = {
   },
 
   /**
-   * 保存 JWT 过期与刷新配置
+   * 保存 OAuth/OIDC 令牌生命周期配置
    */
-  async saveJWTSessionConfig(config: JWTSessionConfig): Promise<void> {
-    return apiFetch<void>("/settings/system/jwt-session", {
+  async saveOAuthTokenConfig(config: OAuthTokenConfig): Promise<void> {
+    return apiFetch<void>("/settings/system/oauth-token", {
       method: "PATCH",
       body: config,
     })

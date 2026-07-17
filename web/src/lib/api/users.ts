@@ -4,7 +4,7 @@ import type { User } from "./auth"
 /**
  * 用户角色
  */
-export type UserRole = "admin" | "user" | "viewer"
+export type UserRole = string
 
 /**
  * 用户详细信息(扩展基础User类型)
@@ -23,11 +23,7 @@ export interface UserDetail extends User {
  */
 export interface UserStatistics {
   total_users: number
-  by_role: {
-    admin: number
-    user: number
-    viewer: number
-  }
+  by_role: Record<string, number>
 }
 
 /**
@@ -102,15 +98,15 @@ export const usersApi = {
   /**
    * 获取用户详情
    */
-  async getById(userId: string): Promise<{ data: UserDetail }> {
-    return apiFetch<{ data: UserDetail }>(`/users/${userId}`)
+  async getById(userId: string): Promise<UserDetail> {
+    return apiFetch<UserDetail>(`/users/${userId}`)
   },
 
   /**
    * 创建用户
    */
-  async create(data: CreateUserRequest): Promise<{ data: UserDetail; message: string }> {
-    return apiFetch<{ data: UserDetail; message: string }>(`/users`, {
+  async create(data: CreateUserRequest): Promise<UserDetail> {
+    return apiFetch<UserDetail>(`/users`, {
       method: "POST",
       body: JSON.stringify(data),
     })
@@ -122,8 +118,8 @@ export const usersApi = {
   async update(
     userId: string,
     data: UpdateUserRequest
-  ): Promise<{ data: UserDetail; message: string }> {
-    return apiFetch<{ data: UserDetail; message: string }>(`/users/${userId}`, {
+  ): Promise<UserDetail> {
+    return apiFetch<UserDetail>(`/users/${userId}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })
@@ -154,8 +150,8 @@ export const usersApi = {
   /**
    * 获取用户统计信息
    */
-  async getStatistics(): Promise<{ data: UserStatistics }> {
-    return apiFetch<{ data: UserStatistics }>(`/users/statistics`)
+  async getStatistics(): Promise<UserStatistics> {
+    return apiFetch<UserStatistics>(`/users/statistics`)
   },
 
   /**

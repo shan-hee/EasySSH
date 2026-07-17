@@ -5,15 +5,15 @@ export interface RoutePolicy {
   pattern: RegExp
   requiredCapabilities: AppCapability[]
   profiles?: RuntimeProfile[]
-  adminOnly?: boolean
+	requiredPermission?: string
   fallbackPath: string
 }
 
 export const routePolicies: RoutePolicy[] = [
   { pattern: /^\/dashboard\/?$/, requiredCapabilities: ["servers"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },
-  { pattern: /^\/dashboard\/logs(?:\/|$)/, requiredCapabilities: ["audit"], profiles: ["web"], adminOnly: true, fallbackPath: "/dashboard/terminal" },
-  { pattern: /^\/dashboard\/users(?:\/|$)/, requiredCapabilities: ["users"], profiles: ["web"], adminOnly: true, fallbackPath: "/dashboard/terminal" },
-  { pattern: /^\/dashboard\/settings(?:\/|$)/, requiredCapabilities: ["settings"], profiles: ["web"], adminOnly: true, fallbackPath: "/dashboard/terminal" },
+	{ pattern: /^\/dashboard\/logs(?:\/|$)/, requiredCapabilities: ["audit"], profiles: ["web"], requiredPermission: "audit:view", fallbackPath: "/dashboard/terminal" },
+	{ pattern: /^\/dashboard\/users(?:\/|$)/, requiredCapabilities: ["users"], profiles: ["web"], requiredPermission: "user:manage", fallbackPath: "/dashboard/terminal" },
+	{ pattern: /^\/dashboard\/settings(?:\/|$)/, requiredCapabilities: ["settings"], profiles: ["web"], requiredPermission: "system:settings", fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/tasks(?:\/|$)/, requiredCapabilities: ["automation"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/operation-logs(?:\/|$)/, requiredCapabilities: ["activity_log"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/ai-assistant(?:\/|$)/, requiredCapabilities: ["ai"], fallbackPath: "/dashboard/terminal" },
@@ -33,13 +33,14 @@ export function getRoutePolicy(pathname: string | null | undefined) {
 export function isRouteAllowed(
   runtime: RuntimeInfo | null | undefined,
   pathname: string | null | undefined,
-  isAdmin = false,
+	permissions: readonly string[] = [],
+	isOwner = false,
 ) {
   const policy = getRoutePolicy(pathname)
   if (!policy || !runtime) {
     return true
   }
-  if (policy.adminOnly && !isAdmin) {
+	if (policy.requiredPermission && !isOwner && !permissions.includes(policy.requiredPermission)) {
     return false
   }
   if (policy.profiles && !policy.profiles.includes(runtime.profile)) {
@@ -52,7 +53,8 @@ export function isRouteAllowed(
 export function getRouteFallback(
   pathname: string | null | undefined,
   runtime?: RuntimeInfo | null,
-  isAdmin = false,
+	permissions: readonly string[] = [],
+	isOwner = false,
 ) {
   const policyFallback = getRoutePolicy(pathname)?.fallbackPath
   if (!runtime) {
@@ -72,7 +74,7 @@ export function getRouteFallback(
     if (candidate === pathname) {
       continue
     }
-    if (isRouteAllowed(runtime, candidate, isAdmin)) {
+		if (isRouteAllowed(runtime, candidate, permissions, isOwner)) {
       return candidate
     }
   }

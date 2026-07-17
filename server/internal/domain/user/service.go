@@ -37,14 +37,19 @@ type Service interface {
 	GetStatistics(ctx context.Context) (map[string]interface{}, error)
 }
 
+type RoleService interface {
+	RoleExists(ctx context.Context, key string) (bool, error)
+}
+
 // service 用户服务实现
 type service struct {
-	repo Repository
+	repo        Repository
+	roleService RoleService
 }
 
 // NewService 创建用户服务
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, roleService RoleService) Service {
+	return &service{repo: repo, roleService: roleService}
 }
 
 // ListUsers 获取用户列表
@@ -97,9 +102,8 @@ func (s *service) CreateUser(ctx context.Context, username, email, password stri
 		return nil, fmt.Errorf("%w: email already taken", ErrUserAlreadyExists)
 	}
 
-	// 验证角色
-	if role != auth.RoleAdmin && role != auth.RoleUser && role != auth.RoleViewer {
-		role = auth.RoleUser // 默认为普通用户
+	if err := s.validateRole(ctx, role); err != nil {
+		return nil, err
 	}
 
 	// 生成默认头像
@@ -163,9 +167,19 @@ func (s *service) UpdateUser(ctx context.Context, id uuid.UUID, username, email 
 
 	// 更新角色
 	if role != "" {
-		if role == auth.RoleAdmin || role == auth.RoleUser || role == auth.RoleViewer {
-			user.Role = role
+		if err := s.validateRole(ctx, role); err != nil {
+			return nil, err
 		}
+		if user.Role == auth.RoleAdmin && role != auth.RoleAdmin {
+			roleCounts, err := s.repo.CountByRole(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if roleCounts[string(auth.RoleAdmin)] <= 1 {
+				return nil, ErrCannotDeleteAdmin
+			}
+		}
+		user.Role = role
 	}
 
 	// 更新头像
@@ -179,6 +193,20 @@ func (s *service) UpdateUser(ctx context.Context, id uuid.UUID, username, email 
 	}
 
 	return user, nil
+}
+
+func (s *service) validateRole(ctx context.Context, role auth.UserRole) error {
+	if s.roleService == nil || role == "" {
+		return ErrInvalidInput
+	}
+	exists, err := s.roleService.RoleExists(ctx, string(role))
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("%w: role does not exist", ErrInvalidInput)
+	}
+	return nil
 }
 
 // DeleteUser 删除用户

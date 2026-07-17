@@ -58,11 +58,12 @@ export default function DashboardLayout() {
 
   useEffect(() => {
     if (isLoading || (error && !authStatus?.is_authenticated) || isRuntimeLoading || !runtime) return
-    const isAdmin = user?.role === "admin" || runtime.principal.role === "owner"
-    if (isRouteAllowed(runtime, pathname, isAdmin)) return
+		const permissions = user?.permissions || []
+		const isOwner = runtime.principal.role === "owner"
+		if (isRouteAllowed(runtime, pathname, permissions, isOwner)) return
 
-    navigate(getRouteFallback(pathname, runtime, isAdmin), { replace: true })
-  }, [authStatus?.is_authenticated, error, isLoading, isRuntimeLoading, navigate, pathname, runtime, user?.role])
+		navigate(getRouteFallback(pathname, runtime, permissions, isOwner), { replace: true })
+	}, [authStatus?.is_authenticated, error, isLoading, isRuntimeLoading, navigate, pathname, runtime, user?.permissions])
 
   if (isLoading && !authStatus) {
     return (

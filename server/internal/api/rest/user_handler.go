@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -29,7 +30,7 @@ func NewUserHandler(userService userdomain.Service, accountLockService auth.Acco
 type ListUsersRequest struct {
 	Page  int    `form:"page"`
 	Limit int    `form:"limit"`
-	Role  string `form:"role"` // all, admin, user, viewer
+	Role  string `form:"role"` // empty means all roles; otherwise a custom role key
 }
 
 // CreateUserRequest 创建用户请求
@@ -37,14 +38,14 @@ type CreateUserRequest struct {
 	Username string        `json:"username" binding:"required,min=3,max=50"`
 	Email    string        `json:"email" binding:"required,email"`
 	Password string        `json:"password" binding:"required,min=6"`
-	Role     auth.UserRole `json:"role" binding:"required,oneof=admin user viewer"`
+	Role     auth.UserRole `json:"role" binding:"required,min=2,max=64"`
 }
 
 // UpdateUserRequest 更新用户请求
 type UpdateUserRequest struct {
 	Username string        `json:"username" binding:"omitempty,min=3,max=50"`
 	Email    string        `json:"email" binding:"omitempty,email"`
-	Role     auth.UserRole `json:"role" binding:"omitempty,oneof=admin user viewer"`
+	Role     auth.UserRole `json:"role" binding:"omitempty,min=2,max=64"`
 	Avatar   string        `json:"avatar"`
 }
 
@@ -108,7 +109,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 
 	user, err := h.userService.GetUser(c.Request.Context(), id)
 	if err != nil {
-		if err == userdomain.ErrUserNotFound {
+		if errors.Is(err, userdomain.ErrUserNotFound) {
 			RespondError(c, http.StatusNotFound, "USER_NOT_FOUND", "User not found")
 			return
 		}
@@ -116,9 +117,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": user,
-	})
+	c.JSON(http.StatusOK, user)
 }
 
 // CreateUser 创建用户
@@ -142,11 +141,11 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 
 	user, err := h.userService.CreateUser(c.Request.Context(), req.Username, req.Email, req.Password, req.Role)
 	if err != nil {
-		if err == userdomain.ErrUserAlreadyExists {
+		if errors.Is(err, userdomain.ErrUserAlreadyExists) {
 			RespondError(c, http.StatusConflict, "USER_EXISTS", err.Error())
 			return
 		}
-		if err == userdomain.ErrInvalidInput {
+		if errors.Is(err, userdomain.ErrInvalidInput) {
 			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 			return
 		}
@@ -154,10 +153,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"data":    user,
-		"message": "User created successfully",
-	})
+	c.JSON(http.StatusCreated, user)
 }
 
 // UpdateUser 更新用户
@@ -178,22 +174,27 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 
 	user, err := h.userService.UpdateUser(c.Request.Context(), id, req.Username, req.Email, req.Role, req.Avatar)
 	if err != nil {
-		if err == userdomain.ErrUserNotFound {
+		if errors.Is(err, userdomain.ErrUserNotFound) {
 			RespondError(c, http.StatusNotFound, "USER_NOT_FOUND", "User not found")
 			return
 		}
-		if err == userdomain.ErrUserAlreadyExists {
+		if errors.Is(err, userdomain.ErrUserAlreadyExists) {
 			RespondError(c, http.StatusConflict, "USER_EXISTS", err.Error())
+			return
+		}
+		if errors.Is(err, userdomain.ErrCannotDeleteAdmin) {
+			RespondError(c, http.StatusForbidden, "CANNOT_DEMOTE_ADMIN", "Cannot change the role of the last admin")
+			return
+		}
+		if errors.Is(err, userdomain.ErrInvalidInput) {
+			RespondError(c, http.StatusBadRequest, "INVALID_ROLE", err.Error())
 			return
 		}
 		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data":    user,
-		"message": "User updated successfully",
-	})
+	c.JSON(http.StatusOK, user)
 }
 
 // DeleteUser 删除用户
@@ -228,15 +229,15 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 
 	err = h.userService.DeleteUser(c.Request.Context(), id, currentID)
 	if err != nil {
-		if err == userdomain.ErrUserNotFound {
+		if errors.Is(err, userdomain.ErrUserNotFound) {
 			RespondError(c, http.StatusNotFound, "USER_NOT_FOUND", "User not found")
 			return
 		}
-		if err == userdomain.ErrCannotDeleteSelf {
+		if errors.Is(err, userdomain.ErrCannotDeleteSelf) {
 			RespondError(c, http.StatusForbidden, "CANNOT_DELETE_SELF", "Cannot delete yourself")
 			return
 		}
-		if err == userdomain.ErrCannotDeleteAdmin {
+		if errors.Is(err, userdomain.ErrCannotDeleteAdmin) {
 			RespondError(c, http.StatusForbidden, "CANNOT_DELETE_ADMIN", "Cannot delete the last admin")
 			return
 		}
@@ -277,11 +278,11 @@ func (h *UserHandler) ChangePassword(c *gin.Context) {
 
 	err = h.userService.ChangePassword(c.Request.Context(), id, req.NewPassword)
 	if err != nil {
-		if err == userdomain.ErrUserNotFound {
+		if errors.Is(err, userdomain.ErrUserNotFound) {
 			RespondError(c, http.StatusNotFound, "USER_NOT_FOUND", "User not found")
 			return
 		}
-		if err == userdomain.ErrInvalidInput {
+		if errors.Is(err, userdomain.ErrInvalidInput) {
 			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 			return
 		}
@@ -303,9 +304,7 @@ func (h *UserHandler) GetStatistics(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": stats,
-	})
+	c.JSON(http.StatusOK, stats)
 }
 
 // LockUser 锁定用户账户
@@ -346,7 +345,7 @@ func (h *UserHandler) LockUser(c *gin.Context) {
 	// 获取用户信息（主要是获取邮箱）
 	user, err := h.userService.GetUser(c.Request.Context(), id)
 	if err != nil {
-		if err == userdomain.ErrUserNotFound {
+		if errors.Is(err, userdomain.ErrUserNotFound) {
 			RespondError(c, http.StatusNotFound, "USER_NOT_FOUND", "User not found")
 			return
 		}
@@ -391,7 +390,7 @@ func (h *UserHandler) UnlockUser(c *gin.Context) {
 	// 获取用户信息（主要是获取邮箱）
 	user, err := h.userService.GetUser(c.Request.Context(), id)
 	if err != nil {
-		if err == userdomain.ErrUserNotFound {
+		if errors.Is(err, userdomain.ErrUserNotFound) {
 			RespondError(c, http.StatusNotFound, "USER_NOT_FOUND", "User not found")
 			return
 		}
@@ -417,13 +416,13 @@ func RegisterUserRoutes(r *gin.RouterGroup, userService userdomain.Service, acco
 	users := r.Group("/users")
 	users.Use(authMiddleware) // 所有用户管理接口都需要认证
 	{
-		users.GET("", handler.ListUsers)                     // 获取用户列表
-		users.GET("/statistics", handler.GetStatistics)      // 获取统计信息
-		users.GET("/:id", handler.GetUser)                   // 获取用户详情
-		users.POST("", handler.CreateUser)                   // 创建用户
-		users.PUT("/:id", handler.UpdateUser)                // 更新用户
-		users.DELETE("/:id", handler.DeleteUser)             // 删除用户
-		users.POST("/:id/password", handler.ChangePassword)  // 修改密码
-		users.POST("/:id/unlock", handler.UnlockUser)        // 解锁账户
+		users.GET("", handler.ListUsers)                    // 获取用户列表
+		users.GET("/statistics", handler.GetStatistics)     // 获取统计信息
+		users.GET("/:id", handler.GetUser)                  // 获取用户详情
+		users.POST("", handler.CreateUser)                  // 创建用户
+		users.PUT("/:id", handler.UpdateUser)               // 更新用户
+		users.DELETE("/:id", handler.DeleteUser)            // 删除用户
+		users.POST("/:id/password", handler.ChangePassword) // 修改密码
+		users.POST("/:id/unlock", handler.UnlockUser)       // 解锁账户
 	}
 }

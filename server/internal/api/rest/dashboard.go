@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/easyssh/server/internal/domain/dashboard"
@@ -11,12 +12,18 @@ import (
 // DashboardHandler 仪表盘处理器
 type DashboardHandler struct {
 	dashboardService dashboard.Service
+	permission       interface {
+		Authorize(ctx context.Context, userID uuid.UUID, roleKey, permissionCode, resource string) (bool, error)
+	}
 }
 
 // NewDashboardHandler 创建仪表盘处理器
-func NewDashboardHandler(dashboardService dashboard.Service) *DashboardHandler {
+func NewDashboardHandler(dashboardService dashboard.Service, permissionService interface {
+	Authorize(ctx context.Context, userID uuid.UUID, roleKey, permissionCode, resource string) (bool, error)
+}) *DashboardHandler {
 	return &DashboardHandler{
 		dashboardService: dashboardService,
+		permission:       permissionService,
 	}
 }
 
@@ -30,10 +37,14 @@ func (h *DashboardHandler) GetOverview(c *gin.Context) {
 		return
 	}
 
-	// 管理员查看全局统计，普通用户仅查看自己的
-	role, _ := c.Get("role")
 	var userIDPtr *uuid.UUID
-	if role != "admin" {
+	role, _ := c.Get("role")
+	roleKey, _ := role.(string)
+	viewAll := false
+	if h.permission != nil {
+		viewAll, _ = h.permission.Authorize(c.Request.Context(), userID, roleKey, "dashboard:view-all", "dashboard/*")
+	}
+	if !viewAll {
 		userIDPtr = &userID
 	}
 

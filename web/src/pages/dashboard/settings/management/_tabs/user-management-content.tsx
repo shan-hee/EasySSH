@@ -24,10 +24,9 @@ import {
   Plus,
   Users,
   Shield,
-  Eye,
   Trash2,
 } from "lucide-react"
-import { usersApi, type UserDetail, type UserRole } from "@/lib/api"
+import { rolesApi, usersApi, type Role, type UserDetail, type UserRole } from "@/lib/api"
 import { SkeletonCard } from "@/components/ui/loading"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
@@ -44,15 +43,14 @@ export function UserManagementContent() {
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   // 数据状态
   const [users, setUsers] = useState<UserDetail[]>([])
+	const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [, setRefreshing] = useState(false)
 
   // 统计状态
   const [statistics, setStatistics] = useState({
     totalUsers: 0,
-    adminUsers: 0,
-    normalUsers: 0,
-    viewerUsers: 0,
+    byRole: {} as Record<string, number>,
   })
 
   // 对话框状态
@@ -83,23 +81,22 @@ export function UserManagementContent() {
   // 加载用户列表
   const loadUsers = useCallback(async () => {
     try {
-      const [usersRes, statsRes] = await Promise.all([
+      const [usersRes, statsRes, rolesRes] = await Promise.all([
         usersApi.list({ page: 1, limit: 100 }),
         usersApi.getStatistics(),
+			rolesApi.list(),
       ])
 
-      // 防御性检查：处理apiFetch自动解包
       const usersList = Array.isArray(usersRes)
         ? usersRes
         : (Array.isArray(usersRes?.data) ? usersRes.data : [])
-      const statsData = statsRes?.data || statsRes || {}
+      const statsData = statsRes
 
       setUsers(usersList)
+			setRoles(Array.isArray(rolesRes.data) ? rolesRes.data : [])
       setStatistics({
         totalUsers: statsData.total_users || 0,
-        adminUsers: statsData.by_role?.admin || 0,
-        normalUsers: statsData.by_role?.user || 0,
-        viewerUsers: statsData.by_role?.viewer || 0,
+        byRole: statsData.by_role || {},
       })
     } catch (error: unknown) {
       console.error("加载用户列表失败:", error)
@@ -263,9 +260,12 @@ export function UserManagementContent() {
       <div className="grid shrink-0 gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: t("statsTotalUsers"), value: statistics.totalUsers, icon: Users, hint: t("statsTotalUsersDesc") },
-          { label: t("statsAdmins"), value: statistics.adminUsers, icon: Shield, hint: t("statsAdminsDesc") },
-          { label: t("statsNormalUsers"), value: statistics.normalUsers, icon: Users, hint: t("statsNormalUsersDesc") },
-          { label: t("statsViewers"), value: statistics.viewerUsers, icon: Eye, hint: t("statsViewersDesc") },
+          ...roles.map((role) => ({
+            label: role.name,
+            value: statistics.byRole[role.key] || 0,
+            icon: Shield,
+            hint: role.description,
+          })),
         ].map((item) => {
           const Icon = item.icon
           return (
@@ -306,9 +306,7 @@ export function UserManagementContent() {
                   column: "role",
                   title: t("filterRoleTitle"),
                   options: [
-                    { label: t("filterRoleAdmin"), value: "admin", icon: Shield },
-                    { label: t("filterRoleUser"), value: "user", icon: Users },
-                    { label: t("filterRoleViewer"), value: "viewer", icon: Eye },
+                    ...roles.map((role) => ({ label: role.name, value: role.key, icon: Shield })),
                   ],
                 },
               ]}
@@ -394,9 +392,7 @@ export function UserManagementContent() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">{t("roleAdminFull")}</SelectItem>
-                  <SelectItem value="user">{t("roleUserFull")}</SelectItem>
-                  <SelectItem value="viewer">{t("roleViewerFull")}</SelectItem>
+						{roles.map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -451,9 +447,7 @@ export function UserManagementContent() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">{t("roleAdminFull")}</SelectItem>
-                  <SelectItem value="user">{t("roleUserFull")}</SelectItem>
-                  <SelectItem value="viewer">{t("roleViewerFull")}</SelectItem>
+						{roles.map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
