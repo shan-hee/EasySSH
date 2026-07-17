@@ -162,7 +162,6 @@ type FetchCompletionDataMessage struct {
 	IncludeHistory  *bool `json:"includeHistory,omitempty"`  // 是否拉取远端历史
 	IncludeScripts  *bool `json:"includeScripts,omitempty"`  // 是否拉取脚本库
 	CacheTTLMinutes int   `json:"cacheTtlMinutes,omitempty"` // 缓存TTL（分钟）
-	CacheMaxEntries int   `json:"cacheMaxEntries,omitempty"` // 最大缓存条目数
 }
 
 // CompletionDataResponse 补全数据响应
@@ -1217,7 +1216,6 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 							IncludeHistory:  true,
 							IncludeScripts:  true,
 							CacheTTLMinutes: fetchReq.CacheTTLMinutes,
-							MaxCacheSize:    fetchReq.CacheMaxEntries,
 						}
 
 						if fetchReq.IncludeHistory != nil {

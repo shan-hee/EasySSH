@@ -210,7 +210,6 @@ export interface CompletionFetchOptions {
   includeHistory?: boolean
   includeScripts?: boolean
   cacheTtlMinutes?: number
-  cacheMaxEntries?: number
 }
 
 export interface ScriptItem {
@@ -508,7 +507,6 @@ export class TerminalWebSocket {
             includeHistory: options.includeHistory ?? true,
             includeScripts: options.includeScripts ?? true,
             cacheTtlMinutes: options.cacheTtlMinutes,
-            cacheMaxEntries: options.cacheMaxEntries,
           }
       const message = {
         type: "fetch_completion_data",

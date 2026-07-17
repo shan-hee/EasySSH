@@ -32,7 +32,6 @@ interface DesktopFetchCompletionData {
   includeHistory?: boolean
   includeScripts?: boolean
   cacheTtlMinutes?: number
-  cacheMaxEntries?: number
 }
 
 interface DesktopCompletionUpdateData {
