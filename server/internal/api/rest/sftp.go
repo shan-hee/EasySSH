@@ -1467,9 +1467,9 @@ func (h *SFTPHandler) DeletePaths(c *gin.Context) {
 	eventData, _ := json.Marshal(map[string]string{"error": fastDeleteErr.Error()})
 	_ = h.taskRuns.AppendEvent(c.Request.Context(), run.ID, userID, "warning", "快速删除不可用，已切换为 SFTP 递归删除", string(eventData))
 	go h.executeRecursiveDeleteTask(run.ID, userID, serverID, paths)
-	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": gin.H{
+	c.JSON(http.StatusAccepted, gin.H{
 		"mode": "recursive_task", "deleted_paths": []string{}, "task_id": run.ID,
-	}})
+	})
 }
 
 func (h *SFTPHandler) executeRecursiveDeleteTask(runID, userID, serverID uuid.UUID, paths []string) {

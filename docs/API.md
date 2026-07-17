@@ -1,375 +1,89 @@
 # API 接口文档
 
-本文档说明如何使用 EasySSH 的 API 规范和前后端通信配置。
+## 唯一契约源
 
-## OpenAPI 规范
+EasySSH 的 HTTP API 唯一编辑源是 [`shared/openapi.yaml`](../shared/openapi.yaml)，当前使用 OpenAPI 3.0.3。规范包含所有 Gin REST/流式/WebSocket 握手路由，共 219 个操作；路由注册与规范的一致性由 `scripts/check-openapi-routes.mjs` 在生成前检查。
 
-项目的 API 规范定义在 `shared/openapi.yaml`，采用 OpenAPI 3.1.0 标准。
+运行时请求参数校验使用同一份嵌入式规范。RBAC 的 `/permissions`、`/roles` 和 `/resource-grants` 路由在进入业务处理器前会校验请求体、路径参数和查询参数。
 
-### 查看 API 文档
+规范不保留已删除的 `POST /auth/logout` 兼容别名。登出统一使用 `POST /oauth/logout`，因为 refresh token Cookie 的 Path 是 `/api/v1/oauth`。
 
-**方式 1：使用 Swagger UI（推荐）**
+## 生成代码
 
-```bash
-# 安装 swagger-ui-watcher
-npm install -g swagger-ui-watcher
-
-# 在项目根目录运行
-swagger-ui-watcher shared/openapi.yaml
-```
-
-然后访问 http://localhost:8000 查看交互式 API 文档。
-
-**方式 2：在线编辑器**
-
-将 `shared/openapi.yaml` 内容复制到以下任一在线编辑器：
-- https://editor.swagger.io/
-- https://editor-next.swagger.io/
-
-### 生成 TypeScript 类型
-
-前端可以从 OpenAPI 规范自动生成类型定义：
+从仓库根目录执行：
 
 ```bash
-cd web
-
-# 生成类型文件到 src/types/openapi.ts
-pnpm openapi:gen
-
-# 或使用脚本
-cd ..
 ./scripts/gen-types.sh
 ```
 
-生成的类型可以在前端代码中使用：
+该命令依次完成：
+
+1. 检查运行时路由与 OpenAPI 操作是否一一对应，并检查 `operationId` 是否重复。
+2. 使用 `server/oapi-codegen.yaml` 和固定版本 `oapi-codegen v2.7.2` 生成 `server/internal/api/openapi/generated.go`。文件包含 Go 模型和嵌入式规范，不应手动编辑。
+3. 使用固定在 `web/package.json` 的 `openapi-typescript v7.9.1` 生成 `web/src/types/openapi.ts`。
+
+前端 `web/src/lib/openapi-client.ts` 使用 `openapi-fetch` 创建类型化客户端。认证、CSRF、刷新令牌和账户锁定处理由 `openapiTransportFetch` 提供；客户端不会自动解包或改写响应 JSON。
 
 ```typescript
-import type { components } from '@/types/openapi';
+import { openapiClient, requireOpenAPIData, throwOpenAPIError } from "@/lib/openapi-client"
 
-type Server = components['schemas']['Server'];
-type ServerCreate = components['schemas']['ServerCreate'];
-type OAuthAuthorizeRequest = components['schemas']['OAuthAuthorizeRequest'];
-type OAuthTokenRequest = components['schemas']['OAuthTokenRequest'];
+const result = await openapiClient.GET("/roles")
+if (result.error) throwOpenAPIError(result.error, result.response)
+const roles = requireOpenAPIData(result.data, result.response)
 ```
 
-### API 模块划分
-
-OpenAPI 规范定义了以下模块：
-
-| 标签 | 描述 | 主要端点 |
-|------|------|---------|
-| `auth` | 用户认证 | `/oauth/authorize`, `/oauth/token`, `/oauth/logout` |
-| `servers` | 服务器管理 | `/servers`, `/servers/{id}` |
-| `ssh` | SSH 连接 | `/ssh/sessions` |
-| `sftp` | 文件传输 | `/sftp/list`, `/sftp/upload` |
-| `scripts` | 脚本管理 | `/scripts`, `/scripts/execute` |
-| `monitoring` | 系统监控 | `/monitoring/servers/{id}/metrics` |
-| `logs` | 日志管理 | `/logs` |
-| `users` | 用户管理 | `/users`, `/users/me` |
-
-> 表中路径均为 `/api/v1` 前缀下的相对路径，完整路径格式为 `/api/v1/<path>`，例如 `/api/v1/oauth/authorize`。
-
-## 前后端通信
-
-### 通信方式（Authorization Code + PKCE + Bearer）
-
-- 登录采用标准的 Authorization Code + PKCE 流程：
-  - 前端调用 `POST /oauth/authorize`（JSON），提交邮箱/密码 + PKCE 参数（`code_challenge(S256)` 等）及 `remember_login`，后端返回授权码或 2FA 临时令牌。
-  - 如启用 2FA：前端再调用 `POST /api/v1/auth/2fa/verify` 完成双因子认证并签发授权码；该请求继续携带同一 `remember_login` 选择。
-  - 前端使用授权码调用 `POST /oauth/token`：
-    - `grant_type=authorization_code`：返回短期 `access_token`，同时通过 HttpOnly Cookie 写入 `refresh_token`；Cookie 是浏览器会话级还是持久级由 `remember_login` 决定。
-- 业务 API 调用统一使用 `Authorization: Bearer <access_token>` 进行认证，不再从 Cookie 读取 access_token。
-- 刷新接口统一使用 `POST /oauth/token`，`grant_type=refresh_token`：
-  - 前端只需携带 Cookie（内含 refresh_token），后端返回新的 access_token，并按需轮换 refresh_token Cookie。
-  - Refresh Token 轮换继承服务端 session 中的 `remember_login`，不会把浏览器会话 Cookie 意外改成持久 Cookie。
-- `system_config.tab_session.remember_login=false` 时，登录页不显示“记住登录状态”，Refresh Token 强制使用浏览器会话 Cookie；开启后，只有用户主动勾选才设置持久 Cookie。
-- `system_config.tab_session.session_timeout` 按所有浏览器标签页共享的真实用户活动计时；后台 Access Token 自动刷新不计为用户活动。
-- `GET /auth/status` 只查询当前 Bearer Token 的认证状态，不读取或轮换 refresh_token，也不会返回新的 access_token。
-- 登出接口推荐使用 `POST /oauth/logout`，这样浏览器才能携带 Path 为 `/api/v1/oauth` 的 refresh cookie。
-- 开发模式：设置 `VITE_BACKEND_URL=http://localhost:<后端端口>`，前端请求 `<base>/api/v1`；`/auth/**`、`/oauth/**` 与 `/users/me/oauth/**` 统一使用 `credentials: include`，普通业务 API 继续只使用 Bearer Token。
-- 生产模式：前端静态文件由后端托管，同源访问 `/api/v1` 与 `/oauth/*`。
-
-### 环境变量配置
-
-**统一配置文件**: 项目根目录 `.env`
-
-```bash
-# 开发：前端直连后端
-VITE_BACKEND_URL=http://localhost:8520
-
-# Cookie 策略
-COOKIE_SECURE=false
-COOKIE_SAMESITE=lax
-
-# 跨域来源（开发）
-ALLOWED_ORIGINS=http://localhost:8520,http://127.0.0.1:8520
-```
-
-**生产环境**：同域部署无需配置 `VITE_BACKEND_URL`；跨域部署请设置为后端完整地址，并将 `COOKIE_SECURE=true`、`COOKIE_SAMESITE=none`（需 HTTPS）。
-
-### 前端 API 调用示例
-
-**使用 fetch API（内置封装）**
-
-```typescript
-import { apiFetch } from '@/lib/api-client';
-
-// 使用 PKCE 登录（简化示意）
-// 1. 调用 /oauth/authorize 获取授权码（或 2FA 临时令牌）
-const authorizeResp = await apiFetch('/oauth/authorize', {
-  method: 'POST',
-  body: {
-    response_type: 'code',
-    client_id: 'easyssh-web',
-    redirect_uri: window.location.origin + '/auth/callback',
-    scope: 'openid profile easyssh',
-    code_challenge: codeChallenge,
-    code_challenge_method: 'S256',
-    state,
-    email,
-    password,
-    remember_login: true,
-  },
-});
-
-// 2. 如未启用 2FA，直接使用授权码换取 access_token
-const tokenResp = await apiFetch('/oauth/token', {
-  method: 'POST',
-  body: {
-    grant_type: 'authorization_code',
-    code: authorizeResp.code,
-    redirect_uri: window.location.origin + '/auth/callback',
-    client_id: 'easyssh-web',
-    code_verifier: codeVerifier,
-  },
-});
-
-// 3. 调用业务 API 时在前端统一附加 Authorization 头：
-const me = await apiFetch('/users/me'); // 内部会自动添加 Bearer 头
-```
-
-### WebSocket 连接（系统监控）
-
-```typescript
-// 开发环境
-const ws = new WebSocket(`ws://localhost:8520/api/v1/monitor/server/${serverId}?interval=2`);
-
-// 生产环境（同源部署，自动适配 ws/wss）
-const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/monitor/server/${serverId}?interval=2`);
-
-ws.onopen = () => {
-  console.log('Monitor connection established');
-};
-
-ws.onmessage = (event) => {
-  // 处理监控数据（二进制 Protobuf）
-  console.log('Received bytes:', event.data);
-};
-```
-
-## 后端实现指南
-
-### Go 代码生成
-
-可以使用 `oapi-codegen` 从 OpenAPI 规范生成 Go 代码：
-
-```bash
-# 安装工具
-go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
-
-# 生成类型定义
-cd server
-oapi-codegen -generate types ../shared/openapi.yaml > internal/models/api.go
-
-# 生成 Gin 服务器代码（可选）
-oapi-codegen -generate gin ../shared/openapi.yaml > internal/api/rest/generated.go
-```
-
-### 实现 API 端点示例
-
-```go
-// server/internal/api/rest/servers.go
-package rest
-
-import (
-    "net/http"
-    "github.com/gin-gonic/gin"
-    "github.com/easyssh/server/internal/models"
-)
-
-// GET /api/v1/servers
-func (h *Handler) GetServers(c *gin.Context) {
-    page := c.DefaultQuery("page", "1")
-    perPage := c.DefaultQuery("per_page", "20")
-
-    // 业务逻辑
-    servers, meta, err := h.serverService.List(page, perPage)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, models.Error{
-            Error: "internal_error",
-            Message: err.Error(),
-        })
-        return
-    }
-
-    c.JSON(http.StatusOK, models.ServerList{
-        Data: servers,
-        Meta: meta,
-    })
-}
-
-// POST /api/v1/servers
-func (h *Handler) CreateServer(c *gin.Context) {
-    var req models.ServerCreate
-    if err := c.ShouldBindJSON(&req); err != nil {
-        c.JSON(http.StatusBadRequest, models.Error{
-            Error: "validation_error",
-            Message: err.Error(),
-        })
-        return
-    }
-
-    server, err := h.serverService.Create(&req)
-    if err != nil {
-        c.JSON(http.StatusInternalServerError, models.Error{
-            Error: "creation_failed",
-            Message: err.Error(),
-        })
-        return
-    }
-
-    c.JSON(http.StatusCreated, server)
-}
-```
-
-### 路由注册（简化示例）
-
-```go
-// server/cmd/api/main.go
-func setupRoutes(r *gin.Engine, authHandler *rest.AuthHandler, handler *rest.Handler) {
-    v1 := r.Group("/api/v1")
-    {
-        v1.GET("/health", handler.HealthCheck)
-
-        oauth := v1.Group("/oauth")
-        {
-            oauth.POST("/authorize", authHandler.OAuthAuthorize)
-            oauth.POST("/token", authHandler.OAuthToken)
-            oauth.POST("/logout", authHandler.Logout)
-        }
-
-        auth := v1.Group("/auth")
-        {
-            auth.POST("/register", authHandler.Register)
-            auth.POST("/logout", authHandler.Logout) // 兼容别名
-        }
-
-        protected := v1.Group("")
-        protected.Use(AuthMiddleware(jwtService))
-        {
-            servers := protected.Group("/servers")
-            {
-                servers.GET("", handler.GetServers)
-                servers.POST("", handler.CreateServer)
-                servers.GET("/:id", handler.GetServer)
-                servers.PUT("/:id", handler.UpdateServer)
-                servers.DELETE("/:id", handler.DeleteServer)
-                servers.POST("/:id/test", handler.TestServerConnection)
-            }
-        }
-    }
-}
-```
-
-## 测试 API
-
-### 使用 curl
-
-```bash
-# 健康检查
-curl http://localhost:8521/api/v1/health
-
-# 获取服务器列表（需要事先通过 /api/v1/oauth/* 获取 access_token）
-curl http://localhost:8521/api/v1/servers \
-  -H "Authorization: Bearer YOUR_TOKEN"
-```
-
-### 使用 Postman / Insomnia
-
-1. 导入 `shared/openapi.yaml` 文件
-2. 设置基础 URL: `http://localhost:8521/api/v1`
-3. 配置认证 token
-4. 开始测试各个端点
-
-## API 规范更新流程
-
-1. **修改规范**：编辑 `shared/openapi.yaml`
-2. **验证规范**：使用 Swagger Editor 验证语法
-3. **生成类型**：
-   ```bash
-   # 前端
-   ./scripts/gen-types.sh
-
-   # 后端（如果使用代码生成）
-   cd server
-   oapi-codegen -generate types ../shared/openapi.yaml > internal/models/api.go
-   ```
-4. **更新实现**：根据新规范更新前后端代码
-5. **测试**：确保所有端点正常工作
-
-## 安全最佳实践
-
-### JWT 认证
-
-```typescript
-import { apiFetch } from "@/lib/api-client";
-
-// 业务请求示例：apiFetch 会自动附加 Authorization: Bearer <access_token>
-// 并在 401 时通过携带 HttpOnly refresh_token 的 /api/v1/oauth/token 自动刷新会话。
-const response = await apiFetch("/servers");
-```
-
-### CORS 配置（后端）
-
-```go
-// server/cmd/api/main.go
-import "github.com/gin-contrib/cors"
-
-func main() {
-    r := gin.Default()
-
-    // CORS 配置
-    r.Use(cors.New(cors.Config{
-        AllowOrigins:     []string{"http://localhost:8520"},
-        AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-        AllowHeaders:     []string{"Authorization", "Content-Type"},
-        ExposeHeaders:    []string{"Content-Length"},
-        AllowCredentials: true,
-    }))
-
-    // 其他配置...
-}
-```
-
-### 错误处理
-
-统一的错误响应格式：
-
-```json
-{
-  "error": "validation_error",
-  "message": "Invalid request parameters",
-  "details": {
-    "field": "email",
-    "issue": "invalid format"
-  }
-}
-```
-
-## 参考资料
-
-- [OpenAPI 3.1 规范](https://spec.openapis.org/oas/v3.1.0)
-- [openapi-fetch 文档](https://openapi-ts.pages.dev/openapi-fetch/)
-- [oapi-codegen 文档](https://github.com/oapi-codegen/oapi-codegen)
-- [Vite 环境变量与模式](https://vite.dev/guide/env-and-mode)
+路径、HTTP 方法、查询参数、路径参数、请求体和响应体均从 `paths` 类型推导。Blob、SSE、WebSocket 和 multipart 文件请求仍使用 `authenticatedFetch`，但继续复用同一鉴权与刷新实现。
+
+## 认证
+
+登录采用 OAuth 2.0 Authorization Code + PKCE：
+
+- `POST /oauth/authorize` 接收邮箱密码和 S256 PKCE 参数，成功时返回授权码或 2FA 临时令牌。
+- `POST /auth/2fa/verify` 在需要 2FA 时完成验证。
+- `POST /oauth/token` 使用授权码换取 access token；refresh token 只通过 HttpOnly Cookie 传输。
+- 业务请求使用 `Authorization: Bearer <access_token>`。
+- `POST /oauth/logout` 撤销当前会话并清理 refresh token Cookie。
+- OIDC 标准端点包括 `/.well-known/openid-configuration`、`/oauth/jwks`、`/oauth/userinfo`、`/oauth/introspect` 和 `/oauth/revoke`。
+
+## RBAC
+
+Casbin 角色和资源授权端点：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/permissions` | 查询权限目录 |
+| GET/POST | `/roles` | 查询或创建自定义角色 |
+| GET/PUT/DELETE | `/roles/{id}` | 查询、修改或删除角色 |
+| GET/POST | `/resource-grants` | 查询或授予资源级权限 |
+| POST | `/resource-grants/revoke` | 撤销资源级权限 |
+
+角色 `key` 是普通字符串，不再限制为 `admin`、`user`、`viewer`。当前用户响应中的 `permissions` 是 Casbin 计算出的有效权限代码数组。
+
+## 备份 3.0
+
+统一备份端点：
+
+- `GET /backup/export` 导出脱敏备份。
+- `POST /backup/export` 接收 `BackupExportRequest`，可选择 `age_passphrase`（Scrypt）或 `age_recipients`（X25519）之一导出敏感段。
+- `POST /backup/restore` 以 multipart 上传备份文件，并用 `age_passphrase` 或 `age_identities` 之一解密敏感段。
+
+敏感段使用标准 age ASCII-armored 密文，备份格式版本为 `3.0`。`backup_password` 和旧的自定义 KDF/Envelope 不再存在。
+
+## 路径与部署
+
+规范中的 server URL 为 `/api/v1`，因此完整地址为 `/api/v1/<path>`。开发环境通常设置 `VITE_BACKEND_URL=http://localhost:<后端端口>`；生产环境由后端同源托管前端。
+
+WebSocket、SSE 和文件流端点也在规范中声明了对应的 `101`、`text/event-stream` 或 `application/octet-stream` 响应。它们不应通过 JSON 客户端读取。
+
+## 规范更新流程
+
+1. 修改 `shared/openapi.yaml`，同步请求/响应模型与实际路由。
+2. 执行 `./scripts/gen-types.sh`；路由检查失败时先修正契约或路由，不得绕过检查。
+3. 在后端处理器中使用 `server/internal/api/openapi` 生成模型；在前端使用 `components`/`paths` 类型和 `openapiClient`。
+4. 对 `git diff --check`、`go list`、`go vet` 和 ESLint 做静态检查。
+
+## 参考
+
+- [OpenAPI 3.0.3 规范](https://spec.openapis.org/oas/v3.0.3)
+- [openapi-fetch](https://openapi-ts.pages.dev/openapi-fetch/)
+- [oapi-codegen](https://github.com/oapi-codegen/oapi-codegen)

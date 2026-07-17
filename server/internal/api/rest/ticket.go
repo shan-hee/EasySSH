@@ -172,7 +172,7 @@ func (h *TicketHandler) CreateTicket(c *gin.Context) {
 		}
 	}
 
-	ticket, expiresIn, err := h.ticketService.Create(createReq)
+	ticket, expiresIn, err := h.ticketService.Create(c.Request.Context(), createReq)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "ticket_create_failed", "Failed to create ticket")
 		return

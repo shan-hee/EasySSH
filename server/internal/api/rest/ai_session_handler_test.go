@@ -231,14 +231,12 @@ func TestAISessionHandlerCreateSendConfirmAndClose(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, createResp.Code)
 
-	var created struct {
-		Data CreateAISessionResponse `json:"data"`
-	}
+	var created CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(createResp.Body.Bytes(), &created))
-	require.NotEmpty(t, created.Data.SessionID)
-	require.Equal(t, runtime.TransportAISDKUI, created.Data.DefaultTransport)
+	require.NotEmpty(t, created.SessionID)
+	require.Equal(t, runtime.TransportAISDKUI, created.DefaultTransport)
 
-	sendResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.Data.SessionID+"/chat", chatRequestBody("执行 uptime", map[string]interface{}{
+	sendResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.SessionID+"/chat", chatRequestBody("执行 uptime", map[string]interface{}{
 		"context": "请只返回摘要，不要贴满屏原始输出。",
 	}))
 	require.Equal(t, http.StatusOK, sendResp.Code)
@@ -252,14 +250,14 @@ func TestAISessionHandlerCreateSendConfirmAndClose(t *testing.T) {
 	require.True(t, ok)
 	require.NotEmpty(t, taskID)
 
-	secondSendResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.Data.SessionID+"/chat", chatRequestBody("再检查一次", nil))
+	secondSendResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.SessionID+"/chat", chatRequestBody("再检查一次", nil))
 	require.Equal(t, http.StatusConflict, secondSendResp.Code)
 
 	var sendConflict ErrorResponse
 	require.NoError(t, json.Unmarshal(secondSendResp.Body.Bytes(), &sendConflict))
 	require.Equal(t, "session_conflict", sendConflict.Error)
 
-	confirmResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.Data.SessionID+"/chat", map[string]interface{}{
+	confirmResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.SessionID+"/chat", map[string]interface{}{
 		"id": "test-chat",
 		"approval": map[string]interface{}{
 			"task_id":  taskID,
@@ -271,16 +269,14 @@ func TestAISessionHandlerCreateSendConfirmAndClose(t *testing.T) {
 	require.Contains(t, chunkTypes(confirmChunks), "tool-output-available")
 	require.Contains(t, chunkTypes(confirmChunks), "text-delta")
 
-	latestResp := performJSONRequest(t, router, http.MethodGet, "/sessions/"+created.Data.SessionID, nil)
+	latestResp := performJSONRequest(t, router, http.MethodGet, "/sessions/"+created.SessionID, nil)
 	require.Equal(t, http.StatusOK, latestResp.Code)
-	var latest struct {
-		Data CreateAISessionResponse `json:"data"`
-	}
+	var latest CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(latestResp.Body.Bytes(), &latest))
-	require.Equal(t, runtime.SessionStatusIdle, latest.Data.Session.Status)
-	require.Len(t, latest.Data.Session.Tasks, 1)
-	require.Equal(t, runtime.TaskStatusSucceeded, latest.Data.Session.Tasks[0].Status)
-	require.Equal(t, "命令执行完成，系统负载正常。", latest.Data.Session.Messages[len(latest.Data.Session.Messages)-1].Content)
+	require.Equal(t, runtime.SessionStatusIdle, latest.Session.Status)
+	require.Len(t, latest.Session.Tasks, 1)
+	require.Equal(t, runtime.TaskStatusSucceeded, latest.Session.Tasks[0].Status)
+	require.Equal(t, "命令执行完成，系统负载正常。", latest.Session.Messages[len(latest.Session.Messages)-1].Content)
 
 	calls := runner.snapshotCalls()
 	require.Len(t, calls, 2)
@@ -289,12 +285,12 @@ func TestAISessionHandlerCreateSendConfirmAndClose(t *testing.T) {
 	require.Equal(t, "执行 uptime", calls[0].Messages[1].Content)
 	require.NotContains(t, calls[0].Messages[1].Content, "请只返回摘要")
 	require.Contains(t, calls[1].Messages[0].Content, "请只返回摘要")
-	require.Equal(t, "执行 uptime", latest.Data.Session.Messages[0].Content)
+	require.Equal(t, "执行 uptime", latest.Session.Messages[0].Content)
 
-	closeResp := performJSONRequest(t, router, http.MethodDelete, "/sessions/"+created.Data.SessionID, nil)
+	closeResp := performJSONRequest(t, router, http.MethodDelete, "/sessions/"+created.SessionID, nil)
 	require.Equal(t, http.StatusNoContent, closeResp.Code)
 
-	_, err := manager.GetSession(userID, created.Data.SessionID)
+	_, err := manager.GetSession(userID, created.SessionID)
 	require.ErrorIs(t, err, runtime.ErrSessionNotFound)
 }
 
@@ -328,63 +324,53 @@ func TestAISessionHandlerUpdateAndDeleteUserMessage(t *testing.T) {
 	})
 	require.Equal(t, http.StatusCreated, createResp.Code)
 
-	var created struct {
-		Data CreateAISessionResponse `json:"data"`
-	}
+	var created CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(createResp.Body.Bytes(), &created))
 
-	sendResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.Data.SessionID+"/chat", chatRequestBody("你是谁", nil))
+	sendResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.SessionID+"/chat", chatRequestBody("你是谁", nil))
 	require.Equal(t, http.StatusOK, sendResp.Code)
 
-	latestResp := performJSONRequest(t, router, http.MethodGet, "/sessions/"+created.Data.SessionID, nil)
+	latestResp := performJSONRequest(t, router, http.MethodGet, "/sessions/"+created.SessionID, nil)
 	require.Equal(t, http.StatusOK, latestResp.Code)
-	var latest struct {
-		Data CreateAISessionResponse `json:"data"`
-	}
+	var latest CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(latestResp.Body.Bytes(), &latest))
-	require.Len(t, latest.Data.Session.Messages, 2)
-	userMessageID := latest.Data.Session.Messages[0].ID
+	require.Len(t, latest.Session.Messages, 2)
+	userMessageID := latest.Session.Messages[0].ID
 
-	updateResp := performJSONRequest(t, router, http.MethodPatch, "/sessions/"+created.Data.SessionID+"/messages/"+userMessageID, map[string]interface{}{
+	updateResp := performJSONRequest(t, router, http.MethodPatch, "/sessions/"+created.SessionID+"/messages/"+userMessageID, map[string]interface{}{
 		"content": "你能做什么",
 	})
 	require.Equal(t, http.StatusOK, updateResp.Code)
-	var updated struct {
-		Data CreateAISessionResponse `json:"data"`
-	}
+	var updated CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(updateResp.Body.Bytes(), &updated))
-	require.Len(t, updated.Data.Session.Messages, 1)
-	require.Equal(t, "你能做什么", updated.Data.Session.Messages[0].Content)
+	require.Len(t, updated.Session.Messages, 1)
+	require.Equal(t, "你能做什么", updated.Session.Messages[0].Content)
 
-	regenerateResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.Data.SessionID+"/chat", map[string]interface{}{
+	regenerateResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.SessionID+"/chat", map[string]interface{}{
 		"id":        "test-chat",
 		"trigger":   "submit-message",
 		"messageId": userMessageID,
 		"mode":      "regenerate",
-		"messages":  updated.Data.Session.UIMessages,
+		"messages":  updated.Session.UIMessages,
 	})
 	require.Equal(t, http.StatusOK, regenerateResp.Code)
 
-	regeneratedResp := performJSONRequest(t, router, http.MethodGet, "/sessions/"+created.Data.SessionID, nil)
+	regeneratedResp := performJSONRequest(t, router, http.MethodGet, "/sessions/"+created.SessionID, nil)
 	require.Equal(t, http.StatusOK, regeneratedResp.Code)
-	var regenerated struct {
-		Data CreateAISessionResponse `json:"data"`
-	}
+	var regenerated CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(regeneratedResp.Body.Bytes(), &regenerated))
-	require.Len(t, regenerated.Data.Session.Messages, 2)
-	require.Equal(t, userMessageID, regenerated.Data.Session.Messages[0].ID)
-	require.Equal(t, "你能做什么", regenerated.Data.Session.Messages[0].Content)
-	require.Equal(t, "assistant", regenerated.Data.Session.Messages[1].Role)
-	require.Equal(t, "新回答", regenerated.Data.Session.Messages[1].Content)
+	require.Len(t, regenerated.Session.Messages, 2)
+	require.Equal(t, userMessageID, regenerated.Session.Messages[0].ID)
+	require.Equal(t, "你能做什么", regenerated.Session.Messages[0].Content)
+	require.Equal(t, "assistant", regenerated.Session.Messages[1].Role)
+	require.Equal(t, "新回答", regenerated.Session.Messages[1].Content)
 
-	deleteResp := performJSONRequest(t, router, http.MethodDelete, "/sessions/"+created.Data.SessionID+"/messages/"+userMessageID, nil)
+	deleteResp := performJSONRequest(t, router, http.MethodDelete, "/sessions/"+created.SessionID+"/messages/"+userMessageID, nil)
 	require.Equal(t, http.StatusOK, deleteResp.Code)
-	var deleted struct {
-		Data CreateAISessionResponse `json:"data"`
-	}
+	var deleted CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(deleteResp.Body.Bytes(), &deleted))
-	require.Empty(t, deleted.Data.Session.Messages)
-	require.Empty(t, deleted.Data.Session.UIMessages)
+	require.Empty(t, deleted.Session.Messages)
+	require.Empty(t, deleted.Session.UIMessages)
 }
 
 func TestAISessionHandlerReturnsNotFoundForUnknownSession(t *testing.T) {

@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# 生成 TypeScript 类型定义（从 OpenAPI）
+# 从唯一 OpenAPI 契约生成 Go 与 TypeScript 类型
 
 set -e
 
-echo "🔄 生成 API 类型定义..."
+echo "🔄 生成 API 契约代码..."
 
 if [ ! -f shared/openapi.yaml ]; then
     echo "⚠️  未找到 shared/openapi.yaml 文件"
@@ -12,16 +12,19 @@ if [ ! -f shared/openapi.yaml ]; then
     exit 1
 fi
 
-cd web
+node scripts/check-openapi-routes.mjs
 
-# 检查是否安装了 openapi-typescript
-if ! pnpm list openapi-typescript >/dev/null 2>&1; then
-    echo "📦 安装 openapi-typescript..."
-    pnpm add -D openapi-typescript
-fi
+echo "📝 生成 Go 类型与嵌入规范..."
+(
+    cd server
+    go tool oapi-codegen --config oapi-codegen.yaml ../shared/openapi.yaml
+)
 
-# 生成类型
 echo "📝 生成 TypeScript 类型..."
-pnpm exec openapi-typescript ../shared/openapi.yaml -o src/types/openapi.ts
+if [ ! -x web/node_modules/.bin/openapi-typescript ]; then
+    echo "❌ 缺少 web/node_modules 中固定版本的 openapi-typescript，请先执行依赖安装"
+    exit 1
+fi
+web/node_modules/.bin/openapi-typescript shared/openapi.yaml -o web/src/types/openapi.ts
 
-echo "✅ 类型生成完成！"
+echo "✅ API 契约代码生成完成！"

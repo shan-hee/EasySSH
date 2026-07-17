@@ -141,7 +141,6 @@ function requiresCSRFToken(url: string, method: HttpMethod): boolean {
   return (
     matchesEndpoint(url, "/oauth/token") ||
     matchesEndpoint(url, "/oauth/logout") ||
-    matchesEndpoint(url, "/auth/logout") ||
     matchesEndpoint(url, "/oauth/google/verify") ||
     matchesEndpoint(url, "/users/me/oauth/google/link")
   )
@@ -161,20 +160,6 @@ function shouldHandleAccountLockedGlobally(url: string): boolean {
   return !(
     url.includes("/oauth/google/verify") ||
     url.includes("/users/me/oauth/google/link")
-  )
-}
-
-function isCSRFTokenInvalid(error: unknown): boolean {
-  if (!isApiError(error) || error.status !== 403) {
-    return false
-  }
-
-  const detail = error.detail
-  return (
-    typeof detail === "object" &&
-    detail !== null &&
-    "error" in detail &&
-    (detail as { error?: string }).error === "csrf_token_invalid"
   )
 }
 
@@ -220,55 +205,22 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
 
   // 实现重试逻辑
   let lastError: unknown
-  const retries = retry ? maxRetries : 1
+  const method = fetchOptions.method ?? "GET"
+  const attempts = retry && method === "GET" ? Math.max(1, maxRetries + 1) : 1
 
-  for (let attempt = 0; attempt < retries; attempt++) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       return await apiFetchInternal<T>(path, { ...fetchOptions, timeout })
     } catch (error) {
-      const method = fetchOptions.method ?? "GET"
-      if (
-        method !== "GET" &&
-        requiresCSRFToken(path, method) &&
-        isCSRFTokenInvalid(error)
-      ) {
-        clearCSRFToken()
-        return await apiFetchInternal<T>(path, { ...fetchOptions, timeout })
-      }
-
-      if (isApiError(error) && error.status === 401) {
-        const handleUnauthorizedGlobally = shouldHandleUnauthorizedGlobally(path)
-        if (!handleUnauthorizedGlobally) {
-          throw error
-        }
-
-        try {
-          await refreshAccessToken()
-        } catch (refreshError) {
-          if (isRefreshTokenError(refreshError) && refreshError.status === 401) {
-            handleGlobalUnauthorized()
-          }
-          throw refreshError
-        }
-
-        try {
-          return await apiFetchInternal<T>(path, { ...fetchOptions, timeout })
-        } catch (replayError) {
-          if (isApiError(replayError) && replayError.status === 401) {
-            handleGlobalUnauthorized()
-          }
-          throw replayError
-        }
-      }
       lastError = error
 
       // 最后一次尝试或不可重试的错误,直接抛出
-      if (attempt === retries - 1 || !isRetryableError(error)) {
+      if (attempt === attempts - 1 || !isRetryableError(error)) {
         throw error
       }
 
       // 指数退避: 2^attempt * 1000ms (1s, 2s, 4s...)
-      const backoffMs = Math.pow(2, attempt) * 1000
+      const backoffMs = Math.pow(2, attempt) * 1000 + Math.floor(Math.random() * 250)
       console.warn(`[apiFetch] Retry ${attempt + 1}/${maxRetries} after ${backoffMs}ms`, error)
       await sleep(backoffMs)
     }
@@ -295,44 +247,16 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
   }
   const method = options.method ?? "GET"
 
-  if (requiresCSRFToken(url, method)) {
-    const apiBase = getApiUrl()
-    ;(headers as Record<string, string>)["X-CSRF-Token"] = await ensureCSRFToken(apiBase)
-  }
-
-  // 如有可用的 access_token，则自动附加 Bearer 认证头
-  // 注意：登录建链与刷新端点不附加 Authorization，避免干扰 PKCE / Token 交换
-  if (!shouldOmitAuthHeader(url)) {
-    const currentToken = useAuthStore.getState().accessToken
-    if (currentToken) {
-      const headersRecord = headers as Record<string, string>
-      const hasAuthHeader =
-        Object.keys(headersRecord).some(
-          (k) => k.toLowerCase() === "authorization",
-        )
-      if (!hasAuthHeader) {
-        headersRecord["Authorization"] = `Bearer ${currentToken}`
-      }
-    }
-  }
-
-  // 创建超时控制器
-  const controller = new AbortController()
-  const timeoutId = options.timeout ? setTimeout(() => {
-    controller.abort()
-  }, options.timeout) : null
-
-  // 合并用户提供的 signal 和超时 signal
-  const signal = options.signal || controller.signal
-
-  const credentials: RequestCredentials = isAuthCredentialEndpoint(url)
-    ? "include"
-    : "same-origin"
+  const signals: AbortSignal[] = []
+  if (options.signal) signals.push(options.signal)
+  if (options.timeout) signals.push(AbortSignal.timeout(options.timeout))
+  const signal = signals.length > 1
+    ? AbortSignal.any(signals)
+    : signals[0]
 
   const init: RequestInit = {
     method,
     headers,
-    credentials,
     signal,
   }
 
@@ -345,72 +269,141 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
     }
   }
 
-  try {
-    const res = await fetch(url, init)
-    updateCSRFTokenFromHeaders(res.headers, { trusted: credentials === "include" })
+  const res = await openapiTransportFetch(url, init)
 
-    // 清理超时定时器
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-    }
-
-    if (!res.ok) {
-      // 修复: 根据Content-Type只读取一次响应体
-      const contentType = res.headers.get("content-type") || ""
-      let detail: unknown
-      try {
-        if (contentType.includes("application/json")) {
-          detail = await res.json()
-        } else {
-          detail = await res.text()
-        }
-      } catch {
-        detail = "Failed to parse error response"
-      }
-
-      // 检查是否为账户锁定错误（403 + account_locked）
-      // 如果用户已登录但被锁定，跳转到登录页面
-      if (
-        shouldHandleAccountLockedGlobally(url) &&
-        res.status === 403 &&
-        typeof detail === 'object' &&
-        detail !== null
-      ) {
-        const errorDetail = detail as { error?: string }
-        if (errorDetail.error === 'account_locked') {
-          handleAccountLocked(detail)
-        }
-      }
-
-      const fallbackMessage = `API ${res.status} ${res.statusText}`
-      throw Object.assign(new Error(resolveAPIErrorMessage(detail, fallbackMessage)), {
-        status: res.status,
-        detail,
-      })
-    }
-
+  if (!res.ok) {
     const contentType = res.headers.get("content-type") || ""
-    if (contentType.includes("application/json")) {
-      const json = await res.json()
-      // 如果响应包含data字段,自动解包
-      // 但如果响应包含分页元数据(total/page/total_pages),则不解包以保留完整的分页信息
-      if (json && typeof json === "object" && "data" in json) {
-        const hasPaginationMetadata = "total" in json || "page" in json || "total_pages" in json
-        if (hasPaginationMetadata) {
-          return json as T
-        }
-        return json.data as T
+    let detail: unknown
+    try {
+      if (contentType.includes("application/json")) {
+        detail = await res.json()
+      } else {
+        detail = await res.text()
       }
-      return json as T
+    } catch {
+      detail = "Failed to parse error response"
     }
-    return (await res.text()) as unknown as T
-  } catch (error) {
-    // 清理超时定时器
-    if (timeoutId) {
-      clearTimeout(timeoutId)
+
+    if (
+      shouldHandleAccountLockedGlobally(url) &&
+      res.status === 403 &&
+      typeof detail === 'object' &&
+      detail !== null
+    ) {
+      const errorDetail = detail as { error?: string }
+      if (errorDetail.error === 'account_locked') {
+        handleAccountLocked(detail)
+      }
     }
-    throw error
+
+    const fallbackMessage = `API ${res.status} ${res.statusText}`
+    throw Object.assign(new Error(resolveAPIErrorMessage(detail, fallbackMessage)), {
+      status: res.status,
+      detail,
+    })
   }
+
+  const contentType = res.headers.get("content-type") || ""
+  if (contentType.includes("application/json")) {
+    return await res.json() as T
+  }
+  return (await res.text()) as unknown as T
+}
+
+/**
+ * openapi-fetch 的底层传输实现。
+ *
+ * 这里仅负责浏览器级横切能力，不解析或改写 JSON 响应形状；响应体必须按
+ * shared/openapi.yaml 中声明的结构由 openapi-fetch 处理。
+ */
+export async function openapiTransportFetch(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  const sourceRequest = input instanceof Request ? input : undefined
+  const url = sourceRequest?.url ?? String(input)
+  const method = (init.method?.toUpperCase() ?? sourceRequest?.method ?? "GET") as HttpMethod
+
+  const request = async (): Promise<Response> => {
+    const headers = new Headers(sourceRequest?.headers)
+    new Headers(init.headers).forEach((value, key) => headers.set(key, value))
+    if (!headers.has("Accept")) {
+      headers.set("Accept", "application/json")
+    }
+
+    if (requiresCSRFToken(url, method)) {
+      headers.set("X-CSRF-Token", await ensureCSRFToken(getApiUrl()))
+    }
+
+    if (!shouldOmitAuthHeader(url) && !headers.has("Authorization")) {
+      const token = useAuthStore.getState().accessToken
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`)
+      }
+    }
+
+    const credentials: RequestCredentials = isAuthCredentialEndpoint(url)
+      ? "include"
+      : (init.credentials ?? sourceRequest?.credentials ?? "same-origin")
+    const timeoutSignal = AbortSignal.timeout(30_000)
+    const sourceSignal = init.signal ?? sourceRequest?.signal
+    const signal = sourceSignal
+      ? AbortSignal.any([sourceSignal, timeoutSignal])
+      : timeoutSignal
+    const response = await fetch(input, {
+      ...init,
+      method,
+      headers,
+      credentials,
+      signal,
+    })
+    updateCSRFTokenFromHeaders(response.headers, { trusted: credentials === "include" })
+    return response
+  }
+
+  let response = await request()
+
+  if (method !== "GET" && requiresCSRFToken(url, method) && response.status === 403) {
+    const detail = await response.clone().json().catch(() => null)
+    if (
+      detail &&
+      typeof detail === "object" &&
+      "error" in detail &&
+      (detail as { error?: string }).error === "csrf_token_invalid"
+    ) {
+      clearCSRFToken()
+      response = await request()
+    }
+  }
+
+  if (response.status === 401 && shouldHandleUnauthorizedGlobally(url)) {
+    try {
+      await refreshAccessToken()
+    } catch (refreshError) {
+      if (isRefreshTokenError(refreshError) && refreshError.status === 401) {
+        handleGlobalUnauthorized()
+      }
+      throw refreshError
+    }
+    response = await request()
+    if (response.status === 401) {
+      handleGlobalUnauthorized()
+    }
+  }
+
+  if (response.status === 403 && shouldHandleAccountLockedGlobally(url)) {
+    const detail = await response.clone().json().catch(() => null)
+    if (
+      detail &&
+      typeof detail === "object" &&
+      "error" in detail &&
+      (detail as { error?: string }).error === "account_locked"
+    ) {
+      handleAccountLocked(detail)
+    }
+  }
+
+  return response
 }
 
 interface AuthenticatedFetchOptions {

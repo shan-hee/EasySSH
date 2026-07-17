@@ -20,12 +20,6 @@ type ErrorResponseWithDetails struct {
 	Details interface{} `json:"details,omitempty"`
 }
 
-// SuccessResponse 成功响应结构
-type SuccessResponse struct {
-	Data    interface{} `json:"data,omitempty"`
-	Message string      `json:"message,omitempty"`
-}
-
 // PaginatedResponse 分页响应结构
 type PaginatedResponse struct {
 	Data       interface{} `json:"data"`
@@ -55,24 +49,21 @@ func RespondErrorWithDetails(c *gin.Context, statusCode int, errCode string, mes
 
 // RespondSuccess 返回成功响应
 func RespondSuccess(c *gin.Context, data interface{}) {
-	c.JSON(http.StatusOK, SuccessResponse{
-		Data: data,
-	})
+	c.JSON(http.StatusOK, data)
 }
 
 // RespondSuccessWithMessage 返回带消息的成功响应
 func RespondSuccessWithMessage(c *gin.Context, data interface{}, message string) {
-	c.JSON(http.StatusOK, SuccessResponse{
-		Data:    data,
-		Message: message,
-	})
+	if data == nil {
+		c.JSON(http.StatusOK, gin.H{"message": message})
+		return
+	}
+	c.JSON(http.StatusOK, data)
 }
 
 // RespondCreated 返回创建成功响应
 func RespondCreated(c *gin.Context, data interface{}) {
-	c.JSON(http.StatusCreated, SuccessResponse{
-		Data: data,
-	})
+	c.JSON(http.StatusCreated, data)
 }
 
 // RespondNoContent 返回无内容响应
