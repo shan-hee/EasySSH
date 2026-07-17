@@ -2627,16 +2627,11 @@ const messages = {
     twoFALimitMin: "2FA verification rate limit cannot be less than 1 per minute.",
     twoFALimitMax: "2FA verification rate limit cannot exceed 20 per minute.",
 
-    // Security - JWT
-    jwtSecretMin: "JWT secret must be at least 32 characters.",
-    jwtAccessExpireMin: "Access token lifetime cannot be less than 5 minutes.",
-    jwtAccessExpireMax: "Access token lifetime cannot exceed 1440 minutes.",
-    jwtRefreshIdleExpireMin: "Idle login lifetime cannot be less than 1 day.",
-    jwtRefreshIdleExpireMax: "Idle login lifetime cannot exceed 90 days.",
-    jwtRefreshAbsoluteExpireMin: "Maximum login lifetime cannot be less than 1 day.",
-    jwtRefreshAbsoluteExpireMax: "Maximum login lifetime cannot exceed 365 days.",
-    jwtRefreshAbsoluteGteIdle:
-      "Maximum login lifetime must be greater than or equal to idle login lifetime.",
+    // Security - OAuth/OIDC
+    oauthAccessTokenMin: "Access token lifetime cannot be less than 5 minutes.",
+    oauthAccessTokenMax: "Access token lifetime cannot exceed 1440 minutes.",
+    oauthRefreshTokenMin: "Refresh token lifetime cannot be less than 1 day.",
+    oauthRefreshTokenMax: "Refresh token lifetime cannot exceed 365 days.",
 
     // System config - basic
     systemNameRequired: "System name is required.",
@@ -2824,24 +2819,15 @@ const messages = {
     fieldHibernate: "Background tab hibernation",
     fieldHibernateDesc:
       "When enabled, background tabs will hibernate automatically to save resources",
-    jwtSectionTitle: "Token expiry and refresh",
-    jwtSectionDescription:
-      "Configure access token lifetime and login persistence. JWT secret is still read from .env.",
-    fieldJWTAccessExpire: "Access token lifetime (minutes)",
-    fieldJWTAccessExpireDesc:
+    oauthSectionTitle: "OAuth/OIDC token lifetime",
+    oauthSectionDescription:
+      "Configure lifetimes for access and refresh tokens issued by Fosite. The provider global secret is read from the environment.",
+    fieldOAuthAccessToken: "Access token lifetime (minutes)",
+    fieldOAuthAccessTokenDesc:
       "Short-lived access token lifetime (5-1440 minutes). It refreshes automatically during normal use.",
-    fieldJWTRefreshIdleExpire: "Idle login lifetime (days)",
-    fieldJWTRefreshIdleExpireDesc:
-      "Require sign-in after the server refresh token is not refreshed for this many days; independent of user inactivity timeout above (1-90 days).",
-    fieldJWTRefreshAbsoluteExpire: "Maximum login lifetime (days)",
-    fieldJWTRefreshAbsoluteExpireDesc:
-      "Users must sign in again after this upper bound even if they keep using the app (1-365 days).",
-    fieldJWTRefreshRotate: "Refresh token rotation",
-    fieldJWTRefreshRotateDesc:
-      "Replace the refresh token whenever a new access token is issued. Recommended.",
-    fieldJWTRefreshReuseDetection: "Refresh token reuse detection",
-    fieldJWTRefreshReuseDetectionDesc:
-      "Detect abnormal reuse of old refresh tokens. Recommended.",
+    fieldOAuthRefreshToken: "Refresh token lifetime (days)",
+    fieldOAuthRefreshTokenDesc:
+      "Fixed refresh token lifetime (1-365 days); rotation, revocation, and reuse protection are handled by the OAuth provider protocol flow.",
     previewTitle: "Current configuration preview:",
     previewSessionTimeoutPrefix: "• User will be logged out after ",
     previewSessionTimeoutSuffix: " minutes of inactivity",
@@ -2851,18 +2837,14 @@ const messages = {
     previewEnabled: "Enabled",
     previewDisabled: "Disabled",
     previewHibernatePrefix: "• Background hibernation: ",
-    jwtPreviewTitle: "Token configuration preview:",
-    previewJWTAccessPrefix: "• Access token expires after ",
-    previewJWTAccessSuffix: " minutes",
-    previewJWTRefreshIdlePrefix: "• Sign in again after ",
-    previewJWTRefreshIdleSuffix: " idle days",
-    previewJWTRefreshAbsolutePrefix: "• Maximum login lifetime is ",
-    previewJWTRefreshAbsoluteSuffix: " days",
-    previewJWTRefreshRotatePrefix: "• Refresh token rotation: ",
-    previewJWTReuseDetectionPrefix: "• Reuse detection: ",
+    oauthPreviewTitle: "Token configuration preview:",
+    previewOAuthAccessPrefix: "• Access token expires after ",
+    previewOAuthAccessSuffix: " minutes",
+    previewOAuthRefreshPrefix: "• Refresh token expires after ",
+    previewOAuthRefreshSuffix: " days",
     alertContent:
       "Session settings affect login experience for all users. Set timeout values based on real usage to balance security and usability.",
-    jwtAlertContent:
+    oauthAlertContent:
       "These settings take effect after the backend service restarts. Already issued token expiry times are not rewritten immediately.",
   },
   settingsSecurityNetwork: {
@@ -3290,18 +3272,24 @@ const messages = {
       "Local servers, scripts, tasks, activity logs, and connection-related data",
     sensitiveExportTitle: "Full backup",
     sensitiveExportDescription:
-      "Include recoverable passwords, private keys, tokens, and API keys supported by this client, protected by a backup password",
+      "Include recoverable passwords, private keys, tokens, and API keys supported by this client, protected with the standard age format",
     desktopSensitiveExportDescription:
-      "Include recoverable server passwords and private keys, protected by a backup password",
-    backupPasswordLabel: "Backup password",
-    backupPasswordPlaceholder: "Enter a backup password",
-    backupPasswordHint:
-      "The same password is required to restore this full backup. EasySSH does not store it.",
-    restorePasswordLabel: "Full backup password",
-    restorePasswordPlaceholder:
-      "Enter the backup password if this file is a full backup",
-    restorePasswordHint:
-      "Leave blank for a redacted backup. Full backups use this password to decrypt sensitive data.",
+      "Include recoverable server passwords and private keys, protected with the standard age format",
+    agePassphraseMode: "age passphrase",
+    ageX25519Mode: "X25519 key",
+    agePassphraseLabel: "age encryption passphrase",
+    agePassphrasePlaceholder: "Enter a strong encryption passphrase",
+    agePassphraseHint:
+      "age uses its standard Scrypt Recipient. EasySSH does not store this passphrase.",
+    ageRecipientsLabel: "age X25519 recipients",
+    ageRecipientsPlaceholder: "age1... (one public key per line)",
+    ageRecipientsHint:
+      "A backup can target multiple recipients; any matching private identity can restore it.",
+    restoreAgeCredentialLabel: "age decryption credential",
+    restoreAgeCredentialHint:
+      "Leave blank for a redacted backup. For a full backup, select the credential type used during export.",
+    restoreAgePassphrasePlaceholder: "Enter the age passphrase used during export",
+    ageIdentitiesPlaceholder: "AGE-SECRET-KEY-1... (one private key per line)",
     btnExport: "Export backup",
     btnExportLoading: "Exporting...",
     btnRestore: "Choose file and restore",
@@ -3331,7 +3319,8 @@ const messages = {
       "Overwrite will update current matching records. Continue?",
     toastSelectExportContent: "Select at least one export content type",
     toastSelectRestoreContent: "Select at least one restore content type",
-    toastBackupPasswordRequired: "Enter the full backup password",
+    toastAgePassphraseRequired: "Enter an age encryption passphrase",
+    toastAgeRecipientRequired: "Enter at least one age X25519 recipient",
     toastExportLoading: "Exporting backup...",
     toastExportSuccess: "Backup exported",
     toastExportFailed: "Failed to export backup",
@@ -3430,15 +3419,10 @@ const messages = {
   },
   users: {
     pageTitle: "User management",
+    rbacPageDescription: "Manage custom roles, inheritance, policies, and resource-specific grants with Casbin",
     btnNewUser: "New user",
     statsTotalUsers: "Total users",
     statsTotalUsersDesc: "Total users in system",
-    statsAdmins: "Admins",
-    statsAdminsDesc: "Full permissions",
-    statsNormalUsers: "Regular users",
-    statsNormalUsersDesc: "Standard permissions",
-    statsViewers: "Viewers",
-    statsViewersDesc: "Read-only",
     tableEmpty: "No users",
     tableDescription: "Showing {count} users",
     searchPlaceholder: "Search username or email...",
@@ -3526,6 +3510,46 @@ const messages = {
     // Tab switch
     tabUsers: "Users",
     tabPermissions: "Permissions",
+    rbacRolesTab: "Roles",
+    rbacResourcesTab: "Resource grants",
+    rbacRoleCount: "Roles",
+    rbacPermissionCount: "Permission policies",
+    rbacResourceGrantCount: "Current resource grants",
+    rbacNewRole: "New role",
+    rbacNoDescription: "No description",
+    rbacInheritedFrom: "Inherits from",
+    rbacCreateRoleTitle: "Create custom role",
+    rbacEditRoleTitle: "Edit role",
+    rbacRoleDialogDescription: "Casbin combines direct permissions with permissions inherited from the parent role.",
+    rbacRoleKey: "Role key",
+    rbacRoleName: "Role name",
+    rbacRoleDescription: "Role description",
+    rbacParentRole: "Parent role",
+    rbacNoParent: "No parent role",
+    rbacDirectPermissions: "Direct permissions",
+    rbacSaveRole: "Save role",
+    rbacRoleFormIncomplete: "Enter a role key and name",
+    rbacRoleCreateSuccess: "Role created",
+    rbacRoleUpdateSuccess: "Role updated",
+    rbacRoleSaveFailed: "Failed to save role",
+    rbacRoleDeleteConfirm: "Delete role \"{name}\"? Roles assigned to users or inherited by another role cannot be deleted.",
+    rbacRoleDeleteSuccess: "Role deleted",
+    rbacRoleDeleteFailed: "Failed to delete role",
+    rbacResourceGrantTitle: "Resource-specific grant",
+    rbacResourceGrantDescription: "In addition to global role permissions, grant one server resource to a specific user or role.",
+    rbacSubjectRole: "Role",
+    rbacSubjectUser: "User",
+    rbacSelectSubject: "Select subject",
+    rbacSelectPermission: "Select permission",
+    rbacResourceIDPlaceholder: "Server UUID",
+    rbacGrantButton: "Grant resource permission",
+    rbacRevokeButton: "Revoke",
+    rbacGrantLoadFailed: "Failed to load resource grants",
+    rbacGrantFormIncomplete: "Select a subject, permission, and resource ID",
+    rbacGrantSuccess: "Resource permission granted",
+    rbacGrantFailed: "Failed to grant resource permission",
+    rbacRevokeSuccess: "Resource permission revoked",
+    rbacRevokeFailed: "Failed to revoke resource permission",
     // Permissions management
     permissionsTitle: "Permissions Management",
     // Permissions list
