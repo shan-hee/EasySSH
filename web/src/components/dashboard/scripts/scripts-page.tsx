@@ -240,9 +240,7 @@ const handleExecuteScript = useCallback(async () => {
 
   setExecuting(true)
   try {
-    // 创建批量任务
-    // 注意: apiFetch 会自动解包 data 字段，所以直接获取 task
-    const response = await batchTasksClient.create({
+    const task = await batchTasksClient.create({
       task_name: `${t("executeTaskPrefix")}: ${executingScript.name}`,
       task_type: "script",
       script_id: executingScript.id,
@@ -250,9 +248,6 @@ const handleExecuteScript = useCallback(async () => {
       server_ids: onlineSelectedIds,
       execution_mode: executionMode,
     })
-    // response 可能是 { data: BatchTask } 或直接是 BatchTask（取决于 apiFetch 的解包逻辑）
-    const task = "data" in response ? response.data : response
-
     // 启动任务
     await batchTasksClient.start(task.id)
 

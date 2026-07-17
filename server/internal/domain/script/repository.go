@@ -35,6 +35,13 @@ func (r *repository) Create(script *Script) error {
 
 // Update 更新脚本
 func (r *repository) Update(id uuid.UUID, updates map[string]interface{}) error {
+	if tags, ok := updates["tags"].([]string); ok {
+		encoded, err := json.Marshal(tags)
+		if err != nil {
+			return fmt.Errorf("encode script tags: %w", err)
+		}
+		updates["tags"] = string(encoded)
+	}
 	return r.db.Model(&Script{}).Where("id = ?", id).Updates(updates).Error
 }
 

@@ -24,7 +24,6 @@ import {
  FileText,
  Clock,
  Terminal,
- Zap,
  Upload,
  Download,
  Calendar,
@@ -70,7 +69,6 @@ const parseScheduledPayload = (value?: string): ScheduledPayload => {
 const getTaskTypeTone = (type: ScheduledTaskType) => {
  if (type === "command") return "blue" as const
  if (type === "script") return "violet" as const
- if (type === "batch") return "amber" as const
  if (type === "sftp_upload") return "emerald" as const
  if (type === "sftp_download") return "cyan" as const
  return "slate" as const
@@ -129,8 +127,6 @@ const getTaskTypeIcon = (type: ScheduledTaskType) => {
  return <Terminal className="h-3 w-3" />
  case "script":
  return <FileText className="h-3 w-3" />
- case "batch":
- return <Zap className="h-3 w-3" />
  case "sftp_upload":
  return <Upload className="h-3 w-3" />
  case "sftp_download":
@@ -726,7 +722,6 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
                options: [
                  { label: t("typeCommand"), value: "command" },
                  { label: t("typeScript"), value: "script" },
-                 { label: t("typeBatch"), value: "batch" },
                  { label: "SFTP 上传", value: "sftp_upload" },
                  { label: "SFTP 下载", value: "sftp_download" },
                ],

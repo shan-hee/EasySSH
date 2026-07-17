@@ -2,10 +2,13 @@ package batchtask
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
+	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/easyssh/server/internal/domain/taskexecutor"
@@ -15,6 +18,7 @@ import (
 // TaskExecutor 任务执行器接口
 type TaskExecutor interface {
 	Execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, source taskexecutor.ExecutionSource) taskexecutor.ExecutionOutcome
+	ExecuteBatch(ctx context.Context, task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, source taskexecutor.ExecutionSource, executionMode string) taskexecutor.ExecutionOutcome
 }
 
 var (
@@ -35,11 +39,14 @@ type Service interface {
 	UpdateTaskProgress(id uuid.UUID, successCount, failedCount int) error
 	CompleteBatchTask(id uuid.UUID, status string) error
 	SetExecutor(executor TaskExecutor)
+	SetQueue(queue jobqueue.Enqueuer)
+	HandleQueueJob(ctx context.Context, job *jobqueue.Job) error
 }
 
 type service struct {
 	repo     Repository
 	executor TaskExecutor
+	queue    jobqueue.Enqueuer
 }
 
 // NewService 创建批量任务服务实例
@@ -51,6 +58,8 @@ func NewService(repo Repository) Service {
 func (s *service) SetExecutor(executor TaskExecutor) {
 	s.executor = executor
 }
+
+func (s *service) SetQueue(queue jobqueue.Enqueuer) { s.queue = queue }
 
 // CreateBatchTask 创建批量任务
 func (s *service) CreateBatchTask(userID uuid.UUID, req *CreateBatchTaskRequest) (*BatchTask, error) {
@@ -64,9 +73,9 @@ func (s *service) CreateBatchTask(userID uuid.UUID, req *CreateBatchTaskRequest)
 	}
 
 	// 验证任务类型
-	validTaskTypes := map[string]bool{"command": true, "script": true, "file": true}
+	validTaskTypes := map[string]bool{"command": true, "script": true}
 	if !validTaskTypes[req.TaskType] {
-		return nil, errors.New("invalid task_type, must be one of: command, script, file")
+		return nil, errors.New("invalid task_type, must be one of: command, script")
 	}
 
 	// 验证执行模式
@@ -123,7 +132,7 @@ func (s *service) UpdateBatchTask(userID uuid.UUID, id uuid.UUID, req *UpdateBat
 	}
 
 	// 不允许修改正在运行的任务
-	if existingTask.Status == "running" {
+	if existingTask.Status == "queued" || existingTask.Status == "running" {
 		return nil, errors.New("cannot update running task")
 	}
 
@@ -177,7 +186,7 @@ func (s *service) DeleteBatchTask(userID uuid.UUID, id uuid.UUID) error {
 	}
 
 	// 不允许删除正在运行的任务
-	if existingTask.Status == "running" {
+	if existingTask.Status == "queued" || existingTask.Status == "running" {
 		return errors.New("cannot delete running task")
 	}
 
@@ -252,52 +261,80 @@ func (s *service) StartBatchTask(userID uuid.UUID, id uuid.UUID) error {
 		return errors.New("task is not in pending status")
 	}
 
-	// 更新状态为运行中
-	now := time.Now()
-	updates := map[string]interface{}{
-		"status":     "running",
-		"started_at": now,
+	if s.queue == nil {
+		return errors.New("job queue is not initialized")
 	}
-
-	if err := s.repo.Update(id, updates); err != nil {
+	queued, err := s.repo.UpdateIfStatus(id, []string{"pending"}, map[string]interface{}{
+		"status": "queued", "started_at": nil, "completed_at": nil, "duration": 0,
+		"success_count": 0, "failed_count": 0,
+	})
+	if err != nil {
 		return err
 	}
+	if !queued {
+		return errors.New("task is not in pending status")
+	}
+	_, err = s.queue.Enqueue(context.Background(), "batch.execute", "batch_task", task.ID.String(), map[string]string{"task_id": task.ID.String()}, jobqueue.EnqueueOptions{MaxAttempts: 3})
+	if err != nil {
+		_, _ = s.repo.UpdateIfStatus(id, []string{"queued"}, map[string]interface{}{"status": "pending"})
+	}
+	return err
+}
 
-	// 如果有执行器，异步执行任务
-	if s.executor != nil {
-		// 将批量任务转换为定时任务格式以便执行
-		scheduledTask := &scheduledtask.ScheduledTask{
-			ID:        task.ID,
-			UserID:    task.UserID,
-			TaskName:  task.TaskName,
-			TaskType:  task.TaskType,
-			Command:   task.Content,
-			ScriptID:  task.ScriptID,
-			ServerIDs: task.ServerIDs,
-			Enabled:   true,
+func (s *service) HandleQueueJob(ctx context.Context, job *jobqueue.Job) error {
+	if s.executor == nil {
+		return errors.New("batch task executor is not initialized")
+	}
+	var payload struct {
+		TaskID string `json:"task_id"`
+	}
+	if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil {
+		return fmt.Errorf("decode batch task payload: %w", err)
+	}
+	taskID, err := uuid.Parse(payload.TaskID)
+	if err != nil {
+		return fmt.Errorf("invalid batch task id: %w", err)
+	}
+	task, err := s.repo.GetByID(taskID)
+	if err != nil {
+		return fmt.Errorf("load batch task: %w", err)
+	}
+	if task.Status == "completed" || task.Status == "failed" {
+		return nil
+	}
+	if task.Status == "queued" {
+		now := time.Now()
+		started, err := s.repo.UpdateIfStatus(task.ID, []string{"queued"}, map[string]interface{}{"status": "running", "started_at": &now})
+		if err != nil {
+			return err
 		}
-
-		// 异步执行任务
-		go func() {
-			log.Printf("[BatchTask] 开始执行批量任务: taskID=%s, type=%s", task.ID, task.TaskType)
-			outcome := s.executor.Execute(context.Background(), scheduledTask, taskexecutor.TriggerManual, taskexecutor.SourceBatchTask)
-			if err := s.UpdateTaskProgress(task.ID, outcome.SuccessCount, outcome.FailureCount); err != nil {
-				log.Printf("[BatchTask] 更新批量任务进度失败: taskID=%s, error=%v", task.ID, err)
-			}
-
-			status := "completed"
-			if outcome.Status == taskcenter.StatusFailed || outcome.Status == taskcenter.StatusCanceled || outcome.Status == taskcenter.StatusTimeout {
-				status = "failed"
-			}
-			if err := s.CompleteBatchTask(task.ID, status); err != nil {
-				log.Printf("[BatchTask] 更新批量任务完成状态失败: taskID=%s, error=%v", task.ID, err)
-			}
-			log.Printf("[BatchTask] 批量任务执行完成: taskID=%s, status=%s", task.ID, outcome.Status)
-		}()
-	} else {
-		log.Printf("[BatchTask] 警告: 没有设置执行器，任务 %s 只更新了状态但未实际执行", id)
+		if !started {
+			return errors.New("batch task could not enter running state")
+		}
+	} else if task.Status != "running" {
+		return fmt.Errorf("batch task has invalid queued state %s", task.Status)
 	}
 
+	scheduledTask := &scheduledtask.ScheduledTask{
+		ID: task.ID, UserID: task.UserID, TaskName: task.TaskName, TaskType: task.TaskType,
+		Command: task.Content, ScriptID: task.ScriptID, ServerIDs: task.ServerIDs, Enabled: true,
+	}
+	log.Printf("[BatchTask] 开始执行批量任务: taskID=%s, type=%s", task.ID, task.TaskType)
+	outcome := s.executor.ExecuteBatch(ctx, scheduledTask, taskexecutor.TriggerManual, taskexecutor.SourceBatchTask, task.ExecutionMode)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err := s.UpdateTaskProgress(task.ID, outcome.SuccessCount, outcome.FailureCount); err != nil {
+		log.Printf("[BatchTask] 更新批量任务进度失败: taskID=%s, error=%v", task.ID, err)
+	}
+	status := "completed"
+	if outcome.Status == taskcenter.StatusFailed || outcome.Status == taskcenter.StatusCanceled || outcome.Status == taskcenter.StatusTimeout {
+		status = "failed"
+	}
+	if err := s.CompleteBatchTask(task.ID, status); err != nil {
+		return err
+	}
+	log.Printf("[BatchTask] 批量任务执行完成: taskID=%s, status=%s", task.ID, outcome.Status)
 	return nil
 }
 

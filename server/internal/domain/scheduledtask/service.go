@@ -77,7 +77,6 @@ func isValidPayloadJSON(value string) bool {
 func isValidTaskType(taskType string) bool {
 	return taskType == "command" ||
 		taskType == "script" ||
-		taskType == "batch" ||
 		taskType == "sftp_upload" ||
 		taskType == "sftp_download"
 }
@@ -125,7 +124,7 @@ func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTask
 
 	// 验证任务类型
 	if !isValidTaskType(req.TaskType) {
-		return nil, errors.New("invalid task_type, must be one of: command, script, batch, sftp_upload, sftp_download")
+		return nil, errors.New("invalid task_type, must be one of: command, script, sftp_upload, sftp_download")
 	}
 	if isSFTPTaskType(req.TaskType) && !isValidPayloadJSON(req.PayloadJSON) {
 		return nil, errors.New("payload_json must be a valid JSON object for SFTP tasks")
@@ -157,15 +156,6 @@ func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTask
 		scriptID = &sid
 	}
 
-	var batchTaskID *uuid.UUID
-	if req.BatchTaskID != nil && *req.BatchTaskID != "" {
-		bid, err := uuid.Parse(*req.BatchTaskID)
-		if err != nil {
-			return nil, errors.New("invalid batch_task_id format")
-		}
-		batchTaskID = &bid
-	}
-
 	// 计算下次运行时间
 	nextRunAt, err := s.calculateNextRunTime(req.CronExpression, timezone)
 	if err != nil {
@@ -178,7 +168,6 @@ func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTask
 		TaskName:       req.TaskName,
 		TaskType:       req.TaskType,
 		ScriptID:       scriptID,
-		BatchTaskID:    batchTaskID,
 		Command:        req.Command,
 		PayloadJSON:    req.PayloadJSON,
 		ServerIDs:      req.ServerIDs,
@@ -227,7 +216,7 @@ func (s *service) UpdateScheduledTask(userID uuid.UUID, id uuid.UUID, req *Updat
 
 	if req.TaskType != "" {
 		if !isValidTaskType(req.TaskType) {
-			return nil, errors.New("invalid task_type, must be one of: command, script, batch, sftp_upload, sftp_download")
+			return nil, errors.New("invalid task_type, must be one of: command, script, sftp_upload, sftp_download")
 		}
 		taskType = req.TaskType
 		updates["task_type"] = req.TaskType

@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/api-client"
 
-export type ScheduledTaskType = "command" | "script" | "batch" | "sftp_upload" | "sftp_download"
+export type ScheduledTaskType = "command" | "script" | "sftp_upload" | "sftp_download"
 
 // 定时任务类型定义
 export interface ScheduledTask {
@@ -9,7 +9,6 @@ export interface ScheduledTask {
   task_name: string
   task_type: ScheduledTaskType
   script_id?: string
-  batch_task_id?: string
   command?: string
   payload_json?: string
   server_ids?: string[]
@@ -30,7 +29,6 @@ export interface CreateScheduledTaskRequest {
   task_name: string
   task_type: ScheduledTaskType
   script_id?: string
-  batch_task_id?: string
   command?: string
   payload_json?: string
   server_ids?: string[]

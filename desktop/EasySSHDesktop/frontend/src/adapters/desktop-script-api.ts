@@ -37,16 +37,28 @@ function mapDesktopScript(script: DesktopScript): Script {
 }
 
 function mapDesktopBatchTask(task: DesktopBatchTask): BatchTask {
+  if (task.task_type !== "command" && task.task_type !== "script") {
+    throw new Error(`Unsupported desktop batch task type: ${task.task_type}`)
+  }
+  if (
+    task.status !== "pending" &&
+    task.status !== "queued" &&
+    task.status !== "running" &&
+    task.status !== "completed" &&
+    task.status !== "failed"
+  ) {
+    throw new Error(`Unsupported desktop batch task status: ${task.status}`)
+  }
   return {
     id: task.id,
     user_id: task.user_id || DESKTOP_LOCAL_DATA_USER_ID,
     task_name: task.task_name,
-    task_type: task.task_type === "command" || task.task_type === "file" ? task.task_type : "script",
+    task_type: task.task_type,
     content: task.content || "",
     script_id: task.script_id || undefined,
     server_ids: task.server_ids || [],
     execution_mode: task.execution_mode === "sequential" ? "sequential" : "parallel",
-    status: task.status === "running" || task.status === "completed" || task.status === "failed" ? task.status : "pending",
+    status: task.status,
     success_count: task.success_count || 0,
     failed_count: task.failed_count || 0,
     started_at: task.started_at || undefined,
@@ -78,7 +90,7 @@ function toDesktopBatchTaskInput(input: CreateBatchTaskRequest): DesktopBatchTas
   }
 }
 
-async function updateDesktopScript(id: string, input: UpdateScriptRequest): Promise<{ data: Script }> {
+async function updateDesktopScript(id: string, input: UpdateScriptRequest): Promise<Script> {
   const current = await DesktopScriptService.GetById(id)
   const updated = await DesktopScriptService.Update(id, toDesktopScriptInput({
     name: input.name ?? current.name,
@@ -88,7 +100,7 @@ async function updateDesktopScript(id: string, input: UpdateScriptRequest): Prom
     tags: input.tags ?? current.tags ?? [],
   }))
 
-  return { data: mapDesktopScript(updated) }
+  return mapDesktopScript(updated)
 }
 
 export function createDesktopScriptAdapters(serverApi: ServerConnectionConfigsApi): ScriptsPageAdapters {
@@ -111,8 +123,8 @@ export function createDesktopScriptAdapters(serverApi: ServerConnectionConfigsAp
           total_pages: result.total_pages,
         }
       },
-      async create(input: CreateScriptRequest): Promise<{ data: Script }> {
-        return { data: mapDesktopScript(await DesktopScriptService.Create(toDesktopScriptInput(input))) }
+      async create(input: CreateScriptRequest): Promise<Script> {
+        return mapDesktopScript(await DesktopScriptService.Create(toDesktopScriptInput(input)))
       },
       update: updateDesktopScript,
       async delete(id: string): Promise<void> {
@@ -143,12 +155,12 @@ export function createDesktopScriptAdapters(serverApi: ServerConnectionConfigsAp
       },
     },
     batchTasks: {
-      async create(input: CreateBatchTaskRequest): Promise<{ data: BatchTask }> {
-        return { data: mapDesktopBatchTask(await DesktopScriptService.CreateBatchTask(toDesktopBatchTaskInput(input))) }
+      async create(input: CreateBatchTaskRequest): Promise<BatchTask> {
+        return mapDesktopBatchTask(await DesktopScriptService.CreateBatchTask(toDesktopBatchTaskInput(input)))
       },
-      async start(id: string): Promise<{ data: { message: string } }> {
+      async start(id: string): Promise<{ message: string }> {
         const result = await DesktopScriptService.StartBatchTask(id)
-        return { data: { message: result.message || "batch task started" } }
+        return { message: result.message || "batch task started" }
       },
     },
   }

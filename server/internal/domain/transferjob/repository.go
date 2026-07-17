@@ -22,7 +22,7 @@ type Repository interface {
 	GetStatistics(ctx context.Context, userID uuid.UUID) (*Statistics, error)
 	FindExpired(ctx context.Context, before time.Time, limit int) ([]*TransferJob, error)
 	HasActiveArtifactReference(ctx context.Context, artifactPath string, excludeID uuid.UUID) (bool, error)
-	MarkInterrupted(ctx context.Context) error
+	MarkStagingInterrupted(ctx context.Context) error
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
@@ -266,11 +266,11 @@ func (r *repository) HasActiveArtifactReference(ctx context.Context, artifactPat
 	return count > 0, nil
 }
 
-func (r *repository) MarkInterrupted(ctx context.Context) error {
+func (r *repository) MarkStagingInterrupted(ctx context.Context) error {
 	now := time.Now()
 	return r.db.WithContext(ctx).
 		Model(&TransferJob{}).
-		Where("status IN ?", []JobStatus{JobStatusStaging, JobStatusQueued, JobStatusRunning}).
+		Where("status = ?", JobStatusStaging).
 		Updates(map[string]interface{}{
 			"status":        JobStatusFailed,
 			"error_message": "interrupted by server restart",

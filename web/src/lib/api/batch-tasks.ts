@@ -35,8 +35,8 @@ export const batchTasksApi = {
   /**
    * 创建批量任务
    */
-  async create(data: CreateBatchTaskRequest): Promise<{ data: BatchTask }> {
-    return apiFetch<{ data: BatchTask }>(`/batch-tasks`, {
+  async create(data: CreateBatchTaskRequest): Promise<BatchTask> {
+    return apiFetch<BatchTask>(`/batch-tasks`, {
       method: "POST",
       body: JSON.stringify(data),
     })
@@ -45,8 +45,8 @@ export const batchTasksApi = {
   /**
    * 获取批量任务详情
    */
-  async getById(id: string): Promise<{ data: BatchTask }> {
-    return apiFetch<{ data: BatchTask }>(`/batch-tasks/${id}`)
+  async getById(id: string): Promise<BatchTask> {
+    return apiFetch<BatchTask>(`/batch-tasks/${id}`)
   },
 
   /**
@@ -55,8 +55,8 @@ export const batchTasksApi = {
   async update(
     id: string,
     data: UpdateBatchTaskRequest
-  ): Promise<{ data: BatchTask }> {
-    return apiFetch<{ data: BatchTask }>(`/batch-tasks/${id}`, {
+  ): Promise<BatchTask> {
+    return apiFetch<BatchTask>(`/batch-tasks/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })
@@ -65,8 +65,8 @@ export const batchTasksApi = {
   /**
    * 删除批量任务
    */
-  async delete(id: string): Promise<{ data: { message: string } }> {
-    return apiFetch<{ data: { message: string } }>(`/batch-tasks/${id}`, {
+  async delete(id: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>(`/batch-tasks/${id}`, {
       method: "DELETE",
     })
   },
@@ -74,15 +74,15 @@ export const batchTasksApi = {
   /**
    * 获取批量任务统计信息
    */
-  async getStatistics(): Promise<{ data: BatchTaskStatistics }> {
-    return apiFetch<{ data: BatchTaskStatistics }>(`/batch-tasks/statistics`)
+  async getStatistics(): Promise<BatchTaskStatistics> {
+    return apiFetch<BatchTaskStatistics>(`/batch-tasks/statistics`)
   },
 
   /**
    * 启动批量任务
    */
-  async start(id: string): Promise<{ data: { message: string } }> {
-    return apiFetch<{ data: { message: string } }>(`/batch-tasks/${id}/start`, {
+  async start(id: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>(`/batch-tasks/${id}/start`, {
       method: "POST",
     })
   },

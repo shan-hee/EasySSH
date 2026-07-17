@@ -358,6 +358,18 @@ func (s *service) RecoverInterrupted(ctx context.Context) error {
 		return err
 	}
 	for i := range runs {
+		if runs[i].SourceType == "transfer_job" {
+			recovered, updateErr := s.repo.UpdateIfStatus(ctx, runs[i].ID, []Status{StatusQueued, StatusRunning, StatusCanceling}, map[string]interface{}{
+				"status": StatusQueued, "stage": "recovering", "started_at": nil, "cancel_requested_at": nil,
+			})
+			if updateErr != nil {
+				return updateErr
+			}
+			if recovered {
+				_ = s.AppendEvent(ctx, runs[i].ID, runs[i].UserID, "warning", "传输任务将在租约恢复后继续执行", "")
+			}
+			continue
+		}
 		if err := s.Complete(ctx, runs[i].ID, StatusFailed, "", "server_restarted", "任务因服务重启而中断", runs[i].SuccessCount, runs[i].FailureCount); err != nil {
 			return err
 		}

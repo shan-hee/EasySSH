@@ -2,12 +2,12 @@ export interface BatchTask {
   id: string
   user_id: string
   task_name: string
-  task_type: "command" | "script" | "file"
+  task_type: "command" | "script"
   content: string
   script_id?: string
   server_ids: string[]
   execution_mode: "parallel" | "sequential"
-  status: "pending" | "running" | "completed" | "failed"
+  status: "pending" | "queued" | "running" | "completed" | "failed"
   success_count: number
   failed_count: number
   started_at?: string
@@ -19,7 +19,7 @@ export interface BatchTask {
 
 export interface CreateBatchTaskRequest {
   task_name: string
-  task_type: "command" | "script" | "file"
+  task_type: "command" | "script"
   content?: string
   script_id?: string
   server_ids: string[]
@@ -36,8 +36,8 @@ export interface UpdateBatchTaskRequest {
 export interface ListBatchTasksParams {
   page?: number
   limit?: number
-  status?: "pending" | "running" | "completed" | "failed"
-  task_type?: "command" | "script" | "file"
+  status?: "pending" | "queued" | "running" | "completed" | "failed"
+  task_type?: "command" | "script"
 }
 
 export interface ListBatchTasksResponse {
@@ -51,6 +51,7 @@ export interface ListBatchTasksResponse {
 export interface BatchTaskStatistics {
   total_tasks: number
   pending_tasks: number
+  queued_tasks: number
   running_tasks: number
   completed_tasks: number
   failed_tasks: number

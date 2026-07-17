@@ -73,8 +73,6 @@ function getTypeIcon(type: string) {
       return <Terminal className="h-4 w-4" />
     case "script":
       return <FileText className="h-4 w-4" />
-    case "batch":
-      return <Zap className="h-4 w-4" />
     case "sftp_upload":
       return <Upload className="h-4 w-4" />
     case "sftp_download":
@@ -159,7 +157,6 @@ export function createScheduledTaskColumns(
         const typeLabels: Record<string, string> = {
           command: t("typeCommand"),
           script: t("typeScript"),
-          batch: t("typeBatch"),
           sftp_upload: "SFTP 上传",
           sftp_download: "SFTP 下载",
         }

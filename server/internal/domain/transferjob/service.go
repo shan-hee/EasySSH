@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/domain/sftp"
@@ -45,6 +46,8 @@ type Service interface {
 	StartMaintenance(ctx context.Context)
 	Stop()
 	SetTaskCenter(service taskcenter.Service)
+	SetQueue(queue jobqueue.Enqueuer)
+	HandleQueueJob(ctx context.Context, job *jobqueue.Job) error
 }
 
 type service struct {
@@ -54,17 +57,16 @@ type service struct {
 	systemConfig     systemconfig.Service
 	operationRecords operationrecord.Service
 	taskRuns         taskcenter.Service
+	queue            jobqueue.Enqueuer
 	dataDir          string
 	limiter          chan struct{}
-
-	mu      sync.Mutex
-	cancels map[uuid.UUID]context.CancelFunc
 
 	stopMaintenance chan struct{}
 	stopOnce        sync.Once
 }
 
 func (s *service) SetTaskCenter(service taskcenter.Service) { s.taskRuns = service }
+func (s *service) SetQueue(queue jobqueue.Enqueuer)         { s.queue = queue }
 
 type ServiceOptions struct {
 	DataDir string
@@ -80,14 +82,10 @@ func NewService(
 ) Service {
 	maxConcurrency := systemconfig.DefaultTransferMaxConcurrency()
 	if systemConfig != nil {
-		if cfg, err := systemConfig.Get(context.Background()); err == nil && cfg != nil {
+		if cfg, err := systemConfig.Get(context.Background()); err == nil && cfg != nil && cfg.TransferMaxConcurrency > 0 {
 			maxConcurrency = cfg.TransferMaxConcurrency
 		}
 	}
-	if maxConcurrency <= 0 {
-		maxConcurrency = systemconfig.DefaultTransferMaxConcurrency()
-	}
-
 	return &service{
 		repo:             repo,
 		pool:             pool,
@@ -96,7 +94,6 @@ func NewService(
 		operationRecords: operationRecords,
 		dataDir:          options.DataDir,
 		limiter:          make(chan struct{}, maxConcurrency),
-		cancels:          make(map[uuid.UUID]context.CancelFunc),
 		stopMaintenance:  make(chan struct{}),
 	}
 }
@@ -212,7 +209,10 @@ func (s *service) CreateUploadJob(ctx context.Context, userID uuid.UUID, req *Cr
 
 	if !req.DeferStart {
 		s.ensureTaskRun(ctx, job)
-		s.runUpload(job.ID)
+		if err := s.enqueueTransfer(ctx, job); err != nil {
+			_ = s.failJob(context.Background(), job.ID, err, JobStageTransferToRemote)
+			return nil, err
+		}
 	}
 	return s.repo.GetByID(ctx, job.ID)
 }
@@ -270,7 +270,10 @@ func (s *service) CreateDownloadJob(ctx context.Context, userID uuid.UUID, req *
 	}
 
 	s.ensureTaskRun(ctx, job)
-	s.runDownload(job.ID)
+	if err := s.enqueueTransfer(ctx, job); err != nil {
+		_ = s.failJob(context.Background(), job.ID, err, JobStageDownloadFromRemote)
+		return nil, err
+	}
 	return job, nil
 }
 
@@ -443,11 +446,10 @@ func (s *service) CancelJob(ctx context.Context, userID uuid.UUID, id uuid.UUID)
 		return fmt.Errorf("%w: transfer job is not cancellable", ErrInvalidJobRequest)
 	}
 
-	s.mu.Lock()
-	cancel := s.cancels[id]
-	s.mu.Unlock()
-	if cancel != nil {
-		cancel()
+	if s.queue != nil {
+		if err := s.queue.CancelBySource(ctx, "transfer_job", id.String()); err != nil {
+			return err
+		}
 	}
 	now := time.Now()
 	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{
@@ -547,8 +549,8 @@ func (s *service) GetArtifact(ctx context.Context, userID uuid.UUID, id uuid.UUI
 }
 
 func (s *service) StartMaintenance(ctx context.Context) {
-	if err := s.repo.MarkInterrupted(ctx); err != nil {
-		fmt.Printf("[TransferJob] mark interrupted jobs failed: %v\n", err)
+	if err := s.repo.MarkStagingInterrupted(ctx); err != nil {
+		fmt.Printf("[TransferJob] mark interrupted staging jobs failed: %v\n", err)
 	}
 	go func() {
 		s.cleanupExpired(context.Background())
@@ -568,12 +570,6 @@ func (s *service) StartMaintenance(ctx context.Context) {
 func (s *service) Stop() {
 	s.stopOnce.Do(func() {
 		close(s.stopMaintenance)
-		s.mu.Lock()
-		for _, cancel := range s.cancels {
-			cancel()
-		}
-		s.cancels = make(map[uuid.UUID]context.CancelFunc)
-		s.mu.Unlock()
 	})
 }
 
@@ -685,7 +681,10 @@ func (s *service) runScheduledUpload(ctx context.Context, req RunScheduledReques
 		return nil, err
 	}
 	s.ensureTaskRun(ctx, job)
-	s.runUpload(job.ID)
+	if err := s.enqueueTransfer(ctx, job); err != nil {
+		_ = s.failJob(context.Background(), job.ID, err, JobStageTransferToRemote)
+		return nil, err
+	}
 	return s.repo.GetByID(ctx, job.ID)
 }
 
@@ -712,45 +711,52 @@ func (s *service) runScheduledDownload(ctx context.Context, req RunScheduledRequ
 	return s.repo.GetByID(ctx, job.ID)
 }
 
-func (s *service) runUpload(jobID uuid.UUID) {
-	go func() {
-		s.limiter <- struct{}{}
-		defer func() { <-s.limiter }()
-
-		ctx, cancel := context.WithCancel(context.Background())
-		s.registerCancel(jobID, cancel)
-		defer s.unregisterCancel(jobID)
-		defer cancel()
-
-		job, err := s.repo.GetByID(ctx, jobID)
-		if err != nil || job.Status == JobStatusCancelled {
-			return
-		}
-		s.executeUpload(ctx, job)
-	}()
+func (s *service) enqueueTransfer(ctx context.Context, job *TransferJob) error {
+	if s.queue == nil {
+		return errors.New("job queue is not initialized")
+	}
+	_, err := s.queue.Enqueue(ctx, "transfer.execute", "transfer_job", job.ID.String(), map[string]string{"job_id": job.ID.String()}, jobqueue.EnqueueOptions{MaxAttempts: 3})
+	return err
 }
 
-func (s *service) runDownload(jobID uuid.UUID) {
-	go func() {
-		s.limiter <- struct{}{}
+func (s *service) HandleQueueJob(ctx context.Context, queuedJob *jobqueue.Job) error {
+	var payload struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.Unmarshal([]byte(queuedJob.PayloadJSON), &payload); err != nil {
+		return fmt.Errorf("decode transfer job payload: %w", err)
+	}
+	jobID, err := uuid.Parse(payload.JobID)
+	if err != nil {
+		return fmt.Errorf("invalid transfer job id: %w", err)
+	}
+	job, err := s.repo.GetByID(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	if job.Status == JobStatusCancelled || job.Status == JobStatusCompleted || job.Status == JobStatusFailed || job.Status == JobStatusExpired {
+		return nil
+	}
+	select {
+	case s.limiter <- struct{}{}:
 		defer func() { <-s.limiter }()
-
-		ctx, cancel := context.WithCancel(context.Background())
-		s.registerCancel(jobID, cancel)
-		defer s.unregisterCancel(jobID)
-		defer cancel()
-
-		job, err := s.repo.GetByID(ctx, jobID)
-		if err != nil || job.Status == JobStatusCancelled {
-			return
-		}
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	switch job.Kind {
+	case JobKindSFTPUpload:
+		s.executeUpload(ctx, job)
+	case JobKindSFTPDownload:
 		s.executeDownload(ctx, job)
-	}()
+	default:
+		return fmt.Errorf("unsupported transfer job kind %s", job.Kind)
+	}
+	return ctx.Err()
 }
 
 func (s *service) executeUpload(ctx context.Context, job *TransferJob) {
 	startedAt := time.Now()
-	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{JobStatusQueued}, map[string]interface{}{
+	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{JobStatusQueued, JobStatusRunning}, map[string]interface{}{
 		"status":     JobStatusRunning,
 		"stage":      JobStageTransferToRemote,
 		"started_at": &startedAt,
@@ -798,7 +804,6 @@ func (s *service) executeUpload(ctx context.Context, job *TransferJob) {
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			_ = s.cancelledJob(context.Background(), job.ID)
 			return
 		}
 		_ = s.failJob(context.Background(), job.ID, err, JobStageTransferToRemote)
@@ -812,7 +817,7 @@ func (s *service) executeUpload(ctx context.Context, job *TransferJob) {
 
 func (s *service) executeDownload(ctx context.Context, job *TransferJob) {
 	startedAt := time.Now()
-	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{JobStatusQueued}, map[string]interface{}{
+	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{JobStatusQueued, JobStatusRunning}, map[string]interface{}{
 		"status":     JobStatusRunning,
 		"stage":      JobStageDownloadFromRemote,
 		"started_at": &startedAt,
@@ -889,7 +894,6 @@ func (s *service) executeDownload(ctx context.Context, job *TransferJob) {
 		_ = file.Close()
 		_ = os.Remove(localPath)
 		if errors.Is(err, context.Canceled) {
-			_ = s.cancelledJob(context.Background(), job.ID)
 			return
 		}
 		_ = s.failJob(context.Background(), job.ID, err, JobStageDownloadFromRemote)
@@ -1010,25 +1014,6 @@ func (s *service) failJob(ctx context.Context, id uuid.UUID, err error, stage Jo
 		"status":        JobStatusFailed,
 		"stage":         stage,
 		"error_message": err.Error(),
-		"finished_at":   &now,
-	})
-	if updated {
-		s.upsertOperationRecord(context.Background(), id)
-		s.syncTaskRun(context.Background(), id)
-	}
-	return updateErr
-}
-
-func (s *service) cancelledJob(ctx context.Context, id uuid.UUID) error {
-	now := time.Now()
-	updated, updateErr := s.repo.UpdateIfStatus(ctx, id, []JobStatus{
-		JobStatusCreated,
-		JobStatusStaging,
-		JobStatusQueued,
-		JobStatusRunning,
-	}, map[string]interface{}{
-		"status":        JobStatusCancelled,
-		"error_message": "cancelled",
 		"finished_at":   &now,
 	})
 	if updated {
@@ -1164,18 +1149,6 @@ func (s *service) cleanupExpired(ctx context.Context) {
 		}
 		s.upsertOperationRecord(ctx, job.ID)
 	}
-}
-
-func (s *service) registerCancel(id uuid.UUID, cancel context.CancelFunc) {
-	s.mu.Lock()
-	s.cancels[id] = cancel
-	s.mu.Unlock()
-}
-
-func (s *service) unregisterCancel(id uuid.UUID) {
-	s.mu.Lock()
-	delete(s.cancels, id)
-	s.mu.Unlock()
 }
 
 func (s *service) upsertOperationRecord(ctx context.Context, id uuid.UUID) {

@@ -48,7 +48,7 @@ func (h *TaskCenterHandler) Retry(c *gin.Context) {
 		RespondError(c, status, code, err.Error())
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"success": true, "data": gin.H{"definition_id": run.DefinitionID, "retry_of_id": run.ID}})
+	c.JSON(http.StatusAccepted, gin.H{"definition_id": run.DefinitionID, "retry_of_id": run.ID})
 }
 
 func (h *TaskCenterHandler) List(c *gin.Context) {

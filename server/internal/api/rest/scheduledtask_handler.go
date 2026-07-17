@@ -464,5 +464,5 @@ func (h *ScheduledTaskHandler) Trigger(c *gin.Context) {
 		return
 	}
 
-	RespondSuccess(c, gin.H{"message": "Task triggered successfully"})
+	RespondSuccess(c, gin.H{"message": "Task queued successfully"})
 }

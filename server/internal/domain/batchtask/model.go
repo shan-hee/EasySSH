@@ -12,12 +12,12 @@ type BatchTask struct {
 	ID            uuid.UUID      `gorm:"type:char(36);primary_key" json:"id"`
 	UserID        uuid.UUID      `gorm:"type:char(36);not null;index" json:"user_id"`
 	TaskName      string         `gorm:"type:varchar(100);not null" json:"task_name"`
-	TaskType      string         `gorm:"type:varchar(20);not null" json:"task_type"` // command/script/file
+	TaskType      string         `gorm:"type:varchar(20);not null" json:"task_type"` // command/script
 	Content       string         `gorm:"type:text" json:"content"`                   // 命令内容或文件路径
 	ScriptID      *uuid.UUID     `gorm:"type:char(36)" json:"script_id,omitempty"`   // 关联的脚本ID
 	ServerIDs     []string       `gorm:"type:text;serializer:json;not null" json:"server_ids"`
 	ExecutionMode string         `gorm:"type:varchar(20);default:'parallel'" json:"execution_mode"` // parallel/sequential
-	Status        string         `gorm:"type:varchar(20);default:'pending'" json:"status"`          // pending/running/completed/failed
+	Status        string         `gorm:"type:varchar(20);default:'pending'" json:"status"`          // pending/queued/running/completed/failed
 	SuccessCount  int            `gorm:"default:0" json:"success_count"`
 	FailedCount   int            `gorm:"default:0" json:"failed_count"`
 	StartedAt     *time.Time     `json:"started_at,omitempty"`
@@ -44,7 +44,7 @@ func (b *BatchTask) BeforeCreate(tx *gorm.DB) error {
 // CreateBatchTaskRequest 创建批量任务请求
 type CreateBatchTaskRequest struct {
 	TaskName      string   `json:"task_name" binding:"required"`
-	TaskType      string   `json:"task_type" binding:"required,oneof=command script file"`
+	TaskType      string   `json:"task_type" binding:"required,oneof=command script"`
 	Content       string   `json:"content"`
 	ScriptID      *string  `json:"script_id,omitempty"`
 	ServerIDs     []string `json:"server_ids" binding:"required,min=1"`
@@ -80,6 +80,7 @@ type ListBatchTasksResponse struct {
 type BatchTaskStatistics struct {
 	TotalTasks     int64          `json:"total_tasks"`
 	PendingTasks   int64          `json:"pending_tasks"`
+	QueuedTasks    int64          `json:"queued_tasks"`
 	RunningTasks   int64          `json:"running_tasks"`
 	CompletedTasks int64          `json:"completed_tasks"`
 	FailedTasks    int64          `json:"failed_tasks"`

@@ -256,5 +256,5 @@ func (h *BatchTaskHandler) Start(c *gin.Context) {
 		return
 	}
 
-	RespondSuccess(c, gin.H{"message": "Batch task started successfully"})
+	RespondSuccess(c, gin.H{"message": "Batch task queued successfully"})
 }

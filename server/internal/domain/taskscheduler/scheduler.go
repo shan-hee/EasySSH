@@ -2,11 +2,13 @@ package taskscheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
 	"time"
 
+	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/taskexecutor"
 	"github.com/google/uuid"
@@ -17,7 +19,7 @@ import (
 type Scheduler struct {
 	cron        *cron.Cron
 	taskRepo    scheduledtask.Repository
-	executor    *taskexecutor.Executor
+	queue       jobqueue.Enqueuer
 	taskEntries map[uuid.UUID]cron.EntryID
 	mu          sync.RWMutex
 	ctx         context.Context
@@ -28,7 +30,7 @@ type Scheduler struct {
 // NewScheduler 创建调度器
 func NewScheduler(
 	taskRepo scheduledtask.Repository,
-	executor *taskexecutor.Executor,
+	queue jobqueue.Enqueuer,
 ) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -40,7 +42,7 @@ func NewScheduler(
 	return &Scheduler{
 		cron:        c,
 		taskRepo:    taskRepo,
-		executor:    executor,
+		queue:       queue,
 		taskEntries: make(map[uuid.UUID]cron.EntryID),
 		ctx:         ctx,
 		cancel:      cancel,
@@ -113,10 +115,11 @@ func (s *Scheduler) addTask(task *scheduledtask.ScheduledTask) error {
 		log.Printf("[TaskScheduler] 无法加载时区 %s，使用UTC: %v", task.Timezone, err)
 		loc = time.UTC
 	}
+	scheduleExpression := fmt.Sprintf("CRON_TZ=%s %s", loc.String(), task.CronExpression)
 
 	// 创建任务执行函数
 	taskID := task.ID
-	entryID, err := s.cron.AddFunc(task.CronExpression, func() {
+	entryID, err := s.cron.AddFunc(scheduleExpression, func() {
 		s.executeTask(taskID)
 	})
 	if err != nil {
@@ -160,8 +163,10 @@ func (s *Scheduler) executeTask(taskID uuid.UUID) {
 	// 更新下次运行时间
 	s.updateNextRunTime(taskID)
 
-	// 调用执行引擎（异步执行）
-	go s.executor.Execute(s.ctx, task, taskexecutor.TriggerSchedule, taskexecutor.SourceScheduledTask)
+	dedupeKey := fmt.Sprintf("scheduled:%s:%s", task.ID, time.Now().UTC().Truncate(time.Minute).Format(time.RFC3339))
+	if err := s.enqueueTask(task, taskexecutor.TriggerSchedule, nil, 1, dedupeKey); err != nil {
+		log.Printf("[TaskScheduler] 任务入队失败: taskID=%s, error=%v", taskID, err)
+	}
 }
 
 // updateNextRunTime 更新下次运行时间
@@ -234,10 +239,7 @@ func (s *Scheduler) TriggerTaskManually(taskID uuid.UUID) error {
 		return fmt.Errorf("task not found: %w", err)
 	}
 
-	// 异步执行
-	go s.executor.Execute(s.ctx, task, taskexecutor.TriggerManual, taskexecutor.SourceScheduledTask)
-
-	return nil
+	return s.enqueueTask(task, taskexecutor.TriggerManual, nil, 1, "")
 }
 
 func (s *Scheduler) RetryTask(taskID, retryOfID uuid.UUID, attempt int) error {
@@ -245,8 +247,17 @@ func (s *Scheduler) RetryTask(taskID, retryOfID uuid.UUID, attempt int) error {
 	if err != nil {
 		return fmt.Errorf("task not found: %w", err)
 	}
-	go s.executor.ExecuteRetry(s.ctx, task, retryOfID, attempt)
-	return nil
+	return s.enqueueTask(task, taskexecutor.TriggerManual, &retryOfID, attempt, "")
+}
+
+func (s *Scheduler) enqueueTask(task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, retryOfID *uuid.UUID, attempt int, dedupeKey string) error {
+	if s.queue == nil {
+		return errors.New("job queue is not initialized")
+	}
+	_, err := s.queue.Enqueue(s.ctx, taskexecutor.QueueJobKind, "scheduled_task", task.ID.String(), taskexecutor.QueuePayload{
+		TaskID: task.ID, Trigger: trigger, Source: taskexecutor.SourceScheduledTask, RetryOfID: retryOfID, Attempt: attempt,
+	}, jobqueue.EnqueueOptions{MaxAttempts: 3, DedupeKey: dedupeKey})
+	return err
 }
 
 // GetTaskStatus 获取任务调度状态

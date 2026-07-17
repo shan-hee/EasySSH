@@ -43,15 +43,15 @@ export const scriptsApi = {
   /**
    * 获取脚本详情
    */
-  async getById(id: string): Promise<{ data: Script }> {
-    return apiFetch<{ data: Script }>(`/scripts/${id}`)
+  async getById(id: string): Promise<Script> {
+    return apiFetch<Script>(`/scripts/${id}`)
   },
 
   /**
    * 创建脚本
    */
-  async create(data: CreateScriptRequest): Promise<{ data: Script }> {
-    return apiFetch<{ data: Script }>(`/scripts`, {
+  async create(data: CreateScriptRequest): Promise<Script> {
+    return apiFetch<Script>(`/scripts`, {
       method: "POST",
       body: JSON.stringify(data),
     })
@@ -60,8 +60,8 @@ export const scriptsApi = {
   /**
    * 更新脚本
    */
-  async update(id: string, data: UpdateScriptRequest): Promise<{ data: Script }> {
-    return apiFetch<{ data: Script }>(`/scripts/${id}`, {
+  async update(id: string, data: UpdateScriptRequest): Promise<Script> {
+    return apiFetch<Script>(`/scripts/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     })

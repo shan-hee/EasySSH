@@ -9,6 +9,7 @@ import (
 type Repository interface {
 	Create(task *BatchTask) error
 	Update(id uuid.UUID, updates map[string]interface{}) error
+	UpdateIfStatus(id uuid.UUID, statuses []string, updates map[string]interface{}) (bool, error)
 	Delete(id uuid.UUID) error
 	GetByID(id uuid.UUID) (*BatchTask, error)
 	List(userID uuid.UUID, req *ListBatchTasksRequest) ([]BatchTask, int64, error)
@@ -34,6 +35,11 @@ func (r *repository) Create(task *BatchTask) error {
 // Update 更新批量任务
 func (r *repository) Update(id uuid.UUID, updates map[string]interface{}) error {
 	return r.db.Model(&BatchTask{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *repository) UpdateIfStatus(id uuid.UUID, statuses []string, updates map[string]interface{}) (bool, error) {
+	result := r.db.Model(&BatchTask{}).Where("id = ? AND status IN ?", id, statuses).Updates(updates)
+	return result.RowsAffected > 0, result.Error
 }
 
 // Delete 删除批量任务（软删除）
@@ -106,6 +112,7 @@ func (r *repository) GetStatistics(userID uuid.UUID) (*BatchTaskStatistics, erro
 
 	// 按状态统计
 	r.db.Model(&BatchTask{}).Where("user_id = ? AND status = ?", userID, "pending").Count(&stats.PendingTasks)
+	r.db.Model(&BatchTask{}).Where("user_id = ? AND status = ?", userID, "queued").Count(&stats.QueuedTasks)
 	r.db.Model(&BatchTask{}).Where("user_id = ? AND status = ?", userID, "running").Count(&stats.RunningTasks)
 	r.db.Model(&BatchTask{}).Where("user_id = ? AND status = ?", userID, "completed").Count(&stats.CompletedTasks)
 	r.db.Model(&BatchTask{}).Where("user_id = ? AND status = ?", userID, "failed").Count(&stats.FailedTasks)

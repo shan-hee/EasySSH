@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/script"
@@ -36,6 +37,16 @@ const (
 	SourceScheduledTask ExecutionSource = "scheduled_task"
 	SourceBatchTask     ExecutionSource = "batch_task"
 )
+
+const QueueJobKind = "task.execute"
+
+type QueuePayload struct {
+	TaskID    uuid.UUID       `json:"task_id"`
+	Trigger   TriggerType     `json:"trigger"`
+	Source    ExecutionSource `json:"source"`
+	RetryOfID *uuid.UUID      `json:"retry_of_id,omitempty"`
+	Attempt   int             `json:"attempt"`
+}
 
 type ExecutionOutcome struct {
 	Status       taskcenter.Status
@@ -108,17 +119,50 @@ func (e *Executor) SetTransferJobService(service transferjob.Service) {
 
 // Execute 执行任务
 func (e *Executor) Execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource) ExecutionOutcome {
-	return e.execute(ctx, task, trigger, source, nil, 1)
+	return e.execute(ctx, task, trigger, source, nil, 1, "parallel")
+}
+
+func (e *Executor) ExecuteBatch(ctx context.Context, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, executionMode string) ExecutionOutcome {
+	return e.execute(ctx, task, trigger, source, nil, 1, executionMode)
 }
 
 func (e *Executor) ExecuteRetry(ctx context.Context, task *scheduledtask.ScheduledTask, retryOfID uuid.UUID, attempt int) ExecutionOutcome {
 	if attempt < 2 {
 		attempt = 2
 	}
-	return e.execute(ctx, task, TriggerManual, SourceScheduledTask, &retryOfID, attempt)
+	return e.execute(ctx, task, TriggerManual, SourceScheduledTask, &retryOfID, attempt, "parallel")
 }
 
-func (e *Executor) execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, retryOfID *uuid.UUID, attempt int) ExecutionOutcome {
+func (e *Executor) HandleQueueJob(ctx context.Context, job *jobqueue.Job) error {
+	var payload QueuePayload
+	if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil {
+		return fmt.Errorf("decode task execution payload: %w", err)
+	}
+	if payload.TaskID == uuid.Nil {
+		return errors.New("task execution payload is missing task_id")
+	}
+	task, err := e.taskRepo.GetByID(payload.TaskID)
+	if err != nil {
+		return fmt.Errorf("load scheduled task: %w", err)
+	}
+	if payload.Trigger == TriggerSchedule && !task.Enabled {
+		return nil
+	}
+	if payload.Source == "" {
+		payload.Source = SourceScheduledTask
+	}
+	if payload.Trigger == "" {
+		payload.Trigger = TriggerManual
+	}
+	if payload.RetryOfID != nil {
+		e.ExecuteRetry(ctx, task, *payload.RetryOfID, payload.Attempt)
+	} else {
+		e.Execute(ctx, task, payload.Trigger, payload.Source)
+	}
+	return ctx.Err()
+}
+
+func (e *Executor) execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, retryOfID *uuid.UUID, attempt int, executionMode string) ExecutionOutcome {
 	log.Printf("[TaskExecutor] 开始执行任务: taskID=%s, type=%s, trigger=%s",
 		task.ID, task.TaskType, trigger)
 
@@ -194,7 +238,7 @@ func (e *Executor) execute(ctx context.Context, task *scheduledtask.ScheduledTas
 	e.upsertOperationRecord(record)
 
 	// 并发执行到所有服务器
-	results := e.executeOnServers(executionCtx, task.UserID, task.ServerIDs, command)
+	results := e.executeOnServers(executionCtx, task.UserID, task.ServerIDs, command, executionMode)
 
 	// 统计结果
 	successCount := 0
@@ -338,13 +382,6 @@ func (e *Executor) resolveCommand(ctx context.Context, task *scheduledtask.Sched
 		}
 		return scriptObj.Content, nil
 
-	case "batch":
-		// 批量任务暂不支持，使用命令模式
-		if task.Command == "" {
-			return "", fmt.Errorf("command is empty for batch type")
-		}
-		return task.Command, nil
-
 	default:
 		return "", fmt.Errorf("unknown task type: %s", task.TaskType)
 	}
@@ -356,12 +393,22 @@ func (e *Executor) executeOnServers(
 	userID uuid.UUID,
 	serverIDs []string,
 	command string,
+	executionMode string,
 ) []ServerExecutionResult {
 	if len(serverIDs) == 0 {
 		return nil
 	}
 
 	results := make([]ServerExecutionResult, len(serverIDs))
+	if executionMode == "sequential" {
+		for index, serverID := range serverIDs {
+			if ctx.Err() != nil {
+				break
+			}
+			results[index] = e.executeOnSingleServer(ctx, userID, serverID, command)
+		}
+		return results
+	}
 
 	// 使用信号量控制并发
 	sem := make(chan struct{}, e.maxConcurrency)

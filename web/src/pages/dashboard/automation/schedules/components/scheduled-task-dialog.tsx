@@ -151,7 +151,6 @@ export function ScheduledTaskDialog({
                   <SelectContent>
                     <SelectItem value="command">{t("typeCommand")}</SelectItem>
                     <SelectItem value="script">{t("typeScript")}</SelectItem>
-                    <SelectItem value="batch">{t("typeBatch")}</SelectItem>
                     <SelectItem value="sftp_upload">{t("typeSftpUpload")}</SelectItem>
                     <SelectItem value="sftp_download">{t("typeSftpDownload")}</SelectItem>
                   </SelectContent>
@@ -422,7 +421,6 @@ export function ScheduledTaskDialog({
 function getTaskTypeLabel(type: ScheduledTaskType, t: (key: string) => string) {
   if (type === "command") return t("typeCommand")
   if (type === "script") return t("typeScript")
-  if (type === "batch") return t("typeBatch")
   if (type === "sftp_upload") return t("typeSftpUpload")
   if (type === "sftp_download") return t("typeSftpDownload")
   return type

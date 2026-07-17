@@ -939,7 +939,7 @@ func normalizeDesktopBatchTaskInput(input DesktopBatchTaskInput) (DesktopBatchTa
 		taskType = "script"
 	}
 	switch taskType {
-	case "command", "script", "file":
+	case "command", "script":
 	default:
 		return DesktopBatchTask{}, "", fmt.Errorf("unsupported task type: %s", taskType)
 	}
