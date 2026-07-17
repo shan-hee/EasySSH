@@ -8,14 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"github.com/easyssh/shared/backupcrypto"
 )
 
 const (
 	Format                    = "easyssh-unified-backup"
-	Version                   = "2.0"
-	SensitivePayloadVersion   = "2"
+	Version                   = "3.0"
+	SensitivePayloadVersion   = "3"
 	MaxRestoreFileSizeBytes   = 32 << 20
 	RestoreMultipartSizeBytes = MaxRestoreFileSizeBytes + (1 << 20)
 )
@@ -27,14 +25,14 @@ type ContentSelection struct {
 }
 
 type UnifiedBackup struct {
-	Format     string                               `json:"format"`
-	Version    string                               `json:"version"`
-	ExportTime string                               `json:"export_time"`
-	Contents   ContentSelection                     `json:"contents"`
-	Config     *DataSection                         `json:"config,omitempty"`
-	Database   *DataSection                         `json:"database,omitempty"`
-	Sensitive  *backupcrypto.BackupEncryptedPayload `json:"sensitive,omitempty"`
-	Warnings   []string                             `json:"warnings,omitempty"`
+	Format     string           `json:"format"`
+	Version    string           `json:"version"`
+	ExportTime string           `json:"export_time"`
+	Contents   ContentSelection `json:"contents"`
+	Config     *DataSection     `json:"config,omitempty"`
+	Database   *DataSection     `json:"database,omitempty"`
+	Sensitive  string           `json:"sensitive,omitempty"`
+	Warnings   []string         `json:"warnings,omitempty"`
 }
 
 type DataSection struct {
@@ -67,10 +65,6 @@ const (
 	RestoreConflictError     RestoreConflictStrategy = "error"
 )
 
-func SensitiveAAD() []byte {
-	return []byte("easyssh:backup:sensitive:v2")
-}
-
 func ParseRestoreConflictStrategy(value string) (RestoreConflictStrategy, error) {
 	switch RestoreConflictStrategy(strings.ToLower(strings.TrimSpace(value))) {
 	case "", RestoreConflictError:
@@ -100,7 +94,7 @@ func ValidateUnifiedBackup(backup *UnifiedBackup) error {
 	if backup.Contents.Config != (backup.Config != nil) || backup.Contents.Database != (backup.Database != nil) {
 		return fmt.Errorf("backup content metadata is inconsistent")
 	}
-	if backup.Contents.Sensitive != (backup.Sensitive != nil) {
+	if backup.Contents.Sensitive != (strings.TrimSpace(backup.Sensitive) != "") {
 		return fmt.Errorf("backup sensitive metadata is inconsistent")
 	}
 	return nil

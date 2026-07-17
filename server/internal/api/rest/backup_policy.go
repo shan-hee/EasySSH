@@ -50,7 +50,8 @@ var backupTablePolicies = map[string]backupTablePolicy{
 	"scripts":         entityPolicy("scripts", nil, true),
 	"batch_tasks":     entityPolicy("batch_tasks", nil, true),
 	"scheduled_tasks": entityPolicy("scheduled_tasks", nil, true),
-	"permissions":     defaultSeededEntityPolicy("permissions", [][]string{{"code"}}, false),
+	"roles":           defaultSeededEntityPolicy("roles", [][]string{{"key"}}, false),
+	"casbin_rule":     entityPolicy("casbin_rule", [][]string{{"ptype", "v0", "v1", "v2", "v3", "v4", "v5"}}, false),
 
 	// Operational history and append-like records. They remain in the database section but keep
 	// explicit policy metadata so later UI can expose them separately without touching restore logic.
@@ -62,13 +63,19 @@ var backupTablePolicies = map[string]backupTablePolicy{
 	"login_alerts":        historyPolicy("login_alerts", nil, true),
 	"ai_sessions":         historyPolicy("ai_sessions", nil, true),
 
-	// Runtime/security state should not travel with backup restore. Sessions, trusted devices,
-	// and RSA key material are derived security state and must be regenerated in the target env.
+	// Runtime/security state should not travel with backup restore.
 	"user_sessions":           ignoredRuntimePolicy("user_sessions"),
+	"auth_tickets":            ignoredRuntimePolicy("auth_tickets"),
+	"totp_replays":            ignoredRuntimePolicy("totp_replays"),
 	"trusted_devices":         ignoredRuntimePolicy("trusted_devices"),
-	"rsa_key_pairs":           ignoredRuntimePolicy("rsa_key_pairs"),
 	"transfer_jobs":           ignoredRuntimePolicy("transfer_jobs"),
+	"job_queue":               ignoredRuntimePolicy("job_queue"),
 	"notification_deliveries": ignoredRuntimePolicy("notification_deliveries"),
+	"oauth_clients":           ignoredRuntimePolicy("oauth_clients"),
+	"oauth_client_assertions": ignoredRuntimePolicy("oauth_client_assertions"),
+	"oauth_grants":            ignoredRuntimePolicy("oauth_grants"),
+	"oauth_signing_keys":      ignoredRuntimePolicy("oauth_signing_keys"),
+	"oauth_login_challenges":  ignoredRuntimePolicy("oauth_login_challenges"),
 }
 
 func singletonConfigPolicy(table string) backupTablePolicy {

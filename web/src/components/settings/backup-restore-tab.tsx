@@ -20,25 +20,21 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Textarea } from "@/components/ui/textarea"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { authenticatedFetch } from "@/lib/api-client"
 import { getApiUrl } from "@/lib/config"
+import type { components } from "@/types/openapi"
 
 export type BackupContent = "config" | "database"
-export type ConflictStrategy = "skip" | "overwrite" | "error"
-type ExportBackupOptions = {
+type BackupExportContract = components["schemas"]["BackupExportRequest"]
+type ExportBackupOptions = BackupExportContract & {
   include_config: boolean
   include_database: boolean
-  include_sensitive?: boolean
-  backup_password?: string
 }
-type RestoreBackupOptions = {
-  include_config: boolean
-  include_database: boolean
-  conflict_strategy: ConflictStrategy
-  backup_password?: string
-}
+type RestoreBackupOptions = components["schemas"]["BackupRestoreOptions"]
+export type ConflictStrategy = RestoreBackupOptions["conflict_strategy"]
 export interface BackupRestoreAdapter {
   exportBackup: (options: ExportBackupOptions) => Promise<{ blob: Blob; filename?: string }>
   restoreBackup: (file: File, options: RestoreBackupOptions) => Promise<void>
@@ -129,8 +125,12 @@ export function BackupRestoreTab({
   })
   const [conflictStrategy, setConflictStrategy] = useState<ConflictStrategy>("skip")
   const [includeSensitive, setIncludeSensitive] = useState(false)
-  const [backupPassword, setBackupPassword] = useState("")
-  const [restorePassword, setRestorePassword] = useState("")
+  const [exportEncryptionMode, setExportEncryptionMode] = useState<"passphrase" | "x25519">("passphrase")
+  const [agePassphrase, setAgePassphrase] = useState("")
+  const [ageRecipients, setAgeRecipients] = useState("")
+  const [restoreEncryptionMode, setRestoreEncryptionMode] = useState<"passphrase" | "x25519">("passphrase")
+  const [restoreAgePassphrase, setRestoreAgePassphrase] = useState("")
+  const [ageIdentities, setAgeIdentities] = useState("")
 
   const activeAdapter = adapter || createWebBackupRestoreAdapter()
   const supportsConfig = activeAdapter.supportsConfig !== false
@@ -150,15 +150,18 @@ export function BackupRestoreTab({
 
   useEffect(() => {
     if (!includeSensitive) {
-      setBackupPassword("")
+      setAgePassphrase("")
+      setAgeRecipients("")
     }
   }, [includeSensitive])
 
   useEffect(() => {
     if (!supportsSensitive) {
       setIncludeSensitive(false)
-      setBackupPassword("")
-      setRestorePassword("")
+      setAgePassphrase("")
+      setAgeRecipients("")
+      setRestoreAgePassphrase("")
+      setAgeIdentities("")
     }
   }, [supportsSensitive])
 
@@ -181,9 +184,15 @@ export function BackupRestoreTab({
       toast.error(t("toastSelectExportContent"))
       return
     }
-    if (includeSensitive && backupPassword.trim() === "") {
-      toast.error(t("toastBackupPasswordRequired"))
-      return
+    if (includeSensitive) {
+      if (exportEncryptionMode === "passphrase" && agePassphrase.trim() === "") {
+        toast.error(t("toastAgePassphraseRequired"))
+        return
+      }
+      if (exportEncryptionMode === "x25519" && parseAgeKeys(ageRecipients).length === 0) {
+        toast.error(t("toastAgeRecipientRequired"))
+        return
+      }
     }
 
     try {
@@ -194,7 +203,14 @@ export function BackupRestoreTab({
         include_config: supportsConfig && exportContent.config,
         include_database: exportContent.database,
         include_sensitive: supportsSensitive && includeSensitive,
-        backup_password: supportsSensitive && includeSensitive ? backupPassword : undefined,
+        age_passphrase:
+          supportsSensitive && includeSensitive && exportEncryptionMode === "passphrase"
+            ? agePassphrase
+            : undefined,
+        age_recipients:
+          supportsSensitive && includeSensitive && exportEncryptionMode === "x25519"
+            ? parseAgeKeys(ageRecipients)
+            : undefined,
       })
       const downloadUrl = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
@@ -207,7 +223,8 @@ export function BackupRestoreTab({
 
       toast.success(t("toastExportSuccess"))
       if (includeSensitive) {
-        setBackupPassword("")
+        setAgePassphrase("")
+        setAgeRecipients("")
       }
     } catch (error) {
       console.error("Failed to export backup:", error)
@@ -245,7 +262,14 @@ export function BackupRestoreTab({
         include_config: supportsConfig && restoreContent.config,
         include_database: restoreContent.database,
         conflict_strategy: conflictStrategy,
-        backup_password: restorePassword || undefined,
+        age_passphrase:
+          restoreEncryptionMode === "passphrase" && restoreAgePassphrase.trim() !== ""
+            ? restoreAgePassphrase
+            : undefined,
+        age_identities:
+          restoreEncryptionMode === "x25519" && parseAgeKeys(ageIdentities).length !== 0
+            ? parseAgeKeys(ageIdentities)
+            : undefined,
       })
 
       if (supportsConfig && restoreContent.config && !desktopMode) {
@@ -253,7 +277,8 @@ export function BackupRestoreTab({
       }
 
       toast.success(t("toastRestoreSuccess"))
-      setRestorePassword("")
+      setRestoreAgePassphrase("")
+      setAgeIdentities("")
     } catch (error) {
       console.error("Failed to restore backup:", error)
       toast.error(error instanceof Error ? error.message : t("toastRestoreFailed"))
@@ -324,20 +349,55 @@ export function BackupRestoreTab({
                     </span>
                   </Label>
                   {includeSensitive && (
-                    <div className="space-y-1">
-                      <Label htmlFor="backup-password" className="text-xs font-medium">
-                        {t("backupPasswordLabel")}
-                      </Label>
-                      <Input
-                        id="backup-password"
-                        type="password"
-                        value={backupPassword}
-                        onChange={(event) => setBackupPassword(event.target.value)}
+                    <div className="space-y-3">
+                      <RadioGroup
+                        value={exportEncryptionMode}
+                        onValueChange={(value) => setExportEncryptionMode(value as "passphrase" | "x25519")}
+                        className="grid grid-cols-2 gap-2"
                         disabled={loading !== null}
-                        autoComplete="new-password"
-                        placeholder={t("backupPasswordPlaceholder")}
-                      />
-                      <p className="text-xs leading-5 text-muted-foreground">{t("backupPasswordHint")}</p>
+                      >
+                        <Label htmlFor="export-age-passphrase-mode" className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs">
+                          <RadioGroupItem id="export-age-passphrase-mode" value="passphrase" />
+                          {t("agePassphraseMode")}
+                        </Label>
+                        <Label htmlFor="export-age-x25519-mode" className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs">
+                          <RadioGroupItem id="export-age-x25519-mode" value="x25519" />
+                          {t("ageX25519Mode")}
+                        </Label>
+                      </RadioGroup>
+                      {exportEncryptionMode === "passphrase" ? (
+                        <div className="space-y-1">
+                          <Label htmlFor="age-passphrase" className="text-xs font-medium">
+                            {t("agePassphraseLabel")}
+                          </Label>
+                          <Input
+                            id="age-passphrase"
+                            type="password"
+                            value={agePassphrase}
+                            onChange={(event) => setAgePassphrase(event.target.value)}
+                            disabled={loading !== null}
+                            autoComplete="new-password"
+                            placeholder={t("agePassphrasePlaceholder")}
+                          />
+                          <p className="text-xs leading-5 text-muted-foreground">{t("agePassphraseHint")}</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <Label htmlFor="age-recipients" className="text-xs font-medium">
+                            {t("ageRecipientsLabel")}
+                          </Label>
+                          <Textarea
+                            id="age-recipients"
+                            value={ageRecipients}
+                            onChange={(event) => setAgeRecipients(event.target.value)}
+                            disabled={loading !== null}
+                            autoComplete="off"
+                            placeholder={t("ageRecipientsPlaceholder")}
+                            className="min-h-20 font-mono text-xs"
+                          />
+                          <p className="text-xs leading-5 text-muted-foreground">{t("ageRecipientsHint")}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -426,20 +486,47 @@ export function BackupRestoreTab({
               </div>
 
               {supportsSensitive && (
-                <div className="space-y-2 border-t pt-4">
-                  <Label htmlFor="restore-backup-password" className="text-sm font-medium">
-                    {t("restorePasswordLabel")}
-                  </Label>
-                  <Input
-                    id="restore-backup-password"
-                    type="password"
-                    value={restorePassword}
-                    onChange={(event) => setRestorePassword(event.target.value)}
+                <div className="space-y-3 border-t pt-4">
+                  <div>
+                    <Label className="text-sm font-medium">{t("restoreAgeCredentialLabel")}</Label>
+                    <p className="mt-1 text-xs text-muted-foreground">{t("restoreAgeCredentialHint")}</p>
+                  </div>
+                  <RadioGroup
+                    value={restoreEncryptionMode}
+                    onValueChange={(value) => setRestoreEncryptionMode(value as "passphrase" | "x25519")}
+                    className="grid grid-cols-2 gap-2"
                     disabled={loading !== null}
-                    autoComplete="current-password"
-                    placeholder={t("restorePasswordPlaceholder")}
-                  />
-                  <p className="text-xs leading-5 text-muted-foreground">{t("restorePasswordHint")}</p>
+                  >
+                    <Label htmlFor="restore-age-passphrase-mode" className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs">
+                      <RadioGroupItem id="restore-age-passphrase-mode" value="passphrase" />
+                      {t("agePassphraseMode")}
+                    </Label>
+                    <Label htmlFor="restore-age-x25519-mode" className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs">
+                      <RadioGroupItem id="restore-age-x25519-mode" value="x25519" />
+                      {t("ageX25519Mode")}
+                    </Label>
+                  </RadioGroup>
+                  {restoreEncryptionMode === "passphrase" ? (
+                    <Input
+                      id="restore-age-passphrase"
+                      type="password"
+                      value={restoreAgePassphrase}
+                      onChange={(event) => setRestoreAgePassphrase(event.target.value)}
+                      disabled={loading !== null}
+                      autoComplete="current-password"
+                      placeholder={t("restoreAgePassphrasePlaceholder")}
+                    />
+                  ) : (
+                    <Textarea
+                      id="restore-age-identities"
+                      value={ageIdentities}
+                      onChange={(event) => setAgeIdentities(event.target.value)}
+                      disabled={loading !== null}
+                      autoComplete="off"
+                      placeholder={t("ageIdentitiesPlaceholder")}
+                      className="min-h-20 font-mono text-xs"
+                    />
+                  )}
                 </div>
               )}
 
@@ -519,8 +606,11 @@ function createWebBackupRestoreAdapter(): BackupRestoreAdapter {
       formData.append("include_config", String(options.include_config))
       formData.append("include_database", String(options.include_database))
       formData.append("conflict_strategy", options.conflict_strategy)
-      if (options.backup_password) {
-        formData.append("backup_password", options.backup_password)
+      if (options.age_passphrase) {
+        formData.append("age_passphrase", options.age_passphrase)
+      }
+      for (const identity of options.age_identities || []) {
+        formData.append("age_identities", identity)
       }
 
       const response = await authenticatedFetch(`${getApiUrl()}/backup/restore`, {
@@ -534,6 +624,13 @@ function createWebBackupRestoreAdapter(): BackupRestoreAdapter {
       }
     },
   }
+}
+
+function parseAgeKeys(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean)
 }
 
 function ContentSelector({

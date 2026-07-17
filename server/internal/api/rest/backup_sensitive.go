@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	api "github.com/easyssh/server/internal/api/openapi"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/easyssh/shared/backupcrypto"
 	"github.com/easyssh/shared/backuputil"
@@ -17,14 +18,8 @@ type exportBackupOptions struct {
 	IncludeConfig    bool
 	IncludeDatabase  bool
 	IncludeSensitive bool
-	BackupPassword   string
-}
-
-type exportBackupPostRequest struct {
-	IncludeConfig    *bool  `json:"include_config" form:"include_config"`
-	IncludeDatabase  *bool  `json:"include_database" form:"include_database"`
-	IncludeSensitive *bool  `json:"include_sensitive" form:"include_sensitive"`
-	BackupPassword   string `json:"backup_password" form:"backup_password"`
+	AgePassphrase    string
+	AgeRecipients    []string
 }
 
 type BackupSensitivePayload = backuputil.SensitivePayload
@@ -87,7 +82,7 @@ func parseExportBackupPostOptions(c *gin.Context) (exportBackupOptions, error) {
 		IncludeDatabase: true,
 	}
 
-	var req exportBackupPostRequest
+	var req api.BackupExportRequest
 	contentType := strings.ToLower(c.GetHeader("Content-Type"))
 	if strings.Contains(contentType, "application/json") {
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -100,11 +95,12 @@ func parseExportBackupPostOptions(c *gin.Context) (exportBackupOptions, error) {
 	options.IncludeConfig = parseBoolForm(c, "include_config", true)
 	options.IncludeDatabase = parseBoolForm(c, "include_database", true)
 	options.IncludeSensitive = parseBoolForm(c, "include_sensitive", false)
-	options.BackupPassword = c.PostForm("backup_password")
+	options.AgePassphrase = c.PostForm("age_passphrase")
+	options.AgeRecipients = c.PostFormArray("age_recipients")
 	return options, nil
 }
 
-func applyExportRequestOptions(options *exportBackupOptions, req exportBackupPostRequest) {
+func applyExportRequestOptions(options *exportBackupOptions, req api.BackupExportRequest) {
 	if req.IncludeConfig != nil {
 		options.IncludeConfig = *req.IncludeConfig
 	}
@@ -114,7 +110,12 @@ func applyExportRequestOptions(options *exportBackupOptions, req exportBackupPos
 	if req.IncludeSensitive != nil {
 		options.IncludeSensitive = *req.IncludeSensitive
 	}
-	options.BackupPassword = req.BackupPassword
+	if req.AgePassphrase != nil {
+		options.AgePassphrase = *req.AgePassphrase
+	}
+	if req.AgeRecipients != nil {
+		options.AgeRecipients = *req.AgeRecipients
+	}
 }
 
 func (h *BackupHandler) exportSensitivePayload(includeConfig bool, includeDatabase bool, exportTime string, baseSHA256 string) (*BackupSensitivePayload, error) {
@@ -129,7 +130,7 @@ func (h *BackupHandler) exportSensitivePayload(includeConfig bool, includeDataba
 		},
 		Warnings: []string{
 			"users.password is restored as bcrypt hash; plaintext passwords are not recoverable.",
-			"users.backup_codes are restored as stored HMAC hashes and may only remain usable with the same ENCRYPTION_KEY.",
+			"users.backup_codes are restored as stored HMAC hashes and remain usable only with the same ENCRYPTION_KEY.",
 		},
 	}
 
@@ -238,9 +239,9 @@ func (h *BackupHandler) decryptSensitiveRows(spec sensitiveTableSpec, rows []map
 	return nil
 }
 
-func (h *BackupHandler) decryptSensitivePayload(envelope *backupcrypto.BackupEncryptedPayload, password string) (*BackupSensitivePayload, error) {
+func (h *BackupHandler) decryptSensitivePayload(ciphertext string, passphrase string, identities []string) (*BackupSensitivePayload, error) {
 	var payload BackupSensitivePayload
-	if err := backupcrypto.DecryptBackupJSON(envelope, password, backuputil.SensitiveAAD(), &payload); err != nil {
+	if err := backupcrypto.DecryptJSON(ciphertext, passphrase, identities, &payload); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(payload.Version) != backuputil.SensitivePayloadVersion {

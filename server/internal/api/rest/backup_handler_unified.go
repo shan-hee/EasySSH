@@ -4,6 +4,7 @@ import (
 	cryptorand "crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -59,6 +60,7 @@ type restoreConflictKey struct {
 // @Produce json
 // @Param include_config query bool false "是否包含配置"
 // @Param include_database query bool false "是否包含数据库数据"
+// @Param include_sensitive query bool false "GET 不支持敏感数据；完整备份请使用 POST"
 // @Success 200 {file} binary
 // @Router /api/v1/backup/export [get]
 func (h *BackupHandler) ExportBackup(c *gin.Context) {
@@ -97,8 +99,8 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Sensitive backup encryption is not available"})
 			return
 		}
-		if strings.TrimSpace(options.BackupPassword) == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Backup password is required for sensitive backup"})
+		if err := validateAgeEncryptionOptions(options.AgePassphrase, options.AgeRecipients); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 	}
@@ -156,7 +158,7 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 			})
 			return
 		}
-		envelope, err := backupcrypto.EncryptBackupJSON(sensitivePayload, options.BackupPassword, backuputil.SensitiveAAD())
+		ciphertext, err := encryptSensitivePayload(sensitivePayload, options.AgePassphrase, options.AgeRecipients)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":  "Failed to encrypt sensitive backup data",
@@ -164,7 +166,7 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 			})
 			return
 		}
-		backup.Sensitive = envelope
+		backup.Sensitive = ciphertext
 		backup.Warnings = append(backup.Warnings, sensitivePayload.Warnings...)
 	}
 
@@ -195,6 +197,8 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 // @Param include_config formData bool false "是否恢复配置"
 // @Param include_database formData bool false "是否恢复数据库数据"
 // @Param conflict_strategy formData string false "冲突策略：skip/overwrite/error"
+// @Param age_passphrase formData string false "age Scrypt 解密口令，与 age_identities 互斥"
+// @Param age_identities formData []string false "age X25519 私钥，与 age_passphrase 互斥"
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/backup/restore [post]
 func (h *BackupHandler) RestoreBackup(c *gin.Context) {
@@ -264,7 +268,7 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 	}
 	allowSensitiveConfigRestore := false
 	allowSensitiveDatabaseRestore := false
-	if backup.Sensitive != nil {
+	if strings.TrimSpace(backup.Sensitive) != "" {
 		if h.encryptor == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Sensitive backup restore is not available"})
 			return
@@ -277,12 +281,13 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 			return
 		}
 		sanitizePlainBackupSections(&backup, includeConfig, includeDatabase)
-		password := c.PostForm("backup_password")
-		if strings.TrimSpace(password) == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Backup password is required for sensitive backup restore"})
+		passphrase := c.PostForm("age_passphrase")
+		identities := c.PostFormArray("age_identities")
+		if err := validateAgeDecryptionOptions(passphrase, identities); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		sensitivePayload, err := h.decryptSensitivePayload(backup.Sensitive, password)
+		sensitivePayload, err := h.decryptSensitivePayload(backup.Sensitive, passphrase, identities)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":  "Failed to decrypt sensitive backup data",
@@ -350,6 +355,37 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		"conflict_strategy": strategy,
 		"summary":           summary,
 	})
+}
+
+func validateAgeEncryptionOptions(passphrase string, recipients []string) error {
+	hasPassphrase := strings.TrimSpace(passphrase) != ""
+	hasRecipients := len(recipients) != 0
+	if hasPassphrase == hasRecipients {
+		return errors.New("exactly one age encryption method is required: passphrase or X25519 recipients")
+	}
+	if hasRecipients {
+		return backupcrypto.ValidateX25519Recipients(recipients)
+	}
+	return nil
+}
+
+func validateAgeDecryptionOptions(passphrase string, identities []string) error {
+	hasPassphrase := strings.TrimSpace(passphrase) != ""
+	hasIdentities := len(identities) != 0
+	if hasPassphrase == hasIdentities {
+		return errors.New("exactly one age decryption method is required: passphrase or X25519 identities")
+	}
+	if hasIdentities {
+		return backupcrypto.ValidateX25519Identities(identities)
+	}
+	return nil
+}
+
+func encryptSensitivePayload(payload *BackupSensitivePayload, passphrase string, recipients []string) (string, error) {
+	if strings.TrimSpace(passphrase) != "" {
+		return backupcrypto.EncryptJSONWithPassphrase(payload, passphrase)
+	}
+	return backupcrypto.EncryptJSONWithRecipients(payload, recipients)
 }
 
 func parseBoolQuery(c *gin.Context, key string, defaultValue bool) bool {

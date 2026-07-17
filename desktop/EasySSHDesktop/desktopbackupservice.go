@@ -32,18 +32,20 @@ const (
 )
 
 type DesktopBackupExportInput struct {
-	IncludeConfig    bool   `json:"include_config"`
-	IncludeDatabase  bool   `json:"include_database"`
-	IncludeSensitive bool   `json:"include_sensitive"`
-	BackupPassword   string `json:"backup_password"`
+	IncludeConfig    bool     `json:"include_config"`
+	IncludeDatabase  bool     `json:"include_database"`
+	IncludeSensitive bool     `json:"include_sensitive"`
+	AgePassphrase    string   `json:"age_passphrase"`
+	AgeRecipients    []string `json:"age_recipients"`
 }
 
 type DesktopBackupRestoreInput struct {
-	Content          string `json:"content"`
-	IncludeConfig    bool   `json:"include_config"`
-	IncludeDatabase  bool   `json:"include_database"`
-	ConflictStrategy string `json:"conflict_strategy"`
-	BackupPassword   string `json:"backup_password"`
+	Content          string   `json:"content"`
+	IncludeConfig    bool     `json:"include_config"`
+	IncludeDatabase  bool     `json:"include_database"`
+	ConflictStrategy string   `json:"conflict_strategy"`
+	AgePassphrase    string   `json:"age_passphrase"`
+	AgeIdentities    []string `json:"age_identities"`
 }
 
 type DesktopBackupExportResult struct {
@@ -100,8 +102,10 @@ func (s *DesktopBackupService) ExportBackup(input DesktopBackupExportInput) (Des
 	if !input.IncludeDatabase {
 		return DesktopBackupExportResult{}, errors.New("desktop backup supports database data only")
 	}
-	if input.IncludeSensitive && strings.TrimSpace(input.BackupPassword) == "" {
-		return DesktopBackupExportResult{}, errors.New("backup password is required for sensitive backup")
+	if input.IncludeSensitive {
+		if err := validateDesktopAgeEncryptionOptions(input.AgePassphrase, input.AgeRecipients); err != nil {
+			return DesktopBackupExportResult{}, err
+		}
 	}
 
 	database, err := s.database()
@@ -143,11 +147,11 @@ func (s *DesktopBackupService) ExportBackup(input DesktopBackupExportInput) (Des
 		if err != nil {
 			return DesktopBackupExportResult{}, err
 		}
-		envelope, err := backupcrypto.EncryptBackupJSON(sensitivePayload, input.BackupPassword, backuputil.SensitiveAAD())
+		ciphertext, err := encryptDesktopSensitivePayload(sensitivePayload, input.AgePassphrase, input.AgeRecipients)
 		if err != nil {
 			return DesktopBackupExportResult{}, err
 		}
-		backup.Sensitive = envelope
+		backup.Sensitive = ciphertext
 		backup.Warnings = append(backup.Warnings, sensitivePayload.Warnings...)
 	}
 
@@ -196,12 +200,12 @@ func (s *DesktopBackupService) RestoreBackup(input DesktopBackupRestoreInput) (D
 	}
 
 	allowSensitiveDatabaseRestore := false
-	if backup.Sensitive != nil {
-		if strings.TrimSpace(input.BackupPassword) == "" {
-			return DesktopBackupRestoreResult{}, errors.New("backup password is required for sensitive backup restore")
+	if strings.TrimSpace(backup.Sensitive) != "" {
+		if err := validateDesktopAgeDecryptionOptions(input.AgePassphrase, input.AgeIdentities); err != nil {
+			return DesktopBackupRestoreResult{}, err
 		}
 		sanitizeDesktopPlainSensitive(&backup)
-		sensitivePayload, err := decryptDesktopSensitivePayload(backup.Sensitive, input.BackupPassword)
+		sensitivePayload, err := decryptDesktopSensitivePayload(backup.Sensitive, input.AgePassphrase, input.AgeIdentities)
 		if err != nil {
 			return DesktopBackupRestoreResult{}, err
 		}
@@ -891,9 +895,34 @@ func exportDesktopSensitiveServers(database *sql.DB) (desktopBackupTable, error)
 	return table, rows.Err()
 }
 
-func decryptDesktopSensitivePayload(envelope *backupcrypto.BackupEncryptedPayload, password string) (*desktopBackupSensitivePayload, error) {
+func validateDesktopAgeEncryptionOptions(passphrase string, recipients []string) error {
+	hasPassphrase := strings.TrimSpace(passphrase) != ""
+	hasRecipients := len(recipients) != 0
+	if hasPassphrase == hasRecipients {
+		return errors.New("exactly one age encryption method is required: passphrase or X25519 recipients")
+	}
+	return nil
+}
+
+func validateDesktopAgeDecryptionOptions(passphrase string, identities []string) error {
+	hasPassphrase := strings.TrimSpace(passphrase) != ""
+	hasIdentities := len(identities) != 0
+	if hasPassphrase == hasIdentities {
+		return errors.New("exactly one age decryption method is required: passphrase or X25519 identities")
+	}
+	return nil
+}
+
+func encryptDesktopSensitivePayload(payload *desktopBackupSensitivePayload, passphrase string, recipients []string) (string, error) {
+	if strings.TrimSpace(passphrase) != "" {
+		return backupcrypto.EncryptJSONWithPassphrase(payload, passphrase)
+	}
+	return backupcrypto.EncryptJSONWithRecipients(payload, recipients)
+}
+
+func decryptDesktopSensitivePayload(ciphertext string, passphrase string, identities []string) (*desktopBackupSensitivePayload, error) {
 	var payload desktopBackupSensitivePayload
-	if err := backupcrypto.DecryptBackupJSON(envelope, password, backuputil.SensitiveAAD(), &payload); err != nil {
+	if err := backupcrypto.DecryptJSON(ciphertext, passphrase, identities, &payload); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(payload.Version) != backuputil.SensitivePayloadVersion {

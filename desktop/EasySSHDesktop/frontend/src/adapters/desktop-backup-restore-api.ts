@@ -11,7 +11,8 @@ export function createDesktopBackupRestoreAdapter(): BackupRestoreAdapter {
         include_config: false,
         include_database: options.include_database,
         include_sensitive: Boolean(options.include_sensitive),
-        backup_password: options.backup_password || "",
+        age_passphrase: options.age_passphrase || "",
+        age_recipients: options.age_recipients || [],
       })
 
       return {
@@ -26,7 +27,8 @@ export function createDesktopBackupRestoreAdapter(): BackupRestoreAdapter {
         include_config: false,
         include_database: options.include_database,
         conflict_strategy: options.conflict_strategy,
-        backup_password: options.backup_password || "",
+        age_passphrase: options.age_passphrase || "",
+        age_identities: options.age_identities || [],
       })
     },
   }

@@ -1,177 +1,156 @@
 package backupcrypto
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"encoding/base64"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 
-	"golang.org/x/crypto/argon2"
+	"filippo.io/age"
+	"filippo.io/age/armor"
 )
 
-const (
-	BackupEnvelopeAlgorithm = "AES-256-GCM"
-	BackupEnvelopeKDF       = "argon2id"
-	BackupEnvelopeVersion   = "1"
+const armoredHeader = "-----BEGIN AGE ENCRYPTED FILE-----"
 
-	backupEnvelopeKDFVersion   = 19
-	backupEnvelopeMemoryKiB    = 64 * 1024
-	backupEnvelopeIterations   = 3
-	backupEnvelopeParallelism  = 2
-	backupEnvelopeKeyLength    = 32
-	backupEnvelopeSaltByteSize = 16
-)
+func EncryptJSONWithPassphrase(payload any, passphrase string) (string, error) {
+	if strings.TrimSpace(passphrase) == "" {
+		return "", errors.New("age passphrase is required")
+	}
 
-type BackupKDFParams struct {
-	Algorithm   string `json:"algorithm"`
-	Version     int    `json:"version"`
-	MemoryKiB   uint32 `json:"memory_kib"`
-	Iterations  uint32 `json:"iterations"`
-	Parallelism uint8  `json:"parallelism"`
-	KeyLength   uint32 `json:"key_length"`
-	Salt        string `json:"salt"`
+	recipient, err := age.NewScryptRecipient(passphrase)
+	if err != nil {
+		return "", fmt.Errorf("failed to create age scrypt recipient: %w", err)
+	}
+	return encryptJSON(payload, []age.Recipient{recipient})
 }
 
-type BackupEncryptedPayload struct {
-	Algorithm  string          `json:"algorithm"`
-	Version    string          `json:"version"`
-	KDF        BackupKDFParams `json:"kdf"`
-	Nonce      string          `json:"nonce"`
-	Ciphertext string          `json:"ciphertext"`
+func EncryptJSONWithRecipients(payload any, encodedRecipients []string) (string, error) {
+	recipients, err := parseX25519Recipients(encodedRecipients)
+	if err != nil {
+		return "", err
+	}
+	return encryptJSON(payload, recipients)
 }
 
-func EncryptBackupJSON(payload interface{}, password string, aad []byte) (*BackupEncryptedPayload, error) {
-	if strings.TrimSpace(password) == "" {
-		return nil, errors.New("backup password is required")
-	}
-
-	plaintext, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize backup payload: %w", err)
-	}
-
-	params, key, err := deriveBackupKey(password)
-	if err != nil {
-		return nil, err
-	}
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-
-	return &BackupEncryptedPayload{
-		Algorithm:  BackupEnvelopeAlgorithm,
-		Version:    BackupEnvelopeVersion,
-		KDF:        params,
-		Nonce:      base64.StdEncoding.EncodeToString(nonce),
-		Ciphertext: base64.StdEncoding.EncodeToString(gcm.Seal(nil, nonce, plaintext, aad)),
-	}, nil
+// ValidateX25519Recipients validates recipient syntax before backup data is assembled and encrypted.
+func ValidateX25519Recipients(encodedRecipients []string) error {
+	_, err := parseX25519Recipients(encodedRecipients)
+	return err
 }
 
-func DecryptBackupJSON(envelope *BackupEncryptedPayload, password string, aad []byte, target interface{}) error {
-	if envelope == nil {
-		return errors.New("encrypted backup payload is missing")
+func parseX25519Recipients(encodedRecipients []string) ([]age.Recipient, error) {
+	recipients := make([]age.Recipient, 0, len(encodedRecipients))
+	for index, encoded := range encodedRecipients {
+		encoded = strings.TrimSpace(encoded)
+		if encoded == "" {
+			return nil, fmt.Errorf("age recipient %d is empty", index+1)
+		}
+		recipient, err := age.ParseX25519Recipient(encoded)
+		if err != nil {
+			return nil, fmt.Errorf("invalid age X25519 recipient %d: %w", index+1, err)
+		}
+		recipients = append(recipients, recipient)
 	}
-	if strings.TrimSpace(password) == "" {
-		return errors.New("backup password is required")
+	if len(recipients) == 0 {
+		return nil, errors.New("at least one age X25519 recipient is required")
 	}
-	if envelope.Algorithm != BackupEnvelopeAlgorithm {
-		return fmt.Errorf("unsupported backup encryption algorithm: %s", envelope.Algorithm)
+	return recipients, nil
+}
+
+// ValidateX25519Identities validates identity syntax before decrypting an uploaded backup.
+func ValidateX25519Identities(encodedIdentities []string) error {
+	_, err := parseX25519Identities(encodedIdentities)
+	return err
+}
+
+func parseX25519Identities(encodedIdentities []string) ([]age.Identity, error) {
+	identities := make([]age.Identity, 0, len(encodedIdentities))
+	for index, encoded := range encodedIdentities {
+		encoded = strings.TrimSpace(encoded)
+		if encoded == "" {
+			return nil, fmt.Errorf("age identity %d is empty", index+1)
+		}
+		identity, err := age.ParseX25519Identity(encoded)
+		if err != nil {
+			return nil, fmt.Errorf("invalid age X25519 identity %d: %w", index+1, err)
+		}
+		identities = append(identities, identity)
 	}
-	if envelope.Version != BackupEnvelopeVersion {
-		return fmt.Errorf("unsupported backup envelope version: %s", envelope.Version)
+	if len(identities) == 0 {
+		return nil, errors.New("at least one age X25519 identity is required")
 	}
-	if envelope.KDF.Algorithm != BackupEnvelopeKDF {
-		return fmt.Errorf("unsupported backup kdf: %s", envelope.KDF.Algorithm)
+	return identities, nil
+}
+
+func DecryptJSON(ciphertext string, passphrase string, encodedIdentities []string, target any) error {
+	if strings.TrimSpace(ciphertext) == "" {
+		return errors.New("age encrypted payload is missing")
+	}
+	if !strings.HasPrefix(strings.TrimSpace(ciphertext), armoredHeader) {
+		return errors.New("invalid age armored payload")
 	}
 
-	key, err := deriveBackupKeyFromParams(password, envelope.KDF)
-	if err != nil {
-		return err
+	if strings.TrimSpace(passphrase) != "" && len(encodedIdentities) != 0 {
+		return errors.New("age passphrase and identities are mutually exclusive")
 	}
 
-	nonce, err := base64.StdEncoding.DecodeString(envelope.Nonce)
-	if err != nil {
-		return fmt.Errorf("failed to decode backup nonce: %w", err)
+	identities := make([]age.Identity, 0, len(encodedIdentities))
+	if strings.TrimSpace(passphrase) != "" {
+		identity, err := age.NewScryptIdentity(passphrase)
+		if err != nil {
+			return fmt.Errorf("failed to create age scrypt identity: %w", err)
+		}
+		identities = append(identities, identity)
+	} else {
+		parsed, err := parseX25519Identities(encodedIdentities)
+		if err != nil {
+			return err
+		}
+		identities = append(identities, parsed...)
 	}
-	ciphertext, err := base64.StdEncoding.DecodeString(envelope.Ciphertext)
-	if err != nil {
-		return fmt.Errorf("failed to decode backup ciphertext: %w", err)
-	}
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return err
-	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return err
-	}
-	if len(nonce) != gcm.NonceSize() {
-		return errors.New("invalid backup nonce size")
+	if len(identities) == 0 {
+		return errors.New("age passphrase or X25519 identity is required")
 	}
 
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, aad)
+	reader, err := age.Decrypt(armor.NewReader(strings.NewReader(ciphertext)), identities...)
 	if err != nil {
-		return errors.New("failed to decrypt backup payload")
+		return errors.New("failed to decrypt age payload")
 	}
-	if err := json.Unmarshal(plaintext, target); err != nil {
-		return fmt.Errorf("failed to decode backup payload: %w", err)
+	decoder := json.NewDecoder(reader)
+	decoder.UseNumber()
+	if err := decoder.Decode(target); err != nil {
+		return fmt.Errorf("failed to decode decrypted backup payload: %w", err)
+	}
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return errors.New("decrypted backup payload contains trailing data")
 	}
 	return nil
 }
 
-func deriveBackupKey(password string) (BackupKDFParams, []byte, error) {
-	salt := make([]byte, backupEnvelopeSaltByteSize)
-	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
-		return BackupKDFParams{}, nil, err
-	}
-	params := BackupKDFParams{
-		Algorithm:   BackupEnvelopeKDF,
-		Version:     backupEnvelopeKDFVersion,
-		MemoryKiB:   backupEnvelopeMemoryKiB,
-		Iterations:  backupEnvelopeIterations,
-		Parallelism: backupEnvelopeParallelism,
-		KeyLength:   backupEnvelopeKeyLength,
-		Salt:        base64.StdEncoding.EncodeToString(salt),
-	}
-	key, err := deriveBackupKeyFromParams(password, params)
-	return params, key, err
-}
-
-func deriveBackupKeyFromParams(password string, params BackupKDFParams) ([]byte, error) {
-	if strings.TrimSpace(password) == "" {
-		return nil, errors.New("backup password is required")
-	}
-	if params.Algorithm != BackupEnvelopeKDF ||
-		params.Version != backupEnvelopeKDFVersion ||
-		params.MemoryKiB != backupEnvelopeMemoryKiB ||
-		params.Iterations != backupEnvelopeIterations ||
-		params.Parallelism != backupEnvelopeParallelism ||
-		params.KeyLength != backupEnvelopeKeyLength {
-		return nil, errors.New("invalid backup kdf parameters")
-	}
-	salt, err := base64.StdEncoding.DecodeString(params.Salt)
+func encryptJSON(payload any, recipients []age.Recipient) (string, error) {
+	plaintext, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode backup salt: %w", err)
+		return "", fmt.Errorf("failed to serialize backup payload: %w", err)
 	}
-	if len(salt) != backupEnvelopeSaltByteSize {
-		return nil, errors.New("invalid backup salt size")
+
+	var output bytes.Buffer
+	armoredWriter := armor.NewWriter(&output)
+	encryptedWriter, err := age.Encrypt(armoredWriter, recipients...)
+	if err != nil {
+		_ = armoredWriter.Close()
+		return "", fmt.Errorf("failed to initialize age encryption: %w", err)
 	}
-	return argon2.IDKey([]byte(password), salt, params.Iterations, params.MemoryKiB, params.Parallelism, params.KeyLength), nil
+	if _, err := encryptedWriter.Write(plaintext); err != nil {
+		return "", fmt.Errorf("failed to encrypt backup payload: %w", err)
+	}
+	if err := encryptedWriter.Close(); err != nil {
+		return "", fmt.Errorf("failed to finalize age encryption: %w", err)
+	}
+	if err := armoredWriter.Close(); err != nil {
+		return "", fmt.Errorf("failed to finalize age armor: %w", err)
+	}
+	return output.String(), nil
 }
