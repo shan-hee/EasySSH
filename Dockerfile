@@ -75,7 +75,11 @@ ENV TZ=Asia/Shanghai \
     BACKEND_URL=http://localhost:8520 \
     WEB_PORT=3000 \
     DB_DRIVER=sqlite \
-    DB_DSN=/app/data/easyssh.db
+    DB_DSN=/app/data/easyssh.db \
+    GEOIP_DATABASE_PATH=/app/data/GeoLite2-City.mmdb \
+    OAUTH_ISSUER=http://localhost:8520/api/v1 \
+    OAUTH_LOGIN_URL=http://localhost:8520/login \
+    OAUTH_WEB_REDIRECT_URIS=http://localhost:8520/auth/callback
 
 # 复制后端二进制与前端静态资源
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./

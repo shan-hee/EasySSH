@@ -47,9 +47,15 @@ http://localhost:8520
 ```bash
 DB_DRIVER=sqlite
 DB_DSN=/app/data/easyssh.db
-JWT_SECRET=$(openssl rand -base64 48)
+GEOIP_DATABASE_PATH=/app/data/GeoLite2-City.mmdb
+OAUTH_GLOBAL_SECRET=$(openssl rand -base64 48)
+OAUTH_ISSUER=http://localhost:8520/api/v1
+OAUTH_LOGIN_URL=http://localhost:8520/login
+OAUTH_WEB_REDIRECT_URIS=http://localhost:8520/auth/callback
 ENCRYPTION_KEY=$(openssl rand -base64 32)
 ```
+
+如需服务器位置与登录位置识别，将 MaxMind `GeoLite2-City.mmdb` 放入挂载的 `docker/data/` 目录；文件缺失时应用不会调用第三方 IP 查询服务。
 
 外部 PostgreSQL 示例：
 
@@ -125,7 +131,7 @@ tar -czf easyssh-data-$(date +%Y%m%d).tar.gz data
 docker compose start easyssh
 ```
 
-使用 PostgreSQL/MySQL 时，建议优先使用数据库自身的备份工具；EasySSH 的统一备份导出可作为轻量迁移与恢复入口。
+使用 PostgreSQL/MySQL 时，建议优先使用数据库自身的备份工具；EasySSH 统一备份 `3.0` 保留跨 SQLite、PostgreSQL、MySQL 的表级逻辑迁移与恢复能力。完整备份中的敏感数据使用标准 age 格式，可选择 Scrypt 口令或 X25519 Recipient 加密。
 
 ## 故障排查
 
@@ -147,10 +153,10 @@ docker exec -it easyssh sh
 
 ## 安全建议
 
-- 生产环境务必设置强随机 `JWT_SECRET` 和 `ENCRYPTION_KEY`。
+- 生产环境务必设置强随机 `OAUTH_GLOBAL_SECRET` 和 `ENCRYPTION_KEY`，并将 `OAUTH_ISSUER`、`OAUTH_LOGIN_URL`、`OAUTH_WEB_REDIRECT_URIS` 改为实际 HTTPS 地址。
 - 使用 HTTPS 时设置 `COOKIE_SECURE=true`。
 - 默认 SQLite 适合单实例部署；多实例或高并发场景建议使用 PostgreSQL/MySQL。
-- 进程内短期状态会在应用重启后清空，包括临时验证码、一次性 ticket、token 黑名单和接口限流计数。
+- OAuth 授权记录、登录挑战和一次性 ticket 均持久化到数据库；接口限流计数仍是进程内状态，应用重启后会清空。
 
 ## 版本号管理
 

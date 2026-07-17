@@ -18,8 +18,12 @@ services:
       DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-100}
       DB_CONN_MAX_LIFETIME: ${DB_CONN_MAX_LIFETIME:-60}
       DB_CONN_MAX_IDLE_TIME: ${DB_CONN_MAX_IDLE_TIME:-10}
+      GEOIP_DATABASE_PATH: ${GEOIP_DATABASE_PATH:-/app/data/GeoLite2-City.mmdb}
+      OAUTH_ISSUER: ${OAUTH_ISSUER:-http://localhost:8520/api/v1}
+      OAUTH_LOGIN_URL: ${OAUTH_LOGIN_URL:-http://localhost:8520/login}
+      OAUTH_WEB_REDIRECT_URIS: ${OAUTH_WEB_REDIRECT_URIS:-http://localhost:8520/auth/callback}
 
-      JWT_SECRET: ${JWT_SECRET:-easyssh-secret-change-in-development}
+      OAUTH_GLOBAL_SECRET: ${OAUTH_GLOBAL_SECRET:-easyssh-oauth-secret-change-in-development}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-ZWFzeXNzaC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE=}
 
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
