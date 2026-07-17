@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Masterminds/semver/v3"
 )
 
 const (
@@ -161,90 +162,15 @@ func IsNewer(candidate string, current string) bool {
 }
 
 func CompareVersions(a string, b string) int {
-	left := parseVersion(NormalizeVersion(a))
-	right := parseVersion(NormalizeVersion(b))
-
-	max := len(left.parts)
-	if len(right.parts) > max {
-		max = len(right.parts)
+	left, leftErr := semver.NewVersion(NormalizeVersion(a))
+	right, rightErr := semver.NewVersion(NormalizeVersion(b))
+	if leftErr != nil || rightErr != nil {
+		return 0
 	}
-	for i := 0; i < max; i++ {
-		lv, rv := 0, 0
-		if i < len(left.parts) {
-			lv = left.parts[i]
-		}
-		if i < len(right.parts) {
-			rv = right.parts[i]
-		}
-		if lv > rv {
-			return 1
-		}
-		if lv < rv {
-			return -1
-		}
-	}
-
-	return comparePrerelease(left.prerelease, right.prerelease)
+	return left.Compare(right)
 }
 
 func IsComparableVersion(version string) bool {
-	return parseVersion(NormalizeVersion(version)).valid
-}
-
-type parsedVersion struct {
-	parts      []int
-	prerelease string
-	valid      bool
-}
-
-func parseVersion(version string) parsedVersion {
-	version = strings.TrimSpace(version)
-	version = strings.Split(version, "+")[0]
-	if version == "" {
-		return parsedVersion{}
-	}
-
-	prerelease := ""
-	if idx := strings.Index(version, "-"); idx >= 0 {
-		prerelease = version[idx+1:]
-		version = version[:idx]
-	}
-	if version == "" {
-		return parsedVersion{}
-	}
-
-	rawParts := strings.Split(version, ".")
-	parts := make([]int, 0, len(rawParts))
-	for _, part := range rawParts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			return parsedVersion{}
-		}
-		value, err := strconv.Atoi(part)
-		if err != nil {
-			return parsedVersion{}
-		}
-		parts = append(parts, value)
-	}
-
-	return parsedVersion{parts: parts, prerelease: prerelease, valid: true}
-}
-
-func comparePrerelease(a string, b string) int {
-	if a == "" && b == "" {
-		return 0
-	}
-	if a == "" {
-		return 1
-	}
-	if b == "" {
-		return -1
-	}
-	if a > b {
-		return 1
-	}
-	if a < b {
-		return -1
-	}
-	return 0
+	_, err := semver.NewVersion(NormalizeVersion(version))
+	return err == nil
 }

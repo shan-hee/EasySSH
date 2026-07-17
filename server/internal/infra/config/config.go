@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/caarlos0/env/v11"
 	mysqlconfig "github.com/go-sql-driver/mysql"
 )
 
@@ -17,8 +18,9 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
-	JWT      JWTConfig
 	SFTP     SFTPConfig
+	GeoIP    GeoIPConfig
+	OAuth    OAuthConfig
 }
 
 // ServerConfig 服务器配置
@@ -41,11 +43,6 @@ type DatabaseConfig struct {
 	ConnMaxIdleTime int    // 连接最大空闲时间（分钟）
 }
 
-// JWTConfig JWT 配置
-type JWTConfig struct {
-	Secret string
-}
-
 // SFTPConfig SFTP/SSH 池化相关配置
 type SFTPConfig struct {
 	MaxIdleTimeSeconds     int // SSH 空闲回收时间（秒）
@@ -55,36 +52,76 @@ type SFTPConfig struct {
 	MaxSFTPSessionsPerConn int // 单条 SSH 最大并发 SFTP 会话数（0 表示不限制）
 }
 
+type GeoIPConfig struct {
+	DatabasePath string
+}
+
+type OAuthConfig struct {
+	GlobalSecret    string
+	Issuer          string
+	LoginURL        string
+	WebRedirectURIs []string
+}
+
+type environmentConfig struct {
+	Environment     string   `env:"ENV" envDefault:"development"`
+	EncryptionKey   string   `env:"ENCRYPTION_KEY" envDefault:"ZWFzeXNzaC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE="`
+	WebDevPort      int      `env:"WEB_PORT" envDefault:"3000"`
+	TrustedProxies  []string `env:"TRUSTED_PROXIES" envDefault:"127.0.0.1,::1" envSeparator:","`
+	DatabaseDriver  string   `env:"DB_DRIVER" envDefault:"sqlite"`
+	DatabaseDSN     string   `env:"DB_DSN" envDefault:"./data/easyssh.db"`
+	DBMaxIdleConns  int      `env:"DB_MAX_IDLE_CONNS" envDefault:"10"`
+	DBMaxOpenConns  int      `env:"DB_MAX_OPEN_CONNS" envDefault:"100"`
+	DBMaxLifetime   int      `env:"DB_CONN_MAX_LIFETIME" envDefault:"60"`
+	DBMaxIdleTime   int      `env:"DB_CONN_MAX_IDLE_TIME" envDefault:"10"`
+	OAuthSecret     string   `env:"OAUTH_GLOBAL_SECRET" envDefault:"easyssh-oauth-secret-change-in-production"`
+	SFTPMaxIdle     int      `env:"SFTP_MAX_IDLE_TIME_SECONDS" envDefault:"120"`
+	SFTPCleanup     int      `env:"SFTP_CLEANUP_INTERVAL_SECONDS" envDefault:"30"`
+	SFTPMaxLifetime int      `env:"SFTP_MAX_LIFE_TIME_MINUTES" envDefault:"0"`
+	SFTPConnTimeout int      `env:"SFTP_CONN_TIMEOUT_SECONDS" envDefault:"10"`
+	SFTPMaxSessions int      `env:"SFTP_MAX_SESSIONS_PER_CONN" envDefault:"8"`
+	GeoIPDatabase   string   `env:"GEOIP_DATABASE_PATH" envDefault:"./data/GeoLite2-City.mmdb"`
+	OAuthIssuer     string   `env:"OAUTH_ISSUER" envDefault:"http://localhost:8520/api/v1"`
+	OAuthLoginURL   string   `env:"OAUTH_LOGIN_URL" envDefault:"http://localhost:3000/login"`
+	OAuthRedirects  []string `env:"OAUTH_WEB_REDIRECT_URIS" envDefault:"http://localhost:3000/auth/callback,http://localhost:8520/auth/callback" envSeparator:","`
+}
+
 // Load 从环境变量加载配置
 func Load() (*Config, error) {
+	var values environmentConfig
+	if err := env.Parse(&values); err != nil {
+		return nil, fmt.Errorf("failed to parse environment configuration: %w", err)
+	}
+
 	config := &Config{
 		Server: ServerConfig{
-			Port:          getBackendPort(),
-			Env:           getEnv("ENV", "development"),
-			EncryptionKey: getEnv("ENCRYPTION_KEY", "ZWFzeXNzaC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE="), // Base64 编码的 32 字节（仅开发环境占位）
-			WebDevPort:    getEnvInt("WEB_PORT", 3000),
-			TrustedProxies: getEnvStringList("TRUSTED_PROXIES", []string{
-				"127.0.0.1",
-				"::1",
-			}),
+			Port:           getBackendPort(),
+			Env:            values.Environment,
+			EncryptionKey:  values.EncryptionKey,
+			WebDevPort:     values.WebDevPort,
+			TrustedProxies: values.TrustedProxies,
 		},
 		Database: DatabaseConfig{
-			Driver:          getEnv("DB_DRIVER", "sqlite"),
-			DSN:             expandEnvRefs(getEnv("DB_DSN", "./data/easyssh.db")),
-			MaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 10),
-			MaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 100),
-			ConnMaxLifetime: getEnvInt("DB_CONN_MAX_LIFETIME", 60),  // 60分钟
-			ConnMaxIdleTime: getEnvInt("DB_CONN_MAX_IDLE_TIME", 10), // 10分钟
-		},
-		JWT: JWTConfig{
-			Secret: getEnv("JWT_SECRET", "easyssh-secret-change-in-production"),
+			Driver:          values.DatabaseDriver,
+			DSN:             expandEnvRefs(values.DatabaseDSN),
+			MaxIdleConns:    values.DBMaxIdleConns,
+			MaxOpenConns:    values.DBMaxOpenConns,
+			ConnMaxLifetime: values.DBMaxLifetime,
+			ConnMaxIdleTime: values.DBMaxIdleTime,
 		},
 		SFTP: SFTPConfig{
-			MaxIdleTimeSeconds:     getEnvInt("SFTP_MAX_IDLE_TIME_SECONDS", 120),   // 2分钟
-			CleanupIntervalSeconds: getEnvInt("SFTP_CLEANUP_INTERVAL_SECONDS", 30), // 30秒
-			MaxLifeTimeMinutes:     getEnvInt("SFTP_MAX_LIFE_TIME_MINUTES", 0),     // 默认不启用
-			ConnTimeoutSeconds:     getEnvInt("SFTP_CONN_TIMEOUT_SECONDS", 10),     // 10秒
-			MaxSFTPSessionsPerConn: getEnvInt("SFTP_MAX_SESSIONS_PER_CONN", 8),     // 每条 SSH 默认最多 8 个 SFTP 会话
+			MaxIdleTimeSeconds:     values.SFTPMaxIdle,
+			CleanupIntervalSeconds: values.SFTPCleanup,
+			MaxLifeTimeMinutes:     values.SFTPMaxLifetime,
+			ConnTimeoutSeconds:     values.SFTPConnTimeout,
+			MaxSFTPSessionsPerConn: values.SFTPMaxSessions,
+		},
+		GeoIP: GeoIPConfig{DatabasePath: expandEnvRefs(values.GeoIPDatabase)},
+		OAuth: OAuthConfig{
+			GlobalSecret:    values.OAuthSecret,
+			Issuer:          values.OAuthIssuer,
+			LoginURL:        values.OAuthLoginURL,
+			WebRedirectURIs: values.OAuthRedirects,
 		},
 	}
 
@@ -117,6 +154,12 @@ func (c *Config) applyEnvironmentDefaults() {
 		c.Database.Driver = "postgres"
 	}
 	c.Database.DSN = strings.TrimSpace(c.Database.DSN)
+	c.GeoIP.DatabasePath = strings.TrimSpace(c.GeoIP.DatabasePath)
+	c.OAuth.Issuer = strings.TrimRight(strings.TrimSpace(c.OAuth.Issuer), "/")
+	c.OAuth.LoginURL = strings.TrimSpace(c.OAuth.LoginURL)
+	for index, redirectURI := range c.OAuth.WebRedirectURIs {
+		c.OAuth.WebRedirectURIs[index] = strings.TrimSpace(redirectURI)
+	}
 	if c.Database.DSN == "" && c.Database.Driver == "sqlite" {
 		c.Database.DSN = "./data/easyssh.db"
 	}
@@ -194,15 +237,14 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("database connection max idle time must be between 1 and 60 minutes")
 	}
 
-	// JWT 配置验证
-	if c.JWT.Secret == "" {
-		return fmt.Errorf("JWT secret is required")
+	if c.OAuth.GlobalSecret == "" {
+		return fmt.Errorf("oauth global secret is required")
 	}
-	if len(c.JWT.Secret) < 32 {
-		return fmt.Errorf("JWT secret must be at least 32 characters for security")
+	if len(c.OAuth.GlobalSecret) < 32 {
+		return fmt.Errorf("oauth global secret must be at least 32 characters for security")
 	}
-	if c.Server.Env == "production" && c.JWT.Secret == "easyssh-secret-change-in-production" {
-		return fmt.Errorf("must change JWT secret in production environment")
+	if c.Server.Env == "production" && c.OAuth.GlobalSecret == "easyssh-oauth-secret-change-in-production" {
+		return fmt.Errorf("must change oauth global secret in production environment")
 	}
 	// SFTP/SSH 池化配置验证
 	if c.SFTP.MaxIdleTimeSeconds < 5 || c.SFTP.MaxIdleTimeSeconds > 3600 {
@@ -219,6 +261,26 @@ func (c *Config) Validate() error {
 	}
 	if c.SFTP.MaxSFTPSessionsPerConn < 0 || c.SFTP.MaxSFTPSessionsPerConn > 64 {
 		return fmt.Errorf("sftp max sessions per conn must be between 0 and 64")
+	}
+	if c.OAuth.Issuer == "" {
+		return fmt.Errorf("oauth issuer is required")
+	}
+	issuer, err := url.Parse(c.OAuth.Issuer)
+	if err != nil || issuer.Scheme == "" || issuer.Host == "" {
+		return fmt.Errorf("oauth issuer must be an absolute URL: %s", c.OAuth.Issuer)
+	}
+	loginURL, err := url.Parse(c.OAuth.LoginURL)
+	if err != nil || loginURL.Scheme == "" || loginURL.Host == "" {
+		return fmt.Errorf("oauth login URL must be an absolute URL: %s", c.OAuth.LoginURL)
+	}
+	if len(c.OAuth.WebRedirectURIs) == 0 {
+		return fmt.Errorf("at least one oauth web redirect URI is required")
+	}
+	for _, redirectURI := range c.OAuth.WebRedirectURIs {
+		parsed, err := url.Parse(redirectURI)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("invalid oauth web redirect URI: %s", redirectURI)
+		}
 	}
 
 	return nil
@@ -399,59 +461,4 @@ func explicitPortFromURL(rawURL string) (int, error) {
 		return 0, fmt.Errorf("port must be between 1 and 65535")
 	}
 	return port, nil
-}
-
-// 辅助函数：获取环境变量（字符串）
-func getEnv(key, defaultValue string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
-	}
-	return value
-}
-
-func getEnvStringList(key string, defaultValue []string) []string {
-	value := os.Getenv(key)
-	if strings.TrimSpace(value) == "" {
-		return defaultValue
-	}
-
-	parts := strings.Split(value, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if part != "" {
-			result = append(result, part)
-		}
-	}
-	if len(result) == 0 {
-		return defaultValue
-	}
-	return result
-}
-
-// 辅助函数：获取环境变量（整数）
-func getEnvInt(key string, defaultValue int) int {
-	valueStr := os.Getenv(key)
-	if valueStr == "" {
-		return defaultValue
-	}
-	value, err := strconv.Atoi(valueStr)
-	if err != nil {
-		return defaultValue
-	}
-	return value
-}
-
-// 辅助函数：获取环境变量（布尔值）
-func getEnvBool(key string, defaultValue bool) bool {
-	valueStr := os.Getenv(key)
-	if valueStr == "" {
-		return defaultValue
-	}
-	value, err := strconv.ParseBool(valueStr)
-	if err != nil {
-		return defaultValue
-	}
-	return value
 }

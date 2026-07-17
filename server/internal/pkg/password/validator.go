@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	zxcvbn "github.com/nbutton23/zxcvbn-go"
 )
@@ -65,7 +66,7 @@ func Validate(password string, policy *Policy) error {
 	}
 
 	// 检查长度
-	length := len(password)
+	length := utf8.RuneCountInString(password)
 	if length < policy.MinLength {
 		return &ValidationError{
 			Code:    "password_too_short",
@@ -260,59 +261,6 @@ func CheckStrength(password string) int {
 	if score > 4 {
 		return 4
 	}
-	return score
-}
-
-func checkStrengthByRules(password string) int {
-	score := 0
-
-	if len(password) >= 8 {
-		score++
-	}
-	if len(password) >= 12 {
-		score++
-	}
-
-	var hasUpper, hasLower, hasDigit, hasSpecial bool
-	for _, char := range password {
-		switch {
-		case unicode.IsUpper(char):
-			hasUpper = true
-		case unicode.IsLower(char):
-			hasLower = true
-		case unicode.IsDigit(char):
-			hasDigit = true
-		case isSpecialChar(char):
-			hasSpecial = true
-		}
-	}
-
-	charTypes := 0
-	if hasUpper {
-		charTypes++
-	}
-	if hasLower {
-		charTypes++
-	}
-	if hasDigit {
-		charTypes++
-	}
-	if hasSpecial {
-		charTypes++
-	}
-
-	if charTypes >= 3 {
-		score++
-	}
-	if charTypes >= 4 {
-		score++
-	}
-
-	// 如果是常见密码，强制降低分数
-	if isCommonPassword(password) {
-		return 0
-	}
-
 	return score
 }
 

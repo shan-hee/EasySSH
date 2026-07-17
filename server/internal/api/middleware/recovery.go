@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
+	"runtime/debug"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -31,15 +33,22 @@ func Recovery() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if err := recover(); err != nil {
-				// 获取请求 ID
 				requestID, _ := c.Get("RequestID")
+				slog.ErrorContext(c.Request.Context(), "panic recovered",
+					"request_id", requestID,
+					"method", c.Request.Method,
+					"path", c.Request.URL.RequestURI(),
+					"panic", err,
+					"stack", string(debug.Stack()),
+				)
 
-				// 返回错误响应
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":      "internal_server_error",
-					"message":    "Internal server error occurred",
-					"request_id": requestID,
-				})
+				if !c.Writer.Written() {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"error":      "internal_server_error",
+						"message":    "Internal server error occurred",
+						"request_id": requestID,
+					})
+				}
 
 				c.Abort()
 			}

@@ -388,10 +388,9 @@ export function buildTerminalCompletionFetchOptions(settings: TerminalSettings):
       ? 500
       : includeHistory
         ? settings.completionQuotas.remoteHistorySoftMax
-        : 0,
-    includeHistory,
-    includeScripts,
-    cacheTtlMinutes: settings.completionCache.ttlMinutes,
-    cacheMaxEntries: settings.completionCache.maxEntries,
+		: 0,
+	includeHistory,
+	includeScripts,
+	cacheTtlMinutes: settings.completionCache.ttlMinutes,
   }
 }

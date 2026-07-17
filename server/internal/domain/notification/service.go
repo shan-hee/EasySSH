@@ -3,17 +3,19 @@ package notification
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"html/template"
-	"net/smtp"
 	"time"
+
+	"github.com/easyssh/server/internal/pkg/mailclient"
+	mail "github.com/wneessen/go-mail"
 )
 
 // smtpEmailService SMTP 邮件服务实现
 type smtpEmailService struct {
 	config    *EmailConfig
 	templates map[EmailTemplate]*template.Template
+	client    *mail.Client
 }
 
 // NewEmailService 创建邮件服务
@@ -22,9 +24,21 @@ func NewEmailService(config *EmailConfig) (EmailService, error) {
 		return nil, fmt.Errorf("invalid email config: %w", err)
 	}
 
+	client, err := mailclient.New(mailclient.Config{
+		Host:     config.SMTPHost,
+		Port:     config.SMTPPort,
+		Username: config.SMTPUsername,
+		Password: config.SMTPPassword,
+		UseTLS:   config.UseTLS,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SMTP client: %w", err)
+	}
+
 	service := &smtpEmailService{
 		config:    config,
 		templates: make(map[EmailTemplate]*template.Template),
+		client:    client,
 	}
 
 	// 初始化邮件模板
@@ -222,89 +236,20 @@ func (s *smtpEmailService) sendEmail(ctx context.Context, emailData *EmailData) 
 		return fmt.Errorf("failed to render template: %w", err)
 	}
 
-	// 构建邮件内容
-	message := s.buildMessage(emailData.To, emailData.Subject, body.String())
-
-	// 发送邮件
-	return s.send(emailData.To, message)
-}
-
-// buildMessage 构建邮件内容
-func (s *smtpEmailService) buildMessage(to, subject, body string) []byte {
-	msg := fmt.Sprintf("From: %s <%s>\r\n", s.config.FromName, s.config.FromEmail)
-	msg += fmt.Sprintf("To: %s\r\n", to)
-	msg += fmt.Sprintf("Subject: %s\r\n", subject)
-	msg += "MIME-Version: 1.0\r\n"
-	msg += "Content-Type: text/html; charset=UTF-8\r\n"
-	msg += "\r\n"
-	msg += body
-
-	return []byte(msg)
-}
-
-// send 发送邮件到 SMTP 服务器
-func (s *smtpEmailService) send(to string, message []byte) error {
-	// 构建 SMTP 服务器地址
-	addr := fmt.Sprintf("%s:%d", s.config.SMTPHost, s.config.SMTPPort)
-
-	// 创建认证
-	auth := smtp.PlainAuth("", s.config.SMTPUsername, s.config.SMTPPassword, s.config.SMTPHost)
-
-	// 如果启用 TLS
-	if s.config.UseTLS {
-		// 创建 TLS 配置
-		tlsConfig := &tls.Config{
-			ServerName: s.config.SMTPHost,
-		}
-
-		// 连接到 SMTP 服务器
-		conn, err := tls.Dial("tcp", addr, tlsConfig)
-		if err != nil {
-			return fmt.Errorf("failed to dial SMTP server: %w", err)
-		}
-		defer conn.Close()
-
-		// 创建 SMTP 客户端
-		client, err := smtp.NewClient(conn, s.config.SMTPHost)
-		if err != nil {
-			return fmt.Errorf("failed to create SMTP client: %w", err)
-		}
-		defer client.Close()
-
-		// 认证
-		if err := client.Auth(auth); err != nil {
-			return fmt.Errorf("SMTP authentication failed: %w", err)
-		}
-
-		// 设置发件人
-		if err := client.Mail(s.config.FromEmail); err != nil {
-			return fmt.Errorf("failed to set sender: %w", err)
-		}
-
-		// 设置收件人
-		if err := client.Rcpt(to); err != nil {
-			return fmt.Errorf("failed to set recipient: %w", err)
-		}
-
-		// 发送邮件内容
-		w, err := client.Data()
-		if err != nil {
-			return fmt.Errorf("failed to get data writer: %w", err)
-		}
-
-		if _, err := w.Write(message); err != nil {
-			return fmt.Errorf("failed to write message: %w", err)
-		}
-
-		if err := w.Close(); err != nil {
-			return fmt.Errorf("failed to close data writer: %w", err)
-		}
-
-		return client.Quit()
+	message := mail.NewMsg()
+	if err := message.FromFormat(s.config.FromName, s.config.FromEmail); err != nil {
+		return fmt.Errorf("invalid sender address: %w", err)
 	}
+	if err := message.To(emailData.To); err != nil {
+		return fmt.Errorf("invalid recipient address: %w", err)
+	}
+	message.Subject(emailData.Subject)
+	message.SetBodyString(mail.TypeTextHTML, body.String())
 
-	// 不使用 TLS，直接发送
-	return smtp.SendMail(addr, auth, s.config.FromEmail, []string{to}, message)
+	if err := s.client.DialAndSendWithContext(ctx, message); err != nil {
+		return fmt.Errorf("failed to send email: %w", err)
+	}
+	return nil
 }
 
 // SendNewDeviceAlert 发送新设备登录告警
@@ -339,10 +284,10 @@ func (s *smtpEmailService) SendNewLocationAlert(ctx context.Context, email, user
 	}
 
 	data := map[string]interface{}{
-		"Username":  username,
-		"Location":  location,
-		"IPAddress": ip,
-		"LoginTime": loginTime.Format("2006-01-02 15:04:05"),
+		"Username":   username,
+		"Location":   location,
+		"IPAddress":  ip,
+		"LoginTime":  loginTime.Format("2006-01-02 15:04:05"),
 		"SystemName": systemName,
 	}
 
@@ -362,11 +307,11 @@ func (s *smtpEmailService) SendSuspiciousLoginAlert(ctx context.Context, email, 
 	}
 
 	data := map[string]interface{}{
-		"Username":  username,
-		"Reason":    reason,
-		"IPAddress": ip,
-		"Location":  location,
-		"LoginTime": loginTime.Format("2006-01-02 15:04:05"),
+		"Username":   username,
+		"Reason":     reason,
+		"IPAddress":  ip,
+		"Location":   location,
+		"LoginTime":  loginTime.Format("2006-01-02 15:04:05"),
 		"SystemName": systemName,
 	}
 

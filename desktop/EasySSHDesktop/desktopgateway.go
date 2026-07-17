@@ -75,7 +75,6 @@ type desktopGatewayFetchCompletionDataMessage struct {
 	IncludeHistory  *bool `json:"includeHistory,omitempty"`
 	IncludeScripts  *bool `json:"includeScripts,omitempty"`
 	CacheTTLMinutes int   `json:"cacheTtlMinutes,omitempty"`
-	CacheMaxEntries int   `json:"cacheMaxEntries,omitempty"`
 }
 
 type desktopGatewayCompletionUpdateMessage struct {

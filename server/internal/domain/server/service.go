@@ -88,11 +88,11 @@ type serverService struct {
 }
 
 // NewService 创建服务器服务
-func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
+func NewService(repo Repository, encryptor *crypto.Encryptor, geoipClient *geoip.Client) Service {
 	return &serverService{
 		repo:        repo,
 		encryptor:   encryptor,
-		geoipClient: geoip.NewClient(),
+		geoipClient: geoipClient,
 	}
 }
 

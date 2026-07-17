@@ -10,9 +10,9 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/crypto"
-	"github.com/easyssh/server/internal/pkg/logger"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
+	"log/slog"
 )
 
 // PooledClient 单次请求的 SFTP 客户端（底层 SSH 来自池）
@@ -158,7 +158,7 @@ type Pool struct {
 	serverRepo      server.Repository
 	credentialStore *sshDomain.RuntimeCredentialStore
 	connTimeout     time.Duration // 连接超时时间
-	log             *logger.Logger
+	log             *slog.Logger
 
 	maxIdleTime     time.Duration
 	cleanupInterval time.Duration
@@ -209,7 +209,7 @@ func NewPool(
 		serverRepo:      serverRepo,
 		credentialStore: credentialStore,
 		connTimeout:     connTimeout,
-		log:             logger.NewModule("SFTP Pool"),
+		log:             slog.With("module", "SFTP Pool"),
 		maxIdleTime:     maxIdle,
 		cleanupInterval: cleanupInterval,
 		maxLifeTime:     config.MaxLifeTime,
@@ -230,7 +230,7 @@ func (p *Pool) updateServerOSIfEmpty(srv *server.Server, sshClient *sshDomain.Cl
 
 	osValue, err := sshClient.DetectOS()
 	if err != nil {
-		p.log.Warn("Failed to detect server OS", logger.String("serverID", srv.ID.String()), logger.Err(err))
+		p.log.Warn("Failed to detect server OS", "serverID", srv.ID.String(), "error", err)
 		return
 	}
 	osValue = strings.TrimSpace(osValue)
@@ -239,7 +239,7 @@ func (p *Pool) updateServerOSIfEmpty(srv *server.Server, sshClient *sshDomain.Cl
 	}
 
 	if err := p.serverRepo.UpdateOSIfEmpty(context.Background(), srv.ID, osValue); err != nil {
-		p.log.Warn("Failed to update server OS", logger.String("serverID", srv.ID.String()), logger.Err(err))
+		p.log.Warn("Failed to update server OS", "serverID", srv.ID.String(), "error", err)
 	}
 }
 
@@ -333,8 +333,8 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 		sftpClient, createErr := NewClient(sshConn.Client, &server.Server{ID: serverID})
 		if createErr != nil {
 			p.log.Warn("基于现有 SSH 创建 SFTP 失败，摘除并尝试重建",
-				logger.String("key", key),
-				logger.Err(createErr))
+				"key", key,
+				"error", createErr)
 			p.invalidateSSHConn(key, sshConn)
 
 			newSSH, newErr := p.createNewSSH(ctx, userID, serverID, allowReuse, opts...)
@@ -362,8 +362,8 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 		}
 
 		p.log.Debug("复用现有 SSH 连接",
-			logger.String("key", key),
-			logger.Int("refCount", sshConn.GetRefCount()))
+			"key", key,
+			"refCount", sshConn.GetRefCount())
 		client = &PooledClient{
 			Client:         sftpClient,
 			pool:           p,
@@ -411,7 +411,7 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 
 	if exists && sshConn != nil {
 		p.log.Debug("SSH 连接不健康或关闭中，移除",
-			logger.String("key", key))
+			"key", key)
 		p.markClosingAndMaybeClose(sshConn)
 	}
 
@@ -450,8 +450,8 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 			p.mu.Unlock()
 			existing.IncRef()
 			p.log.Debug("复用刚创建的 SSH 连接",
-				logger.String("key", key),
-				logger.Int("refCount", existing.GetRefCount()))
+				"key", key,
+				"refCount", existing.GetRefCount())
 			return existing, nil
 		}
 	} else if existing, exists := p.connections[key]; exists {
@@ -495,7 +495,7 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 	srv.UpdateStatus(server.StatusOnline)
 	if p.serverRepo != nil {
 		if err := p.serverRepo.UpdateStatus(ctxToUse, srv.ID, srv.Status, srv.LastConnected); err != nil {
-			p.log.Warn("Failed to update server status", logger.Err(err))
+			p.log.Warn("Failed to update server status", "error", err)
 		}
 	}
 	go p.updateServerOSIfEmpty(srv, sshClient)
@@ -515,8 +515,8 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 			go newConn.Client.Close()
 			existing.IncRef()
 			p.log.Debug("复用其他 goroutine 创建的 SSH 连接",
-				logger.String("key", key),
-				logger.Int("refCount", existing.GetRefCount()))
+				"key", key,
+				"refCount", existing.GetRefCount())
 			return existing, nil
 		}
 	} else if existing, exists := p.connections[key]; exists {
@@ -529,8 +529,8 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 	p.mu.Unlock()
 
 	p.log.Debug("创建新 SSH 连接",
-		logger.String("key", key),
-		logger.String("serverHost", fmt.Sprintf("%s:%d", srv.Host, srv.Port)))
+		"key", key,
+		"serverHost", fmt.Sprintf("%s:%d", srv.Host, srv.Port))
 	return newConn, nil
 }
 
@@ -548,8 +548,8 @@ func (p *Pool) releaseSSH(key string, conn *pooledSSHConn) {
 
 	newRefCount := conn.DecRef()
 	p.log.Debug("释放 SSH 连接",
-		logger.String("key", key),
-		logger.Int("refCount", newRefCount))
+		"key", key,
+		"refCount", newRefCount)
 
 	if newRefCount == 0 {
 		// 若不是当前池内连接或已标记关闭中，则立即关闭
@@ -560,7 +560,7 @@ func (p *Pool) releaseSSH(key string, conn *pooledSSHConn) {
 			return
 		}
 		p.log.Debug("SSH 引用计数归零，进入空闲",
-			logger.String("key", key))
+			"key", key)
 	}
 }
 
@@ -576,7 +576,7 @@ func (p *Pool) forceRemoveSSH(key string, conn *pooledSSHConn) {
 	if exists && conn != nil && conn.Client != nil {
 		_ = conn.Client.Close()
 		p.log.Debug("强制移除 SSH 连接",
-			logger.String("key", key))
+			"key", key)
 	}
 }
 
@@ -595,7 +595,7 @@ func (p *Pool) CloseByKey(userID, serverID uuid.UUID) {
 	if exists && conn != nil {
 		p.markClosingAndMaybeClose(conn)
 		p.log.Debug("主动关闭 SSH 连接(延迟到空闲)",
-			logger.String("key", key))
+			"key", key)
 	}
 }
 
@@ -624,7 +624,7 @@ func (p *Pool) CloseAll() {
 		}
 	}
 
-	p.log.Info("已关闭所有连接", logger.Int("count", len(allClients)))
+	p.log.Info("已关闭所有连接", "count", len(allClients))
 }
 
 // cleanupLoop 后台清理空闲连接
@@ -662,9 +662,9 @@ func (p *Pool) cleanupOnce() {
 				if !conn.lifeWarned {
 					conn.lifeWarned = true
 					p.log.Warn("连接寿命超限但仍在使用",
-						logger.String("key", key),
-						logger.Duration("age", now.Sub(conn.createdAt)),
-						logger.Int("refCount", refCount))
+						"key", key,
+						"age", now.Sub(conn.createdAt),
+						"refCount", refCount)
 				}
 				conn.mu.Unlock()
 			}
@@ -699,7 +699,7 @@ func (p *Pool) cleanupOnce() {
 	// 锁外做 keepalive，失败则摘除连接
 	for _, item := range toProbe {
 		if !p.keepAlive(item.conn) {
-			p.log.Warn("空闲 keepalive 失败，驱逐连接", logger.String("key", item.key))
+			p.log.Warn("空闲 keepalive 失败，驱逐连接", "key", item.key)
 			p.evictSSHConn(item.key, item.conn)
 		}
 	}
@@ -711,7 +711,7 @@ func (p *Pool) cleanupOnce() {
 	}
 
 	if len(toClose) > 0 {
-		p.log.Info("清理空闲连接", logger.Int("count", len(toClose)))
+		p.log.Info("清理空闲连接", "count", len(toClose))
 	}
 }
 

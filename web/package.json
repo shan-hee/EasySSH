@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "check:workspace-boundaries": "tsx scripts/check-workspace-boundaries.ts",
-    "openapi:gen": "openapi-typescript ../shared/openapi.yaml -o src/types/openapi.ts"
+    "openapi:check": "cd .. && node scripts/check-openapi-routes.mjs",
+    "openapi:gen": "cd .. && ./scripts/gen-types.sh"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.193",
@@ -71,6 +72,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "culori": "^4.0.2",
     "echarts": "^6.0.0",
     "echarts-for-react": "^3.0.5",
     "embla-carousel-react": "^8.6.0",
@@ -111,6 +113,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@tailwindcss/postcss": "^4",
+    "@types/culori": "^4.0.1",
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",

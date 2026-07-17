@@ -2,16 +2,15 @@ package notificationconfig
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net/http"
-	"net/smtp"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/server/internal/pkg/mailclient"
 )
 
 // Service 通知配置服务接口
@@ -111,47 +110,20 @@ func (s *service) TestSMTPConnection(ctx context.Context, config *SMTPConfig) er
 		return err
 	}
 
-	// 构建SMTP地址
-	addr := fmt.Sprintf("%s:%d", config.Host, config.Port)
-
-	// 尝试连接
-	var client *smtp.Client
-	var err error
-
-	if config.UseTLS {
-		// 使用TLS连接
-		tlsConfig := &tls.Config{
-			ServerName:         config.Host,
-			InsecureSkipVerify: false,
-		}
-		conn, err := tls.Dial("tcp", addr, tlsConfig)
-		if err != nil {
-			return fmt.Errorf("failed to connect with TLS: %w", err)
-		}
-		defer conn.Close()
-
-		client, err = smtp.NewClient(conn, config.Host)
-		if err != nil {
-			return fmt.Errorf("failed to create SMTP client: %w", err)
-		}
-	} else {
-		// 普通连接
-		client, err = smtp.Dial(addr)
-		if err != nil {
-			return fmt.Errorf("failed to connect: %w", err)
-		}
+	client, err := mailclient.New(mailclient.Config{
+		Host:     config.Host,
+		Port:     config.Port,
+		Username: config.Username,
+		Password: config.Password,
+		UseTLS:   config.UseTLS,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create SMTP client: %w", err)
 	}
-	defer client.Close()
-
-	// 尝试认证
-	if config.Username != "" && config.Password != "" {
-		auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
-		if err := client.Auth(auth); err != nil {
-			return fmt.Errorf("authentication failed: %w", err)
-		}
+	if err := client.DialWithContext(ctx); err != nil {
+		return fmt.Errorf("failed to connect to SMTP server: %w", err)
 	}
-
-	return nil
+	return client.Close()
 }
 
 // GetWebhookConfig 获取Webhook配置

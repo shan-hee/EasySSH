@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,27 +22,15 @@ func Logger() gin.HandlerFunc {
 			return
 		}
 
-		// 结束时间
-		endTime := time.Now()
-		latencyTime := endTime.Sub(startTime)
-
-		// 请求方式
-		reqMethod := c.Request.Method
-
-		// 状态码
-		statusCode := c.Writer.Status()
-
-		// 请求 IP
-		clientIP := LogClientIP(c)
-
-		// 日志格式
-		log.Printf("[GIN] %s | %3d | %13v | %15s | %-7s %s",
-			endTime.Format("2006/01/02 - 15:04:05"),
-			statusCode,
-			latencyTime,
-			clientIP,
-			reqMethod,
-			reqURI,
+		requestID, _ := c.Get("RequestID")
+		slog.InfoContext(c.Request.Context(), "http request completed",
+			"request_id", requestID,
+			"method", c.Request.Method,
+			"path", reqURI,
+			"status", c.Writer.Status(),
+			"latency", time.Since(startTime),
+			"client_ip", LogClientIP(c),
+			"response_size", c.Writer.Size(),
 		)
 	}
 }

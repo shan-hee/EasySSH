@@ -10,9 +10,9 @@ import (
 
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
-	"github.com/easyssh/server/internal/pkg/logger"
 	"github.com/easyssh/shared/sftputil"
 	"github.com/pkg/sftp"
+	"log/slog"
 )
 
 // Client SFTP 客户端封装
@@ -353,9 +353,9 @@ func (c *Client) removeAll(path string) error {
 	if err != nil {
 		// 如果目录不存在或无法读取，尝试直接删除
 		// 可能是符号链接或特殊文件
-		logger.Debug("failed to read directory, trying direct remove",
-			logger.String("path", path),
-			logger.Err(err))
+		slog.Debug("failed to read directory, trying direct remove",
+			"path", path,
+			"error", err)
 		// 尝试作为文件删除
 		if removeErr := c.sftpClient.Remove(path); removeErr == nil {
 			return nil
@@ -372,16 +372,16 @@ func (c *Client) removeAll(path string) error {
 		childPath := sftputil.JoinPath(path, entry.Name())
 		if entry.IsDir() {
 			if err := c.removeAll(childPath); err != nil {
-				logger.Warn("failed to remove subdirectory",
-					logger.String("path", childPath),
-					logger.Err(err))
+				slog.Warn("failed to remove subdirectory",
+					"path", childPath,
+					"error", err)
 				return err
 			}
 		} else {
 			if err := c.sftpClient.Remove(childPath); err != nil {
-				logger.Warn("failed to remove file",
-					logger.String("path", childPath),
-					logger.Err(err))
+				slog.Warn("failed to remove file",
+					"path", childPath,
+					"error", err)
 				return err
 			}
 		}
@@ -390,9 +390,9 @@ func (c *Client) removeAll(path string) error {
 	// 删除空目录
 	err = c.sftpClient.RemoveDirectory(path)
 	if err != nil {
-		logger.Warn("failed to remove directory",
-			logger.String("path", path),
-			logger.Err(err))
+		slog.Warn("failed to remove directory",
+			"path", path,
+			"error", err)
 	}
 	return err
 }

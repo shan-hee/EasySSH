@@ -670,6 +670,46 @@ func (s *DesktopServerService) ExecuteCommandContext(ctx context.Context, input 
 	}, nil
 }
 
+func (s *DesktopServerService) openSSHClientContext(ctx context.Context, serverID string) (*ssh.Client, func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	server, err := s.getByIDRaw(serverID)
+	if err != nil {
+		return nil, nil, err
+	}
+	authMethods, err := buildDesktopServerSSHAuthMethods(server)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(authMethods) == 0 {
+		return nil, nil, errors.New("server credential is required")
+	}
+
+	config := &ssh.ClientConfig{
+		User:            server.Username,
+		Auth:            authMethods,
+		HostKeyCallback: desktopHostKeyCallback(),
+		Timeout:         12 * time.Second,
+	}
+	address := net.JoinHostPort(server.Host, strconv.Itoa(server.Port))
+	rawConnection, err := (&net.Dialer{Timeout: 12 * time.Second}).DialContext(ctx, "tcp", address)
+	if err != nil {
+		return nil, nil, err
+	}
+	stopCancellation := context.AfterFunc(ctx, func() { _ = rawConnection.Close() })
+	defer stopCancellation()
+	_ = rawConnection.SetDeadline(time.Now().Add(12 * time.Second))
+	connection, channels, requests, err := ssh.NewClientConn(rawConnection, address, config)
+	if err != nil {
+		_ = rawConnection.Close()
+		return nil, nil, err
+	}
+	_ = rawConnection.SetDeadline(time.Time{})
+	client := ssh.NewClient(connection, channels, requests)
+	return client, func() { _ = client.Close() }, nil
+}
+
 func (s *DesktopServerService) database() (*sql.DB, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

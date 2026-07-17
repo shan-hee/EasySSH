@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"time"
@@ -407,34 +406,6 @@ func (c *Client) DetectOS() (string, error) {
 		return "", lastErr
 	}
 	return "", nil
-}
-
-// CopyTo 复制文件到远程服务器
-func (c *Client) CopyTo(localReader io.Reader, remotePath string, size int64) error {
-	session, err := c.NewSession()
-	if err != nil {
-		return err
-	}
-	defer session.Close()
-
-	// 使用 SCP 协议
-	// 这里简化实现，实际应该使用完整的 SCP 协议
-	stdin, err := session.StdinPipe()
-	if err != nil {
-		return err
-	}
-
-	if err := session.Start(fmt.Sprintf("scp -t %s", remotePath)); err != nil {
-		return err
-	}
-
-	// 复制数据
-	if _, err := io.Copy(stdin, localReader); err != nil {
-		return err
-	}
-
-	stdin.Close()
-	return session.Wait()
 }
 
 // GetRawConnection 获取原始 SSH 连接（用于 SFTP）
