@@ -13,6 +13,7 @@ import { useRuntime } from "@/shell/runtime/runtime-provider"
 import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-policy"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import { cn } from "@/lib/utils"
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -45,6 +46,9 @@ export default function DashboardLayout() {
   const { authStatus, error, isLoading, refreshConfig } = useSystemConfig()
   const { runtime, isLoading: isRuntimeLoading } = useRuntime()
   const user = authStatus?.is_authenticated ? authStatus.user : null
+  const usesViewportWorkspace = ["/dashboard/terminal", "/dashboard/ai-assistant"].some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  )
 
   useEffect(() => {
     if (isLoading || (error && !authStatus?.is_authenticated)) return
@@ -97,12 +101,17 @@ export default function DashboardLayout() {
   return (
     <ClientAuthProvider>
       <DashboardI18nProvider>
-        <SidebarProviderServer>
+        <SidebarProviderServer className={usesViewportWorkspace ? "h-svh overflow-hidden" : "h-auto min-h-svh items-stretch"}>
           <MobileSidebarRouteCloser />
           <AppSidebar />
-          <SidebarInset>
+          <SidebarInset className={usesViewportWorkspace ? "h-svh overflow-hidden" : "min-h-svh overflow-visible"}>
             {/* 添加淡入动画，使界面显示更平滑 */}
-            <div className="animate-in fade-in duration-300 flex min-h-0 flex-1 flex-col overflow-hidden scrollbar-custom">
+            <div
+              className={cn(
+                "animate-in fade-in duration-300 flex min-w-0 flex-1 flex-col scrollbar-custom",
+                usesViewportWorkspace ? "min-h-0 overflow-hidden" : "min-h-svh overflow-visible",
+              )}
+            >
               <Outlet />
             </div>
           </SidebarInset>

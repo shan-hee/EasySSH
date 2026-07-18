@@ -74,8 +74,8 @@ export function FileTransferTab() {
   const cleanupDirty = Boolean(dirtyFields.transfer_cleanup_enabled)
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col">
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-custom p-4">
+    <div className="flex flex-col">
+      <div className="p-4">
         <div className="space-y-6">
           {/* 会话传输 */}
           <SettingsSection

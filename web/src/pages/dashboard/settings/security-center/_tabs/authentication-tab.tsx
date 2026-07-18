@@ -262,7 +262,7 @@ function OAuthProviderSection() {
 
 export function AuthenticationTab() {
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-custom">
+    <div className="p-4">
       <div className="space-y-8">
         <RegistrationSection />
         <GoogleAuthSection />

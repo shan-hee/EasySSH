@@ -609,7 +609,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  {confirmDialog}
   {!embedded ? <PageHeader title={t("pageTitle")} /> : null}
 
- <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
+ <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
    <div className="flex shrink-0 flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
      <p>集中查看定时任务、执行节奏和失败风险，便于快速判断调度状态。</p>
      <div className="flex items-center gap-2">
@@ -691,7 +691,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
      )}
    </Card>
 
-   <div className="min-h-0 flex-1 overflow-hidden">
+   <div className="min-h-[520px] flex-1">
      <DataTable
        data={tasks}
        columns={columns}
@@ -699,7 +699,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
        emptyMessage={t("emptyAll")}
        enableRowSelection={true}
        getRowId={(task) => task.id}
-       className="min-h-0 overflow-hidden"
+       className="min-h-[520px]"
        scrollContainerClassName="min-h-[360px]"
        density="compact"
        toolbar={(table) => (

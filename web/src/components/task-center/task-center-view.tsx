@@ -303,7 +303,7 @@ export function TaskCenterView({
   return (
     <>
       {!hidePageHeader ? <PageHeader title={t("title")} /> : null}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-3 pb-3 sm:px-4 sm:pb-4">
+      <div className="flex min-w-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4">
         <Tabs defaultValue="runs" className="flex min-h-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center border-b pb-3">
             <TabsList>
@@ -312,7 +312,7 @@ export function TaskCenterView({
             </TabsList>
           </div>
 
-          <TabsContent value="runs" className="min-h-0 flex-1 flex-col overflow-hidden pt-3 data-[state=active]:flex">
+          <TabsContent value="runs" className="flex-1 flex-col pt-3 data-[state=active]:flex">
             <div className="grid border-y sm:grid-cols-2 xl:grid-cols-4">
               {metricItems.map(({ label, value, icon: Icon }, index) => (
                 <div key={label} className={cn("flex h-20 items-center gap-3 px-4", index > 0 && "border-t sm:border-t-0 sm:border-l", index === 2 && "sm:border-t xl:border-t-0")}>
@@ -322,7 +322,7 @@ export function TaskCenterView({
               ))}
             </div>
 
-            <div className="mt-3 min-h-0 flex-1 overflow-hidden">
+            <div className="mt-3 min-h-[520px] flex-1">
               <DataTable
                 data={runs}
                 columns={runColumns}
@@ -335,7 +335,7 @@ export function TaskCenterView({
                 onPageSizeChange={(value) => { setPage(1); setPageSize(value) }}
                 emptyMessage={t("empty")}
                 density="compact"
-                className="min-h-0 overflow-hidden"
+                className="min-h-[520px]"
                 scrollContainerClassName="min-h-[260px]"
                 onRowClick={(run) => void openDetails(run)}
                 toolbar={(table) => (
@@ -395,7 +395,7 @@ export function TaskCenterView({
           </TabsContent>
 
           {schedulesContent ? (
-            <TabsContent value="schedules" className="min-h-0 flex-1 overflow-hidden pt-3">
+            <TabsContent value="schedules" className="flex-1 pt-3">
               {schedulesContent}
             </TabsContent>
           ) : null}

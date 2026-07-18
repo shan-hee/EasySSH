@@ -533,13 +533,13 @@ function OperationLogsContent() {
   ]}, [categoryLabels, handleSort, sort, statusLabels, t, typeLabels])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0 xl:overflow-hidden">
+    <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
       <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
         <p>{t("dashboardDescription")}</p>
         <DashboardStatusLine label={t("systemHealthy")} timestamp={formatDateTime(new Date().toISOString())} />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-[520px] flex-1">
         <DataTable
           data={records}
           columns={recordColumns}
@@ -551,7 +551,7 @@ function OperationLogsContent() {
           onPageChange={handlePageChange}
           onPageSizeChange={handlePageSizeChange}
           emptyMessage={t("empty")}
-          className="min-h-0 overflow-hidden"
+          className="min-h-[520px]"
           scrollContainerClassName="min-h-[360px]"
           density="compact"
           onRowClick={(record) => {

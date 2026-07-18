@@ -91,7 +91,7 @@ function SettingsContent() {
   return (
     <>
       <PageHeader title={t("pageTitle")} />
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 pb-4 pt-2 lg:flex-row">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 px-4 pb-4 pt-2 lg:flex-row lg:items-start">
         <div className="flex shrink-0 gap-2 overflow-x-auto border-b pb-2 lg:hidden">
           {items.map((item) => (
             <div key={item.id} className="w-fit shrink-0">
@@ -100,7 +100,7 @@ function SettingsContent() {
           ))}
         </div>
 
-        <aside className="hidden w-56 shrink-0 overflow-y-auto rounded-lg border bg-card p-3 lg:block scrollbar-custom">
+        <aside className="hidden w-56 shrink-0 rounded-lg border bg-card p-3 lg:sticky lg:top-16 lg:block lg:max-h-[calc(100svh-5rem)] lg:overflow-y-auto scrollbar-custom">
           <div className="mb-3 flex items-center gap-2 px-2 text-sm font-semibold"><HardDrive className="h-4 w-4" />{t("navigationTitle")}</div>
           <div className="space-y-4">
             {groups.map((group) => (
@@ -114,7 +114,7 @@ function SettingsContent() {
           </div>
         </aside>
 
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-card">
+        <main className="flex min-w-0 flex-1 flex-col rounded-lg border bg-card">
           <div className="shrink-0 border-b px-4 py-3">
             <h1 className="flex items-center gap-2 text-base font-semibold"><ActiveIcon className="h-4 w-4" />{t(activeItem.nameKey)}</h1>
           </div>
@@ -127,5 +127,5 @@ function SettingsContent() {
 
 export default function SettingsPage() {
   const { t } = useTranslation("common")
-  return <Suspense fallback={<div className="flex h-full items-center justify-center">{t("loading")}</div>}><SettingsContent /></Suspense>
+  return <Suspense fallback={<div className="flex min-h-[20rem] flex-1 items-center justify-center">{t("loading")}</div>}><SettingsContent /></Suspense>
 }

@@ -311,9 +311,10 @@ export default function UsersPage() {
   }], [roles, t])
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-4 md:p-6">
-      {confirmDialog}
+    <>
       <PageHeader title={t("pageTitle")} />
+      <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0 md:p-6 md:pt-0">
+      {confirmDialog}
       <p className="text-sm text-muted-foreground">{t("rbacPageDescription")}</p>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -324,14 +325,14 @@ export default function UsersPage() {
       </div>
 
       <Tabs defaultValue="users" className="flex min-h-0 flex-1 flex-col">
-        <TabsList className="w-fit">
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-fit">
           <TabsTrigger value="users"><Users className="mr-2 h-4 w-4" />{t("tabUsers")}</TabsTrigger>
           <TabsTrigger value="roles"><Shield className="mr-2 h-4 w-4" />{t("rbacRolesTab")}</TabsTrigger>
           <TabsTrigger value="permissions"><KeyRound className="mr-2 h-4 w-4" />{t("tabPermissions")}</TabsTrigger>
           <TabsTrigger value="resources"><Lock className="mr-2 h-4 w-4" />{t("rbacResourcesTab")}</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="users" className="min-h-0 flex-1 overflow-hidden">
+        <TabsContent value="users" className="min-h-[520px] flex-1">
           <DataTable
             data={users}
             columns={userColumns}
@@ -339,7 +340,7 @@ export default function UsersPage() {
             emptyMessage={t("tableEmpty")}
             enableRowSelection
             density="compact"
-            className="min-h-0"
+            className="min-h-[520px]"
             toolbar={(table) => (
               <DataTableToolbar table={table} searchKey="username" searchPlaceholder={t("searchPlaceholder")} filters={roleFilters} showRefresh={false}>
                 <Button size="sm" onClick={openCreateUser}><Plus className="mr-2 h-4 w-4" />{t("btnNewUser")}</Button>
@@ -349,7 +350,7 @@ export default function UsersPage() {
           />
         </TabsContent>
 
-        <TabsContent value="roles" className="min-h-0 flex-1 overflow-auto">
+        <TabsContent value="roles" className="flex-1">
           <div className="mb-3 flex justify-end"><Button size="sm" onClick={openCreateRole}><Plus className="mr-2 h-4 w-4" />{t("rbacNewRole")}</Button></div>
           <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
             {roles.map((role) => (
@@ -366,11 +367,11 @@ export default function UsersPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="permissions" className="min-h-0 flex-1 overflow-hidden">
-          <DataTable data={permissions} columns={permissionColumns} loading={loading} emptyMessage={t("permTableEmpty")} density="compact" toolbar={(table) => <DataTableToolbar table={table} searchKey="name" searchPlaceholder={t("permSearchPlaceholder")} showRefresh={false} />} />
+        <TabsContent value="permissions" className="min-h-[520px] flex-1">
+          <DataTable className="min-h-[520px]" data={permissions} columns={permissionColumns} loading={loading} emptyMessage={t("permTableEmpty")} density="compact" toolbar={(table) => <DataTableToolbar table={table} searchKey="name" searchPlaceholder={t("permSearchPlaceholder")} showRefresh={false} />} />
         </TabsContent>
 
-        <TabsContent value="resources" className="min-h-0 flex-1 overflow-auto">
+        <TabsContent value="resources" className="flex-1">
           <Card>
             <CardHeader><CardTitle>{t("rbacResourceGrantTitle")}</CardTitle><CardDescription>{t("rbacResourceGrantDescription")}</CardDescription></CardHeader>
             <CardContent className="space-y-4">
@@ -394,6 +395,7 @@ export default function UsersPage() {
       <Dialog open={Boolean(lockTarget)} onOpenChange={(open) => !open && setLockTarget(null)}><DialogContent><DialogHeader><DialogTitle>{t("dialogLockTitle")}</DialogTitle><DialogDescription>{lockTarget?.username}</DialogDescription></DialogHeader><Label>{t("fieldLockDuration")}</Label><Input type="number" min={1} value={lockMinutes} onChange={(event) => setLockMinutes(event.target.value)} /><Label>{t("fieldLockReason")}</Label><Input value={lockReason} onChange={(event) => setLockReason(event.target.value)} /><DialogFooter><Button variant="outline" onClick={() => setLockTarget(null)}>{t("dialogCancel")}</Button><Button variant="destructive" onClick={() => void lockUser()}>{t("dialogLockSubmit")}</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={roleDialog !== null} onOpenChange={(open) => !open && setRoleDialog(null)}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{roleDialog === "create" ? t("rbacCreateRoleTitle") : t("rbacEditRoleTitle")}</DialogTitle><DialogDescription>{t("rbacRoleDialogDescription")}</DialogDescription></DialogHeader><div className="grid gap-3 sm:grid-cols-2">{roleDialog === "create" && <div><Label>{t("rbacRoleKey")}</Label><Input className="font-mono" value={roleForm.key} onChange={(event) => setRoleForm({ ...roleForm, key: event.target.value })} placeholder="ops-readonly" /></div>}<div><Label>{t("rbacRoleName")}</Label><Input value={roleForm.name} onChange={(event) => setRoleForm({ ...roleForm, name: event.target.value })} /></div><div className="sm:col-span-2"><Label>{t("rbacRoleDescription")}</Label><Textarea value={roleForm.description} onChange={(event) => setRoleForm({ ...roleForm, description: event.target.value })} /></div><div className="sm:col-span-2"><Label>{t("rbacParentRole")}</Label><Select value={roleForm.parent_key || "none"} onValueChange={(value) => setRoleForm({ ...roleForm, parent_key: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("rbacNoParent")}</SelectItem>{roles.filter((role) => role.id !== editingRoleID).map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>)}</SelectContent></Select></div><div className="sm:col-span-2"><Label>{t("rbacDirectPermissions")}</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{permissions.map((permission) => <Label key={permission.code} className="flex cursor-pointer items-start gap-2 rounded-md border p-3"><Checkbox checked={roleForm.permission_codes.includes(permission.code)} onCheckedChange={() => togglePermission(permission.code)} /><span><span className="block text-sm font-medium">{permission.name}</span><code className="text-xs text-muted-foreground">{permission.code}</code></span></Label>)}</div></div></div><DialogFooter><Button variant="outline" onClick={() => setRoleDialog(null)}>{t("dialogCancel")}</Button><Button onClick={() => void saveRole()}>{t("rbacSaveRole")}</Button></DialogFooter></DialogContent></Dialog>
-    </div>
+      </div>
+    </>
   )
 }

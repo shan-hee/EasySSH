@@ -243,7 +243,7 @@ export function UserManagementContent() {
 
   // 渲染主体内容（去掉 PageHeader）
   return loading ? (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 pt-0 scrollbar-custom sm:gap-4 sm:p-4 sm:pt-0">
+    <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
       {/* 统计概览骨架屏 */}
       <div className="grid shrink-0 gap-2 md:grid-cols-4">
         <SkeletonCard showHeader={false} lines={2} />
@@ -252,10 +252,10 @@ export function UserManagementContent() {
         <SkeletonCard showHeader={false} lines={2} />
       </div>
       {/* 表格骨架屏 */}
-      <SkeletonCard showHeader lines={8} className="min-h-0 flex-1" />
+      <SkeletonCard showHeader lines={8} className="min-h-[520px] flex-1" />
     </div>
   ) : (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 pt-0 scrollbar-custom sm:gap-4 sm:p-4 sm:pt-0">
+    <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
       {confirmDialog}
       <div className="grid shrink-0 gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {[
@@ -289,12 +289,12 @@ export function UserManagementContent() {
       </div>
 
       {/* 用户管理表格 */}
-      <div className="min-h-[520px] shrink-0 overflow-hidden xl:min-h-0 xl:flex-1">
+      <div className="min-h-[520px] flex-1">
         <DataTable
           columns={columns}
           data={users}
           enableRowSelection={true}
-          className="min-h-0"
+          className="min-h-[520px]"
           scrollContainerClassName="min-h-[360px]"
           toolbar={(table) => (
             <DataTableToolbar

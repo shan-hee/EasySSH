@@ -36,9 +36,8 @@ export function AccessControlTab() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col">
-      {/* 可滚动内容区 - flex-1 + min-h-0 确保正确收缩 */}
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-custom p-4">
+    <div className="flex flex-col">
+      <div className="p-4">
         <div className="space-y-4">
           {/* IP白名单/黑名单配置 */}
           <SettingsSection

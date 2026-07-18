@@ -555,7 +555,7 @@ const totalExecutions = useMemo(() => (
    </div>
  ) : null}
 
- <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 pt-0 scrollbar-custom sm:gap-4 sm:p-4 sm:pt-0">
+ <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
    <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
      <DashboardMetricCard title={t("statsTotalScripts")} value={totalRows || scripts.length} icon={FileText} tone="emerald" spark={scriptSpark} loading={loading} />
      <DashboardMetricCard title={t("statsTags")} value={filterOptions.tags.length} icon={Tag} tone="blue" spark={tagCounts.slice(0, 12).map((item) => item.count)} loading={loading} />
@@ -565,7 +565,7 @@ const totalExecutions = useMemo(() => (
      <DashboardMetricCard title="累计执行" value={totalExecutions} icon={Play} tone="amber" spark={scriptSpark} loading={loading} />
    </div>
 
-   <section className="min-h-[520px] shrink-0 overflow-hidden xl:min-h-0 xl:flex-1">
+   <section className="min-h-[520px] flex-1">
      <DataTable
        data={scripts}
        columns={visibleColumns}
@@ -582,7 +582,7 @@ const totalExecutions = useMemo(() => (
        emptyMessage={t("tableEmpty")}
        enableRowSelection={true}
        getRowId={(script) => script.id}
-       className="min-h-[520px] overflow-hidden xl:min-h-0"
+       className="min-h-[520px]"
        scrollContainerClassName="min-h-[360px]"
        density="compact"
        toolbar={(table) => (

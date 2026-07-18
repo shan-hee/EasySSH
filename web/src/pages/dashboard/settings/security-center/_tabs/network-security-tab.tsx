@@ -69,8 +69,8 @@ export function NetworkSecurityTab() {
   const geoIPDirty = Boolean(dirtyFields.geoip_database_path)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-custom">
+    <div className="flex flex-col">
+      <div className="p-4">
         <div className="space-y-4">
           <SettingsSection
             title={t("proxyTitle")}

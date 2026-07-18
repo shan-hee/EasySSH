@@ -208,7 +208,7 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-3 pt-0 sm:p-4 sm:pt-0 xl:overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:p-4 sm:pt-0">
         {/* 欢迎区 */}
         <WelcomeHeader />
 
@@ -262,7 +262,7 @@ export default function DashboardPage() {
         </div>
 
         {/* 服务器概览表 + 最近活动 */}
-        <div className="grid min-h-[260px] flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:min-h-[320px] 2xl:grid-cols-[minmax(0,1fr)_360px] xl:overflow-hidden">
+        <div className="grid min-h-[320px] flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="min-h-0">
             <ServerOverviewTable servers={sortedServers} loading={loadingServers} />
           </div>
