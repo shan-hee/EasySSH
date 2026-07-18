@@ -4,6 +4,10 @@ import * as React from "react"
 type ThemePreference = "light" | "dark" | "system"
 type ResolvedTheme = "light" | "dark"
 
+const windowOpacityStorageKey = "easyssh-window-opacity"
+export const minimumWindowOpacity = 50
+export const maximumWindowOpacity = 100
+
 interface ThemeProviderProps {
   children: React.ReactNode
   defaultTheme?: ThemePreference
@@ -14,7 +18,9 @@ interface ThemeProviderProps {
 interface ThemeContextValue {
   theme: ThemePreference
   resolvedTheme: ResolvedTheme
+  windowOpacity: number
   setTheme: (theme: ThemePreference) => void
+  setWindowOpacity: (opacity: number) => void
 }
 
 const ThemeContext = React.createContext<ThemeContextValue | null>(null)
@@ -36,6 +42,27 @@ function getSystemTheme(): ResolvedTheme {
   }
 
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+}
+
+function normalizeWindowOpacity(value: number) {
+  if (!Number.isFinite(value)) {
+    return maximumWindowOpacity
+  }
+
+  return Math.min(maximumWindowOpacity, Math.max(minimumWindowOpacity, Math.round(value)))
+}
+
+function getStoredWindowOpacity() {
+  if (typeof window === "undefined") {
+    return maximumWindowOpacity
+  }
+
+  const stored = window.localStorage.getItem(windowOpacityStorageKey)
+  return stored === null ? maximumWindowOpacity : normalizeWindowOpacity(Number(stored))
+}
+
+function applyWindowOpacity(opacity: number) {
+  document.documentElement.style.setProperty("--window-opacity", String(opacity / 100))
 }
 
 function resolveTheme(theme: ThemePreference, enableSystem: boolean): ResolvedTheme {
@@ -75,6 +102,7 @@ export function ThemeProvider({
 }: ThemeProviderProps) {
   const [theme, setThemeState] = React.useState<ThemePreference>(() => getStoredTheme(defaultTheme))
   const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(() => resolveTheme(theme, enableSystem))
+  const [windowOpacity, setWindowOpacityState] = React.useState(getStoredWindowOpacity)
 
   const applyResolvedTheme = React.useCallback(
     (nextResolvedTheme: ResolvedTheme) => {
@@ -92,6 +120,11 @@ export function ThemeProvider({
     applyResolvedTheme(nextResolvedTheme)
     window.localStorage.setItem("theme", theme)
   }, [applyResolvedTheme, enableSystem, theme])
+
+  useIsomorphicLayoutEffect(() => {
+    applyWindowOpacity(windowOpacity)
+    window.localStorage.setItem(windowOpacityStorageKey, String(windowOpacity))
+  }, [windowOpacity])
 
   useIsomorphicLayoutEffect(() => {
     if (!enableSystem || theme !== "system") {
@@ -113,13 +146,19 @@ export function ThemeProvider({
     setThemeState(nextTheme)
   }, [])
 
+  const setWindowOpacity = React.useCallback((nextOpacity: number) => {
+    setWindowOpacityState(normalizeWindowOpacity(nextOpacity))
+  }, [])
+
   const value = React.useMemo(
     () => ({
       theme,
       resolvedTheme,
+      windowOpacity,
       setTheme,
+      setWindowOpacity,
     }),
-    [resolvedTheme, setTheme, theme],
+    [resolvedTheme, setTheme, setWindowOpacity, theme, windowOpacity],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

@@ -61,6 +61,7 @@ const messages = {
     themeLight: "Light",
     themeDark: "Dark",
     themeSystem: "System",
+    windowOpacity: "Window opacity",
     themeScheme: "Color scheme",
     themeSchemeDefault: "Default",
     updateTooltip: "Check for updates",

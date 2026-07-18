@@ -61,6 +61,7 @@ const messages = {
     themeLight: "浅色",
     themeDark: "深色",
     themeSystem: "系统",
+    windowOpacity: "窗口透明度",
     themeScheme: "配色方案",
     themeSchemeDefault: "默认",
     updateTooltip: "检查更新",

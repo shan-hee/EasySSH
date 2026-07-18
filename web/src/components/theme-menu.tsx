@@ -1,6 +1,10 @@
 
 import * as React from "react"
-import { useTheme } from "@/components/theme-provider"
+import {
+  maximumWindowOpacity,
+  minimumWindowOpacity,
+  useTheme,
+} from "@/components/theme-provider"
 import { Check, Palette } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -16,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Slider } from "@/components/ui/slider"
 import { useThemeGeneratorVersion } from "@/hooks/use-theme-generator-version"
 import {
   THEME_PRESETS,
@@ -37,6 +42,17 @@ const themeModeOptions: Array<{
   { value: "dark", labelKey: "themeDark" },
   { value: "system", labelKey: "themeSystem" },
 ]
+
+const windowOpacitySliderKeys = new Set([
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+])
 
 function getThemePreference(value: string | undefined): ThemePreference {
   if (value === "light" || value === "dark" || value === "system") {
@@ -68,7 +84,7 @@ function resolveThemeGeneratorMode(mode: ThemePreference, fallback: "light" | "d
 
 export function ThemeMenu() {
   const { t } = useTranslation("headerActions")
-  const { theme, resolvedTheme, setTheme } = useTheme()
+  const { theme, resolvedTheme, windowOpacity, setTheme, setWindowOpacity } = useTheme()
   const themeGeneratorVersion = useThemeGeneratorVersion()
   const [selectedPreset, setSelectedPreset] = React.useState<string | null>(() => getCurrentPresetId())
   const selectedMode = getThemePreference(theme)
@@ -118,13 +134,38 @@ export function ThemeMenu() {
         <TooltipContent side="bottom">{t("themeTooltip")}</TooltipContent>
       </Tooltip>
 
-      <DropdownMenuContent align="end" className="w-44">
+      <DropdownMenuContent align="end" className="w-56">
         {themeModeOptions.map((option) => (
           <DropdownMenuItem key={option.value} onSelect={() => selectThemeMode(option.value)}>
             <span className="flex-1">{t(option.labelKey)}</span>
             {selectedMode === option.value && <Check className="size-4" />}
           </DropdownMenuItem>
         ))}
+
+        <DropdownMenuSeparator />
+
+        <div
+          className="space-y-2 px-2 py-2"
+          onKeyDown={(event) => {
+            if (windowOpacitySliderKeys.has(event.key)) {
+              event.stopPropagation()
+            }
+          }}
+        >
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span>{t("windowOpacity")}</span>
+            <span className="tabular-nums text-muted-foreground">{windowOpacity}%</span>
+          </div>
+          <Slider
+            min={minimumWindowOpacity}
+            max={maximumWindowOpacity}
+            step={1}
+            value={[windowOpacity]}
+            onValueChange={(value) => setWindowOpacity(value[0])}
+            aria-label={t("windowOpacity")}
+            aria-valuetext={`${windowOpacity}%`}
+          />
+        </div>
 
         <DropdownMenuSeparator />
 

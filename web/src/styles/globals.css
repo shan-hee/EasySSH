@@ -75,6 +75,7 @@
 }
 
 :root {
+  --window-opacity: 1;
   --font-inter: "Inter Variable";
   --font-noto-sans-sc: "Noto Sans SC";
   --font-jetbrains-mono: "JetBrains Mono Variable";
@@ -177,7 +178,13 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-transparent text-foreground;
+    /* Includes portal-based menus/dialogs; desktop composites with the OS, Web with the browser canvas. */
+    opacity: var(--window-opacity);
+  }
+
+  #root {
+    @apply bg-background;
   }
 }
 
