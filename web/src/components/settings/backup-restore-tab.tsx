@@ -291,7 +291,7 @@ export function BackupRestoreTab({
   }
 
   return (
-    <div className="px-4 pb-6 pt-0 md:px-6">
+    <div className="px-4 pb-6 pt-4 md:px-6">
       {confirmDialog}
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
         <Alert className="py-3">
