@@ -3,7 +3,7 @@ import { resolveAPIErrorMessage } from "@/lib/api-error"
 import { useAuthStore } from "@/stores/auth-store"
 import {
   ensureFreshAccessToken,
-  isRefreshTokenError,
+  isTerminalRefreshTokenError,
   refreshAccessToken,
 } from "@/lib/session-refresh"
 import { clearCSRFToken, ensureCSRFToken, updateCSRFTokenFromHeaders } from "@/lib/csrf"
@@ -380,7 +380,7 @@ export async function openapiTransportFetch(
     try {
       await refreshAccessToken()
     } catch (refreshError) {
-      if (isRefreshTokenError(refreshError) && refreshError.status === 401) {
+      if (isTerminalRefreshTokenError(refreshError)) {
         handleGlobalUnauthorized()
       }
       throw refreshError
@@ -427,7 +427,7 @@ export async function authenticatedFetch(
   try {
     await ensureFreshAccessToken(minValidityMs)
   } catch (refreshError) {
-    if (isRefreshTokenError(refreshError) && refreshError.status === 401) {
+    if (isTerminalRefreshTokenError(refreshError)) {
       handleGlobalUnauthorized()
     }
     throw refreshError
@@ -455,7 +455,7 @@ export async function authenticatedFetch(
     try {
       await refreshAccessToken()
     } catch (refreshError) {
-      if (isRefreshTokenError(refreshError) && refreshError.status === 401) {
+      if (isTerminalRefreshTokenError(refreshError)) {
         handleGlobalUnauthorized()
       }
       throw refreshError

@@ -8,7 +8,7 @@ import {
   getCurrentBrowserPath,
 } from "@/lib/auth-redirect"
 import {
-  isRefreshTokenError,
+  isTerminalRefreshTokenError,
   refreshAccessToken,
   suspendSessionRefresh,
 } from "@/lib/session-refresh"
@@ -92,7 +92,7 @@ export function SessionRefreshProvider({ children }: SessionRefreshProviderProps
         // refreshAccessToken 会更新 expiresAt，由 effect 重建下一次定时器。
       } catch (error) {
         if (cancelled) return
-        if (isRefreshTokenError(error) && error.status === 401) {
+        if (isTerminalRefreshTokenError(error)) {
           expireSession()
           return
         }

@@ -33,6 +33,32 @@ export function isRefreshTokenError(error: unknown): error is RefreshTokenError 
   return error instanceof RefreshTokenError
 }
 
+function getOAuthErrorCode(detail: unknown): string | null {
+  if (typeof detail !== "object" || detail === null) {
+    return null
+  }
+
+  const code = (detail as { error?: unknown }).error
+  return typeof code === "string" ? code.trim().toLowerCase() : null
+}
+
+/**
+ * 判断刷新失败是否表示浏览器已不存在可恢复的登录会话。
+ *
+ * OAuth 2.0 token 端点按规范使用 400 invalid_grant 表示 refresh token
+ * 缺失、过期、撤销或无法验证；部分鉴权失败则使用 401。两者都应结束
+ * 本地会话，而不是按网络/服务故障持续重试。
+ */
+export function isTerminalRefreshTokenError(error: unknown): error is RefreshTokenError {
+  if (!isRefreshTokenError(error)) {
+    return false
+  }
+
+  return error.status === 401 || (
+    error.status === 400 && getOAuthErrorCode(error.detail) === "invalid_grant"
+  )
+}
+
 async function readResponseDetail(response: Response): Promise<unknown> {
   const contentType = response.headers.get("content-type") || ""
   try {

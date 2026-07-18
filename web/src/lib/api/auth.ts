@@ -1,6 +1,6 @@
 import { apiFetch } from "@/lib/api-client"
 import {
-  isRefreshTokenError,
+  isTerminalRefreshTokenError,
   refreshAccessToken,
   suspendSessionRefresh,
 } from "@/lib/session-refresh"
@@ -254,7 +254,7 @@ export const authApi = {
       return status
     } catch (error) {
       // Refresh Token 明确无效时按未认证处理；网络或服务异常保留错误语义。
-      if (isRefreshTokenError(error) && error.status === 401) {
+      if (isTerminalRefreshTokenError(error)) {
         return status
       }
       throw error
