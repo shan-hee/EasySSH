@@ -39,7 +39,7 @@ import { DesktopBackupRestoreView } from "./shell/desktop-backup-restore-view"
 import { DesktopProviders } from "./shell/desktop-providers"
 import { DesktopScriptsView } from "./shell/desktop-scripts-view"
 import { DesktopTaskCenterView } from "./shell/desktop-task-center-view"
-import { DesktopTitleBar, type DesktopView } from "./shell/desktop-titlebar"
+import { DesktopWindowActions, type DesktopView } from "./shell/desktop-titlebar"
 import { DesktopUpdateFailureDialog } from "./shell/desktop-update-failure-dialog"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
 import { useFileTransfer, type FileTransferSftpApi } from "@/hooks/useFileTransfer"
@@ -717,21 +717,28 @@ function App() {
     return () => window.clearInterval(timer)
   }, [getSessionLastActivity, handleCloseSession, inactiveMinutes, sessions, tTerminal])
 
+  const windowActions = (
+    <DesktopWindowActions
+      runtime={runtime}
+      activeView={activeView}
+      locale={locale}
+      onToggleAiAssistant={handleToggleAiAssistant}
+      onLocaleChange={handleLocaleChange}
+      onOpenScripts={handleOpenScripts}
+      onOpenTasks={handleOpenTasks}
+      onOpenActivityLogs={handleOpenActivityLogs}
+      onOpenBackupRestore={handleOpenBackupRestore}
+    />
+  )
+
   if (preferenceSnapshot === null) {
     return (
       <DesktopProviders>
         <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
-          <DesktopTitleBar
-            runtime={runtime}
-            activeView={activeView}
-            locale={locale}
-            onToggleAiAssistant={handleToggleAiAssistant}
-            onLocaleChange={handleLocaleChange}
-            onOpenScripts={handleOpenScripts}
-            onOpenTasks={handleOpenTasks}
-            onOpenActivityLogs={handleOpenActivityLogs}
-            onOpenBackupRestore={handleOpenBackupRestore}
-          />
+          <header className="flex h-10 shrink-0 items-stretch border-b border-border/60 bg-background/65 [--wails-draggable:drag]">
+            <div className="min-w-0 flex-1 [--wails-draggable:drag]" />
+            {windowActions}
+          </header>
           <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
             {tCommon("loading")}
           </div>
@@ -745,17 +752,6 @@ function App() {
     <DesktopProviders>
       <SshWorkspace adapters={adapters} capabilities={capabilities} layout="desktop">
         <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
-          <DesktopTitleBar
-            runtime={runtime}
-            activeView={activeView}
-            locale={locale}
-            onToggleAiAssistant={handleToggleAiAssistant}
-            onLocaleChange={handleLocaleChange}
-            onOpenScripts={handleOpenScripts}
-            onOpenTasks={handleOpenTasks}
-            onOpenActivityLogs={handleOpenActivityLogs}
-            onOpenBackupRestore={handleOpenBackupRestore}
-          />
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             <section
               className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
@@ -809,6 +805,7 @@ function App() {
                 unframed
                 settingsDialogOpen={terminalSettingsOpen}
                 onSettingsDialogOpenChange={setTerminalSettingsOpen}
+                tabBarEndContent={activeView === "terminal" ? windowActions : undefined}
               />
             </section>
             <section
@@ -821,6 +818,7 @@ function App() {
                   adapters={aiAssistantAdapters}
                   locale={locale}
                   onReturnToTerminal={handleReturnToTerminal}
+                  headerActions={activeView === "ai" ? windowActions : undefined}
                 />
               ) : null}
             </section>
@@ -834,6 +832,7 @@ function App() {
                   adapters={scriptAdapters}
                   locale={locale}
                   onReturnToTerminal={handleReturnToTerminal}
+                  headerActions={activeView === "scripts" ? windowActions : undefined}
                 />
               ) : null}
             </section>
@@ -848,6 +847,7 @@ function App() {
                   requestedRunID={requestedTaskRunID}
                   onClearRequestedRun={() => setRequestedTaskRunID(null)}
                   onReturnToTerminal={handleReturnToTerminal}
+                  headerActions={activeView === "tasks" ? windowActions : undefined}
                 />
               ) : null}
             </section>
@@ -860,6 +860,7 @@ function App() {
                 <DesktopActivityLogsView
                   locale={locale}
                   onReturnToTerminal={handleReturnToTerminal}
+                  headerActions={activeView === "activity-logs" ? windowActions : undefined}
                 />
               ) : null}
             </section>
@@ -872,6 +873,7 @@ function App() {
                 <DesktopBackupRestoreView
                   locale={locale}
                   onReturnToTerminal={handleReturnToTerminal}
+                  headerActions={activeView === "backup-restore" ? windowActions : undefined}
                 />
               ) : null}
             </section>

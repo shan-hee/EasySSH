@@ -299,6 +299,7 @@ interface TerminalComponentProps {
   unframed?: boolean
   settingsDialogOpen?: boolean
   onSettingsDialogOpenChange?: (open: boolean) => void
+  tabBarEndContent?: ReactNode
 }
 
 export interface TerminalExtraNewSessionAction {
@@ -340,6 +341,7 @@ export function TerminalComponent({
   unframed = false,
   settingsDialogOpen,
   onSettingsDialogOpenChange,
+  tabBarEndContent,
 }: TerminalComponentProps) {
   const { t: tTerminal } = useTranslation("terminal")
   const { t: tSftpFallback } = useTranslation("sftp")
@@ -1575,6 +1577,7 @@ export function TerminalComponent({
             onCrossSessionFileDrop={(targetSessionId, dragData) => {
               void handleCrossSessionFileDrop(targetSessionId, dragData)
             }}
+            endContent={tabBarEndContent}
           />
 
           <div

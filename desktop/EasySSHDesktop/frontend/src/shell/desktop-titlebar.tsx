@@ -47,7 +47,7 @@ const windowActionErrorMessage = "Failed to run window action:"
 const githubLabel = "GitHub"
 const githubUrl = "https://github.com/shan-hee/EasySSH"
 const aboutRowClassName = "grid min-w-0 grid-cols-[86px_minmax(0,1fr)] items-center gap-3 border-b border-[color-mix(in_oklab,var(--border)_55%,transparent)] py-2 text-[13px] last:border-b-0"
-const titlebarIconButtonClassName = "size-[30px] [--wails-draggable:no-drag]"
+const toolbarIconButtonClassName = "size-[30px] [--wails-draggable:no-drag]"
 const windowButtonClassName = "inline-flex h-full w-[46px] items-center justify-center border-0 bg-transparent p-0 text-foreground outline-none transition-colors duration-150 [--wails-draggable:no-drag] hover:bg-[color-mix(in_oklab,var(--accent)_75%,transparent)] focus-visible:bg-[color-mix(in_oklab,var(--accent)_85%,transparent)] focus-visible:shadow-[inset_0_0_0_1px_var(--ring)]"
 
 function runWindowAction(action: () => Promise<void>) {
@@ -198,7 +198,7 @@ function DesktopSettingsMenu({
           <Button
             variant="ghost"
             size="icon-sm"
-            className={titlebarIconButtonClassName}
+            className={toolbarIconButtonClassName}
             aria-label={t("settingsLabel")}
             title={t("settingsLabel")}
           >
@@ -245,7 +245,7 @@ function DesktopSettingsMenu({
   )
 }
 
-export function DesktopTitleBar({
+export function DesktopWindowActions({
   runtime,
   activeView,
   locale,
@@ -280,66 +280,60 @@ export function DesktopTitleBar({
   }, [])
 
   return (
-    <header className="flex h-9 shrink-0 basis-9 items-center justify-between border-b border-[color-mix(in_oklab,var(--border)_45%,transparent)] bg-[color-mix(in_oklab,var(--background)_94%,transparent)] text-foreground backdrop-blur-md [--wails-draggable:drag]">
-      <div className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 [--wails-draggable:drag]">
-        <img className="size-4 shrink-0" src="/favicon.ico" alt="" aria-hidden="true" />
-        <span className="min-w-0 truncate text-xs leading-none">EasySSH</span>
+    <div className="flex h-full min-w-0 shrink-0 items-center gap-1 pl-2 text-foreground [--wails-draggable:no-drag] [&_[data-radix-popper-content-wrapper]]:[--wails-draggable:no-drag] [&_[data-slot=button]]:size-[30px] [&_a]:[--wails-draggable:no-drag] [&_button]:[--wails-draggable:no-drag] [&_svg]:pointer-events-none">
+      <DesktopSettingsMenu
+        runtime={runtime}
+        onOpenScripts={onOpenScripts}
+        onOpenTasks={onOpenTasks}
+        onOpenActivityLogs={onOpenActivityLogs}
+        onOpenBackupRestore={onOpenBackupRestore}
+      />
+      {activeView !== "ai" && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className={toolbarIconButtonClassName}
+          aria-label={t("aiAssistantLabel")}
+          title={t("aiAssistantLabel")}
+          onClick={onToggleAiAssistant}
+        >
+          <Bot className="h-4 w-4" />
+        </Button>
+      )}
+      <DesktopHeaderActions locale={locale} onLocaleChange={onLocaleChange} onOpenTask={onOpenTasks} />
+      <div className="ml-1 flex h-full items-stretch [--wails-draggable:no-drag]" role="group" aria-label={t("windowControlsLabel")}>
+        <button
+          type="button"
+          className={windowButtonClassName}
+          aria-label={t("windowMinimizeLabel")}
+          title={t("windowMinimizeLabel")}
+          onClick={handleMinimize}
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          className={windowButtonClassName}
+          aria-label={t("windowMaximizeLabel")}
+          title={t("windowMaximizeLabel")}
+          onClick={handleMaximize}
+        >
+          <Square className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className={cn(
+            windowButtonClassName,
+            "hover:!bg-[oklch(0.577_0.245_27.325)] hover:text-white focus-visible:!bg-[oklch(0.577_0.245_27.325)] focus-visible:text-white"
+          )}
+          aria-label={t("windowCloseLabel")}
+          title={t("windowCloseLabel")}
+          onClick={handleClose}
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
-      <div className="flex h-full min-w-0 shrink-0 items-center gap-1 pl-2 [--wails-draggable:no-drag] [&_[data-radix-popper-content-wrapper]]:[--wails-draggable:no-drag] [&_[data-slot=button]]:size-[30px] [&_a]:[--wails-draggable:no-drag] [&_button]:[--wails-draggable:no-drag] [&_svg]:pointer-events-none">
-        <DesktopSettingsMenu
-          runtime={runtime}
-          onOpenScripts={onOpenScripts}
-          onOpenTasks={onOpenTasks}
-          onOpenActivityLogs={onOpenActivityLogs}
-          onOpenBackupRestore={onOpenBackupRestore}
-        />
-        {activeView !== "ai" && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className={titlebarIconButtonClassName}
-            aria-label={t("aiAssistantLabel")}
-            title={t("aiAssistantLabel")}
-            onClick={onToggleAiAssistant}
-          >
-            <Bot className="h-4 w-4" />
-          </Button>
-        )}
-        <DesktopHeaderActions locale={locale} onLocaleChange={onLocaleChange} onOpenTask={onOpenTasks} />
-        <div className="ml-1 flex h-full items-stretch [--wails-draggable:no-drag]" role="group" aria-label={t("windowControlsLabel")}>
-          <button
-            type="button"
-            className={windowButtonClassName}
-            aria-label={t("windowMinimizeLabel")}
-            title={t("windowMinimizeLabel")}
-            onClick={handleMinimize}
-          >
-            <Minus className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            className={windowButtonClassName}
-            aria-label={t("windowMaximizeLabel")}
-            title={t("windowMaximizeLabel")}
-            onClick={handleMaximize}
-          >
-            <Square className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            className={cn(
-              windowButtonClassName,
-              "hover:!bg-[oklch(0.577_0.245_27.325)] hover:text-white focus-visible:!bg-[oklch(0.577_0.245_27.325)] focus-visible:text-white"
-            )}
-            aria-label={t("windowCloseLabel")}
-            title={t("windowCloseLabel")}
-            onClick={handleClose}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </header>
+    </div>
   )
 }

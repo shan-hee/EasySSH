@@ -58,19 +58,23 @@ export function DesktopWebViewShell({ locale, children }: { locale: Locale; chil
 export function DesktopReturnHeader({
   title,
   onReturnToTerminal,
+  actions,
 }: {
   title: string
   onReturnToTerminal: () => void
+  actions?: ReactNode
 }) {
   const { t } = useTranslation("desktop")
 
   return (
-    <div className="flex h-11 shrink-0 items-center gap-2 px-3">
-      <Button variant="ghost" size="sm" className="h-8" onClick={onReturnToTerminal}>
+    <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/60 bg-background/65 pl-3 backdrop-blur-md [--wails-draggable:drag]">
+      <Button variant="ghost" size="sm" className="h-8 [--wails-draggable:no-drag]" onClick={onReturnToTerminal}>
         <ArrowLeft className="mr-2 h-4 w-4" />
         {t("returnToTerminalLabel")}
       </Button>
       <div className="min-w-0 truncate text-sm font-medium">{title}</div>
+      <div className="min-w-0 flex-1 [--wails-draggable:drag]" />
+      {actions}
     </div>
   )
 }

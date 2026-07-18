@@ -8,9 +8,11 @@ import { DesktopReturnHeader, DesktopWebViewShell } from "./desktop-view-shell"
 export function DesktopActivityLogsView({
   locale,
   onReturnToTerminal,
+  headerActions,
 }: {
   locale: Locale
   onReturnToTerminal: () => void
+  headerActions?: React.ReactNode
 }) {
   const { t } = useTranslation("desktop")
   const logsApi = React.useMemo(() => createDesktopLogsApi(), [])
@@ -18,7 +20,7 @@ export function DesktopActivityLogsView({
   return (
     <DesktopWebViewShell locale={locale}>
       <div className="flex min-h-0 flex-1 flex-col">
-        <DesktopReturnHeader title={t("activityLogLabel")} onReturnToTerminal={onReturnToTerminal} />
+        <DesktopReturnHeader title={t("activityLogLabel")} onReturnToTerminal={onReturnToTerminal} actions={headerActions} />
         <LogsClient api={logsApi} desktopMode />
       </div>
     </DesktopWebViewShell>

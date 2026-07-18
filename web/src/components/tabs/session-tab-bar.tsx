@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -86,6 +86,7 @@ interface SessionTabBarProps {
   canAcceptCrossSessionFileDrop?: (targetSession: TerminalSession) => boolean
   onCrossSessionFileDrop?: (targetSessionId: string, dragData: CrossSessionFileDragData) => void
   canShowContextMenu?: (session: TerminalSession) => boolean
+  endContent?: ReactNode
 }
 
 export type SessionTabDropSide = "top" | "right" | "bottom" | "left"
@@ -464,6 +465,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
     canAcceptCrossSessionFileDrop,
     onCrossSessionFileDrop,
     canShowContextMenu,
+    endContent,
   } = props
 
   const { config } = useSystemConfig()
@@ -866,11 +868,14 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
       {/* 页签栏（现代化设计） */}
       <div ref={tabBarRef} className={
-        "w-full min-w-0 border-b border-border/60 bg-background/65 text-foreground backdrop-blur-md transition-colors"
+        "w-full min-w-0 border-b border-border/60 bg-background/65 text-foreground backdrop-blur-md transition-colors [--wails-draggable:drag]"
       } onDragOver={handleSplitPaneDragOver} onDrop={handleSplitPaneDrop}>
-        <div className="flex items-center h-10 gap-0 px-2 min-w-0 overflow-hidden">
+        <div className={cn(
+          "flex h-10 min-w-0 items-center gap-0 overflow-hidden [--wails-draggable:drag]",
+          endContent ? "pl-2" : "px-2"
+        )}>
           {/* Tabs 容器 */}
-          <div ref={scrollContainerRef} className="flex-1 min-w-0 h-10 overflow-x-auto overflow-y-hidden scrollbar-custom pb-1">
+          <div ref={scrollContainerRef} className="h-10 min-w-0 flex-1 overflow-x-auto overflow-y-hidden pb-1 scrollbar-custom [--wails-draggable:drag]">
             {isMounted ? (
               // 客户端渲染：带拖动功能
               <DndContext
@@ -886,7 +891,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                   items={sessionIds}
                   strategy={horizontalListSortingStrategy}
                 >
-                  <div ref={tabsContainerRef} className="flex items-center gap-1 min-h-0 pt-1 w-max">
+                  <div ref={tabsContainerRef} className="flex min-h-0 w-max items-center gap-1 pt-1 [--wails-draggable:no-drag]">
                     {sessions.map((s) => renderTabContextMenu(
                       s,
                       <SortableTab
@@ -919,7 +924,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
               </DndContext>
             ) : (
               // 服务端渲染：静态页签（无拖动功能）
-              <div ref={tabsContainerRef} className="flex items-center gap-1 min-h-0 pt-1 w-max">
+              <div ref={tabsContainerRef} className="flex min-h-0 w-max items-center gap-1 pt-1 [--wails-draggable:no-drag]">
                 {sessions.map((s) => renderTabContextMenu(
                   s,
                   <StaticTab
@@ -948,13 +953,13 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
           {/* 新建会话按钮：页签溢出时固定显示 */}
           {isOverflowing && (
-            <div className="flex items-center gap-1 px-2 shrink-0">
+            <div className="flex shrink-0 items-center gap-1 px-2 [--wails-draggable:no-drag]">
               {renderPrimaryNewSessionButton()}
             </div>
           )}
 
           {hasRightActions && (
-            <div className="flex shrink-0 items-center gap-1 border-l border-border/60 px-2">
+            <div className="flex shrink-0 items-center gap-1 px-2 [--wails-draggable:no-drag]">
               {renderAdditionalNewSessionButtons()}
 
               {onOpenSettings && (
@@ -988,6 +993,12 @@ export function SessionTabBar(props: SessionTabBarProps) {
               )}
             </div>
           )}
+
+          {endContent ? (
+            <div className="flex h-full shrink-0 items-stretch [--wails-draggable:no-drag]">
+              {endContent}
+            </div>
+          ) : null}
         </div>
       </div>
 
