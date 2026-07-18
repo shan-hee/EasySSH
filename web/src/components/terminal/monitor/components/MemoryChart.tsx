@@ -1,15 +1,11 @@
 
 import React from 'react';
 import { useTranslation } from "react-i18next"
-import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import type { MemoryData, MonitorPanelDensity } from '../types/metrics';
-import {
-  ChartConfig,
-  ChartContainer,
-} from "@/components/ui/chart";
+import { EChartsView } from "@/components/ui/echarts-view";
 import { cn } from "@/lib/utils";
-import { useEchartsColors } from "@/lib/echarts-theme";
+import { useEchartsColors, type ChartConfig } from "@/lib/echarts-theme";
 import { MONITOR_COLORS } from "../constants/colors";
 import { useMonitorChartTheme } from "../hooks/useMonitorChartTheme";
 
@@ -292,16 +288,12 @@ export const MemoryChart: React.FC<MemoryChartProps> = React.memo(({
 
         {/* 右侧:径向条形图 */}
         <div className="relative flex-shrink-0" style={{ width: ringSize, height: ringSize }}>
-          <ChartContainer config={chartConfig} className="w-full h-full">
-            {() => (
-              <ReactECharts
-                option={option}
-                style={{ width: "100%", height: "100%" }}
-                notMerge={false}
-                lazyUpdate={true}
-              />
-            )}
-          </ChartContainer>
+          <EChartsView
+            className="h-full w-full"
+            option={option}
+            notMerge={false}
+            lazyUpdate
+          />
         </div>
       </div>
     </div>

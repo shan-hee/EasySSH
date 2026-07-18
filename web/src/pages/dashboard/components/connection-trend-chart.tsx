@@ -1,9 +1,9 @@
 
 import * as React from "react"
 import { useTranslation } from "react-i18next"
-import ReactECharts from "echarts-for-react"
 import type { EChartsOption } from "echarts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { EChartsView } from "@/components/ui/echarts-view"
 import {
   Select,
   SelectContent,
@@ -11,8 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { ChartContainer, type ChartConfig } from "@/components/ui/chart"
-import { useEchartsColors } from "@/lib/echarts-theme"
+import { useEchartsColors, type ChartConfig } from "@/lib/echarts-theme"
 import { useMonitorChartTheme } from "@/components/terminal/monitor/hooks/useMonitorChartTheme"
 
 interface ConnectionTrendChartProps {
@@ -169,16 +168,12 @@ export function ConnectionTrendChart({ dates, series, loading }: ConnectionTrend
           {loading ? (
             <div className="h-full w-full animate-pulse rounded-lg bg-primary/5" />
           ) : (
-            <ChartContainer config={chartConfig} className="h-full w-full aspect-auto">
-              {() => (
-                <ReactECharts
-                  option={option}
-                  style={{ width: "100%", height: "100%" }}
-                  notMerge={false}
-                  lazyUpdate
-                />
-              )}
-            </ChartContainer>
+            <EChartsView
+              className="h-full w-full"
+              option={option}
+              notMerge={false}
+              lazyUpdate
+            />
           )}
         </div>
       </CardContent>

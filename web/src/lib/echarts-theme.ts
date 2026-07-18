@@ -1,10 +1,17 @@
 
 import * as React from "react";
-import type { ChartConfig } from "@/components/ui/chart";
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode";
 import { colorToHex } from "@/lib/color-utils";
 
 type ColorMap = Record<string, string>;
+
+export type ChartConfig = Record<string, {
+  label?: React.ReactNode;
+  icon?: React.ComponentType;
+} & (
+  | { color?: string; theme?: never }
+  | { color?: never; theme: Record<"light" | "dark", string> }
+)>;
 
 function resolveCssVarColor(raw: string | undefined, style: CSSStyleDeclaration): string | undefined {
   if (!raw) return undefined;

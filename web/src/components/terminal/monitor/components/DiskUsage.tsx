@@ -1,16 +1,12 @@
 
 import React from 'react';
 import { useTranslation } from "react-i18next"
-import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import type { DiskData, MonitorPanelDensity } from '../types/metrics';
 import { formatBytes } from "@/lib/format-utils";
-import {
-  ChartConfig,
-  ChartContainer,
-} from "@/components/ui/chart";
+import { EChartsView } from "@/components/ui/echarts-view";
 import { cn } from "@/lib/utils";
-import { useEchartsColors } from "@/lib/echarts-theme";
+import { useEchartsColors, type ChartConfig } from "@/lib/echarts-theme";
 import { MONITOR_COLORS } from "../constants/colors";
 import { useMonitorChartTheme } from "../hooks/useMonitorChartTheme";
 
@@ -311,16 +307,12 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({
 
       {/* 图表区域 - 高度由监控面板密度控制 */}
       <div className="w-full" style={{ height: resolvedChartHeight }}>
-        <ChartContainer config={colorConfig} className="h-full w-full aspect-auto">
-          {() => (
-            <ReactECharts
-              option={option}
-              style={{ width: "100%", height: "100%" }}
-              notMerge={false}
-              lazyUpdate={true}
-            />
-          )}
-        </ChartContainer>
+        <EChartsView
+          className="h-full w-full"
+          option={option}
+          notMerge={false}
+          lazyUpdate
+        />
       </div>
     </div>
   );

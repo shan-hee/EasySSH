@@ -1,13 +1,13 @@
 
 import * as React from "react"
 import { useTranslation } from "react-i18next"
-import ReactECharts from "echarts-for-react"
 import * as echarts from "echarts"
 import type { EChartsOption } from "echarts"
 import { Minus, Plus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { EChartsView, type EChartsViewHandle } from "@/components/ui/echarts-view"
 import { useMonitorChartTheme } from "@/components/terminal/monitor/hooks/useMonitorChartTheme"
 import { getCountryCoord } from "@/lib/country-coords"
 import type { OverviewRegionCount } from "@/lib/api/dashboard"
@@ -172,7 +172,7 @@ export function ServerDistribution({ distribution, loading }: ServerDistribution
   const chartTheme = useMonitorChartTheme()
   const zoomInLabel = t("mapZoomIn")
   const zoomOutLabel = t("mapZoomOut")
-  const chartRef = React.useRef<ReactECharts>(null)
+  const chartRef = React.useRef<EChartsViewHandle>(null)
   const [mapReady, setMapReady] = React.useState(worldMapRegistered)
   const [dotMatrixData, setDotMatrixData] = React.useState<DotMatrixPoint[]>(() => worldDotMatrixData ?? [])
 
@@ -350,7 +350,7 @@ export function ServerDistribution({ distribution, loading }: ServerDistribution
 
   const handleZoom = React.useCallback(
     (direction: "in" | "out") => {
-      const instance = chartRef.current?.getEchartsInstance()
+      const instance = chartRef.current?.getInstance()
       if (!instance) return
       instance.dispatchAction({
         type: "geoRoam",
@@ -377,10 +377,10 @@ export function ServerDistribution({ distribution, loading }: ServerDistribution
               <div className="h-full w-full animate-pulse rounded-lg bg-primary/5" />
             ) : (
               <>
-                <ReactECharts
+                <EChartsView
                   ref={chartRef}
+                  className="h-full w-full"
                   option={option}
-                  style={{ width: "100%", height: "100%" }}
                   notMerge
                   lazyUpdate
                 />
