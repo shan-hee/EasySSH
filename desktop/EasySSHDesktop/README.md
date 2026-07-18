@@ -27,7 +27,7 @@ When Desktop reuses Web components, prefer adapter props such as `desktopMode` a
 From this directory:
 
 ```bash
-/root/go/bin/wails3 task windows:build ARCH=amd64
+PATH="$(go env GOPATH)/bin:$PATH" wails3 task windows:build ARCH=amd64
 ```
 
 The Windows amd64 executable is written to `bin/EasySSH.exe`. The GitHub Release asset is `EasySSH-windows-amd64-desktop.zip`.

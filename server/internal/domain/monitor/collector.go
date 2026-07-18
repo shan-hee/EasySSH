@@ -10,6 +10,7 @@ import (
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	pb "github.com/easyssh/server/internal/proto"
 	"github.com/easyssh/shared/monitoring"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -310,8 +311,7 @@ func cloneDockerStats(stats *pb.DockerStats) *pb.DockerStats {
 		return nil
 	}
 
-	clone := *stats
-	return &clone
+	return proto.Clone(stats).(*pb.DockerStats)
 }
 
 func (c *Collector) collectDockerStats() (*pb.DockerStats, error) {
