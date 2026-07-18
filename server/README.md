@@ -43,20 +43,13 @@ cp .env.example .env
 vim .env
 ```
 
-必需配置项：
+默认 SQLite 单实例没有必需环境变量。以下值均已有默认值，仅在切换数据库或显式管理根密钥时填写：
 ```env
-# 数据库
 DB_DRIVER=sqlite
 DB_DSN=./data/easyssh.db
 
-# OAuth 2.0 Provider 全局密钥
-OAUTH_GLOBAL_SECRET=$(openssl rand -base64 48)
-OAUTH_ISSUER=http://localhost:8520/api/v1
-OAUTH_LOGIN_URL=http://localhost:3000/login
-OAUTH_WEB_REDIRECT_URIS=http://localhost:3000/auth/callback,http://localhost:8520/auth/callback
-
-# AES 加密密钥（32字节，Base64 编码）
-ENCRYPTION_KEY=$(openssl rand -base64 32)
+# 可选显式部署根密钥；单实例留空会写入数据目录/easyssh-root.key
+# ENCRYPTION_KEY=$(openssl rand -base64 32)
 ```
 
 ### 3. 安装依赖
@@ -305,25 +298,18 @@ golangci-lint run
 |--------|------|--------|------|
 | `BACKEND_URL` | 后端服务地址；监听端口从这里解析 | http://localhost:8520 | 否 |
 | `ENV` | 运行环境 | development | 否 |
-| `ENCRYPTION_KEY` | AES 加密密钥（32字节，Base64 编码） | - | ✅ |
+| `ENCRYPTION_KEY` | 可选显式部署根密钥（32 字节，Base64）；多实例必须共享 | 自动生成到数据目录 | 否 |
 | `DB_DRIVER` | 数据库驱动 | sqlite | 否 |
 | `DB_DSN` | 数据库连接串 | ./data/easyssh.db | 否 |
-| `GEOIP_DATABASE_PATH` | MaxMind GeoLite2 City MMDB 路径；缺失时禁用地理定位 | ./data/GeoLite2-City.mmdb | 否 |
-| `OAUTH_GLOBAL_SECRET` | OAuth 2.0 Provider 全局密钥 | - | ✅ |
-| `OAUTH_ISSUER` | OAuth/OIDC Issuer | http://localhost:8520/api/v1 | 否 |
-| `OAUTH_LOGIN_URL` | Provider 浏览器登录页 | http://localhost:3000/login | 否 |
-| `OAUTH_WEB_REDIRECT_URIS` | 内置 Web Client 回调地址，英文逗号分隔 | http://localhost:8520/auth/callback | 否 |
+EasySSH 只保留启动自举配置。Cookie、CORS、CSRF、CSP、可信代理、GeoIP、SFTP 连接池、Access Token/Refresh Token 生命周期以及对外 OAuth/OIDC Provider 地址与开关都在“系统设置”维护。对外 Provider 默认关闭，EasySSH 自身登录始终使用固定内部 issuer/redirect，不依赖部署域名。
 
-Access Token 与 Refresh Token 有效期位于系统设置的“会话管理”中；轮换、撤销和复用防护由 Fosite 协议流程统一处理。`OAUTH_GLOBAL_SECRET` 仅通过环境变量配置。
+未设置 `ENCRYPTION_KEY` 时，服务首次启动会生成权限为 `0600` 的 `easyssh-root.key`。服务通过 HKDF-SHA256 派生 OAuth、CSRF 和 2FA 备份码子密钥，不再需要额外全局密钥。外部数据库多实例必须显式提供同一根密钥。首次填写或修改对外 Provider 地址后需重启，关闭/开启开关本身即时生效。
 
 ### 生成加密密钥
 
 ```bash
-# 生成 32 字节随机密钥（用于 ENCRYPTION_KEY）
+# 多实例部署：生成并安全分发同一把 32 字节部署根密钥
 ENCRYPTION_KEY=$(openssl rand -base64 32)
-
-# 生成 OAuth Provider 全局密钥
-openssl rand -base64 48
 ```
 
 ---
@@ -374,11 +360,10 @@ docker run -d \
   --name easyssh-server \
   -p 8520:8520 \
   -v easyssh-data:/app/data \
-  -e DB_DRIVER=sqlite \
-  -e DB_DSN=/app/data/easyssh.db \
-  --env-file .env \
   easyssh-server:1.0.0
 ```
+
+正式镜像默认使用 production + SQLite。外部数据库部署再通过 `-e DB_DRIVER=... -e DB_DSN=...` 覆盖；多实例同时传入相同的 `ENCRYPTION_KEY`。
 
 ### 健康检查
 

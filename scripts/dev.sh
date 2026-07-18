@@ -14,13 +14,6 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}🚀 启动 EasySSH 开发环境...${NC}\n"
 
-# 加载环境变量
-if [ -f ".env" ]; then
-    set -a  # 自动导出所有变量
-    source <(grep -v '^#' .env | grep -v '^$' | grep '=')
-    set +a  # 关闭自动导出
-fi
-
 get_url_port() {
   local url="$1"
   local host_port="$url"
@@ -45,10 +38,41 @@ get_url_port() {
   fi
 }
 
-# 设置默认端口与后端地址（如果环境变量未设置）
+read_env_value() {
+  local key="$1"
+  local value=""
+  if [ -f ".env" ]; then
+    value=$(sed -n "s/^${key}=//p" .env | tail -n 1)
+  fi
+  value="${value%$'\r'}"
+  if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+  printf '%s' "$value"
+}
+
+# 首次启动只复制模板，具体默认值由模板和程序共同提供。
+if [ ! -f ".env" ]; then
+    echo -e "${YELLOW}⚠️  .env 文件不存在${NC}"
+    if [ -f ".env.example" ]; then
+        cp .env.example .env
+        echo -e "${GREEN}✅ 已从 .env.example 创建 .env${NC}"
+    else
+        echo -e "${RED}❌ 错误: .env.example 文件不存在${NC}"
+        exit 1
+    fi
+fi
+
+# 只读取脚本实际需要的键，不执行 .env 中的内容。
+BACKEND_URL=${BACKEND_URL:-$(read_env_value BACKEND_URL)}
 BACKEND_URL=${BACKEND_URL:-http://localhost:8520}
 BACKEND_PORT=$(get_url_port "$BACKEND_URL")
+WEB_PORT=${WEB_PORT:-$(read_env_value WEB_PORT)}
 FRONTEND_PORT=${WEB_PORT:-3000}
+DB_DRIVER=${DB_DRIVER:-$(read_env_value DB_DRIVER)}
+DB_DSN=${DB_DSN:-$(read_env_value DB_DSN)}
 
 # 导出端口配置给前端/后端脚本使用
 export BACKEND_PORT
@@ -120,18 +144,6 @@ else
     echo -e "${GREEN}✅ Air 安装成功${NC}"
 fi
 
-# 检查后端配置文件
-if [ ! -f ".env" ]; then
-    echo -e "${YELLOW}⚠️  .env 文件不存在${NC}"
-    if [ -f ".env.example" ]; then
-        cp .env.example .env
-        echo -e "${GREEN}✅ 已从 .env.example 创建 .env${NC}"
-    else
-        echo -e "${RED}❌ 错误: .env.example 文件不存在${NC}"
-        exit 1
-    fi
-fi
-
 # 开发环境：按需更新 .env 关键参数（可重复执行，幂等修改）
 echo -e "${BLUE}🔧 写入开发环境建议参数到 .env...${NC}"
 
@@ -160,21 +172,11 @@ if [[ "${DB_DRIVER:-sqlite}" == "sqlite" ]] && { ! grep -qE '^DB_DSN=' .env 2>/d
   set_kv DB_DSN ./data/easyssh.db
 fi
 
-# 2) Cookie 策略（HTTP 开发环境推荐）
-# 前端开发服务器直连本地后端，请使用默认 SameSite=Lax，避免 SameSite=None + 非 Secure 被浏览器拒绝
-set_kv COOKIE_SECURE false
-set_kv COOKIE_SAMESITE lax
-
 export ENV=development
-export COOKIE_SECURE=false
-export COOKIE_SAMESITE=lax
 
 echo -e "${GREEN}✅ 已更新 .env。${NC}"
-if [[ "${COOKIE_SECURE}" == "true" ]]; then
-  echo -e "${YELLOW}⚠️  当前 COOKIE_SECURE=true 可能导致 HTTP 下 Cookie 被拒收，已建议写入 false。${NC}"
-fi
 
-# 3) 前端开发后端地址
+# 2) 前端开发后端地址
 echo -e "${BLUE}🔧 前端开发后端地址: ${VITE_BACKEND_URL}${NC}"
 # 检查前端依赖
 if [ ! -d "web/node_modules" ]; then

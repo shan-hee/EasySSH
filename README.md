@@ -109,14 +109,12 @@ docker run -d \
   --name easyssh \
   -p 8520:8520 \
   -v easyssh-data:/app/data \
-  -e DB_DRIVER=sqlite \
-  -e DB_DSN=/app/data/easyssh.db \
-  -e OAUTH_GLOBAL_SECRET=$(openssl rand -base64 48) \
-  -e ENCRYPTION_KEY=$(openssl rand -base64 32) \
   shanhee/easyssh:latest
 ```
 
-**外部 PostgreSQL/MySQL**：将 `DB_DRIVER` 设置为 `postgres` 或 `mysql`，并通过 `DB_DSN` 提供完整连接串，例如 `postgres://easyssh:${DB_PASSWORD:-easyssh_password}@postgres:5432/easyssh_db?sslmode=disable`。
+镜像默认就是 production + SQLite；挂载 `/app/data` 后，数据库和自动生成的 `easyssh-root.key` 会一起持久化，不需要额外环境变量。
+
+**外部 PostgreSQL/MySQL**：仅需增加 `DB_DRIVER`、`DB_DSN`；多实例再增加共享的 `ENCRYPTION_KEY`。例如 `postgres://easyssh:password@postgres:5432/easyssh_db?sslmode=require`。
 
 **支持架构**：`linux/amd64`、`linux/arm64`
 
@@ -217,71 +215,34 @@ make test         # 运行测试
 ./scripts/gen-types.sh
 ```
 
-## 环境变量配置
+## 最小部署配置
 
-项目使用统一的 `.env` 文件（位于项目根目录）进行配置。
+EasySSH 只把“数据库连接之前必须知道、且不能安全存入数据库”的参数留在启动层。SQLite 单实例挂载数据目录后可以零参数启动；首次启动会生成权限为 `0600` 的 `easyssh-root.key` 并与数据库一起持久保存：
 
-### 核心配置项
+SQLite 单实例不需要填写任何启动参数。直接运行二进制时，公网部署只需把运行模式改为 production；切换外部数据库时再增加数据库连接：
 
 ```bash
-# 运行模式
-ENV=production                 # development | production
+ENV=production
 
-# 服务地址
-BACKEND_URL=http://localhost:8520       # 后端服务地址；后端监听端口会从这里解析
-VITE_BACKEND_URL=http://localhost:8520  # Vite 开发模式下前端请求后端的地址
-WEB_PORT=3000                           # 前端开发端口（仅开发环境）
+DB_DRIVER=postgres
+DB_DSN=postgres://easyssh:password@db:5432/easyssh?sslmode=require
 
-# 数据库
-DB_DRIVER=sqlite               # sqlite | postgres(pgsql) | mysql
-DB_DSN=./data/easyssh.db       # SQLite 文件路径或外部数据库连接串
-
-# 可选地理定位（MaxMind GeoLite2 City）
-GEOIP_DATABASE_PATH=./data/GeoLite2-City.mmdb
-
-# 外部 PostgreSQL/MySQL 时启用
-# DB_DRIVER=postgres
-# DB_DSN="postgres://easyssh:${DB_PASSWORD:-easyssh_password}@localhost:5432/easyssh_db?sslmode=disable"
-# DB_DRIVER=mysql
-# DB_DSN="mysql://easyssh:${DB_PASSWORD:-easyssh_password}@localhost:3306/easyssh_db?charset=utf8mb4&parseTime=true"
-
-# 安全配置 ⚠️ 生产环境必须修改
-OAUTH_GLOBAL_SECRET=CHANGE_ME  # 生成: openssl rand -base64 48
-OAUTH_ISSUER=http://localhost:8520/api/v1
-OAUTH_LOGIN_URL=http://localhost:3000/login
-OAUTH_WEB_REDIRECT_URIS=http://localhost:3000/auth/callback,http://localhost:8520/auth/callback
-ENCRYPTION_KEY=CHANGE_ME       # 生成: openssl rand -base64 32
-
-# Cookie 策略
-COOKIE_SECURE=true             # HTTPS: true | HTTP: false
-COOKIE_SAMESITE=lax            # 同域: lax | 跨域+HTTPS: none
+# 仅外部数据库多实例需要显式共享同一值
+ENCRYPTION_KEY=$(openssl rand -base64 32)
 ```
 
-### 关键环境变量说明
+部署根密钥保护数据库敏感字段，并通过 HKDF-SHA256 派生用途隔离的 OAuth、CSRF 和 2FA 备份码子密钥，因此不再需要单独维护多把全局密钥。自动生成的密钥位于运行数据目录；显式 `ENCRYPTION_KEY` 会覆盖该文件。根密钥必须随数据持久保存，更换会使已加密凭据和现有登录状态失效。
 
-| 变量名 | 说明 | 默认值 | 必需 | 生成方式/示例 |
-|--------|------|--------|------|--------------|
-| BACKEND_URL | 后端服务地址 | http://localhost:8520 | 否 | 后端监听端口会从这里解析 |
-| VITE_BACKEND_URL | 前端开发请求地址 | http://localhost:8520 | 否 | 仅 Vite 开发模式使用，生产环境使用同域 `/api/v1` |
-| DB_DRIVER | 数据库驱动 | sqlite | 否 | sqlite / postgres(pgsql) / mysql |
-| DB_DSN | 数据库连接串 | ./data/easyssh.db | 否 | SQLite 路径 / PostgreSQL URL / MySQL URL |
-| GEOIP_DATABASE_PATH | GeoLite2 City MMDB 路径 | ./data/GeoLite2-City.mmdb | 否 | 文件缺失时禁用地理定位，不请求第三方 IP API |
-| OAUTH_GLOBAL_SECRET | OAuth 2.0 Provider 全局密钥 | - | 是 | `openssl rand -base64 48` |
-| OAUTH_ISSUER | OAuth/OIDC Issuer | http://localhost:8520/api/v1 | 否 | 必须是绝对 URL，生产环境使用公开 HTTPS 地址 |
-| OAUTH_LOGIN_URL | Provider 浏览器登录页 | http://localhost:3000/login | 否 | Docker/生产环境通常为 `https://example.com/login` |
-| OAUTH_WEB_REDIRECT_URIS | 内置 Web Client 回调地址 | http://localhost:8520/auth/callback | 否 | 多个地址使用英文逗号分隔 |
-| ENCRYPTION_KEY | 数据加密密钥（2FA等） | - | 是 | `openssl rand -base64 32` |
-| COOKIE_SECURE | Cookie 安全标志 | true | 否 | HTTPS: true / HTTP: false |
-| COOKIE_SAMESITE | Cookie 同站策略 | lax | 否 | lax / none / strict |
+其余参数在 Web 管理界面维护：
 
-### 配置说明
+- **身份认证**：注册、默认角色、Google 登录、登录会话、限流、泄露密码检查、对外 OAuth/OIDC Provider 地址与开关。
+- **Web 与部署**：Cookie 自动 HTTP/HTTPS 策略、CORS、CSRF、CSP、可信代理和 GeoIP 路径。
+- **文件传输**：上传与暂存策略、SSH/SFTP 连接池参数。
+- **服务集成与数据保护**：通知、AI、备份与恢复。
 
-- **开发环境**：使用 `./scripts/dev.sh` 自动配置，或手动编辑 `.env`
-- **生产环境**：务必修改 `OAUTH_GLOBAL_SECRET`、`ENCRYPTION_KEY`，并将 `OAUTH_ISSUER`、`OAUTH_LOGIN_URL`、`OAUTH_WEB_REDIRECT_URIS` 设置为实际 HTTPS 地址；使用外部数据库时同时修改 `DB_DSN`
-- **Docker 部署**：配置已内置在 `docker-compose.yml` 中
-- **GeoIP**：如需服务器位置与登录位置识别，请从 MaxMind 获取 `GeoLite2-City.mmdb` 并放入数据目录
+EasySSH 自身登录使用固定内部 PKCE 标识，不依赖域名。对外 OAuth/OIDC Provider 默认关闭；首次填写或修改公开地址后需重启加载，之后开关可以即时关闭或开启。GeoIP 默认读取运行数据目录中的 `GeoLite2-City.mmdb`，文件缺失时自动禁用且不会调用第三方 IP 定位接口。
 
-完整配置项请参考 [.env.example](.env.example)
+开发端口、外部数据库连接池和更新清单等高级启动参数见 [.env.example](.env.example)。
 
 ## 贡献指南
 

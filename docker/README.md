@@ -42,18 +42,9 @@ http://localhost:8520
 
 ## 环境变量
 
-最小配置：
+默认 Compose 已内置 production + SQLite 配置，不需要创建 `.env`。首次启动会把随机部署根密钥写入挂载的 `/app/data/easyssh-root.key`，数据库和根密钥随 `docker/data/` 一起持久化。
 
-```bash
-DB_DRIVER=sqlite
-DB_DSN=/app/data/easyssh.db
-GEOIP_DATABASE_PATH=/app/data/GeoLite2-City.mmdb
-OAUTH_GLOBAL_SECRET=$(openssl rand -base64 48)
-OAUTH_ISSUER=http://localhost:8520/api/v1
-OAUTH_LOGIN_URL=http://localhost:8520/login
-OAUTH_WEB_REDIRECT_URIS=http://localhost:8520/auth/callback
-ENCRYPTION_KEY=$(openssl rand -base64 32)
-```
+只有切换外部数据库时才需要设置 `DB_DRIVER` 和 `DB_DSN`；外部数据库多实例还必须显式提供相同的 `ENCRYPTION_KEY`。OAuth、CSRF 和 2FA 备份码使用 HKDF 派生的独立子密钥。EasySSH 自身登录使用固定内部 PKCE 标识，不需要配置部署域名。对外 OAuth/OIDC Provider 的公开地址和开关都在“系统设置 → 身份认证”维护，默认关闭。
 
 如需服务器位置与登录位置识别，将 MaxMind `GeoLite2-City.mmdb` 放入挂载的 `docker/data/` 目录；文件缺失时应用不会调用第三方 IP 查询服务。
 
@@ -61,26 +52,17 @@ ENCRYPTION_KEY=$(openssl rand -base64 32)
 
 ```bash
 DB_DRIVER=postgres
-DB_PASSWORD=your_secure_password
-DB_DSN="postgres://easyssh:${DB_PASSWORD:-your_secure_password}@postgres.example.com:5432/easyssh_db?sslmode=require"
+DB_DSN="postgres://easyssh:your_secure_password@postgres.example.com:5432/easyssh_db?sslmode=require"
 ```
 
 外部 MySQL 示例：
 
 ```bash
 DB_DRIVER=mysql
-DB_PASSWORD=your_secure_password
-DB_DSN="mysql://easyssh:${DB_PASSWORD:-your_secure_password}@mysql.example.com:3306/easyssh_db?charset=utf8mb4&parseTime=true"
+DB_DSN="mysql://easyssh:your_secure_password@mysql.example.com:3306/easyssh_db?charset=utf8mb4&parseTime=true"
 ```
 
-常用应用配置：
-
-```bash
-ENV=production
-BACKEND_URL=http://localhost:8520
-COOKIE_SECURE=true
-COOKIE_SAMESITE=lax
-```
+正式镜像和默认 Compose 已使用 production 模式。Cookie 默认使用 `auto` 模式，根据当前 HTTP/HTTPS 请求自动选择 Secure 标志；可信代理、CORS、CSRF、CSP、GeoIP 路径和 SFTP 池参数都从系统设置维护。
 
 ## 常用命令
 
@@ -153,8 +135,8 @@ docker exec -it easyssh sh
 
 ## 安全建议
 
-- 生产环境务必设置强随机 `OAUTH_GLOBAL_SECRET` 和 `ENCRYPTION_KEY`，并将 `OAUTH_ISSUER`、`OAUTH_LOGIN_URL`、`OAUTH_WEB_REDIRECT_URIS` 改为实际 HTTPS 地址。
-- 使用 HTTPS 时设置 `COOKIE_SECURE=true`。
+- 不要删除或泄露数据目录中的 `easyssh-root.key`；外部数据库多实例必须显式共享同一 `ENCRYPTION_KEY`。对外 OAuth/OIDC Provider 默认关闭；首次配置公开 HTTPS 地址后重启，再从“身份认证”开启。
+- 默认 Cookie `auto` 模式同时适配本地 HTTP 与反向代理后的 HTTPS；只有特殊跨子域场景才需要在“Web 与部署”中修改。
 - 默认 SQLite 适合单实例部署；多实例或高并发场景建议使用 PostgreSQL/MySQL。
 - OAuth 授权记录、登录挑战和一次性 ticket 均持久化到数据库；接口限流计数仍是进程内状态，应用重启后会清空。
 

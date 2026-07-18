@@ -34,23 +34,17 @@ export function getApiUrl(): string {
  * 生产模式：使用当前页面的 host
  */
 export function getWsHost(): string {
-  // 优先使用环境变量
-  const envWsHost = viteEnv.VITE_WS_HOST
-  if (envWsHost && envWsHost.trim() !== '') {
-    return envWsHost.trim()
-  }
-
-  // 开发环境：优先使用 DEV_BACKEND_BASE_URL 的 host
+  // 开发环境与 API 使用同一个后端地址。
   if (!isViteProd()) {
     try {
       const url = new URL(DEV_BACKEND_BASE_URL)
       return url.host
     } catch {
-      // 解析失败，继续使用默认逻辑
+      // 解析失败时回退到当前页面地址。
     }
   }
 
-  // 生产环境：使用当前页面的 host
+  // 生产环境由 Go 后端同源托管前端。
   return window.location.host
 }
 
