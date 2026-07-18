@@ -13,13 +13,26 @@ export const basicInfoSchema = z.object({
   }),
   default_timezone: z.string().min(1, "settingsValidation.defaultTimezoneRequired"),
   date_format: z.string().min(1, "settingsValidation.dateFormatRequired"),
-  // 注册配置
+})
+
+export const registrationConfigSchema = z.object({
   allow_registration: z.boolean().default(false),
-	default_role: z.string().min(2).max(64).default("user"),
-  // OAuth 配置
+  default_role: z.string().min(2).max(64).default("user"),
+})
+
+export const googleAuthConfigSchema = z.object({
   oauth_enabled: z.boolean().default(false),
-  google_client_id: z.string().optional(),
-  google_client_secret: z.string().optional(),
+  google_client_id: z.string().default(""),
+  google_client_secret: z.string().default(""),
+})
+
+export const oauthProviderConfigSchema = z.object({
+  oauth_access_token_minutes: z.number().min(5).max(1440),
+  oauth_refresh_token_days: z.number().min(1).max(365),
+  external_oauth_provider_enabled: z.boolean(),
+  external_oauth_issuer: z.string().default(""),
+  external_oauth_login_url: z.string().default(""),
+  external_oauth_redirect_uris: z.string().default(""),
 })
 
 // 文件传输设置 Schema（包含上传大小限制）
@@ -46,8 +59,16 @@ export const fileTransferSchema = z.object({
   transfer_max_storage_gb: z.number().min(1).max(1024).default(10),
   transfer_max_concurrency: z.number().min(1).max(16).default(2),
   transfer_cleanup_enabled: z.boolean().default(true),
+  sftp_max_idle_time_seconds: z.number().min(5).max(3600).default(120),
+  sftp_cleanup_interval_seconds: z.number().min(5).max(600).default(30),
+  sftp_max_life_time_minutes: z.number().min(0).max(1440).default(0),
+  sftp_conn_timeout_seconds: z.number().min(1).max(120).default(10),
+  sftp_max_sessions_per_conn: z.number().min(0).max(64).default(8),
 })
 
 // 导出类型
 export type BasicInfoFormData = z.infer<typeof basicInfoSchema>
+export type RegistrationConfigFormData = z.infer<typeof registrationConfigSchema>
+export type GoogleAuthConfigFormData = z.infer<typeof googleAuthConfigSchema>
+export type OAuthProviderConfigFormData = z.infer<typeof oauthProviderConfigSchema>
 export type FileTransferFormData = z.infer<typeof fileTransferSchema>

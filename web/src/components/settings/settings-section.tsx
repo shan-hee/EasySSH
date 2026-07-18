@@ -14,6 +14,7 @@ interface SettingsSectionProps {
   description?: string
   children: React.ReactNode
   icon?: React.ReactNode
+  actions?: React.ReactNode
   className?: string
 }
 
@@ -26,14 +27,18 @@ export function SettingsSection({
   description,
   children,
   icon,
+  actions,
   className,
 }: SettingsSectionProps) {
   return (
     <Card className={cn("border-none shadow-none bg-transparent py-0 gap-0", className)}>
       <CardHeader className="p-0 pb-4 border-none">
-        <div className="flex items-center gap-2">
-          {icon}
-          <CardTitle className="border-none">{title}</CardTitle>
+        <div className="flex min-h-8 flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2 pt-1">
+            {icon}
+            <CardTitle className="border-none">{title}</CardTitle>
+          </div>
+          {actions && <div className="shrink-0 empty:hidden">{actions}</div>}
         </div>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>

@@ -52,6 +52,7 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   },
   oauth_access_token_minutes: 15,
   oauth_refresh_token_days: 30,
+  external_oauth_provider_enabled: false,
 }
 
 export function shouldRestoreAuthSession(pathname: string): boolean {

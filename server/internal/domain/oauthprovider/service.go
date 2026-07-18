@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/easyssh/server/internal/pkg/crypto"
@@ -27,15 +28,63 @@ import (
 	"gorm.io/gorm"
 )
 
-const signingKeyID = "default"
+const (
+	signingKeyID = "default"
+
+	// BuiltInWebClientID 仅用于 EasySSH 自身的浏览器登录流程。
+	BuiltInWebClientID = "easyssh-web"
+	// InternalIssuer 和 InternalWebRedirectURI 是不会发生网络跳转的协议标识。
+	// 内置 Web 登录直接用授权码换取令牌，因此无需把部署域名作为 redirect_uri。
+	InternalIssuer         = "https://internal.easyssh.invalid/api/v1"
+	InternalWebRedirectURI = "https://internal.easyssh.invalid/auth/callback"
+)
 
 type Config struct {
 	Issuer                string
+	ExternalProviderGate  *ExternalProviderGate
 	GlobalSecret          []byte
 	AccessTokenLifespan   time.Duration
 	RefreshTokenLifespan  time.Duration
 	AuthorizeCodeLifespan time.Duration
 	WebRedirectURIs       []string
+}
+
+// ExternalProviderGate 由系统设置控制对外 OAuth/OIDC Provider 是否开放。
+// configured 表示本次启动时载入的 issuer/login/redirect 地址已经完整通过校验。
+type ExternalProviderGate struct {
+	configured bool
+	enabled    atomic.Bool
+}
+
+func NewExternalProviderGate(configured, enabled bool) (*ExternalProviderGate, error) {
+	gate := &ExternalProviderGate{configured: configured}
+	if err := gate.SetEnabled(enabled); err != nil {
+		return nil, err
+	}
+	return gate, nil
+}
+
+func (g *ExternalProviderGate) Configured() bool {
+	return g != nil && g.configured
+}
+
+func (g *ExternalProviderGate) Enabled() bool {
+	return g != nil && g.enabled.Load()
+}
+
+func (g *ExternalProviderGate) ValidateEnabled(enabled bool) error {
+	if enabled && !g.Configured() {
+		return errors.New("external OAuth/OIDC Provider URLs are not configured")
+	}
+	return nil
+}
+
+func (g *ExternalProviderGate) SetEnabled(enabled bool) error {
+	if err := g.ValidateEnabled(enabled); err != nil {
+		return err
+	}
+	g.enabled.Store(enabled)
+	return nil
 }
 
 type Identity struct {
@@ -71,9 +120,14 @@ func New(db *gorm.DB, encryptor *crypto.Encryptor, config Config) (*Service, err
 	if len(config.GlobalSecret) < 32 {
 		return nil, errors.New("oauth global secret must contain at least 32 bytes")
 	}
-	config.Issuer = strings.TrimRight(strings.TrimSpace(config.Issuer), "/")
-	if config.Issuer == "" {
-		return nil, errors.New("oauth issuer is required")
+	if config.ExternalProviderGate.Configured() {
+		config.Issuer = strings.TrimRight(strings.TrimSpace(config.Issuer), "/")
+		if config.Issuer == "" {
+			return nil, errors.New("oauth issuer is required when the external provider is configured")
+		}
+	} else {
+		config.Issuer = InternalIssuer
+		config.WebRedirectURIs = nil
 	}
 	if config.AccessTokenLifespan <= 0 {
 		config.AccessTokenLifespan = time.Hour
@@ -130,6 +184,14 @@ func New(db *gorm.DB, encryptor *crypto.Encryptor, config Config) (*Service, err
 }
 
 func (s *Service) NewAuthorizeRequest(ctx context.Context, input AuthorizeInput) (fosite.AuthorizeRequester, error) {
+	if !s.externalProviderEnabled() {
+		if strings.TrimSpace(input.ClientID) != BuiltInWebClientID {
+			return nil, fosite.ErrUnauthorizedClient.WithHint("external OAuth clients are disabled")
+		}
+		if strings.TrimSpace(input.RedirectURI) != InternalWebRedirectURI {
+			return nil, fosite.ErrInvalidRequest.WithHint("the built-in Web client must use the internal redirect URI")
+		}
+	}
 	values := url.Values{
 		"response_type":         {strings.TrimSpace(input.ResponseType)},
 		"client_id":             {input.ClientID},
@@ -155,6 +217,8 @@ func (s *Service) IssueAuthorizationCode(ctx context.Context, request fosite.Aut
 	session.Role = identity.Role
 	session.SessionID = identity.SessionID.String()
 	session.RememberLogin = rememberLogin
+	session.InternalClient = request.GetClient().GetID() == BuiltInWebClientID &&
+		request.GetRequestForm().Get("redirect_uri") == InternalWebRedirectURI
 	session.Subject = identity.UserID.String()
 	session.Claims.Subject = identity.UserID.String()
 	session.Claims.AuthTime = time.Now().UTC()
@@ -182,6 +246,15 @@ func (s *Service) WriteAuthorizeError(ctx context.Context, writer http.ResponseW
 }
 
 func (s *Service) NewAccessRequest(ctx context.Context, values url.Values, authorizationHeader string) (fosite.AccessRequester, error) {
+	if !s.externalProviderEnabled() {
+		if strings.TrimSpace(values.Get("client_id")) != BuiltInWebClientID {
+			return nil, fosite.ErrUnauthorizedClient.WithHint("external OAuth clients are disabled")
+		}
+		if strings.EqualFold(strings.TrimSpace(values.Get("grant_type")), "authorization_code") &&
+			strings.TrimSpace(values.Get("redirect_uri")) != InternalWebRedirectURI {
+			return nil, fosite.ErrInvalidRequest.WithHint("the built-in Web client must use the internal redirect URI")
+		}
+	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.config.Issuer+"/oauth/token", strings.NewReader(values.Encode()))
 	if err != nil {
 		return nil, err
@@ -190,7 +263,17 @@ func (s *Service) NewAccessRequest(ctx context.Context, values url.Values, autho
 	if strings.TrimSpace(authorizationHeader) != "" {
 		request.Header.Set("Authorization", authorizationHeader)
 	}
-	return s.provider.NewAccessRequest(ctx, request, NewSession())
+	accessRequest, err := s.provider.NewAccessRequest(ctx, request, NewSession())
+	if err != nil {
+		return nil, err
+	}
+	if !s.externalProviderEnabled() && strings.EqualFold(strings.TrimSpace(values.Get("grant_type")), "refresh_token") {
+		session, ok := accessRequest.GetSession().(*Session)
+		if !ok || !session.InternalClient {
+			return nil, fosite.ErrInvalidGrant.WithHint("external OAuth clients are disabled")
+		}
+	}
+	return accessRequest, nil
 }
 
 func (s *Service) NewAccessResponse(ctx context.Context, request fosite.AccessRequester) (map[string]interface{}, *Session, error) {
@@ -217,6 +300,9 @@ func (s *Service) ValidateAccessToken(ctx context.Context, token string) (*Ident
 	session, ok := request.GetSession().(*Session)
 	if !ok {
 		return nil, errors.New("oauth access token has invalid session")
+	}
+	if !s.externalProviderEnabled() && !session.InternalClient {
+		return nil, errors.New("external OAuth clients are disabled")
 	}
 	userID, err := uuid.Parse(session.UserID)
 	if err != nil {
@@ -258,7 +344,7 @@ func (s *Service) UserInfo(ctx context.Context, token string) (map[string]interf
 }
 
 func (s *Service) RevokeToken(ctx context.Context, token string) error {
-	values := url.Values{"token": {token}, "client_id": {"easyssh-web"}}
+	values := url.Values{"token": {token}, "client_id": {BuiltInWebClientID}}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, s.config.Issuer+"/oauth/revoke", strings.NewReader(values.Encode()))
 	if err != nil {
 		return err
@@ -320,10 +406,11 @@ func (s *Service) Discovery() map[string]interface{} {
 }
 
 func (s *Service) DefaultWebRedirectURI() string {
-	if len(s.config.WebRedirectURIs) == 0 {
-		return ""
-	}
-	return s.config.WebRedirectURIs[0]
+	return InternalWebRedirectURI
+}
+
+func (s *Service) externalProviderEnabled() bool {
+	return s.config.ExternalProviderGate.Enabled()
 }
 
 func (s *Service) IssueTokenPair(ctx context.Context, identity Identity, rememberLogin bool, redirectURI string) (map[string]interface{}, *Session, string, error) {
@@ -335,7 +422,7 @@ func (s *Service) IssueTokenPair(ctx context.Context, identity Identity, remembe
 	digest := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(digest[:])
 	authorizeRequest, err := s.NewAuthorizeRequest(ctx, AuthorizeInput{
-		ResponseType: "code", ClientID: "easyssh-web", RedirectURI: redirectURI,
+		ResponseType: "code", ClientID: BuiltInWebClientID, RedirectURI: redirectURI,
 		Scope: "openid profile email easyssh offline_access",
 		State: uuid.NewString(), CodeChallenge: challenge, CodeChallengeMethod: "S256",
 		RememberLogin: rememberLogin,
@@ -348,7 +435,7 @@ func (s *Service) IssueTokenPair(ctx context.Context, identity Identity, remembe
 		return nil, nil, "", err
 	}
 	accessRequest, err := s.NewAccessRequest(ctx, url.Values{
-		"grant_type": {"authorization_code"}, "code": {code}, "client_id": {"easyssh-web"},
+		"grant_type": {"authorization_code"}, "code": {code}, "client_id": {BuiltInWebClientID},
 		"redirect_uri": {redirectURI}, "code_verifier": {verifier},
 	}, "")
 	if err != nil {
@@ -409,10 +496,22 @@ func (s *Service) ConsumeLoginChallenge(ctx context.Context, challengeID uuid.UU
 }
 
 func (s *Service) seedBuiltInClient(ctx context.Context) error {
+	redirectURIs := []string{InternalWebRedirectURI}
+	if s.config.ExternalProviderGate.Configured() {
+		seen := map[string]bool{InternalWebRedirectURI: true}
+		for _, redirectURI := range s.config.WebRedirectURIs {
+			redirectURI = strings.TrimSpace(redirectURI)
+			if redirectURI == "" || seen[redirectURI] {
+				continue
+			}
+			seen[redirectURI] = true
+			redirectURIs = append(redirectURIs, redirectURI)
+		}
+	}
 	client := Client{
-		ID:                      "easyssh-web",
+		ID:                      BuiltInWebClientID,
 		Name:                    "EasySSH Web",
-		RedirectURIs:            append([]string(nil), s.config.WebRedirectURIs...),
+		RedirectURIs:            redirectURIs,
 		GrantTypes:              []string{"authorization_code", "refresh_token"},
 		ResponseTypes:           []string{"code"},
 		Scopes:                  []string{"openid", "profile", "email", "easyssh", "offline_access"},

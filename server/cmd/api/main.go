@@ -55,6 +55,7 @@ import (
 	"github.com/easyssh/server/internal/infra/db"
 	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/easyssh/server/internal/pkg/geoip"
+	"github.com/easyssh/server/internal/pkg/password"
 	"github.com/easyssh/server/internal/platform"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -90,14 +91,6 @@ func main() {
 		log.Fatalf("❌ Failed to connect to database: %v", err)
 	}
 	defer db.Close(database)
-
-	geoipClient := geoip.NewClient(cfg.GeoIP.DatabasePath)
-	defer geoipClient.Close()
-	if geoipClient.DatabaseAvailable() {
-		log.Printf("✅ GeoIP database loaded: %s", geoipClient.DatabasePath())
-	} else {
-		log.Printf("⚠️ GeoIP database unavailable (%s): %v", geoipClient.DatabasePath(), geoipClient.OpenError())
-	}
 
 	if err := database.AutoMigrate(
 		&auth.User{},
@@ -145,27 +138,60 @@ func main() {
 	if err != nil {
 		log.Fatalf("❌ Failed to create encryptor: %v", err)
 	}
+	oauthGlobalSecret, err := crypto.DeriveKey(cfg.Server.EncryptionKey, "oauth-global-secret", 32)
+	if err != nil {
+		log.Fatalf("❌ Failed to derive OAuth key: %v", err)
+	}
+	csrfSecret, err := crypto.DeriveKey(cfg.Server.EncryptionKey, "csrf-cookie", 32)
+	if err != nil {
+		log.Fatalf("❌ Failed to derive CSRF key: %v", err)
+	}
 
-	// 系统配置服务（OAUTH_GLOBAL_SECRET 来自环境变量，令牌生命周期来自系统设置）
+	// 数据库中的系统设置承载业务与运行参数；根密钥和数据库连接仍由部署配置提供。
 	systemConfigRepo := systemconfig.NewRepository(database)
-	systemConfigService := systemconfig.NewService(systemConfigRepo, encryptor)
+	systemConfigService := systemconfig.NewService(systemConfigRepo, encryptor, cfg.Server.Env == "production")
 	systemCfg, err := systemConfigService.Get(context.Background())
 	if err != nil {
 		log.Fatalf("❌ Failed to load system config: %v", err)
 	}
+	securityRepo := security.NewRepository(database)
+	securityService := security.NewService(securityRepo)
+	securityCfg, err := securityService.Get(context.Background())
+	if err != nil {
+		log.Fatalf("❌ Failed to load security config: %v", err)
+	}
+	password.SetPwnedCheckEnabled(securityCfg.PasswordPwnedCheckEnabled)
+
+	geoipClient := geoip.NewClient(systemCfg.ResolvedGeoIPDatabasePath(runtimeInfo.DataDir))
+	defer geoipClient.Close()
+	if geoipClient.DatabaseAvailable() {
+		log.Printf("✅ GeoIP database loaded: %s", geoipClient.DatabasePath())
+	} else {
+		log.Printf("⚠️ GeoIP database unavailable (%s): %v", geoipClient.DatabasePath(), geoipClient.OpenError())
+	}
+
 	oauthTokenSettings := systemCfg.OAuthTokenConfig()
+	externalOAuthConfigErr := oauthTokenSettings.ValidateExternalProvider(cfg.Server.Env == "production")
+	externalOAuthProviderGate, err := oauthprovider.NewExternalProviderGate(
+		externalOAuthConfigErr == nil,
+		oauthTokenSettings.ExternalOAuthProviderEnabled,
+	)
+	if err != nil {
+		log.Fatalf("❌ Failed to configure external OAuth/OIDC Provider: %v (%v)", err, externalOAuthConfigErr)
+	}
 
 	// 初始化服务层
 	accessTokenDuration := time.Duration(oauthTokenSettings.AccessTokenMinutes) * time.Minute
 	refreshTokenDuration := time.Duration(oauthTokenSettings.RefreshTokenDays) * 24 * time.Hour
 
 	oauthProvider, err := oauthprovider.New(database, encryptor, oauthprovider.Config{
-		Issuer:                cfg.OAuth.Issuer,
-		GlobalSecret:          []byte(cfg.OAuth.GlobalSecret),
+		Issuer:                oauthTokenSettings.Issuer,
+		ExternalProviderGate:  externalOAuthProviderGate,
+		GlobalSecret:          oauthGlobalSecret,
 		AccessTokenLifespan:   accessTokenDuration,
 		RefreshTokenLifespan:  refreshTokenDuration,
 		AuthorizeCodeLifespan: 5 * time.Minute,
-		WebRedirectURIs:       cfg.OAuth.WebRedirectURIs,
+		WebRedirectURIs:       oauthTokenSettings.RedirectURIList(),
 	})
 	if err != nil {
 		log.Fatalf("❌ Failed to initialize OAuth/OIDC provider: %v", err)
@@ -178,10 +204,6 @@ func main() {
 
 	authRepo := auth.NewRepository(database)
 	authService := auth.NewService(authRepo, oauthProvider, encryptor)
-
-	// 安全配置服务
-	securityRepo := security.NewRepository(database)
-	securityService := security.NewService(securityRepo)
 
 	// 通知配置服务
 	notificationConfigRepo := notificationconfig.NewRepository(database)
@@ -430,15 +452,15 @@ func main() {
 		accessTokenTTLSeconds,
 		refreshTokenTTLSeconds,
 	)
-	oauthProviderHandler := rest.NewOAuthProviderHandler(oauthProvider, cfg.OAuth.LoginURL)
+	oauthProviderHandler := rest.NewOAuthProviderHandler(oauthProvider, oauthTokenSettings.LoginURL)
 	serverHandler := rest.NewServerHandler(serverService)
 	sshHandler := rest.NewSSHHandler(sessionManager)
 	sftpPoolConfig := &sftp.PoolConfig{
-		MaxIdleTime:            time.Duration(cfg.SFTP.MaxIdleTimeSeconds) * time.Second,
-		CleanupInterval:        time.Duration(cfg.SFTP.CleanupIntervalSeconds) * time.Second,
-		MaxLifeTime:            time.Duration(cfg.SFTP.MaxLifeTimeMinutes) * time.Minute,
-		ConnTimeout:            time.Duration(cfg.SFTP.ConnTimeoutSeconds) * time.Second,
-		MaxSFTPSessionsPerConn: cfg.SFTP.MaxSFTPSessionsPerConn,
+		MaxIdleTime:            time.Duration(systemCfg.SFTPMaxIdleTimeSeconds) * time.Second,
+		CleanupInterval:        time.Duration(systemCfg.SFTPCleanupIntervalSeconds) * time.Second,
+		MaxLifeTime:            time.Duration(systemCfg.SFTPMaxLifeTimeMinutes) * time.Minute,
+		ConnTimeout:            time.Duration(systemCfg.SFTPConnTimeoutSeconds) * time.Second,
+		MaxSFTPSessionsPerConn: systemCfg.SFTPMaxSessionsPerConn,
 	}
 	sftpHandler := rest.NewSFTPHandler(serverService, serverRepo, encryptor, sftpUploadWSHandler, sshHostKeyService.GetHostKeyCallback(), sftpPoolConfig, runtimeCredentialStore, operationRecordService)
 	sftpHandler.SetTaskCenter(taskCenterService)
@@ -493,8 +515,7 @@ func main() {
 	permissionHandler := rest.NewPermissionHandler(permissionService)
 	// 新的配置处理器
 	securityHandler := rest.NewSecurityHandler(securityService)
-	securityHandler.SetSystemConfigService(systemConfigService)
-	systemConfigHandler := rest.NewSystemConfigHandler(systemConfigService, permissionService)
+	systemConfigHandler := rest.NewSystemConfigHandler(systemConfigService, permissionService, externalOAuthProviderGate)
 	notificationConfigHandler := rest.NewNotificationConfigHandler(notificationConfigService)
 	aiConfigHandler := rest.NewAIConfigHandler(aiConfigService)
 	userAIConfigHandler := rest.NewUserAIConfigHandler(userAIConfigService)
@@ -515,7 +536,7 @@ func main() {
 
 	// 创建 Gin 路由
 	r := gin.New()
-	if err := r.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
+	if err := r.SetTrustedProxies(securityCfg.TrustedProxyList()); err != nil {
 		log.Fatalf("❌ Failed to configure trusted proxies: %v", err)
 	}
 
@@ -530,14 +551,14 @@ func main() {
 	}
 
 	// 全局中间件
-	r.Use(middleware.Recovery())                                     // 错误恢复
-	r.Use(middleware.Logger())                                       // 日志记录
-	r.Use(middleware.RequestID())                                    // 请求 ID
-	r.Use(middleware.SecurityHeaders())                              // 安全响应头
-	r.Use(middleware.SecurityConfigCache(securityService))           // 安全配置缓存(避免重复查询)
-	r.Use(middleware.CORS(cfg, securityService))                     // 跨域（支持动态配置）
-	r.Use(middleware.CSRFMiddleware(cfg))                            // Cookie 凭证端点 CSRF 防护
-	r.Use(middleware.OptionalIPWhitelistMiddleware(securityService)) // IP 访问控制验证（可选）
+	r.Use(middleware.Recovery())                                       // 错误恢复
+	r.Use(middleware.Logger())                                         // 日志记录
+	r.Use(middleware.RequestID())                                      // 请求 ID
+	r.Use(middleware.SecurityConfigCache(securityService))             // 请求级安全配置快照
+	r.Use(middleware.SecurityHeaders(cfg.Server.Env != "production"))  // 安全响应头
+	r.Use(middleware.CORS(cfg, securityService))                       // 跨域（支持动态配置）
+	r.Use(middleware.CSRFMiddleware(cfg, securityService, csrfSecret)) // Cookie 凭证端点 CSRF 防护
+	r.Use(middleware.OptionalIPWhitelistMiddleware(securityService))   // IP 访问控制验证（可选）
 
 	// API v1 路由组
 	openAPIValidation := middleware.OpenAPIRequestValidation()
@@ -592,22 +613,28 @@ func main() {
 			authRoutes.POST("/2fa/verify", middleware.TwoFARateLimitMiddleware(securityService), authHandler.Verify2FACode) // 验证 2FA 代码（登录时）
 		}
 
-		// OAuth 路由（公开）
-		v1.GET("/.well-known/openid-configuration", oauthProviderHandler.Discovery)
+		// OAuth 路由（内置登录端点始终可用；对外 Provider 端点由系统设置动态控制）
+		externalOAuthProviderOnly := func(c *gin.Context) {
+			if !externalOAuthProviderGate.Enabled() {
+				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Not found"})
+				return
+			}
+			c.Next()
+		}
+		v1.GET("/.well-known/openid-configuration", externalOAuthProviderOnly, oauthProviderHandler.Discovery)
 		oauthRoutes := v1.Group("/oauth")
 		oauthRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
-			// 与 /oauth 前缀下的端点保持一一对应，便于前端统一通过 /api/v1 调用
-			oauthRoutes.GET("/authorize", oauthProviderHandler.Authorize)                                                    // 标准浏览器授权入口
+			oauthRoutes.GET("/authorize", externalOAuthProviderOnly, oauthProviderHandler.Authorize) // 标准浏览器授权入口
+			oauthRoutes.GET("/userinfo", externalOAuthProviderOnly, oauthProviderHandler.UserInfo)
+			oauthRoutes.POST("/userinfo", externalOAuthProviderOnly, oauthProviderHandler.UserInfo)
+			oauthRoutes.POST("/revoke", externalOAuthProviderOnly, oauthProviderHandler.Revoke)
+			oauthRoutes.POST("/introspect", externalOAuthProviderOnly, oauthProviderHandler.Introspect)
+			oauthRoutes.GET("/jwks", externalOAuthProviderOnly, oauthProviderHandler.JWKS)
 			oauthRoutes.POST("/authorize", middleware.LoginRateLimitMiddleware(securityService), authHandler.OAuthAuthorize) // 登录交互提交
 			oauthRoutes.POST("/token", authHandler.OAuthToken)                                                               // 交换/刷新 access_token
-			oauthRoutes.GET("/userinfo", oauthProviderHandler.UserInfo)
-			oauthRoutes.POST("/userinfo", oauthProviderHandler.UserInfo)
-			oauthRoutes.POST("/revoke", oauthProviderHandler.Revoke)
-			oauthRoutes.POST("/introspect", oauthProviderHandler.Introspect)
-			oauthRoutes.GET("/jwks", oauthProviderHandler.JWKS)
-			oauthRoutes.POST("/logout", authHandler.Logout)               // 推荐登出端点（可携带 refresh_token Cookie）
-			oauthRoutes.POST("/google/verify", oauthHandler.GoogleVerify) // 验证 Google ID Token
+			oauthRoutes.POST("/logout", authHandler.Logout)                                                                  // 推荐登出端点（可携带 refresh_token Cookie）
+			oauthRoutes.POST("/google/verify", oauthHandler.GoogleVerify)                                                    // 验证 Google ID Token
 		}
 
 		// 用户路由（需要认证）
@@ -971,19 +998,24 @@ func main() {
 		{
 			// 系统配置
 			settingsGroup.GET("/system", systemConfigHandler.GetSystemConfig)
-			settingsGroup.POST("/system", systemConfigHandler.SaveSystemConfig)
 			// 系统配置 - 分组部分更新
 			settingsGroup.PATCH("/system/basic", systemConfigHandler.PatchBasicInfo)
 			settingsGroup.PATCH("/system/file-transfer", systemConfigHandler.PatchFileTransferConfig)
-			settingsGroup.PATCH("/system/oauth-token", systemConfigHandler.PatchOAuthTokenConfig)
+			settingsGroup.PATCH("/system/registration", systemConfigHandler.PatchRegistrationConfig)
+			settingsGroup.PATCH("/system/google-auth", systemConfigHandler.PatchGoogleAuthConfig)
+			settingsGroup.PATCH("/system/oauth-provider", systemConfigHandler.PatchOAuthProviderConfig)
+			settingsGroup.PATCH("/system/runtime", systemConfigHandler.PatchRuntimeConfig)
 
-			// 安全配置
-			settingsGroup.GET("/security", securityHandler.GetSecurityConfig)
-			settingsGroup.POST("/security", securityHandler.SaveSecurityConfig)
-
-			// 标签/会话配置
-			settingsGroup.GET("/tabsession", securityHandler.GetTabSessionConfig)
-			settingsGroup.POST("/tabsession", securityHandler.SaveTabSessionConfig)
+			settingsGroup.GET("/workspace", securityHandler.GetWorkspaceConfig)
+			settingsGroup.POST("/workspace", securityHandler.SaveWorkspaceConfig)
+			settingsGroup.GET("/login-session", securityHandler.GetLoginSessionConfig)
+			settingsGroup.POST("/login-session", securityHandler.SaveLoginSessionConfig)
+			settingsGroup.GET("/login-security", securityHandler.GetLoginSecurityConfig)
+			settingsGroup.POST("/login-security", securityHandler.SaveLoginSecurityConfig)
+			settingsGroup.GET("/web-security", securityHandler.GetWebSecurityConfig)
+			settingsGroup.POST("/web-security", securityHandler.SaveWebSecurityConfig)
+			settingsGroup.GET("/cors", securityHandler.GetCORSConfig)
+			settingsGroup.POST("/cors", securityHandler.SaveCORSConfig)
 
 			// IP访问控制配置
 			settingsGroup.GET("/access-control", securityHandler.GetAccessControlConfig)
@@ -1012,22 +1044,6 @@ func main() {
 			settingsGroup.GET("/wecom", notificationConfigHandler.GetWeComConfig)
 			settingsGroup.POST("/wecom", notificationConfigHandler.SaveWeComConfig)
 			settingsGroup.POST("/wecom/test", notificationConfigHandler.TestWeComConnection)
-
-			// 高级配置路由组
-			advancedGroup := settingsGroup.Group("/advanced")
-			{
-				// CORS 配置
-				advancedGroup.GET("/cors", securityHandler.GetCORSConfig)
-				advancedGroup.POST("/cors", securityHandler.SaveCORSConfig)
-
-				// 速率限制配置
-				advancedGroup.GET("/ratelimit", securityHandler.GetRateLimitConfig)
-				advancedGroup.POST("/ratelimit", securityHandler.SaveRateLimitConfig)
-
-				// Cookie 配置
-				advancedGroup.GET("/cookie", securityHandler.GetCookieConfig)
-				advancedGroup.POST("/cookie", securityHandler.SaveCookieConfig)
-			}
 
 			// AI配置
 			aiGroup := settingsGroup.Group("/ai")

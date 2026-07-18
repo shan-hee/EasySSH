@@ -90,9 +90,20 @@ export interface SystemConfig {
   transfer_max_concurrency?: number
   transfer_cleanup_enabled?: boolean
 
-  tab_session?: TabSessionConfig
+  tab_session?: WorkspaceConfig & LoginSessionConfig
   oauth_access_token_minutes?: number
   oauth_refresh_token_days?: number
+  external_oauth_provider_enabled?: boolean
+	external_oauth_provider_configured?: boolean
+	external_oauth_issuer?: string
+	external_oauth_login_url?: string
+	external_oauth_redirect_uris?: string
+	sftp_max_idle_time_seconds?: number
+	sftp_cleanup_interval_seconds?: number
+	sftp_max_life_time_minutes?: number
+	sftp_conn_timeout_seconds?: number
+	sftp_max_sessions_per_conn?: number
+	geoip_database_path?: string
 
   // 注册配置
   allow_registration?: boolean
@@ -112,29 +123,31 @@ export interface GetSystemConfigResponse {
   config: SystemConfig
 }
 
-/**
- * 标签/会话设置
- */
-export interface TabSessionConfig {
+export interface WorkspaceConfig {
   max_tabs: number
   inactive_minutes: number
   hibernate: boolean
+}
+
+export interface LoginSessionConfig {
   session_timeout: number
   remember_login: boolean
-  oauth_access_token_minutes?: number
-  oauth_refresh_token_days?: number
 }
 
-export interface OAuthTokenConfig {
-  oauth_access_token_minutes: number
-  oauth_refresh_token_days: number
+export interface LoginSecurityConfig {
+	login_limit: number
+	api_limit: number
+	two_fa_limit: number
+	password_pwned_check_enabled: boolean
 }
 
-/**
- * 获取标签/会话设置响应
- */
-export interface GetTabSessionConfigResponse {
-  config: TabSessionConfig
+export interface WebSecurityConfig {
+	trusted_proxies: string
+	cookie_secure_mode: "auto" | "always" | "never"
+	cookie_domain: string
+	cookie_same_site: "lax" | "strict" | "none"
+	csrf_trusted_origins: string
+	content_security_policy: string
 }
 
 /**
@@ -159,8 +172,6 @@ export interface GetIPWhitelistConfigResponse {
  */
 export interface CORSConfig {
   allowed_origins: string[]
-  allowed_methods: string[]
-  allowed_headers: string[]
 }
 
 /**
@@ -170,20 +181,8 @@ export interface GetCORSConfigResponse {
   config: CORSConfig
 }
 
-/**
- * 速率限制配置
- */
-export interface RateLimitConfig {
-  login_limit: number
-  api_limit: number
-  two_fa_limit: number
-}
-
-/**
- * 获取速率限制配置响应
- */
-export interface GetRateLimitConfigResponse {
-  config: RateLimitConfig
+interface ConfigResponse<T> {
+  config: T
 }
 
 /**
@@ -389,34 +388,72 @@ export const settingsApi = {
     })
   },
 
-  /**
-   * 保存 OAuth/OIDC 令牌生命周期配置
-   */
-  async saveOAuthTokenConfig(config: OAuthTokenConfig): Promise<void> {
-    return apiFetch<void>("/settings/system/oauth-token", {
-      method: "PATCH",
-      body: config,
-    })
+  async saveRegistrationConfig(
+    config: Pick<SystemConfig, "allow_registration" | "default_role">
+  ): Promise<void> {
+    return apiFetch<void>("/settings/system/registration", { method: "PATCH", body: config })
   },
 
-  /**
-   * 获取标签/会话设置
-   */
-  async getTabSessionConfig(): Promise<TabSessionConfig> {
-    const response = await apiFetch<GetTabSessionConfigResponse>("/settings/tabsession", {
-      method: "GET",
-    })
-    return response.config
+  async saveGoogleAuthConfig(
+    config: Pick<SystemConfig, "oauth_enabled" | "google_client_id" | "google_client_secret">
+  ): Promise<void> {
+    return apiFetch<void>("/settings/system/google-auth", { method: "PATCH", body: config })
   },
 
-  /**
-   * 保存标签/会话设置
-   */
-  async saveTabSessionConfig(config: TabSessionConfig): Promise<void> {
-    return apiFetch<void>("/settings/tabsession", {
-      method: "POST",
-      body: config,
-    })
+  async saveOAuthProviderConfig(
+    config: Pick<
+      SystemConfig,
+      | "oauth_access_token_minutes"
+      | "oauth_refresh_token_days"
+      | "external_oauth_provider_enabled"
+      | "external_oauth_issuer"
+      | "external_oauth_login_url"
+      | "external_oauth_redirect_uris"
+    >
+  ): Promise<void> {
+    return apiFetch<void>("/settings/system/oauth-provider", { method: "PATCH", body: config })
+  },
+
+  async saveRuntimeConfig(config: Pick<SystemConfig, "geoip_database_path">): Promise<void> {
+	return apiFetch<void>("/settings/system/runtime", { method: "PATCH", body: config })
+  },
+
+  async getWorkspaceConfig(): Promise<WorkspaceConfig> {
+	const response = await apiFetch<ConfigResponse<WorkspaceConfig>>("/settings/workspace", {
+		method: "GET",
+	})
+	return response.config
+  },
+
+  async saveWorkspaceConfig(config: WorkspaceConfig): Promise<void> {
+	return apiFetch<void>("/settings/workspace", { method: "POST", body: config })
+  },
+
+  async getLoginSessionConfig(): Promise<LoginSessionConfig> {
+	const response = await apiFetch<ConfigResponse<LoginSessionConfig>>("/settings/login-session", { method: "GET" })
+	return response.config
+  },
+
+  async saveLoginSessionConfig(config: LoginSessionConfig): Promise<void> {
+	return apiFetch<void>("/settings/login-session", { method: "POST", body: config })
+  },
+
+  async getLoginSecurityConfig(): Promise<LoginSecurityConfig> {
+	const response = await apiFetch<ConfigResponse<LoginSecurityConfig>>("/settings/login-security", { method: "GET" })
+	return response.config
+  },
+
+  async saveLoginSecurityConfig(config: LoginSecurityConfig): Promise<void> {
+	return apiFetch<void>("/settings/login-security", { method: "POST", body: config })
+  },
+
+  async getWebSecurityConfig(): Promise<WebSecurityConfig> {
+	const response = await apiFetch<ConfigResponse<WebSecurityConfig>>("/settings/web-security", { method: "GET" })
+	return response.config
+  },
+
+  async saveWebSecurityConfig(config: WebSecurityConfig): Promise<void> {
+	return apiFetch<void>("/settings/web-security", { method: "POST", body: config })
   },
 
   // === IP 白名单相关 API ===
@@ -447,7 +484,7 @@ export const settingsApi = {
    * 获取 CORS 配置
    */
   async getCORSConfig(): Promise<CORSConfig> {
-    const response = await apiFetch<GetCORSConfigResponse>("/settings/advanced/cors", {
+	const response = await apiFetch<GetCORSConfigResponse>("/settings/cors", {
       method: "GET",
     })
     return response.config
@@ -457,27 +494,7 @@ export const settingsApi = {
    * 保存 CORS 配置
    */
   async saveCORSConfig(config: CORSConfig): Promise<void> {
-    return apiFetch<void>("/settings/advanced/cors", {
-      method: "POST",
-      body: config,
-    })
-  },
-
-  /**
-   * 获取速率限制配置
-   */
-  async getRateLimitConfig(): Promise<RateLimitConfig> {
-    const response = await apiFetch<GetRateLimitConfigResponse>("/settings/advanced/ratelimit", {
-      method: "GET",
-    })
-    return response.config
-  },
-
-  /**
-   * 保存速率限制配置
-   */
-  async saveRateLimitConfig(config: RateLimitConfig): Promise<void> {
-    return apiFetch<void>("/settings/advanced/ratelimit", {
+	return apiFetch<void>("/settings/cors", {
       method: "POST",
       body: config,
     })

@@ -11,6 +11,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
@@ -115,7 +116,9 @@ func newTwoFactorTestService(t *testing.T) (*authService, *gorm.DB, *User, strin
 	if err != nil {
 		t.Fatalf("generate backup codes: %v", err)
 	}
-	user.BackupCodes, err = HashBackupCodes(backupCodes)
+	backupCodeKey, err := encryptor.DeriveKey("backup-code-hmac", 32)
+	require.NoError(t, err)
+	user.BackupCodes, err = HashBackupCodes(backupCodes, backupCodeKey)
 	if err != nil {
 		t.Fatalf("hash backup codes: %v", err)
 	}

@@ -19,11 +19,13 @@ type WeComNotificationFields = {
 interface WeComNotificationTabProps<TFieldValues extends FieldValues & WeComNotificationFields> {
   form: UseFormReturn<TFieldValues>
   enabledFieldName?: Path<TFieldValues>
+  actions: React.ReactNode
 }
 
 export function WeComNotificationTab<TFieldValues extends FieldValues & WeComNotificationFields>({
   form,
   enabledFieldName = "wecom_enabled" as Path<TFieldValues>,
+  actions,
 }: WeComNotificationTabProps<TFieldValues>) {
   const { t } = useTranslation("settingsIntegrationsWeCom")
   const { execute: testConnection, isLoading: isTesting } = useSettingsAPI()
@@ -47,6 +49,7 @@ export function WeComNotificationTab<TFieldValues extends FieldValues & WeComNot
       title={t("sectionTitle")}
       description={t("sectionDescription")}
       icon={<MessageCircle className="h-5 w-5" />}
+      actions={actions}
     >
       <FormSwitch
         form={form}

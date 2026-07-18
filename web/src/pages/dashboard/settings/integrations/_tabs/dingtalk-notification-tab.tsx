@@ -20,11 +20,13 @@ type DingTalkNotificationFields = {
 interface DingTalkNotificationTabProps<TFieldValues extends FieldValues & DingTalkNotificationFields> {
   form: UseFormReturn<TFieldValues>
   enabledFieldName?: Path<TFieldValues>
+  actions: React.ReactNode
 }
 
 export function DingTalkNotificationTab<TFieldValues extends FieldValues & DingTalkNotificationFields>({
   form,
   enabledFieldName = "dingtalk_enabled" as Path<TFieldValues>,
+  actions,
 }: DingTalkNotificationTabProps<TFieldValues>) {
   const { t } = useTranslation("settingsIntegrationsDingTalk")
   const { execute: testConnection, isLoading: isTesting } = useSettingsAPI()
@@ -49,6 +51,7 @@ export function DingTalkNotificationTab<TFieldValues extends FieldValues & DingT
       title={t("sectionTitle")}
       description={t("sectionDescription")}
       icon={<MessageSquare className="h-5 w-5" />}
+      actions={actions}
     >
       <FormSwitch
         form={form}

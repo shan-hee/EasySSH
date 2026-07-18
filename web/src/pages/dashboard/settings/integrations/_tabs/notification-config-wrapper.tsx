@@ -7,11 +7,10 @@ import { useSettingsForm } from "@/hooks/settings/use-settings-form"
 import { notificationConfigSchema } from "@/schemas/settings/integrations.schema"
 import { settingsApi } from "@/lib/api/settings"
 import { SettingsLoading } from "@/components/settings/settings-loading"
-import { Button } from "@/components/ui/button"
-import { Save, Loader2, RotateCcw } from "lucide-react"
+import { SettingsFormActions } from "@/components/settings/settings-form-actions"
 
 export function NotificationConfigWrapper() {
-  const { form, isLoading, isSaving, handleSave, reload } = useSettingsForm({
+  const { form, isLoading, isSaving, handleSave } = useSettingsForm({
     schema: notificationConfigSchema,
     loadFn: async () => {
       // 使用统一的通知配置 API
@@ -84,44 +83,80 @@ export function NotificationConfigWrapper() {
     return <SettingsLoading />
   }
 
+  const dirtyFields = form.formState.dirtyFields
+  const emailDirty = Boolean(
+    dirtyFields.enabled ||
+    dirtyFields.host ||
+    dirtyFields.port ||
+    dirtyFields.username ||
+    dirtyFields.password ||
+    dirtyFields.from_email ||
+    dirtyFields.from_name ||
+    dirtyFields.use_tls,
+  )
+  const webhookDirty = Boolean(
+    dirtyFields.webhook_enabled ||
+    dirtyFields.webhook_url ||
+    dirtyFields.webhook_method ||
+    dirtyFields.webhook_secret,
+  )
+  const dingTalkDirty = Boolean(
+    dirtyFields.dingtalk_enabled ||
+    dirtyFields.dingtalk_webhook_url ||
+    dirtyFields.dingtalk_secret,
+  )
+  const weComDirty = Boolean(dirtyFields.wecom_enabled || dirtyFields.wecom_webhook_url)
+
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       {/* 可滚动内容区 - flex-1 + min-h-0 确保正确收缩 */}
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-custom p-4">
         <div className="space-y-6">
           {/* 邮件通知 */}
-          <EmailNotificationTab form={form} />
+          <EmailNotificationTab
+            form={form}
+            actions={<SettingsFormActions visible={emailDirty} isSaving={isSaving} onReset={() => {
+              form.resetField("enabled")
+              form.resetField("host")
+              form.resetField("port")
+              form.resetField("username")
+              form.resetField("password")
+              form.resetField("from_email")
+              form.resetField("from_name")
+              form.resetField("use_tls")
+            }} onSave={handleSave} />}
+          />
 
           {/* Webhook 通知 */}
-          <WebhookNotificationTab form={form} />
+          <WebhookNotificationTab
+            form={form}
+            actions={<SettingsFormActions visible={webhookDirty} isSaving={isSaving} onReset={() => {
+              form.resetField("webhook_enabled")
+              form.resetField("webhook_url")
+              form.resetField("webhook_method")
+              form.resetField("webhook_secret")
+            }} onSave={handleSave} />}
+          />
 
           {/* 钉钉通知 */}
-          <DingTalkNotificationTab form={form} />
+          <DingTalkNotificationTab
+            form={form}
+            actions={<SettingsFormActions visible={dingTalkDirty} isSaving={isSaving} onReset={() => {
+              form.resetField("dingtalk_enabled")
+              form.resetField("dingtalk_webhook_url")
+              form.resetField("dingtalk_secret")
+            }} onSave={handleSave} />}
+          />
 
           {/* 企业微信通知 */}
-          <WeComNotificationTab form={form} />
+          <WeComNotificationTab
+            form={form}
+            actions={<SettingsFormActions visible={weComDirty} isSaving={isSaving} onReset={() => {
+              form.resetField("wecom_enabled")
+              form.resetField("wecom_webhook_url")
+            }} onSave={handleSave} />}
+          />
         </div>
-      </div>
-
-      {/* 固定底部按钮区 - shrink-0 防止被压缩 */}
-      <div className="shrink-0 flex justify-end gap-2 p-4 bg-background">
-        <Button variant="outline" onClick={reload} disabled={isSaving}>
-          <RotateCcw className="mr-2 h-4 w-4" />
-          重置
-        </Button>
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              保存中...
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              保存
-            </>
-          )}
-        </Button>
       </div>
     </div>
   )

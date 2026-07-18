@@ -1,10 +1,13 @@
 package config
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -18,18 +21,14 @@ import (
 type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
-	SFTP     SFTPConfig
-	GeoIP    GeoIPConfig
-	OAuth    OAuthConfig
 }
 
 // ServerConfig 服务器配置
 type ServerConfig struct {
-	Port           int
-	Env            string   // development, production
-	EncryptionKey  string   // 加密密钥（Base64 编码的 32 字节 AES 密钥）
-	WebDevPort     int      // 前端开发端口（从 WEB_PORT 读取）
-	TrustedProxies []string // 可信反向代理 IP/CIDR，用于解析客户端真实 IP
+	Port          int
+	Env           string // development, production
+	EncryptionKey string // 加密密钥（Base64 编码的 32 字节 AES 密钥）
+	WebDevPort    int    // 前端开发端口（从 WEB_PORT 读取）
 }
 
 // DatabaseConfig 数据库配置
@@ -43,47 +42,16 @@ type DatabaseConfig struct {
 	ConnMaxIdleTime int    // 连接最大空闲时间（分钟）
 }
 
-// SFTPConfig SFTP/SSH 池化相关配置
-type SFTPConfig struct {
-	MaxIdleTimeSeconds     int // SSH 空闲回收时间（秒）
-	CleanupIntervalSeconds int // 清理/keepalive 扫描间隔（秒）
-	MaxLifeTimeMinutes     int // SSH 最大寿命（分钟，0 表示不启用）
-	ConnTimeoutSeconds     int // SSH 建连/keepalive 超时（秒）
-	MaxSFTPSessionsPerConn int // 单条 SSH 最大并发 SFTP 会话数（0 表示不限制）
-}
-
-type GeoIPConfig struct {
-	DatabasePath string
-}
-
-type OAuthConfig struct {
-	GlobalSecret    string
-	Issuer          string
-	LoginURL        string
-	WebRedirectURIs []string
-}
-
 type environmentConfig struct {
-	Environment     string   `env:"ENV" envDefault:"development"`
-	EncryptionKey   string   `env:"ENCRYPTION_KEY" envDefault:"ZWFzeXNzaC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE="`
-	WebDevPort      int      `env:"WEB_PORT" envDefault:"3000"`
-	TrustedProxies  []string `env:"TRUSTED_PROXIES" envDefault:"127.0.0.1,::1" envSeparator:","`
-	DatabaseDriver  string   `env:"DB_DRIVER" envDefault:"sqlite"`
-	DatabaseDSN     string   `env:"DB_DSN" envDefault:"./data/easyssh.db"`
-	DBMaxIdleConns  int      `env:"DB_MAX_IDLE_CONNS" envDefault:"10"`
-	DBMaxOpenConns  int      `env:"DB_MAX_OPEN_CONNS" envDefault:"100"`
-	DBMaxLifetime   int      `env:"DB_CONN_MAX_LIFETIME" envDefault:"60"`
-	DBMaxIdleTime   int      `env:"DB_CONN_MAX_IDLE_TIME" envDefault:"10"`
-	OAuthSecret     string   `env:"OAUTH_GLOBAL_SECRET" envDefault:"easyssh-oauth-secret-change-in-production"`
-	SFTPMaxIdle     int      `env:"SFTP_MAX_IDLE_TIME_SECONDS" envDefault:"120"`
-	SFTPCleanup     int      `env:"SFTP_CLEANUP_INTERVAL_SECONDS" envDefault:"30"`
-	SFTPMaxLifetime int      `env:"SFTP_MAX_LIFE_TIME_MINUTES" envDefault:"0"`
-	SFTPConnTimeout int      `env:"SFTP_CONN_TIMEOUT_SECONDS" envDefault:"10"`
-	SFTPMaxSessions int      `env:"SFTP_MAX_SESSIONS_PER_CONN" envDefault:"8"`
-	GeoIPDatabase   string   `env:"GEOIP_DATABASE_PATH" envDefault:"./data/GeoLite2-City.mmdb"`
-	OAuthIssuer     string   `env:"OAUTH_ISSUER" envDefault:"http://localhost:8520/api/v1"`
-	OAuthLoginURL   string   `env:"OAUTH_LOGIN_URL" envDefault:"http://localhost:3000/login"`
-	OAuthRedirects  []string `env:"OAUTH_WEB_REDIRECT_URIS" envDefault:"http://localhost:3000/auth/callback,http://localhost:8520/auth/callback" envSeparator:","`
+	Environment    string `env:"ENV" envDefault:"development"`
+	EncryptionKey  string `env:"ENCRYPTION_KEY"`
+	WebDevPort     int    `env:"WEB_PORT" envDefault:"3000"`
+	DatabaseDriver string `env:"DB_DRIVER" envDefault:"sqlite"`
+	DatabaseDSN    string `env:"DB_DSN" envDefault:"./data/easyssh.db"`
+	DBMaxIdleConns int    `env:"DB_MAX_IDLE_CONNS" envDefault:"10"`
+	DBMaxOpenConns int    `env:"DB_MAX_OPEN_CONNS" envDefault:"100"`
+	DBMaxLifetime  int    `env:"DB_CONN_MAX_LIFETIME" envDefault:"60"`
+	DBMaxIdleTime  int    `env:"DB_CONN_MAX_IDLE_TIME" envDefault:"10"`
 }
 
 // Load 从环境变量加载配置
@@ -93,35 +61,26 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to parse environment configuration: %w", err)
 	}
 
+	databaseDSN := expandEnvRefs(values.DatabaseDSN)
+	encryptionKey, err := resolveEncryptionKey(values.EncryptionKey, values.DatabaseDriver, databaseDSN)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve deployment root key: %w", err)
+	}
+
 	config := &Config{
 		Server: ServerConfig{
-			Port:           getBackendPort(),
-			Env:            values.Environment,
-			EncryptionKey:  values.EncryptionKey,
-			WebDevPort:     values.WebDevPort,
-			TrustedProxies: values.TrustedProxies,
+			Port:          getBackendPort(),
+			Env:           values.Environment,
+			EncryptionKey: encryptionKey,
+			WebDevPort:    values.WebDevPort,
 		},
 		Database: DatabaseConfig{
 			Driver:          values.DatabaseDriver,
-			DSN:             expandEnvRefs(values.DatabaseDSN),
+			DSN:             databaseDSN,
 			MaxIdleConns:    values.DBMaxIdleConns,
 			MaxOpenConns:    values.DBMaxOpenConns,
 			ConnMaxLifetime: values.DBMaxLifetime,
 			ConnMaxIdleTime: values.DBMaxIdleTime,
-		},
-		SFTP: SFTPConfig{
-			MaxIdleTimeSeconds:     values.SFTPMaxIdle,
-			CleanupIntervalSeconds: values.SFTPCleanup,
-			MaxLifeTimeMinutes:     values.SFTPMaxLifetime,
-			ConnTimeoutSeconds:     values.SFTPConnTimeout,
-			MaxSFTPSessionsPerConn: values.SFTPMaxSessions,
-		},
-		GeoIP: GeoIPConfig{DatabasePath: expandEnvRefs(values.GeoIPDatabase)},
-		OAuth: OAuthConfig{
-			GlobalSecret:    values.OAuthSecret,
-			Issuer:          values.OAuthIssuer,
-			LoginURL:        values.OAuthLoginURL,
-			WebRedirectURIs: values.OAuthRedirects,
 		},
 	}
 
@@ -154,12 +113,6 @@ func (c *Config) applyEnvironmentDefaults() {
 		c.Database.Driver = "postgres"
 	}
 	c.Database.DSN = strings.TrimSpace(c.Database.DSN)
-	c.GeoIP.DatabasePath = strings.TrimSpace(c.GeoIP.DatabasePath)
-	c.OAuth.Issuer = strings.TrimRight(strings.TrimSpace(c.OAuth.Issuer), "/")
-	c.OAuth.LoginURL = strings.TrimSpace(c.OAuth.LoginURL)
-	for index, redirectURI := range c.OAuth.WebRedirectURIs {
-		c.OAuth.WebRedirectURIs[index] = strings.TrimSpace(redirectURI)
-	}
 	if c.Database.DSN == "" && c.Database.Driver == "sqlite" {
 		c.Database.DSN = "./data/easyssh.db"
 	}
@@ -194,11 +147,6 @@ func (c *Config) Validate() error {
 	if err != nil || len(decoded) != 32 {
 		return fmt.Errorf("encryption key must be a base64-encoded 32-byte key")
 	}
-	// 生产环境必须使用强加密密钥
-	if c.Server.Env == "production" && c.Server.EncryptionKey == "ZWFzeXNzaC1lbmNyeXB0aW9uLWtleS0zMmJ5dGVzISE=" {
-		return fmt.Errorf("must change encryption key in production environment")
-	}
-
 	// 数据库配置验证
 	switch c.Database.Driver {
 	case "sqlite":
@@ -237,53 +185,77 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("database connection max idle time must be between 1 and 60 minutes")
 	}
 
-	if c.OAuth.GlobalSecret == "" {
-		return fmt.Errorf("oauth global secret is required")
-	}
-	if len(c.OAuth.GlobalSecret) < 32 {
-		return fmt.Errorf("oauth global secret must be at least 32 characters for security")
-	}
-	if c.Server.Env == "production" && c.OAuth.GlobalSecret == "easyssh-oauth-secret-change-in-production" {
-		return fmt.Errorf("must change oauth global secret in production environment")
-	}
-	// SFTP/SSH 池化配置验证
-	if c.SFTP.MaxIdleTimeSeconds < 5 || c.SFTP.MaxIdleTimeSeconds > 3600 {
-		return fmt.Errorf("sftp max idle time must be between 5 and 3600 seconds")
-	}
-	if c.SFTP.CleanupIntervalSeconds < 5 || c.SFTP.CleanupIntervalSeconds > 600 {
-		return fmt.Errorf("sftp cleanup interval must be between 5 and 600 seconds")
-	}
-	if c.SFTP.MaxLifeTimeMinutes < 0 || c.SFTP.MaxLifeTimeMinutes > 1440 {
-		return fmt.Errorf("sftp max life time must be between 0 and 1440 minutes")
-	}
-	if c.SFTP.ConnTimeoutSeconds < 1 || c.SFTP.ConnTimeoutSeconds > 120 {
-		return fmt.Errorf("sftp conn timeout must be between 1 and 120 seconds")
-	}
-	if c.SFTP.MaxSFTPSessionsPerConn < 0 || c.SFTP.MaxSFTPSessionsPerConn > 64 {
-		return fmt.Errorf("sftp max sessions per conn must be between 0 and 64")
-	}
-	if c.OAuth.Issuer == "" {
-		return fmt.Errorf("oauth issuer is required")
-	}
-	issuer, err := url.Parse(c.OAuth.Issuer)
-	if err != nil || issuer.Scheme == "" || issuer.Host == "" {
-		return fmt.Errorf("oauth issuer must be an absolute URL: %s", c.OAuth.Issuer)
-	}
-	loginURL, err := url.Parse(c.OAuth.LoginURL)
-	if err != nil || loginURL.Scheme == "" || loginURL.Host == "" {
-		return fmt.Errorf("oauth login URL must be an absolute URL: %s", c.OAuth.LoginURL)
-	}
-	if len(c.OAuth.WebRedirectURIs) == 0 {
-		return fmt.Errorf("at least one oauth web redirect URI is required")
-	}
-	for _, redirectURI := range c.OAuth.WebRedirectURIs {
-		parsed, err := url.Parse(redirectURI)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			return fmt.Errorf("invalid oauth web redirect URI: %s", redirectURI)
-		}
+	return nil
+}
+
+const generatedRootKeyFile = "easyssh-root.key"
+
+func resolveEncryptionKey(configured, driver, dsn string) (string, error) {
+	if configured = strings.TrimSpace(configured); configured != "" {
+		return configured, nil
 	}
 
-	return nil
+	dataDir := rootKeyDataDir(driver, dsn)
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return "", err
+	}
+	keyPath := filepath.Join(dataDir, generatedRootKeyFile)
+	if key, err := readRootKey(keyPath); err == nil {
+		return key, nil
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+
+	randomKey := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, randomKey); err != nil {
+		return "", err
+	}
+	encoded := base64.StdEncoding.EncodeToString(randomKey)
+	file, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			return readRootKey(keyPath)
+		}
+		return "", err
+	}
+	if _, err := file.WriteString(encoded + "\n"); err != nil {
+		_ = file.Close()
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	fmt.Printf("✅ Generated deployment root key: %s\n", keyPath)
+	return encoded, nil
+}
+
+func readRootKey(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	key := strings.TrimSpace(string(raw))
+	decoded, err := base64.StdEncoding.DecodeString(key)
+	if err != nil || len(decoded) != 32 {
+		return "", fmt.Errorf("invalid deployment root key file: %s", path)
+	}
+	return key, nil
+}
+
+func rootKeyDataDir(driver, dsn string) string {
+	if normalized := strings.ToLower(strings.TrimSpace(driver)); normalized == "sqlite" || normalized == "" {
+		pathValue := strings.TrimSpace(dsn)
+		if strings.HasPrefix(pathValue, "file:") {
+			pathValue = strings.TrimPrefix(pathValue, "file:")
+			if index := strings.Index(pathValue, "?"); index >= 0 {
+				pathValue = pathValue[:index]
+			}
+		}
+		if pathValue != "" && pathValue != ":memory:" {
+			return filepath.Dir(pathValue)
+		}
+	}
+	return "./data"
 }
 
 // DialectorDSN 返回传给 GORM dialector 的连接串。

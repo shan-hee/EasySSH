@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"regexp"
+	"net/url"
 	"strings"
 )
 
@@ -15,17 +15,15 @@ type Service interface {
 	// Get 获取安全配置
 	Get(ctx context.Context) (*SecurityConfig, error)
 
-	// Save 保存安全配置
-	Save(ctx context.Context, config *SecurityConfig) error
+	SaveWorkspace(ctx context.Context, config *SecurityConfig) error
+	SaveLoginSession(ctx context.Context, config *SecurityConfig) error
+	SaveLoginSecurity(ctx context.Context, config *SecurityConfig) error
+	SaveWebSecurity(ctx context.Context, config *SecurityConfig) error
+	SaveCORS(ctx context.Context, config *SecurityConfig) error
+	SaveAccessControl(ctx context.Context, config *SecurityConfig) error
 
 	// GetCORSConfig 获取CORS配置
 	GetCORSConfig(ctx context.Context) (*CORSConfig, error)
-
-	// GetCookieConfig 获取Cookie配置
-	GetCookieConfig(ctx context.Context) (*CookieConfig, error)
-
-	// GetAllConfigs 一次性获取所有配置（CORS + Cookie）
-	GetAllConfigs(ctx context.Context) (*CORSConfig, *CookieConfig, error)
 
 	// GetRateLimitConfig 获取速率限制配置
 	GetRateLimitConfig(ctx context.Context) (*RateLimitConfig, error)
@@ -79,6 +77,15 @@ func applySecurityConfigDefaults(config *SecurityConfig) {
 	if config.AccountLockDurationMinutes <= 0 {
 		config.AccountLockDurationMinutes = 60
 	}
+	if strings.TrimSpace(config.TrustedProxies) == "" {
+		config.TrustedProxies = "127.0.0.1\n::1"
+	}
+	if strings.TrimSpace(config.CookieSecureMode) == "" {
+		config.CookieSecureMode = "auto"
+	}
+	if strings.TrimSpace(config.CookieSameSite) == "" {
+		config.CookieSameSite = "lax"
+	}
 }
 
 // NewService 创建安全配置服务
@@ -96,29 +103,45 @@ func (s *service) Get(ctx context.Context) (*SecurityConfig, error) {
 	return config, nil
 }
 
-// Save 保存安全配置
-func (s *service) Save(ctx context.Context, config *SecurityConfig) error {
-	// 验证配置
-	if err := s.validate(config); err != nil {
+func (s *service) SaveWorkspace(ctx context.Context, config *SecurityConfig) error {
+	return s.save(ctx, config, s.validateWorkspace, s.repo.SaveWorkspace)
+}
+
+func (s *service) SaveLoginSession(ctx context.Context, config *SecurityConfig) error {
+	return s.save(ctx, config, s.validateLoginSession, s.repo.SaveLoginSession)
+}
+
+func (s *service) SaveLoginSecurity(ctx context.Context, config *SecurityConfig) error {
+	return s.save(ctx, config, s.validateLoginSecurity, s.repo.SaveLoginSecurity)
+}
+
+func (s *service) SaveWebSecurity(ctx context.Context, config *SecurityConfig) error {
+	return s.save(ctx, config, s.validateWebSecurity, s.repo.SaveWebSecurity)
+}
+
+func (s *service) SaveCORS(ctx context.Context, config *SecurityConfig) error {
+	return s.save(ctx, config, s.validateCORS, s.repo.SaveCORS)
+}
+
+func (s *service) SaveAccessControl(ctx context.Context, config *SecurityConfig) error {
+	return s.save(ctx, config, s.validateAccessControl, s.repo.SaveAccessControl)
+}
+
+type saveRepositoryFunc func(context.Context, *SecurityConfig) error
+
+func (s *service) save(ctx context.Context, config *SecurityConfig, validate func(*SecurityConfig) error, save saveRepositoryFunc) error {
+	if config == nil {
+		return errors.New("security configuration is required")
+	}
+	if err := validate(config); err != nil {
 		return err
 	}
-
-	return s.repo.Save(ctx, config)
+	return save(ctx, config)
 }
 
 // GetCORSConfig 获取CORS配置
 func (s *service) GetCORSConfig(ctx context.Context) (*CORSConfig, error) {
 	return s.repo.GetCORSConfig(ctx)
-}
-
-// GetCookieConfig 获取Cookie配置
-func (s *service) GetCookieConfig(ctx context.Context) (*CookieConfig, error) {
-	return s.repo.GetCookieConfig(ctx)
-}
-
-// GetAllConfigs 一次性获取所有配置（CORS + Cookie）
-func (s *service) GetAllConfigs(ctx context.Context) (*CORSConfig, *CookieConfig, error) {
-	return s.repo.GetAllConfigs(ctx)
 }
 
 // GetRateLimitConfig 获取速率限制配置
@@ -221,24 +244,24 @@ func (s *service) matchIP(ip, rule string) bool {
 	return ip == rule
 }
 
-// validate 验证安全配置
-func (s *service) validate(config *SecurityConfig) error {
-	// 验证会话超时
-	if config.SessionTimeout < 5 || config.SessionTimeout > 1440 {
-		return errors.New("session timeout must be between 5 and 1440 minutes")
-	}
-
-	// 验证最大标签页数
+func (s *service) validateWorkspace(config *SecurityConfig) error {
 	if config.MaxTabs < 1 || config.MaxTabs > 200 {
 		return errors.New("max tabs must be between 1 and 200")
 	}
-
-	// 验证非活动断开时间
 	if config.InactiveMinutes < 5 || config.InactiveMinutes > 1440 {
 		return errors.New("inactive minutes must be between 5 and 1440")
 	}
+	return nil
+}
 
-	// 验证速率限制
+func (s *service) validateLoginSession(config *SecurityConfig) error {
+	if config.SessionTimeout < 5 || config.SessionTimeout > 1440 {
+		return errors.New("session timeout must be between 5 and 1440 minutes")
+	}
+	return nil
+}
+
+func (s *service) validateLoginSecurity(config *SecurityConfig) error {
 	if config.LoginLimit < 1 || config.LoginLimit > 100 {
 		return errors.New("login limit must be between 1 and 100")
 	}
@@ -248,26 +271,66 @@ func (s *service) validate(config *SecurityConfig) error {
 	if config.TwoFALimit < 1 || config.TwoFALimit > 20 {
 		return errors.New("2FA limit must be between 1 and 20")
 	}
+	return nil
+}
 
-	// 验证CORS配置
+func (s *service) validateCORS(config *SecurityConfig) error {
 	if config.CORSConfig != "" {
 		var cors CORSConfig
 		if err := json.Unmarshal([]byte(config.CORSConfig), &cors); err != nil {
 			return fmt.Errorf("invalid CORS config: %w", err)
 		}
 
-		if len(cors.AllowedOrigins) == 0 {
-			return errors.New("at least one allowed origin is required")
-		}
-		if len(cors.AllowedMethods) == 0 {
-			return errors.New("at least one allowed method is required")
-		}
-		if len(cors.AllowedHeaders) == 0 {
-			return errors.New("at least one allowed header is required")
+		for _, origin := range cors.AllowedOrigins {
+			origin = strings.TrimSpace(origin)
+			if origin == "*" {
+				return errors.New("wildcard CORS origin is not allowed when credentials are enabled")
+			}
+			if err := validateHTTPOrigin(origin); err != nil {
+				return fmt.Errorf("invalid CORS origin %q: %w", origin, err)
+			}
 		}
 	}
+	return nil
+}
 
-	// 验证IP白名单格式
+func (s *service) validateWebSecurity(config *SecurityConfig) error {
+	switch config.CookieSecureMode {
+	case "auto", "always", "never":
+	default:
+		return errors.New("cookie secure mode must be auto, always, or never")
+	}
+	switch config.CookieSameSite {
+	case "lax", "strict", "none":
+	default:
+		return errors.New("cookie SameSite must be lax, strict, or none")
+	}
+	if config.CookieSameSite == "none" && config.CookieSecureMode == "never" {
+		return errors.New("SameSite=None requires secure cookies")
+	}
+	if domain := strings.TrimSpace(config.CookieDomain); strings.Contains(domain, "://") || strings.ContainsAny(domain, "/\\ \t\r\n") {
+		return errors.New("cookie domain must be a hostname without scheme, path, or whitespace")
+	}
+	if strings.ContainsAny(config.ContentSecurityPolicy, "\r\n") {
+		return errors.New("Content-Security-Policy must be a single line")
+	}
+	for _, proxy := range config.TrustedProxyList() {
+		if proxy == "0.0.0.0/0" || proxy == "::/0" {
+			return errors.New("trusted proxies must not include the entire internet")
+		}
+		if err := s.validateIPAddress(proxy); err != nil {
+			return fmt.Errorf("invalid trusted proxy %q: %w", proxy, err)
+		}
+	}
+	for _, origin := range config.CSRFTrustedOriginList() {
+		if err := validateHTTPOrigin(origin); err != nil {
+			return fmt.Errorf("invalid CSRF trusted origin %q: %w", origin, err)
+		}
+	}
+	return nil
+}
+
+func (s *service) validateAccessControl(config *SecurityConfig) error {
 	if config.AllowlistIPs != "" {
 		ips := strings.Split(config.AllowlistIPs, "\n")
 		for _, ip := range ips {
@@ -281,7 +344,6 @@ func (s *service) validate(config *SecurityConfig) error {
 		}
 	}
 
-	// 验证IP黑名单格式
 	if config.BlocklistIPs != "" {
 		ips := strings.Split(config.BlocklistIPs, "\n")
 		for _, ip := range ips {
@@ -295,6 +357,20 @@ func (s *service) validate(config *SecurityConfig) error {
 		}
 	}
 
+	return nil
+}
+
+func validateHTTPOrigin(raw string) error {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return errors.New("must be an absolute HTTP(S) origin")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return errors.New("must not contain a path")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return errors.New("must not contain query parameters or fragments")
+	}
 	return nil
 }
 
@@ -312,23 +388,6 @@ func (s *service) validateIPAddress(ip string) error {
 	// 单个IP地址
 	if net.ParseIP(ip) == nil {
 		return errors.New("invalid IP address format")
-	}
-
-	return nil
-}
-
-// validateIPAddressWithRegex 使用正则表达式验证IP地址（备用方法）
-func (s *service) validateIPAddressWithRegex(ip string) error {
-	// IPv4 或 CIDR 正则
-	ipv4Pattern := `^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$`
-	// IPv6 或 CIDR 正则（简化版）
-	ipv6Pattern := `^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}(\/\d{1,3})?$`
-
-	ipv4Regex := regexp.MustCompile(ipv4Pattern)
-	ipv6Regex := regexp.MustCompile(ipv6Pattern)
-
-	if !ipv4Regex.MatchString(ip) && !ipv6Regex.MatchString(ip) {
-		return errors.New("invalid IP address or CIDR format")
 	}
 
 	return nil

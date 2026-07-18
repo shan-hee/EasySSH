@@ -43,7 +43,8 @@ const roles = requireOpenAPIData(result.data, result.response)
 - `POST /oauth/token` 使用授权码换取 access token；refresh token 只通过 HttpOnly Cookie 传输。
 - 业务请求使用 `Authorization: Bearer <access_token>`。
 - `POST /oauth/logout` 撤销当前会话并清理 refresh token Cookie。
-- OIDC 标准端点包括 `/.well-known/openid-configuration`、`/oauth/jwks`、`/oauth/userinfo`、`/oauth/introspect` 和 `/oauth/revoke`。
+- EasySSH 自身登录使用固定内部 issuer/redirect 标识，不依赖浏览器访问域名或部署端口。
+- OIDC 标准端点 `/.well-known/openid-configuration`、`/oauth/jwks`、`/oauth/userinfo`、`/oauth/introspect` 和 `/oauth/revoke` 默认关闭；公开地址和开关统一由“系统设置 → 身份认证 → 对外 OAuth/OIDC Provider”管理。
 
 ## RBAC
 

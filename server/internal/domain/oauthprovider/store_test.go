@@ -51,6 +51,25 @@ func TestNewComposesFositeProviderWithStore(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, service)
 	require.NotNil(t, service.provider)
+	client, err := service.store.GetClient(context.Background(), BuiltInWebClientID)
+	require.NoError(t, err)
+	require.Equal(t, []string{InternalWebRedirectURI}, client.GetRedirectURIs())
+}
+
+func TestExternalProviderGateRequiresDeploymentConfiguration(t *testing.T) {
+	gate, err := NewExternalProviderGate(false, false)
+	require.NoError(t, err)
+	require.False(t, gate.Configured())
+	require.False(t, gate.Enabled())
+	require.Error(t, gate.SetEnabled(true))
+
+	gate, err = NewExternalProviderGate(true, false)
+	require.NoError(t, err)
+	require.True(t, gate.Configured())
+	require.NoError(t, gate.SetEnabled(true))
+	require.True(t, gate.Enabled())
+	require.NoError(t, gate.SetEnabled(false))
+	require.False(t, gate.Enabled())
 }
 
 func newOAuthProviderTestDatabase(t *testing.T) *gorm.DB {

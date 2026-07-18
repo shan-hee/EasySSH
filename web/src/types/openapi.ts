@@ -1671,48 +1671,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/settings/advanced/cookie": {
+    "/settings/login-session": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getSettingsAdvancedCookie"];
+        get: operations["getSettingsLoginSession"];
         put?: never;
-        post: operations["postSettingsAdvancedCookie"];
+        post: operations["postSettingsLoginSession"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/settings/advanced/cors": {
+    "/settings/cors": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getSettingsAdvancedCors"];
+        get: operations["getSettingsCors"];
         put?: never;
-        post: operations["postSettingsAdvancedCors"];
+        post: operations["postSettingsCors"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/settings/advanced/ratelimit": {
+    "/settings/login-security": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getSettingsAdvancedRatelimit"];
+        get: operations["getSettingsLoginSecurity"];
         put?: never;
-        post: operations["postSettingsAdvancedRatelimit"];
+        post: operations["postSettingsLoginSecurity"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1799,16 +1799,16 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/settings/security": {
+    "/settings/web-security": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getSettingsSecurity"];
+        get: operations["getSettingsWebSecurity"];
         put?: never;
-        post: operations["postSettingsSecurity"];
+        post: operations["postSettingsWebSecurity"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1856,7 +1856,7 @@ export interface paths {
         };
         get: operations["getSettingsSystem"];
         put?: never;
-        post: operations["postSettingsSystem"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1895,7 +1895,7 @@ export interface paths {
         patch: operations["patchSettingsSystemFileTransfer"];
         trace?: never;
     };
-    "/settings/system/oauth-token": {
+    "/settings/system/registration": {
         parameters: {
             query?: never;
             header?: never;
@@ -1908,19 +1908,67 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch: operations["patchSettingsSystemOauthToken"];
+        patch: operations["patchSettingsSystemRegistration"];
         trace?: never;
     };
-    "/settings/tabsession": {
+    "/settings/system/google-auth": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get: operations["getSettingsTabsession"];
+        get?: never;
         put?: never;
-        post: operations["postSettingsTabsession"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchSettingsSystemGoogleAuth"];
+        trace?: never;
+    };
+    "/settings/system/oauth-provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchSettingsSystemOAuthProvider"];
+        trace?: never;
+    };
+    "/settings/system/runtime": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchSettingsSystemRuntime"];
+        trace?: never;
+    };
+    "/settings/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSettingsWorkspace"];
+        put?: never;
+        post: operations["postSettingsWorkspace"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6857,7 +6905,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    getSettingsAdvancedCookie: {
+    getSettingsLoginSession: {
         parameters: {
             query?: never;
             header?: never;
@@ -6870,7 +6918,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    postSettingsAdvancedCookie: {
+    postSettingsLoginSession: {
         parameters: {
             query?: never;
             header?: never;
@@ -6887,7 +6935,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    getSettingsAdvancedCors: {
+    getSettingsCors: {
         parameters: {
             query?: never;
             header?: never;
@@ -6900,7 +6948,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    postSettingsAdvancedCors: {
+    postSettingsCors: {
         parameters: {
             query?: never;
             header?: never;
@@ -6917,7 +6965,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    getSettingsAdvancedRatelimit: {
+    getSettingsLoginSecurity: {
         parameters: {
             query?: never;
             header?: never;
@@ -6930,7 +6978,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    postSettingsAdvancedRatelimit: {
+    postSettingsLoginSecurity: {
         parameters: {
             query?: never;
             header?: never;
@@ -7071,7 +7119,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    getSettingsSecurity: {
+    getSettingsWebSecurity: {
         parameters: {
             query?: never;
             header?: never;
@@ -7084,7 +7132,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    postSettingsSecurity: {
+    postSettingsWebSecurity: {
         parameters: {
             query?: never;
             header?: never;
@@ -7161,23 +7209,6 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    postSettingsSystem: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["JSONObject"];
-            };
-        };
-        responses: {
-            200: components["responses"]["JSON"];
-            400: components["responses"]["Error"];
-        };
-    };
     patchSettingsSystemBasic: {
         parameters: {
             query?: never;
@@ -7212,7 +7243,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    patchSettingsSystemOauthToken: {
+    patchSettingsSystemRegistration: {
         parameters: {
             query?: never;
             header?: never;
@@ -7229,7 +7260,58 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    getSettingsTabsession: {
+    patchSettingsSystemGoogleAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    patchSettingsSystemOAuthProvider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    patchSettingsSystemRuntime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSettingsWorkspace: {
         parameters: {
             query?: never;
             header?: never;
@@ -7242,7 +7324,7 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
-    postSettingsTabsession: {
+    postSettingsWorkspace: {
         parameters: {
             query?: never;
             header?: never;

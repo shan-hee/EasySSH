@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -29,52 +28,49 @@ const (
 	AccessTokenCookieName  = "easyssh_access_token"
 )
 
-// CookieConfig Cookie 配置（用于类型断言）
-type CookieConfig struct {
-	Secure bool
-	Domain string
-}
-
 // getCookieConfig 从安全配置服务获取 Cookie 配置
 func getCookieConfig(c *gin.Context, securityService security.Service) (secure bool, domain string, sameSite http.SameSite) {
-	// 默认值
-	secure = true
+	secure = requestUsesHTTPS(c.Request)
 	domain = ""
 	sameSite = http.SameSiteLaxMode
 
-	// 从安全配置服务获取配置
 	if securityService != nil {
-		if config, err := securityService.GetCookieConfig(c.Request.Context()); err == nil {
-			secure = config.Secure
-			domain = config.Domain
+		if config, err := securityService.Get(c.Request.Context()); err == nil {
+			switch config.CookieSecureMode {
+			case "always":
+				secure = true
+			case "never":
+				secure = false
+			case "auto":
+				secure = requestUsesHTTPS(c.Request)
+			}
+			domain = strings.TrimSpace(config.CookieDomain)
+			switch config.CookieSameSite {
+			case "none":
+				sameSite = http.SameSiteNoneMode
+			case "strict":
+				sameSite = http.SameSiteStrictMode
+			default:
+				sameSite = http.SameSiteLaxMode
+			}
 		}
-	}
-
-	// 环境变量覆盖（可选）：COOKIE_SECURE, COOKIE_DOMAIN
-	if v := strings.ToLower(strings.TrimSpace(os.Getenv("COOKIE_SECURE"))); v != "" {
-		if v == "true" || v == "1" || v == "yes" || v == "on" {
-			secure = true
-		} else if v == "false" || v == "0" || v == "no" || v == "off" {
-			secure = false
-		}
-	}
-	if v := strings.TrimSpace(os.Getenv("COOKIE_DOMAIN")); v != "" {
-		domain = v
-	}
-
-	// 允许通过环境变量覆盖 SameSite 策略：COOKIE_SAMESITE=none|lax|strict
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("COOKIE_SAMESITE"))) {
-	case "none":
-		sameSite = http.SameSiteNoneMode
-	case "strict":
-		sameSite = http.SameSiteStrictMode
-	case "lax", "":
-		sameSite = http.SameSiteLaxMode
-	default:
-		sameSite = http.SameSiteLaxMode
 	}
 
 	return secure, domain, sameSite
+}
+
+func requestUsesHTTPS(request *http.Request) bool {
+	if request == nil {
+		return false
+	}
+	if request.TLS != nil {
+		return true
+	}
+	forwardedProto := strings.TrimSpace(request.Header.Get("X-Forwarded-Proto"))
+	if index := strings.IndexByte(forwardedProto, ','); index >= 0 {
+		forwardedProto = forwardedProto[:index]
+	}
+	return strings.EqualFold(strings.TrimSpace(forwardedProto), "https")
 }
 
 // setAuthCookies 设置认证相关的 HttpOnly Cookie（仅用于 refresh_token）。

@@ -1,19 +1,19 @@
 import { SettingsSection } from "@/components/settings/settings-section"
+import { SettingsFormActions } from "@/components/settings/settings-form-actions"
 import { FormTextarea, FormSwitch, FormInput } from "@/components/settings/form-field"
-import { Archive, Download, HardDrive, Loader2, RotateCcw, Save, ChevronDown, Info } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Archive, Download, HardDrive, ChevronDown, Info, Network } from "lucide-react"
 import { useSettingsForm } from "@/hooks/settings/use-settings-form"
 import { fileTransferSchema } from "@/schemas/settings/system-config.schema"
 import { settingsApi } from "@/lib/api/settings"
 import { SettingsLoading } from "@/components/settings/settings-loading"
-import { useTranslation } from "react-i18next"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Separator } from "@/components/ui/separator"
 import { useState } from "react"
+import { useSystemConfig } from "@/contexts/system-config-context"
 
 export function FileTransferTab() {
-  const { t: tCommon } = useTranslation("common")
-  const { form, isLoading, isSaving, handleSave, reload } = useSettingsForm({
+  const { refreshConfig } = useSystemConfig()
+  const { form, isLoading, isSaving, handleSave } = useSettingsForm({
     schema: fileTransferSchema,
     loadFn: async () => {
       const data = await settingsApi.getSystemConfig()
@@ -27,6 +27,11 @@ export function FileTransferTab() {
         transfer_max_storage_gb: data.transfer_max_storage_gb ?? 10,
         transfer_max_concurrency: data.transfer_max_concurrency ?? 2,
         transfer_cleanup_enabled: data.transfer_cleanup_enabled ?? true,
+        sftp_max_idle_time_seconds: data.sftp_max_idle_time_seconds ?? 120,
+        sftp_cleanup_interval_seconds: data.sftp_cleanup_interval_seconds ?? 30,
+        sftp_max_life_time_minutes: data.sftp_max_life_time_minutes ?? 0,
+        sftp_conn_timeout_seconds: data.sftp_conn_timeout_seconds ?? 10,
+        sftp_max_sessions_per_conn: data.sftp_max_sessions_per_conn ?? 8,
       }
     },
     saveFn: async (data) => {
@@ -34,6 +39,7 @@ export function FileTransferTab() {
         ...data,
         default_download_mode: "fast",
       })
+      await refreshConfig()
     },
   })
 
@@ -46,6 +52,26 @@ export function FileTransferTab() {
   // 计算排除规则数量
   const excludePatterns = form.watch("download_exclude_patterns") || ""
   const patternCount = excludePatterns.split("\n").filter(p => p.trim()).length
+  const dirtyFields = form.formState.dirtyFields
+  const sessionTransferDirty = Boolean(
+    dirtyFields.max_file_upload_size ||
+    dirtyFields.skip_excluded_on_upload ||
+    dirtyFields.download_exclude_patterns,
+  )
+  const storageDirty = Boolean(
+    dirtyFields.transfer_storage_path ||
+    dirtyFields.transfer_retention_days ||
+    dirtyFields.transfer_max_storage_gb ||
+    dirtyFields.transfer_max_concurrency,
+  )
+  const connectionPoolDirty = Boolean(
+    dirtyFields.sftp_max_idle_time_seconds ||
+    dirtyFields.sftp_cleanup_interval_seconds ||
+    dirtyFields.sftp_max_life_time_minutes ||
+    dirtyFields.sftp_conn_timeout_seconds ||
+    dirtyFields.sftp_max_sessions_per_conn,
+  )
+  const cleanupDirty = Boolean(dirtyFields.transfer_cleanup_enabled)
 
   return (
     <div className="flex flex-1 min-h-0 flex-col">
@@ -56,6 +82,11 @@ export function FileTransferTab() {
             title="会话传输"
             description="终端或 SFTP 面板内的上传下载跟随当前连接生命周期。"
             icon={<Download className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
+            actions={<SettingsFormActions visible={sessionTransferDirty} isSaving={isSaving} onReset={() => {
+              form.resetField("max_file_upload_size")
+              form.resetField("skip_excluded_on_upload")
+              form.resetField("download_exclude_patterns")
+            }} onSave={handleSave} />}
           >
             <div className="grid gap-4 lg:grid-cols-2">
               <FormInput
@@ -132,6 +163,12 @@ export function FileTransferTab() {
             title="后台暂存"
             description="后台上传会先写入 EasySSH 存储；后台下载完成后也会生成可下载产物。"
             icon={<HardDrive className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />}
+            actions={<SettingsFormActions visible={storageDirty} isSaving={isSaving} onReset={() => {
+              form.resetField("transfer_storage_path")
+              form.resetField("transfer_retention_days")
+              form.resetField("transfer_max_storage_gb")
+              form.resetField("transfer_max_concurrency")
+            }} onSave={handleSave} />}
           >
             <div className="grid gap-4 lg:grid-cols-2">
               <FormInput
@@ -196,11 +233,39 @@ export function FileTransferTab() {
 
           <Separator />
 
+          <SettingsSection
+            title="SSH / SFTP 连接池"
+            description="控制复用连接的回收、健康检查和单连接并发，修改后重启服务生效。"
+            icon={<Network className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />}
+            actions={<SettingsFormActions visible={connectionPoolDirty} isSaving={isSaving} onReset={() => {
+              form.resetField("sftp_max_idle_time_seconds")
+              form.resetField("sftp_cleanup_interval_seconds")
+              form.resetField("sftp_max_life_time_minutes")
+              form.resetField("sftp_conn_timeout_seconds")
+              form.resetField("sftp_max_sessions_per_conn")
+            }} onSave={handleSave} />}
+          >
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FormInput form={form} name="sftp_max_idle_time_seconds" label="空闲回收时间" description="单位秒，连接持续空闲后自动关闭。" type="number" min={5} max={3600} />
+              <FormInput form={form} name="sftp_cleanup_interval_seconds" label="连接扫描间隔" description="单位秒，执行清理与 keepalive 检查的频率。" type="number" min={5} max={600} />
+              <FormInput form={form} name="sftp_max_life_time_minutes" label="连接最长寿命" description="单位分钟，0 表示不按总寿命回收。" type="number" min={0} max={1440} />
+              <FormInput form={form} name="sftp_conn_timeout_seconds" label="连接超时" description="单位秒，用于建连与 keepalive。" type="number" min={1} max={120} />
+              <FormInput form={form} name="sftp_max_sessions_per_conn" label="单连接 SFTP 会话上限" description="0 表示不限制，建议保持默认值 8。" type="number" min={0} max={64} />
+            </div>
+            <div className="mt-4 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              这些参数在连接池创建时读取；保存后需重启 EasySSH，已有连接不会被强制中断。
+            </div>
+          </SettingsSection>
+
+          <Separator />
+
           {/* 清理策略 */}
           <SettingsSection
             title="清理策略"
             description="定期清理过期的后台传输产物，释放 EasySSH 服务端存储空间。"
             icon={<Archive className="h-5 w-5 text-purple-600 dark:text-purple-400" />}
+            actions={<SettingsFormActions visible={cleanupDirty} isSaving={isSaving} onReset={() => form.resetField("transfer_cleanup_enabled")} onSave={handleSave} />}
           >
             <FormSwitch
               form={form}
@@ -212,31 +277,6 @@ export function FileTransferTab() {
         </div>
       </div>
 
-      {/* 底部操作栏 */}
-      <div className="shrink-0 flex items-center justify-between gap-2 p-4 border-t bg-background">
-        <p className="text-sm text-muted-foreground">
-          修改后点击保存按钮应用更改
-        </p>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={reload} disabled={isSaving}>
-            <RotateCcw className="mr-2 h-4 w-4" />
-            {tCommon("reset")}
-          </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                {tCommon("saving")}
-              </>
-            ) : (
-              <>
-                <Save className="mr-2 h-4 w-4" />
-                {tCommon("save")}
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
     </div>
   )
 }

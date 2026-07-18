@@ -1,11 +1,6 @@
 import { z } from "zod"
 
-// 会话管理 Schema
-export const sessionManagementSchema = z.object({
-  session_timeout: z
-    .number()
-    .min(5, "settingsValidation.sessionTimeoutMin")
-    .max(1440, "settingsValidation.sessionTimeoutMax"),
+export const workspaceConfigSchema = z.object({
   max_tabs: z
     .number()
     .min(1, "settingsValidation.maxTabsMin")
@@ -14,39 +9,34 @@ export const sessionManagementSchema = z.object({
     .number()
     .min(5, "settingsValidation.inactiveMinutesMin")
     .max(1440, "settingsValidation.inactiveMinutesMax"),
-  remember_login: z.boolean(),
   hibernate: z.boolean(),
-  oauth_access_token_minutes: z
-    .number()
-    .min(5, "settingsValidation.oauthAccessTokenMin")
-    .max(1440, "settingsValidation.oauthAccessTokenMax"),
-  oauth_refresh_token_days: z
-    .number()
-    .min(1, "settingsValidation.oauthRefreshTokenMin")
-    .max(365, "settingsValidation.oauthRefreshTokenMax"),
+})
+
+export const loginSessionSchema = z.object({
+  session_timeout: z.number().min(5).max(1440),
+  remember_login: z.boolean(),
+})
+
+export const loginSecuritySchema = z.object({
+  login_limit: z.number().min(1).max(100),
+  api_limit: z.number().min(10).max(10000),
+  two_fa_limit: z.number().min(1).max(20),
+  password_pwned_check_enabled: z.boolean(),
+})
+
+export const webSecuritySchema = z.object({
+  trusted_proxies: z.string().min(1),
+  cookie_secure_mode: z.enum(["auto", "always", "never"]),
+  cookie_domain: z.string(),
+  cookie_same_site: z.enum(["lax", "strict", "none"]),
+  csrf_trusted_origins: z.string(),
+  content_security_policy: z.string(),
+  geoip_database_path: z.string(),
 })
 
 // CORS配置 Schema
 export const corsConfigSchema = z.object({
-  allowed_origins: z.array(z.string().min(1)).min(1, "settingsValidation.allowedOriginsMin"),
-  allowed_methods: z.array(z.string()).min(1, "settingsValidation.allowedMethodsMin"),
-  allowed_headers: z.array(z.string()).min(1, "settingsValidation.allowedHeadersMin"),
-})
-
-// 速率限制 Schema
-export const rateLimitSchema = z.object({
-  login_limit: z
-    .number()
-    .min(1, "settingsValidation.loginLimitMin")
-    .max(100, "settingsValidation.loginLimitMax"),
-  api_limit: z
-    .number()
-    .min(10, "settingsValidation.apiLimitMin")
-    .max(10000, "settingsValidation.apiLimitMax"),
-  two_fa_limit: z
-    .number()
-    .min(1, "settingsValidation.twoFALimitMin")
-    .max(20, "settingsValidation.twoFALimitMax"),
+  allowed_origins: z.array(z.string().min(1)),
 })
 
 // 网络安全配置 Schema (包含 IP 白名单/黑名单)
@@ -55,12 +45,10 @@ export const networkSecuritySchema = z.object({
   blocklist_ips: z.string().optional(),
 })
 
-// 网络安全完整配置 Schema (CORS + 速率限制)
-export const networkSecurityFullSchema = corsConfigSchema.merge(rateLimitSchema)
-
 // 导出类型
-export type SessionManagementFormData = z.infer<typeof sessionManagementSchema>
+export type WorkspaceConfigFormData = z.infer<typeof workspaceConfigSchema>
+export type LoginSessionFormData = z.infer<typeof loginSessionSchema>
+export type LoginSecurityFormData = z.infer<typeof loginSecuritySchema>
+export type WebSecurityFormData = z.infer<typeof webSecuritySchema>
 export type CORSConfigFormData = z.infer<typeof corsConfigSchema>
-export type RateLimitFormData = z.infer<typeof rateLimitSchema>
 export type NetworkSecurityFormData = z.infer<typeof networkSecuritySchema>
-export type NetworkSecurityFullFormData = z.infer<typeof networkSecurityFullSchema>

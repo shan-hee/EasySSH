@@ -1,117 +1,131 @@
-
-import { useState, Suspense } from "react"
+import { Suspense, useState } from "react"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { useNavigate, useLocation, useSearchParams } from "react-router-dom"
+import { Archive, Bot, Cable, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Workflow } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
-import {
-  Settings,
-  Globe,
-  HardDrive,
-  Shield,
-  Clock,
-  Archive,
-  Bot,
-  Mail,
-} from "lucide-react"
 import { cn } from "@/lib/utils"
-
-// 导入所有配置子页签组件
 import { BasicTab } from "./settings/system-config/_tabs/basic-tab"
 import { FileTransferTab } from "./settings/system-config/_tabs/file-transfer-tab"
-
+import { AuthenticationTab } from "./settings/security-center/_tabs/authentication-tab"
 import { AccessControlTab } from "./settings/security-center/_tabs/access-control-tab"
-import { SessionManagementTab } from "./settings/security-center/_tabs/session-management-tab"
 import { NetworkSecurityTab } from "./settings/security-center/_tabs/network-security-tab"
-
+import { WorkspaceTab } from "./settings/security-center/_tabs/workspace-tab"
 import { BackupRestoreTab } from "@/components/settings/backup-restore-tab"
-
 import { NotificationConfigWrapper } from "./settings/integrations/_tabs/notification-config-wrapper"
 import { AIConfigWrapper } from "./settings/integrations/_tabs/ai-config-wrapper"
 
-// 所有页签平铺为一级
-interface TabItem {
+interface SettingsItem {
   id: string
   nameKey: string
   icon: React.ElementType
   component: React.ComponentType
 }
 
-const tabs: TabItem[] = [
-  { id: "basic", nameKey: "itemBasic", icon: Settings, component: BasicTab },
-  { id: "file-transfer", nameKey: "itemFileTransfer", icon: HardDrive, component: FileTransferTab },
-  { id: "access-control", nameKey: "itemAccessControl", icon: Shield, component: AccessControlTab },
-  { id: "session", nameKey: "itemSessionManagement", icon: Clock, component: SessionManagementTab },
-  { id: "network", nameKey: "itemNetworkSecurity", icon: Globe, component: NetworkSecurityTab },
-  { id: "ai-config", nameKey: "itemAIConfig", icon: Bot, component: AIConfigWrapper },
-  { id: "notification-config", nameKey: "itemNotificationConfig", icon: Mail, component: NotificationConfigWrapper },
-  { id: "backup", nameKey: "itemBackup", icon: Archive, component: BackupRestoreTab },
+interface SettingsGroup {
+  id: string
+  nameKey: string
+  items: SettingsItem[]
+}
+
+const groups: SettingsGroup[] = [
+  { id: "general", nameKey: "groupGeneral", items: [
+    { id: "basic", nameKey: "itemBasic", icon: Settings, component: BasicTab },
+  ] },
+  { id: "identity", nameKey: "groupIdentity", items: [
+    { id: "authentication", nameKey: "itemAuthentication", icon: Fingerprint, component: AuthenticationTab },
+    { id: "access-control", nameKey: "itemAccessControl", icon: Shield, component: AccessControlTab },
+  ] },
+  { id: "workspace", nameKey: "groupWorkspace", items: [
+    { id: "workspace", nameKey: "itemWorkspace", icon: Workflow, component: WorkspaceTab },
+  ] },
+  { id: "network", nameKey: "groupNetwork", items: [
+    { id: "network", nameKey: "itemNetworkDeployment", icon: Globe, component: NetworkSecurityTab },
+    { id: "file-transfer", nameKey: "itemFileTransfer", icon: Cable, component: FileTransferTab },
+  ] },
+  { id: "integrations", nameKey: "groupIntegrations", items: [
+    { id: "ai-config", nameKey: "itemAIConfig", icon: Bot, component: AIConfigWrapper },
+    { id: "notification-config", nameKey: "itemNotificationConfig", icon: Mail, component: NotificationConfigWrapper },
+  ] },
+  { id: "data", nameKey: "groupData", items: [
+    { id: "backup", nameKey: "itemBackup", icon: Archive, component: BackupRestoreTab },
+  ] },
 ]
 
-// 内部组件，使用 useSearchParams
+const items = groups.flatMap((group) => group.items)
+
+function NavigationButton({ item, active, onClick }: { item: SettingsItem; active: boolean; onClick: () => void }) {
+  const { t } = useTranslation("settingsMain")
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
+        active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+      )}
+    >
+      <item.icon className="h-4 w-4 shrink-0" />
+      <span className="whitespace-nowrap">{t(item.nameKey)}</span>
+    </button>
+  )
+}
+
 function SettingsContent() {
   const { t } = useTranslation("settingsMain")
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const [searchParams] = useSearchParams()
+  const requestedSection = searchParams.get("section") || "basic"
+  const [activeSection, setActiveSection] = useState(items.some((item) => item.id === requestedSection) ? requestedSection : "basic")
+  const activeItem = items.find((item) => item.id === activeSection) ?? items[0]
+  const ActiveComponent = activeItem.component
+  const ActiveIcon = activeItem.icon
 
-  const initialSectionParam = searchParams.get("section") || "basic"
-  const initialSection = tabs.some((tab) => tab.id === initialSectionParam)
-    ? initialSectionParam
-    : "basic"
-  const [activeSection, setActiveSection] = useState(initialSection)
-
-  const activeTab = tabs.find((tab) => tab.id === activeSection) ?? tabs[0]
-  const ActiveComponent = activeTab.component
-
-  const handleSectionChange = (section: string) => {
+  const selectSection = (section: string) => {
     setActiveSection(section)
-    if (!pathname) return
-    const nextSearchParams = new URLSearchParams(searchParams.toString())
-    nextSearchParams.set("section", section)
-    navigate(`${pathname}?${nextSearchParams.toString()}`, { replace: true })
+    const next = new URLSearchParams(searchParams)
+    next.set("section", section)
+    navigate(`${pathname}?${next.toString()}`, { replace: true })
   }
 
   return (
     <>
       <PageHeader title={t("pageTitle")} />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pt-2">
-        {/* 页签栏 */}
-        <div className="flex items-center gap-1 border-b pb-0 mb-0 overflow-x-auto overflow-y-hidden scrollbar-none shrink-0">
-          {tabs.map((tab) => {
-            const isActive = tab.id === activeSection
-            return (
-              <button
-                key={tab.id}
-                onClick={() => handleSectionChange(tab.id)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors -mb-px",
-                  isActive
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/30"
-                )}
-              >
-                <tab.icon className="h-4 w-4" />
-                {t(tab.nameKey)}
-              </button>
-            )
-          })}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4 pb-4 pt-2 lg:flex-row">
+        <div className="flex shrink-0 gap-2 overflow-x-auto border-b pb-2 lg:hidden">
+          {items.map((item) => (
+            <div key={item.id} className="w-fit shrink-0">
+              <NavigationButton item={item} active={item.id === activeSection} onClick={() => selectSection(item.id)} />
+            </div>
+          ))}
         </div>
 
-        {/* 内容区域 */}
-        <main className="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden">
-          {ActiveComponent && <ActiveComponent />}
+        <aside className="hidden w-56 shrink-0 overflow-y-auto rounded-lg border bg-card p-3 lg:block scrollbar-custom">
+          <div className="mb-3 flex items-center gap-2 px-2 text-sm font-semibold"><HardDrive className="h-4 w-4" />{t("navigationTitle")}</div>
+          <div className="space-y-4">
+            {groups.map((group) => (
+              <section key={group.id} className="space-y-1">
+                <h2 className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t(group.nameKey)}</h2>
+                {group.items.map((item) => (
+                  <NavigationButton key={item.id} item={item} active={item.id === activeSection} onClick={() => selectSection(item.id)} />
+                ))}
+              </section>
+            ))}
+          </div>
+        </aside>
+
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-card">
+          <div className="shrink-0 border-b px-4 py-3">
+            <h1 className="flex items-center gap-2 text-base font-semibold"><ActiveIcon className="h-4 w-4" />{t(activeItem.nameKey)}</h1>
+          </div>
+          <ActiveComponent />
         </main>
       </div>
     </>
   )
 }
 
-// 外层组件，用 Suspense 包裹
 export default function SettingsPage() {
-  const { t: tCommon } = useTranslation("common")
-  return (
-    <Suspense fallback={<div className="flex items-center justify-center h-full">{tCommon("loading")}</div>}>
-      <SettingsContent />
-    </Suspense>
-  )
+  const { t } = useTranslation("common")
+  return <Suspense fallback={<div className="flex h-full items-center justify-center">{t("loading")}</div>}><SettingsContent /></Suspense>
 }

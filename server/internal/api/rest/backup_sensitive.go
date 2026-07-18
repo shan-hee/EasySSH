@@ -130,7 +130,7 @@ func (h *BackupHandler) exportSensitivePayload(includeConfig bool, includeDataba
 		},
 		Warnings: []string{
 			"users.password is restored as bcrypt hash; plaintext passwords are not recoverable.",
-			"users.backup_codes are restored as stored HMAC hashes and remain usable only with the same ENCRYPTION_KEY.",
+			"users.backup_codes are restored as stored HMAC hashes and remain usable only with the same deployment root key.",
 		},
 	}
 

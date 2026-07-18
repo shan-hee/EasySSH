@@ -1,6 +1,10 @@
 package systemconfig
 
 import (
+	"fmt"
+	"net/url"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -40,8 +44,22 @@ type SystemConfig struct {
 	GoogleClientID     string `gorm:"size:255" json:"google_client_id"`
 	GoogleClientSecret string `gorm:"size:255" json:"-"` // 加密存储，不返回给前端
 
-	OAuthAccessTokenMinutes int `gorm:"column:oauth_access_token_minutes;not null;default:15" json:"oauth_access_token_minutes"`
-	OAuthRefreshTokenDays   int `gorm:"column:oauth_refresh_token_days;not null;default:30" json:"oauth_refresh_token_days"`
+	OAuthAccessTokenMinutes      int    `gorm:"column:oauth_access_token_minutes;not null;default:15" json:"oauth_access_token_minutes"`
+	OAuthRefreshTokenDays        int    `gorm:"column:oauth_refresh_token_days;not null;default:30" json:"oauth_refresh_token_days"`
+	ExternalOAuthProviderEnabled bool   `gorm:"column:external_oauth_provider_enabled;not null;default:false" json:"external_oauth_provider_enabled"`
+	ExternalOAuthIssuer          string `gorm:"column:external_oauth_issuer;size:512" json:"external_oauth_issuer"`
+	ExternalOAuthLoginURL        string `gorm:"column:external_oauth_login_url;size:512" json:"external_oauth_login_url"`
+	ExternalOAuthRedirectURIs    string `gorm:"column:external_oauth_redirect_uris;type:text" json:"external_oauth_redirect_uris"`
+
+	// 连接运行参数（启动时读取，修改后重启生效）
+	SFTPMaxIdleTimeSeconds     int `gorm:"not null;default:120" json:"sftp_max_idle_time_seconds"`
+	SFTPCleanupIntervalSeconds int `gorm:"not null;default:30" json:"sftp_cleanup_interval_seconds"`
+	SFTPMaxLifeTimeMinutes     int `gorm:"not null;default:0" json:"sftp_max_life_time_minutes"`
+	SFTPConnTimeoutSeconds     int `gorm:"not null;default:10" json:"sftp_conn_timeout_seconds"`
+	SFTPMaxSessionsPerConn     int `gorm:"not null;default:8" json:"sftp_max_sessions_per_conn"`
+
+	// 运行数据服务（空路径表示使用数据目录下的 GeoLite2-City.mmdb）
+	GeoIPDatabasePath string `gorm:"type:text" json:"geoip_database_path"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -54,14 +72,22 @@ func (SystemConfig) TableName() string {
 }
 
 type OAuthTokenConfig struct {
-	AccessTokenMinutes int `json:"oauth_access_token_minutes"`
-	RefreshTokenDays   int `json:"oauth_refresh_token_days"`
+	AccessTokenMinutes           int    `json:"oauth_access_token_minutes"`
+	RefreshTokenDays             int    `json:"oauth_refresh_token_days"`
+	ExternalOAuthProviderEnabled bool   `json:"external_oauth_provider_enabled"`
+	Issuer                       string `json:"external_oauth_issuer"`
+	LoginURL                     string `json:"external_oauth_login_url"`
+	RedirectURIs                 string `json:"external_oauth_redirect_uris"`
 }
 
 func DefaultOAuthTokenConfig() *OAuthTokenConfig {
 	return &OAuthTokenConfig{
-		AccessTokenMinutes: 15,
-		RefreshTokenDays:   30,
+		AccessTokenMinutes:           15,
+		RefreshTokenDays:             30,
+		ExternalOAuthProviderEnabled: false,
+		Issuer:                       "",
+		LoginURL:                     "",
+		RedirectURIs:                 "",
 	}
 }
 
@@ -72,8 +98,12 @@ func (c *SystemConfig) OAuthTokenConfig() *OAuthTokenConfig {
 	}
 
 	settings := &OAuthTokenConfig{
-		AccessTokenMinutes: c.OAuthAccessTokenMinutes,
-		RefreshTokenDays:   c.OAuthRefreshTokenDays,
+		AccessTokenMinutes:           c.OAuthAccessTokenMinutes,
+		RefreshTokenDays:             c.OAuthRefreshTokenDays,
+		ExternalOAuthProviderEnabled: c.ExternalOAuthProviderEnabled,
+		Issuer:                       strings.TrimRight(strings.TrimSpace(c.ExternalOAuthIssuer), "/"),
+		LoginURL:                     strings.TrimSpace(c.ExternalOAuthLoginURL),
+		RedirectURIs:                 strings.TrimSpace(c.ExternalOAuthRedirectURIs),
 	}
 
 	if settings.AccessTokenMinutes <= 0 {
@@ -84,6 +114,69 @@ func (c *SystemConfig) OAuthTokenConfig() *OAuthTokenConfig {
 	}
 
 	return settings
+}
+
+func (c *OAuthTokenConfig) RedirectURIList() []string {
+	if c == nil {
+		return nil
+	}
+	var values []string
+	for _, value := range strings.Split(c.RedirectURIs, "\n") {
+		if value = strings.TrimSpace(value); value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
+}
+
+// ValidateExternalProvider 验证对外 OAuth/OIDC Provider 的完整公开地址。
+// 三项全部为空表示未配置，不影响 EasySSH 自身登录。
+func (c *OAuthTokenConfig) ValidateExternalProvider(production bool) error {
+	if c == nil {
+		return fmt.Errorf("external OAuth/OIDC Provider configuration is unavailable")
+	}
+	if c.Issuer == "" && c.LoginURL == "" && len(c.RedirectURIList()) == 0 {
+		return fmt.Errorf("external OAuth/OIDC Provider URLs are not configured")
+	}
+	issuer, err := validateAbsoluteURL(c.Issuer)
+	if err != nil {
+		return fmt.Errorf("invalid external OAuth issuer: %w", err)
+	}
+	loginURL, err := validateAbsoluteURL(c.LoginURL)
+	if err != nil {
+		return fmt.Errorf("invalid external OAuth login URL: %w", err)
+	}
+	redirectURIs := c.RedirectURIList()
+	if len(redirectURIs) == 0 {
+		return fmt.Errorf("at least one external OAuth redirect URI is required")
+	}
+	parsedRedirects := make([]*url.URL, 0, len(redirectURIs))
+	for _, redirectURI := range redirectURIs {
+		parsed, err := validateAbsoluteURL(redirectURI)
+		if err != nil {
+			return fmt.Errorf("invalid external OAuth redirect URI %q: %w", redirectURI, err)
+		}
+		parsedRedirects = append(parsedRedirects, parsed)
+	}
+	if production {
+		if issuer.Scheme != "https" || loginURL.Scheme != "https" {
+			return fmt.Errorf("external OAuth issuer and login URL must use HTTPS in production")
+		}
+		for index, redirectURI := range parsedRedirects {
+			if redirectURI.Scheme != "https" {
+				return fmt.Errorf("external OAuth redirect URI must use HTTPS in production: %s", redirectURIs[index])
+			}
+		}
+	}
+	return nil
+}
+
+func validateAbsoluteURL(raw string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("must be an absolute URL")
+	}
+	return parsed, nil
 }
 
 // DefaultDownloadExcludePatterns 默认下载排除规则
@@ -137,4 +230,20 @@ func (c *SystemConfig) ApplyTransferDefaults() {
 	if c.TransferMaxConcurrency <= 0 {
 		c.TransferMaxConcurrency = DefaultTransferMaxConcurrency()
 	}
+	if c.SFTPMaxIdleTimeSeconds <= 0 {
+		c.SFTPMaxIdleTimeSeconds = 120
+	}
+	if c.SFTPCleanupIntervalSeconds <= 0 {
+		c.SFTPCleanupIntervalSeconds = 30
+	}
+	if c.SFTPConnTimeoutSeconds <= 0 {
+		c.SFTPConnTimeoutSeconds = 10
+	}
+}
+
+func (c *SystemConfig) ResolvedGeoIPDatabasePath(dataDir string) string {
+	if c != nil && strings.TrimSpace(c.GeoIPDatabasePath) != "" {
+		return filepath.Clean(strings.TrimSpace(c.GeoIPDatabasePath))
+	}
+	return filepath.Join(dataDir, "GeoLite2-City.mmdb")
 }

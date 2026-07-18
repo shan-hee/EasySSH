@@ -23,7 +23,7 @@ type Encryptor struct {
 }
 
 // NewEncryptor 创建加密器
-// key 必须是 Base64 编码的 32 字节密钥（与 ENCRYPTION_KEY 语义保持一致）
+// key 必须是 Base64 编码的 32 字节部署根密钥。
 func NewEncryptor(key string) (*Encryptor, error) {
 	if key == "" {
 		return nil, ErrInvalidKey

@@ -2,7 +2,6 @@
 export type {
   IPWhitelistConfig,
   CORSConfig,
-  RateLimitConfig,
   // 通知配置相关类型
   SMTPConfig,
   WebhookConfig,

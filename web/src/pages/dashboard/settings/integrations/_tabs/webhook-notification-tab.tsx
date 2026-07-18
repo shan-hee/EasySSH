@@ -21,6 +21,7 @@ type WebhookNotificationFields = {
 interface WebhookNotificationTabProps<TFieldValues extends FieldValues & WebhookNotificationFields> {
   form: UseFormReturn<TFieldValues>
   enabledFieldName?: Path<TFieldValues>
+  actions: React.ReactNode
 }
 
 const methodOptions = [
@@ -31,6 +32,7 @@ const methodOptions = [
 export function WebhookNotificationTab<TFieldValues extends FieldValues & WebhookNotificationFields>({
   form,
   enabledFieldName = "webhook_enabled" as Path<TFieldValues>,
+  actions,
 }: WebhookNotificationTabProps<TFieldValues>) {
   const { t } = useTranslation("settingsIntegrationsWebhook")
   const { execute: testConnection, isLoading: isTesting } = useSettingsAPI()
@@ -56,6 +58,7 @@ export function WebhookNotificationTab<TFieldValues extends FieldValues & Webhoo
       title={t("sectionTitle")}
       description={t("sectionDescription")}
       icon={<Webhook className="h-5 w-5" />}
+      actions={actions}
     >
       <FormSwitch
         form={form}

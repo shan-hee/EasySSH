@@ -8,28 +8,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 )
 
 const hashedBackupCodesPrefix = "hmac:"
-
-// getEncryptionKey 从环境变量获取加密密钥（32字节）
-// 使用现有的 ENCRYPTION_KEY 环境变量
-func getEncryptionKey() ([]byte, error) {
-	keyStr := os.Getenv("ENCRYPTION_KEY")
-	if keyStr == "" {
-		return nil, fmt.Errorf("ENCRYPTION_KEY environment variable not set")
-	}
-
-	// 将 ENCRYPTION_KEY 视为 Base64 编码的密钥
-	key, err := base64.StdEncoding.DecodeString(keyStr)
-	if err != nil || len(key) != 32 {
-		return nil, fmt.Errorf("invalid encryption key: must be 32 bytes")
-	}
-
-	return key, nil
-}
 
 func hashBackupCode(code string, key []byte) string {
 	normalized := strings.ToUpper(strings.TrimSpace(code))
@@ -70,10 +52,9 @@ func verifyHashedBackupCode(storedHash, code string, key []byte) bool {
 }
 
 // HashBackupCodes 对备份码做不可逆哈希存储。
-func HashBackupCodes(codes []string) (string, error) {
-	key, err := getEncryptionKey()
-	if err != nil {
-		return "", err
+func HashBackupCodes(codes []string, key []byte) (string, error) {
+	if len(key) != 32 {
+		return "", fmt.Errorf("backup code HMAC key must contain 32 bytes")
 	}
 
 	hashes := make([]string, 0, len(codes))

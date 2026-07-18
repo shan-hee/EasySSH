@@ -1,10 +1,10 @@
 
 import { useTranslation } from "react-i18next"
+import { SettingsFormActions } from "@/components/settings/settings-form-actions"
 import { SettingsSection } from "@/components/settings/settings-section"
-import { Shield, Save, Loader2, RotateCcw } from "lucide-react"
+import { Shield } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { InfoIcon } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { useSettingsForm } from "@/hooks/settings/use-settings-form"
 import { networkSecuritySchema } from "@/schemas/settings/security.schema"
 import { settingsApi } from "@/lib/api/settings"
@@ -14,8 +14,7 @@ import { SettingsLoading } from "@/components/settings/settings-loading"
 
 export function AccessControlTab() {
   const { t } = useTranslation("settingsSecurityAccess")
-  const { t: tCommon } = useTranslation("common")
-  const { form, isLoading, isSaving, handleSave, reload } = useSettingsForm({
+  const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
     schema: networkSecuritySchema,
     loadFn: async () => {
       const config = await settingsApi.getIPWhitelistConfig()
@@ -46,6 +45,7 @@ export function AccessControlTab() {
             title={t("sectionTitle")}
             description={t("sectionDescription")}
             icon={<Shield className="h-5 w-5" />}
+            actions={<SettingsFormActions visible={isDirty} isSaving={isSaving} onReset={reset} onSave={handleSave} />}
           >
             <div className="space-y-4">
               <div className="space-y-2">
@@ -54,7 +54,7 @@ export function AccessControlTab() {
                   id="allowlist_ips"
                   placeholder={t("placeholderAllowlist")}
                   value={form.watch("allowlist_ips") || ""}
-                  onChange={(e) => form.setValue("allowlist_ips", e.target.value)}
+                  onChange={(e) => form.setValue("allowlist_ips", e.target.value, { shouldDirty: true })}
                   rows={4}
                 />
                 <p className="text-xs text-muted-foreground">
@@ -68,7 +68,7 @@ export function AccessControlTab() {
                   id="blocklist_ips"
                   placeholder={t("placeholderBlocklist")}
                   value={form.watch("blocklist_ips") || ""}
-                  onChange={(e) => form.setValue("blocklist_ips", e.target.value)}
+                  onChange={(e) => form.setValue("blocklist_ips", e.target.value, { shouldDirty: true })}
                   rows={4}
                 />
                 <p className="text-xs text-muted-foreground">
@@ -87,26 +87,6 @@ export function AccessControlTab() {
         </div>
       </div>
 
-      {/* 固定底部按钮区 - shrink-0 防止被压缩 */}
-      <div className="shrink-0 flex justify-end gap-2 p-4 bg-background">
-        <Button variant="outline" onClick={reload} disabled={isSaving}>
-          <RotateCcw className="mr-2 h-4 w-4" />
-          {tCommon("reset")}
-        </Button>
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {tCommon("saving")}
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              {tCommon("save")}
-            </>
-          )}
-        </Button>
-      </div>
     </div>
   )
 }

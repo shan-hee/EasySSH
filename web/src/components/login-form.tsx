@@ -20,7 +20,7 @@ import {
 import { Eye, EyeOff, Lock, Mail } from "lucide-react"
 import { toast } from "@/components/ui/sonner"
 import { useSystemConfig } from "@/contexts/system-config-context"
-import { authApi } from "@/lib/api/auth"
+import { authApi, INTERNAL_OAUTH_REDIRECT_URI } from "@/lib/api/auth"
 import { twoFactorApi } from "@/lib/api/2fa"
 import { FadeSlideIn } from "@/components/ui/fade-slide-in"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -174,7 +174,7 @@ export function LoginForm({
         : "code"
       const ru = isOAuthAuthorization
         ? searchParams.get("oauth_redirect_uri") ?? ""
-        : `${window.location.origin}/auth/callback`
+        : INTERNAL_OAUTH_REDIRECT_URI
       const scope = isOAuthAuthorization
         ? searchParams.get("oauth_scope") ?? "openid profile easyssh"
         : "openid profile easyssh"

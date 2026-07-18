@@ -10,6 +10,10 @@ import {
   markAuthIdleExpired,
 } from "@/lib/auth-session-activity"
 
+// 内置登录不会导航到此地址；它只作为 Fosite 授权码与 PKCE 交换的一致性标识。
+// 使用保留的 .invalid 域名可避免本地端口、真实域名和反向代理差异影响登录。
+export const INTERNAL_OAUTH_REDIRECT_URI = "https://internal.easyssh.invalid/auth/callback"
+
 /**
  * 用户基础信息
  */

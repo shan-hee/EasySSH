@@ -9,11 +9,12 @@ import (
 
 type Session struct {
 	*openid.DefaultSession
-	UserID        string `json:"user_id"`
-	Email         string `json:"email"`
-	Role          string `json:"role"`
-	SessionID     string `json:"session_id"`
-	RememberLogin bool   `json:"remember_login"`
+	UserID         string `json:"user_id"`
+	Email          string `json:"email"`
+	Role           string `json:"role"`
+	SessionID      string `json:"session_id"`
+	RememberLogin  bool   `json:"remember_login"`
+	InternalClient bool   `json:"internal_client"`
 }
 
 func NewSession() *Session {

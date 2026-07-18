@@ -6,44 +6,44 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 
 	csrf "filippo.io/csrf/gorilla"
+	"github.com/easyssh/server/internal/domain/security"
 	"github.com/easyssh/server/internal/infra/config"
 	"github.com/gin-gonic/gin"
 )
 
 const CSRFTokenHeader = "X-CSRF-Token"
 
-func CSRFMiddleware(cfg *config.Config) gin.HandlerFunc {
-	key := sha256.Sum256([]byte(cfg.OAuth.GlobalSecret + ":" + cfg.Server.EncryptionKey))
-	secure, domain, sameSite := csrfCookieConfig(cfg)
-	protect := csrf.Protect(
-		key[:],
-		csrf.CookieName("easyssh_csrf_token"),
-		csrf.RequestHeader(CSRFTokenHeader),
-		csrf.TrustedOrigins(csrfTrustedOrigins(cfg)),
-		csrf.Path("/api/v1"),
-		csrf.Secure(secure),
-		csrf.Domain(domain),
-		csrf.SameSite(sameSite),
-		csrf.ErrorHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			reason := ""
-			if err := csrf.FailureReason(r); err != nil {
-				reason = err.Error()
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusForbidden)
-			if reason != "" {
-				_, _ = w.Write([]byte(fmt.Sprintf(`{"error":"csrf_token_invalid","message":"Invalid CSRF token","reason":%q}`, reason)))
-				return
-			}
-			_, _ = w.Write([]byte(`{"error":"csrf_token_invalid","message":"Invalid CSRF token"}`))
-		})),
-	)
+func CSRFMiddleware(cfg *config.Config, securityService security.Service, secret []byte) gin.HandlerFunc {
+	key := sha256.Sum256(secret)
 
 	return func(c *gin.Context) {
+		secure, domain, sameSite := csrfCookieConfig(c, cfg, securityService)
+		protect := csrf.Protect(
+			key[:],
+			csrf.CookieName("easyssh_csrf_token"),
+			csrf.RequestHeader(CSRFTokenHeader),
+			csrf.TrustedOrigins(csrfTrustedOrigins(c, cfg, securityService)),
+			csrf.Path("/api/v1"),
+			csrf.Secure(secure),
+			csrf.Domain(domain),
+			csrf.SameSite(sameSite),
+			csrf.ErrorHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				reason := ""
+				if err := csrf.FailureReason(r); err != nil {
+					reason = err.Error()
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				if reason != "" {
+					_, _ = w.Write([]byte(fmt.Sprintf(`{"error":"csrf_token_invalid","message":"Invalid CSRF token","reason":%q}`, reason)))
+					return
+				}
+				_, _ = w.Write([]byte(`{"error":"csrf_token_invalid","message":"Invalid CSRF token"}`))
+			})),
+		)
 		if isPlaintextHTTPRequest(c.Request) {
 			c.Request = csrf.PlaintextHTTPRequest(c.Request)
 		}
@@ -119,19 +119,25 @@ func GetCSRFToken(r *http.Request) string {
 	return csrf.Token(r)
 }
 
-func csrfCookieConfig(cfg *config.Config) (bool, string, csrf.SameSiteMode) {
+func csrfCookieConfig(c *gin.Context, cfg *config.Config, securityService security.Service) (bool, string, csrf.SameSiteMode) {
 	secure := cfg.Server.Env == "production"
-	if value := strings.ToLower(strings.TrimSpace(os.Getenv("COOKIE_SECURE"))); value != "" {
-		switch value {
-		case "true", "1", "yes", "on":
+	domain := ""
+	sameSiteValue := "lax"
+	securityConfig := requestSecurityConfig(c, securityService)
+	if securityConfig != nil {
+		domain = strings.TrimSpace(securityConfig.CookieDomain)
+		sameSiteValue = strings.ToLower(strings.TrimSpace(securityConfig.CookieSameSite))
+		switch securityConfig.CookieSecureMode {
+		case "always":
 			secure = true
-		case "false", "0", "no", "off":
+		case "never":
 			secure = false
+		case "auto":
+			secure = !isPlaintextHTTPRequest(c.Request)
 		}
 	}
-
 	sameSite := csrf.SameSiteLaxMode
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("COOKIE_SAMESITE"))) {
+	switch sameSiteValue {
 	case "none":
 		sameSite = csrf.SameSiteNoneMode
 	case "strict":
@@ -142,25 +148,37 @@ func csrfCookieConfig(cfg *config.Config) (bool, string, csrf.SameSiteMode) {
 		sameSite = csrf.SameSiteLaxMode
 	}
 
-	return secure, strings.TrimSpace(os.Getenv("COOKIE_DOMAIN")), sameSite
+	return secure, domain, sameSite
 }
 
-func csrfTrustedOrigins(cfg *config.Config) []string {
+func csrfTrustedOrigins(c *gin.Context, cfg *config.Config, securityService security.Service) []string {
 	origins := []string{
 		fmt.Sprintf("http://localhost:%d", cfg.Server.WebDevPort),
 		fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.WebDevPort),
 		"http://" + net.JoinHostPort("::1", fmt.Sprintf("%d", cfg.Server.WebDevPort)),
 	}
 
-	for _, item := range strings.Split(os.Getenv("CSRF_TRUSTED_ORIGINS"), ",") {
-		origin := csrfTrustedOrigin(item)
-		if origin == "" {
-			continue
+	if securityConfig := requestSecurityConfig(c, securityService); securityConfig != nil {
+		for _, item := range securityConfig.CSRFTrustedOriginList() {
+			origin := csrfTrustedOrigin(item)
+			if origin != "" {
+				origins = append(origins, origin)
+			}
 		}
-		origins = append(origins, origin)
 	}
 
 	return origins
+}
+
+func requestSecurityConfig(c *gin.Context, service security.Service) *security.SecurityConfig {
+	if config, ok := GetSecurityConfigFromContext(c); ok {
+		return config
+	}
+	if service == nil {
+		return nil
+	}
+	config, _ := service.Get(c.Request.Context())
+	return config
 }
 
 func csrfTrustedOrigin(raw string) string {

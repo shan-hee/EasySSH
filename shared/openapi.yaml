@@ -5171,9 +5171,9 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
-  /settings/advanced/cookie:
+  /settings/login-session:
     get:
-      operationId: getSettingsAdvancedCookie
+      operationId: getSettingsLoginSession
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5184,7 +5184,7 @@ paths:
           $ref: '#/components/responses/Error'
 
     post:
-      operationId: postSettingsAdvancedCookie
+      operationId: postSettingsLoginSession
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5200,9 +5200,9 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
-  /settings/advanced/cors:
+  /settings/cors:
     get:
-      operationId: getSettingsAdvancedCors
+      operationId: getSettingsCors
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5213,7 +5213,7 @@ paths:
           $ref: '#/components/responses/Error'
 
     post:
-      operationId: postSettingsAdvancedCors
+      operationId: postSettingsCors
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5229,9 +5229,9 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
-  /settings/advanced/ratelimit:
+  /settings/login-security:
     get:
-      operationId: getSettingsAdvancedRatelimit
+      operationId: getSettingsLoginSecurity
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5242,7 +5242,7 @@ paths:
           $ref: '#/components/responses/Error'
 
     post:
-      operationId: postSettingsAdvancedRatelimit
+      operationId: postSettingsLoginSecurity
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5381,9 +5381,9 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
-  /settings/security:
+  /settings/web-security:
     get:
-      operationId: getSettingsSecurity
+      operationId: getSettingsWebSecurity
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5394,7 +5394,7 @@ paths:
           $ref: '#/components/responses/Error'
 
     post:
-      operationId: postSettingsSecurity
+      operationId: postSettingsWebSecurity
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5469,23 +5469,6 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
-    post:
-      operationId: postSettingsSystem
-      tags: [settings]
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/JSONObject'
-      responses:
-        '200':
-          $ref: '#/components/responses/JSON'
-        '400':
-          $ref: '#/components/responses/Error'
-
   /settings/system/basic:
     patch:
       operationId: patchSettingsSystemBasic
@@ -5522,9 +5505,9 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
-  /settings/system/oauth-token:
+  /settings/system/registration:
     patch:
-      operationId: patchSettingsSystemOauthToken
+      operationId: patchSettingsSystemRegistration
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5540,9 +5523,63 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
-  /settings/tabsession:
+  /settings/system/google-auth:
+    patch:
+      operationId: patchSettingsSystemGoogleAuth
+      tags: [settings]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/JSON'
+        '400':
+          $ref: '#/components/responses/Error'
+
+  /settings/system/oauth-provider:
+    patch:
+      operationId: patchSettingsSystemOAuthProvider
+      tags: [settings]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/JSON'
+        '400':
+          $ref: '#/components/responses/Error'
+
+  /settings/system/runtime:
+    patch:
+      operationId: patchSettingsSystemRuntime
+      tags: [settings]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/JSON'
+        '400':
+          $ref: '#/components/responses/Error'
+
+  /settings/workspace:
     get:
-      operationId: getSettingsTabsession
+      operationId: getSettingsWorkspace
       tags: [settings]
       security:
         - bearerAuth: []
@@ -5553,7 +5590,7 @@ paths:
           $ref: '#/components/responses/Error'
 
     post:
-      operationId: postSettingsTabsession
+      operationId: postSettingsWorkspace
       tags: [settings]
       security:
         - bearerAuth: []

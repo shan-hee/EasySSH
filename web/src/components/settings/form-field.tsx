@@ -22,6 +22,7 @@ interface BaseFormFieldProps<TFieldValues extends FieldValues> {
   label: string
   description?: string
   required?: boolean
+  disabled?: boolean
   className?: string
 }
 
@@ -118,6 +119,7 @@ export function FormSwitch<TFieldValues extends FieldValues>({
   name,
   label,
   description,
+  disabled,
   className,
 }: BaseFormFieldProps<TFieldValues>) {
   const value = form.watch(name)
@@ -135,7 +137,12 @@ export function FormSwitch<TFieldValues extends FieldValues>({
       <Switch
         id={name}
         checked={value}
-        onCheckedChange={(checked) => form.setValue(name, checked as PathValue<TFieldValues, Path<TFieldValues>>)}
+        disabled={disabled}
+        onCheckedChange={(checked) => form.setValue(
+          name,
+          checked as PathValue<TFieldValues, Path<TFieldValues>>,
+          { shouldDirty: true, shouldValidate: true },
+        )}
       />
     </div>
   )
@@ -170,7 +177,11 @@ export function FormSelect<TFieldValues extends FieldValues>({
       )}
       <Select
         value={value}
-        onValueChange={(val) => form.setValue(name, val as PathValue<TFieldValues, Path<TFieldValues>>)}
+        onValueChange={(val) => form.setValue(
+          name,
+          val as PathValue<TFieldValues, Path<TFieldValues>>,
+          { shouldDirty: true, shouldValidate: true },
+        )}
       >
         <SelectTrigger id={name} className={error ? "border-destructive" : ""}>
           <SelectValue placeholder={placeholder} />

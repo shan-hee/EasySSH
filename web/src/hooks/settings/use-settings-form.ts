@@ -26,8 +26,9 @@ interface UseSettingsFormReturn<T extends FieldValues> {
   form: UseFormReturn<T>
   isLoading: boolean
   isSaving: boolean
+  isDirty: boolean
   handleSave: () => Promise<void>
-  reload: () => Promise<void>
+  reset: () => void
 }
 
 /**
@@ -37,7 +38,7 @@ interface UseSettingsFormReturn<T extends FieldValues> {
  * @returns 表单实例和相关状态
  *
  * @example
- * const { form, isLoading, isSaving, handleSave } = useSettingsForm({
+ * const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
  *   schema: systemConfigSchema,
  *   loadFn: settingsApi.getSystemConfig,
  *   saveFn: settingsApi.saveSystemConfig,
@@ -65,9 +66,9 @@ export function useSettingsForm<T extends FieldValues>({
   })
 
   // 加载配置数据
-  const loadData = async () => {
+  const loadData = async (showLoading = true) => {
     try {
-      setIsLoading(true)
+      if (showLoading) setIsLoading(true)
       const data = await loadFn()
       form.reset(data)
     } catch (error) {
@@ -79,7 +80,7 @@ export function useSettingsForm<T extends FieldValues>({
       )
       onError?.(err)
     } finally {
-      setIsLoading(false)
+      if (showLoading) setIsLoading(false)
     }
   }
 
@@ -104,6 +105,7 @@ export function useSettingsForm<T extends FieldValues>({
 
     try {
       await saveFn(data)
+      await loadData(false)
       toast.success(t("toastSaveSuccess"))
       onSuccess?.()
     } catch (error) {
@@ -123,7 +125,8 @@ export function useSettingsForm<T extends FieldValues>({
     form,
     isLoading,
     isSaving,
+    isDirty: form.formState.isDirty,
     handleSave,
-    reload: loadData,
+    reset: () => form.reset(),
   }
 }

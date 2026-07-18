@@ -6,17 +6,22 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 const pwnedPasswordRangeEndpoint = "https://api.pwnedpasswords.com/range/"
 
+var pwnedCheckEnabled atomic.Bool
+
 func PwnedCheckEnabled() bool {
-	value := strings.ToLower(strings.TrimSpace(os.Getenv("PASSWORD_PWNED_CHECK_ENABLED")))
-	return value == "1" || value == "true" || value == "yes" || value == "on"
+	return pwnedCheckEnabled.Load()
+}
+
+func SetPwnedCheckEnabled(enabled bool) {
+	pwnedCheckEnabled.Store(enabled)
 }
 
 func IsPwnedPassword(password string) (bool, int, error) {

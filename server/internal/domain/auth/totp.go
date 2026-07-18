@@ -27,11 +27,13 @@ type TOTPService interface {
 	VerifyBackupCode(storedCodes, code string) (bool, string, error)
 }
 
-type totpService struct{}
+type totpService struct {
+	backupCodeKey []byte
+}
 
 // NewTOTPService 创建 TOTP 服务
-func NewTOTPService() TOTPService {
-	return &totpService{}
+func NewTOTPService(backupCodeKey []byte) TOTPService {
+	return &totpService{backupCodeKey: backupCodeKey}
 }
 
 // GenerateSecret 生成 TOTP secret 和二维码 URL
@@ -96,9 +98,8 @@ func (s *totpService) VerifyBackupCode(storedCodes, code string) (bool, string, 
 		return false, "", nil
 	}
 
-	key, err := getEncryptionKey()
-	if err != nil {
-		return false, "", err
+	if len(s.backupCodeKey) != 32 {
+		return false, "", fmt.Errorf("backup code HMAC key must contain 32 bytes")
 	}
 
 	hashes, err := decodeBackupCodeHashes(storedCodes)
@@ -107,7 +108,7 @@ func (s *totpService) VerifyBackupCode(storedCodes, code string) (bool, string, 
 	}
 
 	for i, storedHash := range hashes {
-		if verifyHashedBackupCode(storedHash, normalizedCode, key) {
+		if verifyHashedBackupCode(storedHash, normalizedCode, s.backupCodeKey) {
 			hashes = append(hashes[:i], hashes[i+1:]...)
 			updatedHashes, err := encodeBackupCodeHashes(hashes)
 			if err != nil {

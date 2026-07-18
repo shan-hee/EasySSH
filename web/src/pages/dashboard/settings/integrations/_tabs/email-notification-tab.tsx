@@ -24,11 +24,13 @@ type EmailNotificationFields = {
 interface EmailNotificationTabProps<TFieldValues extends FieldValues & EmailNotificationFields> {
   form: UseFormReturn<TFieldValues>
   enabledFieldName?: Path<TFieldValues>
+  actions: React.ReactNode
 }
 
 export function EmailNotificationTab<TFieldValues extends FieldValues & EmailNotificationFields>({
   form,
   enabledFieldName = "enabled" as Path<TFieldValues>,
+  actions,
 }: EmailNotificationTabProps<TFieldValues>) {
   const { t } = useTranslation("settingsIntegrationsEmail")
   const { execute: testConnection, isLoading: isTesting } = useSettingsAPI()
@@ -58,6 +60,7 @@ export function EmailNotificationTab<TFieldValues extends FieldValues & EmailNot
       title={t("sectionTitle")}
       description={t("sectionDescription")}
       icon={<Mail className="h-5 w-5" />}
+      actions={actions}
     >
       <FormSwitch
         form={form}

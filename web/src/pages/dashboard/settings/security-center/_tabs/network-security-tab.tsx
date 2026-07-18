@@ -1,332 +1,167 @@
-
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { SettingsSection } from "@/components/settings/settings-section"
-import { FormInput } from "@/components/settings/form-field"
-import { Globe, Zap, Save, Loader2, RotateCcw, Plus, X } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { InfoIcon } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { useSettingsForm } from "@/hooks/settings/use-settings-form"
-import { networkSecurityFullSchema } from "@/schemas/settings/security.schema"
+import { Globe, Info, Network, Plus, Shield, X } from "lucide-react"
 import { settingsApi } from "@/lib/api/settings"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
+import { corsConfigSchema, webSecuritySchema } from "@/schemas/settings/security.schema"
+import { useSettingsForm } from "@/hooks/settings/use-settings-form"
 import { SettingsLoading } from "@/components/settings/settings-loading"
+import { SettingsFormActions } from "@/components/settings/settings-form-actions"
+import { SettingsSection } from "@/components/settings/settings-section"
+import { FormInput, FormSelect, FormTextarea } from "@/components/settings/form-field"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+
+const schema = webSecuritySchema.merge(corsConfigSchema)
 
 export function NetworkSecurityTab() {
-  const { t } = useTranslation("settingsSecurityNetwork")
-  const { t: tCommon } = useTranslation("common")
-  // 统一的表单管理
-  const { form, isLoading, isSaving, handleSave, reload } = useSettingsForm({
-    schema: networkSecurityFullSchema,
+  const { t } = useTranslation("settingsNetworkDeployment")
+  const [originInput, setOriginInput] = useState("")
+  const { form, isLoading, isSaving, handleSave } = useSettingsForm({
+    schema,
     loadFn: async () => {
-      // 加载 CORS 和速率限制配置
-      const [corsData, rateLimitData] = await Promise.all([
+      const [webSecurity, cors, system] = await Promise.all([
+        settingsApi.getWebSecurityConfig(),
         settingsApi.getCORSConfig(),
-        settingsApi.getRateLimitConfig(),
+        settingsApi.getSystemConfig(),
       ])
-
       return {
-        // CORS 配置
-        allowed_origins: corsData.allowed_origins || ["*"],
-        allowed_methods: corsData.allowed_methods || ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allowed_headers: corsData.allowed_headers || ["*"],
-        // 速率限制配置
-        login_limit: rateLimitData.login_limit || 5,
-        api_limit: rateLimitData.api_limit || 100,
-        two_fa_limit: rateLimitData.two_fa_limit || 5,
+        ...webSecurity,
+        allowed_origins: cors.allowed_origins ?? [],
+        geoip_database_path: system.geoip_database_path ?? "",
       }
     },
     saveFn: async (data) => {
-      // 分别保存 CORS 和速率限制配置
-      await Promise.all([
-        settingsApi.saveCORSConfig({
-          allowed_origins: data.allowed_origins,
-          allowed_methods: data.allowed_methods,
-          allowed_headers: data.allowed_headers,
-        }),
-        settingsApi.saveRateLimitConfig({
-          login_limit: data.login_limit,
-          api_limit: data.api_limit,
-          two_fa_limit: data.two_fa_limit,
-        }),
-      ])
+      await settingsApi.saveWebSecurityConfig({
+        trusted_proxies: data.trusted_proxies,
+        cookie_secure_mode: data.cookie_secure_mode,
+        cookie_domain: data.cookie_domain,
+        cookie_same_site: data.cookie_same_site,
+        csrf_trusted_origins: data.csrf_trusted_origins,
+        content_security_policy: data.content_security_policy,
+      })
+      await settingsApi.saveCORSConfig({ allowed_origins: data.allowed_origins })
+      await settingsApi.saveRuntimeConfig({ geoip_database_path: data.geoip_database_path })
     },
   })
 
-  // CORS 输入状态
-  const [originInput, setOriginInput] = useState("")
-  const [methodInput, setMethodInput] = useState("")
-  const [headerInput, setHeaderInput] = useState("")
+  if (isLoading) return <SettingsLoading />
 
-  // 添加CORS项
   const addOrigin = () => {
-    if (!originInput.trim()) return
-    const current = form.watch("allowed_origins") || []
-    if (!current.includes(originInput.trim())) {
-      form.setValue("allowed_origins", [...current, originInput.trim()])
-    }
+    const origin = originInput.trim()
+    if (!origin) return
+    const origins = form.getValues("allowed_origins")
+    if (!origins.includes(origin)) form.setValue("allowed_origins", [...origins, origin], { shouldDirty: true })
     setOriginInput("")
   }
 
-  const addMethod = () => {
-    if (!methodInput.trim()) return
-    const current = form.watch("allowed_methods") || []
-    if (!current.includes(methodInput.trim().toUpperCase())) {
-      form.setValue("allowed_methods", [...current, methodInput.trim().toUpperCase()])
-    }
-    setMethodInput("")
-  }
-
-  const addHeader = () => {
-    if (!headerInput.trim()) return
-    const current = form.watch("allowed_headers") || []
-    if (!current.includes(headerInput.trim())) {
-      form.setValue("allowed_headers", [...current, headerInput.trim()])
-    }
-    setHeaderInput("")
-  }
-
-  // 删除CORS项
   const removeOrigin = (origin: string) => {
-    const current = form.watch("allowed_origins") || []
-    form.setValue(
-      "allowed_origins",
-      current.filter((o) => o !== origin)
-    )
+    form.setValue("allowed_origins", form.getValues("allowed_origins").filter((item) => item !== origin), { shouldDirty: true })
   }
 
-  const removeMethod = (method: string) => {
-    const current = form.watch("allowed_methods") || []
-    form.setValue(
-      "allowed_methods",
-      current.filter((m) => m !== method)
-    )
-  }
-
-  const removeHeader = (header: string) => {
-    const current = form.watch("allowed_headers") || []
-    form.setValue(
-      "allowed_headers",
-      current.filter((h) => h !== header)
-    )
-  }
-
-  if (isLoading) {
-    return <SettingsLoading />
-  }
+  const dirtyFields = form.formState.dirtyFields
+  const proxyDirty = Boolean(dirtyFields.trusted_proxies)
+  const cookieDirty = Boolean(dirtyFields.cookie_secure_mode || dirtyFields.cookie_domain || dirtyFields.cookie_same_site)
+  const originDirty = Boolean(dirtyFields.allowed_origins || dirtyFields.csrf_trusted_origins)
+  const browserPolicyDirty = Boolean(dirtyFields.content_security_policy)
+  const geoIPDirty = Boolean(dirtyFields.geoip_database_path)
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col">
-      {/* 可滚动内容区 - flex-1 + min-h-0 确保正确收缩 */}
-      <div className="flex-1 min-h-0 overflow-y-auto scrollbar-custom p-4">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-custom">
         <div className="space-y-4">
-          {/* CORS配置 */}
           <SettingsSection
-        title={t("corsSectionTitle")}
-        description={t("corsSectionDescription")}
-        icon={<Globe className="h-5 w-5" />}
-      >
-        <div className="space-y-4">
-          {/* 允许的源 */}
-          <div className="space-y-3">
-            <Label>{t("labelAllowedOrigins")}</Label>
-            <div className="flex gap-2">
-              <Input
-                placeholder={t("placeholderAllowedOrigins")}
-                value={originInput}
-                onChange={(e) => setOriginInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addOrigin()}
+            title={t("proxyTitle")}
+            description={t("proxyDescription")}
+            icon={<Network className="h-5 w-5" />}
+            actions={<SettingsFormActions visible={proxyDirty} isSaving={isSaving} onReset={() => form.resetField("trusted_proxies")} onSave={handleSave} />}
+          >
+            <FormTextarea form={form} name="trusted_proxies" label={t("trustedProxies")} description={t("trustedProxiesDescription")} rows={4} placeholder={"127.0.0.1\n::1\n10.0.0.0/8"} required />
+            <Alert><Info className="h-4 w-4" /><AlertDescription>{t("restartRequired")}</AlertDescription></Alert>
+          </SettingsSection>
+
+          <SettingsSection
+            title={t("cookieTitle")}
+            description={t("cookieDescription")}
+            icon={<Shield className="h-5 w-5" />}
+            actions={<SettingsFormActions visible={cookieDirty} isSaving={isSaving} onReset={() => {
+              form.resetField("cookie_secure_mode")
+              form.resetField("cookie_domain")
+              form.resetField("cookie_same_site")
+            }} onSave={handleSave} />}
+          >
+            <div className="grid gap-4 lg:grid-cols-2">
+              <FormSelect
+                form={form}
+                name="cookie_secure_mode"
+                label={t("cookieSecureMode")}
+                description={t("cookieSecureModeDescription")}
+                options={[
+                  { value: "auto", label: t("cookieSecureAuto") },
+                  { value: "always", label: t("cookieSecureAlways") },
+                  { value: "never", label: t("cookieSecureNever") },
+                ]}
               />
-              <Button onClick={addOrigin} size="sm">
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {(form.watch("allowed_origins") || []).map((origin) => (
-                <Badge key={origin} variant="secondary" className="gap-1">
-                  {origin}
-                  <button
-                    onClick={() => removeOrigin(origin)}
-                    className="ml-1 hover:text-destructive"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("helperAllowedOrigins")}
-            </p>
-          </div>
-
-          {/* 允许的方法 */}
-          <div className="space-y-3">
-            <Label>{t("labelAllowedMethods")}</Label>
-            <div className="flex gap-2">
-              <Input
-                placeholder={t("placeholderAllowedMethods")}
-                value={methodInput}
-                onChange={(e) => setMethodInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addMethod()}
+              <FormSelect
+                form={form}
+                name="cookie_same_site"
+                label="SameSite"
+                options={[
+                  { value: "lax", label: "Lax" },
+                  { value: "strict", label: "Strict" },
+                  { value: "none", label: "None" },
+                ]}
               />
-              <Button onClick={addMethod} size="sm">
-                <Plus className="h-4 w-4" />
-              </Button>
+              <FormInput form={form} name="cookie_domain" label={t("cookieDomain")} description={t("cookieDomainDescription")} placeholder=".example.com" />
             </div>
-            <div className="flex flex-wrap gap-2">
-              {(form.watch("allowed_methods") || []).map((method) => (
-                <Badge key={method} variant="secondary" className="gap-1">
-                  {method}
-                  <button
-                    onClick={() => removeMethod(method)}
-                    className="ml-1 hover:text-destructive"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
+          </SettingsSection>
+
+          <SettingsSection
+            title={t("originTitle")}
+            description={t("originDescription")}
+            icon={<Globe className="h-5 w-5" />}
+            actions={<SettingsFormActions visible={originDirty} isSaving={isSaving} onReset={() => {
+              form.resetField("allowed_origins")
+              form.resetField("csrf_trusted_origins")
+            }} onSave={handleSave} />}
+          >
+            <div className="space-y-3">
+              <Label>{t("corsOrigins")}</Label>
+              <div className="flex gap-2">
+                <Input value={originInput} onChange={(event) => setOriginInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addOrigin() } }} placeholder="https://admin.example.com" />
+                <Button type="button" size="sm" onClick={addOrigin}><Plus className="h-4 w-4" /></Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {form.watch("allowed_origins").map((origin) => (
+                  <Badge key={origin} variant="secondary" className="gap-1">{origin}<button type="button" onClick={() => removeOrigin(origin)}><X className="h-3 w-3" /></button></Badge>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{t("corsOriginsDescription")}</p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {t("helperAllowedMethods")}
-            </p>
-          </div>
+            <FormTextarea form={form} name="csrf_trusted_origins" label={t("csrfOrigins")} description={t("csrfOriginsDescription")} rows={4} placeholder="https://admin.example.com" />
+          </SettingsSection>
 
-          {/* 允许的请求头 */}
-          <div className="space-y-3">
-            <Label>{t("labelAllowedHeaders")}</Label>
-            <div className="flex gap-2">
-              <Input
-                placeholder={t("placeholderAllowedHeaders")}
-                value={headerInput}
-                onChange={(e) => setHeaderInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addHeader()}
-              />
-              <Button onClick={addHeader} size="sm">
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {(form.watch("allowed_headers") || []).map((header) => (
-                <Badge key={header} variant="secondary" className="gap-1">
-                  {header}
-                  <button
-                    onClick={() => removeHeader(header)}
-                    className="ml-1 hover:text-destructive"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </Badge>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t("helperAllowedHeaders")}
-            </p>
-          </div>
-        </div>
+          <SettingsSection
+            title={t("browserPolicyTitle")}
+            description={t("browserPolicyDescription")}
+            icon={<Shield className="h-5 w-5" />}
+            actions={<SettingsFormActions visible={browserPolicyDirty} isSaving={isSaving} onReset={() => form.resetField("content_security_policy")} onSave={handleSave} />}
+          >
+            <FormTextarea form={form} name="content_security_policy" label="Content-Security-Policy" description={t("cspDescription")} rows={7} placeholder={t("cspPlaceholder")} />
+          </SettingsSection>
 
-        <Alert>
-          <InfoIcon className="h-4 w-4" />
-          <AlertDescription>
-            {t("alertContent")}
-          </AlertDescription>
-        </Alert>
-      </SettingsSection>
-
-      {/* 速率限制配置 */}
-      <SettingsSection
-        title={t("rateLimitSectionTitle")}
-        description={t("rateLimitSectionDescription")}
-        icon={<Zap className="h-5 w-5" />}
-      >
-        <FormInput
-          form={form}
-          name="login_limit"
-          label={t("fieldLoginLimit")}
-          description={t("fieldLoginLimitDesc")}
-          type="number"
-          min={1}
-          max={100}
-          step={1}
-          required
-        />
-
-        <FormInput
-          form={form}
-          name="api_limit"
-          label={t("fieldApiLimit")}
-          description={t("fieldApiLimitDesc")}
-          type="number"
-          min={10}
-          max={10000}
-          step={10}
-          required
-        />
-
-        <FormInput
-          form={form}
-          name="two_fa_limit"
-          label={t("fieldTwoFALimit")}
-          description={t("fieldTwoFALimitDesc")}
-          type="number"
-          min={1}
-          max={20}
-          step={1}
-          required
-        />
-
-        <div className="rounded-lg border p-4 bg-muted/50">
-          <p className="text-sm font-medium mb-2">{t("previewTitle")}</p>
-          <div className="text-sm text-muted-foreground space-y-1">
-            <p>
-              {t("previewLoginPrefix")}
-              <span className="font-semibold text-foreground">{form.watch("login_limit")}</span>
-              {t("previewLoginSuffix")}
-            </p>
-            <p>
-              {t("previewApiPrefix")}
-              <span className="font-semibold text-foreground">{form.watch("api_limit")}</span>
-              {t("previewApiSuffix")}
-            </p>
-            <p>
-              {t("previewTwoFAPrefix")}
-              <span className="font-semibold text-foreground">{form.watch("two_fa_limit")}</span>
-              {t("previewTwoFASuffix")}
-            </p>
-          </div>
-        </div>
-
-        <Alert>
-          <InfoIcon className="h-4 w-4" />
-          <AlertDescription>
-            {t("alertContent")}
-          </AlertDescription>
-        </Alert>
+          <SettingsSection
+            title={t("geoipTitle")}
+            description={t("geoipDescription")}
+            icon={<Globe className="h-5 w-5" />}
+            actions={<SettingsFormActions visible={geoIPDirty} isSaving={isSaving} onReset={() => form.resetField("geoip_database_path")} onSave={handleSave} />}
+          >
+            <FormInput form={form} name="geoip_database_path" label={t("geoipPath")} description={t("geoipPathDescription")} placeholder="/var/lib/easyssh/GeoLite2-City.mmdb" />
+            <Alert><Info className="h-4 w-4" /><AlertDescription>{t("restartRequired")}</AlertDescription></Alert>
           </SettingsSection>
         </div>
-      </div>
-
-      {/* 固定底部按钮区 - shrink-0 防止被压缩 */}
-      <div className="shrink-0 flex justify-end gap-2 p-4 bg-background">
-        <Button variant="outline" onClick={reload} disabled={isSaving}>
-          <RotateCcw className="mr-2 h-4 w-4" />
-          {tCommon("reset")}
-        </Button>
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {tCommon("saving")}
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              {tCommon("save")}
-            </>
-          )}
-        </Button>
       </div>
     </div>
   )

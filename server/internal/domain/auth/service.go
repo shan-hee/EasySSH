@@ -135,6 +135,7 @@ type authService struct {
 	accountLockService    AccountLockService    // 账户锁定服务（可选）
 	loginDetectionService LoginDetectionService // 登录检测服务（可选）
 	encryptor             *secretcrypto.Encryptor
+	backupCodeKey         []byte
 	runMode               string // 存储运行模式
 }
 
@@ -152,14 +153,19 @@ type EmailService interface {
 
 // NewService 创建认证服务
 func NewService(repo Repository, oauthProvider *oauthprovider.Service, encryptor *secretcrypto.Encryptor) Service {
+	var backupCodeKey []byte
+	if encryptor != nil {
+		backupCodeKey, _ = encryptor.DeriveKey("backup-code-hmac", 32)
+	}
 	return &authService{
 		repo:                  repo,
 		oauthProvider:         oauthProvider,
-		totpService:           NewTOTPService(),
+		totpService:           NewTOTPService(backupCodeKey),
 		emailService:          nil, // 默认不启用邮件服务
 		accountLockService:    nil, // 默认不启用账户锁定
 		loginDetectionService: nil, // 默认不启用登录检测
 		encryptor:             encryptor,
+		backupCodeKey:         backupCodeKey,
 		runMode:               "production",
 	}
 }
@@ -863,7 +869,7 @@ func (s *authService) Enable2FA(ctx context.Context, userID uuid.UUID, code stri
 	}
 
 	// 备份码采用不可逆哈希存储
-	hashedBackupCodes, err := HashBackupCodes(backupCodes)
+	hashedBackupCodes, err := HashBackupCodes(backupCodes, s.backupCodeKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash backup codes: %w", err)
 	}

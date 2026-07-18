@@ -4,21 +4,20 @@ import { useTranslation } from "react-i18next"
 import { useSettingsForm } from "@/hooks/settings/use-settings-form"
 import { aiSystemConfigSchema } from "@/schemas/settings/integrations.schema"
 import { settingsApi, type AISystemProvider } from "@/lib/api/settings"
+import { SettingsFormActions } from "@/components/settings/settings-form-actions"
 import { SettingsSection } from "@/components/settings/settings-section"
 import { SettingsLoading } from "@/components/settings/settings-loading"
 import { FormInput, FormSwitch } from "@/components/settings/form-field"
 import { AIModelSelector } from "@/components/ai-agent/ai-model-selector"
-import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Bot, Save, Loader2, RotateCcw } from "lucide-react"
+import { Bot } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { InfoIcon } from "lucide-react"
 import { toast } from "sonner"
 
 export function AIConfigWrapper() {
   const { t } = useTranslation("settingsIntegrationsAI")
-  const { t: tCommon } = useTranslation("common")
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [isProbingModels, setIsProbingModels] = useState(false)
 
@@ -29,7 +28,7 @@ export function AIConfigWrapper() {
     { label: t("providerAnthropic"), value: "anthropic" },
   ]
 
-  const { form, isLoading, isSaving, handleSave, reload } = useSettingsForm({
+  const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
     schema: aiSystemConfigSchema,
     loadFn: async () => {
       const systemConfig = await settingsApi.getAISystemConfig()
@@ -94,6 +93,7 @@ export function AIConfigWrapper() {
             title={t("sectionTitle")}
             description={t("sectionDescription")}
             icon={<Bot className="h-5 w-5" />}
+            actions={<SettingsFormActions visible={isDirty} isSaving={isSaving} onReset={reset} onSave={handleSave} />}
           >
             <FormSwitch
               form={form}
@@ -112,6 +112,7 @@ export function AIConfigWrapper() {
                       form.setValue(
                         "system_provider",
                         val as AISystemProvider,
+                        { shouldDirty: true, shouldValidate: true },
                       )
                     }
                   >
@@ -182,25 +183,6 @@ export function AIConfigWrapper() {
         </div>
       </div>
 
-      <div className="shrink-0 flex justify-end gap-2 p-4 bg-background">
-        <Button variant="outline" onClick={reload} disabled={isSaving}>
-          <RotateCcw className="mr-2 h-4 w-4" />
-          {tCommon("reset")}
-        </Button>
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {tCommon("saving")}
-            </>
-          ) : (
-            <>
-              <Save className="mr-2 h-4 w-4" />
-              {tCommon("save")}
-            </>
-          )}
-        </Button>
-      </div>
     </div>
   )
 }

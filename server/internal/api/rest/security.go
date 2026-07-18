@@ -1,457 +1,239 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
 	"github.com/easyssh/server/internal/domain/security"
-	"github.com/easyssh/server/internal/domain/systemconfig"
+	"github.com/easyssh/server/internal/pkg/password"
 	"github.com/gin-gonic/gin"
 )
 
-// SecurityHandler 安全配置处理器
 type SecurityHandler struct {
-	service             security.Service
-	systemConfigService systemconfig.Service
+	service security.Service
 }
 
-// NewSecurityHandler 创建安全配置处理器
 func NewSecurityHandler(service security.Service) *SecurityHandler {
 	return &SecurityHandler{service: service}
 }
 
-// SetSystemConfigService 设置系统配置服务，用于在会话设置接口中合并 OAuth/OIDC 令牌配置。
-func (h *SecurityHandler) SetSystemConfigService(service systemconfig.Service) {
-	h.systemConfigService = service
+type WorkspaceConfigDTO struct {
+	MaxTabs         int  `json:"max_tabs"`
+	InactiveMinutes int  `json:"inactive_minutes"`
+	Hibernate       bool `json:"hibernate"`
 }
 
-// SecurityConfigDTO 安全配置DTO
-type SecurityConfigDTO struct {
-	SessionTimeout  int                  `json:"session_timeout"`
-	MaxTabs         int                  `json:"max_tabs"`
-	InactiveMinutes int                  `json:"inactive_minutes"`
-	RememberLogin   bool                 `json:"remember_login"`
-	Hibernate       bool                 `json:"hibernate"`
-	AllowlistIPs    string               `json:"allowlist_ips"`
-	BlocklistIPs    string               `json:"blocklist_ips"`
-	CORSConfig      *security.CORSConfig `json:"cors_config,omitempty"`
-	LoginLimit      int                  `json:"login_limit"`
-	APILimit        int                  `json:"api_limit"`
-	TwoFALimit      int                  `json:"two_fa_limit"`
+func (h *SecurityHandler) GetWorkspaceConfig(c *gin.Context) {
+	config, ok := h.get(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"config": WorkspaceConfigDTO{
+		MaxTabs: config.MaxTabs, InactiveMinutes: config.InactiveMinutes, Hibernate: config.Hibernate,
+	}})
 }
 
-// GetSecurityConfig 获取安全配置
-// @Summary 获取安全配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Success 200 {object} SecurityConfigDTO
-// @Router /api/v1/settings/security [get]
-func (h *SecurityHandler) GetSecurityConfig(c *gin.Context) {
-	config, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+func (h *SecurityHandler) SaveWorkspaceConfig(c *gin.Context) {
+	var request WorkspaceConfigDTO
+	if !bindJSON(c, &request) {
 		return
 	}
-
-	// 转换为DTO
-	dto := h.toDTO(config)
-
-	c.JSON(http.StatusOK, gin.H{"config": dto})
+	config, ok := h.get(c)
+	if !ok {
+		return
+	}
+	config.MaxTabs = request.MaxTabs
+	config.InactiveMinutes = request.InactiveMinutes
+	config.Hibernate = request.Hibernate
+	h.save(c, config, h.service.SaveWorkspace, "Workspace configuration saved successfully")
 }
 
-// SaveSecurityConfig 保存安全配置
-// @Summary 保存安全配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Param request body SecurityConfigDTO true "安全配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/security [post]
-func (h *SecurityHandler) SaveSecurityConfig(c *gin.Context) {
-	var dto SecurityConfigDTO
-	if err := c.ShouldBindJSON(&dto); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	// 转换为模型
-	config, err := h.fromDTO(&dto)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.service.Save(c.Request.Context(), config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Security configuration saved successfully"})
+type LoginSessionConfigDTO struct {
+	SessionTimeout int  `json:"session_timeout"`
+	RememberLogin  bool `json:"remember_login"`
 }
 
-// GetCORSConfig 获取CORS配置
-// @Summary 获取CORS配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Success 200 {object} security.CORSConfig
-// @Router /api/v1/settings/advanced/cors [get]
+func (h *SecurityHandler) GetLoginSessionConfig(c *gin.Context) {
+	config, ok := h.get(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"config": LoginSessionConfigDTO{
+		SessionTimeout: config.SessionTimeout, RememberLogin: config.RememberLogin,
+	}})
+}
+
+func (h *SecurityHandler) SaveLoginSessionConfig(c *gin.Context) {
+	var request LoginSessionConfigDTO
+	if !bindJSON(c, &request) {
+		return
+	}
+	config, ok := h.get(c)
+	if !ok {
+		return
+	}
+	config.SessionTimeout = request.SessionTimeout
+	config.RememberLogin = request.RememberLogin
+	h.save(c, config, h.service.SaveLoginSession, "Login session configuration saved successfully")
+}
+
+type LoginSecurityConfigDTO struct {
+	LoginLimit                int  `json:"login_limit"`
+	APILimit                  int  `json:"api_limit"`
+	TwoFALimit                int  `json:"two_fa_limit"`
+	PasswordPwnedCheckEnabled bool `json:"password_pwned_check_enabled"`
+}
+
+func (h *SecurityHandler) GetLoginSecurityConfig(c *gin.Context) {
+	config, ok := h.get(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"config": LoginSecurityConfigDTO{
+		LoginLimit: config.LoginLimit, APILimit: config.APILimit, TwoFALimit: config.TwoFALimit,
+		PasswordPwnedCheckEnabled: config.PasswordPwnedCheckEnabled,
+	}})
+}
+
+func (h *SecurityHandler) SaveLoginSecurityConfig(c *gin.Context) {
+	var request LoginSecurityConfigDTO
+	if !bindJSON(c, &request) {
+		return
+	}
+	config, ok := h.get(c)
+	if !ok {
+		return
+	}
+	config.LoginLimit = request.LoginLimit
+	config.APILimit = request.APILimit
+	config.TwoFALimit = request.TwoFALimit
+	config.PasswordPwnedCheckEnabled = request.PasswordPwnedCheckEnabled
+	if !h.save(c, config, h.service.SaveLoginSecurity, "Login security configuration saved successfully") {
+		return
+	}
+	password.SetPwnedCheckEnabled(config.PasswordPwnedCheckEnabled)
+}
+
+type WebSecurityConfigDTO struct {
+	TrustedProxies        string `json:"trusted_proxies"`
+	CookieSecureMode      string `json:"cookie_secure_mode"`
+	CookieDomain          string `json:"cookie_domain"`
+	CookieSameSite        string `json:"cookie_same_site"`
+	CSRFTrustedOrigins    string `json:"csrf_trusted_origins"`
+	ContentSecurityPolicy string `json:"content_security_policy"`
+}
+
+func (h *SecurityHandler) GetWebSecurityConfig(c *gin.Context) {
+	config, ok := h.get(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"config": WebSecurityConfigDTO{
+		TrustedProxies: config.TrustedProxies, CookieSecureMode: config.CookieSecureMode,
+		CookieDomain: config.CookieDomain, CookieSameSite: config.CookieSameSite,
+		CSRFTrustedOrigins: config.CSRFTrustedOrigins, ContentSecurityPolicy: config.ContentSecurityPolicy,
+	}})
+}
+
+func (h *SecurityHandler) SaveWebSecurityConfig(c *gin.Context) {
+	var request WebSecurityConfigDTO
+	if !bindJSON(c, &request) {
+		return
+	}
+	config, ok := h.get(c)
+	if !ok {
+		return
+	}
+	config.TrustedProxies = request.TrustedProxies
+	config.CookieSecureMode = request.CookieSecureMode
+	config.CookieDomain = request.CookieDomain
+	config.CookieSameSite = request.CookieSameSite
+	config.CSRFTrustedOrigins = request.CSRFTrustedOrigins
+	config.ContentSecurityPolicy = request.ContentSecurityPolicy
+	h.save(c, config, h.service.SaveWebSecurity, "Web security configuration saved successfully")
+}
+
 func (h *SecurityHandler) GetCORSConfig(c *gin.Context) {
 	config, err := h.service.GetCORSConfig(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-
 	c.JSON(http.StatusOK, gin.H{"config": config})
 }
 
-// SaveCORSConfig 保存CORS配置
-// @Summary 保存CORS配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Param request body security.CORSConfig true "CORS配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/advanced/cors [post]
 func (h *SecurityHandler) SaveCORSConfig(c *gin.Context) {
-	var corsConfig security.CORSConfig
-	if err := c.ShouldBindJSON(&corsConfig); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+	var request security.CORSConfig
+	if !bindJSON(c, &request) {
 		return
 	}
-
-	// 获取当前配置
-	config, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	config, ok := h.get(c)
+	if !ok {
 		return
 	}
-
-	// 序列化CORS配置
-	data, err := json.Marshal(&corsConfig)
+	data, err := json.Marshal(&request)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
 	config.CORSConfig = string(data)
-
-	if err := h.service.Save(c.Request.Context(), config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "CORS configuration saved successfully"})
+	h.save(c, config, h.service.SaveCORS, "CORS configuration saved successfully")
 }
 
-// GetRateLimitConfig 获取速率限制配置
-// @Summary 获取速率限制配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Success 200 {object} map[string]int
-// @Router /api/v1/settings/advanced/ratelimit [get]
-func (h *SecurityHandler) GetRateLimitConfig(c *gin.Context) {
-	config, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"config": gin.H{
-			"login_limit":  config.LoginLimit,
-			"api_limit":    config.APILimit,
-			"two_fa_limit": config.TwoFALimit,
-		},
-	})
+type AccessControlConfigDTO struct {
+	AllowlistIPs string `json:"allowlist_ips"`
+	BlocklistIPs string `json:"blocklist_ips"`
 }
 
-// SaveRateLimitConfig 保存速率限制配置
-// @Summary 保存速率限制配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Param request body map[string]int true "速率限制配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/advanced/ratelimit [post]
-func (h *SecurityHandler) SaveRateLimitConfig(c *gin.Context) {
-	var req struct {
-		LoginLimit int `json:"login_limit"`
-		APILimit   int `json:"api_limit"`
-		TwoFALimit int `json:"two_fa_limit"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	// 获取当前配置
-	config, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	config.LoginLimit = req.LoginLimit
-	config.APILimit = req.APILimit
-	if req.TwoFALimit > 0 {
-		config.TwoFALimit = req.TwoFALimit
-	} else if config.TwoFALimit <= 0 {
-		config.TwoFALimit = 5
-	}
-
-	if err := h.service.Save(c.Request.Context(), config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Rate limit configuration saved successfully"})
-}
-
-// GetCookieConfig 获取Cookie配置
-// @Summary 获取Cookie配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Success 200 {object} security.CookieConfig
-// @Router /api/v1/settings/advanced/cookie [get]
-func (h *SecurityHandler) GetCookieConfig(c *gin.Context) {
-	config, err := h.service.GetCookieConfig(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"config": config})
-}
-
-// SaveCookieConfig 保存Cookie配置
-// @Summary 保存Cookie配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Param request body security.CookieConfig true "Cookie配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/advanced/cookie [post]
-func (h *SecurityHandler) SaveCookieConfig(c *gin.Context) {
-	var cookieConfig security.CookieConfig
-	if err := c.ShouldBindJSON(&cookieConfig); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	// 获取当前配置
-	config, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 序列化Cookie配置
-	data, err := json.Marshal(&cookieConfig)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	config.CookieConfig = string(data)
-
-	if err := h.service.Save(c.Request.Context(), config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Cookie configuration saved successfully"})
-}
-
-// GetTabSessionConfig 获取标签/会话配置
-// @Summary 获取标签/会话配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Success 200 {object} map[string]interface{}
-// @Router /api/v1/settings/tabsession [get]
-func (h *SecurityHandler) GetTabSessionConfig(c *gin.Context) {
-	config, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	response := gin.H{
-		"max_tabs":         config.MaxTabs,
-		"inactive_minutes": config.InactiveMinutes,
-		"hibernate":        config.Hibernate,
-		"session_timeout":  config.SessionTimeout,
-		"remember_login":   config.RememberLogin,
-	}
-
-	if h.systemConfigService != nil {
-		if systemCfg, err := h.systemConfigService.Get(c.Request.Context()); err == nil {
-			oauthTokenCfg := systemCfg.OAuthTokenConfig()
-			response["oauth_access_token_minutes"] = oauthTokenCfg.AccessTokenMinutes
-			response["oauth_refresh_token_days"] = oauthTokenCfg.RefreshTokenDays
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"config": response})
-}
-
-// SaveTabSessionConfig 保存标签/会话配置
-// @Summary 保存标签/会话配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Param request body map[string]interface{} true "标签/会话配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/tabsession [post]
-func (h *SecurityHandler) SaveTabSessionConfig(c *gin.Context) {
-	var req struct {
-		MaxTabs         int  `json:"max_tabs"`
-		InactiveMinutes int  `json:"inactive_minutes"`
-		Hibernate       bool `json:"hibernate"`
-		SessionTimeout  int  `json:"session_timeout"`
-		RememberLogin   bool `json:"remember_login"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-
-	// 获取当前配置
-	config, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	config.MaxTabs = req.MaxTabs
-	config.InactiveMinutes = req.InactiveMinutes
-	config.Hibernate = req.Hibernate
-	config.SessionTimeout = req.SessionTimeout
-	config.RememberLogin = req.RememberLogin
-
-	if err := h.service.Save(c.Request.Context(), config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Tab session configuration saved successfully"})
-}
-
-// GetAccessControlConfig 获取IP访问控制配置
-// @Summary 获取IP访问控制配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Success 200 {object} map[string]interface{}
-// @Router /api/v1/settings/access-control [get]
 func (h *SecurityHandler) GetAccessControlConfig(c *gin.Context) {
-	config, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	config, ok := h.get(c)
+	if !ok {
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"config": gin.H{
-			"allowlist_ips": config.AllowlistIPs,
-			"blocklist_ips": config.BlocklistIPs,
-		},
-	})
+	c.JSON(http.StatusOK, gin.H{"config": AccessControlConfigDTO{
+		AllowlistIPs: config.AllowlistIPs, BlocklistIPs: config.BlocklistIPs,
+	}})
 }
 
-// SaveAccessControlConfig 保存IP访问控制配置
-// @Summary 保存IP访问控制配置
-// @Tags 安全设置
-// @Accept json
-// @Produce json
-// @Param request body map[string]interface{} true "IP访问控制配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/access-control [post]
 func (h *SecurityHandler) SaveAccessControlConfig(c *gin.Context) {
-	var req struct {
-		AllowlistIPs string `json:"allowlist_ips"`
-		BlocklistIPs string `json:"blocklist_ips"`
-	}
-
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+	var request AccessControlConfigDTO
+	if !bindJSON(c, &request) {
 		return
 	}
+	config, ok := h.get(c)
+	if !ok {
+		return
+	}
+	config.AllowlistIPs = request.AllowlistIPs
+	config.BlocklistIPs = request.BlocklistIPs
+	h.save(c, config, h.service.SaveAccessControl, "Access control configuration saved successfully")
+}
 
-	// 获取当前配置
+func (h *SecurityHandler) get(c *gin.Context) (*security.SecurityConfig, bool) {
 	config, err := h.service.Get(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		return nil, false
 	}
+	return config, true
+}
 
-	config.AllowlistIPs = req.AllowlistIPs
-	config.BlocklistIPs = req.BlocklistIPs
+type saveSecurityConfigFunc func(context.Context, *security.SecurityConfig) error
 
-	if err := h.service.Save(c.Request.Context(), config); err != nil {
+func (h *SecurityHandler) save(c *gin.Context, config *security.SecurityConfig, save saveSecurityConfigFunc, message string) bool {
+	if err := save(c.Request.Context(), config); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+		return false
 	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "Access control configuration saved successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": message})
+	return true
 }
 
-// toDTO 将模型转换为DTO
-func (h *SecurityHandler) toDTO(config *security.SecurityConfig) *SecurityConfigDTO {
-	dto := &SecurityConfigDTO{
-		SessionTimeout:  config.SessionTimeout,
-		MaxTabs:         config.MaxTabs,
-		InactiveMinutes: config.InactiveMinutes,
-		RememberLogin:   config.RememberLogin,
-		Hibernate:       config.Hibernate,
-		AllowlistIPs:    config.AllowlistIPs,
-		BlocklistIPs:    config.BlocklistIPs,
-		LoginLimit:      config.LoginLimit,
-		APILimit:        config.APILimit,
-		TwoFALimit:      config.TwoFALimit,
+func bindJSON(c *gin.Context, target any) bool {
+	if err := c.ShouldBindJSON(target); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return false
 	}
-
-	// 解析CORS配置
-	if config.CORSConfig != "" {
-		var cors security.CORSConfig
-		if err := json.Unmarshal([]byte(config.CORSConfig), &cors); err == nil {
-			dto.CORSConfig = &cors
-		}
-	}
-
-	return dto
-}
-
-// fromDTO 将DTO转换为模型
-func (h *SecurityHandler) fromDTO(dto *SecurityConfigDTO) (*security.SecurityConfig, error) {
-	config := &security.SecurityConfig{
-		SessionTimeout:  dto.SessionTimeout,
-		MaxTabs:         dto.MaxTabs,
-		InactiveMinutes: dto.InactiveMinutes,
-		RememberLogin:   dto.RememberLogin,
-		Hibernate:       dto.Hibernate,
-		AllowlistIPs:    dto.AllowlistIPs,
-		BlocklistIPs:    dto.BlocklistIPs,
-		LoginLimit:      dto.LoginLimit,
-		APILimit:        dto.APILimit,
-		TwoFALimit:      dto.TwoFALimit,
-	}
-
-	// 序列化CORS配置
-	if dto.CORSConfig != nil {
-		data, err := json.Marshal(dto.CORSConfig)
-		if err != nil {
-			return nil, err
-		}
-		config.CORSConfig = string(data)
-	}
-
-	return config, nil
+	return true
 }
