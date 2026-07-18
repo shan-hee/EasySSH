@@ -100,7 +100,7 @@ function SettingsContent() {
           ))}
         </div>
 
-        <aside className="hidden w-56 shrink-0 rounded-lg border bg-card p-3 lg:sticky lg:top-16 lg:block lg:max-h-[calc(100svh-5rem)] lg:overflow-y-auto scrollbar-custom">
+        <aside className="hidden w-56 shrink-0 rounded-lg border bg-card p-3 lg:sticky lg:top-[4.5rem] lg:block lg:max-h-[calc(100svh-5rem)] lg:overflow-y-auto lg:group-has-data-[collapsible=icon]/sidebar-wrapper:top-14 scrollbar-custom group-data-[ready=true]/sidebar-wrapper:transition-[top] group-data-[ready=true]/sidebar-wrapper:duration-200 group-data-[ready=true]/sidebar-wrapper:ease-in-out">
           <div className="mb-3 flex items-center gap-2 px-2 text-sm font-semibold"><HardDrive className="h-4 w-4" />{t("navigationTitle")}</div>
           <div className="space-y-4">
             {groups.map((group) => (
