@@ -3,7 +3,7 @@ import { BackupRestoreTab } from "@easyssh/ssh-workspace/desktop"
 import type { Locale } from "@/i18n"
 import { createDesktopBackupRestoreAdapter } from "../adapters/desktop-backup-restore-api"
 import { useTranslation } from "react-i18next"
-import { DesktopReturnHeader, DesktopWebViewShell } from "./desktop-view-shell"
+import { DesktopPageContent, DesktopReturnHeader, DesktopWebViewShell } from "./desktop-view-shell"
 
 export function DesktopBackupRestoreView({
   locale,
@@ -21,7 +21,9 @@ export function DesktopBackupRestoreView({
     <DesktopWebViewShell locale={locale}>
       <div className="flex min-h-0 flex-1 flex-col">
         <DesktopReturnHeader title={t("backupRestoreLabel")} onReturnToTerminal={onReturnToTerminal} actions={headerActions} />
-        <BackupRestoreTab adapter={adapter} desktopMode />
+        <DesktopPageContent>
+          <BackupRestoreTab adapter={adapter} desktopMode />
+        </DesktopPageContent>
       </div>
     </DesktopWebViewShell>
   )

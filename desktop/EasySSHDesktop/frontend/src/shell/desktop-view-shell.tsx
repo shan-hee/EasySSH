@@ -8,6 +8,7 @@ import {
 import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { Button } from "@/components/ui/button"
 import type { Locale } from "@/i18n"
+import { cn } from "@/lib/utils"
 import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
 import {
   DESKTOP_LOCAL_EMAIL,
@@ -52,6 +53,30 @@ export function DesktopWebViewShell({ locale, children }: { locale: Locale; chil
         </DashboardI18nProvider>
       </ClientAuthProvider>
     </StaticSystemConfigProvider>
+  )
+}
+
+export function DesktopPageContent({
+  children,
+  className,
+  scrollable = true,
+}: {
+  children: ReactNode
+  className?: string
+  scrollable?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-h-0 min-w-0 flex-1 flex-col",
+        scrollable
+          ? "overflow-x-hidden overflow-y-auto scrollbar-custom [scrollbar-gutter:stable]"
+          : "overflow-hidden",
+        className,
+      )}
+    >
+      {children}
+    </div>
   )
 }
 

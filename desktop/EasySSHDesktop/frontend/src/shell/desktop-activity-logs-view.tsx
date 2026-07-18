@@ -3,7 +3,7 @@ import { LogsClient } from "@easyssh/ssh-workspace/desktop"
 import type { Locale } from "@/i18n"
 import { createDesktopLogsApi } from "../adapters/desktop-logs-api"
 import { useTranslation } from "react-i18next"
-import { DesktopReturnHeader, DesktopWebViewShell } from "./desktop-view-shell"
+import { DesktopPageContent, DesktopReturnHeader, DesktopWebViewShell } from "./desktop-view-shell"
 
 export function DesktopActivityLogsView({
   locale,
@@ -21,7 +21,9 @@ export function DesktopActivityLogsView({
     <DesktopWebViewShell locale={locale}>
       <div className="flex min-h-0 flex-1 flex-col">
         <DesktopReturnHeader title={t("activityLogLabel")} onReturnToTerminal={onReturnToTerminal} actions={headerActions} />
-        <LogsClient api={logsApi} desktopMode />
+        <DesktopPageContent className="pt-4">
+          <LogsClient api={logsApi} desktopMode />
+        </DesktopPageContent>
       </div>
     </DesktopWebViewShell>
   )

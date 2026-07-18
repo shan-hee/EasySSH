@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { AIAssistantWorkspaceView } from "@/components/ai-agent/ai-assistant-workspace-view"
 import type { Locale } from "@/i18n"
 import type { DesktopAIAssistantAdapters } from "../adapters/desktop-ai-adapters"
-import { DesktopReturnHeader, DesktopWebViewShell } from "./desktop-view-shell"
+import { DesktopPageContent, DesktopReturnHeader, DesktopWebViewShell } from "./desktop-view-shell"
 
 export function DesktopAIAssistantView({
   adapters,
@@ -21,11 +21,13 @@ export function DesktopAIAssistantView({
   return (
     <DesktopWebViewShell locale={locale}>
       <DesktopReturnHeader title={t("aiAssistantLabel")} onReturnToTerminal={onReturnToTerminal} actions={headerActions} />
-      <AIAssistantWorkspaceView
-        hidePageHeader
-        customConfigOnly
-        adapters={adapters}
-      />
+      <DesktopPageContent className="pt-4" scrollable={false}>
+        <AIAssistantWorkspaceView
+          hidePageHeader
+          customConfigOnly
+          adapters={adapters}
+        />
+      </DesktopPageContent>
     </DesktopWebViewShell>
   )
 }
