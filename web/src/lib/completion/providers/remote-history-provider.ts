@@ -44,24 +44,6 @@ export class RemoteHistoryProvider implements CompletionProvider {
   }
 
   /**
-   * 增量更新：添加新命令到历史开头
-   */
-  addCommand(command: string) {
-    if (!command.trim()) return
-
-    // 去重：移除已存在的相同命令
-    this.historyCache = this.historyCache.filter(cmd => cmd !== command)
-
-    // 添加到开头
-    this.historyCache.unshift(command)
-
-    // 限制缓存大小（最多保留500条）
-    if (this.historyCache.length > 500) {
-      this.historyCache = this.historyCache.slice(0, 500)
-    }
-  }
-
-  /**
    * 获取补全项
    */
   async getCompletions(context: CompletionContext): Promise<CompletionItem[]> {

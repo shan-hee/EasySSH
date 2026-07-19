@@ -45,7 +45,6 @@ import {
 import type {
   CompletionDataResponse,
   CompletionFetchOptions,
-  CompletionUpdateResponse,
 } from "@/lib/websocket-terminal"
 
 export type CompletionPlacement = "top" | "bottom"
@@ -77,15 +76,9 @@ export interface UseTerminalCompletionControllerOptions {
   containerRef: RefObject<HTMLDivElement | null>
   completionConfig: CompletionConfig
   effectiveCompletionEnabled: boolean
-  completionTrigger: "tab" | "auto"
-  completionAutoDelay: number
-  completionMaxItems: number
-  completionShowIcon: boolean
-  completionShowDescription: boolean
   providerEnabled: TerminalCompletionProviderFlags
   completionFetchOptions?: CompletionFetchOptions
   sendInputRef: MutableRefObject<(data: string) => void>
-  completionUpdateSenderRef: MutableRefObject<((command: string) => void) | null>
   onCommand: (command: string) => void
 }
 
@@ -95,7 +88,6 @@ export interface UseTerminalCompletionControllerResult {
   applyCompletionItem: (item: CompletionItem) => void
   setCompletionPlacement: Dispatch<SetStateAction<CompletionPlacement>>
   handleCompletionData: (data: CompletionDataResponse) => void
-  handleCompletionUpdate: (data: CompletionUpdateResponse) => void
   clearProviderData: () => void
   enableCompletionFetch: boolean
   completionFetchOptions?: CompletionFetchOptions
@@ -115,11 +107,28 @@ const CURSOR_RIGHT = "\x1b[C"
 const CURSOR_HOME = new Set(["\x1b[H", "\x1b[1~", "\x1bOH"])
 const CURSOR_END = new Set(["\x1b[F", "\x1b[4~", "\x1bOF"])
 const FORWARD_DELETE = "\x1b[3~"
+const REMOTE_PATH_AUTO_BUDGET_MS = 250
 
 interface CompletionInputShadow {
   active: boolean
   line: string
   cursor: number
+}
+
+function withinTimeBudget<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => resolve(null), timeoutMs)
+    promise.then(
+      (value) => {
+        clearTimeout(timeout)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timeout)
+        reject(error)
+      },
+    )
+  })
 }
 
 function applyInputToCompletionShadow(
@@ -263,15 +272,9 @@ export function useTerminalCompletionController({
   containerRef,
   completionConfig,
   effectiveCompletionEnabled,
-  completionTrigger,
-  completionAutoDelay,
-  completionMaxItems,
-  completionShowIcon,
-  completionShowDescription,
   providerEnabled,
   completionFetchOptions,
   sendInputRef,
-  completionUpdateSenderRef,
   onCommand,
 }: UseTerminalCompletionControllerOptions): UseTerminalCompletionControllerResult {
   const completionEngineRef = useRef<CompletionEngine | null>(null)
@@ -309,21 +312,7 @@ export function useTerminalCompletionController({
     onCommandRef.current = onCommand
   }, [onCommand])
 
-  const getMergedConfig = useCallback((): CompletionConfig => ({
-    ...completionConfig,
-    trigger: completionTrigger,
-    autoTriggerDelay: completionAutoDelay,
-    maxItems: completionMaxItems,
-    showIcon: completionShowIcon,
-    showDescription: completionShowDescription,
-  }), [
-    completionAutoDelay,
-    completionConfig,
-    completionMaxItems,
-    completionShowDescription,
-    completionShowIcon,
-    completionTrigger,
-  ])
+  const getMergedConfig = useCallback((): CompletionConfig => completionConfig, [completionConfig])
 
   const getCompletionContext = useCallback((
     triggerKind?: CompletionContext["triggerKind"],
@@ -462,11 +451,6 @@ export function useTerminalCompletionController({
     completionEngineRef.current?.clearCache()
   }, [])
 
-  const handleCompletionUpdate = useCallback((data: CompletionUpdateResponse) => {
-    remoteHistoryProviderRef.current?.addCommand(data.newCommand)
-    completionEngineRef.current?.clearCache()
-  }, [])
-
   const resetCompletionState = useCallback(() => {
     setCompletionState(emptyCompletionState)
   }, [])
@@ -550,15 +534,8 @@ export function useTerminalCompletionController({
       return false
     }
 
-    try {
-      const result = await completionEngineRef.current.getCompletions(context)
-
-      if (requestVersion !== completionRequestVersionRef.current) {
-        return true
-      }
-
+    const showResult = (result: Awaited<ReturnType<CompletionEngine["getCompletions"]>>) => {
       if (!result || result.items.length === 0) {
-        resetCompletionState()
         return false
       }
 
@@ -570,14 +547,57 @@ export function useTerminalCompletionController({
         lineBottom: cursorPosition.lineBottom,
       }
 
-      setCompletionState({
-        visible: true,
-        items: result.items,
-        selectedIndex: 0,
-        position,
-        matchedPrefix: getCompletionMatchedPrefix(context, result.items),
+      setCompletionState((current) => {
+        const selectedText = current.visible
+          ? current.items[current.selectedIndex]?.text
+          : undefined
+        const selectedIndex = selectedText
+          ? Math.max(0, result.items.findIndex((item) => item.text === selectedText))
+          : 0
+        return {
+          visible: true,
+          items: result.items,
+          selectedIndex,
+          position,
+          matchedPrefix: getCompletionMatchedPrefix(context, result.items),
+        }
       })
       return true
+    }
+
+    const stageRemotePath = (
+      triggerKind !== "manual" &&
+      providerPathEnabled &&
+      (pathProviderRef.current?.shouldTrigger(context) ?? false)
+    )
+
+    try {
+      const result = await completionEngineRef.current.getCompletions(
+        context,
+        stageRemotePath ? { excludeProviders: ["path"] } : {},
+      )
+
+      if (requestVersion !== completionRequestVersionRef.current) {
+        return true
+      }
+
+      const handled = showResult(result)
+      if (!handled) {
+        resetCompletionState()
+      }
+
+      if (stageRemotePath) {
+        void withinTimeBudget(
+          completionEngineRef.current.getCompletions(context),
+          REMOTE_PATH_AUTO_BUDGET_MS,
+        ).then((enhancedResult) => {
+          if (requestVersion === completionRequestVersionRef.current) {
+            showResult(enhancedResult)
+          }
+        }).catch(() => {})
+      }
+
+      return handled
     } catch {
       if (requestVersion === completionRequestVersionRef.current) {
         resetCompletionState()
@@ -588,6 +608,7 @@ export function useTerminalCompletionController({
     containerRef,
     effectiveCompletionEnabled,
     getCompletionContext,
+    providerPathEnabled,
     resetCompletionState,
     terminal,
   ])
@@ -611,7 +632,7 @@ export function useTerminalCompletionController({
           return
         }
 
-        if (effectiveCompletionEnabled && completionTrigger === "tab") {
+        if (effectiveCompletionEnabled) {
           void (async () => {
             const handled = await handleCompletionRequestRef.current?.("manual")
             if (!handled) {
@@ -692,18 +713,10 @@ export function useTerminalCompletionController({
           sessionProviderRef.current.addCommand(command)
         }
 
-        if (command && remoteHistoryProviderRef.current) {
-          remoteHistoryProviderRef.current.addCommand(command)
-        }
-
-        if (command) {
-          completionUpdateSenderRef.current?.(command)
-        }
-
         return
       }
 
-      if (!effectiveCompletionEnabled || completionTrigger !== "auto") {
+      if (!effectiveCompletionEnabled || completionConfig.trigger !== "auto") {
         return
       }
 
@@ -734,9 +747,9 @@ export function useTerminalCompletionController({
         return
       }
 
-      const delay = completionEngineRef.current?.getConfig().autoTriggerDelay ?? completionAutoDelay ?? 200
+      const delay = completionConfig.autoTriggerDelay
       autoCompleteTimerRef.current = setTimeout(() => {
-        if (!effectiveCompletionEnabled || completionTrigger !== "auto") {
+        if (!effectiveCompletionEnabled || completionConfig.trigger !== "auto") {
           autoCompleteTimerRef.current = null
           return
         }
@@ -771,9 +784,8 @@ export function useTerminalCompletionController({
   }, [
     applyCompletionItem,
     closeCompletion,
-    completionAutoDelay,
-    completionTrigger,
-    completionUpdateSenderRef,
+    completionConfig.autoTriggerDelay,
+    completionConfig.trigger,
     effectiveCompletionEnabled,
     getCompletionContext,
     invalidateCompletionRequest,
@@ -790,7 +802,6 @@ export function useTerminalCompletionController({
     applyCompletionItem,
     setCompletionPlacement,
     handleCompletionData,
-    handleCompletionUpdate,
     clearProviderData,
     enableCompletionFetch: effectiveCompletionEnabled && (providerRemoteHistoryEnabled || providerScriptEnabled),
     completionFetchOptions,

@@ -57,7 +57,8 @@ export class CompletionEngine {
    * 获取补全结果
    */
   async getCompletions(
-    context: CompletionContext
+    context: CompletionContext,
+    options: { excludeProviders?: string[] } = {},
   ): Promise<CompletionResult | null> {
     if (!this.config.enabled) {
       return null
@@ -81,13 +82,20 @@ export class CompletionEngine {
     // 生成缓存键：基于会话ID、当前词和token位置
     // 包含 sessionId 确保不同服务器的补全结果不会混淆
     // 使用 effectivePrefix（优先整行前缀）以体现行级语义
-    const cacheKey = `${this.sessionId}:${context.promptText ?? ""}:${effectivePrefix}:${context.currentTokenIndex}`
+    const excludedProviders = new Set(options.excludeProviders ?? [])
     const enabledProviders = this.providers.filter(
-      (provider) => provider.enabled && (provider.shouldTrigger?.(context) ?? true)
+      (provider) => (
+        provider.enabled &&
+        !excludedProviders.has(provider.name) &&
+        (provider.shouldTrigger?.(context) ?? true)
+      )
     )
     if (enabledProviders.length === 0) {
       return null
     }
+
+    const providerCacheKey = enabledProviders.map((provider) => provider.name).join(",")
+    const cacheKey = `${this.sessionId}:${context.promptText ?? ""}:${effectivePrefix}:${context.currentTokenIndex}:${providerCacheKey}`
 
     const hasPathProvider = enabledProviders.some((provider) => provider.name === "path")
     const shouldUseGlobalCache = !hasPathProvider
@@ -120,9 +128,7 @@ export class CompletionEngine {
     }
 
     const hasPathItems = allItems.some((item) => item.source === "path")
-    const totalLimit = hasPathItems
-      ? Math.max(this.config.maxItems, 24)
-      : this.config.maxItems
+    const totalLimit = this.config.maxItems
     const itemsForDeduplication =
       context.currentTokenIndex === 0 && hasPathItems
         ? allItems.filter((item) => item.source === "path" || item.text !== context.currentWord)

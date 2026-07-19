@@ -177,7 +177,7 @@ export interface CompletionConfig {
  * 默认来源配额配置
  */
 export const DEFAULT_SOURCE_QUOTAS: SourceQuotaConfig[] = [
-  { providerName: "path", min: 0, max: 24 },
+  { providerName: "path", min: 0, max: 10 },
   { providerName: "local", min: 1, max: 3 },
   { providerName: "script", min: 0, max: 2 },
   { providerName: "session", min: 0, max: 2 },

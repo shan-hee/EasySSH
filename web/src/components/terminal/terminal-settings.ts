@@ -1,36 +1,12 @@
-import type { CompletionConfig, SourceQuotaConfig } from "@/lib/completion/types"
+import type { CompletionConfig } from "@/lib/completion/types"
 import { DEFAULT_COMPLETION_CONFIG } from "@/lib/completion/types"
 import type { CompletionFetchOptions } from "@/lib/websocket-terminal"
 
 export const TERMINAL_SETTINGS_STORAGE_KEY = "terminal-settings"
 export const TERMINAL_SETTINGS_EXPORT_SCHEMA = "easyssh.terminal-settings"
-export const TERMINAL_SETTINGS_EXPORT_VERSION = 1
+export const TERMINAL_SETTINGS_EXPORT_VERSION = 2
 
-export interface TerminalCompletionProviders {
-  local: boolean
-  remoteHistory: boolean
-  script: boolean
-  session: boolean
-  path: boolean
-}
-
-export interface TerminalCompletionQuotas {
-  localMin: number
-  localMax: number
-  scriptMin: number
-  scriptMax: number
-  pathMin: number
-  pathMax: number
-  sessionMin: number
-  sessionMax: number
-  remoteHistoryUnlimited: boolean
-  remoteHistorySoftMax: number
-}
-
-export interface TerminalCompletionCache {
-  ttlMinutes: number
-  maxEntries: number
-}
+export type TerminalCompletionMode = "auto" | "tab" | "off"
 
 export interface TerminalSettings {
   // 终端设置
@@ -62,15 +38,10 @@ export interface TerminalSettings {
   clearShortcut: string
 
   // 补全设置
-  completionEnabled: boolean
-  completionTrigger: "tab" | "auto"
-  completionAutoDelay: number
-  completionMaxItems: number
-  completionShowIcon: boolean
-  completionShowDescription: boolean
-  completionProviders: TerminalCompletionProviders
-  completionQuotas: TerminalCompletionQuotas
-  completionCache: TerminalCompletionCache
+  completionMode: TerminalCompletionMode
+  completionUseHistory: boolean
+  completionUseScripts: boolean
+  completionUseRemotePaths: boolean
 }
 
 export interface TerminalSettingsExportPayload {
@@ -87,6 +58,13 @@ export interface TerminalCompletionProviderFlags {
   remoteHistory: boolean
   path: boolean
 }
+
+const TERMINAL_COMPLETION_POLICY = {
+  autoDelayMs: 200,
+  maxItems: 10,
+  showIcon: true,
+  showDescription: true,
+} as const
 
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   fontSize: 14,
@@ -109,35 +87,10 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   copyShortcut: "Ctrl+Shift+C",
   pasteShortcut: "Ctrl+Shift+V",
   clearShortcut: "Ctrl+L",
-  completionEnabled: true,
-  completionTrigger: "auto",
-  completionAutoDelay: 300,
-  completionMaxItems: 10,
-  completionShowIcon: true,
-  completionShowDescription: true,
-  completionProviders: {
-    local: true,
-    remoteHistory: true,
-    script: true,
-    session: true,
-    path: true,
-  },
-  completionQuotas: {
-    localMin: 1,
-    localMax: 3,
-    scriptMin: 0,
-    scriptMax: 2,
-    pathMin: 0,
-    pathMax: 24,
-    sessionMin: 0,
-    sessionMax: 2,
-    remoteHistoryUnlimited: true,
-    remoteHistorySoftMax: 7,
-  },
-  completionCache: {
-    ttlMinutes: 5,
-    maxEntries: 100,
-  },
+  completionMode: "auto",
+  completionUseHistory: true,
+  completionUseScripts: true,
+  completionUseRemotePaths: true,
 }
 
 const clampNumber = (value: unknown, fallback: number, min: number, max: number) => {
@@ -168,10 +121,6 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
     ? input as Partial<TerminalSettings>
     : {}
   const defaults = DEFAULT_TERMINAL_SETTINGS
-  const providers = (value.completionProviders ?? {}) as Partial<TerminalCompletionProviders>
-  const quotas = (value.completionQuotas ?? {}) as Partial<TerminalCompletionQuotas>
-  const cache = (value.completionCache ?? {}) as Partial<TerminalCompletionCache>
-
   return {
     fontSize: clampNumber(value.fontSize, defaults.fontSize, 8, 24),
     fontFamily: normalizeString(value.fontFamily, defaults.fontFamily),
@@ -201,49 +150,17 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
     copyShortcut: normalizeString(value.copyShortcut, defaults.copyShortcut),
     pasteShortcut: normalizeString(value.pasteShortcut, defaults.pasteShortcut),
     clearShortcut: normalizeString(value.clearShortcut, defaults.clearShortcut),
-    completionEnabled: normalizeBoolean(value.completionEnabled, defaults.completionEnabled),
-    completionTrigger: normalizeChoice(value.completionTrigger, ["tab", "auto"] as const, defaults.completionTrigger),
-    completionAutoDelay: clampNumber(value.completionAutoDelay, defaults.completionAutoDelay, 100, 1000),
-    completionMaxItems: clampNumber(value.completionMaxItems, defaults.completionMaxItems, 5, 24),
-    completionShowIcon: normalizeBoolean(value.completionShowIcon, defaults.completionShowIcon),
-    completionShowDescription: normalizeBoolean(
-      value.completionShowDescription,
-      defaults.completionShowDescription,
+    completionMode: normalizeChoice(
+      value.completionMode,
+      ["auto", "tab", "off"] as const,
+      defaults.completionMode,
     ),
-    completionProviders: {
-      local: normalizeBoolean(providers.local, defaults.completionProviders.local),
-      remoteHistory: normalizeBoolean(
-        providers.remoteHistory,
-        defaults.completionProviders.remoteHistory,
-      ),
-      script: normalizeBoolean(providers.script, defaults.completionProviders.script),
-      session: normalizeBoolean(providers.session, defaults.completionProviders.session),
-      path: normalizeBoolean(providers.path, defaults.completionProviders.path),
-    },
-    completionQuotas: {
-      localMin: clampNumber(quotas.localMin, defaults.completionQuotas.localMin, 0, 10),
-      localMax: clampNumber(quotas.localMax, defaults.completionQuotas.localMax, 1, 10),
-      scriptMin: clampNumber(quotas.scriptMin, defaults.completionQuotas.scriptMin, 0, 10),
-      scriptMax: clampNumber(quotas.scriptMax, defaults.completionQuotas.scriptMax, 0, 10),
-      pathMin: clampNumber(quotas.pathMin, defaults.completionQuotas.pathMin, 0, 10),
-      pathMax: clampNumber(quotas.pathMax, defaults.completionQuotas.pathMax, 0, 24),
-      sessionMin: clampNumber(quotas.sessionMin, defaults.completionQuotas.sessionMin, 0, 10),
-      sessionMax: clampNumber(quotas.sessionMax, defaults.completionQuotas.sessionMax, 0, 10),
-      remoteHistoryUnlimited: normalizeBoolean(
-        quotas.remoteHistoryUnlimited,
-        defaults.completionQuotas.remoteHistoryUnlimited,
-      ),
-      remoteHistorySoftMax: clampNumber(
-        quotas.remoteHistorySoftMax,
-        defaults.completionQuotas.remoteHistorySoftMax,
-        1,
-        20,
-      ),
-    },
-    completionCache: {
-      ttlMinutes: clampNumber(cache.ttlMinutes, defaults.completionCache.ttlMinutes, 1, 60),
-      maxEntries: clampNumber(cache.maxEntries, defaults.completionCache.maxEntries, 10, 1000),
-    },
+    completionUseHistory: normalizeBoolean(value.completionUseHistory, defaults.completionUseHistory),
+    completionUseScripts: normalizeBoolean(value.completionUseScripts, defaults.completionUseScripts),
+    completionUseRemotePaths: normalizeBoolean(
+      value.completionUseRemotePaths,
+      defaults.completionUseRemotePaths,
+    ),
   }
 }
 
@@ -296,101 +213,41 @@ export function buildTerminalCompletionProviderFlags(
   settings: TerminalSettings,
 ): TerminalCompletionProviderFlags {
   return {
-    local: settings.completionProviders.local,
-    session: settings.completionProviders.session,
-    script: settings.completionProviders.script,
-    remoteHistory: settings.completionProviders.remoteHistory,
-    path: settings.completionProviders.path,
+    local: true,
+    session: settings.completionUseHistory,
+    script: settings.completionUseScripts,
+    remoteHistory: settings.completionUseHistory,
+    path: settings.completionUseRemotePaths,
   }
-}
-
-export function buildTerminalCompletionSourceQuotas(settings: TerminalSettings): SourceQuotaConfig[] {
-  const quotas = settings.completionQuotas
-  const sourceQuotas: SourceQuotaConfig[] = []
-
-  if (settings.completionProviders.path) {
-    sourceQuotas.push({
-      providerName: "path",
-      min: Math.min(quotas.pathMin, quotas.pathMax),
-      max: quotas.pathMax,
-    })
-  }
-
-  if (settings.completionProviders.local) {
-    sourceQuotas.push({
-      providerName: "local",
-      min: Math.min(quotas.localMin, quotas.localMax),
-      max: quotas.localMax,
-    })
-  }
-
-  if (settings.completionProviders.script) {
-    sourceQuotas.push({
-      providerName: "script",
-      min: Math.min(quotas.scriptMin, quotas.scriptMax),
-      max: quotas.scriptMax,
-    })
-  }
-
-  if (settings.completionProviders.session) {
-    sourceQuotas.push({
-      providerName: "session",
-      min: Math.min(quotas.sessionMin, quotas.sessionMax),
-      max: quotas.sessionMax,
-    })
-  }
-
-  if (settings.completionProviders.remoteHistory) {
-    sourceQuotas.push({
-      providerName: "remote-history",
-      min: 0,
-      max: quotas.remoteHistoryUnlimited ? Infinity : quotas.remoteHistorySoftMax,
-      unlimited: quotas.remoteHistoryUnlimited,
-      softMax: quotas.remoteHistorySoftMax,
-    })
-  }
-
-  return sourceQuotas
 }
 
 export function buildTerminalCompletionConfig(settings: TerminalSettings): CompletionConfig {
+  const enabled = settings.completionMode !== "off"
   return {
     ...DEFAULT_COMPLETION_CONFIG,
-    enabled: settings.completionEnabled,
-    trigger: settings.completionTrigger,
-    autoTriggerDelay: settings.completionAutoDelay,
-    maxItems: settings.completionMaxItems,
+    enabled,
+    trigger: settings.completionMode === "tab" ? "tab" : "auto",
+    autoTriggerDelay: TERMINAL_COMPLETION_POLICY.autoDelayMs,
+    maxItems: TERMINAL_COMPLETION_POLICY.maxItems,
     providers: {
-      local: settings.completionProviders.local,
-      remote: settings.completionProviders.remoteHistory,
-      history: settings.completionProviders.session,
-      script: settings.completionProviders.script,
-      session: settings.completionProviders.session,
-      path: settings.completionProviders.path,
+      local: true,
+      remote: settings.completionUseHistory,
+      history: settings.completionUseHistory,
+      script: settings.completionUseScripts,
+      session: settings.completionUseHistory,
+      path: settings.completionUseRemotePaths,
     },
-    showDescription: settings.completionShowDescription,
-    showIcon: settings.completionShowIcon,
+    showDescription: TERMINAL_COMPLETION_POLICY.showDescription,
+    showIcon: TERMINAL_COMPLETION_POLICY.showIcon,
     enableQuotaAllocation: true,
-    sourceQuotas: buildTerminalCompletionSourceQuotas(settings),
-    cache: {
-      ttl_minutes: settings.completionCache.ttlMinutes,
-      max_entries: settings.completionCache.maxEntries,
-    },
   }
 }
 
 export function buildTerminalCompletionFetchOptions(settings: TerminalSettings): CompletionFetchOptions {
-  const includeHistory = settings.completionEnabled && settings.completionProviders.remoteHistory
-  const includeScripts = settings.completionEnabled && settings.completionProviders.script
+  const enabled = settings.completionMode !== "off"
 
   return {
-    historyLimit: includeHistory && settings.completionQuotas.remoteHistoryUnlimited
-      ? 500
-      : includeHistory
-        ? settings.completionQuotas.remoteHistorySoftMax
-		: 0,
-	includeHistory,
-	includeScripts,
-	cacheTtlMinutes: settings.completionCache.ttlMinutes,
+    includeHistory: enabled && settings.completionUseHistory,
+    includeScripts: enabled && settings.completionUseScripts,
   }
 }

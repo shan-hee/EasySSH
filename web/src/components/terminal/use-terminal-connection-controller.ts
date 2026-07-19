@@ -5,7 +5,6 @@ import { useWebSocketConnection } from "@/hooks/useWebSocketConnection"
 import type {
   CompletionDataResponse,
   CompletionFetchOptions,
-  CompletionUpdateResponse,
   TerminalAuthPrompt,
   TerminalAuthPromptResponder,
   TerminalConnectionPhase,
@@ -24,7 +23,6 @@ export interface TerminalCompletionConnectionBridge {
   enableCompletionFetch: boolean
   completionFetchOptions?: CompletionFetchOptions
   handleCompletionData: (data: CompletionDataResponse) => void
-  handleCompletionUpdate: (data: CompletionUpdateResponse) => void
   clearProviderData: () => void
 }
 
@@ -46,7 +44,6 @@ export interface UseTerminalConnectionControllerOptions {
   auth: TerminalAuthConnectionHandlers
   isTerminalReadyRef: MutableRefObject<boolean>
   sendInputRef: MutableRefObject<(data: string) => void>
-  completionUpdateSenderRef: MutableRefObject<((command: string) => void) | null>
   onConnectionPhaseChange?: (phase: TerminalConnectionPhase) => void
   createAuthTicket?: TerminalWebSocketAuthTicketProvider
   createWebSocketUrl?: TerminalWebSocketUrlResolver
@@ -71,7 +68,6 @@ export function useTerminalConnectionController({
   auth,
   isTerminalReadyRef,
   sendInputRef,
-  completionUpdateSenderRef,
   onConnectionPhaseChange,
   createAuthTicket,
   createWebSocketUrl,
@@ -82,7 +78,6 @@ export function useTerminalConnectionController({
     enableCompletionFetch,
     completionFetchOptions,
     handleCompletionData,
-    handleCompletionUpdate,
     clearProviderData,
   } = completion
   const {
@@ -108,7 +103,6 @@ export function useTerminalConnectionController({
     enableCompletionFetch,
     completionFetchOptions,
     onCompletionData: handleCompletionData,
-    onCompletionUpdate: handleCompletionUpdate,
     onAuthPrompt: handleAuthPrompt,
     onHostKeyPrompt: handleHostKeyPrompt,
     onConnectionEnd: handleConnectionEnd,
@@ -128,12 +122,6 @@ export function useTerminalConnectionController({
   useEffect(() => {
     sendInputRef.current = sendInput
   }, [sendInput, sendInputRef])
-
-  useEffect(() => {
-    completionUpdateSenderRef.current = ws
-      ? (command: string) => ws.sendCompletionUpdate(command)
-      : null
-  }, [completionUpdateSenderRef, ws])
 
   useEffect(() => {
     if (!ws || !isTerminalReady || !serverId) {

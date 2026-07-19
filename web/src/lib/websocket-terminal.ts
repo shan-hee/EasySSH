@@ -59,7 +59,6 @@ export interface TerminalWebSocketOptions {
   onHandshakeComplete?: () => void // 握手完成回调
   onConnecting?: () => void // 正在连接回调
   onCompletionData?: (data: CompletionDataResponse) => void // 补全数据回调
-  onCompletionUpdate?: (data: CompletionUpdateResponse) => void // 补全增量更新回调
   onLatency?: (data: TerminalLatencyData) => void // 终端链路延迟回调
   onAuthPrompt?: (prompt: TerminalAuthPrompt, respond: TerminalAuthPromptResponder) => void // SSH交互式认证回调
   onHostKeyPrompt?: (prompt: TerminalHostKeyPrompt, respond: TerminalHostKeyResponder) => void // SSH主机密钥变更确认回调
@@ -201,15 +200,9 @@ export interface CompletionDataResponse {
   timestamp: number
 }
 
-export interface CompletionUpdateResponse {
-  newCommand: string
-}
-
 export interface CompletionFetchOptions {
-  historyLimit?: number
   includeHistory?: boolean
   includeScripts?: boolean
-  cacheTtlMinutes?: number
 }
 
 export interface ScriptItem {
@@ -232,7 +225,6 @@ export class TerminalWebSocket {
   private onHandshakeComplete?: () => void
   private onConnecting?: () => void
   private onCompletionData?: (data: CompletionDataResponse) => void
-  private onCompletionUpdate?: (data: CompletionUpdateResponse) => void
   private onLatency?: (data: TerminalLatencyData) => void
   private onAuthPrompt?: (prompt: TerminalAuthPrompt, respond: TerminalAuthPromptResponder) => void
   private onHostKeyPrompt?: (prompt: TerminalHostKeyPrompt, respond: TerminalHostKeyResponder) => void
@@ -270,7 +262,6 @@ export class TerminalWebSocket {
     this.onHandshakeComplete = options.onHandshakeComplete
     this.onConnecting = options.onConnecting
     this.onCompletionData = options.onCompletionData
-    this.onCompletionUpdate = options.onCompletionUpdate
     this.onLatency = options.onLatency
     this.onAuthPrompt = options.onAuthPrompt
     this.onHostKeyPrompt = options.onHostKeyPrompt
@@ -493,21 +484,17 @@ export class TerminalWebSocket {
   /**
    * 请求补全数据
    */
-  fetchCompletionData(options: number | CompletionFetchOptions = this.completionFetchOptions ?? {}): void {
+  fetchCompletionData(options: CompletionFetchOptions = this.completionFetchOptions ?? {}): void {
     if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
       console.warn("[TerminalWS] WebSocket 未连接，无法请求补全数据")
       return
     }
 
     try {
-      const data = typeof options === "number"
-        ? { historyLimit: options }
-        : {
-            historyLimit: options.historyLimit ?? 500,
-            includeHistory: options.includeHistory ?? true,
-            includeScripts: options.includeScripts ?? true,
-            cacheTtlMinutes: options.cacheTtlMinutes,
-          }
+      const data = {
+        includeHistory: options.includeHistory ?? true,
+        includeScripts: options.includeScripts ?? true,
+      }
       const message = {
         type: "fetch_completion_data",
         data,
@@ -515,28 +502,6 @@ export class TerminalWebSocket {
       this.ws.send(JSON.stringify(message))
     } catch (error) {
       console.error("[TerminalWS] 发送补全数据请求失败:", error)
-    }
-  }
-
-  /**
-   * 上报补全增量更新（命令执行后）
-   */
-  sendCompletionUpdate(newCommand: string): void {
-    if (!newCommand.trim()) {
-      return
-    }
-    if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
-      return
-    }
-
-    try {
-      const message = {
-        type: "completion_update",
-        data: { newCommand },
-      }
-      this.ws.send(JSON.stringify(message))
-    } catch (error) {
-      console.error("[TerminalWS] 发送补全增量更新失败:", error)
     }
   }
 
@@ -721,11 +686,6 @@ export class TerminalWebSocket {
         // 补全数据响应
         if (this.onCompletionData && message.data) {
           this.onCompletionData(message.data as CompletionDataResponse)
-        }
-        break
-      case "completion_update":
-        if (this.onCompletionUpdate && message.data) {
-          this.onCompletionUpdate(message.data as CompletionUpdateResponse)
         }
         break
       case "auth_prompt":

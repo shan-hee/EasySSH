@@ -59,12 +59,6 @@ export interface WebTerminalProps {
   copyShortcut?: string
   pasteShortcut?: string
   clearShortcut?: string
-  completionEnabled?: boolean
-  completionTrigger?: "tab" | "auto"
-  completionAutoDelay?: number
-  completionMaxItems?: number
-  completionShowIcon?: boolean
-  completionShowDescription?: boolean
   completionConfig?: CompletionConfig
   completionProviderEnabled?: TerminalCompletionProviderFlags
   completionFetchOptions?: CompletionFetchOptions
@@ -123,12 +117,6 @@ export function WebTerminal({
   copyShortcut = "Ctrl+Shift+C",
   pasteShortcut = "Ctrl+Shift+V",
   clearShortcut = "Ctrl+L",
-  completionEnabled = true,
-  completionTrigger = "auto",
-  completionAutoDelay = 200,
-  completionMaxItems = 10,
-  completionShowIcon = true,
-  completionShowDescription = true,
   completionConfig,
   completionProviderEnabled,
   completionFetchOptions,
@@ -150,7 +138,7 @@ export function WebTerminal({
   const effectiveTerminalTheme = resolveTerminalThemeName(workspaceTheme?.terminalTheme, theme)
   const effectiveTerminalAppTheme = resolveTerminalAppThemeMode(workspaceTheme?.mode, effectiveAppTheme)
   const resolvedCompletionConfig = completionConfig ?? DEFAULT_COMPLETION_CONFIG
-  const effectiveCompletionEnabled = completionEnabled && resolvedCompletionConfig.enabled
+  const effectiveCompletionEnabled = resolvedCompletionConfig.enabled
   const allowTerminalTransparency = transparentBackground
 
   const terminalFontFamily = formatTerminalFontFamily(fontFamily)
@@ -182,7 +170,6 @@ export function WebTerminal({
 
   const isTerminalReadyRef = useRef(false)
   const sendInputRef = useRef<(data: string) => void>(() => {})
-  const completionUpdateSenderRef = useRef<((command: string) => void) | null>(null)
   const osc7CwdRef = useRef<string | undefined>(undefined)
 
   const resolvedCompletionProviderEnabled = useMemo(() => completionProviderEnabled ?? ({
@@ -252,15 +239,9 @@ export function WebTerminal({
     containerRef,
     completionConfig: resolvedCompletionConfig,
     effectiveCompletionEnabled,
-    completionTrigger,
-    completionAutoDelay,
-    completionMaxItems,
-    completionShowIcon,
-    completionShowDescription,
     providerEnabled: resolvedCompletionProviderEnabled,
     completionFetchOptions,
     sendInputRef,
-    completionUpdateSenderRef,
     onCommand,
   })
 
@@ -275,7 +256,6 @@ export function WebTerminal({
     auth: authFlow,
     isTerminalReadyRef,
     sendInputRef,
-    completionUpdateSenderRef,
     onConnectionPhaseChange,
     createAuthTicket: terminalAuthTicketProvider,
     createWebSocketUrl: workspaceTerminalApi?.createWebSocketUrl,
@@ -360,7 +340,7 @@ export function WebTerminal({
             selectedIndex={terminalCompletion.completionState.selectedIndex}
             position={terminalCompletion.completionState.position}
             matchedPrefix={terminalCompletion.completionState.matchedPrefix}
-            showIcon={completionShowIcon}
+            showIcon={resolvedCompletionConfig.showIcon}
             onSelect={terminalCompletion.applyCompletionItem}
             onClose={terminalCompletion.closeCompletion}
             onPlacementChange={terminalCompletion.setCompletionPlacement}

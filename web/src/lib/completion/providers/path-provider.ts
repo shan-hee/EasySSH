@@ -100,7 +100,7 @@ export class PathProvider implements CompletionProvider {
   name = "path"
   priority = 30
   enabled = true
-  timeoutMs = 1200
+  timeoutMs = 800
 
   private serverId?: string
   private api?: SftpDirectoryApi

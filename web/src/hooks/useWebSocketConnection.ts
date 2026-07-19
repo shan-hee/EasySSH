@@ -8,7 +8,6 @@ import {
   TerminalWebSocket,
   type CompletionDataResponse,
   type CompletionFetchOptions,
-  type CompletionUpdateResponse,
   type TerminalConnectionPhase,
   type TerminalConnectionError,
   type TerminalAuthPrompt,
@@ -33,7 +32,6 @@ export interface WebSocketConnectionConfig {
   cols: number
   rows: number
   onCompletionData?: (data: CompletionDataResponse) => void
-  onCompletionUpdate?: (data: CompletionUpdateResponse) => void
   onAuthPrompt?: (prompt: TerminalAuthPrompt, respond: TerminalAuthPromptResponder) => void
   onHostKeyPrompt?: (prompt: TerminalHostKeyPrompt, respond: TerminalHostKeyResponder) => void
   onHostKeyChanged?: (error: TerminalConnectionError) => void
@@ -60,7 +58,6 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
     cols,
     rows,
     onCompletionData,
-    onCompletionUpdate,
     onAuthPrompt,
     onHostKeyPrompt,
     onHostKeyChanged,
@@ -97,7 +94,6 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
 
   // ==================== 方案C：使用 ref 存储最新的回调 ====================
   const onCompletionDataRef = useRef(onCompletionData)
-  const onCompletionUpdateRef = useRef(onCompletionUpdate)
   const onAuthPromptRef = useRef(onAuthPrompt)
   const onHostKeyPromptRef = useRef(onHostKeyPrompt)
   const onHostKeyChangedRef = useRef(onHostKeyChanged)
@@ -142,10 +138,6 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
   useEffect(() => {
     onCompletionDataRef.current = onCompletionData
   }, [onCompletionData])
-
-  useEffect(() => {
-    onCompletionUpdateRef.current = onCompletionUpdate
-  }, [onCompletionUpdate])
 
   useEffect(() => {
     onAuthPromptRef.current = onAuthPrompt
@@ -404,9 +396,6 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
         },
         onCompletionData: (data) => {
           onCompletionDataRef.current?.(data)
-        },
-        onCompletionUpdate: (data) => {
-          onCompletionUpdateRef.current?.(data)
         },
         onAuthPrompt: (prompt, respond) => {
           if (onAuthPromptRef.current) {
