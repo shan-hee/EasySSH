@@ -28,14 +28,8 @@ interface DesktopTerminalClosedPayload {
 }
 
 interface DesktopFetchCompletionData {
-  historyLimit?: number
   includeHistory?: boolean
   includeScripts?: boolean
-  cacheTtlMinutes?: number
-}
-
-interface DesktopCompletionUpdateData {
-  newCommand?: string
 }
 
 type DesktopAuthMethod = AuthMethod
@@ -81,9 +75,6 @@ const createDesktopTerminalClientId = () => {
 }
 
 const desktopTerminalAuthMaxAttempts = 3
-const desktopTerminalDefaultHistoryLimit = 500
-const desktopTerminalMaxHistoryEntries = 5000
-const desktopTerminalHistoryStoragePrefix = "easyssh:desktop:terminal-history:"
 const desktopTerminalKeyboardInteractiveGatewayRequired = "desktop gateway is required for keyboard-interactive authentication"
 
 const getDesktopTerminalAuthMethod = (value?: string): DesktopAuthMethod => fromDesktopAuthMethod(value || "password")
@@ -98,53 +89,6 @@ const desktopTerminalRequiresPrivateKey = (authMethod?: DesktopAuthMethod | stri
 
 const desktopTerminalSupportsKeyboardInteractive = (authMethod?: DesktopAuthMethod | string) => {
   return supportsKeyboardInteractive(authMethod)
-}
-
-const normalizeDesktopTerminalHistoryLimit = (limit?: number) => {
-  if (!Number.isFinite(limit) || !limit || limit <= 0) {
-    return desktopTerminalDefaultHistoryLimit
-  }
-  return Math.min(Math.floor(limit), desktopTerminalMaxHistoryEntries)
-}
-
-const getDesktopTerminalHistoryStorageKey = (serverId: string) => {
-  return `${desktopTerminalHistoryStoragePrefix}${serverId || "default"}`
-}
-
-const readDesktopTerminalHistory = (serverId: string) => {
-  try {
-    const raw = window.localStorage.getItem(getDesktopTerminalHistoryStorageKey(serverId))
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-      : []
-  } catch {
-    return []
-  }
-}
-
-const writeDesktopTerminalHistory = (serverId: string, history: string[]) => {
-  try {
-    window.localStorage.setItem(
-      getDesktopTerminalHistoryStorageKey(serverId),
-      JSON.stringify(history.slice(0, desktopTerminalMaxHistoryEntries)),
-    )
-  } catch {
-    // Ignore storage quota or privacy-mode failures; completion still works in memory for the current session.
-  }
-}
-
-const addDesktopTerminalHistoryCommand = (serverId: string, command?: string) => {
-  const trimmed = command?.trim()
-  if (!trimmed) {
-    return
-  }
-
-  const nextHistory = [
-    trimmed,
-    ...readDesktopTerminalHistory(serverId).filter((item) => item !== trimmed),
-  ].slice(0, desktopTerminalMaxHistoryEntries)
-  writeDesktopTerminalHistory(serverId, nextHistory)
 }
 
 const getDesktopTerminalAuthErrorCode = (error: unknown) => {
@@ -309,14 +253,9 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
           const data = message.data && typeof message.data === "object"
             ? message.data as DesktopFetchCompletionData
             : {}
-          void this.fetchCompletionData(data)
-          return
-        }
-        if (message.type === "completion_update") {
-          const data = message.data && typeof message.data === "object"
-            ? message.data as DesktopCompletionUpdateData
-            : {}
-          addDesktopTerminalHistoryCommand(this.serverId, data.newCommand)
+          window.setTimeout(() => {
+            void this.fetchCompletionData(data)
+          }, 0)
           return
         }
         if (message.type === "auth_response") {
@@ -421,9 +360,7 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
     }
 
     private async fetchCompletionData(options: DesktopFetchCompletionData) {
-      const history = options.includeHistory === false
-        ? []
-        : readDesktopTerminalHistory(this.serverId).slice(0, normalizeDesktopTerminalHistoryLimit(options.historyLimit))
+      let history: string[] = []
       let scripts: {
         name: string
         content: string
@@ -431,6 +368,15 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
         executions: number
         tags: string[]
       }[] = []
+
+      if (options.includeHistory !== false) {
+        try {
+          const result = await DesktopTerminalService.FetchCompletionHistory({ clientId: this.clientId })
+          history = result.history || []
+        } catch (error) {
+          console.error("Failed to load desktop remote completion history:", error)
+        }
+      }
 
       if (options.includeScripts !== false) {
         try {

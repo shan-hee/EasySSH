@@ -138,6 +138,8 @@ export {
     DesktopTaskRunList,
     DesktopTaskStatistics,
     DesktopTerminalCloseInput,
+    DesktopTerminalCompletionHistoryInput,
+    DesktopTerminalCompletionHistoryResult,
     DesktopTerminalPingInput,
     DesktopTerminalPingResult,
     DesktopTerminalResizeInput,

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/easyssh/shared/sshutil"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/crypto/ssh"
 )
@@ -54,6 +55,14 @@ type DesktopTerminalPingInput struct {
 type DesktopTerminalPingResult struct {
 	LatencyMs  int64 `json:"latencyMs"`
 	MeasuredAt int64 `json:"measuredAt"`
+}
+
+type DesktopTerminalCompletionHistoryInput struct {
+	ClientID string `json:"clientId"`
+}
+
+type DesktopTerminalCompletionHistoryResult struct {
+	History []string `json:"history"`
 }
 
 type DesktopTerminalOutputEvent struct {
@@ -328,6 +337,25 @@ func (s *DesktopTerminalService) Ping(input DesktopTerminalPingInput) (DesktopTe
 		LatencyMs:  time.Since(started).Milliseconds(),
 		MeasuredAt: time.Now().UnixMilli(),
 	}, nil
+}
+
+func (s *DesktopTerminalService) FetchCompletionHistory(input DesktopTerminalCompletionHistoryInput) (DesktopTerminalCompletionHistoryResult, error) {
+	clientID := strings.TrimSpace(input.ClientID)
+	if clientID == "" {
+		return DesktopTerminalCompletionHistoryResult{}, errors.New("terminal client id is required")
+	}
+
+	terminalSession := s.getSession(clientID)
+	if terminalSession == nil || terminalSession.client == nil {
+		return DesktopTerminalCompletionHistoryResult{}, errors.New("terminal session is not active")
+	}
+
+	history, err := sshutil.FetchCompletionHistory(terminalSession.client)
+	if err != nil {
+		return DesktopTerminalCompletionHistoryResult{}, err
+	}
+
+	return DesktopTerminalCompletionHistoryResult{History: history}, nil
 }
 
 func (s *DesktopTerminalService) getSession(clientID string) *desktopTerminalSession {

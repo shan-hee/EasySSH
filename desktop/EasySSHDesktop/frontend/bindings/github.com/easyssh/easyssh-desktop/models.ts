@@ -3591,6 +3591,52 @@ export class DesktopTerminalCloseInput {
     }
 }
 
+export class DesktopTerminalCompletionHistoryInput {
+    "clientId": string;
+
+    /** Creates a new DesktopTerminalCompletionHistoryInput instance. */
+    constructor($$source: Partial<DesktopTerminalCompletionHistoryInput> = {}) {
+        if (!("clientId" in $$source)) {
+            this["clientId"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTerminalCompletionHistoryInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTerminalCompletionHistoryInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopTerminalCompletionHistoryInput($$parsedSource as Partial<DesktopTerminalCompletionHistoryInput>);
+    }
+}
+
+export class DesktopTerminalCompletionHistoryResult {
+    "history": string[];
+
+    /** Creates a new DesktopTerminalCompletionHistoryResult instance. */
+    constructor($$source: Partial<DesktopTerminalCompletionHistoryResult> = {}) {
+        if (!("history" in $$source)) {
+            this["history"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopTerminalCompletionHistoryResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopTerminalCompletionHistoryResult {
+        const $$createField0_0 = $$createType0;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("history" in $$parsedSource) {
+            $$parsedSource["history"] = $$createField0_0($$parsedSource["history"]);
+        }
+        return new DesktopTerminalCompletionHistoryResult($$parsedSource as Partial<DesktopTerminalCompletionHistoryResult>);
+    }
+}
+
 export class DesktopTerminalPingInput {
     "clientId": string;
 

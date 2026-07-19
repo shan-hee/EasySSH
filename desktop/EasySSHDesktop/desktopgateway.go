@@ -11,8 +11,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +18,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/crypto/ssh"
 )
@@ -29,8 +28,6 @@ const (
 	desktopGatewayAuthMaxAttempts     = 3
 	desktopGatewaySSHLatencyInterval  = 15 * time.Second
 	desktopGatewayWriteTimeout        = 10 * time.Second
-	desktopGatewayDefaultHistoryLimit = 500
-	desktopGatewayMaxHistoryEntries   = 5000
 )
 
 type DesktopGatewayInfo struct {
@@ -45,14 +42,11 @@ type DesktopGateway struct {
 	monitor       *DesktopMonitorService
 	sftpService   *DesktopSFTPService
 
-	mu                      sync.RWMutex
-	server                  *http.Server
-	httpBaseURL             string
-	wsBaseURL               string
-	token                   string
-	completionHistoryMu     sync.Mutex
-	completionHistoryLoaded bool
-	completionHistory       map[string][]string
+	mu          sync.RWMutex
+	server      *http.Server
+	httpBaseURL string
+	wsBaseURL   string
+	token       string
 }
 
 type desktopGatewayMessage struct {
@@ -71,14 +65,8 @@ type desktopGatewayPingMessage struct {
 }
 
 type desktopGatewayFetchCompletionDataMessage struct {
-	HistoryLimit    int   `json:"historyLimit,omitempty"`
-	IncludeHistory  *bool `json:"includeHistory,omitempty"`
-	IncludeScripts  *bool `json:"includeScripts,omitempty"`
-	CacheTTLMinutes int   `json:"cacheTtlMinutes,omitempty"`
-}
-
-type desktopGatewayCompletionUpdateMessage struct {
-	NewCommand string `json:"newCommand"`
+	IncludeHistory *bool `json:"includeHistory,omitempty"`
+	IncludeScripts *bool `json:"includeScripts,omitempty"`
 }
 
 type desktopGatewaySFTPAuthStartMessage struct {
@@ -343,15 +331,19 @@ func (g *DesktopGateway) handleTerminal(w http.ResponseWriter, r *http.Request) 
 	}
 
 	onFetchCompletionData := func(options desktopGatewayFetchCompletionDataMessage) {
-		g.sendTerminalCompletionData(ctx, runtime, options)
-	}
-	onCompletionUpdate := func(update desktopGatewayCompletionUpdateMessage) {
-		g.appendTerminalCompletionHistory(serverID, update.NewCommand)
+		terminalClientMu.RLock()
+		client := terminalClient
+		terminalClientMu.RUnlock()
+		if client == nil {
+			g.sendTerminalCompletionData(ctx, runtime, nil, options)
+			return
+		}
+		go g.sendTerminalCompletionData(ctx, runtime, client, options)
 	}
 
 	readerCtx, cancelReader := context.WithCancel(ctx)
 	defer cancelReader()
-	go runtime.readTerminalMessages(readerCtx, closeDone, onPing, onFetchCompletionData, onCompletionUpdate)
+	go runtime.readTerminalMessages(readerCtx, closeDone, onPing, onFetchCompletionData)
 
 	if err := runtime.writeJSON(ctx, desktopGatewayMessage{
 		Type: "handshake_complete",
@@ -931,6 +923,7 @@ func (g *DesktopGateway) connectDesktopSFTPAuthSSH(
 func (g *DesktopGateway) sendTerminalCompletionData(
 	ctx context.Context,
 	runtime *desktopGatewayTerminalRuntime,
+	client *ssh.Client,
 	options desktopGatewayFetchCompletionDataMessage,
 ) {
 	includeHistory := true
@@ -941,9 +934,15 @@ func (g *DesktopGateway) sendTerminalCompletionData(
 	if options.IncludeScripts != nil {
 		includeScripts = *options.IncludeScripts
 	}
+
 	history := []string{}
-	if includeHistory {
-		history = g.listTerminalCompletionHistory(runtime.serverID, options.HistoryLimit)
+	if includeHistory && client != nil {
+		remoteHistory, err := sshutil.FetchCompletionHistory(client)
+		if err != nil {
+			log.Printf("failed to load desktop remote completion history: %v", err)
+		} else {
+			history = remoteHistory
+		}
 	}
 
 	scripts := []map[string]any{}
@@ -977,105 +976,6 @@ func (g *DesktopGateway) sendTerminalCompletionData(
 		Type: "completion_data",
 		Data: data,
 	})
-}
-
-func (g *DesktopGateway) listTerminalCompletionHistory(serverID string, limit int) []string {
-	limit = normalizeDesktopGatewayHistoryLimit(limit)
-
-	g.completionHistoryMu.Lock()
-	defer g.completionHistoryMu.Unlock()
-
-	g.ensureTerminalCompletionHistoryLocked()
-	history := g.completionHistory[normalizeDesktopGatewayHistoryServerID(serverID)]
-	if len(history) == 0 {
-		return []string{}
-	}
-	if len(history) > limit {
-		history = history[:limit]
-	}
-
-	result := make([]string, len(history))
-	copy(result, history)
-	return result
-}
-
-func (g *DesktopGateway) appendTerminalCompletionHistory(serverID string, command string) {
-	trimmed := strings.TrimSpace(command)
-	if trimmed == "" {
-		return
-	}
-
-	g.completionHistoryMu.Lock()
-	defer g.completionHistoryMu.Unlock()
-
-	g.ensureTerminalCompletionHistoryLocked()
-	key := normalizeDesktopGatewayHistoryServerID(serverID)
-	current := g.completionHistory[key]
-	next := make([]string, 0, minInt(len(current)+1, desktopGatewayMaxHistoryEntries))
-	next = append(next, trimmed)
-	for _, existing := range current {
-		if existing == trimmed {
-			continue
-		}
-		next = append(next, existing)
-		if len(next) >= desktopGatewayMaxHistoryEntries {
-			break
-		}
-	}
-	g.completionHistory[key] = next
-
-	if err := g.writeTerminalCompletionHistoryLocked(); err != nil {
-		log.Printf("failed to save desktop terminal completion history: %v", err)
-	}
-}
-
-func (g *DesktopGateway) ensureTerminalCompletionHistoryLocked() {
-	if g.completionHistoryLoaded {
-		return
-	}
-
-	g.completionHistoryLoaded = true
-	g.completionHistory = map[string][]string{}
-
-	content, err := os.ReadFile(desktopGatewayCompletionHistoryPath())
-	if errors.Is(err, os.ErrNotExist) {
-		return
-	}
-	if err != nil {
-		log.Printf("failed to read desktop terminal completion history: %v", err)
-		return
-	}
-
-	var stored map[string][]string
-	if err := json.Unmarshal(content, &stored); err != nil {
-		log.Printf("failed to parse desktop terminal completion history: %v", err)
-		return
-	}
-
-	for serverID, history := range stored {
-		key := normalizeDesktopGatewayHistoryServerID(serverID)
-		if key == "" {
-			continue
-		}
-		g.completionHistory[key] = normalizeDesktopGatewayHistoryEntries(history)
-	}
-}
-
-func (g *DesktopGateway) writeTerminalCompletionHistoryLocked() error {
-	if g.completionHistory == nil {
-		return nil
-	}
-
-	content, err := json.MarshalIndent(g.completionHistory, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	path := desktopGatewayCompletionHistoryPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, content, 0o600)
 }
 
 func (r *desktopGatewayTerminalRuntime) writeJSON(ctx context.Context, value any) error {
@@ -1134,7 +1034,6 @@ func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 	closeDone func(),
 	onPing func(desktopGatewayPingMessage),
 	onFetchCompletionData func(desktopGatewayFetchCompletionDataMessage),
-	onCompletionUpdate func(desktopGatewayCompletionUpdateMessage),
 ) {
 	for {
 		messageType, payload, err := r.conn.Read(ctx)
@@ -1201,12 +1100,6 @@ func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 					_ = json.Unmarshal(message.Data, &options)
 				}
 				onFetchCompletionData(options)
-			case "completion_update":
-				var update desktopGatewayCompletionUpdateMessage
-				if len(message.Data) > 0 {
-					_ = json.Unmarshal(message.Data, &update)
-				}
-				onCompletionUpdate(update)
 			}
 		}
 	}
@@ -1870,59 +1763,8 @@ func newDesktopGatewayToken() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
-func desktopGatewayCompletionHistoryPath() string {
-	return filepath.Join(desktopDataDir(), "terminal-completion-history.json")
-}
-
-func normalizeDesktopGatewayHistoryLimit(limit int) int {
-	if limit <= 0 {
-		return desktopGatewayDefaultHistoryLimit
-	}
-	if limit > desktopGatewayMaxHistoryEntries {
-		return desktopGatewayMaxHistoryEntries
-	}
-	return limit
-}
-
-func normalizeDesktopGatewayHistoryServerID(serverID string) string {
-	serverID = strings.TrimSpace(serverID)
-	if serverID == "" {
-		return "default"
-	}
-	return serverID
-}
-
-func normalizeDesktopGatewayHistoryEntries(entries []string) []string {
-	seen := make(map[string]struct{}, len(entries))
-	normalized := make([]string, 0, minInt(len(entries), desktopGatewayMaxHistoryEntries))
-
-	for _, entry := range entries {
-		trimmed := strings.TrimSpace(entry)
-		if trimmed == "" {
-			continue
-		}
-		if _, exists := seen[trimmed]; exists {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		normalized = append(normalized, trimmed)
-		if len(normalized) >= desktopGatewayMaxHistoryEntries {
-			break
-		}
-	}
-
-	return normalized
-}
-
 func maxInt(a int, b int) int {
 	if a > b {
-		return a
-	}
-	return b
-}
-
-func minInt(a int, b int) int {
-	if a < b {
 		return a
 	}
 	return b

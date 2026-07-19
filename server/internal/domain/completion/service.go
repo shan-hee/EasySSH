@@ -2,19 +2,18 @@ package completion
 
 import (
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/script"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/google/uuid"
 	"github.com/jellydator/ttlcache/v3"
 	"golang.org/x/crypto/ssh"
 )
 
 const (
-	defaultCacheTTLMinutes = 5
-	defaultMaxCacheSize    = 1000
-	defaultHistoryLimit    = 500
+	completionCacheTTL     = 5 * time.Minute
+	completionMaxCacheSize = 1000
 )
 
 type ScriptItem struct {
@@ -32,27 +31,22 @@ type CompletionData struct {
 }
 
 type FetchOptions struct {
-	HistoryLimit    int
-	IncludeHistory  bool
-	IncludeScripts  bool
-	CacheTTLMinutes int
+	IncludeHistory bool
+	IncludeScripts bool
 }
 
 type Service interface {
 	FetchCompletionData(client *ssh.Client, userID uuid.UUID, serverID uuid.UUID, opts FetchOptions) (*CompletionData, error)
-	AppendHistoryCommand(userID uuid.UUID, serverID uuid.UUID, command string)
 	ClearCache(userID uuid.UUID, serverID uuid.UUID)
 	ClearUserCache(userID uuid.UUID)
 	ClearAllCache()
 }
 
 type cacheKey struct {
-	userID          uuid.UUID
-	serverID        uuid.UUID
-	historyLimit    int
-	includeHistory  bool
-	includeScripts  bool
-	cacheTTLMinutes int
+	userID         uuid.UUID
+	serverID       uuid.UUID
+	includeHistory bool
+	includeScripts bool
 }
 
 type service struct {
@@ -60,49 +54,27 @@ type service struct {
 	cache      *ttlcache.Cache[cacheKey, *CompletionData]
 }
 
-func NewService(scriptRepo script.Repository, cacheTTLMinutes int, maxCacheSize int) Service {
-	if cacheTTLMinutes <= 0 {
-		cacheTTLMinutes = defaultCacheTTLMinutes
-	}
-	if maxCacheSize <= 0 {
-		maxCacheSize = defaultMaxCacheSize
-	}
+func NewService(scriptRepo script.Repository) Service {
 	cache := ttlcache.New(
-		ttlcache.WithTTL[cacheKey, *CompletionData](time.Duration(cacheTTLMinutes)*time.Minute),
-		ttlcache.WithCapacity[cacheKey, *CompletionData](uint64(maxCacheSize)),
+		ttlcache.WithTTL[cacheKey, *CompletionData](completionCacheTTL),
+		ttlcache.WithCapacity[cacheKey, *CompletionData](completionMaxCacheSize),
 		ttlcache.WithDisableTouchOnHit[cacheKey, *CompletionData](),
 	)
 	go cache.Start()
 
 	slog.Info("completion cache initialized",
-		"ttl_minutes", cacheTTLMinutes,
-		"max_entries", maxCacheSize,
+		"ttl_minutes", int(completionCacheTTL/time.Minute),
+		"max_entries", completionMaxCacheSize,
 	)
 	return &service{scriptRepo: scriptRepo, cache: cache}
 }
 
-func normalizeFetchOptions(opts FetchOptions) FetchOptions {
-	if opts.IncludeHistory && opts.HistoryLimit <= 0 {
-		opts.HistoryLimit = defaultHistoryLimit
-	}
-	if !opts.IncludeHistory {
-		opts.HistoryLimit = 0
-	}
-	if opts.CacheTTLMinutes <= 0 {
-		opts.CacheTTLMinutes = defaultCacheTTLMinutes
-	}
-	return opts
-}
-
 func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serverID uuid.UUID, opts FetchOptions) (*CompletionData, error) {
-	opts = normalizeFetchOptions(opts)
 	key := cacheKey{
-		userID:          userID,
-		serverID:        serverID,
-		historyLimit:    opts.HistoryLimit,
-		includeHistory:  opts.IncludeHistory,
-		includeScripts:  opts.IncludeScripts,
-		cacheTTLMinutes: opts.CacheTTLMinutes,
+		userID:         userID,
+		serverID:       serverID,
+		includeHistory: opts.IncludeHistory,
+		includeScripts: opts.IncludeScripts,
 	}
 	if item := s.cache.Get(key); item != nil {
 		slog.Debug("completion cache hit", "user_id", userID, "server_id", serverID)
@@ -112,15 +84,11 @@ func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serv
 	slog.Debug("completion cache miss", "user_id", userID, "server_id", serverID)
 	history := []string{}
 	if opts.IncludeHistory {
-		shellType, err := DetectShellType(client)
-		if err != nil {
-			slog.Warn("failed to detect shell type", "error", err)
-			shellType = ShellBash
-		}
-		history, err = FetchHistory(client, shellType, opts.HistoryLimit)
+		remoteHistory, err := sshutil.FetchCompletionHistory(client)
 		if err != nil {
 			slog.Warn("failed to fetch shell history", "error", err)
-			history = []string{}
+		} else {
+			history = remoteHistory
 		}
 	}
 
@@ -147,48 +115,8 @@ func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serv
 	}
 
 	data := &CompletionData{History: history, Scripts: scripts}
-	s.cache.Set(key, cloneCompletionData(data), time.Duration(opts.CacheTTLMinutes)*time.Minute)
+	s.cache.Set(key, cloneCompletionData(data), completionCacheTTL)
 	return data, nil
-}
-
-func (s *service) AppendHistoryCommand(userID uuid.UUID, serverID uuid.UUID, command string) {
-	command = strings.TrimSpace(command)
-	if command == "" {
-		return
-	}
-
-	type update struct {
-		key  cacheKey
-		data *CompletionData
-		ttl  time.Duration
-	}
-	updates := make([]update, 0)
-	s.cache.Range(func(item *ttlcache.Item[cacheKey, *CompletionData]) bool {
-		key := item.Key()
-		if key.userID != userID || key.serverID != serverID || !key.includeHistory {
-			return true
-		}
-		data := cloneCompletionData(item.Value())
-		if data == nil {
-			return true
-		}
-		nextHistory := make([]string, 0, len(data.History)+1)
-		nextHistory = append(nextHistory, command)
-		for _, existing := range data.History {
-			if existing != command {
-				nextHistory = append(nextHistory, existing)
-			}
-		}
-		if key.historyLimit > 0 && len(nextHistory) > key.historyLimit {
-			nextHistory = nextHistory[:key.historyLimit]
-		}
-		data.History = nextHistory
-		updates = append(updates, update{key: key, data: data, ttl: item.TTL()})
-		return true
-	})
-	for _, item := range updates {
-		s.cache.Set(item.key, item.data, item.ttl)
-	}
 }
 
 func (s *service) ClearCache(userID uuid.UUID, serverID uuid.UUID) {

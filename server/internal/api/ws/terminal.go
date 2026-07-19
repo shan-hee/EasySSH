@@ -53,8 +53,6 @@ type TerminalHandler struct {
 	webDevPort        int                 // 前端开发端口，用于默认同源白名单
 	completionService completion.Service  // 补全服务
 	credentialStore   *sshDomain.RuntimeCredentialStore
-	completionSubMu   sync.RWMutex
-	completionSubs    map[completionBroadcastKey]map[*completionSubscriber]struct{}
 }
 
 // NewTerminalHandler 创建终端处理器
@@ -70,7 +68,6 @@ func NewTerminalHandler(serverService server.Service, serverRepo server.Reposito
 		webDevPort:        webDevPort,
 		completionService: completionService,
 		credentialStore:   credentialStore,
-		completionSubs:    make(map[completionBroadcastKey]map[*completionSubscriber]struct{}),
 	}
 }
 
@@ -158,10 +155,8 @@ type ErrorMessage struct {
 
 // FetchCompletionDataMessage 获取补全数据请求
 type FetchCompletionDataMessage struct {
-	HistoryLimit    int   `json:"historyLimit"`              // 历史命令数量限制，默认500
-	IncludeHistory  *bool `json:"includeHistory,omitempty"`  // 是否拉取远端历史
-	IncludeScripts  *bool `json:"includeScripts,omitempty"`  // 是否拉取脚本库
-	CacheTTLMinutes int   `json:"cacheTtlMinutes,omitempty"` // 缓存TTL（分钟）
+	IncludeHistory *bool `json:"includeHistory,omitempty"` // 是否拉取服务器历史
+	IncludeScripts *bool `json:"includeScripts,omitempty"` // 是否拉取脚本库
 }
 
 // CompletionDataResponse 补全数据响应
@@ -169,11 +164,6 @@ type CompletionDataResponse struct {
 	History   []string                `json:"history"`
 	Scripts   []completion.ScriptItem `json:"scripts"`
 	Timestamp int64                   `json:"timestamp"`
-}
-
-// CompletionUpdateMessage 补全更新消息（增量更新）
-type CompletionUpdateMessage struct {
-	NewCommand string `json:"newCommand"`
 }
 
 type terminalCredentialRetry struct {
@@ -187,16 +177,6 @@ type terminalCredentialRetry struct {
 type terminalErrorInfo struct {
 	Code    string
 	Message string
-}
-
-type completionBroadcastKey struct {
-	userID   uuid.UUID
-	serverID uuid.UUID
-}
-
-type completionSubscriber struct {
-	conn    *websocket.Conn
-	writeMu *sync.Mutex
 }
 
 func newTerminalKeyboardInteractiveChallenge(conn *websocket.Conn, writeJSON func(interface{}) error) ssh.KeyboardInteractiveChallenge {
@@ -1060,18 +1040,6 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	}
 	refreshSSHLatency()
 
-	// 注册补全增量广播订阅（同用户 + 同服务器）
-	completionKey := completionBroadcastKey{
-		userID:   userUUID,
-		serverID: serverUUID,
-	}
-	completionSub := &completionSubscriber{
-		conn:    wsConn,
-		writeMu: wsMutex,
-	}
-	h.registerCompletionSubscriber(completionKey, completionSub)
-	defer h.unregisterCompletionSubscriber(completionKey, completionSub)
-
 	// 从 SSH 读取并发送到 WebSocket（stdout）- 使用二进制传输
 	go func() {
 		buf := make([]byte, 32768) // 增大缓冲区以提高性能
@@ -1197,11 +1165,6 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						continue
 					}
 
-					// 设置默认值
-					if fetchReq.HistoryLimit <= 0 {
-						fetchReq.HistoryLimit = 500
-					}
-
 					// 异步获取补全数据
 					go func() {
 						// 获取SSH客户端
@@ -1212,10 +1175,8 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						}
 
 						fetchOpts := completion.FetchOptions{
-							HistoryLimit:    fetchReq.HistoryLimit,
-							IncludeHistory:  true,
-							IncludeScripts:  true,
-							CacheTTLMinutes: fetchReq.CacheTTLMinutes,
+							IncludeHistory: true,
+							IncludeScripts: true,
 						}
 
 						if fetchReq.IncludeHistory != nil {
@@ -1224,10 +1185,6 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						if fetchReq.IncludeScripts != nil {
 							fetchOpts.IncludeScripts = *fetchReq.IncludeScripts
 						}
-						if !fetchOpts.IncludeHistory {
-							fetchOpts.HistoryLimit = 0
-						}
-
 						// 获取补全数据（传递 serverID 以区分不同服务器）
 						completionData, err := h.completionService.FetchCompletionData(
 							sshClient,
@@ -1253,7 +1210,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						}
 
 						// 设置时间戳
-						completionData.Timestamp = time.Now().Unix()
+						completionData.Timestamp = time.Now().UnixMilli()
 
 						// 发送补全数据
 						responseData, _ := json.Marshal(CompletionDataResponse{
@@ -1275,25 +1232,6 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 							len(completionData.History), len(completionData.Scripts))
 					}()
 
-				case "completion_update":
-					// 处理补全增量更新（命令执行后由前端上报）
-					var updateReq CompletionUpdateMessage
-					if err := json.Unmarshal(msg.Data, &updateReq); err != nil {
-						log.Printf("Error parsing completion_update: %v", err)
-						continue
-					}
-
-					if strings.TrimSpace(updateReq.NewCommand) == "" {
-						continue
-					}
-
-					h.completionService.AppendHistoryCommand(
-						userUUID,
-						serverUUID,
-						updateReq.NewCommand,
-					)
-
-					h.broadcastCompletionUpdate(completionKey, updateReq.NewCommand, completionSub)
 				}
 
 			case websocket.BinaryMessage:
@@ -1383,100 +1321,6 @@ func (h *TerminalHandler) upsertTerminalOperationRecord(input terminalOperationR
 	}
 
 	_ = h.operationRecords.Upsert(context.Background(), record)
-}
-
-func (h *TerminalHandler) registerCompletionSubscriber(key completionBroadcastKey, sub *completionSubscriber) {
-	h.completionSubMu.Lock()
-	defer h.completionSubMu.Unlock()
-
-	subscribers, exists := h.completionSubs[key]
-	if !exists {
-		subscribers = make(map[*completionSubscriber]struct{})
-		h.completionSubs[key] = subscribers
-	}
-	subscribers[sub] = struct{}{}
-}
-
-func (h *TerminalHandler) unregisterCompletionSubscriber(key completionBroadcastKey, sub *completionSubscriber) {
-	h.completionSubMu.Lock()
-	defer h.completionSubMu.Unlock()
-
-	subscribers, exists := h.completionSubs[key]
-	if !exists {
-		return
-	}
-	delete(subscribers, sub)
-	if len(subscribers) == 0 {
-		delete(h.completionSubs, key)
-	}
-}
-
-func (h *TerminalHandler) broadcastCompletionUpdate(key completionBroadcastKey, command string, exclude *completionSubscriber) {
-	trimmed := strings.TrimSpace(command)
-	if trimmed == "" {
-		return
-	}
-
-	payload, err := json.Marshal(CompletionUpdateMessage{NewCommand: trimmed})
-	if err != nil {
-		log.Printf("Failed to marshal completion_update payload: %v", err)
-		return
-	}
-
-	msg := Message{
-		Type: "completion_update",
-		Data: payload,
-	}
-
-	h.completionSubMu.RLock()
-	group, exists := h.completionSubs[key]
-	if !exists || len(group) == 0 {
-		h.completionSubMu.RUnlock()
-		return
-	}
-
-	targets := make([]*completionSubscriber, 0, len(group))
-	for sub := range group {
-		if exclude != nil && sub == exclude {
-			continue
-		}
-		targets = append(targets, sub)
-	}
-	h.completionSubMu.RUnlock()
-
-	if len(targets) == 0 {
-		return
-	}
-
-	invalid := make([]*completionSubscriber, 0)
-	for _, sub := range targets {
-		sub.writeMu.Lock()
-		writeErr := sub.conn.WriteJSON(msg)
-		sub.writeMu.Unlock()
-
-		if writeErr != nil {
-			log.Printf("Failed to broadcast completion_update: %v", writeErr)
-			invalid = append(invalid, sub)
-		}
-	}
-
-	if len(invalid) == 0 {
-		return
-	}
-
-	h.completionSubMu.Lock()
-	defer h.completionSubMu.Unlock()
-
-	currentGroup, exists := h.completionSubs[key]
-	if !exists {
-		return
-	}
-	for _, sub := range invalid {
-		delete(currentGroup, sub)
-	}
-	if len(currentGroup) == 0 {
-		delete(h.completionSubs, key)
-	}
 }
 
 // sendMessage 发送消息

@@ -338,7 +338,7 @@ func main() {
 	scriptService := script.NewService(scriptRepo)
 
 	// 补全服务
-	completionService := completion.NewService(scriptRepo, 0, 0)
+	completionService := completion.NewService(scriptRepo)
 
 	// 批量任务服务
 	batchTaskRepo := batchtask.NewRepository(database)
