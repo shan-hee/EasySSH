@@ -630,6 +630,7 @@ function App() {
     return (
       <TerminalSftpTabContent
         sessionId={tab.id}
+        isActive={options?.isVisible ?? true}
         server={tab.server}
         label={tab.label}
         chrome={options?.chrome}
