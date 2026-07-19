@@ -468,13 +468,6 @@ export interface SshWorkspaceThemeAdapter {
   terminalTheme?: "default" | "dark" | "light" | "solarized" | "dracula"
 }
 
-export interface SshWorkspacePaneAdapter {
-  fileManager?: {
-    mountMode?: "terminal" | "page"
-    anchorTop?: number
-  }
-}
-
 export interface SshWorkspaceSettingsAdapter {
   sftp?: {
     downloadExcludePatterns?: string[]
@@ -701,7 +694,6 @@ export interface SshWorkspaceAdapters {
   i18n: SshWorkspaceI18n
   notifier: SshWorkspaceNotifier
   theme?: SshWorkspaceThemeAdapter
-  panes?: SshWorkspacePaneAdapter
   settings?: SshWorkspaceSettingsAdapter
   preferences?: SshWorkspacePreferenceAdapter
   serverPicker?: SshWorkspaceServerPicker

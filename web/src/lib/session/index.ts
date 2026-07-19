@@ -185,7 +185,6 @@ export type {
   SshWorkspaceI18n,
   SshWorkspaceLayout,
   SshWorkspaceNotifier,
-  SshWorkspacePaneAdapter,
   SshWorkspacePreferenceAdapter,
   SshWorkspaceProps,
   SshWorkspaceServerPicker,

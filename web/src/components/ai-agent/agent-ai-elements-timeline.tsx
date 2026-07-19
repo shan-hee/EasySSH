@@ -478,7 +478,7 @@ function ToolPartView({
   }
 
   return (
-    <Tool key={part.state} defaultOpen={defaultOpen} className={cn("mb-0", compact && "text-xs")}>
+    <Tool key={part.state} defaultOpen={defaultOpen} className={cn("terminal-ai-glass-card mb-0", compact && "text-xs")}>
       <ToolHeaderForPart part={part} />
       <ToolContent className={compact ? "space-y-3 p-3" : undefined}>
         {summary && (
@@ -619,7 +619,7 @@ function MessagePartView({
   if (part.type === "file") {
     if (part.mediaType.startsWith("image/")) {
       return (
-        <figure className="max-w-md overflow-hidden rounded-lg border border-border/70 bg-muted/20">
+        <figure className="terminal-ai-glass-card max-w-md overflow-hidden rounded-lg border border-border/70 bg-muted/20">
           <img
             src={part.url}
             alt={part.filename || tText("attachedImage")}
@@ -637,7 +637,7 @@ function MessagePartView({
       <a
         href={part.url}
         download={part.filename}
-        className="inline-flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs hover:bg-muted/60"
+        className="terminal-ai-glass-card inline-flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-xs hover:bg-muted/60"
       >
         <FileText className="size-4" />
         <span>{part.filename || tText("attachedFile")}</span>
@@ -651,7 +651,7 @@ function MessagePartView({
       return null
     }
     return (
-      <div className="inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
+      <div className="terminal-ai-glass-card inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/60 px-2.5 py-1 text-xs text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
         <span>{text}</span>
       </div>
@@ -740,7 +740,7 @@ function ToolGroupView({
   }
 
   return (
-    <Collapsible defaultOpen={defaultOpen} className="group rounded-md border border-border/70 bg-muted/15">
+    <Collapsible defaultOpen={defaultOpen} className="terminal-ai-glass-card group rounded-md border border-border/70 bg-muted/15">
       <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -916,8 +916,9 @@ function ChatMessage({
             value={editDraft}
             onChange={(event) => setEditDraft(event.target.value)}
             onKeyDown={handleEditKeyDown}
+            wrap="soft"
             className={cn(
-              "min-h-24 w-[min(34rem,calc(100vw-4rem))] resize-y rounded-md border border-border/70 bg-background/85 px-3 py-2 text-sm leading-6 text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/30",
+              "terminal-ai-glass-editor min-h-24 min-w-0 w-[34rem] max-w-full resize-y rounded-md border border-border/70 bg-background/85 px-3 py-2 text-sm leading-6 break-words whitespace-pre-wrap text-foreground outline-none transition focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/30",
               compact && "min-h-20 text-xs leading-5"
             )}
             disabled={actionDisabled}
@@ -1074,7 +1075,7 @@ export function AgentAIElementsTimeline({
       {shouldShowLoadingIndicator && (
         <Message from="assistant" className={compact ? "max-w-full" : "max-w-[90%]"}>
           <MessageContent>
-            <div className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-foreground">
+            <div className="terminal-ai-glass-status inline-flex min-h-9 items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-foreground">
               <Loader2 className="size-3.5 animate-spin" />
               {assistantLoadingState === "thinking" && <span>{tText("panelThinking")}</span>}
             </div>

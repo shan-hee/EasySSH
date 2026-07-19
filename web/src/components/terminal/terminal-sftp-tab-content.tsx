@@ -12,6 +12,7 @@ import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sft
 
 export interface TerminalSftpTabContentProps {
   sessionId: string
+  isActive: boolean
   server: Server
   label: string
   chrome?: "full" | "toolbar" | "content"
@@ -32,6 +33,7 @@ export interface TerminalSftpTabContentProps {
 
 export function TerminalSftpTabContent({
   sessionId,
+  isActive,
   server,
   label,
   chrome = "full",
@@ -156,6 +158,7 @@ export function TerminalSftpTabContent({
       : "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"}
     >
       <SftpWorkspacePanel
+        keyboardShortcutsEnabled={isActive && chrome !== "toolbar"}
         serverId={String(server.id)}
         serverName={server.name || `${server.username}@${server.host}:${server.port}`}
         host={server.host}

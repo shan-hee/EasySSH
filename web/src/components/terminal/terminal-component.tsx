@@ -46,6 +46,10 @@ import { useSessionSplitWorkspace } from "@/hooks/use-session-split-workspace"
 import {
   getTerminalTheme,
 } from "@/components/terminal/terminal-themes"
+import {
+  resolveTerminalAppThemeMode,
+  resolveTerminalThemeName,
+} from "@/components/terminal/use-terminal-renderer-settings"
 
 type LoaderState = "entering" | "loading" | "exiting"
 
@@ -345,8 +349,12 @@ export function TerminalComponent({
 }: TerminalComponentProps) {
   const { t: tTerminal } = useTranslation("terminal")
   const { t: tSftpFallback } = useTranslation("sftp")
-  const { mode: effectiveAppTheme } = useEffectiveThemeMode()
+  const {
+    mode: effectiveAppTheme,
+    version: effectiveThemeVersion,
+  } = useEffectiveThemeMode()
   const workspace = useOptionalSshWorkspace()
+  const workspaceTheme = workspace?.adapters.theme
   const workspaceSftpApi = workspace?.adapters.apiClient?.sftp
   const workspaceI18n = workspace?.adapters.i18n
   const tSftp = useCallback((key: string, params?: Record<string, string | number>) => {
@@ -1031,7 +1039,17 @@ export function TerminalComponent({
   })
 
   const splitPaneHeaderBackground = useMemo<SessionSplitPaneHeaderBackground>(() => {
-    const terminalTheme = getTerminalTheme(settings.theme, effectiveAppTheme)
+    // Workspace theme adapters may update in place; the version invalidates this memo.
+    void effectiveThemeVersion
+    const effectiveTerminalTheme = resolveTerminalThemeName(
+      workspaceTheme?.terminalTheme,
+      settings.theme,
+    )
+    const effectiveTerminalAppTheme = resolveTerminalAppThemeMode(
+      workspaceTheme?.mode,
+      effectiveAppTheme,
+    )
+    const terminalTheme = getTerminalTheme(effectiveTerminalTheme, effectiveTerminalAppTheme)
     const image = settings.backgroundImage.trim()
 
     return {
@@ -1041,9 +1059,12 @@ export function TerminalComponent({
     }
   }, [
     effectiveAppTheme,
+    effectiveThemeVersion,
     settings.backgroundImage,
     settings.backgroundImageOpacity,
     settings.theme,
+    workspaceTheme?.mode,
+    workspaceTheme?.terminalTheme,
   ])
 
   // 如果当前激活的会话不存在（被删除），自动切换到合适的会话

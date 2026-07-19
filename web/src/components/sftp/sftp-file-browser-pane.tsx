@@ -207,6 +207,7 @@ export function SftpFileBrowserPane({
   const browserPane = (
     <div
       ref={dropZoneRef}
+      data-sftp-browser="files"
       className={cn(
         "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
         viewMode === "grid" ? "overflow-hidden" : "",

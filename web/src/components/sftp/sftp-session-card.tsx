@@ -10,6 +10,7 @@ import type { SftpWorkspaceSession } from "@/lib/session/workspace"
 
 export interface SftpSessionCardProps {
   session: SftpWorkspaceSession
+  keyboardShortcutsEnabled: boolean
   isFullscreen: boolean
   chrome?: "full" | "toolbar" | "content"
   surface?: "normal" | "transparent"
@@ -44,6 +45,7 @@ export interface SftpSessionCardProps {
 
 export const SftpSessionCard = React.memo(function SftpSessionCard({
   session,
+  keyboardShortcutsEnabled,
   isFullscreen,
   chrome = "full",
   surface = "normal",
@@ -141,6 +143,7 @@ export const SftpSessionCard = React.memo(function SftpSessionCard({
 
   return (
     <SftpWorkspacePanel
+      keyboardShortcutsEnabled={keyboardShortcutsEnabled}
       serverId={session.serverId}
       serverName={session.serverName}
       host={session.host}

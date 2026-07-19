@@ -81,6 +81,8 @@ export function SftpFileTableRow({
   const tableRow = (
     <TableRow
       key={file.name}
+      data-sftp-file-item={file.type}
+      data-selected={isSelected || (isDraggedOver && file.type === "directory") ? "true" : undefined}
       data-index={dataIndex}
       ref={measureElement}
       draggable={!isEditing}

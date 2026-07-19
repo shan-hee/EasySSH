@@ -4,7 +4,6 @@ import type {
   SshWorkspaceAuthTicketProvider,
   SshWorkspaceI18n,
   SshWorkspaceNotifier,
-  SshWorkspacePaneAdapter,
   SshWorkspacePreferenceAdapter,
   SshWorkspaceServerPicker,
   SshWorkspaceActivityLogAdapter,
@@ -329,7 +328,6 @@ export interface CreateWorkspaceAdaptersOptions {
   i18n: SshWorkspaceI18n
   notifier: SshWorkspaceNotifier
   theme?: SshWorkspaceThemeAdapter
-  panes?: SshWorkspacePaneAdapter
   settings?: SshWorkspaceSettingsAdapter
   preferences?: SshWorkspacePreferenceAdapter
   serverPicker?: SshWorkspaceServerPicker
@@ -345,7 +343,6 @@ export function createWorkspaceAdapters({
   i18n,
   notifier,
   theme,
-  panes,
   settings,
   preferences,
   serverPicker,
@@ -360,7 +357,6 @@ export function createWorkspaceAdapters({
     i18n,
     notifier,
     theme,
-    panes,
     settings,
     preferences,
     serverPicker,

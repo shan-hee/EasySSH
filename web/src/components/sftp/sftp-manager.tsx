@@ -30,6 +30,7 @@ export interface SftpTerminalPathActions {
 }
 
 export interface SftpManagerProps {
+  keyboardShortcutsEnabled: boolean
   serverId: string
   serverName: string
   host: string
@@ -87,6 +88,7 @@ export function SftpManager(props: SftpManagerProps) {
   const workspace = useOptionalSshWorkspace()
 
   const {
+    keyboardShortcutsEnabled,
     host,
     username,
     isConnected,
@@ -251,6 +253,7 @@ export function SftpManager(props: SftpManagerProps) {
     confirmDelete,
     handleChmod,
   } = useSftpFileActionController({
+    keyboardShortcutsEnabled,
     serverId,
     currentPath,
     filteredFiles,

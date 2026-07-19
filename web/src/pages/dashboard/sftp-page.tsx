@@ -1375,10 +1375,12 @@ export default function SftpPage() {
    session: SftpSession,
    isFullscreenSession = false,
    chrome: "full" | "toolbar" | "content" = "full",
-   surface: "normal" | "transparent" = "normal"
+   surface: "normal" | "transparent" = "normal",
+   keyboardShortcutsEnabled = true,
  ) => (
  <SftpSessionCard
    session={session}
+   keyboardShortcutsEnabled={keyboardShortcutsEnabled}
    isFullscreen={isFullscreenSession}
    chrome={chrome}
    surface={surface}
@@ -1462,7 +1464,13 @@ export default function SftpPage() {
          onDragEnd={handleSplitPaneDragEnd}
          dropOverlay={<SessionSplitDropOverlay side={tabDropTargetId === session.id ? tabDropSide : null} />}
        >
-         {renderSftpSessionCard(session, false, "content", "transparent")}
+         {renderSftpSessionCard(
+           session,
+           false,
+           "content",
+           "transparent",
+           activeSessionId === session.id,
+         )}
        </SessionSplitPane>
      </SortableSession>
    )
@@ -1623,7 +1631,7 @@ export default function SftpPage() {
  >
  {isMultiSessionGrid && splitLayout ? (
  <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
- {workspaceToolbarSession && renderSftpSessionCard(workspaceToolbarSession, false, "toolbar")}
+ {workspaceToolbarSession && renderSftpSessionCard(workspaceToolbarSession, false, "toolbar", "normal", false)}
  <div className="relative flex min-h-0 flex-1 overflow-auto p-2">
  <SessionSplitView
  node={splitLayout}

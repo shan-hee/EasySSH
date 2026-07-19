@@ -103,7 +103,7 @@ export { TransferTaskPanel } from "@/components/sftp/transfer-task-panel"
 export type { TransferTaskPanelProps } from "@/components/sftp/transfer-task-panel"
 export { UploadProgressItem } from "@/components/sftp/upload-progress-item"
 export type { UploadProgressItemProps } from "@/components/sftp/upload-progress-item"
-export { FileManagerPanel, FILE_MANAGER_PANEL_ANIMATION_MS } from "@/components/terminal/file-manager-panel"
+export { FileManagerPanel } from "@/components/terminal/file-manager-panel"
 export type { FileManagerPanelProps } from "@/components/terminal/file-manager-panel"
 export { TerminalHostKeyDialog } from "@/components/terminal/terminal-host-key-dialog"
 export type { TerminalHostKeyDialogProps } from "@/components/terminal/terminal-host-key-dialog"
@@ -138,7 +138,6 @@ export type {
   SshWorkspaceI18n,
   SshWorkspaceLayout,
   SshWorkspaceNotifier,
-  SshWorkspacePaneAdapter,
   SshWorkspacePreferenceAdapter,
   SshWorkspaceProps,
   SshWorkspaceServerPicker,

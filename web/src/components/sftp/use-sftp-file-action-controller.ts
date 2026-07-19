@@ -56,6 +56,7 @@ export interface SftpFileContextMenuState {
 }
 
 export interface UseSftpFileActionControllerOptions {
+  keyboardShortcutsEnabled: boolean
   serverId: string
   currentPath: string
   filteredFiles: SftpFileActionItem[]
@@ -125,7 +126,20 @@ const defaultNotifier: SshWorkspaceNotifier = {
   },
 }
 
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return (
+    target.matches("input, textarea, select, [role='textbox']") ||
+    target.isContentEditable ||
+    target.closest("[contenteditable]:not([contenteditable='false']), [role='textbox']") !== null
+  )
+}
+
 export function useSftpFileActionController({
+  keyboardShortcutsEnabled,
   serverId,
   currentPath,
   filteredFiles,
@@ -573,7 +587,15 @@ export function useSftpFileActionController({
   }, [canNavigateBack, editorState.isOpen, handleInternalBack, onInternalBackHandlerChange])
 
   useEffect(() => {
+    if (!keyboardShortcutsEnabled) {
+      return
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || isEditableKeyboardTarget(event.target)) {
+        return
+      }
+
       if (editorState.isOpen) {
         if (event.key === "Escape") {
           event.preventDefault()
@@ -643,6 +665,7 @@ export function useSftpFileActionController({
     fileInputRef,
     handleBatchDownload,
     handleCloseEditor,
+    keyboardShortcutsEnabled,
     onSelectAll,
     onRefresh,
     requestBatchDelete,

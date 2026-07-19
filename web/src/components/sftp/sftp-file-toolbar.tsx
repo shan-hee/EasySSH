@@ -30,7 +30,7 @@ export function SftpFileToolbar({
   const tSftp = useWorkspaceSftpTranslator()
 
   return (
-    <div className="px-3 py-2 border-b flex items-center gap-2">
+    <div data-sftp-toolbar="files" className="px-3 py-2 border-b flex items-center gap-2">
       <div className="flex shrink-0 items-center gap-0.5">
         <Button
           variant="ghost"
@@ -75,6 +75,7 @@ export function SftpFileToolbar({
           "absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground",
         )} />
         <Input
+          data-sftp-glass-control="search"
           placeholder={tSftp("searchPlaceholder")}
           className={cn(
             "h-7 pl-8 pr-2 text-xs border-0 bg-muted",

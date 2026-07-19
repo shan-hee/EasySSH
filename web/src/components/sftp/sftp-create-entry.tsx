@@ -47,6 +47,7 @@ export function SftpCreateEntry({
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
         <div
+          data-sftp-create-entry="grid"
           className={cn(
             "group relative rounded-lg p-3 cursor-pointer select-none transition-all bg-table-row-selected",
           )}
@@ -87,6 +88,7 @@ export function SftpCreateEntry({
 
   return (
     <TableRow
+      data-sftp-create-entry="list"
       className={cn(
         "cursor-pointer transition-colors bg-table-row-selected border-b-0",
       )}

@@ -98,6 +98,8 @@ export function SftpFileGridItem({
           onDoubleClick(file.name, file.type)
         }
       }}
+      data-sftp-file-item={file.type}
+      data-selected={isSelected || (isDraggedOver && file.type === "directory") ? "true" : undefined}
       className={cn(
         "group relative rounded-lg p-3 cursor-pointer select-none transition-none hover:bg-table-row-hover",
         (isSelected || (isDraggedOver && file.type === "directory")) && "bg-table-row-selected hover:bg-table-row-selected",

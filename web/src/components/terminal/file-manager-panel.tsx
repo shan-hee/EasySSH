@@ -1,6 +1,5 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { createPortal } from "react-dom"
 import { X, GripVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { TerminalSftpPanel } from "@/components/terminal/terminal-sftp-panel"
@@ -10,10 +9,9 @@ import type { SshWorkspacePreferenceAdapter, WorkspaceTransferTask } from "@/lib
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
 
-const PANEL_ANIMATION_MS = 300
 const DEFAULT_PANEL_WIDTH = 600
 const MIN_PANEL_WIDTH = 400
-const PANEL_VIEWPORT_PADDING = 100
+const MAX_PANEL_VIEWPORT_RATIO = 0.7
 const FILE_MANAGER_PANEL_WIDTH_PREFERENCE_KEY = "file-manager-panel-width"
 
 function readPanelWidthPreference(
@@ -75,10 +73,11 @@ export interface FileManagerPanelProps {
   transferTasks?: WorkspaceTransferTask[]
   onClearCompletedTransfers?: () => void
   onCancelTransfer?: (taskId: string) => void
-  // 将文件管理器渲染到指定容器(例如终端内部),而非整个页面
-  mountContainer?: HTMLElement | null
-  // 面板顶部锚点(用于位于工具栏下方)
-  anchorTop?: number
+  background: {
+    color: string
+    image?: string
+    imageOpacity: number
+  }
   widthPreferenceKey?: string
   defaultWidth?: number
 }
@@ -86,11 +85,10 @@ export interface FileManagerPanelProps {
 export function FileManagerPanel({
   isOpen,
   onClose,
-  mountContainer,
-  anchorTop,
   transferTasks,
   onClearCompletedTransfers,
   onCancelTransfer,
+  background,
   onInsertTerminalText,
   onExecuteTerminalCommand,
   widthPreferenceKey = FILE_MANAGER_PANEL_WIDTH_PREFERENCE_KEY,
@@ -108,25 +106,6 @@ export function FileManagerPanel({
   const [isResizing, setIsResizing] = useState(false)
   const resizeStartX = useRef(0)
   const resizeStartWidth = useRef(0)
-  const internalContainer = mountContainer || null
-  const portalContainer = internalContainer ?? (typeof document !== 'undefined' ? document.body : null)
-  const topOffset = anchorTop ?? 0
-  const [isPanelVisible, setIsPanelVisible] = useState(false)
-
-  useEffect(() => {
-    let frame = 0
-    if (isOpen) {
-      frame = window.requestAnimationFrame(() => {
-        setIsPanelVisible(true)
-      })
-    } else {
-      frame = window.requestAnimationFrame(() => {
-        setIsPanelVisible(false)
-      })
-    }
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [isOpen])
 
   // 保存宽度到 Workspace preferences
   useEffect(() => {
@@ -169,7 +148,7 @@ export function FileManagerPanel({
     if (!isResizing) return
 
     const deltaX = resizeStartX.current - e.clientX
-    const maxWidth = Math.max(MIN_PANEL_WIDTH, window.innerWidth - PANEL_VIEWPORT_PADDING)
+    const maxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth * MAX_PANEL_VIEWPORT_RATIO))
     const newWidth = Math.min(
       Math.max(MIN_PANEL_WIDTH, resizeStartWidth.current + deltaX),
       maxWidth
@@ -208,108 +187,90 @@ export function FileManagerPanel({
     }
   }, [isResizing, handleResizeMove, handleResizeEnd])
 
-  // 响应式检测（仅在挂载到 body 时使用遮罩）；内部挂载一律悬浮且无遮罩
-  const [isMobile, setIsMobile] = useState(false)
-  useEffect(() => {
-    if (!internalContainer) {
-      const checkMobile = () => {
-        setIsMobile(window.innerWidth < 768)
-      }
-      checkMobile()
-      window.addEventListener('resize', checkMobile)
-      return () => window.removeEventListener('resize', checkMobile)
-    }
-  }, [internalContainer])
-
-  const panelContent = (
-    <>
-      {/* 面板 */}
+  return (
+    <aside
+      className={cn(
+        "terminal-sftp-glass absolute inset-0 z-50 flex h-full min-h-0 w-full shrink-0 overflow-hidden text-foreground",
+        "md:relative md:inset-auto md:translate-x-0",
+        isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-300 ease-out",
+        isOpen
+          ? "translate-x-0 md:w-[var(--terminal-sftp-panel-width)] md:max-w-[70vw]"
+          : "translate-x-full md:w-0 md:max-w-0",
+      )}
+      style={{
+        pointerEvents: isOpen ? "auto" : "none",
+        "--terminal-sftp-panel-width": `${width}px`,
+      } as React.CSSProperties}
+      aria-hidden={!isOpen}
+    >
       <div
         className={cn(
-          // 如果挂载到内部容器，则使用 absolute 并且位于工具栏下方
-          internalContainer
-            ? "absolute right-0 z-[200] flex overflow-hidden ease-out"
-            : "fixed top-0 right-0 h-full z-[999] flex overflow-hidden ease-out",
-          isResizing ? "transition-none" : "transition-[width,opacity,transform] duration-300",
+          "group absolute inset-y-0 left-0 z-10 hidden w-3 -translate-x-1 cursor-col-resize bg-transparent transition-colors hover:bg-blue-500/50 md:block",
+          isResizing && "bg-blue-500/50",
         )}
-        style={{
-          width: isPanelVisible ? `${width}px` : 0,
-          top: internalContainer ? `${topOffset}px` : 0,
-          height: internalContainer ? `calc(100% - ${topOffset}px)` : '100%',
-          opacity: isPanelVisible ? 1 : 0,
-          transform: isPanelVisible ? 'translateX(0)' : 'translateX(1rem)',
-          pointerEvents: isPanelVisible ? 'auto' : 'none',
-          willChange: isOpen ? 'width, opacity, transform' : 'auto',
-        }}
+        onMouseDown={handleResizeStart}
       >
         <div
-          className="flex h-full min-w-0 flex-shrink-0"
-          style={{ width: `${width}px` }}
+          className={cn(
+            "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100",
+            isResizing && "opacity-100",
+          )}
         >
-          {/* 调整大小手柄 - 仅桌面端，左侧圆角 */}
-          {(!isMobile || internalContainer) && (
-            <div
-              className={cn(
-                "w-1 cursor-col-resize group hover:bg-blue-500/50 transition-colors relative flex items-center justify-center bg-transparent rounded-l-xl",
-                isResizing && "bg-blue-500/50"
-              )}
-              onMouseDown={handleResizeStart}
-            >
-              <div
-                className={cn(
-                  "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100",
-                  isResizing && "opacity-100"
-                )}
-              >
-                <GripVertical className="h-4 w-4" />
+          <GripVertical className="h-4 w-4" />
+        </div>
+      </div>
+
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden text-foreground shadow-2xl md:shadow-none">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-0 md:hidden"
+          style={{ backgroundColor: background.color }}
+        />
+        {background.image && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat md:hidden"
+            style={{
+              backgroundImage: `url(${background.image})`,
+              opacity: background.imageOpacity,
+            }}
+          />
+        )}
+        <div
+          aria-hidden="true"
+          className="terminal-sftp-glass-surface pointer-events-none absolute inset-0 z-0"
+        />
+
+        <div className="relative z-[1] min-w-0 flex-1 overflow-hidden">
+          {sftpProps.isConnected ? (
+            <TerminalSftpPanel
+              {...sftpProps}
+              keyboardShortcutsEnabled={isOpen}
+              isFullscreen={false}
+              onDisconnect={onClose}
+              transferTasks={transferTasks}
+              onClearCompletedTransfers={onClearCompletedTransfers}
+              onCancelTransfer={onCancelTransfer}
+              onInsertTerminalText={onInsertTerminalText}
+              onExecuteTerminalCommand={onExecuteTerminalCommand}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                  <X className="h-8 w-8" />
+                </div>
+                <h3 className="mb-2 text-lg font-semibold text-foreground">
+                  {tSftp("disconnectedTitle")}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {tSftp("disconnectedDescription")}
+                </p>
               </div>
             </div>
           )}
-
-          {/* 主面板内容 */}
-          <div className={cn(
-            "flex-1 min-w-0 flex flex-col border-l border-border bg-card/95 text-card-foreground shadow-2xl backdrop-blur-xl",
-            !isMobile && "rounded-l-xl" // 桌面端添加左侧圆角
-          )}>
-            {/* 终端场景 SFTP：沿用共享布局，仅注入地址栏快捷操作 */}
-            <div className="flex-1 min-w-0 overflow-hidden">
-              {sftpProps.isConnected ? (
-                <TerminalSftpPanel
-                  {...sftpProps}
-                  isFullscreen={false}
-                  onDisconnect={onClose}
-                  transferTasks={transferTasks}
-                  onClearCompletedTransfers={onClearCompletedTransfers}
-                  onCancelTransfer={onCancelTransfer}
-                  onInsertTerminalText={onInsertTerminalText}
-                  onExecuteTerminalCommand={onExecuteTerminalCommand}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <div className="text-center">
-                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <X className="h-8 w-8" />
-                    </div>
-                    <h3 className="mb-2 text-lg font-semibold text-foreground">
-                      {tSftp("disconnectedTitle")}
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      {tSftp("disconnectedDescription")}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
         </div>
       </div>
-    </>
+    </aside>
   )
-
-  if (!portalContainer) {
-    return null
-  }
-  return createPortal(panelContent, portalContainer)
 }
-
-export { PANEL_ANIMATION_MS as FILE_MANAGER_PANEL_ANIMATION_MS }

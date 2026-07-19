@@ -13,10 +13,7 @@ import { MonitorPanel } from './monitor/MonitorPanel'
 import { WebTerminal } from './web-terminal'
 import { ServerConnectionConfigs, type ServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
 import { ConnectionLoader } from './connection-loader'
-import {
-  FileManagerPanel,
-  FILE_MANAGER_PANEL_ANIMATION_MS,
-} from './file-manager-panel'
+import { FileManagerPanel } from './file-manager-panel'
 import { AiAssistantPanel } from './ai-assistant-panel'
 import type { AIAssistantWorkspaceAdapters } from '@/components/ai-agent/ai-assistant-workspace-view'
 import { DockerPopover } from './docker'
@@ -37,6 +34,12 @@ import type { Server } from "@/lib/server-types"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
 import type { TerminalInputApi } from "./use-terminal-container-api"
+import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
+import { getTerminalTheme } from "./terminal-themes"
+import {
+  resolveTerminalAppThemeMode,
+  resolveTerminalThemeName,
+} from "./use-terminal-renderer-settings"
 
 const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
 const DEFAULT_TERMINAL_SFTP_INITIAL_PATH = '/root'
@@ -139,11 +142,9 @@ export function TabTerminalContent({
   onClearExternalCompletedTransfers,
   onCancelExternalTransfer,
 }: TabTerminalContentProps) {
-  // 浮动面板根容器
-  const [floatingPanelRoot, setFloatingPanelRoot] = useState<HTMLDivElement | null>(null)
   const [sftpInternalBackHandler, setSftpInternalBackHandler] =
     useState<InternalBackHandler | null>(null)
-  const [shouldRenderFileManager, setShouldRenderFileManager] = useState(false)
+  const [hasOpenedFileManager, setHasOpenedFileManager] = useState(false)
   const [sftpSessionInitialPath, setSftpSessionInitialPath] = useState(initialSftpPath)
   const terminalInputApiRef = React.useRef<TerminalInputApi | null>(null)
   const lastSftpRefreshRequestVersionRef = React.useRef(sftpRefreshRequestVersion)
@@ -175,7 +176,12 @@ export function TabTerminalContent({
   const tabState = useTabUIStore((state) => state.getTabState(session.id))
   const setTabState = useTabUIStore((state) => state.setTabState)
   const workspace = useOptionalSshWorkspace()
+  const {
+    mode: effectiveAppTheme,
+    version: effectiveThemeVersion,
+  } = useEffectiveThemeMode()
   const workspaceCapabilities = workspace?.capabilities
+  const workspaceTheme = workspace?.adapters.theme
   const isDesktopWorkspace = workspace?.layout === "desktop"
   const canUseSftpCapability = workspaceCapabilities?.sftp !== false
   const canUseMonitorCapability = workspaceCapabilities?.monitor !== false
@@ -196,8 +202,11 @@ export function TabTerminalContent({
   const hasReadyServer = isTerminalSession && isTerminalReady && !!session.serverId
   const canRenderInlinePanels = chrome === "full"
   const canUseHeavyPanels = canRenderInlinePanels && isActive && hasReadyServer
+  const canMountFileManager = canUseSftpCapability && canUseHeavyPanels
   const canUseFileManager = canUseSftpCapability && canUseHeavyPanels && isFileManagerOpen
-  const shouldKeepFileManagerMounted = canUseSftpCapability && canUseHeavyPanels && shouldRenderFileManager
+  const isFileManagerSessionActive = canMountFileManager && (
+    canUseFileManager || hasOpenedFileManager
+  )
   const canMountAi = canRenderInlinePanels && canUseAiCapability && isActive && isTerminalSession && !effectiveIsLoading
   const canUseAi = canMountAi && isAiInputOpen
   const shouldReserveInlineMonitor =
@@ -208,17 +217,17 @@ export function TabTerminalContent({
     isDesktopMonitorOpen &&
     !!session.serverId
   const canUseMobileMonitor = canRenderInlinePanels && canUseMonitorCapability && canUseHeavyPanels && isMobileMonitorOpen && !isDesktopLayout
-  const fileManagerPaneConfig = workspace?.adapters.panes?.fileManager
-  const shouldMountFileManagerInTerminal = fileManagerPaneConfig?.mountMode !== 'page'
-  const fileManagerMountContainer = shouldMountFileManagerInTerminal
-    ? floatingPanelRoot || undefined
-    : undefined
 
   useEffect(() => {
-    if (!shouldMountFileManagerInTerminal) {
-      setFloatingPanelRoot(null)
+    if (!canMountFileManager) {
+      setHasOpenedFileManager(false)
+      return
     }
-  }, [shouldMountFileManagerInTerminal])
+
+    if (canUseFileManager) {
+      setHasOpenedFileManager(true)
+    }
+  }, [canMountFileManager, canUseFileManager])
 
   const transferAuthTicketProvider = React.useMemo(
     () => createWorkspaceTransferAuthTicketProviderAdapter(workspace?.adapters.authTicketProvider),
@@ -286,9 +295,9 @@ export function TabTerminalContent({
     )
   }
 
-  // SFTP 会话管理：只在当前页签且文件管理器打开时加载目录，避免隐藏页签继续触发列表渲染/请求
+  // 首次打开时才建立 SFTP 会话；关闭面板后保留到当前终端失活，以保证收起动画内容稳定。
   const sftpSession = useSftpSession(
-    shouldKeepFileManagerMounted && session.serverId
+    isFileManagerSessionActive && session.serverId
       ? session.serverId
       : '',
     sftpSessionInitialPath,
@@ -296,15 +305,15 @@ export function TabTerminalContent({
   )
 
   useEffect(() => {
-    if (shouldKeepFileManagerMounted) {
+    if (isFileManagerSessionActive) {
       return
     }
 
     setSftpSessionInitialPath(initialSftpPath)
-  }, [initialSftpPath, shouldKeepFileManagerMounted])
+  }, [initialSftpPath, isFileManagerSessionActive])
 
   useEffect(() => {
-    if (!shouldKeepFileManagerMounted || !session.serverId) {
+    if (!isFileManagerSessionActive || !session.serverId) {
       return
     }
 
@@ -314,7 +323,7 @@ export function TabTerminalContent({
     session.id,
     session.serverId,
     sftpSession.currentPath,
-    shouldKeepFileManagerMounted,
+    isFileManagerSessionActive,
   ])
 
   useEffect(() => {
@@ -323,14 +332,14 @@ export function TabTerminalContent({
     }
 
     lastSftpRefreshRequestVersionRef.current = sftpRefreshRequestVersion
-    if (shouldKeepFileManagerMounted && session.serverId) {
+    if (isFileManagerSessionActive && session.serverId) {
       sftpSession.refresh()
     }
   }, [
     session.serverId,
     sftpRefreshRequestVersion,
     sftpSession,
-    shouldKeepFileManagerMounted,
+    isFileManagerSessionActive,
   ])
 
   const externalTransferTaskIds = React.useMemo(
@@ -365,6 +374,26 @@ export function TabTerminalContent({
   const monitorEnabled = canRenderInlinePanels && canUseMonitorCapability && hasReadyServer
   const { t: tTerminal } = useTranslation("terminal")
   const pageBackgroundImageLayerOpacity = settings.backgroundImageOpacity / 100
+  const terminalSurfaceBackground = useMemo(() => {
+    // Workspace theme adapters may update in place; the version invalidates this memo.
+    void effectiveThemeVersion
+    const effectiveTerminalTheme = resolveTerminalThemeName(
+      workspaceTheme?.terminalTheme,
+      settings.theme,
+    )
+    const effectiveTerminalAppTheme = resolveTerminalAppThemeMode(
+      workspaceTheme?.mode,
+      effectiveAppTheme,
+    )
+
+    return getTerminalTheme(effectiveTerminalTheme, effectiveTerminalAppTheme).background
+  }, [
+    effectiveAppTheme,
+    effectiveThemeVersion,
+    settings.theme,
+    workspaceTheme?.mode,
+    workspaceTheme?.terminalTheme,
+  ])
   const completionConfig = useMemo(
     () => buildTerminalCompletionConfig(settings),
     [settings],
@@ -390,27 +419,6 @@ export function TabTerminalContent({
     !effectiveIsLoading
   const shouldRenderBody = chrome !== "toolbar"
   const shouldRenderSurface = surface !== "transparent"
-
-  useEffect(() => {
-    let frame = 0
-    if (canUseFileManager) {
-      frame = window.requestAnimationFrame(() => {
-        setShouldRenderFileManager(true)
-      })
-      return () => window.cancelAnimationFrame(frame)
-    }
-
-    const timer = window.setTimeout(() => {
-      setShouldRenderFileManager(false)
-    }, FILE_MANAGER_PANEL_ANIMATION_MS)
-
-    return () => {
-      if (frame) {
-        window.cancelAnimationFrame(frame)
-      }
-      window.clearTimeout(timer)
-    }
-  }, [canUseFileManager])
 
   const canHandleInternalBack = isActive && (
     isFullscreen ||
@@ -499,14 +507,18 @@ export function TabTerminalContent({
         "flex min-w-0 flex-col relative overflow-hidden",
         shouldRenderBody ? "flex-1 h-full" : "shrink-0"
       )}>
-        {shouldRenderBody && shouldRenderSurface && (
+        {shouldRenderSurface && (
           <div
             aria-hidden="true"
-            className="absolute inset-0 pointer-events-none bg-background transition-colors"
+            className={cn(
+              "absolute inset-0 pointer-events-none transition-colors",
+              !isTerminalSession && "bg-background",
+            )}
+            style={isTerminalSession ? { backgroundColor: terminalSurfaceBackground } : undefined}
           />
         )}
 
-        {shouldRenderBody && shouldRenderSurface && hasBackgroundImage && (
+        {shouldRenderSurface && hasBackgroundImage && (
           <div
             aria-hidden="true"
             className="absolute inset-0 pointer-events-none bg-cover bg-center bg-no-repeat"
@@ -531,18 +543,16 @@ export function TabTerminalContent({
         )}
 
         <div className={cn(
-          "relative z-10 flex min-h-0 min-w-0 flex-col",
+          "relative z-10 flex min-h-0 min-w-0",
           shouldRenderBody ? "flex-1" : "shrink-0"
         )}>
+          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {shouldRenderToolbar && (
             <div
-              className={cn(
-                'border-b text-sm flex items-center px-3 py-1.5 backdrop-blur-md transition-colors',
-                'border-border/60 bg-card/45 text-foreground shadow-sm'
-              )}
+              className="flex min-h-10 items-stretch text-sm text-foreground transition-colors"
             >
               {/* 左侧工具图标组 */}
-              <div className="flex items-center gap-1">
+              <div className="flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5">
                 {canUseSftpCapability && (
                   <Button
                     variant="ghost"
@@ -607,11 +617,10 @@ export function TabTerminalContent({
             {isTerminalSession && isDesktopLayout && (
               <div
                 className={cn(
-                  'transition-all duration-300 ease-out overflow-hidden border-r backdrop-blur-md',
-                  'border-border/60 bg-card/35 text-foreground',
+                  'overflow-hidden text-foreground transition-all duration-300 ease-out',
                   shouldReserveInlineMonitor
                     ? 'h-full min-h-0 w-[280px] opacity-100 translate-x-0'
-                    : 'w-0 opacity-0 -translate-x-4 border-r-0'
+                    : 'w-0 opacity-0 -translate-x-4'
                 )}
               >
                 {shouldReserveInlineMonitor && <MonitorPanel className="h-full min-h-0" />}
@@ -620,11 +629,6 @@ export function TabTerminalContent({
 
             {/* 终端区域 */}
             <div className="flex-1 min-w-0 relative overflow-hidden">
-              {/* 文件管理器悬浮挂载根，位于终端容器内部 */}
-              {shouldMountFileManagerInTerminal && (
-                <div ref={setFloatingPanelRoot} className="absolute inset-0 pointer-events-none" />
-              )}
-
               {session.type === 'config' ? (
                 <ServerConnectionConfigs
                   key={`terminal-config-${session.id}`}
@@ -669,72 +673,95 @@ export function TabTerminalContent({
               ) : null}
             </div>
 
-            {canMountAi && (
-              <AiAssistantPanel
-                isOpen={canUseAi}
-                onClose={() => setTabState(session.id, { isAiInputOpen: false })}
-                terminalSession={session}
-                adapters={aiAssistantAdapters}
-              />
-            )}
-
             {canUseMobileMonitor && (
               <div
                 className={cn(
-                  'absolute inset-0 z-30 overflow-hidden border-t backdrop-blur-md md:hidden',
-                  'border-border/60 bg-card/90 text-foreground shadow-2xl'
+                  'absolute inset-0 z-30 overflow-hidden border-t md:hidden',
+                  'border-border/60 text-foreground shadow-2xl'
                 )}
               >
-                <MonitorPanel className="h-full min-h-0 w-full" isLive={isActive} />
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-0 pointer-events-none"
+                  style={{ backgroundColor: terminalSurfaceBackground }}
+                />
+                {hasBackgroundImage && (
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 pointer-events-none bg-cover bg-center bg-no-repeat"
+                    style={{
+                      backgroundImage: `url(${settings.backgroundImage})`,
+                      opacity: pageBackgroundImageLayerOpacity,
+                    }}
+                  />
+                )}
+                <MonitorPanel className="relative h-full min-h-0 w-full" isLive={isActive} />
               </div>
             )}
           </div>
           )}
+          </div>
+
+          {canMountFileManager && (
+            <FileManagerPanel
+              isOpen={canUseFileManager}
+              onClose={() => setTabState(session.id, { isFileManagerOpen: false })}
+              serverId={session.serverId ?? ''}
+              serverName={session.serverName || ''}
+              host={session.host || ''}
+              username={session.username || ''}
+              isConnected={isTerminalReady}
+              sessionId={session.id}
+              sessionLabel={session.serverName || 'Session'}
+              currentPath={sftpSession.currentPath}
+              files={sftpSession.files}
+              isLoading={sftpSession.isLoading}
+              onNavigate={sftpSession.navigate}
+              onNavigateBack={sftpSession.goBack}
+              canNavigateBack={sftpSession.canGoBack}
+              onNavigateForward={sftpSession.goForward}
+              canNavigateForward={sftpSession.canGoForward}
+              onInternalBackHandlerChange={setSftpInternalBackHandler}
+              onRefresh={sftpSession.refresh}
+              onUpload={sftpSession.uploadFiles}
+              onDownload={sftpSession.downloadFile}
+              onDelete={sftpSession.deleteFile}
+              onRename={sftpSession.renameFile}
+              onCreateFolder={sftpSession.createFolder}
+              onCreateFile={sftpSession.createFile}
+              onBatchDelete={sftpSession.batchDeleteFiles}
+              onBatchDownload={sftpSession.batchDownloadFiles}
+              onReadFile={sftpSession.readFile}
+              onSaveFile={sftpSession.saveFile}
+              onInsertTerminalText={handleInsertTerminalText}
+              onExecuteTerminalCommand={handleExecuteTerminalCommand}
+              onDisconnect={() => setTabState(session.id, { isFileManagerOpen: false })}
+              transferTasks={combinedTransferTasks}
+              onClearCompletedTransfers={handleClearCompletedTransfers}
+              onCancelTransfer={handleCancelTransfer}
+              background={{
+                color: terminalSurfaceBackground,
+                image: hasBackgroundImage ? settings.backgroundImage : undefined,
+                imageOpacity: pageBackgroundImageLayerOpacity,
+              }}
+            />
+          )}
+
+          {canMountAi && (
+            <AiAssistantPanel
+              isOpen={canUseAi}
+              onClose={() => setTabState(session.id, { isAiInputOpen: false })}
+              terminalSession={session}
+              adapters={aiAssistantAdapters}
+              background={{
+                color: terminalSurfaceBackground,
+                image: hasBackgroundImage ? settings.backgroundImage : undefined,
+                imageOpacity: pageBackgroundImageLayerOpacity,
+              }}
+            />
+          )}
+
         </div>
-
-        {/* 文件管理器面板 - 渲染到 floatingPanelRootRef */}
-        {shouldRenderBody && shouldKeepFileManagerMounted && (
-          <FileManagerPanel
-            isOpen={canUseFileManager}
-            onClose={() => setTabState(session.id, { isFileManagerOpen: false })}
-            mountContainer={fileManagerMountContainer}
-            anchorTop={fileManagerPaneConfig?.anchorTop}
-            serverId={session.serverId ?? ''}
-            serverName={session.serverName || ''}
-            host={session.host || ''}
-            username={session.username || ''}
-            isConnected={isTerminalReady}
-            sessionId={session.id}
-            sessionLabel={session.serverName || 'Session'}
-            currentPath={sftpSession.currentPath}
-            files={sftpSession.files}
-            isLoading={sftpSession.isLoading}
-            onNavigate={sftpSession.navigate}
-            onNavigateBack={sftpSession.goBack}
-            canNavigateBack={sftpSession.canGoBack}
-            onNavigateForward={sftpSession.goForward}
-            canNavigateForward={sftpSession.canGoForward}
-            onInternalBackHandlerChange={setSftpInternalBackHandler}
-            onRefresh={sftpSession.refresh}
-            onUpload={sftpSession.uploadFiles}
-            onDownload={sftpSession.downloadFile}
-            onDelete={sftpSession.deleteFile}
-            onRename={sftpSession.renameFile}
-            onCreateFolder={sftpSession.createFolder}
-            onCreateFile={sftpSession.createFile}
-            onBatchDelete={sftpSession.batchDeleteFiles}
-            onBatchDownload={sftpSession.batchDownloadFiles}
-            onReadFile={sftpSession.readFile}
-            onSaveFile={sftpSession.saveFile}
-            onInsertTerminalText={handleInsertTerminalText}
-            onExecuteTerminalCommand={handleExecuteTerminalCommand}
-            onDisconnect={() => setTabState(session.id, { isFileManagerOpen: false })}
-            transferTasks={combinedTransferTasks}
-            onClearCompletedTransfers={handleClearCompletedTransfers}
-            onCancelTransfer={handleCancelTransfer}
-          />
-        )}
-
       </div>
     </MonitorWebSocketProvider>
   )

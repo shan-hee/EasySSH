@@ -82,6 +82,11 @@ interface AiAssistantPanelProps {
   onClose: () => void
   terminalSession: TerminalSession
   adapters?: AIAssistantWorkspaceAdapters
+  background: {
+    color: string
+    image?: string
+    imageOpacity: number
+  }
 }
 
 const TERMINAL_AI_SESSION_STORAGE_KEY = "easyssh:terminal-ai-assistant:sessions"
@@ -184,10 +189,17 @@ function formatSessionTime(value: string) {
   })
 }
 
-export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }: AiAssistantPanelProps) {
+export function AiAssistantPanel({
+  isOpen,
+  onClose,
+  terminalSession,
+  adapters,
+  background,
+}: AiAssistantPanelProps) {
   const { t: tAI } = useTranslation("aiAssistant")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const workspace = useOptionalSshWorkspace()
+  const preferences = workspace?.adapters.preferences
   const canUseWebSettingsFallback = workspace?.layout !== "desktop"
   assertDesktopAIAdapters(workspace?.layout, adapters)
   const {
@@ -243,7 +255,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
   const sessionCreatingRef = useRef(false)
   const dragStartXRef = useRef(0)
   const dragStartWidthRef = useRef(DEFAULT_PANEL_WIDTH)
-  const panelWidthStorageReadyRef = useRef(false)
+  const [panelWidthStorageReady, setPanelWidthStorageReady] = useState(false)
   const resizeFrameRef = useRef<number | null>(null)
   const pendingPanelWidthRef = useRef(DEFAULT_PANEL_WIDTH)
   const restoreAttemptKeyRef = useRef<string | null>(null)
@@ -463,7 +475,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
 
   useEffect(() => {
     try {
-      const storedValue = window.localStorage.getItem(PANEL_WIDTH_STORAGE_KEY)
+      const storedValue = preferences?.getString(PANEL_WIDTH_STORAGE_KEY)
       const nextWidth = storedValue ? Number(storedValue) : DEFAULT_PANEL_WIDTH
 
       if (Number.isFinite(nextWidth)) {
@@ -472,24 +484,20 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
     } catch {
       // ignore unavailable storage
     } finally {
-      panelWidthStorageReadyRef.current = true
+      setPanelWidthStorageReady(true)
     }
-  }, [])
+  }, [preferences])
 
   useEffect(() => {
-    if (!panelWidthStorageReadyRef.current) {
+    if (!panelWidthStorageReady) {
       return
     }
     if (isResizing) {
       return
     }
 
-    try {
-      window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(panelWidth))
-    } catch {
-      // ignore unavailable storage
-    }
-  }, [isResizing, panelWidth])
+    void preferences?.setString(PANEL_WIDTH_STORAGE_KEY, String(panelWidth))
+  }, [isResizing, panelWidth, panelWidthStorageReady, preferences])
 
   useEffect(() => {
     if (!isResizing) {
@@ -884,18 +892,254 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
     terminalSession.id,
   ])
 
+  const toolbar = (
+    <div
+      className="terminal-ai-glass-toolbar relative z-[1] flex min-h-10 shrink-0 items-center justify-between gap-3 px-3 text-foreground"
+    >
+      <div className="min-w-0">
+        <span className="truncate text-sm font-medium">{tAI("terminalPanelTitle")}</span>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+              aria-label={tAI("sidebarTitle")}
+              title={tAI("sidebarTitle")}
+            >
+              <History className="size-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            sideOffset={8}
+            className="terminal-ai-glass-popover w-[330px] overflow-hidden rounded-lg p-0 text-popover-foreground"
+          >
+            <div className="border-b border-border/60 p-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={sessionSearch}
+                  onChange={(event) => setSessionSearch(event.target.value)}
+                  placeholder={tAI("searchPlaceholder")}
+                  className="h-8 border-transparent bg-muted/50 pl-8 pr-8 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                {sessionSearch && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 size-6 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                    onClick={() => setSessionSearch("")}
+                    aria-label={tAI("cancel")}
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <ScrollArea className="h-[360px]">
+              <div className="p-2">
+                {sessionListLoading ? (
+                  <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>{tAI("loading")}</span>
+                  </div>
+                ) : sessionListError ? (
+                  <div className="px-3 py-10 text-center text-sm text-destructive">
+                    {sessionListError}
+                  </div>
+                ) : sessionList.length === 0 ? (
+                  <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                    {tAI("sessionListEmpty")}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {sessionList.map((item) => {
+                      const isActive = item.id === sessionId
+                      const isRenaming = renamingSessionId === item.id
+                      const isActionLoading = sessionActionLoadingId === item.id
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={cn(
+                            "w-full rounded-md px-2 py-2 text-left transition-colors",
+                            isActive
+                              ? "bg-accent text-foreground"
+                              : "text-foreground hover:bg-accent"
+                          )}
+                          onClick={() => void handleRestoreSession(item.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(event) => {
+                            if (isRenaming) return
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault()
+                              void handleRestoreSession(item.id)
+                            }
+                          }}
+                        >
+                          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
+                            <div className="min-w-0 flex-1">
+                              {isRenaming ? (
+                                <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
+                                  <Input
+                                    autoFocus
+                                    value={renameDraft}
+                                    onChange={(event) => setRenameDraft(event.target.value)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") {
+                                        event.preventDefault()
+                                        void submitRenameSession(item.id)
+                                      }
+                                      if (event.key === "Escape") {
+                                        event.preventDefault()
+                                        cancelRenameSession()
+                                      }
+                                    }}
+                                    className="h-7 min-w-0 text-xs"
+                                    disabled={isActionLoading}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                    disabled={isActionLoading}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      void submitRenameSession(item.id)
+                                    }}
+                                    aria-label={tAI("saveSessionTitle")}
+                                    title={tAI("saveSessionTitle")}
+                                  >
+                                    {isActionLoading ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <Check className="size-3.5" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                    disabled={isActionLoading}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      cancelRenameSession()
+                                    }}
+                                    aria-label={tAI("cancel")}
+                                    title={tAI("cancel")}
+                                  >
+                                    <X className="size-3.5" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="truncate text-sm font-medium">{item.title}</div>
+                              )}
+                            </div>
+
+                            {!isRenaming && (
+                              <div
+                                className="flex shrink-0 items-center gap-0.5 opacity-100"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground"
+                                  disabled={Boolean(sessionActionLoadingId)}
+                                  onClick={() => beginRenameSession(item)}
+                                  aria-label={tAI("rename")}
+                                  title={tAI("rename")}
+                                >
+                                  <Pencil className="size-3.5" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 rounded-md text-muted-foreground hover:bg-background/80 hover:text-destructive"
+                                  disabled={Boolean(sessionActionLoadingId)}
+                                  onClick={() => void handleDeleteSession(item.id)}
+                                  aria-label={tAI("delete")}
+                                  title={tAI("delete")}
+                                >
+                                  {isActionLoading ? (
+                                    <Loader2 className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="size-3.5" />
+                                  )}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                            <span>{tAI("sidebarMessageCount", { count: item.message_count })}</span>
+                            <span className="shrink-0">{formatSessionTime(item.updated_at)}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={createSessionDisabled}
+          onClick={() => void handleCreateNewSession()}
+          aria-label={tAI("newSession")}
+          title={tAI("newSession")}
+        >
+          {sessionCreating ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <SquarePen className="size-4" />
+          )}
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={onClose}
+          aria-label={tAI("panelHintClose")}
+          title={tAI("panelHintClose")}
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
+    </div>
+  )
+
   return (
     <aside
       ref={panelRef}
       role="complementary"
       aria-label={tAI("panelAriaPanelLabel")}
       className={cn(
-        "absolute inset-y-0 right-0 z-40 h-full min-h-0 w-full shrink-0 overflow-hidden text-foreground",
+        "terminal-ai-glass absolute inset-0 z-40 flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden text-foreground",
         "md:relative md:inset-auto md:translate-x-0",
         isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-150 ease-out",
         isOpen
           ? "translate-x-0 md:w-[var(--terminal-ai-panel-width)] md:max-w-[55vw]"
-          : "translate-x-full md:w-0 md:max-w-[0px] md:border-l-0 md:shadow-none"
+          : "translate-x-full md:w-0 md:max-w-[0px]"
       )}
       style={{
         pointerEvents: isOpen ? "auto" : "none",
@@ -904,11 +1148,29 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
     >
       {confirmDialog}
       <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 md:hidden"
+        style={{ backgroundColor: background.color }}
+      />
+      {background.image && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat md:hidden"
+          style={{
+            backgroundImage: `url(${background.image})`,
+            opacity: background.imageOpacity,
+          }}
+        />
+      )}
+      <div
+        aria-hidden="true"
+        className="terminal-ai-glass-surface pointer-events-none absolute inset-0 z-0"
+      />
+      {toolbar}
+      <div
         className={cn(
-          "absolute inset-y-0 right-0 flex h-full min-h-0 w-full flex-col overflow-hidden border-l shadow-2xl backdrop-blur-xl",
-          "border-border/70 bg-card/95 text-card-foreground",
-          "md:w-[var(--terminal-ai-panel-width)]",
-          "transition-opacity duration-75 ease-out",
+          "relative z-[1] flex min-h-0 w-full flex-1 flex-col overflow-hidden text-foreground shadow-2xl md:shadow-none",
+          "transition-opacity duration-150 ease-out",
           isOpen
             ? "opacity-100"
             : "opacity-0"
@@ -921,7 +1183,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
           aria-label={tAI("resizePanel")}
           title={tAI("resizePanel")}
           className={cn(
-            "absolute inset-y-0 left-0 z-10 hidden w-2 -translate-x-1 cursor-col-resize touch-none md:block",
+            "absolute inset-y-0 left-0 z-10 hidden w-3 -translate-x-1 cursor-col-resize touch-none md:block",
             "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent after:transition-colors",
             "hover:after:bg-primary/50",
             isResizing && "after:bg-primary"
@@ -932,245 +1194,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
           onPointerCancel={handleResizeEnd}
         />
 
-        <div className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium">{tAI("terminalPanelTitle")}</span>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1">
-          <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-                aria-label={tAI("sidebarTitle")}
-                title={tAI("sidebarTitle")}
-              >
-                <History className="size-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              sideOffset={8}
-              className="w-[330px] overflow-hidden rounded-lg border-border bg-popover p-0 text-popover-foreground shadow-2xl"
-            >
-              <div className="border-b border-border/60 p-2">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={sessionSearch}
-                    onChange={(event) => setSessionSearch(event.target.value)}
-                    placeholder={tAI("searchPlaceholder")}
-                    className="h-8 border-transparent bg-muted/50 pl-8 pr-8 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-ring"
-                  />
-                  {sessionSearch && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1/2 size-6 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                      onClick={() => setSessionSearch("")}
-                      aria-label={tAI("cancel")}
-                    >
-                      <X className="size-3.5" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <ScrollArea className="h-[360px]">
-                <div className="p-2">
-                  {sessionListLoading ? (
-                    <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin" />
-                      <span>{tAI("loading")}</span>
-                    </div>
-                  ) : sessionListError ? (
-                    <div className="px-3 py-10 text-center text-sm text-destructive">
-                      {sessionListError}
-                    </div>
-                  ) : sessionList.length === 0 ? (
-                    <div className="px-3 py-10 text-center text-sm text-muted-foreground">
-                      {tAI("sessionListEmpty")}
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {sessionList.map((item) => {
-                        const isActive = item.id === sessionId
-                        const isRenaming = renamingSessionId === item.id
-                        const isActionLoading = sessionActionLoadingId === item.id
-
-                        return (
-                          <div
-                            key={item.id}
-                            className={cn(
-                              "w-full rounded-md px-2 py-2 text-left transition-colors",
-                              isActive
-                                ? "bg-accent text-foreground"
-                                : "text-foreground hover:bg-accent"
-                            )}
-                            onClick={() => void handleRestoreSession(item.id)}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(event) => {
-                              if (isRenaming) {
-                                return
-                              }
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault()
-                                void handleRestoreSession(item.id)
-                              }
-                            }}
-                          >
-                            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                              <div className="min-w-0 flex-1">
-                                {isRenaming ? (
-                                  <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
-                                    <Input
-                                      autoFocus
-                                      value={renameDraft}
-                                      onChange={(event) => setRenameDraft(event.target.value)}
-                                      onKeyDown={(event) => {
-                                        if (event.key === "Enter") {
-                                          event.preventDefault()
-                                          void submitRenameSession(item.id)
-                                        }
-                                        if (event.key === "Escape") {
-                                          event.preventDefault()
-                                          cancelRenameSession()
-                                        }
-                                      }}
-                                      className="h-7 min-w-0 text-xs"
-                                      disabled={isActionLoading}
-                                    />
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-                                      disabled={isActionLoading}
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        void submitRenameSession(item.id)
-                                      }}
-                                      aria-label={tAI("saveSessionTitle")}
-                                      title={tAI("saveSessionTitle")}
-                                    >
-                                      {isActionLoading ? (
-                                        <Loader2 className="size-3.5 animate-spin" />
-                                      ) : (
-                                        <Check className="size-3.5" />
-                                      )}
-                                    </Button>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-                                      disabled={isActionLoading}
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                        cancelRenameSession()
-                                      }}
-                                      aria-label={tAI("cancel")}
-                                      title={tAI("cancel")}
-                                    >
-                                      <X className="size-3.5" />
-                                    </Button>
-                                  </div>
-                                ) : (
-                                  <div className="truncate text-sm font-medium">
-                                    {item.title}
-                                  </div>
-                                )}
-                              </div>
-
-                              {!isRenaming && (
-                                <div
-                                  className="flex shrink-0 items-center gap-0.5 opacity-100"
-                                  onClick={(event) => event.stopPropagation()}
-                                >
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-7 rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground"
-                                    disabled={Boolean(sessionActionLoadingId)}
-                                    onClick={() => beginRenameSession(item)}
-                                    aria-label={tAI("rename")}
-                                    title={tAI("rename")}
-                                  >
-                                    <Pencil className="size-3.5" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="size-7 rounded-md text-muted-foreground hover:bg-background/80 hover:text-destructive"
-                                    disabled={Boolean(sessionActionLoadingId)}
-                                    onClick={() => void handleDeleteSession(item.id)}
-                                    aria-label={tAI("delete")}
-                                    title={tAI("delete")}
-                                  >
-                                    {isActionLoading ? (
-                                      <Loader2 className="size-3.5 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="size-3.5" />
-                                    )}
-                                  </Button>
-                                </div>
-                              )}
-                            </div>
-                            <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                              <span>{tAI("sidebarMessageCount", { count: item.message_count })}</span>
-                              <span className="shrink-0">{formatSessionTime(item.updated_at)}</span>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </PopoverContent>
-          </Popover>
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={createSessionDisabled}
-            onClick={() => void handleCreateNewSession()}
-            aria-label={tAI("newSession")}
-            title={tAI("newSession")}
-          >
-            {sessionCreating ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <SquarePen className="size-4" />
-            )}
-          </Button>
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-            onClick={onClose}
-            aria-label={tAI("panelHintClose")}
-            title={tAI("panelHintClose")}
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-        </div>
-
-        <Conversation className="min-h-0 w-full flex-1">
+        <Conversation className="z-[1] min-h-0 w-full flex-1">
           <ConversationContent
             aria-label={tAI("panelAriaHistoryLabel")}
             className="h-full min-h-full w-full overflow-y-auto px-4 py-4 scrollbar-custom"
@@ -1187,10 +1211,10 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
               className="w-full"
             />
           </ConversationContent>
-          <ConversationScrollButton className="bottom-3 size-8" />
+          <ConversationScrollButton className="terminal-ai-glass-control bottom-3 size-8" />
         </Conversation>
 
-        <div className="shrink-0 p-3">
+        <div className="relative z-[1] shrink-0 p-3">
           {error && (
             <div
               role="alert"
@@ -1221,7 +1245,7 @@ export function AiAssistantPanel({ isOpen, onClose, terminalSession, adapters }:
 
           <PromptInput
             onSubmit={(message) => handleSubmit(message.text)}
-            className="rounded-xl border-border/80 bg-background/90 shadow-lg ring-1 ring-border/50"
+            className="terminal-ai-glass-composer rounded-xl"
           >
             <PromptInputTextarea
               ref={inputRef}
