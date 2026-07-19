@@ -14,7 +14,7 @@
     !define INFO_PRODUCTNAME "EasySSH"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "1.0.31"
+    !define INFO_PRODUCTVERSION "1.0.32"
 !endif
 !ifndef INFO_COPYRIGHT
     !define INFO_COPYRIGHT "(c) 2026, EasySSH"
