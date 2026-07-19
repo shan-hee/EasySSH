@@ -1,5 +1,11 @@
 
-import { startTransition } from "react"
+import {
+  startTransition,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react"
 import { ChevronLeft, ChevronRight, Clipboard, CloudUpload, CornerDownRight, FolderInput, Home, Maximize2, Minimize2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +17,16 @@ import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-works
 import type { TransferJob } from "@/lib/api/transfer-jobs"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import type { SftpTerminalPathActions } from "@/components/sftp/sftp-manager"
+
+const PATH_DRAG_THRESHOLD_PX = 5
+
+interface PathDragState {
+  pointerId: number
+  startX: number
+  startY: number
+  startScrollLeft: number
+  dragging: boolean
+}
 
 export interface SftpWorkspaceToolbarProps {
   displayPath: string
@@ -71,6 +87,111 @@ export function SftpWorkspaceToolbar({
   const tSftp = useWorkspaceSftpTranslator()
   const workspace = useOptionalSshWorkspace()
   const showActivityLogPane = workspace?.layout !== "desktop"
+  const pathScrollRef = useRef<HTMLDivElement | null>(null)
+  const pathDragStateRef = useRef<PathDragState | null>(null)
+  const suppressNextPathClickRef = useRef(false)
+  const [isPathOverflowing, setIsPathOverflowing] = useState(false)
+  const [isDraggingPath, setIsDraggingPath] = useState(false)
+
+  useLayoutEffect(() => {
+    const pathElement = pathScrollRef.current
+    if (!pathElement || isEditingPath) {
+      setIsPathOverflowing(false)
+      return
+    }
+
+    const updateOverflowState = () => {
+      setIsPathOverflowing(pathElement.scrollWidth > pathElement.clientWidth + 1)
+    }
+
+    updateOverflowState()
+    const resizeObserver = new ResizeObserver(updateOverflowState)
+    resizeObserver.observe(pathElement)
+
+    return () => resizeObserver.disconnect()
+  }, [displayPath, isEditingPath])
+
+  const handlePathPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "mouse" || event.button !== 0 || !isPathOverflowing) {
+      return
+    }
+
+    pathDragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startScrollLeft: event.currentTarget.scrollLeft,
+      dragging: false,
+    }
+  }
+
+  const handlePathPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = pathDragStateRef.current
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    const deltaX = event.clientX - dragState.startX
+    const deltaY = event.clientY - dragState.startY
+
+    if (!dragState.dragging) {
+      if (
+        Math.abs(deltaX) < PATH_DRAG_THRESHOLD_PX ||
+        Math.abs(deltaX) <= Math.abs(deltaY)
+      ) {
+        return
+      }
+
+      dragState.dragging = true
+      event.currentTarget.setPointerCapture(event.pointerId)
+      setIsDraggingPath(true)
+    }
+
+    event.preventDefault()
+    event.currentTarget.scrollLeft = dragState.startScrollLeft - deltaX
+  }
+
+  const finishPathPointerDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = pathDragStateRef.current
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    suppressNextPathClickRef.current = dragState.dragging
+    if (dragState.dragging) {
+      window.setTimeout(() => {
+        suppressNextPathClickRef.current = false
+      }, 0)
+    }
+    pathDragStateRef.current = null
+    setIsDraggingPath(false)
+  }
+
+  const cancelPathPointerDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = pathDragStateRef.current
+    if (!dragState || dragState.pointerId !== event.pointerId) {
+      return
+    }
+
+    pathDragStateRef.current = null
+    suppressNextPathClickRef.current = false
+    setIsDraggingPath(false)
+  }
+
+  const handlePathPointerLeave = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const dragState = pathDragStateRef.current
+    if (
+      dragState &&
+      dragState.pointerId === event.pointerId &&
+      !dragState.dragging
+    ) {
+      pathDragStateRef.current = null
+    }
+  }
 
   const navigateHome = () => {
     startTransition(() => {
@@ -109,7 +230,7 @@ export function SftpWorkspaceToolbar({
   }
 
   return (
-    <div className="border-b text-sm flex items-center justify-between px-3 py-1.5">
+    <div data-sftp-toolbar="workspace" className="border-b text-sm flex items-center justify-between px-3 py-1.5">
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <div className="flex items-center gap-1 shrink-0">
           <Button
@@ -150,6 +271,7 @@ export function SftpWorkspaceToolbar({
                   <Home className="h-3.5 w-3.5" />
                 </button>
                 <Input
+                  data-sftp-glass-control="path"
                   value={pathInputValue}
                   onChange={(event) => onPathInputValueChange(event.target.value)}
                   onKeyDown={(event) => {
@@ -165,18 +287,36 @@ export function SftpWorkspaceToolbar({
                   onBlur={(event) => finishPathEdit(event.target.value)}
                   autoFocus
                   placeholder={tSftp("pathInputPlaceholder")}
-                  className="h-7 text-xs font-mono pl-8 pr-3 py-1 border-0 bg-muted placeholder:text-muted-foreground"
+                  className="h-7 border-0 bg-muted py-0.5 pl-7 pr-2 font-mono text-xs leading-4 placeholder:text-muted-foreground"
                 />
               </>
             ) : (
               <div
+                ref={pathScrollRef}
+                data-sftp-glass-control="path"
+                onPointerDown={handlePathPointerDown}
+                onPointerMove={handlePathPointerMove}
+                onPointerUp={finishPathPointerDrag}
+                onPointerCancel={cancelPathPointerDrag}
+                onPointerLeave={handlePathPointerLeave}
+                onClickCapture={(event) => {
+                  if (!suppressNextPathClickRef.current) {
+                    return
+                  }
+
+                  suppressNextPathClickRef.current = false
+                  event.preventDefault()
+                  event.stopPropagation()
+                }}
                 onClick={() => {
                   onPathInputValueChange(displayPath)
                   onEditingPathChange(true)
                 }}
                 className={cn(
-                  "h-7 flex items-center gap-1 pl-8 pr-3 py-1 border-0 bg-muted",
-                  "text-xs font-mono cursor-text rounded-md overflow-x-auto scrollbar-custom",
+                  "flex h-7 items-center gap-0.5 overflow-x-auto overflow-y-hidden rounded-md border-0 bg-muted py-0.5 pl-7 pr-2",
+                  "scrollbar-none font-mono text-xs leading-4 select-none",
+                  isPathOverflowing ? "cursor-grab" : "cursor-text",
+                  isDraggingPath && "cursor-grabbing",
                   "hover:bg-accent transition-colors",
                 )}
                 title={tSftp("pathClickToEdit")}
@@ -200,7 +340,7 @@ export function SftpWorkspaceToolbar({
                     event.stopPropagation()
                     navigateHome()
                   }}
-                  className="px-1.5 py-0.5 rounded-md whitespace-nowrap text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all duration-200"
+                  className="shrink-0 whitespace-nowrap rounded-md px-1 py-0.5 leading-4 text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-accent-foreground"
                 >
                   /
                 </button>
@@ -210,7 +350,7 @@ export function SftpWorkspaceToolbar({
                   const isFileName = isEditorOpen && isLastSegment
 
                   return (
-                    <div key={index} className="flex items-center gap-1">
+                    <div key={index} className="flex shrink-0 items-center gap-0.5">
                       <button
                         onClick={(event) => {
                           event.stopPropagation()
@@ -222,7 +362,7 @@ export function SftpWorkspaceToolbar({
                           })
                         }}
                         className={cn(
-                          "px-1.5 py-0.5 rounded-md whitespace-nowrap transition-all duration-200",
+                          "shrink-0 whitespace-nowrap rounded-md px-1 py-0.5 leading-4 transition-all duration-200",
                           isFileName
                             ? "font-semibold text-primary cursor-default"
                             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
