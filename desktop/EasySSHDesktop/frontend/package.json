@@ -1,7 +1,7 @@
 {
   "name": "easyssh-desktop-frontend",
   "private": true,
-  "version": "1.0.30",
+  "version": "1.0.31",
   "packageManager": "pnpm@11.1.3",
   "type": "module",
   "scripts": {
