@@ -310,10 +310,19 @@ type desktopAIToolResult struct {
 	IsError bool
 }
 
+type desktopAIConfirmedToolRun struct {
+	Context   context.Context
+	Cancel    context.CancelFunc
+	RequestID string
+	Active    int
+}
+
 type DesktopAIService struct {
 	mu             sync.Mutex
+	sessionMu      sync.Mutex
 	db             *sql.DB
 	activeRequests map[string]desktopAIActiveRequest
+	confirmedRuns  map[string]*desktopAIConfirmedToolRun
 	serverService  *DesktopServerService
 	sftpService    *DesktopSFTPService
 	monitorService *DesktopMonitorService
@@ -322,6 +331,7 @@ type DesktopAIService struct {
 func NewDesktopAIService(serverService *DesktopServerService, sftpService *DesktopSFTPService, monitorService *DesktopMonitorService) *DesktopAIService {
 	return &DesktopAIService{
 		activeRequests: map[string]desktopAIActiveRequest{},
+		confirmedRuns:  map[string]*desktopAIConfirmedToolRun{},
 		serverService:  serverService,
 		sftpService:    sftpService,
 		monitorService: monitorService,
@@ -339,6 +349,7 @@ func (s *DesktopAIService) ServiceStartup(_ context.Context, _ application.Servi
 
 func (s *DesktopAIService) ServiceShutdown() error {
 	var cancels []context.CancelFunc
+	var confirmedCancels []context.CancelFunc
 	var database *sql.DB
 
 	s.mu.Lock()
@@ -349,8 +360,17 @@ func (s *DesktopAIService) ServiceShutdown() error {
 	database = s.db
 	s.db = nil
 	s.mu.Unlock()
+	s.sessionMu.Lock()
+	for _, run := range s.confirmedRuns {
+		confirmedCancels = append(confirmedCancels, run.Cancel)
+	}
+	s.confirmedRuns = map[string]*desktopAIConfirmedToolRun{}
+	s.sessionMu.Unlock()
 
 	for _, cancel := range cancels {
+		cancel()
+	}
+	for _, cancel := range confirmedCancels {
 		cancel()
 	}
 
@@ -705,11 +725,7 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 	}
 	s.emitAISessionSnapshot(record)
 
-	var turnUsage aiprovider.Usage
-	var estimatedCostMicros int64
-	totalToolCalls := 0
-	toolCallCounts := make(map[string]int)
-	for round := 0; round < limits.MaxToolRounds; round++ {
+	for {
 		assistantMessageID := newDesktopAIID("msg")
 		assistantStartedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		var assistantContentBuilder strings.Builder
@@ -752,24 +768,6 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 				return s.failDesktopAITurn(record, errors.New("AI 对话总执行时间超出限制"))
 			}
 			return s.failDesktopAITurn(record, err)
-		}
-		turnUsage.Add(turnResult.Usage)
-		estimatedCostMicros += turnResult.Metadata.EstimatedCostMicros
-		if turnUsage.TotalTokens > limits.MaxTurnTokens {
-			return s.failDesktopAITurn(record, aiprovider.NewLimitError("token_budget_exceeded", "AI 对话累计 Token 超出限制"))
-		}
-		if estimatedCostMicros > limits.MaxEstimatedCostMicros {
-			return s.failDesktopAITurn(record, aiprovider.NewLimitError("cost_budget_exceeded", "AI 对话预估费用超出限制"))
-		}
-		totalToolCalls += len(turnResult.ToolCalls)
-		if totalToolCalls > limits.MaxToolCalls {
-			return s.failDesktopAITurn(record, aiprovider.NewLimitError("tool_call_limit_exceeded", "AI 工具调用次数超出限制"))
-		}
-		for _, call := range turnResult.ToolCalls {
-			toolCallCounts[call.Fingerprint()]++
-			if toolCallCounts[call.Fingerprint()] > limits.MaxRepeatedToolCalls {
-				return s.failDesktopAITurn(record, aiprovider.NewLimitError("repeated_tool_call", "AI 重复调用相同工具和参数，已停止执行"))
-			}
 		}
 		if strings.TrimSpace(turnResult.Content) == "" && len(turnResult.ToolCalls) == 0 {
 			return s.failDesktopAITurn(record, errors.New("AI provider returned no text"))
@@ -841,12 +839,6 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		}
 		contextText = ""
 	}
-
-	record.Status = DesktopAISessionIdle
-	record.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	_ = s.saveSession(record)
-	s.emitAISessionSnapshot(record)
-	return DesktopAICreateSessionResponse{}, aiprovider.NewLimitError("tool_round_limit_exceeded", "AI 工具调用轮次超出限制")
 }
 
 func (s *DesktopAIService) failDesktopAITurn(record desktopAISessionRecord, turnErr error) (DesktopAICreateSessionResponse, error) {
@@ -868,85 +860,167 @@ func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfi
 		return DesktopAICreateSessionResponse{}, errors.New("AI task decision must be confirm or reject")
 	}
 
+	s.sessionMu.Lock()
 	record, err := s.loadSession(sessionID)
 	if err != nil {
+		s.sessionMu.Unlock()
 		return DesktopAICreateSessionResponse{}, err
-	}
-	if record.Status == DesktopAISessionRunning {
-		return DesktopAICreateSessionResponse{}, errors.New("AI session is busy")
 	}
 
 	taskIndex := desktopAIFindTaskIndex(record.Tasks, taskID)
 	if taskIndex < 0 {
+		s.sessionMu.Unlock()
 		return DesktopAICreateSessionResponse{}, errors.New("AI task not found")
 	}
 	if record.Tasks[taskIndex].Status != DesktopAITaskWaitingConfirm {
+		s.sessionMu.Unlock()
 		return DesktopAICreateSessionResponse{}, errors.New("AI task is not awaiting confirmation")
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	var confirmedTurnContext context.Context
+	run := s.confirmedRuns[sessionID]
+	if run == nil {
+		turnContext, cancelTurn := context.WithTimeout(context.Background(), aiprovider.DefaultLimits().TurnTimeout)
+		requestContext, requestID := s.beginAIRequest(turnContext, sessionID)
+		run = &desktopAIConfirmedToolRun{
+			Context:   requestContext,
+			Cancel:    cancelTurn,
+			RequestID: requestID,
+		}
+		s.confirmedRuns[sessionID] = run
+	}
+
+	taskName := record.Tasks[taskIndex].ToolName
+	taskArguments := record.Tasks[taskIndex].Arguments
 	if decision == "reject" {
 		record.Tasks[taskIndex].Status = DesktopAITaskCancelled
 		record.Tasks[taskIndex].Result = "用户已拒绝执行该操作。"
+		record.Tasks[taskIndex].Error = ""
 		record.Tasks[taskIndex].UpdatedAt = now
-		record.UpdatedAt = now
-		if err := s.saveSession(record); err != nil {
-			return DesktopAICreateSessionResponse{}, err
-		}
-		s.emitAISessionSnapshot(record)
 	} else {
-		turnContext, cancelTurn := context.WithTimeout(ctx, aiprovider.DefaultLimits().TurnTimeout)
-		defer cancelTurn()
-		requestContext, requestID := s.beginAIRequest(turnContext, sessionID)
-		defer s.finishAIRequest(sessionID, requestID)
-		confirmedTurnContext = requestContext
-
-		record.Status = DesktopAISessionRunning
+		if spec, ok := desktopAIToolSpecByName(record.PermissionMode, record.Scope, taskName); ok {
+			taskArguments = desktopAIEnforceScopedArguments(record.Scope, spec, taskArguments)
+			record.Tasks[taskIndex].Arguments = taskArguments
+		}
 		record.Tasks[taskIndex].Status = DesktopAITaskRunning
 		record.Tasks[taskIndex].UpdatedAt = now
-		record.UpdatedAt = now
-		if err := s.saveSession(record); err != nil {
-			return DesktopAICreateSessionResponse{}, err
-		}
-		s.emitAISessionSnapshot(record)
-
-		record, err = s.executeDesktopAITask(requestContext, record, taskID)
-		if err != nil {
-			return DesktopAICreateSessionResponse{}, err
-		}
-		if errors.Is(requestContext.Err(), context.DeadlineExceeded) {
-			return s.failDesktopAITurn(record, errors.New("AI 对话总执行时间超出限制"))
-		}
-		if errors.Is(requestContext.Err(), context.Canceled) {
-			view := record.toView()
-			return DesktopAICreateSessionResponse{
-				SessionID:        view.ID,
-				Session:          view,
-				DefaultTransport: view.DefaultTransport,
-			}, nil
-		}
 	}
+	run.Active++
 
 	if desktopAIHasPendingConfirmation(record.Tasks) {
 		record.Status = DesktopAISessionWaitingConfirmation
-		record.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-		if err := s.saveSession(record); err != nil {
-			return DesktopAICreateSessionResponse{}, err
+	} else {
+		record.Status = DesktopAISessionRunning
+	}
+	record.UpdatedAt = now
+	if err := s.saveSession(record); err != nil {
+		run.Active--
+		if run.Active == 0 {
+			delete(s.confirmedRuns, sessionID)
+			run.Cancel()
+			s.finishAIRequest(sessionID, run.RequestID)
 		}
-		s.emitAISessionSnapshot(record)
+		s.sessionMu.Unlock()
+		return DesktopAICreateSessionResponse{}, err
+	}
+	view := record.toView()
+	s.sessionMu.Unlock()
 
-		view := record.toView()
-		return DesktopAICreateSessionResponse{
-			SessionID:        view.ID,
-			Session:          view,
-			DefaultTransport: view.DefaultTransport,
-		}, nil
+	s.emitAISessionSnapshot(record)
+	go s.resolveDesktopConfirmedTask(sessionID, taskID, decision, taskName, taskArguments, run)
+
+	return DesktopAICreateSessionResponse{
+		SessionID:        view.ID,
+		Session:          view,
+		DefaultTransport: view.DefaultTransport,
+	}, nil
+}
+
+func (s *DesktopAIService) resolveDesktopConfirmedTask(
+	sessionID string,
+	taskID string,
+	decision string,
+	toolName string,
+	arguments map[string]any,
+	run *desktopAIConfirmedToolRun,
+) {
+	var result desktopAIToolResult
+	var executeErr error
+	if decision == "confirm" && run.Context.Err() == nil {
+		result, executeErr = s.executeDesktopAITool(run.Context, toolName, arguments)
 	}
 
+	s.sessionMu.Lock()
+	record, loadErr := s.loadSession(sessionID)
+	if loadErr != nil {
+		s.finishDesktopConfirmedRunLocked(sessionID, run)
+		s.sessionMu.Unlock()
+		return
+	}
+	if s.confirmedRuns[sessionID] != run {
+		s.sessionMu.Unlock()
+		return
+	}
+
+	taskIndex := desktopAIFindTaskIndex(record.Tasks, taskID)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if taskIndex >= 0 && decision == "confirm" && record.Tasks[taskIndex].Status != DesktopAITaskCancelled {
+		switch {
+		case run.Context.Err() != nil:
+			record.Tasks[taskIndex].Status = DesktopAITaskCancelled
+			record.Tasks[taskIndex].Result = "操作已取消。"
+			record.Tasks[taskIndex].Error = ""
+		case executeErr != nil:
+			record.Tasks[taskIndex].Status = DesktopAITaskFailed
+			record.Tasks[taskIndex].Result = executeErr.Error()
+			record.Tasks[taskIndex].Error = executeErr.Error()
+		case result.IsError:
+			record.Tasks[taskIndex].Status = DesktopAITaskFailed
+			record.Tasks[taskIndex].Result = result.Content
+			record.Tasks[taskIndex].Error = result.Content
+		default:
+			record.Tasks[taskIndex].Status = DesktopAITaskSucceeded
+			record.Tasks[taskIndex].Result = result.Content
+			record.Tasks[taskIndex].Error = ""
+		}
+		record.Tasks[taskIndex].UpdatedAt = now
+	}
+
+	if run.Active > 0 {
+		run.Active--
+	}
+	pendingConfirmation := desktopAIHasPendingConfirmation(record.Tasks)
+	if pendingConfirmation {
+		record.Status = DesktopAISessionWaitingConfirmation
+	} else {
+		record.Status = DesktopAISessionRunning
+	}
+	record.UpdatedAt = now
+	_ = s.saveSession(record)
+	shouldContinue := run.Active == 0 && !pendingConfirmation && run.Context.Err() == nil
+	shouldWait := run.Active == 0 && pendingConfirmation
+	if run.Active == 0 {
+		delete(s.confirmedRuns, sessionID)
+	}
+	s.sessionMu.Unlock()
+
+	s.emitAISessionSnapshot(record)
+	if shouldWait || run.Context.Err() != nil {
+		run.Cancel()
+		s.finishAIRequest(sessionID, run.RequestID)
+		return
+	}
+	if !shouldContinue {
+		return
+	}
+
+	defer run.Cancel()
+	defer s.finishAIRequest(sessionID, run.RequestID)
 	config, err := s.loadConfig()
 	if err != nil {
-		return DesktopAICreateSessionResponse{}, err
+		s.emitAISessionEvent(DesktopAISessionEvent{SessionID: sessionID, Type: "error", Error: err.Error()})
+		_, _ = s.failDesktopAITurn(record, err)
+		return
 	}
 	model := strings.TrimSpace(record.Model)
 	if model == "" {
@@ -955,25 +1029,46 @@ func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfi
 			model = models[0]
 		}
 	}
-	if model == "" {
-		return DesktopAICreateSessionResponse{}, errors.New("AI model is required")
+	if model == "" || strings.TrimSpace(config.CustomAPIKey) == "" {
+		err = errors.New("AI model and API key are required")
+		s.emitAISessionEvent(DesktopAISessionEvent{SessionID: sessionID, Type: "error", Error: err.Error()})
+		_, _ = s.failDesktopAITurn(record, err)
+		return
 	}
-	if strings.TrimSpace(config.CustomAPIKey) == "" {
-		return DesktopAICreateSessionResponse{}, errors.New("AI API key is required")
-	}
-
 	record.Model = model
-	record.Status = DesktopAISessionRunning
-	record.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	if decision == "confirm" {
-		return s.completeDesktopAITurnWithContext(confirmedTurnContext, record, config, "", model)
+	if _, err = s.completeDesktopAITurnWithContext(run.Context, record, config, "", model); err != nil {
+		s.emitAISessionEvent(DesktopAISessionEvent{SessionID: sessionID, Type: "error", Error: err.Error()})
 	}
-	return s.completeDesktopAITurn(ctx, record, config, "", model)
+}
+
+func (s *DesktopAIService) finishDesktopConfirmedRunLocked(sessionID string, run *desktopAIConfirmedToolRun) {
+	if run.Active > 0 {
+		run.Active--
+	}
+	if run.Active != 0 {
+		return
+	}
+	delete(s.confirmedRuns, sessionID)
+	run.Cancel()
+	s.finishAIRequest(sessionID, run.RequestID)
+}
+
+func (s *DesktopAIService) cancelDesktopConfirmedRun(sessionID string) {
+	s.sessionMu.Lock()
+	run := s.confirmedRuns[sessionID]
+	delete(s.confirmedRuns, sessionID)
+	s.sessionMu.Unlock()
+	if run == nil {
+		return
+	}
+	run.Cancel()
+	s.finishAIRequest(sessionID, run.RequestID)
 }
 
 func (s *DesktopAIService) CancelSession(id string) (map[string]bool, error) {
 	id = strings.TrimSpace(id)
 	cancelled := s.cancelAIRequest(id)
+	s.cancelDesktopConfirmedRun(id)
 	record, err := s.loadSession(id)
 	if err != nil {
 		return nil, err
@@ -1198,6 +1293,7 @@ func (s *DesktopAIService) DeleteSession(id string) error {
 		return errors.New("AI session id is required")
 	}
 	s.cancelAIRequest(id)
+	s.cancelDesktopConfirmedRun(id)
 	database, err := s.database()
 	if err != nil {
 		return err
@@ -1213,6 +1309,7 @@ func (s *DesktopAIService) CloseSession(id string) error {
 	}
 
 	s.cancelAIRequest(id)
+	s.cancelDesktopConfirmedRun(id)
 	record, err := s.loadSession(id)
 	if err != nil {
 		return err
@@ -1442,10 +1539,9 @@ func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAICon
 		Model:    model,
 		Limits:   aiprovider.DefaultLimits(),
 	}, aiprovider.TurnRequest{
-		Model:           model,
-		Messages:        desktopAIProviderMessages(record, contextText),
-		Tools:           desktopAIProviderToolSpecs(desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)),
-		MaxOutputTokens: aiprovider.DefaultLimits().MaxOutputTokens,
+		Model:    model,
+		Messages: desktopAIProviderMessages(record, contextText),
+		Tools:    desktopAIProviderToolSpecs(desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)),
 	}, func(event aiprovider.Event) error {
 		if onEvent != nil {
 			return onEvent(event)

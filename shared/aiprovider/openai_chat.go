@@ -16,10 +16,9 @@ import (
 func streamOpenAIChat(ctx context.Context, config Config, req TurnRequest, onEvent func(Event) error) (TurnResult, error) {
 	client := newOpenAIClient(config)
 	params := openai.ChatCompletionNewParams{
-		Model:               shared.ChatModel(req.Model),
-		Messages:            openAIChatMessages(req.Messages),
-		MaxCompletionTokens: param.NewOpt(req.MaxOutputTokens),
-		ParallelToolCalls:   param.NewOpt(true),
+		Model:             shared.ChatModel(req.Model),
+		Messages:          openAIChatMessages(req.Messages),
+		ParallelToolCalls: param.NewOpt(true),
 		StreamOptions: openai.ChatCompletionStreamOptionsParam{
 			IncludeUsage: param.NewOpt(true),
 		},

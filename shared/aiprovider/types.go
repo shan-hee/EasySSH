@@ -16,26 +16,14 @@ const (
 )
 
 type Limits struct {
-	RequestTimeout         time.Duration
-	TurnTimeout            time.Duration
-	MaxOutputTokens        int64
-	MaxTurnTokens          int64
-	MaxEstimatedCostMicros int64
-	MaxToolRounds          int
-	MaxToolCalls           int
-	MaxRepeatedToolCalls   int
+	RequestTimeout time.Duration
+	TurnTimeout    time.Duration
 }
 
 func DefaultLimits() Limits {
 	return Limits{
-		RequestTimeout:         2 * time.Minute,
-		TurnTimeout:            10 * time.Minute,
-		MaxOutputTokens:        16_384,
-		MaxTurnTokens:          256_000,
-		MaxEstimatedCostMicros: 20_000_000,
-		MaxToolRounds:          8,
-		MaxToolCalls:           24,
-		MaxRepeatedToolCalls:   2,
+		RequestTimeout: 2 * time.Minute,
+		TurnTimeout:    10 * time.Minute,
 	}
 }
 
@@ -46,24 +34,6 @@ func NormalizeLimits(limits Limits) Limits {
 	}
 	if limits.TurnTimeout <= 0 {
 		limits.TurnTimeout = defaults.TurnTimeout
-	}
-	if limits.MaxOutputTokens <= 0 {
-		limits.MaxOutputTokens = defaults.MaxOutputTokens
-	}
-	if limits.MaxTurnTokens <= 0 {
-		limits.MaxTurnTokens = defaults.MaxTurnTokens
-	}
-	if limits.MaxEstimatedCostMicros <= 0 {
-		limits.MaxEstimatedCostMicros = defaults.MaxEstimatedCostMicros
-	}
-	if limits.MaxToolRounds <= 0 {
-		limits.MaxToolRounds = defaults.MaxToolRounds
-	}
-	if limits.MaxToolCalls <= 0 {
-		limits.MaxToolCalls = defaults.MaxToolCalls
-	}
-	if limits.MaxRepeatedToolCalls <= 0 {
-		limits.MaxRepeatedToolCalls = defaults.MaxRepeatedToolCalls
 	}
 	return limits
 }
@@ -151,17 +121,6 @@ type ToolCall struct {
 	Arguments json.RawMessage `json:"arguments"`
 }
 
-func (c ToolCall) Fingerprint() string {
-	arguments := strings.TrimSpace(string(c.Arguments))
-	var decoded any
-	if json.Unmarshal(c.Arguments, &decoded) == nil {
-		if canonical, err := json.Marshal(decoded); err == nil {
-			arguments = string(canonical)
-		}
-	}
-	return strings.TrimSpace(c.Name) + "\x00" + arguments
-}
-
 type ToolSpec struct {
 	Name        string                 `json:"name"`
 	DisplayName string                 `json:"display_name,omitempty"`
@@ -185,19 +144,6 @@ type Usage struct {
 	CacheWriteTokens int64 `json:"cache_write_tokens,omitempty"`
 	ReasoningTokens  int64 `json:"reasoning_tokens,omitempty"`
 	TotalTokens      int64 `json:"total_tokens"`
-}
-
-func (u *Usage) Add(other Usage) {
-	u.InputTokens += other.InputTokens
-	u.OutputTokens += other.OutputTokens
-	u.CachedTokens += other.CachedTokens
-	u.CacheWriteTokens += other.CacheWriteTokens
-	u.ReasoningTokens += other.ReasoningTokens
-	if other.TotalTokens > 0 {
-		u.TotalTokens += other.TotalTokens
-	} else {
-		u.TotalTokens += other.InputTokens + other.OutputTokens
-	}
 }
 
 func EstimateCostMicros(usage Usage, pricing Pricing) int64 {
@@ -249,10 +195,9 @@ type Event struct {
 }
 
 type TurnRequest struct {
-	Messages        []Message
-	Model           string
-	Tools           []ToolSpec
-	MaxOutputTokens int64
+	Messages []Message
+	Model    string
+	Tools    []ToolSpec
 }
 
 type TurnResult struct {

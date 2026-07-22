@@ -79,9 +79,6 @@ func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest
 	provider := aiconfig.NormalizeProvider(config.Provider)
 	config.Provider = provider
 	config.Limits = NormalizeLimits(config.Limits)
-	if req.MaxOutputTokens <= 0 || req.MaxOutputTokens > config.Limits.MaxOutputTokens {
-		req.MaxOutputTokens = config.Limits.MaxOutputTokens
-	}
 
 	requestCtx, cancel := context.WithTimeout(ctx, config.Limits.RequestTimeout)
 	defer cancel()

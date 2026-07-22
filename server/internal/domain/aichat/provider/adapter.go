@@ -21,19 +21,8 @@ func DefaultLimits() Limits { return aiprovider.DefaultLimits() }
 
 func NormalizeLimits(limits Limits) Limits { return aiprovider.NormalizeLimits(limits) }
 
-func EstimateCostMicros(usage Usage, pricing aiprovider.Pricing) int64 {
-	return aiprovider.EstimateCostMicros(usage, pricing)
-}
-
 func ValidateAttachments(attachments []Attachment) error {
 	return aiprovider.ValidateAttachments(attachments)
-}
-
-func ToolCallFingerprint(toolCall registry.ToolCall) string {
-	return (aiprovider.ToolCall{
-		Name:      toolCall.Name,
-		Arguments: json.RawMessage(toolCall.Arguments),
-	}).Fingerprint()
 }
 
 const (
@@ -59,10 +48,9 @@ type Factory struct {
 }
 
 type TurnRequest struct {
-	Messages        []Message
-	Model           string
-	Tools           []registry.ToolSpec
-	MaxOutputTokens int64
+	Messages []Message
+	Model    string
+	Tools    []registry.ToolSpec
 }
 
 type TurnResult struct {
@@ -87,10 +75,9 @@ func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest
 
 func toSharedTurnRequest(req TurnRequest) aiprovider.TurnRequest {
 	return aiprovider.TurnRequest{
-		Messages:        toSharedMessages(req.Messages),
-		Model:           req.Model,
-		Tools:           toSharedToolSpecs(req.Tools),
-		MaxOutputTokens: req.MaxOutputTokens,
+		Messages: toSharedMessages(req.Messages),
+		Model:    req.Model,
+		Tools:    toSharedToolSpecs(req.Tools),
 	}
 }
 

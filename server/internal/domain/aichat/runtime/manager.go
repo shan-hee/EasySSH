@@ -74,10 +74,14 @@ type session struct {
 
 	subscribers map[string]chan Event
 
-	processing   bool
-	currentRun   context.CancelFunc
-	currentRunID string
-	closed       bool
+	processing     bool
+	currentRun     context.CancelFunc
+	currentRunID   string
+	toolRunCtx     context.Context
+	toolRunCancel  context.CancelFunc
+	toolRunID      string
+	activeToolRuns int
+	closed         bool
 }
 
 type taskState struct {
@@ -296,6 +300,7 @@ func (m *Manager) DeleteSession(ctx context.Context, userID uuid.UUID, sessionID
 	m.mu.Lock()
 	if s, ok := m.sessions[sessionID]; ok && s.userID == userID {
 		cancel := s.currentRun
+		toolCancel := s.toolRunCancel
 		subs := cloneSubscribersLocked(s)
 		delete(m.sessions, sessionID)
 		s.subscribers = make(map[string]chan Event)
@@ -303,10 +308,17 @@ func (m *Manager) DeleteSession(ctx context.Context, userID uuid.UUID, sessionID
 		s.processing = false
 		s.currentRun = nil
 		s.currentRunID = ""
+		s.toolRunCtx = nil
+		s.toolRunCancel = nil
+		s.toolRunID = ""
+		s.activeToolRuns = 0
 		m.mu.Unlock()
 
 		if cancel != nil {
 			cancel()
+		}
+		if toolCancel != nil {
+			toolCancel()
 		}
 		for _, ch := range subs {
 			close(ch)
@@ -676,8 +688,15 @@ func (m *Manager) ConfirmTasks(ctx context.Context, userID uuid.UUID, sessionID 
 		decision Decision
 		status   string
 	}, 0, len(inputs))
-	runCtx, cancelRun := context.WithCancel(context.Background())
-	runID := uuid.NewString()
+	if s.toolRunCtx == nil {
+		s.toolRunCtx, s.toolRunCancel = context.WithTimeout(
+			context.Background(),
+			provider.DefaultLimits().TurnTimeout,
+		)
+		s.toolRunID = uuid.NewString()
+	}
+	runCtx := s.toolRunCtx
+	runID := s.toolRunID
 	for _, input := range inputs {
 		task := s.tasks[input.TaskID]
 		confirmationStatus := string(task.view.Status)
@@ -699,11 +718,14 @@ func (m *Manager) ConfirmTasks(ctx context.Context, userID uuid.UUID, sessionID 
 			decision: input.Decision,
 			status:   confirmationStatus,
 		})
+		s.activeToolRuns++
 	}
-	s.status = SessionStatusRunning
+	if s.hasPendingConfirmation() {
+		s.status = SessionStatusWaitingConfirmation
+	} else {
+		s.status = SessionStatusRunning
+	}
 	s.processing = true
-	s.currentRun = cancelRun
-	s.currentRunID = runID
 	s.updatedAt = now
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
@@ -726,7 +748,9 @@ func (m *Manager) ConfirmTasks(ctx context.Context, userID uuid.UUID, sessionID 
 		})
 	}
 
-	go m.resolvePendingTasks(runCtx, cancelRun, runID, sessionID, inputs)
+	for _, input := range inputs {
+		go m.resolvePendingTask(runCtx, runID, sessionID, input)
+	}
 	return nil
 }
 
@@ -742,8 +766,13 @@ func (m *Manager) CancelSession(ctx context.Context, userID uuid.UUID, sessionID
 		return ErrSessionClosed
 	}
 	cancel := s.currentRun
+	toolCancel := s.toolRunCancel
 	s.currentRun = nil
 	s.currentRunID = ""
+	s.toolRunCtx = nil
+	s.toolRunCancel = nil
+	s.toolRunID = ""
+	s.activeToolRuns = 0
 	s.processing = false
 	s.pendingContext = ""
 	s.status = SessionStatusIdle
@@ -756,6 +785,9 @@ func (m *Manager) CancelSession(ctx context.Context, userID uuid.UUID, sessionID
 
 	if cancel != nil {
 		cancel()
+	}
+	if toolCancel != nil {
+		toolCancel()
 	}
 	m.saveSnapshot(ctx, snapshot)
 	for _, task := range cancelledTasks {
@@ -791,8 +823,13 @@ func (m *Manager) closeSession(s *session) {
 	s.status = SessionStatusClosed
 	s.updatedAt = time.Now()
 	cancel := s.currentRun
+	toolCancel := s.toolRunCancel
 	s.currentRun = nil
 	s.currentRunID = ""
+	s.toolRunCtx = nil
+	s.toolRunCancel = nil
+	s.toolRunID = ""
+	s.activeToolRuns = 0
 	s.processing = false
 	s.pendingContext = ""
 	cancelledTasks := m.cancelActiveTasksLocked(s, s.updatedAt)
@@ -805,6 +842,9 @@ func (m *Manager) closeSession(s *session) {
 
 	if cancel != nil {
 		cancel()
+	}
+	if toolCancel != nil {
+		toolCancel()
 	}
 
 	m.saveSnapshot(context.Background(), snapshot)
@@ -872,11 +912,7 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		return
 	}
 
-	var turnUsage provider.Usage
-	var estimatedCostMicros int64
-	totalToolCalls := 0
-	toolCallCounts := make(map[string]int)
-	for round := 0; round < config.Limits.MaxToolRounds; round++ {
+	for {
 		tools := m.visibleToolsForSession(s)
 		systemPrompt := buildToolSystemPrompt(s.permissionMode, tools, s.scope)
 
@@ -900,10 +936,9 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 
 		assistantMessageID := uuid.NewString()
 		result, err := m.factory.StreamTurn(turnCtx, config, provider.TurnRequest{
-			Model:           model,
-			Messages:        reqMessages,
-			Tools:           tools,
-			MaxOutputTokens: config.Limits.MaxOutputTokens,
+			Model:    model,
+			Messages: reqMessages,
+			Tools:    tools,
 		}, func(evt provider.Event) error {
 			switch evt.Type {
 			case provider.EventTextDelta:
@@ -957,31 +992,6 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 			return
 		}
 
-		turnUsage.Add(result.Usage)
-		estimatedCostMicros += result.Metadata.EstimatedCostMicros
-		if turnUsage.TotalTokens > config.Limits.MaxTurnTokens {
-			m.failSessionTurn(s, "token_budget_exceeded", "AI 对话累计 Token 超出限制", runID)
-			return
-		}
-		if estimatedCostMicros > config.Limits.MaxEstimatedCostMicros {
-			m.failSessionTurn(s, "cost_budget_exceeded", "AI 对话预估费用超出限制", runID)
-			return
-		}
-
-		totalToolCalls += len(result.ToolCalls)
-		if totalToolCalls > config.Limits.MaxToolCalls {
-			m.failSessionTurn(s, "tool_call_limit_exceeded", "AI 工具调用次数超出限制", runID)
-			return
-		}
-		for _, call := range result.ToolCalls {
-			fingerprint := provider.ToolCallFingerprint(call)
-			toolCallCounts[fingerprint]++
-			if toolCallCounts[fingerprint] > config.Limits.MaxRepeatedToolCalls {
-				m.failSessionTurn(s, "repeated_tool_call", "AI 重复调用相同工具和参数，已停止执行", runID)
-				return
-			}
-		}
-
 		m.finalizeAssistantTurn(s, assistantMessageID, result)
 		if len(result.ToolCalls) == 0 {
 			m.completeTurn(s, false, runID)
@@ -1026,32 +1036,18 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 			return
 		}
 	}
-	m.failSessionTurn(s, "tool_round_limit_exceeded", "AI 工具调用轮次超出限制", runID)
 }
 
-func (m *Manager) resolvePendingTasks(ctx context.Context, cancel context.CancelFunc, runID string, sessionID string, inputs []ConfirmTaskInput) {
-	defer cancel()
-	turnCtx, turnCancel := context.WithTimeout(ctx, provider.DefaultLimits().TurnTimeout)
-	defer turnCancel()
-
+func (m *Manager) resolvePendingTask(ctx context.Context, runID string, sessionID string, input ConfirmTaskInput) {
 	s, ok := m.getSessionByID(sessionID)
 	if !ok {
 		return
 	}
 
-	for _, input := range inputs {
-		if turnCtx.Err() != nil {
-			return
-		}
-		if input.Decision == DecisionConfirm {
-			m.executeTask(turnCtx, s, input.TaskID)
-		} else {
-			m.rejectTask(s, input.TaskID)
-		}
-	}
-	if errors.Is(turnCtx.Err(), context.DeadlineExceeded) {
-		m.failSessionTurn(s, "turn_timeout", "AI 对话总执行时间超出限制", runID)
-		return
+	if ctx.Err() == nil && input.Decision == DecisionConfirm {
+		m.executeTask(ctx, s, input.TaskID)
+	} else if input.Decision == DecisionReject {
+		m.rejectTask(s, input.TaskID)
 	}
 
 	m.mu.Lock()
@@ -1059,34 +1055,72 @@ func (m *Manager) resolvePendingTasks(ctx context.Context, cancel context.Cancel
 		m.mu.Unlock()
 		return
 	}
-	if turnCtx.Err() != nil {
+	if s.toolRunID != runID {
 		m.mu.Unlock()
 		return
 	}
-	if s.currentRunID != runID {
+	if s.activeToolRuns > 0 {
+		s.activeToolRuns--
+	}
+	if s.activeToolRuns > 0 {
 		m.mu.Unlock()
 		return
 	}
+
+	cancel := s.toolRunCancel
+	s.toolRunCtx = nil
+	s.toolRunCancel = nil
+	s.toolRunID = ""
+	s.activeToolRuns = 0
+
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		s.status = SessionStatusIdle
+		s.processing = false
+		s.updatedAt = time.Now()
+		view := m.snapshotSessionLocked(s)
+		snapshot := m.snapshotForPersistenceLocked(s)
+		m.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		m.saveSnapshot(context.Background(), snapshot)
+		m.emitEvent(s, Event{
+			ID: uuid.NewString(), Type: EventError, SessionID: s.id, CreatedAt: time.Now(),
+			Error: &ErrorView{Code: "turn_timeout", Message: "AI 对话总执行时间超出限制"},
+		})
+		m.emitEvent(s, Event{
+			ID: uuid.NewString(), Type: EventSessionCompleted, SessionID: s.id, CreatedAt: time.Now(), Session: &view,
+		})
+		return
+	}
+
 	if s.hasPendingConfirmation() {
 		s.status = SessionStatusWaitingConfirmation
 		s.processing = false
-		s.currentRun = nil
-		s.currentRunID = ""
 		s.updatedAt = time.Now()
+		view := m.snapshotSessionLocked(s)
 		snapshot := m.snapshotForPersistenceLocked(s)
 		m.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
 		m.saveSnapshot(context.Background(), snapshot)
+		m.emitEvent(s, Event{
+			ID: uuid.NewString(), Type: EventSessionCompleted, SessionID: s.id, CreatedAt: time.Now(), Session: &view,
+		})
 		return
 	}
 
 	s.status = SessionStatusRunning
 	s.processing = true
+	s.currentRun = cancel
+	s.currentRunID = runID
 	s.updatedAt = time.Now()
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
 
 	m.saveSnapshot(context.Background(), snapshot)
-	m.runSessionWithContext(sessionID, turnCtx, cancel, runID)
+	m.runSessionWithContext(sessionID, ctx, cancel, runID)
 }
 
 func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
@@ -1572,11 +1606,19 @@ func (m *Manager) cleanupLoop() {
 				s.status = SessionStatusClosed
 				s.processing = false
 				cancel := s.currentRun
+				toolCancel := s.toolRunCancel
 				s.currentRun = nil
 				s.currentRunID = ""
+				s.toolRunCtx = nil
+				s.toolRunCancel = nil
+				s.toolRunID = ""
+				s.activeToolRuns = 0
 				s.updatedAt = now
 				if cancel != nil {
 					cancel()
+				}
+				if toolCancel != nil {
+					toolCancel()
 				}
 				expired = append(expired, expiredSession{
 					session: s,

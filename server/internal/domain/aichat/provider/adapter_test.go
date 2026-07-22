@@ -117,9 +117,20 @@ func TestFactoryNormalizesAnthropicTextAndToolUse(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/v1/messages", r.URL.Path)
-		w.Header().Set("Content-Type", "text/event-stream")
+		switch r.URL.Path {
+		case "/v1/models/claude-test":
+			require.Equal(t, http.MethodGet, r.Method)
+			w.Header().Set("Content-Type", "application/json")
+			_, err := w.Write([]byte(`{"id":"claude-test","capabilities":{},"created_at":"2025-01-01T00:00:00Z","display_name":"Claude Test","max_input_tokens":200000,"max_tokens":8192,"type":"model"}`))
+			require.NoError(t, err)
+			return
+		case "/v1/messages":
+			require.Equal(t, http.MethodPost, r.Method)
+		default:
+			t.Fatalf("unexpected Anthropic API path: %s", r.URL.Path)
+		}
 
+		w.Header().Set("Content-Type", "text/event-stream")
 		writeSSEEvent(t, w, "message_start", `{"type":"message_start","message":{"id":"msg-1","type":"message","role":"assistant","content":[],"model":"claude-test","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1,"output_tokens":1}}}`)
 		writeSSEEvent(t, w, "content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`)
 		writeSSEEvent(t, w, "content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"正在"}}`)

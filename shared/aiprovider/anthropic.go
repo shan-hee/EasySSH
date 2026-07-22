@@ -13,13 +13,17 @@ import (
 
 func streamAnthropic(ctx context.Context, config Config, req TurnRequest, onEvent func(Event) error) (TurnResult, error) {
 	client := newAnthropicClient(config)
+	modelInfo, err := client.Models.Get(ctx, req.Model, anthropic.ModelGetParams{})
+	if err != nil {
+		return TurnResult{}, wrapAnthropicError(err)
+	}
 	messages, system, err := anthropicMessages(req.Messages)
 	if err != nil {
 		return TurnResult{}, err
 	}
 	params := anthropic.MessageNewParams{
 		Model:     anthropic.Model(req.Model),
-		MaxTokens: req.MaxOutputTokens,
+		MaxTokens: modelInfo.MaxTokens,
 		Messages:  messages,
 		System:    system,
 	}

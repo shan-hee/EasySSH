@@ -17,7 +17,6 @@ func streamOpenAIResponses(ctx context.Context, config Config, req TurnRequest, 
 	params := responses.ResponseNewParams{
 		Model:             shared.ResponsesModel(req.Model),
 		Input:             responses.ResponseNewParamsInputUnion{OfInputItemList: openAIResponseItems(req.Messages)},
-		MaxOutputTokens:   param.NewOpt(req.MaxOutputTokens),
 		ParallelToolCalls: param.NewOpt(true),
 		Store:             param.NewOpt(false),
 	}
