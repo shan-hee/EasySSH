@@ -10,7 +10,7 @@
   <Identity
     Name="io.easyssh.desktop"
     Publisher="CN=EasySSH"
-    Version="1.0.32.0"
+    Version="1.0.33.0"
     ProcessorArchitecture="x86" />
 
   <Properties>
