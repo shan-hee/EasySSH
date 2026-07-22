@@ -96,7 +96,7 @@ function disableTransitionsTemporarily() {
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
+  defaultTheme = "light",
   enableSystem = true,
   disableTransitionOnChange = false,
 }: ThemeProviderProps) {

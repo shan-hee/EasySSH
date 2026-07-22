@@ -9,7 +9,7 @@ import { RuntimeProvider } from "@/shell/runtime/runtime-provider"
 
 export function App() {
   return (
-    <ThemeProvider defaultTheme="system" enableSystem disableTransitionOnChange>
+    <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange>
       <QueryProvider>
         <RuntimeProvider>
           <SystemConfigProvider>

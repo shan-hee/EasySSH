@@ -12,7 +12,7 @@ import { QueryProvider } from "@/providers/query-provider"
 export function DesktopProviders({ children }: { children: ReactNode }) {
   return (
     <BrowserRouter>
-      <ThemeProvider defaultTheme="system" enableSystem disableTransitionOnChange>
+      <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange>
         <QueryProvider>
           <StaticSystemConfigProvider
             config={{
