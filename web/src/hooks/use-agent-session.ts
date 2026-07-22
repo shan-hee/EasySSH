@@ -14,6 +14,7 @@ import {
   type CreateSessionResponse,
   type PermissionMode,
   type SessionView,
+  type TaskView,
   type ToolView,
 } from "@/lib/api/ai-agent"
 import { authenticatedFetch, getApiUrl } from "@/lib/api-client"
@@ -77,6 +78,10 @@ function createLocalId(prefix: string) {
 
 function toErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error)
+}
+
+function compareTaskExecutionOrder(left: TaskView, right: TaskView) {
+  return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
 }
 
 function getSessionChatApi(sessionId?: string | null) {
@@ -635,14 +640,10 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   const confirmTask = useCallback(async (taskId: string, decision: "confirm" | "reject") => {
     const activeSessionId = sessionRef.current?.id
     if (!activeSessionId || !taskId) {
-      return
+      return false
     }
 
     setError(null)
-    const task = sessionRef.current?.tasks.find((item) => item.id === taskId)
-    if (task && task.status !== "waiting_confirm") {
-      return
-    }
 
     try {
       if (adapter?.confirmTask) {
@@ -653,11 +654,11 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           decision,
         })
         applySessionResponse(response)
-        return
+        return true
       }
       if (adapter) {
         pushLocalError("当前 AI 适配器暂不支持工具确认")
-        return
+        return false
       }
 
       setTransport("ai_sdk_ui")
@@ -670,10 +671,12 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           },
         },
       })
+      return true
     } catch (confirmError) {
       const message = toErrorMessage(confirmError)
       pushLocalError(message)
       void refreshSessionSnapshot(activeSessionId)
+      return false
     }
   }, [adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot])
 
@@ -724,9 +727,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   }, [adapter, chat])
 
   const tasks = useMemo(
-    () => [...(session?.tasks || [])].sort(
-      (left, right) => new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
-    ),
+    () => [...(session?.tasks || [])].sort(compareTaskExecutionOrder),
     [session?.tasks]
   )
   const pendingConfirmationTasks = tasks.filter((task) => task.status === "waiting_confirm")

@@ -308,7 +308,7 @@ export const CodeBlockContainer = ({
 }: HTMLAttributes<HTMLDivElement> & { language: string }) => (
   <div
     className={cn(
-      "group relative w-full overflow-hidden rounded-md border bg-background text-foreground",
+      "group relative min-w-0 max-w-full w-full overflow-hidden rounded-md border bg-background text-foreground",
       className
     )}
     data-language={language}
@@ -415,7 +415,7 @@ export const CodeBlockContent = ({
   const tokenized = asyncState?.key === asyncKey ? asyncState.tokens : syncTokens;
 
   return (
-    <div className="relative overflow-auto">
+    <div className="relative min-w-0 max-w-full overflow-auto">
       <CodeBlockBody showLineNumbers={showLineNumbers} tokenized={tokenized} />
     </div>
   );

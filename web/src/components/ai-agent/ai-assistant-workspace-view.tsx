@@ -1,8 +1,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent, type SyntheticEvent } from "react"
-import { ArrowLeft, Check, History, Loader2, Pencil, Plus, RefreshCw, Search, Send, Server as ServerIcon, Settings2, Shield, Square, SquarePen, Trash2, X } from "lucide-react"
+import { ArrowLeft, Check, History, Loader2, Pencil, Plus, RefreshCw, Search, Send, Server as ServerIcon, Settings2, Square, SquarePen, Trash2, X } from "lucide-react"
 
-import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
+import { AgentAIElementsTimeline, getAgentToolActivity } from "@/components/ai-agent/agent-ai-elements-timeline"
+import { AgentApprovalQueue } from "@/components/ai-agent/agent-approval-queue"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
 import {
   ComposerReferenceChips,
@@ -17,7 +18,6 @@ import {
 import { PageHeader } from "@/components/page-header"
 import { toast } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import {
   Command,
@@ -48,6 +48,7 @@ import {
 import {
   Conversation,
   ConversationContent,
+  ConversationInitialScroll,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation"
 import { AgentNoticeCard } from "@/components/ai-agent/agent-notice"
@@ -247,6 +248,7 @@ export function AIAssistantWorkspaceView({
   const {
     session,
     sessionId,
+    chatStatus,
     uiMessages,
     pendingConfirmationTasks,
     error,
@@ -374,12 +376,13 @@ export function AIAssistantWorkspaceView({
 
   const hasTimeline = uiMessages.length > 0
   const isSessionRunning = session?.status === "running"
-  const runningTasks = agentSession.tasks.filter((task) => task.status === "running" || task.status === "queued")
+  const isChatRequestActive = chatStatus === "submitted" || chatStatus === "streaming"
+  const isAssistantActive = isSessionRunning || isChatRequestActive
+  const toolActivity = getAgentToolActivity(uiMessages)
   const shouldShowLoadingIndicator =
-    isSessionRunning &&
-    runningTasks.length === 0 &&
-    pendingConfirmationTasks.length === 0
-  const assistantLoadingState = shouldShowLoadingIndicator ? "waiting" : false
+    isAssistantActive &&
+    !toolActivity.hasActiveTools
+  const assistantLoadingState = shouldShowLoadingIndicator ? "thinking" : false
   const isCurrentSessionBlank = Boolean(
     session &&
     session.status !== "closed" &&
@@ -457,6 +460,9 @@ export function AIAssistantWorkspaceView({
     if (sessionCreatingRef.current) {
       blockReasons.push("session_creating")
     }
+    if (isChatRequestActive) {
+      blockReasons.push(`chat_${chatStatus}`)
+    }
     if (session && session.status !== "idle" && session.status !== "closed") {
       blockReasons.push(`session_${session.status}`)
     }
@@ -469,11 +475,11 @@ export function AIAssistantWorkspaceView({
           toast.info(t("aiNotConfigured"))
         } else if (attachmentsLoading || sessionCreatingRef.current) {
           toast.info(t("loading"))
-        } else if (session && session.status !== "idle" && session.status !== "closed") {
+        } else if (isChatRequestActive || (session && session.status !== "idle" && session.status !== "closed")) {
           toast.info(
             pendingConfirmationTasks.length > 0
               ? t("pendingToolsHint", { count: pendingConfirmationTasks.length })
-              : t(session.status === "waiting_confirmation" ? "statusWaitingConfirmation" : "statusRunning")
+              : t(session?.status === "waiting_confirmation" ? "statusWaitingConfirmation" : "statusRunning")
           )
         }
       }
@@ -1197,20 +1203,23 @@ export function AIAssistantWorkspaceView({
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="min-h-0 flex-1 overflow-hidden">
               {hasTimeline ? (
-                <Conversation className="h-full w-full">
+                <Conversation className="h-full w-full [&>div]:scrollbar-custom">
                   <ConversationContent
-                    className="h-full w-full overflow-y-auto px-4 py-6 scrollbar-custom md:px-6"
+                    className="min-h-full w-full px-4 py-6 md:px-6"
                   >
                     <AgentAIElementsTimeline
                       messages={uiMessages}
                       tText={t}
-                      onConfirmTask={confirmTask}
                       onUpdateUserMessage={handleUpdateUserMessage}
                       onDeleteUserMessage={handleDeleteUserMessage}
                       assistantLoadingState={assistantLoadingState}
                       className="mx-auto w-full max-w-5xl"
                     />
                   </ConversationContent>
+                  <ConversationInitialScroll
+                    enabled={Boolean(sessionId) && uiMessages.length > 0}
+                    scrollKey={sessionId ? `${sessionId}:${uiMessages[0]?.id ?? ""}` : null}
+                  />
                   <ConversationScrollButton />
                 </Conversation>
               ) : (
@@ -1242,6 +1251,14 @@ export function AIAssistantWorkspaceView({
                   onToggleServer={() => undefined}
                   selectedServers={[]}
                   t={t}
+                />
+
+                <AgentApprovalQueue
+                  tasks={agentSession.tasks}
+                  messages={uiMessages}
+                  tText={t}
+                  onConfirmTask={confirmTask}
+                  className="mb-2"
                 />
 
                 <PromptInput
@@ -1435,13 +1452,7 @@ export function AIAssistantWorkspaceView({
                     </PromptInputTools>
 
                     <div className="ml-auto flex items-center gap-2">
-                      {ready && isConfigured && pendingConfirmationTasks.length > 0 && (
-                        <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                          <Shield className="size-3" />
-                          {pendingConfirmationTasks.length}
-                        </Badge>
-                      )}
-                      {isSessionRunning ? (
+                      {isAssistantActive ? (
                         <PromptInputSubmit
                           type="button"
                           status="streaming"

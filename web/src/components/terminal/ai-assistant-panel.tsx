@@ -18,7 +18,8 @@ import {
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
+import { AgentAIElementsTimeline, getAgentToolActivity } from "@/components/ai-agent/agent-ai-elements-timeline"
+import { AgentApprovalQueue } from "@/components/ai-agent/agent-approval-queue"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
 import {
   ComposerReferenceChips,
@@ -39,6 +40,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Conversation,
   ConversationContent,
+  ConversationInitialScroll,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation"
 import {
@@ -213,6 +215,7 @@ export function AiAssistantPanel({
     session,
     sessionId,
     transport,
+    chatStatus,
     uiMessages,
     tasks,
     error,
@@ -341,19 +344,20 @@ export function AiAssistantPanel({
         )
   const activeModel = resolvedModel === "auto" ? undefined : resolvedModel
   const messageCount = uiMessages.length
-  const runningTasks = tasks.filter((task) => task.status === "running" || task.status === "queued")
-  const pendingConfirmationTasks = tasks.filter((task) => task.status === "waiting_confirm")
   const isSessionRunning = session?.status === "running"
+  const isChatRequestActive = chatStatus === "submitted" || chatStatus === "streaming"
+  const isAssistantActive = isSessionRunning || isChatRequestActive
+  const toolActivity = getAgentToolActivity(uiMessages)
   const shouldShowLoadingIndicator =
-    isSessionRunning &&
-    runningTasks.length === 0 &&
-    pendingConfirmationTasks.length === 0
-  const assistantLoadingState = shouldShowLoadingIndicator ? "waiting" : false
+    isAssistantActive &&
+    !toolActivity.hasActiveTools
+  const assistantLoadingState = shouldShowLoadingIndicator ? "thinking" : false
   const canSend =
     (!!input.trim() || attachments.some((attachment) => attachment.source === "image")) &&
     isConfigured &&
     !isConfigLoading &&
     !sessionCreating && !attachmentsLoading &&
+    !isChatRequestActive &&
     (canSendToSession || (!session && transport === "idle") || session?.status === "closed")
   const createSessionDisabled = !isConfigured || isConfigLoading || sessionCreating
   const isCurrentSessionBlank = Boolean(
@@ -830,7 +834,7 @@ export function AiAssistantPanel({
       return
     }
 
-    if (session && session.status !== "closed" && !canSendToSession) {
+    if (isChatRequestActive || (session && session.status !== "closed" && !canSendToSession)) {
       return
     }
 
@@ -882,6 +886,7 @@ export function AiAssistantPanel({
     input,
     isConfigLoading,
     isConfigured,
+    isChatRequestActive,
     prependSessionListItem,
     permissionMode,
     sendMessage,
@@ -1194,15 +1199,14 @@ export function AiAssistantPanel({
           onPointerCancel={handleResizeEnd}
         />
 
-        <Conversation className="z-[1] min-h-0 w-full flex-1">
+        <Conversation className="z-[1] min-h-0 w-full flex-1 [&>div]:scrollbar-custom">
           <ConversationContent
             aria-label={tAI("panelAriaHistoryLabel")}
-            className="h-full min-h-full w-full overflow-y-auto px-4 py-4 scrollbar-custom"
+            className="min-h-full w-full px-4 py-4"
           >
             <AgentAIElementsTimeline
               messages={uiMessages}
               tText={tAI}
-              onConfirmTask={confirmTask}
               onUpdateUserMessage={handleUpdateUserMessage}
               onDeleteUserMessage={handleDeleteUserMessage}
               assistantLoadingState={assistantLoadingState}
@@ -1211,6 +1215,10 @@ export function AiAssistantPanel({
               className="w-full"
             />
           </ConversationContent>
+          <ConversationInitialScroll
+            enabled={isOpenSettled && Boolean(sessionId) && uiMessages.length > 0}
+            scrollKey={sessionId ? `${sessionId}:${uiMessages[0]?.id ?? ""}` : null}
+          />
           <ConversationScrollButton className="terminal-ai-glass-control bottom-3 size-8" />
         </Conversation>
 
@@ -1241,6 +1249,15 @@ export function AiAssistantPanel({
             onToggleServer={() => undefined}
             selectedServers={[]}
             t={tAI}
+          />
+
+          <AgentApprovalQueue
+            tasks={tasks}
+            messages={uiMessages}
+            tText={tAI}
+            onConfirmTask={confirmTask}
+            compact
+            className="mb-2"
           />
 
           <PromptInput
@@ -1369,7 +1386,7 @@ export function AiAssistantPanel({
                   {tAI("sidebarMessageCount", { count: messageCount })}
                 </span>
 
-                {isSessionRunning ? (
+                {isAssistantActive ? (
                   <Button
                     type="button"
                     variant="ghost"

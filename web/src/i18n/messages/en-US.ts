@@ -2425,7 +2425,6 @@ const messages = {
     toolKindOutput: "Output",
     confirmAction: "Confirm",
     rejectAction: "Reject",
-    approvalKeyboardHint: "Enter to confirm / Esc to reject",
     timelineTitle: "Event Timeline",
     timelineEmpty: "The session is ready. Send the first message to begin.",
     assistantReplying: "Generating response",

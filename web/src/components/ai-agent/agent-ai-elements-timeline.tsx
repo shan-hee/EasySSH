@@ -1,5 +1,12 @@
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react"
 import {
   Check,
   ChevronDown,
@@ -23,6 +30,7 @@ import {
   type ToolUIPart,
   type UIMessage,
 } from "ai"
+import { useStickToBottomContext } from "use-stick-to-bottom"
 
 import { AgentEmptyState, AgentNoticeCard } from "@/components/ai-agent/agent-notice"
 import {
@@ -37,14 +45,7 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning"
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-} from "@/components/ai-elements/tool"
-import { CodeBlock } from "@/components/ai-elements/code-block"
-import { Button } from "@/components/ui/button"
+import { ToolCodeBlock, ToolInput } from "@/components/ai-elements/tool"
 import {
   Collapsible,
   CollapsibleContent,
@@ -55,7 +56,6 @@ import { cn } from "@/lib/utils"
 
 type AgentToolPart = ToolUIPart | DynamicToolUIPart
 type AgentMessagePart = UIMessage["parts"][number]
-type ToolDecision = "confirm" | "reject"
 type RenderableMessagePart = Exclude<AgentMessagePart, AgentToolPart>
 type MessageRenderSegment =
   | { type: "part"; part: RenderableMessagePart; index: number }
@@ -63,11 +63,14 @@ type MessageRenderSegment =
 
 const MESSAGE_RENDER_BATCH = 50
 const MESSAGE_RENDER_STEP = 50
+const TOOL_COLLAPSIBLE_CONTENT_STYLE = {
+  contain: "layout paint style",
+  willChange: "height, opacity",
+} satisfies CSSProperties
 
 interface AgentAIElementsTimelineProps {
   messages: UIMessage[]
   tText: TimelineTranslate
-  onConfirmTask?: (taskId: string, decision: ToolDecision) => void | Promise<void>
   onUpdateUserMessage?: (messageId: string, content: string) => boolean | Promise<boolean>
   onDeleteUserMessage?: (messageId: string) => boolean | Promise<boolean>
   assistantLoadingState?: AssistantLoadingState
@@ -160,8 +163,27 @@ function toolError(part: AgentToolPart) {
   return part.state === "output-error" ? part.errorText : undefined
 }
 
-function shouldToolBeOpen(state: AgentToolPart["state"]) {
+function isToolPending(state: AgentToolPart["state"]) {
   return state !== "output-available" && state !== "output-error" && state !== "output-denied"
+}
+
+export function getAgentToolActivity(messages: UIMessage[]) {
+  let hasToolParts = false
+  let hasActiveTools = false
+
+  for (const message of messages) {
+    for (const part of message.parts) {
+      if (!isToolUIPart(part)) {
+        continue
+      }
+      hasToolParts = true
+      if (isToolPending(part.state)) {
+        hasActiveTools = true
+      }
+    }
+  }
+
+  return { hasActiveTools, hasToolParts }
 }
 
 function translateWithFallback(
@@ -185,16 +207,6 @@ function getStringValue(input: unknown, key: string) {
   return typeof value === "string" ? value : ""
 }
 
-function truncateMiddle(value: string, maxLength = 96) {
-  if (value.length <= maxLength) {
-    return value
-  }
-
-  const headLength = Math.ceil((maxLength - 3) * 0.62)
-  const tailLength = maxLength - 3 - headLength
-  return `${value.slice(0, headLength)}...${value.slice(-tailLength)}`
-}
-
 function getToolDisplayName(part: AgentToolPart) {
   const metadata = asRecord(part.toolMetadata)
   const displayName = metadata.displayName
@@ -211,31 +223,6 @@ function getToolInput(part: AgentToolPart) {
   return "input" in part ? part.input : {}
 }
 
-function getToolDescription(part: AgentToolPart) {
-  const input = getToolInput(part)
-  const command = getStringValue(input, "command")
-  if (command) {
-    return `$ ${truncateMiddle(command)}`
-  }
-
-  const path = getStringValue(input, "path")
-  if (path) {
-    return truncateMiddle(path)
-  }
-
-  const summary = asRecord(part.toolMetadata).summary
-  if (typeof summary === "string" && summary.trim() && summary !== getToolName(part)) {
-    return truncateMiddle(summary)
-  }
-
-  const serverId = getStringValue(input, "server_id")
-  if (serverId) {
-    return `server:${truncateMiddle(serverId, 52)}`
-  }
-
-  return ""
-}
-
 function stringifyOutput(output: unknown) {
   if (output === undefined || output === null) {
     return ""
@@ -247,14 +234,6 @@ function stringifyOutput(output: unknown) {
     return JSON.stringify(output, null, 2)
   } catch {
     return String(output)
-  }
-}
-
-function tryParseJson(value: string) {
-  try {
-    return JSON.parse(value) as unknown
-  } catch {
-    return null
   }
 }
 
@@ -365,7 +344,7 @@ function ToolSemanticOutput({
   const tone = getToolTone(toolName)
   const ToneIcon = tone.icon
   const content = stripKnownToolPrefixes(toolName, rawText, input)
-  const parsedJson = isJsonLike(toolName, content) ? tryParseJson(content) : null
+  const isJsonOutput = isJsonLike(toolName, content)
   const title = errorText
     ? translateWithFallback(tText, "eventErrorTitle", undefined, "Error")
     : translateWithFallback(tText, "taskResult", undefined, "Result")
@@ -384,8 +363,11 @@ function ToolSemanticOutput({
           errorText ? "border-destructive/25 bg-destructive/10 text-destructive" : tone.className
         )}
       >
-        {parsedJson ? (
-          <CodeBlock code={JSON.stringify(parsedJson, null, 2)} language="json" />
+        {isJsonOutput ? (
+          <ToolCodeBlock
+            code={content}
+            language="json"
+          />
         ) : (
           <pre className={cn(
             "max-h-96 overflow-auto whitespace-pre-wrap break-words p-3 font-mono leading-5",
@@ -399,94 +381,129 @@ function ToolSemanticOutput({
   )
 }
 
-function ToolHeaderForPart({ part }: { part: AgentToolPart }) {
-  const description = getToolDescription(part)
-  if (part.type === "dynamic-tool") {
+function ToolStateIndicator({
+  state,
+  tText,
+}: {
+  state: AgentToolPart["state"]
+  tText: TimelineTranslate
+}) {
+  if (state === "output-available") {
+    const label = tText("taskStatusSucceeded")
     return (
-      <ToolHeader
-        description={description}
-        state={part.state}
-        title={getToolDisplayName(part)}
-        toolName={part.toolName}
-        type={part.type}
-      />
+      <span className="shrink-0 text-emerald-600" title={label} aria-label={label}>
+        <Check className="size-3.5" />
+      </span>
+    )
+  }
+  if (state === "output-error") {
+    const label = tText("taskStatusFailed")
+    return (
+      <span className="shrink-0 text-destructive" title={label} aria-label={label}>
+        <X className="size-3.5" />
+      </span>
+    )
+  }
+  if (state === "output-denied") {
+    const label = tText("taskStatusCancelled")
+    return (
+      <span className="shrink-0 text-amber-600" title={label} aria-label={label}>
+        <X className="size-3.5" />
+      </span>
+    )
+  }
+  if (state === "approval-requested") {
+    const label = tText("taskStatusWaitingConfirm")
+    return (
+      <span className="shrink-0 text-amber-600" title={label} aria-label={label}>
+        <ShieldAlert className="size-3.5" />
+      </span>
+    )
+  }
+  if (state === "approval-responded") {
+    const label = tText("confirmationResolved")
+    return (
+      <span className="shrink-0 text-blue-600" title={label} aria-label={label}>
+        <Check className="size-3.5" />
+      </span>
     )
   }
 
-  return <ToolHeader description={description} state={part.state} title={getToolDisplayName(part)} type={part.type} />
+  const label = state === "input-streaming" ? tText("taskStatusQueued") : tText("taskStatusRunning")
+  return (
+    <span className="shrink-0 text-muted-foreground" title={label} aria-label={label}>
+      <Loader2 className="size-3.5 animate-spin" />
+    </span>
+  )
+}
+
+function ToolCollapsibleContent({
+  children,
+  contentClassName,
+}: {
+  children: ReactNode
+  contentClassName?: string
+}) {
+  return (
+    <CollapsibleContent
+      className="min-w-0 max-w-full w-full overflow-hidden"
+      style={TOOL_COLLAPSIBLE_CONTENT_STYLE}
+    >
+      <div className={contentClassName}>{children}</div>
+    </CollapsibleContent>
+  )
 }
 
 function ToolPartView({
   part,
   tText,
-  onConfirmTask,
   compact,
+  grouped = false,
+  open,
+  onOpenChange,
 }: {
   part: AgentToolPart
   tText: TimelineTranslate
-  onConfirmTask?: (taskId: string, decision: ToolDecision) => void | Promise<void>
   compact?: boolean
+  grouped?: boolean
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
-  const summary = part.toolMetadata && typeof part.toolMetadata.summary === "string"
-    ? part.toolMetadata.summary
-    : ""
-  const defaultOpen = shouldToolBeOpen(part.state)
+  const { stopScroll } = useStickToBottomContext()
   const input = getToolInput(part)
-  const approvalId = "approval" in part ? part.approval?.id : undefined
   const toolName = getToolName(part)
-  const dangerous = asRecord(part.toolMetadata).dangerous === true
-  const [pendingDecision, setPendingDecision] = useState<ToolDecision | null>(null)
-  const approvalRef = useRef<HTMLDivElement>(null)
-  const confirmButtonRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (part.state !== "approval-requested" || !approvalId) {
-      return
-    }
-
-    approvalRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
-    const timer = window.setTimeout(() => confirmButtonRef.current?.focus(), 120)
-    return () => window.clearTimeout(timer)
-  }, [approvalId, part.state])
-
-  const submitDecision = (decision: ToolDecision) => {
-    if (!approvalId || !onConfirmTask || pendingDecision) {
-      return
-    }
-
-    setPendingDecision(decision)
-    try {
-      void Promise.resolve(onConfirmTask(approvalId, decision)).finally(() => {
-        setPendingDecision(null)
-      })
-    } catch {
-      setPendingDecision(null)
-    }
-  }
-
-  const handleApprovalKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (part.state !== "approval-requested") {
-      return
-    }
-    if (event.key === "Enter") {
-      event.preventDefault()
-      submitDecision("confirm")
-    } else if (event.key === "Escape") {
-      event.preventDefault()
-      submitDecision("reject")
-    }
-  }
+  const tone = getToolTone(toolName)
+  const ToolIcon = tone.icon
 
   return (
-    <Tool key={part.state} defaultOpen={defaultOpen} className={cn("terminal-ai-glass-card mb-0", compact && "text-xs")}>
-      <ToolHeaderForPart part={part} />
-      <ToolContent className={compact ? "space-y-3 p-3" : undefined}>
-        {summary && (
-          <div className="rounded-md border border-border/60 bg-muted/25 px-3 py-2 text-xs leading-5 text-foreground/85">
-            {summary}
+    <Collapsible
+      defaultOpen={false}
+      open={open}
+      onOpenChange={(nextOpen) => {
+        stopScroll()
+        onOpenChange?.(nextOpen)
+      }}
+      className={cn(
+        "group/tool not-prose min-w-0 max-w-full w-full",
+        grouped && "pl-1",
+        compact && "text-xs"
+      )}
+    >
+      <CollapsibleTrigger className="flex min-w-0 w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left transition-[background-color,color,box-shadow] duration-150 hover:bg-muted/75 hover:ring-1 hover:ring-inset hover:ring-border/70 focus-visible:bg-muted/75 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring/60 dark:hover:bg-muted/60">
+        <ToolIcon className={cn("size-3.5 shrink-0", tone.iconClassName)} />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <div className="truncate font-medium text-sm leading-5">
+              {getToolDisplayName(part)}
+            </div>
+            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/tool:rotate-180" />
+            <ToolStateIndicator state={part.state} tText={tText} />
           </div>
-        )}
-
+        </div>
+      </CollapsibleTrigger>
+      <ToolCollapsibleContent
+        contentClassName={cn("space-y-3 px-3 pb-3 pt-1", compact && "pb-2.5")}
+      >
         <ToolInput input={input ?? {}} />
         <ToolSemanticOutput
           compact={compact}
@@ -504,81 +521,18 @@ function ToolPartView({
               : tText("rejectAction")}
           </AgentNoticeCard>
         )}
-
-        {part.state === "approval-requested" && approvalId && onConfirmTask && (
-          <div
-            ref={approvalRef}
-            className="space-y-3 rounded-md border border-yellow-500/30 bg-yellow-500/5 p-3"
-            onKeyDown={handleApprovalKeyDown}
-            tabIndex={-1}
-          >
-            <div className="flex items-start gap-2 text-xs leading-5 text-foreground/85">
-              <ShieldAlert className="mt-0.5 size-4 shrink-0 text-yellow-600" />
-              <div className="min-w-0">
-                <div className="font-medium">
-                  {translateWithFallback(tText, "confirmationRequested", undefined, "Confirmation requested")}
-                  {dangerous && (
-                    <span className="ml-2 rounded-full border border-yellow-500/30 px-2 py-0.5 text-[11px] text-yellow-700 dark:text-yellow-300">
-                      {tText("dangerousAction")}
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1 text-muted-foreground">
-                  {translateWithFallback(
-                    tText,
-                    "approvalKeyboardHint",
-                    undefined,
-                    `Enter ${tText("confirmAction")} / Esc ${tText("rejectAction")}`
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                ref={confirmButtonRef}
-                size="sm"
-                className="h-8 gap-1.5"
-                disabled={Boolean(pendingDecision)}
-                onClick={() => submitDecision("confirm")}
-              >
-                {pendingDecision === "confirm" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Check className="size-3.5" />
-                )}
-                {tText("confirmAction")}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                disabled={Boolean(pendingDecision)}
-                onClick={() => submitDecision("reject")}
-              >
-                {pendingDecision === "reject" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <X className="size-3.5" />
-                )}
-                {tText("rejectAction")}
-              </Button>
-            </div>
-          </div>
-        )}
-      </ToolContent>
-    </Tool>
+      </ToolCollapsibleContent>
+    </Collapsible>
   )
 }
 
 function MessagePartView({
   part,
   tText,
-  onConfirmTask,
   compact,
 }: {
   part: AgentMessagePart
   tText: TimelineTranslate
-  onConfirmTask?: (taskId: string, decision: ToolDecision) => void | Promise<void>
   compact?: boolean
 }) {
   if (isTextUIPart(part)) {
@@ -610,7 +564,6 @@ function MessagePartView({
       <ToolPartView
         part={part}
         tText={tText}
-        onConfirmTask={onConfirmTask}
         compact={compact}
       />
     )
@@ -714,39 +667,64 @@ function createMessageRenderSegments(message: UIMessage): MessageRenderSegment[]
 
 function ToolGroupView({
   compact,
-  onConfirmTask,
   parts,
   tText,
 }: {
   compact?: boolean
-  onConfirmTask?: (taskId: string, decision: ToolDecision) => void | Promise<void>
   parts: AgentToolPart[]
   tText: TimelineTranslate
 }) {
-  const defaultOpen = parts.some((part) => shouldToolBeOpen(part.state))
+  const { stopScroll } = useStickToBottomContext()
+  const [groupOpen, setGroupOpen] = useState(false)
+  const [openToolIds, setOpenToolIds] = useState<Set<string>>(() => new Set())
   const completedCount = parts.filter((part) => part.state === "output-available").length
-  const pendingCount = parts.filter((part) => shouldToolBeOpen(part.state)).length
-  const firstDescription = parts.map(getToolDescription).find(Boolean)
+  const pendingCount = parts.filter((part) => isToolPending(part.state)).length
+
+  const setToolOpen = (toolCallId: string, open: boolean) => {
+    setOpenToolIds((current) => {
+      const next = new Set(current)
+      if (open) {
+        next.add(toolCallId)
+      } else {
+        next.delete(toolCallId)
+      }
+      return next
+    })
+  }
 
   if (parts.length === 1) {
+    const part = parts[0]
     return (
       <ToolPartView
-        part={parts[0]}
+        part={part}
         tText={tText}
-        onConfirmTask={onConfirmTask}
         compact={compact}
+        open={openToolIds.has(part.toolCallId)}
+        onOpenChange={(open) => {
+          setToolOpen(part.toolCallId, open)
+          // Keep the user's state when a later tool turns this into a group.
+          setGroupOpen(open)
+        }}
       />
     )
   }
 
   return (
-    <Collapsible defaultOpen={defaultOpen} className="terminal-ai-glass-card group rounded-md border border-border/70 bg-muted/15">
-      <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
+    <Collapsible
+      open={groupOpen}
+      onOpenChange={(nextOpen) => {
+        stopScroll()
+        setGroupOpen(nextOpen)
+      }}
+      className="group/tool-group not-prose min-w-0 max-w-full w-full"
+    >
+      <CollapsibleTrigger className="flex min-w-0 w-full items-center gap-3 rounded-sm px-2.5 py-2 text-left transition-[background-color,color,box-shadow] duration-150 hover:bg-muted/75 hover:ring-1 hover:ring-inset hover:ring-border/70 focus-visible:bg-muted/75 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring/60 dark:hover:bg-muted/60">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-medium">
               {tText("toolCallGroupTitle", { count: parts.length })}
             </span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]/tool-group:rotate-180" />
             {pendingCount > 0 ? (
               <span className="inline-flex items-center gap-1 rounded-full border border-yellow-500/30 px-2 py-0.5 text-[11px] text-yellow-700 dark:text-yellow-300">
                 <Loader2 className="size-3 animate-spin" />
@@ -758,25 +736,21 @@ function ToolGroupView({
               </span>
             )}
           </div>
-          {firstDescription && (
-            <div className="mt-0.5 truncate font-mono text-muted-foreground text-xs">
-              {firstDescription}
-            </div>
-          )}
         </div>
-        <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
       </CollapsibleTrigger>
-      <CollapsibleContent className={cn("flex flex-col gap-1.5 border-t border-border/60 p-2", compact && "gap-2 p-1.5")}>
+      <ToolCollapsibleContent contentClassName="space-y-0.5 pl-2 pt-0.5">
         {parts.map((part) => (
           <ToolPartView
-            key={`${part.toolCallId}:${part.state}`}
+            key={part.toolCallId}
             part={part}
             tText={tText}
-            onConfirmTask={onConfirmTask}
             compact={compact}
+            grouped
+            open={openToolIds.has(part.toolCallId)}
+            onOpenChange={(open) => setToolOpen(part.toolCallId, open)}
           />
         ))}
-      </CollapsibleContent>
+      </ToolCollapsibleContent>
     </Collapsible>
   )
 }
@@ -784,20 +758,19 @@ function ToolGroupView({
 function ChatMessage({
   message,
   tText,
-  onConfirmTask,
   onUpdateUserMessage,
   onDeleteUserMessage,
   compact,
 }: {
   message: UIMessage
   tText: TimelineTranslate
-  onConfirmTask?: (taskId: string, decision: ToolDecision) => void | Promise<void>
   onUpdateUserMessage?: (messageId: string, content: string) => boolean | Promise<boolean>
   onDeleteUserMessage?: (messageId: string) => boolean | Promise<boolean>
   compact?: boolean
 }) {
   const messageText = getMessageText(message)
   const isUserMessage = message.role === "user"
+  const hasToolParts = message.parts.some(isToolUIPart)
   const [isEditing, setIsEditing] = useState(false)
   const [editDraft, setEditDraft] = useState(messageText)
   const [isSaving, setIsSaving] = useState(false)
@@ -852,10 +825,6 @@ function ChatMessage({
     if (!nextContent) {
       return
     }
-    if (nextContent === messageText.trim()) {
-      setIsEditing(false)
-      return
-    }
 
     setIsSaving(true)
     try {
@@ -907,6 +876,7 @@ function ChatMessage({
       <MessageContent
         className={cn(
           message.role === "user" && "whitespace-pre-wrap break-words leading-6",
+          hasToolParts && "w-full",
           compact && "text-xs"
         )}
       >
@@ -927,10 +897,9 @@ function ChatMessage({
           createMessageRenderSegments(message).map((segment) => (
             segment.type === "tool-group" ? (
               <ToolGroupView
-                key={`${message.id}:tools:${segment.startIndex}:${segment.parts.map((part) => `${part.toolCallId}:${part.state}`).join("|")}`}
+                key={`${message.id}:tools:${segment.parts[0]?.toolCallId ?? segment.startIndex}`}
                 parts={segment.parts}
                 tText={tText}
-                onConfirmTask={onConfirmTask}
                 compact={compact}
               />
             ) : (
@@ -938,7 +907,6 @@ function ChatMessage({
                 key={getPartKey(message, segment.part, segment.index)}
                 part={segment.part}
                 tText={tText}
-                onConfirmTask={onConfirmTask}
                 compact={compact}
               />
             )
@@ -1012,7 +980,6 @@ function ChatMessage({
 export function AgentAIElementsTimeline({
   messages,
   tText,
-  onConfirmTask,
   onUpdateUserMessage,
   onDeleteUserMessage,
   assistantLoadingState = false,
@@ -1065,7 +1032,6 @@ export function AgentAIElementsTimeline({
           key={message.id}
           message={message}
           tText={tText}
-          onConfirmTask={onConfirmTask}
           onUpdateUserMessage={onUpdateUserMessage}
           onDeleteUserMessage={onDeleteUserMessage}
           compact={compact}

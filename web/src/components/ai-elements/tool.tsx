@@ -15,10 +15,24 @@ import {
   WrenchIcon,
   XCircleIcon,
 } from "lucide-react";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { isValidElement } from "react";
 
 import { CodeBlock } from "./code-block";
+
+const TOOL_CODE_BLOCK_STYLE = {
+  containIntrinsicSize: "none",
+  contentVisibility: "visible",
+} satisfies CSSProperties;
+
+export type ToolCodeBlockProps = ComponentProps<typeof CodeBlock>;
+
+export const ToolCodeBlock = ({ style, ...props }: ToolCodeBlockProps) => (
+  <CodeBlock
+    style={style ? { ...TOOL_CODE_BLOCK_STYLE, ...style } : TOOL_CODE_BLOCK_STYLE}
+    {...props}
+  />
+);
 
 export type ToolProps = ComponentProps<typeof Collapsible>;
 
@@ -127,13 +141,15 @@ export type ToolInputProps = ComponentProps<"div"> & {
 };
 
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
-  <div className={cn("space-y-2 overflow-hidden", className)} {...props}>
+  <div className={cn("space-y-2", className)} {...props}>
     <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
       Parameters
     </h4>
-    <div className="rounded-md bg-muted/50">
-      <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
-    </div>
+    <ToolCodeBlock
+      code={JSON.stringify(input, null, 2)}
+      language="json"
+      className="border-border/80"
+    />
   </div>
 );
 
@@ -156,10 +172,18 @@ export const ToolOutput = ({
 
   if (typeof output === "object" && !isValidElement(output)) {
     Output = (
-      <CodeBlock code={JSON.stringify(output, null, 2)} language="json" />
+      <ToolCodeBlock
+        code={JSON.stringify(output, null, 2)}
+        language="json"
+      />
     );
   } else if (typeof output === "string") {
-    Output = <CodeBlock code={output} language="json" />;
+    Output = (
+      <ToolCodeBlock
+        code={output}
+        language="json"
+      />
+    );
   }
 
   return (

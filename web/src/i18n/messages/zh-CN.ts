@@ -2260,7 +2260,6 @@ const messages = {
     toolKindOutput: "输出",
     confirmAction: "确认执行",
     rejectAction: "拒绝执行",
-    approvalKeyboardHint: "Enter 确认执行 / Esc 拒绝执行",
     timelineTitle: "事件时间线",
     timelineEmpty: "会话已创建，可以直接发送第一条消息。",
     assistantReplying: "回复生成中",

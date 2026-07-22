@@ -4,15 +4,18 @@ import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import { ArrowDownIcon, DownloadIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { useCallback } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
 export const Conversation = ({ className, ...props }: ConversationProps) => (
   <StickToBottom
-    className={cn("relative flex-1 overflow-y-hidden", className)}
-    initial="smooth"
+    className={cn(
+      "relative min-w-0 flex-1 overflow-y-hidden [&>div]:min-w-0 [&>div]:[scrollbar-gutter:stable]",
+      className
+    )}
+    initial="instant"
     resize="smooth"
     role="log"
     {...props}
@@ -97,6 +100,42 @@ export const ConversationScrollButton = ({
       </Button>
     )
   );
+};
+
+export type ConversationInitialScrollProps = {
+  enabled?: boolean;
+  scrollKey?: string | number | null;
+};
+
+export const ConversationInitialScroll = ({
+  enabled = true,
+  scrollKey,
+}: ConversationInitialScrollProps) => {
+  const { scrollToBottom } = useStickToBottomContext();
+  const lastScrollKeyRef = useRef<string | number | null>(null);
+
+  useLayoutEffect(() => {
+    if (!enabled || scrollKey === null || scrollKey === undefined) {
+      lastScrollKeyRef.current = null;
+      return;
+    }
+    if (lastScrollKeyRef.current === scrollKey) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      lastScrollKeyRef.current = scrollKey;
+      void scrollToBottom({
+        animation: "instant",
+        duration: 180,
+        ignoreEscapes: true,
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [enabled, scrollKey, scrollToBottom]);
+
+  return null;
 };
 
 const getMessageText = (message: UIMessage): string =>
