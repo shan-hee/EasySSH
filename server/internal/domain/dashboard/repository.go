@@ -9,10 +9,10 @@ import (
 )
 
 type Repository interface {
-	GetOperationTrendsSince(ctx context.Context, userID *uuid.UUID, since time.Time) ([]operationTrendRow, error)
-	GetRecentActivity(ctx context.Context, userID *uuid.UUID, limit int) ([]activityLogRow, error)
+	CountCommandsSince(ctx context.Context, userID *uuid.UUID, since time.Time) (int64, error)
 	CountActiveSessions(ctx context.Context, userID *uuid.UUID) (int64, error)
 	GetServerDistribution(ctx context.Context, userID *uuid.UUID) ([]RegionCount, error)
+	GetRecentServers(ctx context.Context, userID *uuid.UUID, limit int) ([]RecentServer, error)
 	CountServers(ctx context.Context, userID *uuid.UUID) (total int64, online int64, err error)
 }
 
@@ -24,38 +24,20 @@ func NewRepository(db *gorm.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) GetOperationTrendsSince(ctx context.Context, userID *uuid.UUID, since time.Time) ([]operationTrendRow, error) {
+func (r *repository) CountCommandsSince(ctx context.Context, userID *uuid.UUID, since time.Time) (int64, error) {
 	query := r.db.WithContext(ctx).
 		Table("operation_records").
-		Select("type, action, started_at, created_at").
-		Where("deleted_at IS NULL AND (started_at >= ? OR (started_at IS NULL AND created_at >= ?))", since, since)
+		Where("deleted_at IS NULL").
+		Where("type IN ?", []string{"execution", "audit"}).
+		Where("started_at >= ? OR (started_at IS NULL AND created_at >= ?)", since, since)
 
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
 	}
 
-	var rows []operationTrendRow
-	err := query.Order("created_at ASC").Scan(&rows).Error
-	return rows, err
-}
-
-func (r *repository) GetRecentActivity(ctx context.Context, userID *uuid.UUID, limit int) ([]activityLogRow, error) {
-	if limit <= 0 {
-		limit = 8
-	}
-
-	query := r.db.WithContext(ctx).
-		Table("operation_records").
-		Select("id, action, username, COALESCE(NULLIF(resource, ''), NULLIF(title, ''), server_name, source) AS resource, status, ip, created_at").
-		Where("deleted_at IS NULL")
-
-	if userID != nil {
-		query = query.Where("user_id = ?", *userID)
-	}
-
-	var rows []activityLogRow
-	err := query.Order("created_at DESC").Limit(limit).Scan(&rows).Error
-	return rows, err
+	var count int64
+	err := query.Count(&count).Error
+	return count, err
 }
 
 func (r *repository) CountActiveSessions(ctx context.Context, userID *uuid.UUID) (int64, error) {
@@ -108,6 +90,26 @@ func (r *repository) GetServerDistribution(ctx context.Context, userID *uuid.UUI
 		})
 	}
 	return distribution, nil
+}
+
+func (r *repository) GetRecentServers(ctx context.Context, userID *uuid.UUID, limit int) ([]RecentServer, error) {
+	query := r.db.WithContext(ctx).
+		Table("servers").
+		Select("id, name, host, port, username, server_group, status, country, city, last_connected").
+		Where("deleted_at IS NULL")
+
+	if userID != nil {
+		query = query.Where("user_id = ?", *userID)
+	}
+
+	var servers []RecentServer
+	err := query.
+		Order("CASE WHEN last_connected IS NULL THEN 1 ELSE 0 END").
+		Order("last_connected DESC").
+		Order("updated_at DESC").
+		Limit(limit).
+		Scan(&servers).Error
+	return servers, err
 }
 
 func (r *repository) CountServers(ctx context.Context, userID *uuid.UUID) (int64, int64, error) {

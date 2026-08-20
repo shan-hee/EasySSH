@@ -1,294 +1,309 @@
-
-import { useEffect, useState, useMemo, useCallback, useRef } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { PageHeader } from "@/components/page-header"
-import { DashboardPageContent } from "@/components/dashboard-page-content"
+import { useEffect, useMemo, useState } from "react"
 import {
-  type DashboardOverview,
-} from "@/lib/api/dashboard"
-import { monitoringApi, type ServerResourceSummary } from "@/lib/api"
-import {
+  Activity,
+  ArrowUpRight,
+  Clock3,
+  FolderOpen,
+  Radio,
   Server,
-  Cpu,
-  MemoryStick,
   TerminalSquare,
-  RefreshCw,
 } from "lucide-react"
-import { useAuthReady } from "@/hooks/use-auth-ready"
+import { useQuery } from "@tanstack/react-query"
+import { motion, useReducedMotion } from "motion/react"
 import { useTranslation } from "react-i18next"
-import { cn } from "@/lib/utils"
+import { useNavigate } from "react-router-dom"
+
+import { useClientAuth } from "@/components/client-auth-provider"
+import { PageHeader } from "@/components/page-header"
+import { useAuthReady } from "@/hooks/use-auth-ready"
+import type { OverviewRecentServer } from "@/lib/api/dashboard"
 import { dashboardOverviewQueryOptions } from "@/lib/dashboard-query-options"
-import {
-  createLatestByKeyBatcher,
-  mergeLatestByKey,
-  type LatestByKeyBatcher,
-} from "@/lib/realtime-batcher"
 
-import { WelcomeHeader } from "./components/welcome-header"
-import { StatCard } from "./components/stat-card"
-import { ConnectionTrendChart } from "./components/connection-trend-chart"
-import { ServerDistribution } from "./components/server-distribution"
-import {
-  ServerOverviewTable,
-  type ServerOverviewRow,
-} from "./components/server-overview-table"
-import { RecentActivity } from "./components/recent-activity"
-
-// ---- 数据转换工具 ----
-
-function formatBytes(bytes: number): number {
-  return Number((bytes / (1024 * 1024 * 1024)).toFixed(1))
-}
-
-function formatUptime(seconds: number): string {
-  const days = Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds % 86400) / 3600)
-  if (days > 0) return `${days}d ${hours}h`
-  return `${hours}h`
-}
-
-// 把 SSE 流的服务器资源转为表格行
-function transformServer(s: ServerResourceSummary): ServerOverviewRow {
-  let status: ServerOverviewRow["status"] = s.status as ServerOverviewRow["status"]
-  const cpuUsage = Math.round(s.cpu?.usage_percent ?? 0)
-  const memUsage = Math.round(s.memory?.used_percent ?? 0)
-  const diskUsage = Math.round(s.disk?.used_percent ?? 0)
-  if (s.status === "online" && (cpuUsage >= 90 || memUsage >= 90 || diskUsage >= 90)) {
-    status = "warning"
-  }
-
-  let location: string | undefined
-  if (s.location) {
-    const { city, region, country } = s.location
-    if (city && region) location = `${city}, ${region}`
-    else location = city || region || country || undefined
-  }
-
-  return {
-    id: s.server_id,
-    name: s.name || `${s.host}:${s.port}`,
-    location,
-    status,
-    cpu: cpuUsage,
-    memory: {
-      used: formatBytes(s.memory?.used ?? 0),
-      total: formatBytes(s.memory?.total ?? 0),
-      usage: memUsage,
-    },
-    disk: {
-      used: formatBytes(s.disk?.used ?? 0),
-      total: formatBytes(s.disk?.total ?? 0),
-      usage: diskUsage,
-    },
-    uptime: s.uptime > 0 ? formatUptime(s.uptime) : "—",
-  }
-}
+import { DashboardGlobe } from "./components/dashboard-globe"
+import "./overview-page.css"
 
 const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000
 
+type GreetingKey =
+  | "greetingMorning"
+  | "greetingAfternoon"
+  | "greetingEvening"
+  | "greetingNight"
+
+function getGreetingKey(hour: number): GreetingKey {
+  if (hour >= 5 && hour < 12) return "greetingMorning"
+  if (hour >= 12 && hour < 18) return "greetingAfternoon"
+  if (hour >= 18 && hour < 23) return "greetingEvening"
+  return "greetingNight"
+}
+
+function useCurrentTime() {
+  const [now, setNow] = useState(() => new Date())
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  return now
+}
+
+function LocalTime({ now }: { now: Date }) {
+  const { i18n } = useTranslation()
+
+  const display = useMemo(
+    () => new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(now),
+    [i18n.language, i18n.resolvedLanguage, now],
+  )
+
+  return <time dateTime={now.toISOString()}>{display}</time>
+}
+
+function getServerDisplayName(server: OverviewRecentServer) {
+  return server.name || `${server.username}@${server.host}`
+}
+
+function getServerLocation(server: OverviewRecentServer) {
+  const location = [server.city, server.country].filter(Boolean).join(", ")
+  return location || server.group || `${server.host}:${server.port}`
+}
+
 export default function DashboardPage() {
+  const navigate = useNavigate()
+  const { user } = useClientAuth()
   const { ready } = useAuthReady()
   const { t } = useTranslation("dashboard")
+  const reduceMotion = useReducedMotion()
+  const now = useCurrentTime()
+  const greetingKey = getGreetingKey(now.getHours())
+  const username = user?.username ?? "EasySSH"
 
   const overviewQuery = useQuery({
     ...dashboardOverviewQueryOptions(),
     enabled: ready,
     refetchInterval: AUTO_REFRESH_INTERVAL,
   })
-  const overview: DashboardOverview | undefined = overviewQuery.data
-  const loadingOverview = overviewQuery.isPending
+  const overview = overviewQuery.data
+  const recentServers = overview?.recent_servers ?? []
+  const dataUnavailable = overviewQuery.isError
+  const dataLoading = overviewQuery.isPending
 
-  // SSE 流式服务器资源
-  const [servers, setServers] = useState<ServerOverviewRow[]>([])
-  const [loadingServers, setLoadingServers] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-
-  const cancelStreamRef = useRef<(() => void) | null>(null)
-  const batcherRef = useRef<LatestByKeyBatcher<ServerOverviewRow> | null>(null)
-  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const stopServersStream = useCallback(() => {
-    cancelStreamRef.current?.()
-    cancelStreamRef.current = null
-    batcherRef.current?.dispose()
-    batcherRef.current = null
-  }, [])
-
-  // SSE 流式加载服务器资源
-  const loadServersStream = useCallback(() => {
-    stopServersStream()
-    setLoadingServers(true)
-    const snapshot = new Map<string, ServerOverviewRow>()
-
-    const batcher = createLatestByKeyBatcher<ServerOverviewRow, string>({
-      keyOf: (server) => server.id,
-      onFlush: (updates) => {
-        setServers((current) => mergeLatestByKey(current, updates, (server) => server.id))
-        setLoadingServers(false)
-      },
-      delayMs: 80,
-    })
-    batcherRef.current = batcher
-
-    const cancel = monitoringApi.streamServersResources(
-      (serverData) => {
-        const server = transformServer(serverData)
-        snapshot.set(server.id, server)
-        batcher.enqueue(server)
-      },
-      () => {
-        if (batcherRef.current !== batcher) return
-        batcher.flush()
-        batcher.dispose()
-        setServers(Array.from(snapshot.values()))
-        setLoadingServers(false)
-        batcherRef.current = null
-        cancelStreamRef.current = null
-      },
-      (error) => {
-        if (batcherRef.current !== batcher) return
-        console.error("Failed to load server resources:", error)
-        batcher.flush()
-        batcher.dispose()
-        setLoadingServers(false)
-        batcherRef.current = null
-        cancelStreamRef.current = null
+  const reveal = reduceMotion
+    ? undefined
+    : {
+        initial: { opacity: 0, y: 18 },
+        animate: { opacity: 1, y: 0 },
       }
-    )
-    cancelStreamRef.current = cancel
-  }, [stopServersStream])
-
-  const performRefresh = useCallback(() => {
-    setIsRefreshing(true)
-    void overviewQuery.refetch()
-    loadServersStream()
-    if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current)
-    refreshTimeoutRef.current = setTimeout(() => setIsRefreshing(false), 600)
-  }, [loadServersStream, overviewQuery])
-
-  useEffect(() => {
-    if (!ready) return
-    loadServersStream()
-
-    autoRefreshRef.current = setInterval(() => {
-      loadServersStream()
-    }, AUTO_REFRESH_INTERVAL)
-
-    return () => {
-      stopServersStream()
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
-      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current)
-    }
-  }, [ready, loadServersStream, stopServersStream])
-
-  // 在线服务器实时均值（CPU/内存）来自 SSE 流
-  const resourceSummary = useMemo(() => {
-    const online = servers.filter((s) => s.status === "online" || s.status === "warning")
-    const count = online.length
-    if (count === 0) return { avgCpu: 0, avgMemory: 0 }
-    return {
-      avgCpu: Math.round(online.reduce((acc, s) => acc + s.cpu, 0) / count),
-      avgMemory: Math.round(online.reduce((acc, s) => acc + s.memory.usage, 0) / count),
-    }
-  }, [servers])
-
-  // 排序：在线 > 警告 > 离线 > 错误
-  const sortedServers = useMemo(() => {
-    const order: Record<string, number> = { online: 0, warning: 1, offline: 2, error: 3 }
-    return [...servers].sort((a, b) => order[a.status] - order[b.status])
-  }, [servers])
-
-  // 在线服务器数（实时，来自 SSE）
-  const onlineCount = useMemo(
-    () => servers.filter((s) => s.status === "online" || s.status === "warning").length,
-    [servers]
-  )
-
-  const stats = overview?.stats
-  const trend = overview?.connection_trend
 
   return (
     <>
-      <PageHeader
-        title={t("title")}
-        titleActions={
-          <button
-            onClick={performRefresh}
-            disabled={isRefreshing}
-            className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-            aria-label={t("refresh")}
-            title={t("refresh")}
+      <PageHeader title={t("title")} />
+
+      <main className="flex min-h-0 flex-1 px-3 pb-3 sm:px-4 sm:pb-4">
+        <section className="dashboard-orbit relative min-h-[900px] w-full overflow-hidden rounded-[1.35rem] sm:min-h-[820px] lg:rounded-[1.75rem]">
+          <div className="dashboard-orbit-grid" aria-hidden="true" />
+          <div className="dashboard-orbit-vignette" aria-hidden="true" />
+
+          <motion.div
+            {...reveal}
+            transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+            className="relative z-20 flex items-center justify-between gap-4 px-5 pt-5 sm:px-7 sm:pt-7 lg:px-10 lg:pt-8"
           >
-            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-          </button>
-        }
-      />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold tracking-[-0.015em] text-foreground sm:text-base">
+                {t(greetingKey)}, {username} <span aria-hidden="true">👋</span>
+              </p>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {t("subtitle")}
+              </p>
+            </div>
 
-      <DashboardPageContent className="gap-3">
-        {/* 欢迎区 */}
-        <WelcomeHeader />
+            <div className="flex items-center gap-3 text-[0.68rem] font-medium tracking-[0.14em] text-muted-foreground sm:gap-5">
+              <span className="hidden items-center gap-2 sm:flex">
+                <Clock3 className="size-3.5" />
+                <LocalTime now={now} />
+              </span>
+              <span className="h-4 w-px bg-border" aria-hidden="true" />
+              <span
+                className={
+                  dataUnavailable
+                    ? "flex items-center gap-2 text-status-danger"
+                    : dataLoading
+                      ? "flex items-center gap-2 text-status-warning"
+                      : "flex items-center gap-2 text-status-connected"
+                }
+              >
+                <span
+                  className={
+                    dataUnavailable
+                      ? "dashboard-live-dot is-error"
+                      : dataLoading
+                        ? "dashboard-live-dot is-loading"
+                        : "dashboard-live-dot"
+                  }
+                  aria-hidden="true"
+                />
+                {dataUnavailable
+                  ? t("orbitDataUnavailable")
+                  : dataLoading
+                    ? t("orbitDataLoading")
+                    : t("orbitDataLive")}
+              </span>
+            </div>
+          </motion.div>
 
-        {/* 4 个统计卡 */}
-        <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
-            title={t("statsOnlineServers")}
-            value={`${onlineCount} / ${stats?.total_servers ?? 0}`}
-            icon={Server}
-            tone="emerald"
-            spark={stats?.online_servers.spark}
-            loading={loadingOverview && !stats}
-          />
-          <StatCard
-            title={t("statActiveConns")}
-            value={stats?.active_conns.value ?? 0}
-            icon={TerminalSquare}
-            tone="blue"
-            spark={stats?.active_conns.spark}
-            loading={loadingOverview && !stats}
-          />
-          <StatCard
-            title={t("statAvgCpu")}
-            value={`${resourceSummary.avgCpu}%`}
-            icon={Cpu}
-            tone="violet"
-            loading={loadingServers && servers.length === 0}
-          />
-          <StatCard
-            title={t("statAvgMemory")}
-            value={`${resourceSummary.avgMemory}%`}
-            icon={MemoryStick}
-            tone="cyan"
-            loading={loadingServers && servers.length === 0}
-          />
-        </div>
+          <div className="relative z-20 max-w-[46rem] px-5 pt-24 sm:px-7 sm:pt-28 lg:px-10 lg:pt-[clamp(5rem,10vh,8.5rem)]">
+            <motion.div
+              {...reveal}
+              transition={{ duration: 0.75, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-card/55 px-3 py-1.5 text-[0.65rem] font-medium tracking-[0.16em] text-muted-foreground backdrop-blur-md">
+                <Radio className="size-3.5 text-primary" />
+                {t("orbitWorkspace")}
+              </div>
 
-        {/* 趋势图 + 服务器分布 */}
-        <div className="grid shrink-0 items-stretch gap-3 xl:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
-          <div className="min-w-0">
-            <ConnectionTrendChart
-              dates={trend?.dates ?? []}
-              series={trend?.series ?? {}}
-              loading={loadingOverview && !trend}
-            />
+              <h2 className="max-w-[11ch] text-[clamp(2.8rem,6.2vw,6.8rem)] font-medium leading-[0.92] tracking-[-0.065em] text-foreground">
+                {t("orbitHeadline")}
+              </h2>
+              <p className="mt-6 max-w-xl text-sm leading-7 text-muted-foreground sm:text-base sm:leading-8">
+                {t("orbitDescription")}
+              </p>
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={() => navigate("/dashboard/terminal")}
+                  className="dashboard-primary-action group inline-flex h-12 items-center justify-center gap-3 rounded-full px-5 text-sm font-semibold text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  <TerminalSquare className="size-4" />
+                  {t("orbitNewSession")}
+                  <ArrowUpRight className="size-4 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate("/dashboard/terminal?sftpPicker=1")}
+                  className="inline-flex h-12 items-center justify-center gap-3 rounded-full border border-border bg-card/45 px-5 text-sm font-medium text-foreground/76 backdrop-blur-md transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                >
+                  <FolderOpen className="size-4" />
+                  {t("orbitOpenFiles")}
+                </button>
+              </div>
+            </motion.div>
           </div>
-          <ServerDistribution
-            distribution={overview?.distribution ?? []}
-            loading={loadingOverview && !overview}
-          />
-        </div>
 
-        {/* 服务器概览表 + 最近活动 */}
-        <div className="grid min-h-[320px] flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_320px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="min-h-0">
-            <ServerOverviewTable servers={sortedServers} loading={loadingServers} />
-          </div>
-          <RecentActivity
-            items={overview?.recent_activity ?? []}
-            loading={loadingOverview && !overview}
-          />
-        </div>
-      </DashboardPageContent>
+          <motion.div
+            initial={reduceMotion ? undefined : { opacity: 0, scale: 0.94 }}
+            animate={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
+            transition={{ duration: 1.1, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+            className="dashboard-globe-stage"
+          >
+            <div className="dashboard-globe-aura" aria-hidden="true" />
+            <DashboardGlobe distribution={overview?.distribution ?? []} />
+          </motion.div>
+
+          <motion.div
+            {...reveal}
+            transition={{ duration: 0.7, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
+            className="dashboard-node-panel"
+          >
+            <div className="flex items-end justify-between gap-4 border-b border-border pb-4">
+              <div>
+                <p className="text-[0.62rem] font-semibold tracking-[0.2em] text-muted-foreground">
+                  {t("orbitRecentNodes")}
+                </p>
+                <p className="mt-1.5 text-sm text-foreground/70">
+                  {overviewQuery.isPending
+                    ? t("orbitDataLoading")
+                    : recentServers.length > 0
+                      ? t("orbitRecentHint")
+                      : t("noServers")}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-2 divide-y divide-border">
+              {overviewQuery.isPending ? (
+                Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="h-14 animate-pulse bg-muted/35" />
+                ))
+              ) : recentServers.map((server, index) => (
+                <button
+                  key={server.id}
+                  type="button"
+                  onClick={() => navigate(
+                    `/dashboard/terminal?serverId=${encodeURIComponent(server.id)}`,
+                  )}
+                  className="group flex w-full items-center gap-3 py-3 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                >
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted/55 text-[0.62rem] font-semibold text-muted-foreground transition-colors group-hover:border-primary/30 group-hover:text-primary">
+                    0{index + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-foreground/78">
+                      {getServerDisplayName(server)}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[0.64rem] tracking-[0.08em] text-muted-foreground/70">
+                      {getServerLocation(server)}
+                    </span>
+                  </span>
+                  <span
+                    className={
+                      server.status === "online"
+                        ? "text-[0.66rem] text-status-connected"
+                        : "text-[0.66rem] text-muted-foreground"
+                    }
+                  >
+                    {t(server.status === "online" ? "statusOnline" : "statusOffline")}
+                  </span>
+                  <ArrowUpRight className="size-3.5 text-muted-foreground/50 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground/70" />
+                </button>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            {...reveal}
+            transition={{ duration: 0.7, delay: 0.36, ease: [0.22, 1, 0.36, 1] }}
+            className="dashboard-metrics"
+          >
+            <div className="dashboard-metric">
+              <Server className="size-4 text-muted-foreground" />
+              <div>
+                <p className="text-[0.61rem] tracking-[0.14em] text-muted-foreground">{t("orbitNodes")}</p>
+                <p className="mt-1 text-lg font-medium tracking-[-0.03em] text-foreground/78">
+                  {overview
+                    ? `${overview.stats.online_servers} / ${overview.stats.total_servers}`
+                    : "—"}
+                </p>
+              </div>
+            </div>
+            <div className="dashboard-metric">
+              <TerminalSquare className="size-4 text-muted-foreground" />
+              <div>
+                <p className="text-[0.61rem] tracking-[0.14em] text-muted-foreground">{t("orbitSessions")}</p>
+                <p className="mt-1 text-lg font-medium tracking-[-0.03em] text-foreground/78">
+                  {overview ? overview.stats.active_sessions : "—"}
+                </p>
+              </div>
+            </div>
+            <div className="dashboard-metric">
+              <Activity className="size-4 text-muted-foreground" />
+              <div>
+                <p className="text-[0.61rem] tracking-[0.14em] text-muted-foreground">
+                  {t("orbitTodayCommands")}
+                </p>
+                <p className="mt-1 text-lg font-medium tracking-[-0.03em] text-foreground/78">
+                  {overview ? overview.stats.today_commands : "—"}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </section>
+      </main>
     </>
   )
 }

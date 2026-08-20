@@ -1,0 +1,300 @@
+.dashboard-orbit {
+  isolation: isolate;
+  min-height: 900px;
+  background:
+    radial-gradient(circle at 73% 73%, color-mix(in oklab, var(--primary) 11%, transparent), transparent 34%),
+    radial-gradient(circle at 18% 18%, color-mix(in oklab, var(--primary) 6%, transparent), transparent 30%),
+    linear-gradient(145deg, color-mix(in oklab, var(--card) 65%, var(--background)) 0%, var(--background) 100%);
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px color-mix(in oklab, var(--foreground) 5%, transparent),
+    0 24px 80px color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+
+.dashboard-orbit::before {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: "";
+  pointer-events: none;
+  opacity: 0.56;
+  background-image:
+    radial-gradient(circle at 8% 17%, color-mix(in oklab, var(--foreground) 78%, transparent) 0 0.55px, transparent 0.75px),
+    radial-gradient(circle at 24% 62%, color-mix(in oklab, var(--primary) 62%, transparent) 0 0.65px, transparent 0.9px),
+    radial-gradient(circle at 48% 28%, color-mix(in oklab, var(--foreground) 58%, transparent) 0 0.45px, transparent 0.7px),
+    radial-gradient(circle at 67% 12%, color-mix(in oklab, var(--primary) 52%, transparent) 0 0.6px, transparent 0.9px),
+    radial-gradient(circle at 83% 39%, color-mix(in oklab, var(--foreground) 64%, transparent) 0 0.45px, transparent 0.75px),
+    radial-gradient(circle at 93% 74%, color-mix(in oklab, var(--foreground) 62%, transparent) 0 0.5px, transparent 0.8px);
+  background-size: 290px 270px, 410px 390px, 330px 350px, 520px 440px, 370px 310px, 460px 420px;
+}
+
+.dashboard-orbit-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--foreground) 10%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--foreground) 10%, transparent) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, transparent 5%, black 48%, transparent 94%);
+}
+
+.dashboard-orbit-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, color-mix(in oklab, var(--background) 34%, transparent) 0%, transparent 54%),
+    radial-gradient(ellipse at center, transparent 48%, color-mix(in oklab, var(--background) 72%, transparent) 118%);
+}
+
+.dashboard-live-dot {
+  position: relative;
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: var(--status-connected);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--status-connected) 68%, transparent);
+}
+
+.dashboard-live-dot::after {
+  position: absolute;
+  inset: -0.28rem;
+  content: "";
+  border: 1px solid color-mix(in oklab, var(--status-connected) 42%, transparent);
+  border-radius: inherit;
+  animation: dashboard-live-pulse 2.4s ease-out infinite;
+}
+
+.dashboard-live-dot.is-loading {
+  background: var(--status-warning);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--status-warning) 68%, transparent);
+}
+
+.dashboard-live-dot.is-loading::after {
+  border-color: color-mix(in oklab, var(--status-warning) 42%, transparent);
+}
+
+.dashboard-live-dot.is-error {
+  background: var(--status-danger);
+  box-shadow: 0 0 12px color-mix(in oklab, var(--status-danger) 68%, transparent);
+}
+
+.dashboard-live-dot.is-error::after {
+  border-color: color-mix(in oklab, var(--status-danger) 42%, transparent);
+}
+
+.dashboard-primary-action {
+  background: var(--primary);
+  box-shadow:
+    inset 0 1px color-mix(in oklab, var(--primary-foreground) 24%, transparent),
+    0 10px 30px color-mix(in oklab, var(--primary) 14%, transparent);
+  transition: transform 220ms ease, box-shadow 220ms ease, filter 220ms ease;
+}
+
+.dashboard-primary-action:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.08) brightness(1.04);
+  box-shadow:
+    inset 0 1px color-mix(in oklab, var(--primary-foreground) 32%, transparent),
+    0 14px 36px color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+.dashboard-globe-stage {
+  position: absolute;
+  z-index: 2;
+  right: clamp(-4rem, -2vw, -1.5rem);
+  bottom: clamp(-10rem, -13vh, -6rem);
+  width: clamp(60rem, 64vw, 84rem);
+  aspect-ratio: 1;
+}
+
+.dashboard-globe-aura {
+  position: absolute;
+  inset: 14%;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--primary) 9%, transparent);
+  filter: blur(64px);
+  animation: dashboard-aura 7s ease-in-out infinite alternate;
+}
+
+.dashboard-node-panel {
+  position: absolute;
+  z-index: 20;
+  left: 2.5rem;
+  bottom: 2rem;
+  width: min(25rem, 34vw);
+  padding: 1.1rem 1.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 1.15rem;
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--card) 84%, transparent),
+    color-mix(in oklab, var(--background) 70%, transparent)
+  );
+  box-shadow:
+    inset 0 1px color-mix(in oklab, var(--foreground) 5%, transparent),
+    0 20px 60px color-mix(in oklab, var(--foreground) 8%, transparent);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+}
+
+.dashboard-metrics {
+  position: absolute;
+  z-index: 20;
+  right: 2.5rem;
+  top: 6.5rem;
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: color-mix(in oklab, var(--card) 76%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.dashboard-metric {
+  display: flex;
+  min-width: 7.8rem;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+}
+
+.dashboard-metric + .dashboard-metric {
+  border-left: 1px solid var(--border);
+}
+
+.dashboard-interactive-marker {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  max-width: 10rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.42rem 0.68rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + 0.2rem);
+  background: color-mix(in oklab, var(--popover) 88%, transparent);
+  color: var(--popover-foreground);
+  box-shadow:
+    inset 0 1px color-mix(in oklab, var(--foreground) 6%, transparent),
+    0 8px 28px color-mix(in oklab, var(--foreground) 10%, transparent);
+  white-space: nowrap;
+  backdrop-filter: blur(14px) saturate(1.12);
+  -webkit-backdrop-filter: blur(14px) saturate(1.12);
+  transition:
+    opacity 260ms ease,
+    filter 260ms ease,
+    padding 220ms ease,
+    color 220ms ease,
+    background-color 220ms ease,
+    transform 220ms ease;
+}
+
+.dashboard-interactive-marker:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--primary) 42%, var(--border));
+}
+
+.dashboard-interactive-marker.is-expanded {
+  padding: 0.52rem 0.78rem;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.dashboard-interactive-name {
+  overflow: hidden;
+  max-width: 8.5rem;
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1rem;
+  text-overflow: ellipsis;
+}
+
+.dashboard-interactive-detail {
+  font-size: 0.6rem;
+  line-height: 0.85rem;
+  opacity: 0.72;
+}
+
+@keyframes dashboard-live-pulse {
+  0% { transform: scale(0.65); opacity: 0.8; }
+  70%, 100% { transform: scale(1.45); opacity: 0; }
+}
+
+@keyframes dashboard-aura {
+  from { transform: scale(0.94); opacity: 0.6; }
+  to { transform: scale(1.08); opacity: 1; }
+}
+
+@media (max-width: 1279px) {
+  .dashboard-metrics {
+    display: none;
+  }
+
+  .dashboard-globe-stage {
+    right: -4rem;
+    bottom: -8rem;
+    width: 52rem;
+  }
+
+  .dashboard-node-panel {
+    width: min(24rem, 43vw);
+  }
+}
+
+@media (min-width: 640px) {
+  .dashboard-orbit {
+    min-height: 820px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .dashboard-orbit {
+    min-height: max(820px, calc(100svh - 5rem));
+  }
+}
+
+@media (max-width: 767px) {
+  .dashboard-globe-stage {
+    right: -9rem;
+    bottom: -7rem;
+    width: 42rem;
+    opacity: 0.82;
+  }
+
+  .dashboard-node-panel {
+    left: 1.25rem;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    width: auto;
+  }
+
+  .dashboard-orbit-vignette {
+    background:
+      linear-gradient(
+        to bottom,
+        color-mix(in oklab, var(--background) 14%, transparent) 0%,
+        color-mix(in oklab, var(--background) 7%, transparent) 50%,
+        color-mix(in oklab, var(--background) 76%, transparent) 82%
+      ),
+      radial-gradient(
+        ellipse at center,
+        transparent 40%,
+        color-mix(in oklab, var(--background) 70%, transparent) 115%
+      );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-live-dot::after,
+  .dashboard-globe-aura {
+    animation: none;
+  }
+}
