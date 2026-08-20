@@ -103,9 +103,9 @@ export const webhookConfigSchema = z.object({
 
 // 通知配置 Schema（仅包含通知相关的配置）
 export const notificationConfigSchema = smtpConfigSchema
-  .merge(dingTalkConfigSchema)
-  .merge(weComConfigSchema)
-  .merge(webhookConfigSchema)
+  .safeExtend(dingTalkConfigSchema.shape)
+  .safeExtend(weComConfigSchema.shape)
+  .safeExtend(webhookConfigSchema.shape)
 
 // 导出类型
 export type SMTPConfigFormData = z.infer<typeof smtpConfigSchema>
