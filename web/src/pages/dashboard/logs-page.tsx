@@ -1,5 +1,4 @@
 
-import { Suspense } from "react"
 import { PageHeader } from "@/components/page-header"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -12,9 +11,7 @@ export default function LogsPage() {
   return (
     <>
       <PageHeader title={t("logsPageTitle")} />
-      <Suspense fallback={<div className="flex min-h-0 flex-1" />}>
-        <LogsPageContent />
-      </Suspense>
+      <LogsPageContent />
     </>
   )
 }

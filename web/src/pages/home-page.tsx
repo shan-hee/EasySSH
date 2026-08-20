@@ -1,15 +1,14 @@
 
 import { useAuthStatusRedirect } from "@/hooks/use-auth-status-redirect"
 import { useSystemConfig } from "@/contexts/system-config-context"
-import { Spinner } from "@/components/ui/spinner"
+import { AppLoadingScreen } from "@/components/app-loading"
 import { Button } from "@/components/ui/button"
-import { getEffectiveLocale } from "@/utils/datetime"
-import zhCN from "@/i18n/messages/zh-CN"
-import enUS from "@/i18n/messages/en-US"
+import { useTranslation } from "react-i18next"
 
 export default function Home() {
+  const { t } = useTranslation("common")
   const { isChecking } = useAuthStatusRedirect("home")
-  const { config, error, refreshConfig } = useSystemConfig()
+  const { error, refreshConfig } = useSystemConfig()
 
   // 显示加载状态
   if (!isChecking) {
@@ -18,31 +17,18 @@ export default function Home() {
     return null
   }
 
-  const locale = getEffectiveLocale(undefined, config || null)
-  const messages = locale === "en-US" ? enUS : zhCN
-
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md space-y-4 text-center">
-          <p className="text-muted-foreground">{messages.common.authStatusUnavailable}</p>
+          <p className="text-muted-foreground">{t("authStatusUnavailable")}</p>
           <Button onClick={() => void refreshConfig({ refreshAuth: true })}>
-            {messages.common.retry}
+            {t("retry")}
           </Button>
         </div>
       </div>
     )
   }
 
-  return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="text-center">
-        <Spinner
-          aria-label={messages.common.loading}
-          className="mx-auto mb-4 size-10 text-muted-foreground"
-        />
-        <p className="text-muted-foreground">{messages.common.loading}</p>
-      </div>
-    </div>
-  )
+  return <AppLoadingScreen />
 }

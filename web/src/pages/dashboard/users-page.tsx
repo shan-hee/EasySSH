@@ -5,6 +5,7 @@ import { Edit, KeyRound, Lock, Plus, RefreshCw, Shield, Trash2, Unlock, Users } 
 import { toast } from "sonner"
 
 import { PageHeader } from "@/components/page-header"
+import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import { Badge } from "@/components/ui/badge"
@@ -26,8 +27,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
+import { useUserAdministration } from "@/hooks/use-user-administration"
 import {
-  permissionsApi,
   resourceGrantsApi,
   rolesApi,
   usersApi,
@@ -72,22 +73,7 @@ export default function UsersPage() {
   const [grantSubjectID, setGrantSubjectID] = useState("")
   const [grantPermissionCode, setGrantPermissionCode] = useState("")
   const [grantResourceID, setGrantResourceID] = useState("")
-  const administrationQuery = useQuery({
-    queryKey: queryKeys.users.administration,
-    queryFn: async () => {
-      const [userResponse, roleResponse, permissionResponse] = await Promise.all([
-        usersApi.list({ page: 1, limit: 100 }),
-        rolesApi.list(),
-        permissionsApi.list(),
-      ])
-      return {
-        users: Array.isArray(userResponse.data) ? userResponse.data : [],
-        roles: Array.isArray(roleResponse.data) ? roleResponse.data : [],
-        permissions: Array.isArray(permissionResponse.data) ? permissionResponse.data : [],
-      }
-    },
-    enabled: ready,
-  })
+  const administrationQuery = useUserAdministration()
   const users: UserDetail[] = useMemo(
     () => administrationQuery.data?.users ?? [],
     [administrationQuery.data?.users],
@@ -102,6 +88,7 @@ export default function UsersPage() {
   )
   const loading = administrationQuery.isPending
   const refreshing = administrationQuery.isFetching && !administrationQuery.isPending
+  const statistics = administrationQuery.data?.statistics
 
   const resourceGrantsQuery = useQuery({
     queryKey: queryKeys.users.resourceGrants(grantSubjectType, grantSubjectID),
@@ -329,12 +316,12 @@ export default function UsersPage() {
   return (
     <>
       <PageHeader title={t("pageTitle")} />
-      <div className="flex min-w-0 flex-1 flex-col gap-4 p-4 pt-0 md:p-6 md:pt-0">
+      <DashboardPageContent>
       {confirmDialog}
       <p className="text-sm text-muted-foreground">{t("rbacPageDescription")}</p>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card><CardHeader className="pb-2"><CardDescription>{t("statsTotalUsers")}</CardDescription><CardTitle>{users.length}</CardTitle></CardHeader></Card>
+        <Card><CardHeader className="pb-2"><CardDescription>{t("statsTotalUsers")}</CardDescription><CardTitle>{statistics?.total_users ?? users.length}</CardTitle></CardHeader></Card>
         <Card><CardHeader className="pb-2"><CardDescription>{t("rbacRoleCount")}</CardDescription><CardTitle>{roles.length}</CardTitle></CardHeader></Card>
         <Card><CardHeader className="pb-2"><CardDescription>{t("rbacPermissionCount")}</CardDescription><CardTitle>{permissions.length}</CardTitle></CardHeader></Card>
         <Card><CardHeader className="pb-2"><CardDescription>{t("rbacResourceGrantCount")}</CardDescription><CardTitle>{resourceGrants.length}</CardTitle></CardHeader></Card>
@@ -352,7 +339,7 @@ export default function UsersPage() {
           <DataTable
             data={users}
             columns={userColumns}
-            loading={loading || refreshing}
+            loading={loading}
             emptyMessage={t("tableEmpty")}
             enableRowSelection
             density="compact"
@@ -411,7 +398,7 @@ export default function UsersPage() {
       <Dialog open={Boolean(lockTarget)} onOpenChange={(open) => !open && setLockTarget(null)}><DialogContent><DialogHeader><DialogTitle>{t("dialogLockTitle")}</DialogTitle><DialogDescription>{lockTarget?.username}</DialogDescription></DialogHeader><Label>{t("fieldLockDuration")}</Label><Input type="number" min={1} value={lockMinutes} onChange={(event) => setLockMinutes(event.target.value)} /><Label>{t("fieldLockReason")}</Label><Input value={lockReason} onChange={(event) => setLockReason(event.target.value)} /><DialogFooter><Button variant="outline" onClick={() => setLockTarget(null)}>{t("dialogCancel")}</Button><Button variant="destructive" onClick={() => void lockUser()}>{t("dialogLockSubmit")}</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={roleDialog !== null} onOpenChange={(open) => !open && setRoleDialog(null)}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>{roleDialog === "create" ? t("rbacCreateRoleTitle") : t("rbacEditRoleTitle")}</DialogTitle><DialogDescription>{t("rbacRoleDialogDescription")}</DialogDescription></DialogHeader><div className="grid gap-3 sm:grid-cols-2">{roleDialog === "create" && <div><Label>{t("rbacRoleKey")}</Label><Input className="font-mono" value={roleForm.key} onChange={(event) => setRoleForm({ ...roleForm, key: event.target.value })} placeholder="ops-readonly" /></div>}<div><Label>{t("rbacRoleName")}</Label><Input value={roleForm.name} onChange={(event) => setRoleForm({ ...roleForm, name: event.target.value })} /></div><div className="sm:col-span-2"><Label>{t("rbacRoleDescription")}</Label><Textarea value={roleForm.description} onChange={(event) => setRoleForm({ ...roleForm, description: event.target.value })} /></div><div className="sm:col-span-2"><Label>{t("rbacParentRole")}</Label><Select value={roleForm.parent_key || "none"} onValueChange={(value) => setRoleForm({ ...roleForm, parent_key: value === "none" ? "" : value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">{t("rbacNoParent")}</SelectItem>{roles.filter((role) => role.id !== editingRoleID).map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>)}</SelectContent></Select></div><div className="sm:col-span-2"><Label>{t("rbacDirectPermissions")}</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{permissions.map((permission) => <Label key={permission.code} className="flex cursor-pointer items-start gap-2 rounded-md border p-3"><Checkbox checked={roleForm.permission_codes.includes(permission.code)} onCheckedChange={() => togglePermission(permission.code)} /><span><span className="block text-sm font-medium">{permission.name}</span><code className="text-xs text-muted-foreground">{permission.code}</code></span></Label>)}</div></div></div><DialogFooter><Button variant="outline" onClick={() => setRoleDialog(null)}>{t("dialogCancel")}</Button><Button onClick={() => void saveRole()}>{t("rbacSaveRole")}</Button></DialogFooter></DialogContent></Dialog>
-      </div>
+      </DashboardPageContent>
     </>
   )
 }

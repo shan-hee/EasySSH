@@ -5,6 +5,9 @@ export const queryKeys = {
   notifications: {
     inbox: ["notifications", "inbox"] as const,
   },
+  settings: {
+    form: (cacheKey: string) => ["settings", "form", cacheKey] as const,
+  },
   users: {
     administration: ["users", "administration"] as const,
     resourceGrants: (subjectType: "role" | "user", subjectId: string) =>

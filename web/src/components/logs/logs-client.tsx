@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useAuthReady } from "@/hooks/use-auth-ready"
+import { DashboardPageContent } from "@/components/dashboard-page-content"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -560,7 +561,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
   ))}, [desktopMode, handleSort, sort, t])
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
+    <DashboardPageContent className="gap-3 sm:gap-4">
       <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
         <p>{desktopMode ? t("desktopActivityDashboardDescription") : t("activityDashboardDescription")}</p>
         <DashboardStatusLine label={t("collectionHealthy")} timestamp={formatDateTime(new Date().toISOString())} />
@@ -570,7 +571,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
         <DataTable
           data={logs}
           columns={logColumns}
-          loading={initialLoading || tableLoading}
+          loading={initialLoading && logs.length === 0}
           currentPage={page}
           pageCount={totalPages}
           pageSize={pageSize}
@@ -710,7 +711,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </DashboardPageContent>
   )
 }
 

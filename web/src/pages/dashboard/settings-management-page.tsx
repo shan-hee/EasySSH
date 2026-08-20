@@ -7,9 +7,7 @@ export default function ManagementPage() {
   return (
     <>
       <PageHeader title={t("pageTitle")} />
-      <div className="flex min-w-0 flex-1 flex-col p-4 pt-0">
-        <UserManagementContent />
-      </div>
+      <UserManagementContent />
     </>
   )
 }

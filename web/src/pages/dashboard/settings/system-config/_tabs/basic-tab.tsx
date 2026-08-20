@@ -39,6 +39,7 @@ export function BasicTab() {
   ]
 
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+    cacheKey: "system-basic",
     schema: basicInfoSchema,
     loadFn: async () => {
       const data = await settingsApi.getSystemConfig()

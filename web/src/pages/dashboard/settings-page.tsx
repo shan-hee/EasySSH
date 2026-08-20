@@ -1,8 +1,8 @@
-import { Suspense, useState } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Archive, Bot, Cable, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Workflow } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
+import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { cn } from "@/lib/utils"
 import { BasicTab } from "./settings/system-config/_tabs/basic-tab"
 import { FileTransferTab } from "./settings/system-config/_tabs/file-transfer-tab"
@@ -76,13 +76,12 @@ function SettingsContent() {
   const { pathname } = useLocation()
   const [searchParams] = useSearchParams()
   const requestedSection = searchParams.get("section") || "basic"
-  const [activeSection, setActiveSection] = useState(items.some((item) => item.id === requestedSection) ? requestedSection : "basic")
+  const activeSection = items.some((item) => item.id === requestedSection) ? requestedSection : "basic"
   const activeItem = items.find((item) => item.id === activeSection) ?? items[0]
   const ActiveComponent = activeItem.component
   const ActiveIcon = activeItem.icon
 
   const selectSection = (section: string) => {
-    setActiveSection(section)
     const next = new URLSearchParams(searchParams)
     next.set("section", section)
     navigate(`${pathname}?${next.toString()}`, { replace: true })
@@ -91,7 +90,7 @@ function SettingsContent() {
   return (
     <>
       <PageHeader title={t("pageTitle")} />
-      <div className="flex min-w-0 flex-1 flex-col gap-3 px-4 pb-4 pt-2 lg:flex-row lg:items-start">
+      <DashboardPageContent className="min-h-0 gap-3 overflow-y-auto lg:flex-row lg:items-start lg:overflow-hidden">
         <div className="flex shrink-0 gap-2 overflow-x-auto border-b pb-2 lg:hidden">
           {items.map((item) => (
             <div key={item.id} className="w-fit shrink-0">
@@ -100,7 +99,7 @@ function SettingsContent() {
           ))}
         </div>
 
-        <aside className="hidden w-56 shrink-0 rounded-lg border bg-card p-3 lg:sticky lg:top-[4.5rem] lg:block lg:max-h-[calc(100svh-5rem)] lg:overflow-y-auto lg:group-has-data-[collapsible=icon]/sidebar-wrapper:top-14 scrollbar-custom group-data-[ready=true]/sidebar-wrapper:transition-[top] group-data-[ready=true]/sidebar-wrapper:duration-200 group-data-[ready=true]/sidebar-wrapper:ease-in-out">
+        <aside className="hidden w-56 shrink-0 rounded-lg border bg-card p-3 scrollbar-custom lg:block lg:max-h-full lg:overflow-y-auto">
           <div className="mb-3 flex items-center gap-2 px-2 text-sm font-semibold"><HardDrive className="h-4 w-4" />{t("navigationTitle")}</div>
           <div className="space-y-4">
             {groups.map((group) => (
@@ -114,18 +113,17 @@ function SettingsContent() {
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col rounded-lg border bg-card">
+        <main className="flex min-w-0 flex-1 flex-col rounded-lg border bg-card scrollbar-custom lg:h-full lg:overflow-y-auto">
           <div className="shrink-0 border-b px-4 py-3">
             <h1 className="flex items-center gap-2 text-base font-semibold"><ActiveIcon className="h-4 w-4" />{t(activeItem.nameKey)}</h1>
           </div>
           <ActiveComponent />
         </main>
-      </div>
+      </DashboardPageContent>
     </>
   )
 }
 
 export default function SettingsPage() {
-  const { t } = useTranslation("common")
-  return <Suspense fallback={<div className="flex min-h-[20rem] flex-1 items-center justify-center">{t("loading")}</div>}><SettingsContent /></Suspense>
+  return <SettingsContent />
 }

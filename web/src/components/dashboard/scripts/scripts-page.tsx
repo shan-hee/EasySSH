@@ -3,6 +3,8 @@ import { useState, useEffect, useMemo, useCallback } from "react"
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { PageHeader } from "@/components/page-header"
+import { DashboardPageContent } from "@/components/dashboard-page-content"
+import { useDelayedLoading } from "@/hooks/use-delayed-loading"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -174,7 +176,8 @@ const servers: Server[] = useMemo(
   () => serversQuery.data?.data ?? [],
   [serversQuery.data?.data],
 )
-const loadingServers = serversQuery.isFetching
+const loadingServers = serversQuery.isFetching && servers.length === 0
+const showServerSkeleton = useDelayedLoading(loadingServers)
 const loadServers = useCallback(async () => {
   await refetchServers()
 }, [refetchServers])
@@ -554,7 +557,7 @@ const totalExecutions = useMemo(() => (
    </div>
  ) : null}
 
- <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
+ <DashboardPageContent className="gap-3 sm:gap-4">
    <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
      <DashboardMetricCard title={t("statsTotalScripts")} value={totalRows || scripts.length} icon={FileText} tone="emerald" spark={scriptSpark} loading={loading} />
      <DashboardMetricCard title={t("statsTags")} value={filterOptions.tags.length} icon={Tag} tone="blue" spark={tagCounts.slice(0, 12).map((item) => item.count)} loading={loading} />
@@ -568,7 +571,7 @@ const totalExecutions = useMemo(() => (
      <DataTable
        data={scripts}
        columns={visibleColumns}
-       loading={loading || refreshing}
+       loading={loading}
        currentPage={page}
        pageCount={totalPages}
        pageSize={pageSize}
@@ -624,7 +627,7 @@ const totalExecutions = useMemo(() => (
        )}
      />
    </section>
- </div>
+ </DashboardPageContent>
 
  {/* 编辑脚本弹窗 */}
  <Dialog open={isEditDialogOpen} onOpenChange={handleCloseEditDialog}>
@@ -865,7 +868,7 @@ placeholder={t("fieldDescriptionPlaceholder")}
 
          {/* 服务器列表 */}
          <ScrollArea className="h-[240px] rounded-md border bg-muted/30">
-           {loadingServers ? (
+           {loadingServers && showServerSkeleton ? (
              <div className="p-2 space-y-1">
                {Array.from({ length: 4 }).map((_, i) => (
                  <div key={i} className="flex items-center gap-3 p-2.5 rounded-md border border-transparent">
@@ -878,6 +881,8 @@ placeholder={t("fieldDescriptionPlaceholder")}
                  </div>
                ))}
              </div>
+           ) : loadingServers ? (
+             <div className="h-[220px]" role="status" aria-busy="true" />
            ) : filteredServers.length === 0 ? (
              <div className="flex flex-col items-center justify-center h-[220px] gap-2 text-muted-foreground">
                <ServerIcon className="h-8 w-8 opacity-50" />

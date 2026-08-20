@@ -29,6 +29,7 @@ export function AIConfigWrapper() {
   ]
 
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+    cacheKey: "ai-system",
     schema: aiSystemConfigSchema,
     loadFn: async () => {
       const systemConfig = await settingsApi.getAISystemConfig()

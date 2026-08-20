@@ -1,5 +1,5 @@
 
-import { useEffect, useRef, useState, useCallback, useMemo, Suspense, startTransition } from "react"
+import { useEffect, useRef, useState, useCallback, useMemo, startTransition } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "@/components/ui/sonner"
 import { SshWorkspace } from "@easyssh/ssh-workspace"
@@ -25,6 +25,7 @@ import { isViteDev } from "@/lib/vite-env"
 import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
 import { primaryCredentialMethod } from "@/lib/ssh-auth-methods"
+import { ViewportWorkspaceTransition } from "@/components/viewport-workspace-transition"
 
 const statusFromConnectionPhase = (phase: TerminalConnectionPhase) => {
   if (phase === "ready") return "connected" as const
@@ -804,10 +805,9 @@ function TerminalPageContent() {
 }
 
 export default function TerminalPage() {
-  const { t: tCommon } = useTranslation("common")
   return (
-    <Suspense fallback={<div className="flex flex-1 items-center justify-center">{tCommon("loading")}</div>}>
+    <ViewportWorkspaceTransition>
       <TerminalPageContent />
-    </Suspense>
+    </ViewportWorkspaceTransition>
   )
 }

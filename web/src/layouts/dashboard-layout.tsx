@@ -1,10 +1,11 @@
 
-import { useEffect, useRef } from "react"
-import { AnimatePresence, motion } from "motion/react"
+import { useEffect, useLayoutEffect, useRef } from "react"
+import { motion } from "motion/react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import SidebarProviderServer from "@/components/sidebar-provider-server"
 import { AppSidebar } from "@/components/app-sidebar"
+import { PageHeaderHost } from "@/components/page-header"
 import { SidebarInset, useSidebar } from "@/components/ui/sidebar"
 import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/contexts/system-config-context"
@@ -13,9 +14,9 @@ import { getAuthRedirectDecision, getCurrentBrowserPath } from "@/lib/auth-redir
 import { useRuntime } from "@/shell/runtime/runtime-provider"
 import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-policy"
 import { Button } from "@/components/ui/button"
-import { Spinner } from "@/components/ui/spinner"
+import { AppLoadingScreen } from "@/components/app-loading"
 import { cn } from "@/lib/utils"
-import { pageTransition, workspaceTransition } from "@/lib/motion"
+import { pageTransition } from "@/lib/motion"
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -37,36 +38,31 @@ function MobileSidebarRouteCloser() {
   return null
 }
 
-function DashboardRouteOutlet({ usesViewportWorkspace }: { usesViewportWorkspace: boolean }) {
+function DashboardRouteOutlet({
+  usesViewportWorkspace,
+}: {
+  usesViewportWorkspace: boolean
+}) {
   const { pathname } = useLocation()
 
   if (usesViewportWorkspace) {
     return (
-      <motion.div
-        key={pathname}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={workspaceTransition}
-        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-      >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <Outlet />
-      </motion.div>
+      </div>
     )
   }
 
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={pathname}
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -2 }}
-        transition={pageTransition}
-        className="mx-auto flex min-h-svh w-full max-w-[1440px] min-w-0 flex-1 flex-col"
-      >
-        <Outlet />
-      </motion.div>
-    </AnimatePresence>
+    <motion.div
+      key={pathname}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={pageTransition}
+      className="flex min-h-full w-full min-w-0 flex-1 flex-col"
+    >
+      <Outlet />
+    </motion.div>
   )
 }
 
@@ -76,6 +72,7 @@ function DashboardRouteOutlet({ usesViewportWorkspace }: { usesViewportWorkspace
  */
 export default function DashboardLayout() {
   const navigate = useNavigate()
+  const pageScrollRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation("common")
   const { pathname } = useLocation()
   const { authStatus, error, isLoading, refreshConfig } = useSystemConfig()
@@ -84,6 +81,13 @@ export default function DashboardLayout() {
   const usesViewportWorkspace = ["/dashboard/terminal", "/dashboard/ai-assistant"].some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   )
+  const usesPageManagedScroll = usesViewportWorkspace || pathname === "/dashboard/settings"
+  useLayoutEffect(() => {
+    if (pageScrollRef.current) {
+      pageScrollRef.current.scrollTop = 0
+      pageScrollRef.current.scrollLeft = 0
+    }
+  }, [pathname])
 
   useEffect(() => {
     if (isLoading || (error && !authStatus?.is_authenticated)) return
@@ -105,11 +109,7 @@ export default function DashboardLayout() {
 	}, [authStatus?.is_authenticated, error, isLoading, isRuntimeLoading, navigate, pathname, runtime, user?.permissions])
 
   if (isLoading && !authStatus) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner className="size-10 text-muted-foreground" aria-label={t("loading")} />
-      </div>
-    )
+    return <AppLoadingScreen />
   }
 
   if (error && !authStatus?.is_authenticated) {
@@ -126,28 +126,27 @@ export default function DashboardLayout() {
   }
 
   if (!authStatus?.is_authenticated || !authStatus.user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner className="size-10 text-muted-foreground" aria-label={t("loading")} />
-      </div>
-    )
+    return <AppLoadingScreen />
   }
 
   return (
     <ClientAuthProvider>
       <DashboardI18nProvider>
-        <SidebarProviderServer className={usesViewportWorkspace ? "h-svh overflow-hidden" : "h-auto min-h-svh items-stretch"}>
+        <SidebarProviderServer className="h-svh overflow-hidden">
           <MobileSidebarRouteCloser />
           <AppSidebar />
-          <SidebarInset className={usesViewportWorkspace ? "h-svh overflow-hidden" : "min-h-svh overflow-visible"}>
-            <div
-              className={cn(
-                "flex min-w-0 flex-1 flex-col scrollbar-custom",
-                usesViewportWorkspace ? "min-h-0 overflow-hidden" : "min-h-svh overflow-visible",
-              )}
-            >
-              <DashboardRouteOutlet usesViewportWorkspace={usesViewportWorkspace} />
-            </div>
+          <SidebarInset className="h-svh overflow-hidden">
+            <PageHeaderHost>
+              <div
+                ref={pageScrollRef}
+                className={cn(
+                  "flex min-h-0 min-w-0 flex-1 flex-col scrollbar-custom",
+                  usesPageManagedScroll ? "overflow-hidden" : "overflow-y-scroll overscroll-y-contain",
+                )}
+              >
+                <DashboardRouteOutlet usesViewportWorkspace={usesViewportWorkspace} />
+              </div>
+            </PageHeaderHost>
           </SidebarInset>
         </SidebarProviderServer>
       </DashboardI18nProvider>

@@ -26,32 +26,26 @@ import {
   Shield,
   Trash2,
 } from "lucide-react"
-import { rolesApi, usersApi, type Role, type UserDetail, type UserRole } from "@/lib/api"
-import { SkeletonCard } from "@/components/ui/loading"
+import { usersApi, type UserDetail, type UserRole } from "@/lib/api"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import { useUserColumns } from "@/pages/dashboard/users/components/user-columns"
-import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
+import { useUserAdministration } from "@/hooks/use-user-administration"
 import { useTranslation } from "react-i18next"
+import { DashboardPageContent } from "@/components/dashboard-page-content"
 
 // 提取自 /dashboard/users/page.tsx 的用户管理内容
 // 去掉了 PageHeader，作为 Tab 内容使用
 export function UserManagementContent() {
   const { t } = useTranslation("users")
-  const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
-  // 数据状态
-  const [users, setUsers] = useState<UserDetail[]>([])
-	const [roles, setRoles] = useState<Role[]>([])
-  const [loading, setLoading] = useState(true)
-  const [, setRefreshing] = useState(false)
-
-  // 统计状态
-  const [statistics, setStatistics] = useState({
-    totalUsers: 0,
-    byRole: {} as Record<string, number>,
-  })
+  const administrationQuery = useUserAdministration()
+  const users = administrationQuery.data?.users ?? []
+  const roles = administrationQuery.data?.roles ?? []
+  const statistics = administrationQuery.data?.statistics
+  const loading = administrationQuery.isPending && !administrationQuery.data
+  const refetchAdministration = administrationQuery.refetch
 
   // 对话框状态
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -78,47 +72,17 @@ export function UserManagementContent() {
   // 修改密码表单
   const [newPassword, setNewPassword] = useState("")
 
-  // 加载用户列表
   const loadUsers = useCallback(async () => {
-    try {
-      const [usersRes, statsRes, rolesRes] = await Promise.all([
-        usersApi.list({ page: 1, limit: 100 }),
-        usersApi.getStatistics(),
-			rolesApi.list(),
-      ])
+    await refetchAdministration()
+  }, [refetchAdministration])
 
-      const usersList = Array.isArray(usersRes)
-        ? usersRes
-        : (Array.isArray(usersRes?.data) ? usersRes.data : [])
-      const statsData = statsRes
+  const handleRefresh = loadUsers
 
-      setUsers(usersList)
-			setRoles(Array.isArray(rolesRes.data) ? rolesRes.data : [])
-      setStatistics({
-        totalUsers: statsData.total_users || 0,
-        byRole: statsData.by_role || {},
-      })
-    } catch (error: unknown) {
-      console.error("加载用户列表失败:", error)
-      setUsers([])
-      toast.error(getErrorMessage(error, t("toastLoadFailed")))
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [t])
-
-  // 刷新数据
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await loadUsers()
-  }
-
-  // 初始加载（仅在已认证且全局状态就绪时触发）
   useEffect(() => {
-    if (!ready) return
-    loadUsers()
-  }, [ready, loadUsers])
+    if (administrationQuery.error) {
+      toast.error(getErrorMessage(administrationQuery.error, t("toastLoadFailed")))
+    }
+  }, [administrationQuery.error, t])
 
   // 创建用户
   const handleCreateUser = async () => {
@@ -242,27 +206,15 @@ export function UserManagementContent() {
   })
 
   // 渲染主体内容（去掉 PageHeader）
-  return loading ? (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
-      {/* 统计概览骨架屏 */}
-      <div className="grid shrink-0 gap-2 md:grid-cols-4">
-        <SkeletonCard showHeader={false} lines={2} />
-        <SkeletonCard showHeader={false} lines={2} />
-        <SkeletonCard showHeader={false} lines={2} />
-        <SkeletonCard showHeader={false} lines={2} />
-      </div>
-      {/* 表格骨架屏 */}
-      <SkeletonCard showHeader lines={8} className="min-h-[520px] flex-1" />
-    </div>
-  ) : (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
+  return (
+    <DashboardPageContent className="gap-3 sm:gap-4">
       {confirmDialog}
       <div className="grid shrink-0 gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: t("statsTotalUsers"), value: statistics.totalUsers, icon: Users, hint: t("statsTotalUsersDesc") },
+          { label: t("statsTotalUsers"), value: statistics?.total_users ?? "—", icon: Users, hint: t("statsTotalUsersDesc") },
           ...roles.map((role) => ({
             label: role.name,
-            value: statistics.byRole[role.key] || 0,
+            value: statistics ? (statistics.by_role[role.key] ?? 0) : "—",
             icon: Shield,
             hint: role.description,
           })),
@@ -293,6 +245,7 @@ export function UserManagementContent() {
         <DataTable
           columns={columns}
           data={users}
+          loading={loading}
           enableRowSelection={true}
           className="min-h-[520px]"
           scrollContainerClassName="min-h-[360px]"
@@ -312,6 +265,7 @@ export function UserManagementContent() {
               ]}
               onRefresh={handleRefresh}
               showRefresh={true}
+              isRefreshing={administrationQuery.isFetching && !loading}
             >
               <Button size="sm" onClick={() => setIsCreateDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
@@ -490,6 +444,6 @@ export function UserManagementContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </DashboardPageContent>
   )
 }

@@ -20,6 +20,7 @@ export function NetworkSecurityTab() {
   const { t } = useTranslation("settingsNetworkDeployment")
   const [originInput, setOriginInput] = useState("")
   const { form, isLoading, isSaving, handleSave } = useSettingsForm({
+    cacheKey: "network-security",
     schema,
     loadFn: async () => {
       const [webSecurity, cors, system] = await Promise.all([
@@ -52,13 +53,14 @@ export function NetworkSecurityTab() {
   const addOrigin = () => {
     const origin = originInput.trim()
     if (!origin) return
-    const origins = form.getValues("allowed_origins")
+    const origins = form.getValues("allowed_origins") ?? []
     if (!origins.includes(origin)) form.setValue("allowed_origins", [...origins, origin], { shouldDirty: true })
     setOriginInput("")
   }
 
   const removeOrigin = (origin: string) => {
-    form.setValue("allowed_origins", form.getValues("allowed_origins").filter((item) => item !== origin), { shouldDirty: true })
+    const origins = form.getValues("allowed_origins") ?? []
+    form.setValue("allowed_origins", origins.filter((item) => item !== origin), { shouldDirty: true })
   }
 
   const dirtyFields = form.formState.dirtyFields
@@ -67,6 +69,7 @@ export function NetworkSecurityTab() {
   const originDirty = Boolean(dirtyFields.allowed_origins || dirtyFields.csrf_trusted_origins)
   const browserPolicyDirty = Boolean(dirtyFields.content_security_policy)
   const geoIPDirty = Boolean(dirtyFields.geoip_database_path)
+  const allowedOrigins = form.watch("allowed_origins") ?? []
 
   return (
     <div className="flex flex-col">
@@ -134,7 +137,7 @@ export function NetworkSecurityTab() {
                 <Button type="button" size="sm" onClick={addOrigin}><Plus className="h-4 w-4" /></Button>
               </div>
               <div className="flex flex-wrap gap-2">
-                {form.watch("allowed_origins").map((origin) => (
+                {allowedOrigins.map((origin) => (
                   <Badge key={origin} variant="secondary" className="gap-1">{origin}<button type="button" onClick={() => removeOrigin(origin)}><X className="h-3 w-3" /></button></Badge>
                 ))}
               </div>

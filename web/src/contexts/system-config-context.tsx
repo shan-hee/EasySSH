@@ -22,6 +22,24 @@ interface SystemConfigContextType {
 
 const SystemConfigContext = createContext<SystemConfigContextType | undefined>(undefined)
 
+let initialAuthStatusPromise: Promise<AuthStatusResponse> | null = null
+
+function getInitialAuthStatus(refresh: boolean) {
+  if (initialAuthStatusPromise) {
+    return initialAuthStatusPromise
+  }
+
+  const request = authApi.checkStatus({ refresh })
+  initialAuthStatusPromise = request
+  const clearPendingRequest = () => {
+    if (initialAuthStatusPromise === request) {
+      initialAuthStatusPromise = null
+    }
+  }
+  void request.then(clearPendingRequest, clearPendingRequest)
+  return request
+}
+
 interface SystemConfigProviderProps {
   children: ReactNode
 }
@@ -76,13 +94,16 @@ export function SystemConfigProvider({ children }: SystemConfigProviderProps) {
   const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null)
   const clearToken = useAuthStore((state) => state.clearToken)
 
-  const loadConfig = async (options: { refreshAuth?: boolean } = {}) => {
+  const loadConfig = async (options: { refreshAuth?: boolean; initial?: boolean } = {}) => {
     try {
       setIsLoading(true)
       setError(null)
 
       // 仅通过 /auth/status 获取系统配置和认证状态（开发版约定始终返回 system_config）
-      const status = await authApi.checkStatus({ refresh: options.refreshAuth ?? false })
+      const shouldRefreshAuth = options.refreshAuth ?? false
+      const status = options.initial
+        ? await getInitialAuthStatus(shouldRefreshAuth)
+        : await authApi.checkStatus({ refresh: shouldRefreshAuth })
       setAuthStatus(status)
       if (!status.is_authenticated) {
         clearToken()
@@ -140,7 +161,7 @@ export function SystemConfigProvider({ children }: SystemConfigProviderProps) {
   }, [])
 
   useEffect(() => {
-    loadConfig({ refreshAuth: shouldRestoreAuthSession(pathname) })
+    void loadConfig({ refreshAuth: shouldRestoreAuthSession(pathname), initial: true })
     // 初始加载时按入口路径决定是否尝试 refresh cookie 恢复会话。
     // 后续路由跳转由登录/登出流程显式调用 refreshConfig 控制。
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -10,6 +10,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { preloadDashboardWorkspace } from "@/lib/dashboard-route-preload"
 
 export function NavMain({
   items,
@@ -37,7 +38,11 @@ export function NavMain({
           return (
             <SidebarMenuItem key={item.title}>
               <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
-                <Link to={item.url}>
+                <Link
+                  to={item.url}
+                  onPointerEnter={() => preloadDashboardWorkspace(item.url)}
+                  onFocus={() => preloadDashboardWorkspace(item.url)}
+                >
                   {item.icon && <item.icon />}
                   <span>{item.title}</span>
                 </Link>

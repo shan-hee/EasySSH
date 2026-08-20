@@ -1,11 +1,11 @@
-import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from "react"
+import { lazy, Suspense, type ComponentType, type LazyExoticComponent, type ReactNode } from "react"
 import { Navigate, Route, Routes } from "react-router-dom"
-import { Spinner } from "@/components/ui/spinner"
-import AuthLayout from "@/layouts/auth-layout"
+import { AppLoading, AppLoadingScreen } from "@/components/app-loading"
 import AuthTransition from "@/layouts/auth-transition"
-import DashboardLayout from "@/layouts/dashboard-layout"
+import HomePage from "@/pages/home-page"
 
-const HomePage = lazy(() => import("@/pages/home-page"))
+const AuthLayout = lazy(() => import("@/layouts/auth-layout"))
+const DashboardLayout = lazy(() => import("@/layouts/dashboard-layout"))
 const SetupPage = lazy(() => import("@/pages/setup-page"))
 const GoogleAuthCallbackPage = lazy(() => import("@/pages/auth/google-callback-page"))
 const LoginPage = lazy(() => import("@/pages/auth/login-page"))
@@ -24,50 +24,67 @@ const SettingsManagementPage = lazy(() => import("@/pages/dashboard/settings-man
 const DashboardError = lazy(() => import("@/pages/dashboard/dashboard-error"))
 
 function RouteFallback() {
+  return <AppLoadingScreen />
+}
+
+function DashboardRouteFallback() {
   return (
-    <div className="flex min-h-[16rem] flex-1 items-center justify-center" role="status">
-      <Spinner className="size-7 text-muted-foreground" aria-label="Loading" />
-    </div>
+    <div
+      className="min-h-[520px] flex-1"
+      role="status"
+      aria-busy="true"
+      aria-label="Loading"
+    />
   )
 }
 
-function lazyElement(Page: LazyExoticComponent<ComponentType>) {
+function lazyElement(
+  Page: LazyExoticComponent<ComponentType>,
+  fallback: ReactNode = <RouteFallback />,
+) {
   return (
-    <Suspense fallback={<RouteFallback />}>
+    <Suspense fallback={fallback}>
       <Page />
     </Suspense>
   )
 }
 
+function lazyDashboardElement(Page: LazyExoticComponent<ComponentType>) {
+  return lazyElement(Page, <DashboardRouteFallback />)
+}
+
 export function AppRouter() {
   return (
     <Routes>
-      <Route path="/" element={lazyElement(HomePage)} />
+      <Route path="/" element={<HomePage />} />
       <Route path="/setup" element={lazyElement(SetupPage)} />
       <Route path="/auth/google/callback" element={lazyElement(GoogleAuthCallbackPage)} />
 
-      <Route element={<AuthLayout />}>
-        <Route path="/login" element={<AuthTransition>{lazyElement(LoginPage)}</AuthTransition>} />
-        <Route path="/register" element={<AuthTransition>{lazyElement(RegisterPage)}</AuthTransition>} />
-        <Route path="/forgot-password" element={<AuthTransition>{lazyElement(ForgotPasswordPage)}</AuthTransition>} />
+      <Route element={lazyElement(AuthLayout)}>
+        <Route path="/login" element={<AuthTransition>{lazyElement(LoginPage, <AppLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
+        <Route path="/register" element={<AuthTransition>{lazyElement(RegisterPage, <AppLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
+        <Route path="/forgot-password" element={<AuthTransition>{lazyElement(ForgotPasswordPage, <AppLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
       </Route>
 
-      <Route path="/dashboard" element={<DashboardLayout />}>
-        <Route index element={lazyElement(DashboardOverviewPage)} />
-        <Route path="terminal" element={lazyElement(TerminalPage)} />
+      <Route
+        path="/dashboard"
+        element={lazyElement(DashboardLayout, <AppLoadingScreen />)}
+      >
+        <Route index element={lazyDashboardElement(DashboardOverviewPage)} />
+        <Route path="terminal" element={lazyDashboardElement(TerminalPage)} />
         <Route path="sftp" element={<Navigate to="/dashboard/terminal?sftpPicker=1" replace />} />
-        <Route path="ai-assistant" element={lazyElement(DashboardAISessionPage)} />
-        <Route path="users" element={lazyElement(UsersPage)} />
-        <Route path="logs" element={lazyElement(LogsPage)} />
-        <Route path="operation-logs" element={lazyElement(OperationLogsPage)} />
-        <Route path="scripts" element={lazyElement(ScriptsPage)} />
-        <Route path="tasks" element={lazyElement(TaskCenterPage)} />
-        <Route path="settings" element={lazyElement(SettingsPage)} />
-        <Route path="settings/management" element={lazyElement(SettingsManagementPage)} />
+        <Route path="ai-assistant" element={lazyDashboardElement(DashboardAISessionPage)} />
+        <Route path="users" element={lazyDashboardElement(UsersPage)} />
+        <Route path="logs" element={lazyDashboardElement(LogsPage)} />
+        <Route path="operation-logs" element={lazyDashboardElement(OperationLogsPage)} />
+        <Route path="scripts" element={lazyDashboardElement(ScriptsPage)} />
+        <Route path="tasks" element={lazyDashboardElement(TaskCenterPage)} />
+        <Route path="settings" element={lazyDashboardElement(SettingsPage)} />
+        <Route path="settings/management" element={lazyDashboardElement(SettingsManagementPage)} />
         <Route
           path="error"
           element={
-            <Suspense fallback={<RouteFallback />}>
+            <Suspense fallback={<DashboardRouteFallback />}>
               <DashboardError error={new Error("Dashboard error")} reset={() => {}} />
             </Suspense>
           }

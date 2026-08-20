@@ -2,6 +2,7 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { PageHeader } from "@/components/page-header"
+import { DashboardPageContent } from "@/components/dashboard-page-content"
 import {
   dashboardApi,
   type DashboardOverview,
@@ -120,8 +121,8 @@ export default function DashboardPage() {
   // SSE 流式加载服务器资源
   const loadServersStream = useCallback(() => {
     stopServersStream()
-    setServers([])
     setLoadingServers(true)
+    const snapshot = new Map<string, ServerOverviewRow>()
 
     const batcher = createLatestByKeyBatcher<ServerOverviewRow, string>({
       keyOf: (server) => server.id,
@@ -135,12 +136,15 @@ export default function DashboardPage() {
 
     const cancel = monitoringApi.streamServersResources(
       (serverData) => {
-        batcher.enqueue(transformServer(serverData))
+        const server = transformServer(serverData)
+        snapshot.set(server.id, server)
+        batcher.enqueue(server)
       },
       () => {
         if (batcherRef.current !== batcher) return
         batcher.flush()
         batcher.dispose()
+        setServers(Array.from(snapshot.values()))
         setLoadingServers(false)
         batcherRef.current = null
         cancelStreamRef.current = null
@@ -224,7 +228,7 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:p-4 sm:pt-0">
+      <DashboardPageContent className="gap-3">
         {/* 欢迎区 */}
         <WelcomeHeader />
 
@@ -287,7 +291,7 @@ export default function DashboardPage() {
             loading={loadingOverview && !overview}
           />
         </div>
-      </div>
+      </DashboardPageContent>
     </>
   )
 }

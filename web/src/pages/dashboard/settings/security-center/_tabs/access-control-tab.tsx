@@ -15,6 +15,7 @@ import { SettingsLoading } from "@/components/settings/settings-loading"
 export function AccessControlTab() {
   const { t } = useTranslation("settingsSecurityAccess")
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+    cacheKey: "access-control",
     schema: networkSecuritySchema,
     loadFn: async () => {
       const config = await settingsApi.getIPWhitelistConfig()

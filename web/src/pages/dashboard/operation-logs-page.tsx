@@ -16,6 +16,7 @@ import {
 import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 import { PageHeader } from "@/components/page-header"
+import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -228,9 +229,7 @@ export default function OperationLogsPage() {
   return (
     <>
       <PageHeader title={t("pageTitle")} />
-      <React.Suspense fallback={<div className="flex min-h-0 flex-1" />}>
-        <OperationLogsContent />
-      </React.Suspense>
+      <OperationLogsContent />
     </>
   )
 }
@@ -541,7 +540,7 @@ function OperationLogsContent() {
   ]}, [categoryLabels, handleSort, sort, statusLabels, t, typeLabels])
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
+    <DashboardPageContent className="gap-3 sm:gap-4">
       <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
         <p>{t("dashboardDescription")}</p>
         <DashboardStatusLine label={t("systemHealthy")} timestamp={formatDateTime(new Date().toISOString())} />
@@ -551,7 +550,7 @@ function OperationLogsContent() {
         <DataTable
           data={records}
           columns={recordColumns}
-          loading={loading || refreshing}
+          loading={loading && records.length === 0}
           currentPage={page}
           pageCount={totalPages}
           pageSize={pageSize}
@@ -640,7 +639,7 @@ function OperationLogsContent() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </DashboardPageContent>
   )
 }
 

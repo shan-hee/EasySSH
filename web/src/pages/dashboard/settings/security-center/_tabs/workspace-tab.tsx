@@ -13,6 +13,7 @@ export function WorkspaceTab() {
   const { t } = useTranslation("settingsWorkspace")
   const { refreshConfig } = useSystemConfig()
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+    cacheKey: "workspace",
     schema: workspaceConfigSchema,
     loadFn: settingsApi.getWorkspaceConfig,
     saveFn: async (data) => {

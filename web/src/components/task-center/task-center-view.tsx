@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, CircleStop, Clock3, Eye, Loader2, MoreHori
 import { useTranslation } from "react-i18next"
 
 import { PageHeader } from "@/components/page-header"
+import { DashboardPageContent } from "@/components/dashboard-page-content"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -332,7 +333,7 @@ export function TaskCenterView({
   return (
     <>
       {!hidePageHeader ? <PageHeader title={t("title")} /> : null}
-      <div className="flex min-w-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4">
+      <DashboardPageContent>
         <Tabs defaultValue="runs" className="flex min-h-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center border-b pb-3">
             <TabsList>
@@ -355,7 +356,7 @@ export function TaskCenterView({
               <DataTable
                 data={runs}
                 columns={runColumns}
-                loading={loading}
+                loading={loading && runs.length === 0}
                 currentPage={page}
                 pageCount={totalPages}
                 pageSize={pageSize}
@@ -372,7 +373,7 @@ export function TaskCenterView({
                     table={table}
                     showRefresh
                     onRefresh={() => void load()}
-                    isRefreshing={loading}
+                    isRefreshing={loading && runs.length > 0}
                     filterSlot={(
                       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                         <div className="flex flex-wrap gap-1">
@@ -429,7 +430,7 @@ export function TaskCenterView({
             </TabsContent>
           ) : null}
         </Tabs>
-      </div>
+      </DashboardPageContent>
 
       <Dialog open={selected !== null} onOpenChange={(open) => {
         if (open) return

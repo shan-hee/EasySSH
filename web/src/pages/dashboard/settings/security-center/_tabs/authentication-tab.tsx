@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next"
 import {
   Info,
   KeyRound,
-  Loader2,
   LogIn,
   ShieldCheck,
   TimerReset,
@@ -26,15 +25,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSystemConfig } from "@/contexts/system-config-context"
+import { AppLoading } from "@/components/app-loading"
 
 function SectionLoading() {
-  const { t } = useTranslation("common")
-  return (
-    <div className="flex items-center justify-center py-8 text-muted-foreground">
-      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-      <span className="text-sm">{t("loading")}</span>
-    </div>
-  )
+  return <AppLoading className="min-h-24 bg-transparent" />
 }
 
 function RegistrationSection() {
@@ -47,6 +41,7 @@ function RegistrationSection() {
   }, [])
 
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+    cacheKey: "registration",
     schema: registrationConfigSchema,
     loadFn: async () => {
       const system = await settingsApi.getSystemConfig()
@@ -95,6 +90,8 @@ function GoogleAuthSection() {
   const [hasGoogleClientSecret, setHasGoogleClientSecret] = useState(false)
 
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+    cacheKey: "google-auth",
+    refetchOnMount: "always",
     schema: googleAuthConfigSchema,
     loadFn: async () => {
       const system = await settingsApi.getSystemConfig()
@@ -147,6 +144,7 @@ function LoginSessionSection() {
   const { t } = useTranslation("settingsAuthentication")
   const { refreshConfig } = useSystemConfig()
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+    cacheKey: "login-session",
     schema: loginSessionSchema,
     loadFn: settingsApi.getLoginSessionConfig,
     saveFn: async (data) => {
@@ -175,6 +173,7 @@ function LoginSessionSection() {
 function LoginSecuritySection() {
   const { t } = useTranslation("settingsAuthentication")
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+    cacheKey: "login-security",
     schema: loginSecuritySchema,
     loadFn: settingsApi.getLoginSecurityConfig,
     saveFn: settingsApi.saveLoginSecurityConfig,
@@ -204,6 +203,8 @@ function OAuthProviderSection() {
   const { refreshConfig } = useSystemConfig()
   const [externalProviderConfigured, setExternalProviderConfigured] = useState(false)
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+    cacheKey: "oauth-provider",
+    refetchOnMount: "always",
     schema: oauthProviderConfigSchema,
     loadFn: async () => {
       const system = await settingsApi.getSystemConfig()

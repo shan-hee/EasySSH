@@ -11,6 +11,7 @@ import { SettingsFormActions } from "@/components/settings/settings-form-actions
 
 export function NotificationConfigWrapper() {
   const { form, isLoading, isSaving, handleSave } = useSettingsForm({
+    cacheKey: "notifications",
     schema: notificationConfigSchema,
     loadFn: async () => {
       // 使用统一的通知配置 API

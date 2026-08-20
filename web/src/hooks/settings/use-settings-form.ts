@@ -1,5 +1,6 @@
 
 import { useEffect, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import {
   useForm,
   type DefaultValues,
@@ -12,14 +13,17 @@ import type * as z4 from "zod/v4/core"
 import { toast } from "sonner"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
+import { queryKeys } from "@/lib/query-keys"
 
 interface UseSettingsFormOptions<T extends FieldValues> {
+  cacheKey: string
   schema: z4.$ZodType<T, T>
   loadFn: () => Promise<T>
   saveFn: (data: T) => Promise<void>
   onSuccess?: () => void
   onError?: (error: Error) => void
   defaultValues?: Partial<T>
+  refetchOnMount?: boolean | "always"
 }
 
 interface UseSettingsFormReturn<T extends FieldValues> {
@@ -39,57 +43,66 @@ interface UseSettingsFormReturn<T extends FieldValues> {
  *
  * @example
  * const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+ *   cacheKey: "system",
  *   schema: systemConfigSchema,
  *   loadFn: settingsApi.getSystemConfig,
  *   saveFn: settingsApi.saveSystemConfig,
  * })
  */
 export function useSettingsForm<T extends FieldValues>({
+  cacheKey,
   schema,
   loadFn,
   saveFn,
   onSuccess,
   onError,
   defaultValues,
+  refetchOnMount,
 }: UseSettingsFormOptions<T>): UseSettingsFormReturn<T> {
   const { ready } = useAuthReady()
   const { t } = useTranslation("settingsCommon")
-  const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.settings.form(cacheKey),
+    queryFn: loadFn,
+    enabled: ready,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    refetchOnMount,
+  })
+  const [isFormInitialized, setIsFormInitialized] = useState(
+    () => settingsQuery.data !== undefined,
+  )
   // 当前 zod / resolvers 的类型声明存在版本细节不兼容，
   // 这里保留官方 zodResolver 运行时实现，仅隔离有问题的重载推断。
   const createResolver = zodResolver as unknown as (schema: unknown) => Resolver<T>
 
   const form = useForm<T>({
     resolver: createResolver(schema),
-    defaultValues: defaultValues as DefaultValues<T> | undefined,
+    defaultValues: (settingsQuery.data ?? defaultValues) as DefaultValues<T> | undefined,
   })
 
-  // 加载配置数据
-  const loadData = async (showLoading = true) => {
-    try {
-      if (showLoading) setIsLoading(true)
-      const data = await loadFn()
-      form.reset(data)
-    } catch (error) {
-      const err = error as Error
-      toast.error(
-        t("toastLoadFailed", {
-          message: err.message || t("errorUnknown"),
-        })
-      )
-      onError?.(err)
-    } finally {
-      if (showLoading) setIsLoading(false)
-    }
-  }
-
-  // 初始加载（仅在已认证且全局状态就绪时触发）
   useEffect(() => {
-    if (!ready) return
-    loadData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready])
+    if (settingsQuery.data && !form.formState.isDirty) {
+      form.reset(settingsQuery.data)
+    }
+    if (settingsQuery.data !== undefined) {
+      setIsFormInitialized(true)
+    }
+  }, [form, form.formState.isDirty, settingsQuery.data])
+
+  useEffect(() => {
+    if (!settingsQuery.error) return
+    const error = settingsQuery.error instanceof Error
+      ? settingsQuery.error
+      : new Error(t("errorUnknown"))
+    toast.error(
+      t("toastLoadFailed", {
+        message: error.message || t("errorUnknown"),
+      }),
+    )
+    onError?.(error)
+  }, [onError, settingsQuery.error, t])
 
   // 保存配置
   const handleSave = async () => {
@@ -105,7 +118,10 @@ export function useSettingsForm<T extends FieldValues>({
 
     try {
       await saveFn(data)
-      await loadData(false)
+      const refreshed = await settingsQuery.refetch()
+      if (refreshed.data) {
+        form.reset(refreshed.data)
+      }
       toast.success(t("toastSaveSuccess"))
       onSuccess?.()
     } catch (error) {
@@ -123,10 +139,12 @@ export function useSettingsForm<T extends FieldValues>({
 
   return {
     form,
-    isLoading,
+    isLoading: !isFormInitialized && !settingsQuery.error,
     isSaving,
     isDirty: form.formState.isDirty,
     handleSave,
-    reset: () => form.reset(),
+    reset: () => form.reset(
+      (settingsQuery.data ?? defaultValues) as DefaultValues<T> | T | undefined,
+    ),
   }
 }

@@ -14,6 +14,7 @@ import { useSystemConfig } from "@/contexts/system-config-context"
 export function FileTransferTab() {
   const { refreshConfig } = useSystemConfig()
   const { form, isLoading, isSaving, handleSave } = useSettingsForm({
+    cacheKey: "file-transfer",
     schema: fileTransferSchema,
     loadFn: async () => {
       const data = await settingsApi.getSystemConfig()

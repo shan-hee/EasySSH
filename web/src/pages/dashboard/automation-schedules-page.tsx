@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { PageHeader } from "@/components/page-header"
+import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -606,7 +607,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  {confirmDialog}
   {!embedded ? <PageHeader title={t("pageTitle")} /> : null}
 
- <div className="flex min-w-0 flex-1 flex-col gap-3 p-3 pt-0 sm:gap-4 sm:p-4 sm:pt-0">
+ <DashboardPageContent className="gap-3 sm:gap-4">
    <div className="flex shrink-0 flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
      <p>集中查看定时任务、执行节奏和失败风险，便于快速判断调度状态。</p>
      <div className="flex items-center gap-2">
@@ -692,7 +693,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
      <DataTable
        data={tasks}
        columns={columns}
-       loading={loading || refreshing}
+       loading={loading}
        emptyMessage={t("emptyAll")}
        enableRowSelection={true}
        getRowId={(task) => task.id}
@@ -736,7 +737,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
        )}
      />
    </div>
- </div>
+ </DashboardPageContent>
 
  {/* 统一的任务对话框 */}
  <ScheduledTaskDialog
