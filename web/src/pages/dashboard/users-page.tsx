@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { Edit, KeyRound, Lock, Plus, RefreshCw, Shield, Trash2, Unlock, Users } from "lucide-react"
 import { toast } from "sonner"
@@ -38,6 +39,7 @@ import {
   type UserRole,
 } from "@/lib/api"
 import { getErrorMessage } from "@/lib/error-utils"
+import { queryKeys } from "@/lib/query-keys"
 import { usePermissionColumns } from "./users/components/permission-columns"
 import { useUserColumns } from "./users/components/user-columns"
 
@@ -52,12 +54,6 @@ export default function UsersPage() {
   const { t: tCommon } = useTranslation("common")
   const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
-
-  const [users, setUsers] = useState<UserDetail[]>([])
-  const [roles, setRoles] = useState<Role[]>([])
-  const [permissions, setPermissions] = useState<Permission[]>([])
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
 
   const [userDialog, setUserDialog] = useState<"create" | "edit" | null>(null)
   const [editingUserID, setEditingUserID] = useState("")
@@ -76,44 +72,65 @@ export default function UsersPage() {
   const [grantSubjectID, setGrantSubjectID] = useState("")
   const [grantPermissionCode, setGrantPermissionCode] = useState("")
   const [grantResourceID, setGrantResourceID] = useState("")
-  const [resourceGrants, setResourceGrants] = useState<ResourceGrant[]>([])
-
-  const loadData = useCallback(async () => {
-    try {
+  const administrationQuery = useQuery({
+    queryKey: queryKeys.users.administration,
+    queryFn: async () => {
       const [userResponse, roleResponse, permissionResponse] = await Promise.all([
         usersApi.list({ page: 1, limit: 100 }),
         rolesApi.list(),
         permissionsApi.list(),
       ])
-      setUsers(Array.isArray(userResponse.data) ? userResponse.data : [])
-      setRoles(Array.isArray(roleResponse.data) ? roleResponse.data : [])
-      setPermissions(Array.isArray(permissionResponse.data) ? permissionResponse.data : [])
-    } catch (error) {
-      toast.error(getErrorMessage(error, t("toastLoadFailed")))
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [t])
+      return {
+        users: Array.isArray(userResponse.data) ? userResponse.data : [],
+        roles: Array.isArray(roleResponse.data) ? roleResponse.data : [],
+        permissions: Array.isArray(permissionResponse.data) ? permissionResponse.data : [],
+      }
+    },
+    enabled: ready,
+  })
+  const users: UserDetail[] = useMemo(
+    () => administrationQuery.data?.users ?? [],
+    [administrationQuery.data?.users],
+  )
+  const roles: Role[] = useMemo(
+    () => administrationQuery.data?.roles ?? [],
+    [administrationQuery.data?.roles],
+  )
+  const permissions: Permission[] = useMemo(
+    () => administrationQuery.data?.permissions ?? [],
+    [administrationQuery.data?.permissions],
+  )
+  const loading = administrationQuery.isPending
+  const refreshing = administrationQuery.isFetching && !administrationQuery.isPending
+
+  const resourceGrantsQuery = useQuery({
+    queryKey: queryKeys.users.resourceGrants(grantSubjectType, grantSubjectID),
+    queryFn: async () => {
+      const response = await resourceGrantsApi.list(grantSubjectType, grantSubjectID)
+      return response.data || []
+    },
+    enabled: ready && Boolean(grantSubjectID),
+  })
+  const resourceGrants: ResourceGrant[] = resourceGrantsQuery.data ?? []
 
   useEffect(() => {
-    if (ready) void loadData()
-  }, [ready, loadData])
+    if (administrationQuery.error) {
+      toast.error(getErrorMessage(administrationQuery.error, t("toastLoadFailed")))
+    }
+  }, [administrationQuery.error, t])
 
   useEffect(() => {
-    if (!grantSubjectID) {
-      setResourceGrants([])
-      return
+    if (resourceGrantsQuery.error) {
+      toast.error(getErrorMessage(resourceGrantsQuery.error, t("rbacGrantLoadFailed")))
     }
-    void resourceGrantsApi
-      .list(grantSubjectType, grantSubjectID)
-      .then((response) => setResourceGrants(response.data || []))
-      .catch((error) => toast.error(getErrorMessage(error, t("rbacGrantLoadFailed"))))
-  }, [grantSubjectID, grantSubjectType, t])
+  }, [resourceGrantsQuery.error, t])
 
   const refresh = () => {
-    setRefreshing(true)
-    void loadData()
+    void administrationQuery.refetch()
+  }
+
+  const loadData = async () => {
+    await administrationQuery.refetch()
   }
 
   const openCreateUser = () => {
@@ -270,8 +287,7 @@ export default function UsersPage() {
         resource_type: resourceType,
         resource_id: grantResourceID,
       })
-      const response = await resourceGrantsApi.list(grantSubjectType, grantSubjectID)
-      setResourceGrants(response.data || [])
+      await resourceGrantsQuery.refetch()
       setGrantResourceID("")
       toast.success(t("rbacGrantSuccess"))
     } catch (error) {
@@ -288,7 +304,7 @@ export default function UsersPage() {
         resource_type: grant.resource_type,
         resource_id: grant.resource_id,
       })
-      setResourceGrants((current) => current.filter((item) => item.id !== grant.id))
+      await resourceGrantsQuery.refetch()
       toast.success(t("rbacRevokeSuccess"))
     } catch (error) {
       toast.error(getErrorMessage(error, t("rbacRevokeFailed")))

@@ -1,5 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { TFunction } from "i18next"
+import { useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 import { AlertTriangle, CheckCircle2, CircleStop, Clock3, Eye, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -39,6 +40,7 @@ import type {
 import { getErrorMessage } from "@/lib/error-utils"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { queryKeys } from "@/lib/query-keys"
 
 const emptyStatistics: TaskStatistics = { total: 0, queued: 0, running: 0, canceling: 0, succeeded: 0, failed: 0, partial_success: 0, canceled: 0, timeout: 0 }
 
@@ -60,6 +62,7 @@ export function TaskCenterView({
   onClearRequestedRun,
 }: TaskCenterViewProps) {
   const { t, i18n } = useTranslation("taskCenter")
+  const queryClient = useQueryClient()
   const [runs, setRuns] = useState<TaskRun[]>([])
   const [statistics, setStatistics] = useState<TaskStatistics>(emptyStatistics)
   const [loading, setLoading] = useState(true)
@@ -84,14 +87,26 @@ export function TaskCenterView({
       const status = statusFilter === "active"
         ? ["queued", "running", "canceling"] as TaskRunStatus[]
         : statusFilter === "all" ? undefined : [statusFilter as TaskRunStatus]
-      const [list, stats] = await Promise.all([api.list({
+      const params = {
         status,
         task_type: taskTypeFilters.length > 0 ? taskTypeFilters : undefined,
         trigger_type: triggerFilters.length > 0 ? triggerFilters : undefined,
         keyword: deferredKeyword || undefined,
         page: requestedPage,
         page_size: pageSize,
-      }), api.statistics()])
+      }
+      const [list, stats] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: queryKeys.taskCenter.runs(params),
+          queryFn: () => api.list(params),
+          staleTime: silent ? 0 : 30_000,
+        }),
+        queryClient.fetchQuery({
+          queryKey: queryKeys.taskCenter.statistics,
+          queryFn: api.statistics,
+          staleTime: silent ? 0 : 30_000,
+        }),
+      ])
       setRuns(list.runs ?? [])
       setTotalPages(Math.max(1, list.total_pages ?? 1))
       setTotalRuns(list.total ?? 0)
@@ -101,7 +116,7 @@ export function TaskCenterView({
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [api, deferredKeyword, page, pageSize, statusFilter, t, taskTypeFilters, triggerFilters])
+  }, [api, deferredKeyword, page, pageSize, queryClient, statusFilter, t, taskTypeFilters, triggerFilters])
 
   useEffect(() => {
     void load()
@@ -121,7 +136,11 @@ export function TaskCenterView({
         refreshTimer = null
         void load(true)
         if (selected?.run.id && (changedTaskIDs.size === 0 || changedTaskIDs.has(selected.run.id))) {
-          void api.get(selected.run.id).then(setSelected).catch(() => undefined)
+          void queryClient.fetchQuery({
+            queryKey: queryKeys.taskCenter.detail(selected.run.id),
+            queryFn: () => api.get(selected.run.id),
+            staleTime: 0,
+          }).then(setSelected).catch(() => undefined)
         }
         changedTaskIDs.clear()
       }, 250)
@@ -130,15 +149,19 @@ export function TaskCenterView({
       unsubscribe()
       if (refreshTimer !== null) window.clearTimeout(refreshTimer)
     }
-  }, [api, load, selected?.run.id, subscribeEvents])
+  }, [api, load, queryClient, selected?.run.id, subscribeEvents])
 
   const openDetails = useCallback(async (run: TaskRun) => {
     try {
-      setSelected(await api.get(run.id))
+      setSelected(await queryClient.fetchQuery({
+        queryKey: queryKeys.taskCenter.detail(run.id),
+        queryFn: () => api.get(run.id),
+        staleTime: 15_000,
+      }))
     } catch (error) {
       toast.error(getErrorMessage(error, t("detailsLoadFailed")))
     }
-  }, [api, t])
+  }, [api, queryClient, t])
 
   const requestedRunID = externalRequestedRunID ?? null
   const clearRequestedRun = useCallback(() => {
@@ -154,24 +177,29 @@ export function TaskCenterView({
     }
     if (handledRequestedRunRef.current === requestedRunID) return
     handledRequestedRunRef.current = requestedRunID
-    void api.get(requestedRunID).then(setSelected).catch((error) => {
+    void queryClient.fetchQuery({
+      queryKey: queryKeys.taskCenter.detail(requestedRunID),
+      queryFn: () => api.get(requestedRunID),
+      staleTime: 15_000,
+    }).then(setSelected).catch((error) => {
       toast.error(getErrorMessage(error, t("detailsLoadFailed")))
       clearRequestedRun()
     })
-  }, [api, clearRequestedRun, requestedRunID, t])
+  }, [api, clearRequestedRun, queryClient, requestedRunID, t])
 
   const runAction = useCallback(async (action: "cancel" | "retry", run: TaskRun) => {
     try {
       if (action === "cancel") await api.cancel(run.id)
       else await api.retry(run.id)
       toast.success(t(action === "cancel" ? "cancelRequested" : "retrySubmitted"))
+      await queryClient.invalidateQueries({ queryKey: queryKeys.taskCenter.root })
       setSelected(null)
       clearRequestedRun()
       await load()
     } catch (error) {
       toast.error(getErrorMessage(error, t(action === "cancel" ? "cancelFailed" : "retryFailed")))
     }
-  }, [api, clearRequestedRun, load, t])
+  }, [api, clearRequestedRun, load, queryClient, t])
 
   const cleanupRuns = useCallback(async () => {
     const parsedRetentionDays = Number(retentionDays)
@@ -183,6 +211,7 @@ export function TaskCenterView({
       setCleanupLoading(true)
       const result = await api.cleanup(parsedRetentionDays)
       toast.success(t("cleanupSuccess", { count: result.deleted_count }))
+      await queryClient.invalidateQueries({ queryKey: queryKeys.taskCenter.root })
       setCleanupOpen(false)
       setSelected(null)
       clearRequestedRun()
@@ -193,7 +222,7 @@ export function TaskCenterView({
     } finally {
       setCleanupLoading(false)
     }
-  }, [api, clearRequestedRun, load, retentionDays, t])
+  }, [api, clearRequestedRun, load, queryClient, retentionDays, t])
 
   const metricItems = useMemo(() => [
     { label: t("metricAll"), value: statistics.total, icon: Clock3 },

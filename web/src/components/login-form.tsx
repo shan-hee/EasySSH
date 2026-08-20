@@ -22,7 +22,6 @@ import { toast } from "@/components/ui/sonner"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { authApi, INTERNAL_OAUTH_REDIRECT_URI } from "@/lib/api/auth"
 import { twoFactorApi } from "@/lib/api/2fa"
-import { FadeSlideIn } from "@/components/ui/fade-slide-in"
 import { getErrorMessage } from "@/lib/error-utils"
 import { getAuthErrorCode, getAuthErrorMessage } from "@/lib/auth-error"
 import { isApiError } from "@/lib/api-client"
@@ -408,7 +407,7 @@ export function LoginForm({
       <form onSubmit={requires2FA ? handle2FASubmit : handleSubmit}>
         <FieldGroup>
           {/* Logo 和标题 */}
-          <FadeSlideIn delay={0} disabled>
+
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="flex flex-col items-center gap-3">
                 <div className="flex size-16 items-center justify-center">
@@ -441,14 +440,14 @@ export function LoginForm({
                 </div>
               </div>
             </div>
-          </FadeSlideIn>
+
 
           {/* 表单卡片：去掉背景色与边框/阴影 */}
           <div className="rounded-xl p-6 bg-transparent">
             {requires2FA ? (
               // 2FA 验证表单
               <div className="space-y-4">
-                <FadeSlideIn delay={0.1} disabled>
+
                   <Field>
                     <FieldLabel htmlFor="2fa-code" className="text-foreground">
                       {tAuth("login2faCodePlaceholder")}
@@ -477,10 +476,10 @@ export function LoginForm({
                       {tAuth("login2faRequiredDesc")}
                     </FieldDescription>
                   </Field>
-                </FadeSlideIn>
+
 
                 {/* 验证按钮 */}
-                <FadeSlideIn delay={0.2} disabled>
+
                   <Field>
                     <Button
                       type="submit"
@@ -499,10 +498,10 @@ export function LoginForm({
                       )}
                     </Button>
                   </Field>
-                </FadeSlideIn>
+
 
                 {/* 返回按钮 */}
-                <FadeSlideIn delay={0.3} disabled>
+
                   <Field>
                     <Button
                       type="button"
@@ -514,21 +513,21 @@ export function LoginForm({
                       {tAuth("login2faBack")}
                     </Button>
                   </Field>
-                </FadeSlideIn>
+
 
                 {/* 备份码提示 */}
-                <FadeSlideIn delay={0.4} disabled>
+
                   <div className="text-center text-xs text-muted-foreground">
                     {tAuth("login2faBackupHint")}
                   </div>
-                </FadeSlideIn>
+
               </div>
             ) : (
               // 邮箱密码登录表单
               <div className="space-y-4">
               {/* 账户锁定提示 */}
               {isAccountLocked && (
-                <FadeSlideIn delay={0} disabled>
+
                   <div className="rounded-xl border border-red-200/50 dark:border-red-900/50 bg-gradient-to-br from-red-50 to-red-100/50 dark:from-red-950/30 dark:to-red-900/20 p-5 shadow-sm">
                     <div className="flex items-start gap-4">
                       <div className="flex-shrink-0 p-2 rounded-full bg-red-100 dark:bg-red-900/50">
@@ -583,11 +582,11 @@ export function LoginForm({
                       </div>
                     </div>
                   </div>
-                </FadeSlideIn>
+
               )}
 
               {/* 邮箱输入 */}
-              <FadeSlideIn delay={0.1} disabled>
+
                 <Field>
                   <FieldLabel htmlFor="email" className="text-foreground">
                     {tAuth("loginEmailLabel")}
@@ -607,10 +606,10 @@ export function LoginForm({
                     />
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 密码输入 */}
-              <FadeSlideIn delay={0.2} disabled>
+
                 <Field>
                   <FieldLabel htmlFor="password" className="text-foreground">
                     {tAuth("loginPasswordLabel")}
@@ -641,10 +640,10 @@ export function LoginForm({
                     </button>
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 登录持久性与忘记密码 */}
-              <FadeSlideIn delay={0.3} disabled>
+
                 <div className="flex items-center justify-between gap-4">
                   {rememberLoginAllowed ? (
                     <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
@@ -667,10 +666,10 @@ export function LoginForm({
                     {tAuth("loginForgotPassword")}
                   </Button>
                 </div>
-              </FadeSlideIn>
+
 
               {/* 登录按钮 */}
-              <FadeSlideIn delay={0.4} disabled>
+
                 <Field>
                   <Button
                     type="submit"
@@ -688,12 +687,12 @@ export function LoginForm({
                     )}
                   </Button>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* Google 登录 */}
               {!isOAuthAuthorization && config?.oauth_enabled && config?.google_client_id && (
                 <>
-                  <FadeSlideIn delay={0.5} disabled>
+
                     <div className="flex items-center gap-3">
                       <div className="flex-1 border-t border-border" />
                       <span className="text-xs uppercase text-muted-foreground">
@@ -701,9 +700,9 @@ export function LoginForm({
                       </span>
                       <div className="flex-1 border-t border-border" />
                     </div>
-                  </FadeSlideIn>
 
-                  <FadeSlideIn delay={0.6} disabled>
+
+
                     <div className="flex justify-center">
                       <Button
                         type="button"
@@ -733,7 +732,7 @@ export function LoginForm({
                         {tAuth("loginWithGoogle")}
                       </Button>
                     </div>
-                  </FadeSlideIn>
+
 
                 </>
               )}
@@ -746,7 +745,7 @@ export function LoginForm({
             <div className="space-y-3">
 
             {/* 注册提示 */}
-            <FadeSlideIn delay={0.5} disabled>
+
               <div className="text-center text-sm text-muted-foreground">
                 {tAuth("loginNoAccount")}
                 {config?.allow_registration ? (
@@ -773,12 +772,12 @@ export function LoginForm({
                   </Button>
                 )}
               </div>
-            </FadeSlideIn>
+
 
             {/* 版本信息 */}
-            <FadeSlideIn delay={0.6} disabled>
+
               <AuthPageFooter />
-            </FadeSlideIn>
+
           </div>
           )}
         </FieldGroup>

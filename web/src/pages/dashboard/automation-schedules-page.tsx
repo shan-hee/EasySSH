@@ -1,5 +1,6 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -46,6 +47,7 @@ import { formatInTimezone, getEffectiveLocale, getEffectiveTimezone } from "@/ut
 import { useTranslation } from "react-i18next"
 import { createScheduledTaskColumns } from "./automation/schedules/components/scheduled-task-columns"
 import { ScheduledTaskDialog } from "./automation/schedules/components/scheduled-task-dialog"
+import { queryKeys } from "@/lib/query-keys"
 
 type ScheduledPayload = {
  server_id?: string
@@ -164,12 +166,6 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  const { t } = useTranslation("automationSchedules")
  const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
  // 数据状态
- const [tasks, setTasks] = useState<ScheduledTask[]>([])
- const [servers, setServers] = useState<Server[]>([])
- const [scripts, setScripts] = useState<Script[]>([])
- const [loading, setLoading] = useState(true)
- const [refreshing, setRefreshing] = useState(false)
-
  // 对话框状态
  const [isDialogOpen, setIsDialogOpen] = useState(false)
  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create")
@@ -198,49 +194,50 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
 	 // 脚本库筛选状态
 	 const [scriptSearchTerm, setScriptSearchTerm] = useState("")
 
- // 加载所有数据
+ const administrationQuery = useQuery({
+   queryKey: queryKeys.scheduledTasks.administration,
+   queryFn: async () => {
+     const [tasksRes, serversRes, scriptsRes] = await Promise.all([
+       scheduledTasksApi.list({ page: 1, limit: 100 }),
+       serversApi.list(),
+       scriptsApi.list({ page: 1, limit: 100 }),
+     ])
+     return {
+       tasks: Array.isArray(tasksRes?.data) ? tasksRes.data : [],
+       servers: Array.isArray(serversRes?.data) ? serversRes.data : [],
+       scripts: Array.isArray(scriptsRes?.data) ? scriptsRes.data : [],
+     }
+   },
+   enabled: ready,
+ })
+ const tasks: ScheduledTask[] = useMemo(
+   () => administrationQuery.data?.tasks ?? [],
+   [administrationQuery.data?.tasks],
+ )
+ const servers: Server[] = useMemo(
+   () => administrationQuery.data?.servers ?? [],
+   [administrationQuery.data?.servers],
+ )
+ const scripts: Script[] = useMemo(
+   () => administrationQuery.data?.scripts ?? [],
+   [administrationQuery.data?.scripts],
+ )
+ const loading = administrationQuery.isPending
+ const refreshing = administrationQuery.isFetching && !administrationQuery.isPending
  const loadData = async () => {
- try {
-// 并行加载所有数据
- const [tasksRes, serversRes, scriptsRes] = await Promise.all([
- scheduledTasksApi.list({ page: 1, limit: 100 }),
- serversApi.list(),
- scriptsApi.list({ page: 1, limit: 100 }),
- ])
-
- // 现在 apiFetch 不会解包包含分页元数据的响应，直接访问 data 字段
- const tasksList = Array.isArray(tasksRes?.data) ? tasksRes.data : []
- const serversList = Array.isArray(serversRes?.data) ? serversRes.data : []
- const scriptsList = Array.isArray(scriptsRes?.data) ? scriptsRes.data : []
- setTasks(Array.isArray(tasksList) ? tasksList : [])
- setServers(Array.isArray(serversList) ? serversList : [])
- setScripts(Array.isArray(scriptsList) ? scriptsList : [])
- } catch (error: unknown) {
- console.error("加载数据失败:", error)
-
- // 确保状态为空数组，避免undefined错误
- setTasks([])
- setServers([])
- setScripts([])
-
- toast.error(getErrorMessage(error, "加载数据失败"))
- } finally {
- setLoading(false)
- setRefreshing(false)
- }
+   await administrationQuery.refetch()
  }
 
  // 刷新数据
  const handleRefresh = async () => {
- setRefreshing(true)
- await loadData()
+   await loadData()
  }
 
- // 初始加载（仅在已认证且全局状态就绪时触发）
  useEffect(() => {
-   if (!ready) return
-   loadData()
- }, [ready])
+   if (administrationQuery.error) {
+     toast.error(getErrorMessage(administrationQuery.error, "加载数据失败"))
+   }
+ }, [administrationQuery.error])
 
 
 	 // 过滤脚本

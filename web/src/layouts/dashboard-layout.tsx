@@ -1,5 +1,6 @@
 
 import { useEffect, useRef } from "react"
+import { AnimatePresence, motion } from "motion/react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import SidebarProviderServer from "@/components/sidebar-provider-server"
@@ -14,6 +15,7 @@ import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-polic
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
+import { pageTransition, workspaceTransition } from "@/lib/motion"
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -33,6 +35,39 @@ function MobileSidebarRouteCloser() {
   }, [isMobile, openMobile, pathname, setOpenMobile])
 
   return null
+}
+
+function DashboardRouteOutlet({ usesViewportWorkspace }: { usesViewportWorkspace: boolean }) {
+  const { pathname } = useLocation()
+
+  if (usesViewportWorkspace) {
+    return (
+      <motion.div
+        key={pathname}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={workspaceTransition}
+        className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      >
+        <Outlet />
+      </motion.div>
+    )
+  }
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <motion.div
+        key={pathname}
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -2 }}
+        transition={pageTransition}
+        className="mx-auto flex min-h-svh w-full max-w-[1440px] min-w-0 flex-1 flex-col"
+      >
+        <Outlet />
+      </motion.div>
+    </AnimatePresence>
+  )
 }
 
 /**
@@ -105,14 +140,13 @@ export default function DashboardLayout() {
           <MobileSidebarRouteCloser />
           <AppSidebar />
           <SidebarInset className={usesViewportWorkspace ? "h-svh overflow-hidden" : "min-h-svh overflow-visible"}>
-            {/* 添加淡入动画，使界面显示更平滑 */}
             <div
               className={cn(
-                "animate-in fade-in duration-300 flex min-w-0 flex-1 flex-col scrollbar-custom",
+                "flex min-w-0 flex-1 flex-col scrollbar-custom",
                 usesViewportWorkspace ? "min-h-0 overflow-hidden" : "min-h-svh overflow-visible",
               )}
             >
-              <Outlet />
+              <DashboardRouteOutlet usesViewportWorkspace={usesViewportWorkspace} />
             </div>
           </SidebarInset>
         </SidebarProviderServer>

@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   ArrowDown,
@@ -49,6 +50,7 @@ import {
   LogServerFilterButton,
   type ServerFilterOption,
 } from "@/components/logs/log-server-filters"
+import { queryKeys } from "@/lib/query-keys"
 
 type SortOrder = "asc" | "desc"
 
@@ -235,6 +237,7 @@ export default function OperationLogsPage() {
 
 function OperationLogsContent() {
   const { t } = useTranslation("operationLogs")
+  const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const { ready } = useAuthReady()
   const typeParam = searchParams.get("type")
@@ -287,11 +290,16 @@ function OperationLogsContent() {
       else setLoading(true)
 
       const filterParams = filtersToParams(nextFilters)
-      const list = await operationRecordsApi.list({
+      const params: OperationRecordListParams = {
         page: nextPage,
         page_size: nextPageSize,
         ...filterParams,
         ...nextSort,
+      }
+      const list = await queryClient.fetchQuery({
+        queryKey: queryKeys.logs.operations(params),
+        queryFn: () => operationRecordsApi.list(params),
+        staleTime: showRefresh ? 0 : 60_000,
       })
       setRecords(list.records || [])
       setPage(list.page || nextPage)
@@ -308,7 +316,7 @@ function OperationLogsContent() {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [filters, page, pageSize, sort, t])
+  }, [filters, page, pageSize, queryClient, sort, t])
 
   React.useEffect(() => {
     if (!ready) return

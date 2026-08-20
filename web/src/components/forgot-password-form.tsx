@@ -9,7 +9,6 @@ import { Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react"
 import { toast } from "@/components/ui/sonner"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { authApi } from "@/lib/api/auth"
-import { FadeSlideIn } from "@/components/ui/fade-slide-in"
 import { getErrorMessage } from "@/lib/error-utils"
 import { AuthPageFooter } from "@/components/auth-page-footer"
 
@@ -141,7 +140,7 @@ export function ForgotPasswordForm({
       <form onSubmit={handleSubmit}>
         <FieldGroup>
           {/* Logo 和标题 */}
-          <FadeSlideIn disabled>
+
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="flex flex-col items-center gap-3">
                 <div className="flex size-16 items-center justify-center">
@@ -168,13 +167,13 @@ export function ForgotPasswordForm({
                 </div>
               </div>
             </div>
-          </FadeSlideIn>
+
 
           {/* 表单卡片 */}
           <div className="rounded-xl p-6 bg-transparent">
             <div className="space-y-4">
               {/* 邮箱输入 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <FieldLabel htmlFor="email" className="text-foreground">
                     邮箱地址
@@ -194,10 +193,10 @@ export function ForgotPasswordForm({
                     />
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 验证码输入 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <FieldLabel htmlFor="verificationCode" className="text-foreground">
                     验证码
@@ -235,10 +234,10 @@ export function ForgotPasswordForm({
                     </Button>
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 新密码输入 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <FieldLabel htmlFor="newPassword" className="text-foreground">
                     新密码
@@ -270,10 +269,10 @@ export function ForgotPasswordForm({
                     </button>
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 确认密码输入 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <FieldLabel htmlFor="confirmPassword" className="text-foreground">
                     确认新密码
@@ -305,10 +304,10 @@ export function ForgotPasswordForm({
                     </button>
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 重置按钮 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <Button
                     type="submit"
@@ -326,14 +325,14 @@ export function ForgotPasswordForm({
                     )}
                   </Button>
                 </Field>
-              </FadeSlideIn>
+
             </div>
           </div>
 
           {/* 底部提示 */}
           <div className="space-y-3">
             {/* 返回登录 */}
-            <FadeSlideIn disabled>
+
               <div className="text-center text-sm text-muted-foreground">
                 记起密码了？
                 <Button
@@ -345,12 +344,12 @@ export function ForgotPasswordForm({
                   返回登录
                 </Button>
               </div>
-            </FadeSlideIn>
+
 
             {/* 版本信息 */}
-            <FadeSlideIn disabled>
+
               <AuthPageFooter />
-            </FadeSlideIn>
+
           </div>
         </FieldGroup>
       </form>

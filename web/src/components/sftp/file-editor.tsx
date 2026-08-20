@@ -1,7 +1,6 @@
 
-import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from "react"
+import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import Editor from "@monaco-editor/react"
 import { useTheme } from "@/components/theme-provider"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -27,6 +26,8 @@ import {
   FileCode,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+
+const MonacoEditor = lazy(() => import("@monaco-editor/react"))
 
 type TextEncodingOption = {
   value: string
@@ -473,7 +474,8 @@ export function FileEditor({
 
           {/* Monaco Editor */}
           <div ref={editorContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden">
-             <Editor
+            <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">{tSftp("editorLoading")}</div>}>
+             <MonacoEditor
                height="100%"
                width="100%"
                language={getLanguage(fileName)}
@@ -518,7 +520,8 @@ export function FileEditor({
                   </div>
                 </div>
               }
-            />
+             />
+            </Suspense>
           </div>
 
           {/* 底部状态栏 */}
@@ -719,7 +722,8 @@ export function FileEditor({
 
       {/* Monaco Editor */}
       <div ref={editorContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden">
-        <Editor
+        <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">{tSftp("editorLoading")}</div>}>
+        <MonacoEditor
           height="100%"
           width="100%"
           language={getLanguage(fileName)}
@@ -765,6 +769,7 @@ export function FileEditor({
             </div>
           }
         />
+        </Suspense>
       </div>
 
       {/* 底部状态栏 */}

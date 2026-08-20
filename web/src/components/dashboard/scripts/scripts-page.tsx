@@ -1,5 +1,6 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -34,6 +35,7 @@ import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import {
   DashboardMetricCard,
 } from "@/components/logs/log-dashboard-widgets"
+import { queryKeys } from "@/lib/query-keys"
 
 export interface ScriptsPageAdapters {
  scripts?: Pick<typeof scriptsApi, "list" | "create" | "update" | "delete" | "execute">
@@ -66,32 +68,26 @@ export default function ScriptsPage({
 
  const { t } = useTranslation("scripts")
  const navigate = useNavigate()
+ const queryClient = useQueryClient()
  const { ready: authReady } = useAuthReady()
  const ready = readyOverride ?? authReady
  const scriptsClient = adapters?.scripts ?? scriptsApi
  const serversClient = adapters?.servers ?? serversApi
  const batchTasksClient = adapters?.batchTasks ?? batchTasksApi
  const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
- const [scripts, setScripts] = useState<Script[]>([])
- const [loading, setLoading] = useState(true)
  const [isDialogOpen, setIsDialogOpen] = useState(false)
  const [editingScriptId, setEditingScriptId] = useState<string | null>(null)
- const [refreshing, setRefreshing] = useState(false)
 
  // 执行对话框状态
  const [isExecuteDialogOpen, setIsExecuteDialogOpen] = useState(false)
  const [executingScript, setExecutingScript] = useState<Script | null>(null)
- const [servers, setServers] = useState<Server[]>([])
  const [selectedServerIds, setSelectedServerIds] = useState<string[]>([])
  const [executionMode, setExecutionMode] = useState<"parallel" | "sequential">("parallel")
  const [serverSearchQuery, setServerSearchQuery] = useState("")
- const [loadingServers, setLoadingServers] = useState(false)
  const [executing, setExecuting] = useState(false)
  // DataTable 分页与列可见性
  const [page, setPage] = useState(1)
  const [pageSize, setPageSize] = useState(20)
- const [totalPages, setTotalPages] = useState(1)
- const [totalRows, setTotalRows] = useState(0)
  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
    name: true,
@@ -123,38 +119,34 @@ export default function ScriptsPage({
 
  const [editTagInput, setEditTagInput] = useState("")
 
-// 加载脚本列表
+ const scriptsQuery = useQuery({
+   queryKey: queryKeys.scripts.list(page, pageSize),
+   queryFn: () => scriptsClient.list({ page, limit: pageSize }),
+   enabled: ready,
+   placeholderData: keepPreviousData,
+ })
+ const scripts: Script[] = useMemo(
+   () => scriptsQuery.data?.data ?? [],
+   [scriptsQuery.data?.data],
+ )
+ const totalRows = scriptsQuery.data?.total ?? scripts.length
+ const totalPages = scriptsQuery.data?.total_pages ?? 1
+ const loading = scriptsQuery.isPending
+ const refreshing = scriptsQuery.isFetching && !scriptsQuery.isPending
  const loadScripts = useCallback(async () => {
-  try {
-     const response = await scriptsClient.list({
-       page,
-       limit: pageSize,
-     })
-
-     setScripts(response.data || [])
-     setTotalRows(response.total || (response.data || []).length)
-     setTotalPages(response.total_pages || 1)
-   } catch (error: unknown) {
-     console.error("加载脚本列表失败:", error)
-     toast.error(getErrorMessage(error, t("toastLoadFailed")))
-   } finally {
-     setLoading(false)
-     setRefreshing(false)
-   }
- }, [page, pageSize, scriptsClient, t])
+   await queryClient.invalidateQueries({ queryKey: queryKeys.scripts.all })
+ }, [queryClient])
 
  // 刷新脚本列表
  const handleRefresh = async () => {
- setRefreshing(true)
- await loadScripts()
-}
+   await loadScripts()
+ }
 
- // 初始加载与分页变化（仅在已认证且全局状态就绪时触发）
  useEffect(() => {
-   if (!ready) return
-   setLoading(true)
-   loadScripts()
- }, [page, pageSize, loadScripts, ready])
+   if (scriptsQuery.error) {
+     toast.error(getErrorMessage(scriptsQuery.error, t("toastLoadFailed")))
+   }
+ }, [scriptsQuery.error, t])
 
  useEffect(() => {
    if (editingScriptId && !scripts.some((script) => script.id === editingScriptId)) {
@@ -172,19 +164,26 @@ export default function ScriptsPage({
  // 编辑模式的可用标签（排除已选择的）
  const availableEditTags = allTags.filter(tag => !editScript.tags.includes(tag))
 
-// 加载服务器列表
+const serversQuery = useQuery({
+  queryKey: queryKeys.scripts.servers,
+  queryFn: () => serversClient.list({ limit: 1000 }),
+  enabled: false,
+})
+const refetchServers = serversQuery.refetch
+const servers: Server[] = useMemo(
+  () => serversQuery.data?.data ?? [],
+  [serversQuery.data?.data],
+)
+const loadingServers = serversQuery.isFetching
 const loadServers = useCallback(async () => {
-  setLoadingServers(true)
-  try {
-    const response = await serversClient.list({ limit: 1000 })
-    setServers(response.data || [])
-  } catch (error: unknown) {
-    console.error("加载服务器列表失败:", error)
-    toast.error(getErrorMessage(error, t("toastLoadServersFailed")))
-  } finally {
-    setLoadingServers(false)
+  await refetchServers()
+}, [refetchServers])
+
+useEffect(() => {
+  if (serversQuery.error) {
+    toast.error(getErrorMessage(serversQuery.error, t("toastLoadServersFailed")))
   }
-}, [serversClient, t])
+}, [serversQuery.error, t])
 
 // 过滤后的服务器列表
 const filteredServers = useMemo(() => {

@@ -9,12 +9,10 @@ import { MonitorWebSocketProvider } from './monitor/contexts/MonitorWebSocketCon
 import { Button } from '@/components/ui/button'
 import { FolderOpen, Activity, Bot } from 'lucide-react'
 import { NetworkLatencyPopover } from './network-latency-popover'
-import { MonitorPanel } from './monitor/MonitorPanel'
 import { WebTerminal } from './web-terminal'
 import { ServerConnectionConfigs, type ServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
 import { ConnectionLoader } from './connection-loader'
 import { FileManagerPanel } from './file-manager-panel'
-import { AiAssistantPanel } from './ai-assistant-panel'
 import type { AIAssistantWorkspaceAdapters } from '@/components/ai-agent/ai-assistant-workspace-view'
 import { DockerPopover } from './docker'
 import { useSftpSession } from '@/hooks/useSftpSession'
@@ -40,6 +38,13 @@ import {
   resolveTerminalAppThemeMode,
   resolveTerminalThemeName,
 } from "./use-terminal-renderer-settings"
+
+const MonitorPanel = React.lazy(() => (
+  import("./monitor/MonitorPanel").then((module) => ({ default: module.MonitorPanel }))
+))
+const AiAssistantPanel = React.lazy(() => (
+  import("./ai-assistant-panel").then((module) => ({ default: module.AiAssistantPanel }))
+))
 
 const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
 const DEFAULT_TERMINAL_SFTP_INITIAL_PATH = '/root'
@@ -145,6 +150,7 @@ export function TabTerminalContent({
   const [sftpInternalBackHandler, setSftpInternalBackHandler] =
     useState<InternalBackHandler | null>(null)
   const [hasOpenedFileManager, setHasOpenedFileManager] = useState(false)
+  const [hasOpenedAi, setHasOpenedAi] = useState(false)
   const [sftpSessionInitialPath, setSftpSessionInitialPath] = useState(initialSftpPath)
   const terminalInputApiRef = React.useRef<TerminalInputApi | null>(null)
   const lastSftpRefreshRequestVersionRef = React.useRef(sftpRefreshRequestVersion)
@@ -209,6 +215,7 @@ export function TabTerminalContent({
   )
   const canMountAi = canRenderInlinePanels && canUseAiCapability && isActive && isTerminalSession && !effectiveIsLoading
   const canUseAi = canMountAi && isAiInputOpen
+  const shouldMountAi = canMountAi && (canUseAi || hasOpenedAi)
   const shouldReserveInlineMonitor =
     canRenderInlinePanels &&
     canUseMonitorCapability &&
@@ -228,6 +235,16 @@ export function TabTerminalContent({
       setHasOpenedFileManager(true)
     }
   }, [canMountFileManager, canUseFileManager])
+
+  useEffect(() => {
+    if (!canMountAi) {
+      setHasOpenedAi(false)
+      return
+    }
+    if (canUseAi) {
+      setHasOpenedAi(true)
+    }
+  }, [canMountAi, canUseAi])
 
   const transferAuthTicketProvider = React.useMemo(
     () => createWorkspaceTransferAuthTicketProviderAdapter(workspace?.adapters.authTicketProvider),
@@ -623,7 +640,11 @@ export function TabTerminalContent({
                     : 'w-0 opacity-0 -translate-x-4'
                 )}
               >
-                {shouldReserveInlineMonitor && <MonitorPanel className="h-full min-h-0" />}
+                {shouldReserveInlineMonitor && (
+                  <React.Suspense fallback={null}>
+                    <MonitorPanel className="h-full min-h-0" />
+                  </React.Suspense>
+                )}
               </div>
             )}
 
@@ -695,7 +716,9 @@ export function TabTerminalContent({
                     }}
                   />
                 )}
-                <MonitorPanel className="relative h-full min-h-0 w-full" isLive={isActive} />
+                <React.Suspense fallback={null}>
+                  <MonitorPanel className="relative h-full min-h-0 w-full" isLive={isActive} />
+                </React.Suspense>
               </div>
             )}
           </div>
@@ -747,18 +770,20 @@ export function TabTerminalContent({
             />
           )}
 
-          {canMountAi && (
-            <AiAssistantPanel
-              isOpen={canUseAi}
-              onClose={() => setTabState(session.id, { isAiInputOpen: false })}
-              terminalSession={session}
-              adapters={aiAssistantAdapters}
-              background={{
-                color: terminalSurfaceBackground,
-                image: hasBackgroundImage ? settings.backgroundImage : undefined,
-                imageOpacity: pageBackgroundImageLayerOpacity,
-              }}
-            />
+          {shouldMountAi && (
+            <React.Suspense fallback={null}>
+              <AiAssistantPanel
+                isOpen={canUseAi}
+                onClose={() => setTabState(session.id, { isAiInputOpen: false })}
+                terminalSession={session}
+                adapters={aiAssistantAdapters}
+                background={{
+                  color: terminalSurfaceBackground,
+                  image: hasBackgroundImage ? settings.backgroundImage : undefined,
+                  imageOpacity: pageBackgroundImageLayerOpacity,
+                }}
+              />
+            </React.Suspense>
           )}
 
         </div>

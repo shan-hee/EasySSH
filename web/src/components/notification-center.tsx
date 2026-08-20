@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import { AlertTriangle, Bell, Check, CheckCheck, CircleCheck, Info, Trash2, XCircle } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -8,8 +9,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { inboxNotificationsApi, type InboxNotification } from "@/lib/api/inbox-notifications"
+import {
+  inboxNotificationsApi,
+  type InboxNotification,
+  type InboxNotificationListResponse,
+} from "@/lib/api/inbox-notifications"
 import { subscribeRealtimeEvents } from "@/lib/api/realtime-events"
+import { queryKeys } from "@/lib/query-keys"
 
 const severityIcons = {
   info: Info,
@@ -21,72 +27,96 @@ const severityIcons = {
 export function NotificationCenter() {
   const { t, i18n } = useTranslation("headerActions")
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [open, setOpen] = React.useState(false)
-  const [items, setItems] = React.useState<InboxNotification[]>([])
-  const [unreadCount, setUnreadCount] = React.useState(0)
-  const [loading, setLoading] = React.useState(false)
-
-  const loadNotifications = React.useCallback(async (silent = false) => {
-    if (!silent) setLoading(true)
-    try {
-      const result = await inboxNotificationsApi.list({ page: 1, page_size: 40 })
-      setItems(result.notifications ?? [])
-      setUnreadCount(result.unread_count ?? 0)
-    } catch (error) {
-      if (!silent) console.error("Failed to load notifications:", error)
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }, [])
+  const notificationsQuery = useQuery({
+    queryKey: queryKeys.notifications.inbox,
+    queryFn: () => inboxNotificationsApi.list({ page: 1, page_size: 40 }),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  })
+  const items = React.useMemo(
+    () => notificationsQuery.data?.notifications ?? [],
+    [notificationsQuery.data?.notifications],
+  )
+  const unreadCount = notificationsQuery.data?.unread_count ?? 0
+  const loading = notificationsQuery.isFetching
 
   React.useEffect(() => {
-    void loadNotifications(true)
     let refreshTimer: number | null = null
     const unsubscribe = subscribeRealtimeEvents((event) => {
       if (!event.type.startsWith("notification.") || refreshTimer !== null) return
       refreshTimer = window.setTimeout(() => {
         refreshTimer = null
-        void loadNotifications(true)
+        void queryClient.invalidateQueries({ queryKey: queryKeys.notifications.inbox })
       }, 200)
     })
-    const timer = window.setInterval(() => void loadNotifications(true), 60000)
     return () => {
       unsubscribe()
       if (refreshTimer !== null) window.clearTimeout(refreshTimer)
-      window.clearInterval(timer)
     }
-  }, [loadNotifications])
+  }, [queryClient])
+
+  const updateCachedNotifications = React.useCallback((
+    updater: (current: InboxNotificationListResponse) => InboxNotificationListResponse,
+  ) => {
+    queryClient.setQueryData<InboxNotificationListResponse>(
+      queryKeys.notifications.inbox,
+      (current) => updater(current ?? {
+        notifications: [],
+        unread_count: 0,
+        total: 0,
+        page: 1,
+        page_size: 40,
+        total_pages: 1,
+      }),
+    )
+  }, [queryClient])
 
   const markRead = React.useCallback(async (item: InboxNotification) => {
     if (!item.read_at) {
       await inboxNotificationsApi.markRead(item.id)
-      setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry))
-      setUnreadCount((count) => Math.max(0, count - 1))
+      updateCachedNotifications((current) => ({
+        ...current,
+        notifications: current.notifications.map((entry) => (
+          entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry
+        )),
+        unread_count: Math.max(0, current.unread_count - 1),
+      }))
     }
     if (item.action_url) {
       setOpen(false)
       navigate(item.action_url)
     }
-  }, [navigate])
+  }, [navigate, updateCachedNotifications])
 
   const markAllRead = React.useCallback(async () => {
     await inboxNotificationsApi.markAllRead()
     const readAt = new Date().toISOString()
-    setItems((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? readAt })))
-    setUnreadCount(0)
-  }, [])
+    updateCachedNotifications((current) => ({
+      ...current,
+      notifications: current.notifications.map((item) => ({ ...item, read_at: item.read_at ?? readAt })),
+      unread_count: 0,
+    }))
+  }, [updateCachedNotifications])
 
   const remove = React.useCallback(async (id: string) => {
     const target = items.find((item) => item.id === id)
     await inboxNotificationsApi.remove(id)
-    setItems((current) => current.filter((item) => item.id !== id))
-    if (target && !target.read_at) setUnreadCount((count) => Math.max(0, count - 1))
-  }, [items])
+    updateCachedNotifications((current) => ({
+      ...current,
+      notifications: current.notifications.filter((item) => item.id !== id),
+      unread_count: target && !target.read_at
+        ? Math.max(0, current.unread_count - 1)
+        : current.unread_count,
+      total: Math.max(0, current.total - 1),
+    }))
+  }, [items, updateCachedNotifications])
 
   return (
     <Popover open={open} onOpenChange={(next) => {
       setOpen(next)
-      if (next) void loadNotifications()
+      if (next) void notificationsQuery.refetch()
     }}>
       <Tooltip>
         <TooltipTrigger asChild>

@@ -9,7 +9,6 @@ import { Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react"
 import { toast } from "@/components/ui/sonner"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { authApi } from "@/lib/api/auth"
-import { FadeSlideIn } from "@/components/ui/fade-slide-in"
 import { getErrorMessage } from "@/lib/error-utils"
 import { useTranslation } from "react-i18next"
 import { AuthPageFooter } from "@/components/auth-page-footer"
@@ -133,7 +132,7 @@ export function RegisterForm({
       <form onSubmit={handleSubmit}>
         <FieldGroup>
           {/* Logo 和标题 */}
-          <FadeSlideIn disabled>
+
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="flex flex-col items-center gap-3">
                 <div className="flex size-16 items-center justify-center">
@@ -162,13 +161,13 @@ export function RegisterForm({
                 </div>
               </div>
             </div>
-          </FadeSlideIn>
+
 
           {/* 表单卡片 */}
           <div className="rounded-xl p-6 bg-transparent">
             <div className="space-y-4">
               {/* 邮箱输入 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <FieldLabel htmlFor="email" className="text-foreground">
                     {tAuth("registerEmailLabel")}
@@ -188,10 +187,10 @@ export function RegisterForm({
                     />
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 验证码输入 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <FieldLabel htmlFor="verificationCode" className="text-foreground">
                     {tAuth("registerVerificationCodeLabel")}
@@ -229,10 +228,10 @@ export function RegisterForm({
                     </Button>
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 密码输入 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <FieldLabel htmlFor="password" className="text-foreground">
                     {tAuth("registerPasswordLabel")}
@@ -264,10 +263,10 @@ export function RegisterForm({
                     </button>
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 确认密码输入 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <FieldLabel htmlFor="confirmPassword" className="text-foreground">
                     {tAuth("registerConfirmPasswordLabel")}
@@ -299,10 +298,10 @@ export function RegisterForm({
                     </button>
                   </div>
                 </Field>
-              </FadeSlideIn>
+
 
               {/* 注册按钮 */}
-              <FadeSlideIn disabled>
+
                 <Field>
                   <Button
                     type="submit"
@@ -320,14 +319,14 @@ export function RegisterForm({
                     )}
                   </Button>
                 </Field>
-              </FadeSlideIn>
+
             </div>
           </div>
 
           {/* 底部提示 */}
           <div className="space-y-3">
             {/* 登录提示 */}
-            <FadeSlideIn disabled>
+
               <div className="text-center text-sm text-muted-foreground">
                 {tAuth("registerHaveAccount")}
                 <Button
@@ -339,12 +338,12 @@ export function RegisterForm({
                   {tAuth("registerGoLogin")}
                 </Button>
               </div>
-            </FadeSlideIn>
+
 
             {/* 版本信息 */}
-            <FadeSlideIn disabled>
+
               <AuthPageFooter />
-            </FadeSlideIn>
+
           </div>
         </FieldGroup>
       </form>

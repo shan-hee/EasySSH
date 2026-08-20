@@ -1,5 +1,6 @@
 
 import { useEffect, useState, useMemo, useCallback, useRef } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { PageHeader } from "@/components/page-header"
 import {
   dashboardApi,
@@ -13,10 +14,15 @@ import {
   TerminalSquare,
   RefreshCw,
 } from "lucide-react"
-import { isApiError } from "@/lib/api-client"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
+import { queryKeys } from "@/lib/query-keys"
+import {
+  createLatestByKeyBatcher,
+  mergeLatestByKey,
+  type LatestByKeyBatcher,
+} from "@/lib/realtime-batcher"
 
 import { WelcomeHeader } from "./components/welcome-header"
 import { StatCard } from "./components/stat-card"
@@ -84,9 +90,15 @@ export default function DashboardPage() {
   const { ready } = useAuthReady()
   const { t } = useTranslation("dashboard")
 
-  // 聚合概览（后端 /dashboard/overview）
-  const [overview, setOverview] = useState<DashboardOverview | null>(null)
-  const [loadingOverview, setLoadingOverview] = useState(true)
+  const overviewQuery = useQuery({
+    queryKey: queryKeys.dashboard.overview,
+    queryFn: dashboardApi.getOverview,
+    enabled: ready,
+    staleTime: 60_000,
+    refetchInterval: AUTO_REFRESH_INTERVAL,
+  })
+  const overview: DashboardOverview | undefined = overviewQuery.data
+  const loadingOverview = overviewQuery.isPending
 
   // SSE 流式服务器资源
   const [servers, setServers] = useState<ServerOverviewRow[]>([])
@@ -94,76 +106,80 @@ export default function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const cancelStreamRef = useRef<(() => void) | null>(null)
+  const batcherRef = useRef<LatestByKeyBatcher<ServerOverviewRow> | null>(null)
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 加载聚合概览
-  const loadOverview = useCallback(async () => {
-    try {
-      const data = await dashboardApi.getOverview()
-      setOverview(data)
-    } catch (error: unknown) {
-      if (isApiError(error) && error.status === 401) return
-      console.error("Failed to load dashboard overview:", error)
-    } finally {
-      setLoadingOverview(false)
-    }
+  const stopServersStream = useCallback(() => {
+    cancelStreamRef.current?.()
+    cancelStreamRef.current = null
+    batcherRef.current?.dispose()
+    batcherRef.current = null
   }, [])
 
   // SSE 流式加载服务器资源
   const loadServersStream = useCallback(() => {
-    if (cancelStreamRef.current) cancelStreamRef.current()
+    stopServersStream()
     setServers([])
     setLoadingServers(true)
 
-    const cancel = monitoringApi.streamServersResources(
-      (serverData) => {
-        const row = transformServer(serverData)
-        setServers((prev) => {
-          const idx = prev.findIndex((s) => s.id === row.id)
-          if (idx >= 0) {
-            const next = [...prev]
-            next[idx] = row
-            return next
-          }
-          return [...prev, row]
-        })
+    const batcher = createLatestByKeyBatcher<ServerOverviewRow, string>({
+      keyOf: (server) => server.id,
+      onFlush: (updates) => {
+        setServers((current) => mergeLatestByKey(current, updates, (server) => server.id))
         setLoadingServers(false)
       },
+      delayMs: 80,
+    })
+    batcherRef.current = batcher
+
+    const cancel = monitoringApi.streamServersResources(
+      (serverData) => {
+        batcher.enqueue(transformServer(serverData))
+      },
       () => {
+        if (batcherRef.current !== batcher) return
+        batcher.flush()
+        batcher.dispose()
         setLoadingServers(false)
+        batcherRef.current = null
         cancelStreamRef.current = null
       },
       (error) => {
+        if (batcherRef.current !== batcher) return
         console.error("Failed to load server resources:", error)
+        batcher.flush()
+        batcher.dispose()
         setLoadingServers(false)
+        batcherRef.current = null
         cancelStreamRef.current = null
       }
     )
     cancelStreamRef.current = cancel
-  }, [])
+  }, [stopServersStream])
 
   const performRefresh = useCallback(() => {
     setIsRefreshing(true)
-    loadOverview()
+    void overviewQuery.refetch()
     loadServersStream()
-    setTimeout(() => setIsRefreshing(false), 600)
-  }, [loadOverview, loadServersStream])
+    if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current)
+    refreshTimeoutRef.current = setTimeout(() => setIsRefreshing(false), 600)
+  }, [loadServersStream, overviewQuery])
 
   useEffect(() => {
     if (!ready) return
-    loadOverview()
     loadServersStream()
 
     autoRefreshRef.current = setInterval(() => {
-      loadOverview()
       loadServersStream()
     }, AUTO_REFRESH_INTERVAL)
 
     return () => {
-      if (cancelStreamRef.current) cancelStreamRef.current()
+      stopServersStream()
       if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+      if (refreshTimeoutRef.current) clearTimeout(refreshTimeoutRef.current)
     }
-  }, [ready, loadOverview, loadServersStream])
+  }, [ready, loadServersStream, stopServersStream])
 
   // 在线服务器实时均值（CPU/内存）来自 SSE 流
   const resourceSummary = useMemo(() => {

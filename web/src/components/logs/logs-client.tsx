@@ -1,5 +1,6 @@
 
 import * as React from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef, Row } from "@tanstack/react-table"
 import {
   ArrowDown,
@@ -50,6 +51,7 @@ import {
   LogServerFilterButton,
   type ServerFilterOption,
 } from "./log-server-filters"
+import { queryKeys } from "@/lib/query-keys"
 
 interface LogsPageData {
   logs: AuditLog[]
@@ -250,6 +252,7 @@ function exportLogs(logs: AuditLog[]) {
 export function LogsClient({ initialData, defaultAction, desktopMode = false, api }: LogsClientProps) {
   const { ready } = useAuthReady()
   const { t } = useTranslation("logsAudit")
+  const queryClient = useQueryClient()
   const [logs, setLogs] = React.useState<AuditLog[]>(initialData?.logs || [])
   const [initialLoading, setInitialLoading] = React.useState(!initialData)
   const [tableLoading, setTableLoading] = React.useState(false)
@@ -274,12 +277,17 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       if (options.showTableLoading) setTableLoading(true)
       const filterParams = filtersToParams(options.filters ?? filters)
       const sortParams = options.sort ?? sort
-      const logsResponse = await api.list({
+      const params: AuditLogListParams = {
         page: currentPage,
         page_size: currentPageSize,
         action: defaultAction,
         ...filterParams,
         ...sortParams,
+      }
+      const logsResponse = await queryClient.fetchQuery({
+        queryKey: queryKeys.logs.audit(params),
+        queryFn: () => api.list(params),
+        staleTime: options.showTableLoading ? 0 : 60_000,
       })
       setLogs(logsResponse.logs || [])
       setTotalPages(logsResponse.total_pages || 1)
@@ -294,7 +302,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
     } finally {
       if (options.showTableLoading) setTableLoading(false)
     }
-  }, [api, defaultAction, filters, sort, t])
+  }, [api, defaultAction, filters, queryClient, sort, t])
 
   React.useEffect(() => {
     if (initialData || !ready) return
@@ -330,6 +338,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       setCleanupLoading(true)
       const result = await api.cleanup(parsedRetentionDays)
       toast.success(t("cleanupSuccess", { count: result.deleted_count }))
+      await queryClient.invalidateQueries({ queryKey: queryKeys.logs.auditRoot })
       setCleanupOpen(false)
       setPage(1)
       setSelectedLogId(null)
