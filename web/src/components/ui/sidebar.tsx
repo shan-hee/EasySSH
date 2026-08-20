@@ -248,7 +248,7 @@ function Sidebar({
       <div
         data-slot="sidebar-gap"
         className={cn(
-          "relative w-(--sidebar-width) bg-transparent group-data-[ready=true]/sidebar-wrapper:transition-[width] group-data-[ready=true]/sidebar-wrapper:duration-200 group-data-[ready=true]/sidebar-wrapper:ease-in-out",
+          "relative w-(--sidebar-width) bg-transparent will-change-[width] group-data-[ready=true]/sidebar-wrapper:transition-[width] group-data-[ready=true]/sidebar-wrapper:duration-200 group-data-[ready=true]/sidebar-wrapper:ease-in-out",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
@@ -259,7 +259,7 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) translate-x-0 transform-gpu will-change-transform overflow-hidden group-data-[ready=true]/sidebar-wrapper:transition-[transform,width] group-data-[ready=true]/sidebar-wrapper:duration-200 group-data-[ready=true]/sidebar-wrapper:ease-in-out md:flex",
+          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) translate-x-0 transform-gpu will-change-[transform,width] overflow-hidden group-data-[ready=true]/sidebar-wrapper:transition-[transform,width] group-data-[ready=true]/sidebar-wrapper:duration-200 group-data-[ready=true]/sidebar-wrapper:ease-in-out md:flex",
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:-translate-x-full"
             : "right-0 group-data-[collapsible=offcanvas]:translate-x-full",

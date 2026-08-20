@@ -173,6 +173,7 @@ export function ConnectionTrendChart({ dates, series, loading }: ConnectionTrend
               option={option}
               notMerge={false}
               lazyUpdate
+              resizeDebounce={80}
             />
           )}
         </div>

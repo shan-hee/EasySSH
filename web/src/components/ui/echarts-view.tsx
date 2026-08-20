@@ -12,6 +12,7 @@ interface EChartsViewProps extends Omit<React.ComponentProps<"div">, "children">
   option: EChartsOption
   notMerge?: boolean
   lazyUpdate?: boolean
+  resizeDebounce?: number
 }
 
 /**
@@ -21,7 +22,7 @@ interface EChartsViewProps extends Omit<React.ComponentProps<"div">, "children">
  * 的重复挂载以及快速切换页面时不会留下图表实例或尺寸监听器。
  */
 export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>(
-  ({ className, option, notMerge = false, lazyUpdate = false, ...props }, ref) => {
+  ({ className, option, notMerge = false, lazyUpdate = false, resizeDebounce = 0, ...props }, ref) => {
     const containerRef = React.useRef<HTMLDivElement | null>(null)
     const chartRef = React.useRef<ECharts | null>(null)
     const optionRef = React.useRef(option)
@@ -40,7 +41,8 @@ export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>
 
       let chart: ECharts | null = null
       let resizeFrame: number | null = null
-      const syncChartSize = () => {
+      let resizeTimer: number | null = null
+      const applyChartSize = () => {
         if (resizeFrame !== null) {
           cancelAnimationFrame(resizeFrame)
         }
@@ -57,6 +59,20 @@ export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>
           chart.resize({ width, height })
         })
       }
+      const syncChartSize = () => {
+        if (!chart || resizeDebounce <= 0) {
+          applyChartSize()
+          return
+        }
+
+        if (resizeTimer !== null) {
+          window.clearTimeout(resizeTimer)
+        }
+        resizeTimer = window.setTimeout(() => {
+          resizeTimer = null
+          applyChartSize()
+        }, resizeDebounce)
+      }
 
       const resizeObserver = new ResizeObserver(syncChartSize)
       resizeObserver.observe(container)
@@ -67,6 +83,9 @@ export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>
         if (resizeFrame !== null) {
           cancelAnimationFrame(resizeFrame)
         }
+        if (resizeTimer !== null) {
+          window.clearTimeout(resizeTimer)
+        }
         if (chart && chartRef.current === chart) {
           chartRef.current = null
         }
@@ -74,7 +93,7 @@ export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>
           chart.dispose()
         }
       }
-    }, [])
+    }, [resizeDebounce])
 
     React.useLayoutEffect(() => {
       const setOptionOptions: SetOptionOpts = { notMerge, lazyUpdate }
