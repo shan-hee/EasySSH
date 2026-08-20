@@ -68,34 +68,6 @@ func (e *EasySSHDataSource) GetServersResources(ctx context.Context) ([]*ServerR
 	return results, nil
 }
 
-// StreamServersResources 流式获取服务器资源
-func (e *EasySSHDataSource) StreamServersResources(ctx context.Context, resultChan chan<- *ServerResourceSummary) error {
-	// 获取用户的所有服务器
-	servers, _, err := e.serverService.List(ctx, e.userID, 1000, 0)
-	if err != nil {
-		return fmt.Errorf("failed to list servers: %w", err)
-	}
-
-	// 并行采集所有服务器的资源，每台完成后立即发送
-	var wg sync.WaitGroup
-
-	for _, srv := range servers {
-		wg.Add(1)
-		go func(srv *server.Server) {
-			defer wg.Done()
-			result := e.collectServerResource(ctx, srv)
-			select {
-			case resultChan <- result:
-			case <-ctx.Done():
-				return
-			}
-		}(srv)
-	}
-
-	wg.Wait()
-	return nil
-}
-
 // collectServerResource 采集单台服务器的资源（单次SSH连接）
 func (e *EasySSHDataSource) collectServerResource(ctx context.Context, srv *server.Server) *ServerResourceSummary {
 	result := &ServerResourceSummary{

@@ -38,7 +38,6 @@ export interface paths {
          * 使用邮箱密码 + PKCE 创建授权码
          * @description 前端以 JSON 方式提交邮箱密码与 PKCE 参数，成功时返回授权码；
          *     如用户启用 2FA，则返回 requires_2fa=true 与临时令牌。
-         *
          */
         post: operations["submitOAuthAuthorization"];
         delete?: never;
@@ -60,7 +59,6 @@ export interface paths {
          * 使用授权码或 refresh_token 换取访问令牌
          * @description 当 grant_type=authorization_code 时，从请求体读取授权码等参数；
          *     当 grant_type=refresh_token 时，从 HttpOnly Cookie 中读取 refresh_token。
-         *
          */
         post: operations["exchangeOAuthToken"];
         delete?: never;
@@ -82,7 +80,6 @@ export interface paths {
          * 用户登出
          * @description 推荐的登出端点。浏览器会将 Path=/api/v1/oauth 的 refresh_token Cookie
          *     发送到该路径，后端可据此完整撤销 refresh token 与当前会话。
-         *
          */
         post: operations["logoutOAuthSession"];
         delete?: never;
@@ -290,7 +287,6 @@ export interface paths {
          * @description 接收 Vercel AI SDK UI `DefaultChatTransport` 请求体，并返回 `UIMessageChunk` SSE。
          *     响应头包含 `X-Vercel-AI-UI-Message-Stream: v1`，每个 `data:` 载荷都是一个 AI SDK UIMessageChunk JSON 对象，流结束时发送 `data: [DONE]`。
          *     EasySSH 的 context/model/permission_mode/scope/approval 字段是标准 UI 协议外的附加能力。
-         *
          */
         post: operations["postAiSessionsSessionIdChat"];
         delete?: never;
@@ -1407,22 +1403,6 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getMonitoringResources"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/monitoring/resources/stream": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["getMonitoringResourcesStream"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3296,11 +3276,13 @@ export interface components {
             auth_method?: "password" | "key";
             /** @example production */
             group?: string;
-            /** @example [
+            /**
+             * @example [
              *       "web",
              *       "nginx",
              *       "docker"
-             *     ] */
+             *     ]
+             */
             tags?: string[];
             /**
              * @example online
@@ -3906,9 +3888,11 @@ export interface components {
             name: string;
             /** @example Automated deployment script */
             description?: string;
-            /** @example #!/bin/bash
+            /**
+             * @example #!/bin/bash
              *     cd /var/www
-             *     git pull */
+             *     git pull
+             */
             content: string;
             /**
              * @default bash
@@ -5192,10 +5176,11 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    /** @example id: 92d459d5-3d5d-4e27-8e33-d326f99ebbf4
+                    /**
+                     * @example id: 92d459d5-3d5d-4e27-8e33-d326f99ebbf4
                      *     event: task.updated
                      *     data: {"id":"92d459d5-3d5d-4e27-8e33-d326f99ebbf4","type":"task.updated","data":{"task_id":"f65f87df-dd77-46e4-9535-24f192a596da"},"created_at":"2026-07-10T12:00:00Z"}
-                     *      */
+                     */
                     "text/event-stream": string;
                 };
             };
@@ -6578,26 +6563,6 @@ export interface operations {
         responses: {
             200: components["responses"]["JSON"];
             400: components["responses"]["Error"];
-        };
-    };
-    getMonitoringResourcesStream: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 事件流 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "text/event-stream": string;
-                };
-            };
         };
     };
     postOauthGoogleVerify: {

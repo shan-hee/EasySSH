@@ -64,16 +64,16 @@ type NezhaIP struct {
 
 // NezhaHost Nezha 主机信息
 type NezhaHost struct {
-	Platform       string   `json:"platform"`        // 操作系统平台
+	Platform       string   `json:"platform"`         // 操作系统平台
 	PlatformVer    string   `json:"platform_version"` // 操作系统版本
-	CPU            []string `json:"cpu"`             // CPU 信息数组
-	MemTotal       uint64   `json:"mem_total"`       // 总内存 (字节)
-	DiskTotal      uint64   `json:"disk_total"`      // 总磁盘空间 (字节)
-	SwapTotal      uint64   `json:"swap_total"`      // 总交换空间 (字节)
-	Arch           string   `json:"arch"`            // 架构
-	Virtualization string   `json:"virtualization"`  // 虚拟化类型
-	BootTime       int64    `json:"boot_time"`       // 启动时间戳 (秒)
-	Version        string   `json:"version"`         // Agent 版本
+	CPU            []string `json:"cpu"`              // CPU 信息数组
+	MemTotal       uint64   `json:"mem_total"`        // 总内存 (字节)
+	DiskTotal      uint64   `json:"disk_total"`       // 总磁盘空间 (字节)
+	SwapTotal      uint64   `json:"swap_total"`       // 总交换空间 (字节)
+	Arch           string   `json:"arch"`             // 架构
+	Virtualization string   `json:"virtualization"`   // 虚拟化类型
+	BootTime       int64    `json:"boot_time"`        // 启动时间戳 (秒)
+	Version        string   `json:"version"`          // Agent 版本
 }
 
 // NezhaState Nezha 实时状态
@@ -109,25 +109,6 @@ func (n *NezhaDataSource) GetServersResources(ctx context.Context) ([]*ServerRes
 	}
 
 	return n.convertToSummaries(servers), nil
-}
-
-// StreamServersResources 流式获取服务器资源
-func (n *NezhaDataSource) StreamServersResources(ctx context.Context, resultChan chan<- *ServerResourceSummary) error {
-	servers, err := n.fetchFromAPI(ctx)
-	if err != nil {
-		return err
-	}
-
-	summaries := n.convertToSummaries(servers)
-	for _, summary := range summaries {
-		select {
-		case resultChan <- summary:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-
-	return nil
 }
 
 // fetchFromAPI 从 REST API 获取数据

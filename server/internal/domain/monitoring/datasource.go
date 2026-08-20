@@ -10,9 +10,6 @@ type DataSourceProvider interface {
 	// GetServersResources 获取所有服务器资源概览
 	GetServersResources(ctx context.Context) ([]*ServerResourceSummary, error)
 
-	// StreamServersResources 流式获取服务器资源（每台服务器采集完成立即通过 channel 返回）
-	StreamServersResources(ctx context.Context, resultChan chan<- *ServerResourceSummary) error
-
 	// TestConnection 测试数据源连接
 	TestConnection(ctx context.Context) error
 

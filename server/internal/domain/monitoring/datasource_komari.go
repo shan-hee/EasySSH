@@ -45,38 +45,38 @@ type KomariNodesResponse struct {
 
 // KomariNode 节点元信息（来自 /api/nodes）
 type KomariNode struct {
-	UUID             string  `json:"uuid"`              // 节点 UUID
-	Name             string  `json:"name"`              // 节点名称
-	CPUName          string  `json:"cpu_name"`          // CPU 型号
-	Virtualization   string  `json:"virtualization"`    // 虚拟化类型
-	Arch             string  `json:"arch"`              // 架构
-	CPUCores         int     `json:"cpu_cores"`         // CPU 核心数
-	OS               string  `json:"os"`                // 操作系统
-	KernelVersion    string  `json:"kernel_version"`    // 内核版本
-	GPUName          string  `json:"gpu_name"`          // GPU 名称
-	Region           string  `json:"region"`            // 区域/国旗
-	MemTotal         uint64  `json:"mem_total"`         // 总内存
-	SwapTotal        uint64  `json:"swap_total"`        // 总交换空间
-	DiskTotal        uint64  `json:"disk_total"`        // 总磁盘空间
-	Weight           int     `json:"weight"`            // 权重
-	Price            float64 `json:"price"`             // 价格
-	BillingCycle     int     `json:"billing_cycle"`     // 计费周期（天）
-	AutoRenewal      bool    `json:"auto_renewal"`      // 自动续费
-	Currency         string  `json:"currency"`          // 货币
-	ExpiredAt        string  `json:"expired_at"`        // 到期时间
-	Group            string  `json:"group"`             // 分组
-	Tags             string  `json:"tags"`              // 标签
-	Hidden           bool    `json:"hidden"`            // 是否隐藏
-	TrafficLimit     uint64  `json:"traffic_limit"`     // 流量限制
+	UUID             string  `json:"uuid"`               // 节点 UUID
+	Name             string  `json:"name"`               // 节点名称
+	CPUName          string  `json:"cpu_name"`           // CPU 型号
+	Virtualization   string  `json:"virtualization"`     // 虚拟化类型
+	Arch             string  `json:"arch"`               // 架构
+	CPUCores         int     `json:"cpu_cores"`          // CPU 核心数
+	OS               string  `json:"os"`                 // 操作系统
+	KernelVersion    string  `json:"kernel_version"`     // 内核版本
+	GPUName          string  `json:"gpu_name"`           // GPU 名称
+	Region           string  `json:"region"`             // 区域/国旗
+	MemTotal         uint64  `json:"mem_total"`          // 总内存
+	SwapTotal        uint64  `json:"swap_total"`         // 总交换空间
+	DiskTotal        uint64  `json:"disk_total"`         // 总磁盘空间
+	Weight           int     `json:"weight"`             // 权重
+	Price            float64 `json:"price"`              // 价格
+	BillingCycle     int     `json:"billing_cycle"`      // 计费周期（天）
+	AutoRenewal      bool    `json:"auto_renewal"`       // 自动续费
+	Currency         string  `json:"currency"`           // 货币
+	ExpiredAt        string  `json:"expired_at"`         // 到期时间
+	Group            string  `json:"group"`              // 分组
+	Tags             string  `json:"tags"`               // 标签
+	Hidden           bool    `json:"hidden"`             // 是否隐藏
+	TrafficLimit     uint64  `json:"traffic_limit"`      // 流量限制
 	TrafficLimitType string  `json:"traffic_limit_type"` // 流量限制类型
-	CreatedAt        string  `json:"created_at"`        // 创建时间
-	UpdatedAt        string  `json:"updated_at"`        // 更新时间
+	CreatedAt        string  `json:"created_at"`         // 创建时间
+	UpdatedAt        string  `json:"updated_at"`         // 更新时间
 }
 
 // KomariRecentResponse /api/recent/{uuid} 响应结构
 type KomariRecentResponse struct {
-	Status  string              `json:"status"`  // "success" 或 "error"
-	Message string              `json:"message"` // 消息
+	Status  string             `json:"status"`  // "success" 或 "error"
+	Message string             `json:"message"` // 消息
 	Data    []KomariRecentData `json:"data"`    // 最近状态数据列表
 }
 
@@ -294,41 +294,6 @@ func (k *KomariDataSource) GetServersResources(ctx context.Context) ([]*ServerRe
 	}
 
 	return summaries, nil
-}
-
-// StreamServersResources 流式获取服务器资源
-func (k *KomariDataSource) StreamServersResources(ctx context.Context, resultChan chan<- *ServerResourceSummary) error {
-	// 1. 获取所有节点列表
-	nodes, err := k.fetchNodes(ctx)
-	if err != nil {
-		return err
-	}
-
-	if len(nodes) == 0 {
-		return nil
-	}
-
-	// 2. 并行获取每个节点的状态，获取到就立即发送
-	var wg sync.WaitGroup
-	now := time.Now()
-
-	for _, node := range nodes {
-		wg.Add(1)
-		go func(n KomariNode) {
-			defer wg.Done()
-			status, _ := k.fetchRecentStatus(ctx, n.UUID)
-			summary := k.convertToSummary(n, status, now)
-
-			select {
-			case resultChan <- summary:
-			case <-ctx.Done():
-				return
-			}
-		}(node)
-	}
-
-	wg.Wait()
-	return nil
 }
 
 // convertToSummary 将节点和状态转换为通用格式

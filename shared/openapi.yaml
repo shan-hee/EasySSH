@@ -4842,20 +4842,6 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
-  /monitoring/resources/stream:
-    get:
-      operationId: getMonitoringResourcesStream
-      tags: [monitoring]
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: 事件流
-          content:
-            text/event-stream:
-              schema:
-                type: string
-
   /oauth/google/verify:
     post:
       operationId: postOauthGoogleVerify

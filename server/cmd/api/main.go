@@ -874,7 +874,6 @@ func main() {
 		monitoringRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
 		{
 			monitoringRoutes.GET("/resources", monitoringHandler.GetAllResources)                 // 所有服务器资源概览
-			monitoringRoutes.GET("/resources/stream", monitoringHandler.StreamResources)          // 流式获取服务器资源（SSE）
 			monitoringRoutes.POST("/datasource/test", monitoringHandler.TestDataSourceConnection) // 测试数据源连接
 		}
 
