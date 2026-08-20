@@ -324,14 +324,11 @@ export class CompletionEngine {
           continue
         }
 
-        let providerMax = totalLimit
-        if (config.unlimited) {
-          providerMax = allowUnlimitedOverflow
+        const providerMax = config.unlimited
+          ? allowUnlimitedOverflow
             ? totalLimit
             : Math.min(config.softMax ?? totalLimit, totalLimit)
-        } else {
-          providerMax = config.max
-        }
+          : config.max
 
         const used = usedByProvider.get(providerName) ?? 0
         if (used >= providerMax) {

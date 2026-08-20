@@ -845,17 +845,18 @@ export function AiAssistantPanel({
       sessionCreatingRef.current = true
       setSessionCreating(true)
 
-      let response: CreateSessionResponse | null = null
-      try {
-        response = await startNewSession({
-          model: activeModel,
-          permissionMode,
-          scope: terminalScope,
-        })
-      } finally {
-        sessionCreatingRef.current = false
-        setSessionCreating(false)
-      }
+      const response: CreateSessionResponse | null = await (async () => {
+        try {
+          return await startNewSession({
+            model: activeModel,
+            permissionMode,
+            scope: terminalScope,
+          })
+        } finally {
+          sessionCreatingRef.current = false
+          setSessionCreating(false)
+        }
+      })()
 
       if (!response) {
         setInput((current) => current || messageText)

@@ -266,8 +266,5 @@ export function useTerminalRendererSettings({
     if (terminal.options.fastScrollSensitivity !== 2) {
       terminal.options.fastScrollSensitivity = 2
     }
-    if (terminal.options.fastScrollModifier !== "shift") {
-      terminal.options.fastScrollModifier = "shift"
-    }
   }, [terminalReady, terminal])
 }

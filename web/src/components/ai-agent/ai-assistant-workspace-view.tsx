@@ -494,17 +494,18 @@ export function AIAssistantWorkspaceView({
       sessionCreatingRef.current = true
       setSessionCreating(true)
 
-      let response: CreateSessionResponse | null = null
-      try {
-        response = await startNewSession({
-          model: selectedModel || undefined,
-          permissionMode,
-          scope: submittedScope,
-        })
-      } finally {
-        sessionCreatingRef.current = false
-        setSessionCreating(false)
-      }
+      const response: CreateSessionResponse | null = await (async () => {
+        try {
+          return await startNewSession({
+            model: selectedModel || undefined,
+            permissionMode,
+            scope: submittedScope,
+          })
+        } finally {
+          sessionCreatingRef.current = false
+          setSessionCreating(false)
+        }
+      })()
 
       if (!response) {
         setDraft((current) => current || messageText)

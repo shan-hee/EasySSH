@@ -31,7 +31,7 @@ export async function generateDiceBearAvatar(seed?: string): Promise<string> {
     return dataUrl
   } catch (error) {
     console.error("生成DiceBear头像失败:", error)
-    throw new Error("头像生成失败，请稍后重试")
+    throw new Error("头像生成失败，请稍后重试", { cause: error })
   }
 }
 

@@ -199,7 +199,6 @@ export function useTerminalInstance(
           allowProposedApi: true,
           allowTransparency: config.allowTransparency === true,
           disableStdin: false,
-          fastScrollModifier: 'shift',
           // 降低滚轮灵敏度，避免一次滚动跳动过多
           fastScrollSensitivity: 2,
           scrollSensitivity: 1,

@@ -4,7 +4,8 @@ import { join } from "node:path"
 import { fileURLToPath, URL } from "node:url"
 import { defineConfig, loadEnv } from "vite"
 
-const version = readFileSync(join(__dirname, "..", "VERSION"), "utf-8").trim()
+const projectRoot = fileURLToPath(new URL("..", import.meta.url))
+const version = readFileSync(join(projectRoot, "VERSION"), "utf-8").trim()
 if (!version) {
   throw new Error("VERSION 文件内容为空")
 }
@@ -30,7 +31,7 @@ function manualChunks(id: string) {
 
 export default defineConfig(({ mode }) => {
   const env = {
-    ...loadEnv(mode, join(__dirname, ".."), ""),
+    ...loadEnv(mode, projectRoot, ""),
     ...process.env,
   }
   const webPort = parsePort(env.WEB_PORT)
