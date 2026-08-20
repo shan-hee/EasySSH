@@ -7,6 +7,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@supports not (anchor-name: --cobe-marker) {
+  .cobe-server-marker {
+    display: none;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
