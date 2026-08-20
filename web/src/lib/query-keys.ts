@@ -13,6 +13,9 @@ export const queryKeys = {
     resourceGrants: (subjectType: "role" | "user", subjectId: string) =>
       ["users", "resource-grants", subjectType, subjectId] as const,
   },
+  roles: {
+    list: ["roles", "list"] as const,
+  },
   scripts: {
     all: ["scripts"] as const,
     list: (page: number, pageSize: number) => ["scripts", "list", page, pageSize] as const,

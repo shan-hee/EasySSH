@@ -1,6 +1,6 @@
 
 import * as React from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef, Row } from "@tanstack/react-table"
 import {
   ArrowDown,
@@ -53,6 +53,7 @@ import {
   type ServerFilterOption,
 } from "./log-server-filters"
 import { queryKeys } from "@/lib/query-keys"
+import { auditLogsQueryOptions } from "@/lib/dashboard-query-options"
 
 interface LogsPageData {
   logs: AuditLog[]
@@ -254,70 +255,60 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
   const { ready } = useAuthReady()
   const { t } = useTranslation("logsAudit")
   const queryClient = useQueryClient()
-  const [logs, setLogs] = React.useState<AuditLog[]>(initialData?.logs || [])
-  const [initialLoading, setInitialLoading] = React.useState(!initialData)
-  const [tableLoading, setTableLoading] = React.useState(false)
   const [page, setPage] = React.useState(initialData?.currentPage || 1)
   const [pageSize, setPageSize] = React.useState(initialData?.pageSize || 20)
-  const [totalPages, setTotalPages] = React.useState(initialData?.totalPages || 1)
-  const [totalRows, setTotalRows] = React.useState(initialData?.totalCount || 0)
   const [selectedLogId, setSelectedLogId] = React.useState<string | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = React.useState(false)
   const [cleanupOpen, setCleanupOpen] = React.useState(false)
   const [cleanupLoading, setCleanupLoading] = React.useState(false)
   const [retentionDays, setRetentionDays] = React.useState("90")
   const [filters, setFilters] = React.useState<LogFilters>(defaultFilters)
+  const [appliedFilters, setAppliedFilters] = React.useState<LogFilters>(defaultFilters)
   const [sort, setSort] = React.useState<LogSortState>(defaultSort)
-
-  const loadLogs = React.useCallback(async (
-    currentPage: number,
-    currentPageSize: number,
-    options: { showTableLoading?: boolean; filters?: LogFilters; sort?: LogSortState } = {},
-  ) => {
-    try {
-      if (options.showTableLoading) setTableLoading(true)
-      const filterParams = filtersToParams(options.filters ?? filters)
-      const sortParams = options.sort ?? sort
-      const params: AuditLogListParams = {
-        page: currentPage,
-        page_size: currentPageSize,
-        action: defaultAction,
-        ...filterParams,
-        ...sortParams,
-      }
-      const logsResponse = await queryClient.fetchQuery({
-        queryKey: queryKeys.logs.audit(params),
-        queryFn: () => api.list(params),
-        staleTime: options.showTableLoading ? 0 : 60_000,
-      })
-      setLogs(logsResponse.logs || [])
-      setTotalPages(logsResponse.total_pages || 1)
-      setTotalRows(logsResponse.total || 0)
-      setSelectedLogId((current) => (
-        current && logsResponse.logs?.some((log) => log.id === current)
-          ? current
-          : logsResponse.logs?.[0]?.id || null
-      ))
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, t("toastLoadFailed")))
-    } finally {
-      if (options.showTableLoading) setTableLoading(false)
-    }
-  }, [api, defaultAction, filters, queryClient, sort, t])
+  const queryParams = React.useMemo<AuditLogListParams>(() => ({
+    page,
+    page_size: pageSize,
+    action: defaultAction,
+    ...filtersToParams(appliedFilters),
+    ...sort,
+  }), [appliedFilters, defaultAction, page, pageSize, sort])
+  const canUseInitialData = Boolean(
+    initialData &&
+    page === initialData.currentPage &&
+    pageSize === initialData.pageSize &&
+    !hasActiveFilters(appliedFilters) &&
+    sort.sort_by === defaultSort.sort_by &&
+    sort.sort_order === defaultSort.sort_order
+  )
+  const logsQuery = useQuery({
+    ...auditLogsQueryOptions(queryParams, api),
+    enabled: ready,
+    initialData: canUseInitialData && initialData ? {
+      logs: initialData.logs,
+      total: initialData.totalCount,
+      page: initialData.currentPage,
+      page_size: initialData.pageSize,
+      total_pages: initialData.totalPages,
+    } : undefined,
+  })
+  const logs = React.useMemo(() => logsQuery.data?.logs ?? [], [logsQuery.data?.logs])
+  const totalPages = logsQuery.data?.total_pages ?? 1
+  const totalRows = logsQuery.data?.total ?? 0
+  const initialLoading = logsQuery.isPending
+  const tableLoading = logsQuery.isFetching && !logsQuery.isPending
 
   React.useEffect(() => {
-    if (initialData || !ready) return
-    const loadInitialData = async () => {
-      try {
-        setInitialLoading(true)
-        await loadLogs(page, pageSize)
-      } finally {
-        setInitialLoading(false)
-      }
-    }
-    void loadInitialData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, initialData, defaultAction])
+    if (!logsQuery.error) return
+    toast.error(getErrorMessage(logsQuery.error, t("toastLoadFailed")))
+  }, [logsQuery.error, t])
+
+  React.useEffect(() => {
+    setSelectedLogId((current) => (
+      current && logs.some((log) => log.id === current)
+        ? current
+        : logs[0]?.id || null
+    ))
+  }, [logs])
 
   const selectedLog = React.useMemo(
     () => logs.find((log) => log.id === selectedLogId) || logs[0] || null,
@@ -325,7 +316,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
   )
 
   const handleRefresh = () => {
-    void loadLogs(page, pageSize, { showTableLoading: true })
+    void logsQuery.refetch()
   }
 
   const handleCleanupLogs = async () => {
@@ -344,7 +335,6 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       setPage(1)
       setSelectedLogId(null)
       setIsDetailDialogOpen(false)
-      await loadLogs(1, pageSize, { showTableLoading: true })
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, t("cleanupFailed")))
     } finally {
@@ -354,29 +344,27 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
 
   const handlePageChange = (nextPage: number) => {
     setPage(nextPage)
-    void loadLogs(nextPage, pageSize, { showTableLoading: true })
   }
 
   const handlePageSizeChange = (nextSize: number) => {
     setPageSize(nextSize)
     setPage(1)
-    void loadLogs(1, nextSize, { showTableLoading: true })
   }
 
   const handleApplyFilters = () => {
     setPage(1)
     setSelectedLogId(null)
     setIsDetailDialogOpen(false)
-    void loadLogs(1, pageSize, { showTableLoading: true })
+    setAppliedFilters(filters)
   }
 
   const handleResetFilters = () => {
     const nextFilters = { ...defaultFilters }
     setFilters(nextFilters)
+    setAppliedFilters(nextFilters)
     setPage(1)
     setSelectedLogId(null)
     setIsDetailDialogOpen(false)
-    void loadLogs(1, pageSize, { showTableLoading: true, filters: nextFilters })
   }
 
   const handleSort = React.useCallback((field: string) => {
@@ -385,8 +373,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       : { sort_by: field, sort_order: "desc" }
     setSort(nextSort)
     setPage(1)
-    void loadLogs(1, pageSize, { showTableLoading: true, sort: nextSort })
-  }, [loadLogs, pageSize, sort])
+  }, [sort])
 
   const logColumns = React.useMemo<ColumnDef<AuditLog>[]>(() => {
     const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m

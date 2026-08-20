@@ -1,5 +1,6 @@
 
 import type { LucideIcon } from "lucide-react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
 import { useLocation } from "react-router-dom"
 
@@ -10,7 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { preloadDashboardWorkspace } from "@/lib/dashboard-route-preload"
+import { preloadDashboardRoute } from "@/lib/dashboard-route-preload"
 
 export function NavMain({
   items,
@@ -25,6 +26,7 @@ export function NavMain({
   }[]
 }) {
   const { pathname } = useLocation()
+  const queryClient = useQueryClient()
 
   return (
     <SidebarGroup>
@@ -40,8 +42,9 @@ export function NavMain({
               <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
                 <Link
                   to={item.url}
-                  onPointerEnter={() => preloadDashboardWorkspace(item.url)}
-                  onFocus={() => preloadDashboardWorkspace(item.url)}
+                  onPointerEnter={() => void preloadDashboardRoute(item.url, queryClient)}
+                  onPointerDown={() => void preloadDashboardRoute(item.url, queryClient)}
+                  onFocus={() => void preloadDashboardRoute(item.url, queryClient)}
                 >
                   {item.icon && <item.icon />}
                   <span>{item.title}</span>

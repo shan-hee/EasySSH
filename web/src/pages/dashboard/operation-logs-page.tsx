@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 import {
   ArrowDown,
@@ -33,7 +33,6 @@ import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 import {
-  operationRecordsApi,
   type OperationRecord,
   type OperationRecordCategory,
   type OperationRecordListParams,
@@ -51,7 +50,7 @@ import {
   LogServerFilterButton,
   type ServerFilterOption,
 } from "@/components/logs/log-server-filters"
-import { queryKeys } from "@/lib/query-keys"
+import { operationRecordsQueryOptions } from "@/lib/dashboard-query-options"
 
 type SortOrder = "asc" | "desc"
 
@@ -236,21 +235,16 @@ export default function OperationLogsPage() {
 
 function OperationLogsContent() {
   const { t } = useTranslation("operationLogs")
-  const queryClient = useQueryClient()
   const [searchParams] = useSearchParams()
   const { ready } = useAuthReady()
   const typeParam = searchParams.get("type")
   const initialType = isOperationRecordType(typeParam) ? typeParam : undefined
   const previousTypeParamRef = React.useRef<OperationRecordType | undefined>(initialType)
   const [filters, setFilters] = React.useState<OperationRecordFilters>(() => createDefaultFilters(initialType))
+  const [appliedFilters, setAppliedFilters] = React.useState<OperationRecordFilters>(() => createDefaultFilters(initialType))
   const [sort, setSort] = React.useState<OperationRecordSortState>(defaultSort)
-  const [records, setRecords] = React.useState<OperationRecord[]>([])
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(20)
-  const [totalPages, setTotalPages] = React.useState(1)
-  const [totalRows, setTotalRows] = React.useState(0)
-  const [loading, setLoading] = React.useState(true)
-  const [refreshing, setRefreshing] = React.useState(false)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = React.useState(false)
 
@@ -277,63 +271,46 @@ function OperationLogsContent() {
     warning: t("statusWarning"),
   }), [t])
 
-  const loadData = React.useCallback(async (
-    nextPage = page,
-    showRefresh = false,
-    nextFilters: OperationRecordFilters = filters,
-    nextPageSize = pageSize,
-    nextSort: OperationRecordSortState = sort,
-  ) => {
-    try {
-      if (showRefresh) setRefreshing(true)
-      else setLoading(true)
-
-      const filterParams = filtersToParams(nextFilters)
-      const params: OperationRecordListParams = {
-        page: nextPage,
-        page_size: nextPageSize,
-        ...filterParams,
-        ...nextSort,
-      }
-      const list = await queryClient.fetchQuery({
-        queryKey: queryKeys.logs.operations(params),
-        queryFn: () => operationRecordsApi.list(params),
-        staleTime: showRefresh ? 0 : 60_000,
-      })
-      setRecords(list.records || [])
-      setPage(list.page || nextPage)
-      setTotalPages(list.total_pages || 1)
-      setTotalRows(list.total || 0)
-      setSelectedId((current) => (
-        current && list.records?.some((record) => record.id === current)
-          ? current
-          : list.records?.[0]?.id || null
-      ))
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, t("loadFailed")))
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [filters, page, pageSize, queryClient, sort, t])
+  const queryParams = React.useMemo<OperationRecordListParams>(() => ({
+    page,
+    page_size: pageSize,
+    ...filtersToParams(appliedFilters),
+    ...sort,
+  }), [appliedFilters, page, pageSize, sort])
+  const recordsQuery = useQuery({
+    ...operationRecordsQueryOptions(queryParams),
+    enabled: ready,
+  })
+  const records = React.useMemo(
+    () => recordsQuery.data?.records ?? [],
+    [recordsQuery.data?.records],
+  )
+  const totalPages = recordsQuery.data?.total_pages ?? 1
+  const totalRows = recordsQuery.data?.total ?? 0
+  const loading = recordsQuery.isPending
+  const refreshing = recordsQuery.isFetching && !recordsQuery.isPending
 
   React.useEffect(() => {
-    if (!ready) return
-    void loadData(1, false, filters)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready])
+    if (!recordsQuery.error) return
+    toast.error(getErrorMessage(recordsQuery.error, t("loadFailed")))
+  }, [recordsQuery.error, t])
+
+  React.useEffect(() => {
+    setSelectedId((current) => (
+      current && records.some((record) => record.id === current)
+        ? current
+        : records[0]?.id || null
+    ))
+  }, [records])
 
   React.useEffect(() => {
     if (previousTypeParamRef.current === initialType) return
     previousTypeParamRef.current = initialType
-    const nextFilters = { ...filters, type: initialType ? [initialType] : [] }
-    setFilters(nextFilters)
+    const type = initialType ? [initialType] : []
+    setFilters((current) => ({ ...current, type }))
+    setAppliedFilters((current) => ({ ...current, type }))
     setPage(1)
     setSelectedId(null)
-    if (ready) {
-      void loadData(1, true, nextFilters)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialType])
 
   const selectedRecord = React.useMemo(
@@ -343,33 +320,31 @@ function OperationLogsContent() {
 
   const handlePageChange = (nextPage: number) => {
     setPage(nextPage)
-    void loadData(nextPage, true, filters, pageSize)
   }
 
   const handlePageSizeChange = (nextPageSize: number) => {
     setPageSize(nextPageSize)
     setPage(1)
-    void loadData(1, true, filters, nextPageSize)
   }
 
   const handleRefresh = () => {
-    void loadData(page, true, filters, pageSize)
+    void recordsQuery.refetch()
   }
 
   const handleApplyFilters = () => {
     setPage(1)
     setSelectedId(null)
     setIsDetailDialogOpen(false)
-    void loadData(1, true, filters, pageSize)
+    setAppliedFilters(filters)
   }
 
   const handleResetFilters = () => {
     const nextFilters = createDefaultFilters(initialType)
     setFilters(nextFilters)
+    setAppliedFilters(nextFilters)
     setPage(1)
     setSelectedId(null)
     setIsDetailDialogOpen(false)
-    void loadData(1, true, nextFilters, pageSize)
   }
 
   const handleSort = React.useCallback((field: string) => {
@@ -378,8 +353,7 @@ function OperationLogsContent() {
       : { sort_by: field, sort_order: "desc" }
     setSort(nextSort)
     setPage(1)
-    void loadData(1, true, filters, pageSize, nextSort)
-  }, [filters, loadData, pageSize, sort])
+  }, [sort])
 
   const recordColumns = React.useMemo<ColumnDef<OperationRecord>[]>(() => {
     const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m

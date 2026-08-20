@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
 import {
-  dashboardApi,
   type DashboardOverview,
 } from "@/lib/api/dashboard"
 import { monitoringApi, type ServerResourceSummary } from "@/lib/api"
@@ -18,7 +17,7 @@ import {
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
-import { queryKeys } from "@/lib/query-keys"
+import { dashboardOverviewQueryOptions } from "@/lib/dashboard-query-options"
 import {
   createLatestByKeyBatcher,
   mergeLatestByKey,
@@ -92,10 +91,8 @@ export default function DashboardPage() {
   const { t } = useTranslation("dashboard")
 
   const overviewQuery = useQuery({
-    queryKey: queryKeys.dashboard.overview,
-    queryFn: dashboardApi.getOverview,
+    ...dashboardOverviewQueryOptions(),
     enabled: ready,
-    staleTime: 60_000,
     refetchInterval: AUTO_REFRESH_INTERVAL,
   })
   const overview: DashboardOverview | undefined = overviewQuery.data

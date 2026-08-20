@@ -2,44 +2,30 @@ import { lazy, Suspense, type ComponentType, type LazyExoticComponent, type Reac
 import { Navigate, Route, Routes } from "react-router-dom"
 import { AppLoading, AppLoadingScreen } from "@/components/app-loading"
 import AuthTransition from "@/layouts/auth-transition"
+import DashboardLayout from "@/layouts/dashboard-layout"
 import HomePage from "@/pages/home-page"
+import { dashboardRouteRegistry } from "@/lib/dashboard-route-registry"
 
 const AuthLayout = lazy(() => import("@/layouts/auth-layout"))
-const DashboardLayout = lazy(() => import("@/layouts/dashboard-layout"))
 const SetupPage = lazy(() => import("@/pages/setup-page"))
 const GoogleAuthCallbackPage = lazy(() => import("@/pages/auth/google-callback-page"))
 const LoginPage = lazy(() => import("@/pages/auth/login-page"))
 const RegisterPage = lazy(() => import("@/pages/auth/register-page"))
 const ForgotPasswordPage = lazy(() => import("@/pages/auth/forgot-password-page"))
-const DashboardOverviewPage = lazy(() => import("@/pages/dashboard/overview-page"))
-const TerminalPage = lazy(() => import("@/pages/dashboard/terminal-page"))
-const DashboardAISessionPage = lazy(() => import("@/pages/dashboard/ai-assistant-page"))
-const UsersPage = lazy(() => import("@/pages/dashboard/users-page"))
-const LogsPage = lazy(() => import("@/pages/dashboard/logs-page"))
-const OperationLogsPage = lazy(() => import("@/pages/dashboard/operation-logs-page"))
-const ScriptsPage = lazy(() => import("@/components/dashboard/scripts/scripts-page"))
-const TaskCenterPage = lazy(() => import("@/pages/dashboard/task-center-page"))
-const SettingsPage = lazy(() => import("@/pages/dashboard/settings-page"))
-const SettingsManagementPage = lazy(() => import("@/pages/dashboard/settings-management-page"))
 const DashboardError = lazy(() => import("@/pages/dashboard/dashboard-error"))
+
+type RoutableComponent = ComponentType | LazyExoticComponent<ComponentType>
 
 function RouteFallback() {
   return <AppLoadingScreen />
 }
 
 function DashboardRouteFallback() {
-  return (
-    <div
-      className="min-h-[520px] flex-1"
-      role="status"
-      aria-busy="true"
-      aria-label="Loading"
-    />
-  )
+  return <AppLoading className="min-h-[520px] bg-transparent" />
 }
 
 function lazyElement(
-  Page: LazyExoticComponent<ComponentType>,
+  Page: RoutableComponent,
   fallback: ReactNode = <RouteFallback />,
 ) {
   return (
@@ -49,7 +35,7 @@ function lazyElement(
   )
 }
 
-function lazyDashboardElement(Page: LazyExoticComponent<ComponentType>) {
+function lazyDashboardElement(Page: ComponentType) {
   return lazyElement(Page, <DashboardRouteFallback />)
 }
 
@@ -68,19 +54,16 @@ export function AppRouter() {
 
       <Route
         path="/dashboard"
-        element={lazyElement(DashboardLayout, <AppLoadingScreen />)}
+        element={<DashboardLayout />}
       >
-        <Route index element={lazyDashboardElement(DashboardOverviewPage)} />
-        <Route path="terminal" element={lazyDashboardElement(TerminalPage)} />
+        {dashboardRouteRegistry.map(({ Page, index, path, url }) => (
+          index ? (
+            <Route key={url} index element={lazyDashboardElement(Page)} />
+          ) : (
+            <Route key={url} path={path} element={lazyDashboardElement(Page)} />
+          )
+        ))}
         <Route path="sftp" element={<Navigate to="/dashboard/terminal?sftpPicker=1" replace />} />
-        <Route path="ai-assistant" element={lazyDashboardElement(DashboardAISessionPage)} />
-        <Route path="users" element={lazyDashboardElement(UsersPage)} />
-        <Route path="logs" element={lazyDashboardElement(LogsPage)} />
-        <Route path="operation-logs" element={lazyDashboardElement(OperationLogsPage)} />
-        <Route path="scripts" element={lazyDashboardElement(ScriptsPage)} />
-        <Route path="tasks" element={lazyDashboardElement(TaskCenterPage)} />
-        <Route path="settings" element={lazyDashboardElement(SettingsPage)} />
-        <Route path="settings/management" element={lazyDashboardElement(SettingsManagementPage)} />
         <Route
           path="error"
           element={

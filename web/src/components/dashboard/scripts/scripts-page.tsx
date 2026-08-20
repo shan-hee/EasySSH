@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
@@ -38,6 +38,7 @@ import {
   DashboardMetricCard,
 } from "@/components/logs/log-dashboard-widgets"
 import { queryKeys } from "@/lib/query-keys"
+import { scriptsListQueryOptions } from "@/lib/dashboard-query-options"
 
 export interface ScriptsPageAdapters {
  scripts?: Pick<typeof scriptsApi, "list" | "create" | "update" | "delete" | "execute">
@@ -122,10 +123,8 @@ export default function ScriptsPage({
  const [editTagInput, setEditTagInput] = useState("")
 
  const scriptsQuery = useQuery({
-   queryKey: queryKeys.scripts.list(page, pageSize),
-   queryFn: () => scriptsClient.list({ page, limit: pageSize }),
+   ...scriptsListQueryOptions(page, pageSize, scriptsClient),
    enabled: ready,
-   placeholderData: keepPreviousData,
  })
  const scripts: Script[] = useMemo(
    () => scriptsQuery.data?.data ?? [],

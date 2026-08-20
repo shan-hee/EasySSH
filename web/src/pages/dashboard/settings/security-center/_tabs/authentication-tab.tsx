@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import {
   Info,
@@ -9,7 +10,6 @@ import {
   TriangleAlert,
   UserPlus,
 } from "lucide-react"
-import { rolesApi, type Role } from "@/lib/api"
 import { settingsApi } from "@/lib/api/settings"
 import {
   googleAuthConfigSchema,
@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { AppLoading } from "@/components/app-loading"
+import { rolesListQueryOptions } from "@/lib/dashboard-query-options"
 
 function SectionLoading() {
   return <AppLoading className="min-h-24 bg-transparent" />
@@ -34,11 +35,8 @@ function SectionLoading() {
 function RegistrationSection() {
   const { t } = useTranslation("settingsAuthentication")
   const { refreshConfig } = useSystemConfig()
-  const [roles, setRoles] = useState<Role[]>([])
-
-  useEffect(() => {
-    void rolesApi.list().then((response) => setRoles(response.data || [])).catch(() => setRoles([]))
-  }, [])
+  const rolesQuery = useQuery(rolesListQueryOptions())
+  const roles = rolesQuery.data ?? []
 
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
     cacheKey: "registration",

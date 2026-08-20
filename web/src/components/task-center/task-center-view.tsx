@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { TFunction } from "i18next"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 import { AlertTriangle, CheckCircle2, CircleStop, Clock3, Eye, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -42,6 +42,10 @@ import { getErrorMessage } from "@/lib/error-utils"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { queryKeys } from "@/lib/query-keys"
+import {
+  taskCenterRunsQueryOptions,
+  taskCenterStatisticsQueryOptions,
+} from "@/lib/dashboard-query-options"
 
 const emptyStatistics: TaskStatistics = { total: 0, queued: 0, running: 0, canceling: 0, succeeded: 0, failed: 0, partial_success: 0, canceled: 0, timeout: 0 }
 
@@ -64,13 +68,8 @@ export function TaskCenterView({
 }: TaskCenterViewProps) {
   const { t, i18n } = useTranslation("taskCenter")
   const queryClient = useQueryClient()
-  const [runs, setRuns] = useState<TaskRun[]>([])
-  const [statistics, setStatistics] = useState<TaskStatistics>(emptyStatistics)
-  const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalRuns, setTotalRuns] = useState(0)
   const [statusFilter, setStatusFilter] = useState("active")
   const [taskTypeFilters, setTaskTypeFilters] = useState<string[]>([])
   const [triggerFilters, setTriggerFilters] = useState<TaskRun["trigger_type"][]>([])
@@ -82,48 +81,51 @@ export function TaskCenterView({
   const [retentionDays, setRetentionDays] = useState("90")
   const handledRequestedRunRef = useRef<string | null>(null)
 
-  const load = useCallback(async (silent = false, requestedPage = page) => {
-    if (!silent) setLoading(true)
-    try {
-      const status = statusFilter === "active"
-        ? ["queued", "running", "canceling"] as TaskRunStatus[]
-        : statusFilter === "all" ? undefined : [statusFilter as TaskRunStatus]
-      const params = {
-        status,
-        task_type: taskTypeFilters.length > 0 ? taskTypeFilters : undefined,
-        trigger_type: triggerFilters.length > 0 ? triggerFilters : undefined,
-        keyword: deferredKeyword || undefined,
-        page: requestedPage,
-        page_size: pageSize,
-      }
-      const [list, stats] = await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: queryKeys.taskCenter.runs(params),
-          queryFn: () => api.list(params),
-          staleTime: silent ? 0 : 30_000,
-        }),
-        queryClient.fetchQuery({
-          queryKey: queryKeys.taskCenter.statistics,
-          queryFn: api.statistics,
-          staleTime: silent ? 0 : 30_000,
-        }),
-      ])
-      setRuns(list.runs ?? [])
-      setTotalPages(Math.max(1, list.total_pages ?? 1))
-      setTotalRuns(list.total ?? 0)
-      setStatistics(stats)
-    } catch (error) {
-      if (!silent) toast.error(getErrorMessage(error, t("loadFailed")))
-    } finally {
-      if (!silent) setLoading(false)
+  const listParams = useMemo(() => {
+    const status = statusFilter === "active"
+      ? ["queued", "running", "canceling"] as TaskRunStatus[]
+      : statusFilter === "all" ? undefined : [statusFilter as TaskRunStatus]
+    return {
+      status,
+      task_type: taskTypeFilters.length > 0 ? taskTypeFilters : undefined,
+      trigger_type: triggerFilters.length > 0 ? triggerFilters : undefined,
+      keyword: deferredKeyword || undefined,
+      page,
+      page_size: pageSize,
     }
-  }, [api, deferredKeyword, page, pageSize, queryClient, statusFilter, t, taskTypeFilters, triggerFilters])
+  }, [deferredKeyword, page, pageSize, statusFilter, taskTypeFilters, triggerFilters])
+  const runsQuery = useQuery({
+    ...taskCenterRunsQueryOptions(listParams, api),
+    refetchInterval: 60_000,
+  })
+  const statisticsQuery = useQuery({
+    ...taskCenterStatisticsQueryOptions(api),
+    refetchInterval: 60_000,
+  })
+  const runs = runsQuery.data?.runs ?? []
+  const totalPages = Math.max(1, runsQuery.data?.total_pages ?? 1)
+  const totalRuns = runsQuery.data?.total ?? 0
+  const statistics = statisticsQuery.data ?? emptyStatistics
+  const loading = runsQuery.isPending || statisticsQuery.isPending
+  const refreshing = (
+    (runsQuery.isFetching && !runsQuery.isPending) ||
+    (statisticsQuery.isFetching && !statisticsQuery.isPending)
+  )
+  const refetchRuns = runsQuery.refetch
+  const refetchStatistics = statisticsQuery.refetch
+  const refetchAll = useCallback(async () => {
+    await Promise.all([refetchRuns(), refetchStatistics()])
+  }, [refetchRuns, refetchStatistics])
 
   useEffect(() => {
-    void load()
-    const timer = window.setInterval(() => void load(true), 60000)
-    return () => window.clearInterval(timer)
-  }, [load])
+    const error = !runsQuery.data
+      ? runsQuery.error
+      : !statisticsQuery.data
+        ? statisticsQuery.error
+        : null
+    if (!error) return
+    toast.error(getErrorMessage(error, t("loadFailed")))
+  }, [runsQuery.data, runsQuery.error, statisticsQuery.data, statisticsQuery.error, t])
 
   useEffect(() => {
     if (!subscribeEvents) return
@@ -135,7 +137,7 @@ export function TaskCenterView({
       if (refreshTimer !== null) return
       refreshTimer = window.setTimeout(() => {
         refreshTimer = null
-        void load(true)
+        void refetchAll()
         if (selected?.run.id && (changedTaskIDs.size === 0 || changedTaskIDs.has(selected.run.id))) {
           void queryClient.fetchQuery({
             queryKey: queryKeys.taskCenter.detail(selected.run.id),
@@ -150,7 +152,7 @@ export function TaskCenterView({
       unsubscribe()
       if (refreshTimer !== null) window.clearTimeout(refreshTimer)
     }
-  }, [api, load, queryClient, selected?.run.id, subscribeEvents])
+  }, [api, queryClient, refetchAll, selected?.run.id, subscribeEvents])
 
   const openDetails = useCallback(async (run: TaskRun) => {
     try {
@@ -196,11 +198,10 @@ export function TaskCenterView({
       await queryClient.invalidateQueries({ queryKey: queryKeys.taskCenter.root })
       setSelected(null)
       clearRequestedRun()
-      await load()
     } catch (error) {
       toast.error(getErrorMessage(error, t(action === "cancel" ? "cancelFailed" : "retryFailed")))
     }
-  }, [api, clearRequestedRun, load, queryClient, t])
+  }, [api, clearRequestedRun, queryClient, t])
 
   const cleanupRuns = useCallback(async () => {
     const parsedRetentionDays = Number(retentionDays)
@@ -217,13 +218,12 @@ export function TaskCenterView({
       setSelected(null)
       clearRequestedRun()
       setPage(1)
-      await load(false, 1)
     } catch (error) {
       toast.error(getErrorMessage(error, t("cleanupFailed")))
     } finally {
       setCleanupLoading(false)
     }
-  }, [api, clearRequestedRun, load, queryClient, retentionDays, t])
+  }, [api, clearRequestedRun, queryClient, retentionDays, t])
 
   const metricItems = useMemo(() => [
     { label: t("metricAll"), value: statistics.total, icon: Clock3 },
@@ -372,8 +372,8 @@ export function TaskCenterView({
                   <DataTableToolbar
                     table={table}
                     showRefresh
-                    onRefresh={() => void load()}
-                    isRefreshing={loading && runs.length > 0}
+                    onRefresh={() => void refetchAll()}
+                    isRefreshing={refreshing}
                     filterSlot={(
                       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                         <div className="flex flex-wrap gap-1">

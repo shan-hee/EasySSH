@@ -17,6 +17,8 @@ import { Button } from "@/components/ui/button"
 import { AppLoadingScreen } from "@/components/app-loading"
 import { cn } from "@/lib/utils"
 import { pageTransition } from "@/lib/motion"
+import { preloadCommonDashboardRoutes } from "@/lib/dashboard-route-preload"
+import { buildNavigationGroups } from "@/shell/navigation/navigation-registry"
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -74,6 +76,7 @@ export default function DashboardLayout() {
   const navigate = useNavigate()
   const pageScrollRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation("common")
+  const { t: tNav } = useTranslation("nav")
   const { pathname } = useLocation()
   const { authStatus, error, isLoading, refreshConfig } = useSystemConfig()
   const { runtime, isLoading: isRuntimeLoading } = useRuntime()
@@ -88,6 +91,34 @@ export default function DashboardLayout() {
       pageScrollRef.current.scrollLeft = 0
     }
   }, [pathname])
+
+  useEffect(() => {
+    if (!authStatus?.is_authenticated || isRuntimeLoading || !runtime) {
+      return
+    }
+
+    const permissions = user?.permissions || []
+    const isOwner = runtime.principal.role === "owner"
+    const navigationGroups = buildNavigationGroups({
+      runtime,
+      isOwner,
+      permissions,
+      t: tNav,
+    })
+    const availableRoutes = [
+      ...navigationGroups.workbench,
+      ...navigationGroups.systemOrg,
+    ].map((item) => item.url)
+    const preload = () => preloadCommonDashboardRoutes(availableRoutes)
+
+    if (typeof window.requestIdleCallback === "function") {
+      const idleCallback = window.requestIdleCallback(preload, { timeout: 1200 })
+      return () => window.cancelIdleCallback(idleCallback)
+    }
+
+    const timeout = window.setTimeout(preload, 400)
+    return () => window.clearTimeout(timeout)
+  }, [authStatus?.is_authenticated, isRuntimeLoading, runtime, tNav, user?.permissions])
 
   useEffect(() => {
     if (isLoading || (error && !authStatus?.is_authenticated)) return

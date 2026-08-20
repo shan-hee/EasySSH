@@ -9,6 +9,7 @@ import { basicInfoSchema } from "@/schemas/settings/system-config.schema"
 import { settingsApi } from "@/lib/api/settings"
 import { SettingsLoading } from "@/components/settings/settings-loading"
 import { useSystemConfig } from "@/contexts/system-config-context"
+import { loadSystemBasicSettings } from "@/lib/dashboard-query-options"
 
 export function BasicTab() {
   const { t } = useTranslation("settingsSystemBasic")
@@ -41,17 +42,7 @@ export function BasicTab() {
   const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
     cacheKey: "system-basic",
     schema: basicInfoSchema,
-    loadFn: async () => {
-      const data = await settingsApi.getSystemConfig()
-      return {
-        system_name: data.system_name,
-        system_logo: data.system_logo,
-        system_favicon: data.system_favicon,
-        default_language: data.default_language,
-        default_timezone: data.default_timezone,
-        date_format: data.date_format,
-      }
-    },
+    loadFn: loadSystemBasicSettings,
     saveFn: async (data) => {
       await settingsApi.saveBasicInfo(data)
       await refreshConfig()
