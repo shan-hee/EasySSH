@@ -331,6 +331,7 @@ export function WebTerminal({
       <div
         ref={containerRef}
         className="h-full w-full min-w-0 terminal-container"
+        style={{ backgroundColor: terminalRendererTheme.background }}
       />
 
       {terminalCompletion.completionState.visible && terminal && (
@@ -385,6 +386,7 @@ export function WebTerminal({
         }
         .terminal-container .xterm {
           padding: 16px;
+          background-color: inherit;
         }
         @media (max-width: 767px) {
           .terminal-container .xterm {
@@ -395,6 +397,7 @@ export function WebTerminal({
           border-radius: 0;
         }
         .terminal-container .xterm-viewport {
+          background-color: inherit !important;
           /* 在终端滚动到边界时，不继续滚动外层页面 */
           overscroll-behavior: contain;
           overscroll-behavior-y: contain;
