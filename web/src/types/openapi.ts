@@ -1939,6 +1939,22 @@ export interface paths {
         patch: operations["patchSettingsSystemRuntime"];
         trace?: never;
     };
+    "/settings/system/scheduled-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSettingsSystemScheduledTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchSettingsSystemScheduledTasks"];
+        trace?: never;
+    };
     "/settings/workspace": {
         parameters: {
             query?: never;
@@ -7327,6 +7343,36 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSettingsSystemScheduledTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    patchSettingsSystemScheduledTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
             content: {
                 "application/json": components["schemas"]["JSONObject"];
             };

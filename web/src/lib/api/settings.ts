@@ -104,6 +104,7 @@ export interface SystemConfig {
 	sftp_conn_timeout_seconds?: number
 	sftp_max_sessions_per_conn?: number
 	geoip_database_path?: string
+	job_queue_max_concurrency?: number
 
   // 注册配置
   allow_registration?: boolean
@@ -121,6 +122,20 @@ export interface SystemConfig {
  */
 export interface GetSystemConfigResponse {
   config: SystemConfig
+}
+
+export interface ScheduledTaskRuntimeStatus {
+  max_concurrency: number
+  active: number
+  queued: number
+  scaling_down: boolean
+}
+
+export interface ScheduledTaskSettingsResponse {
+  config: {
+    job_queue_max_concurrency: number
+  }
+  status: ScheduledTaskRuntimeStatus
 }
 
 export interface WorkspaceConfig {
@@ -416,6 +431,21 @@ export const settingsApi = {
 
   async saveRuntimeConfig(config: Pick<SystemConfig, "geoip_database_path">): Promise<void> {
 	return apiFetch<void>("/settings/system/runtime", { method: "PATCH", body: config })
+  },
+
+  async getScheduledTaskSettings(): Promise<ScheduledTaskSettingsResponse> {
+    return apiFetch<ScheduledTaskSettingsResponse>("/settings/system/scheduled-tasks", {
+      method: "GET",
+    })
+  },
+
+  async saveScheduledTaskSettings(config: {
+    job_queue_max_concurrency: number
+  }): Promise<ScheduledTaskSettingsResponse> {
+    return apiFetch<ScheduledTaskSettingsResponse>("/settings/system/scheduled-tasks", {
+      method: "PATCH",
+      body: config,
+    })
   },
 
   async getWorkspaceConfig(): Promise<WorkspaceConfig> {

@@ -18,6 +18,7 @@ type Repository interface {
 	SaveOAuthProvider(ctx context.Context, config *SystemConfig) error
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
 	SaveRuntime(ctx context.Context, config *SystemConfig) error
+	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
 }
 
 type repository struct {
@@ -53,6 +54,7 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 				TransferMaxStorageGB:         DefaultTransferMaxStorageGB(),
 				TransferMaxConcurrency:       DefaultTransferMaxConcurrency(),
 				TransferCleanupEnabled:       true,
+				JobQueueMaxConcurrency:       DefaultJobQueueMaxConcurrency(),
 				OAuthAccessTokenMinutes:      oauthDefaults.AccessTokenMinutes,
 				OAuthRefreshTokenDays:        oauthDefaults.RefreshTokenDays,
 				ExternalOAuthProviderEnabled: oauthDefaults.ExternalOAuthProviderEnabled,
@@ -72,6 +74,7 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 	}
 
 	config.ApplyTransferDefaults()
+	config.ApplyJobQueueDefaults()
 	return &config, nil
 }
 
@@ -145,5 +148,11 @@ func (r *repository) SaveFileTransfer(ctx context.Context, config *SystemConfig)
 func (r *repository) SaveRuntime(ctx context.Context, config *SystemConfig) error {
 	return r.update(ctx, map[string]any{
 		"geo_ip_database_path": config.GeoIPDatabasePath,
+	})
+}
+
+func (r *repository) SaveScheduledTasks(ctx context.Context, config *SystemConfig) error {
+	return r.update(ctx, map[string]any{
+		"job_queue_max_concurrency": config.JobQueueMaxConcurrency,
 	})
 }

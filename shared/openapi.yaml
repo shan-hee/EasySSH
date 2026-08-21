@@ -5634,6 +5634,35 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
+  /settings/system/scheduled-tasks:
+    get:
+      operationId: getSettingsSystemScheduledTasks
+      tags: [settings]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          $ref: '#/components/responses/JSON'
+        '400':
+          $ref: '#/components/responses/Error'
+
+    patch:
+      operationId: patchSettingsSystemScheduledTasks
+      tags: [settings]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JSONObject'
+      responses:
+        '200':
+          $ref: '#/components/responses/JSON'
+        '400':
+          $ref: '#/components/responses/Error'
+
   /settings/workspace:
     get:
       operationId: getSettingsWorkspace

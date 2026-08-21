@@ -26,13 +26,22 @@ type Queue interface {
 	Register(kind string, handler Handler)
 	Start(ctx context.Context) error
 	Stop()
+	SetMaxConcurrency(maxConcurrency int)
+	RuntimeStatus(ctx context.Context) (RuntimeStatus, error)
 }
 
 type Options struct {
-	Workers       int
-	PollInterval  time.Duration
-	LeaseDuration time.Duration
-	Retention     time.Duration
+	MaxConcurrency       int
+	FallbackPollInterval time.Duration
+	LeaseDuration        time.Duration
+	Retention            time.Duration
+}
+
+type RuntimeStatus struct {
+	MaxConcurrency int   `json:"max_concurrency"`
+	Active         int   `json:"active"`
+	Queued         int64 `json:"queued"`
+	ScalingDown    bool  `json:"scaling_down"`
 }
 
 type queue struct {
@@ -42,8 +51,12 @@ type queue struct {
 	handlerMu sync.RWMutex
 	handlers  map[string]Handler
 
-	runningMu sync.Mutex
-	running   map[uuid.UUID]context.CancelFunc
+	runningMu      sync.Mutex
+	running        map[uuid.UUID]context.CancelFunc
+	capacityMu     sync.Mutex
+	maxConcurrency int
+	active         int
+	wakeCh         chan struct{}
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -52,11 +65,11 @@ type queue struct {
 }
 
 func New(repo Repository, options Options) Queue {
-	if options.Workers < 1 {
-		options.Workers = 4
+	if options.MaxConcurrency < 1 {
+		options.MaxConcurrency = 2
 	}
-	if options.PollInterval <= 0 {
-		options.PollInterval = time.Second
+	if options.FallbackPollInterval <= 0 {
+		options.FallbackPollInterval = 2 * time.Second
 	}
 	if options.LeaseDuration < 15*time.Second {
 		options.LeaseDuration = 60 * time.Second
@@ -67,6 +80,7 @@ func New(repo Repository, options Options) Queue {
 	return &queue{
 		repo: repo, opts: options,
 		handlers: make(map[string]Handler), running: make(map[uuid.UUID]context.CancelFunc),
+		maxConcurrency: options.MaxConcurrency, wakeCh: make(chan struct{}, 1),
 	}
 }
 
@@ -97,7 +111,37 @@ func (q *queue) Enqueue(ctx context.Context, kind, sourceType, sourceID string, 
 	if err := q.repo.Create(ctx, job); err != nil {
 		return nil, err
 	}
+	q.wake()
 	return job, nil
+}
+
+func (q *queue) SetMaxConcurrency(maxConcurrency int) {
+	if maxConcurrency < 1 {
+		return
+	}
+	q.capacityMu.Lock()
+	previous := q.maxConcurrency
+	q.maxConcurrency = maxConcurrency
+	q.capacityMu.Unlock()
+	if maxConcurrency > previous {
+		q.wake()
+	}
+}
+
+func (q *queue) RuntimeStatus(ctx context.Context) (RuntimeStatus, error) {
+	queued, err := q.repo.CountQueued(ctx)
+	if err != nil {
+		return RuntimeStatus{}, err
+	}
+	q.capacityMu.Lock()
+	status := RuntimeStatus{
+		MaxConcurrency: q.maxConcurrency,
+		Active:         q.active,
+		Queued:         queued,
+		ScalingDown:    q.active > q.maxConcurrency,
+	}
+	q.capacityMu.Unlock()
+	return status, nil
 }
 
 func (q *queue) CancelBySource(ctx context.Context, sourceType, sourceID string) error {
@@ -127,12 +171,11 @@ func (q *queue) Start(ctx context.Context) error {
 	if recovered > 0 {
 		log.Printf("[JobQueue] recovered %d expired job leases", recovered)
 	}
-	for index := 0; index < q.opts.Workers; index++ {
-		q.wg.Add(1)
-		go q.worker(index)
-	}
+	q.wg.Add(1)
+	go q.dispatch()
 	q.wg.Add(1)
 	go q.recoverExpiredLeases()
+	q.wake()
 	return nil
 }
 
@@ -150,26 +193,70 @@ func (q *queue) Stop() {
 	})
 }
 
-func (q *queue) worker(index int) {
+func (q *queue) dispatch() {
 	defer q.wg.Done()
 	hostname, _ := os.Hostname()
-	workerID := fmt.Sprintf("%s:%d:%d:%s", hostname, os.Getpid(), index, uuid.NewString()[:8])
-	ticker := time.NewTicker(q.opts.PollInterval)
+	dispatcherID := fmt.Sprintf("%s:%d:%s", hostname, os.Getpid(), uuid.NewString()[:8])
+	ticker := time.NewTicker(q.opts.FallbackPollInterval)
 	defer ticker.Stop()
 	for {
-		job, err := q.repo.Claim(q.ctx, workerID, q.opts.LeaseDuration)
-		if err == nil {
-			q.process(workerID, job)
-			continue
-		}
-		if err != nil && !errors.Is(err, ErrNoJobAvailable) && !errors.Is(err, context.Canceled) {
-			log.Printf("[JobQueue] claim failed: worker=%s error=%v", workerID, err)
-		}
 		select {
 		case <-q.ctx.Done():
 			return
+		case <-q.wakeCh:
 		case <-ticker.C:
 		}
+		q.drain(dispatcherID)
+	}
+}
+
+func (q *queue) drain(dispatcherID string) {
+	for q.reserveCapacity() {
+		workerID := fmt.Sprintf("%s:%s", dispatcherID, uuid.NewString()[:8])
+		job, err := q.repo.Claim(q.ctx, workerID, q.opts.LeaseDuration)
+		if err != nil {
+			q.releaseCapacity()
+			if !errors.Is(err, ErrNoJobAvailable) && !errors.Is(err, context.Canceled) {
+				log.Printf("[JobQueue] claim failed: dispatcher=%s error=%v", dispatcherID, err)
+			}
+			return
+		}
+		q.wg.Add(1)
+		go q.execute(workerID, job)
+	}
+}
+
+func (q *queue) execute(workerID string, job *Job) {
+	defer q.wg.Done()
+	defer func() {
+		q.releaseCapacity()
+		q.wake()
+	}()
+	q.process(workerID, job)
+}
+
+func (q *queue) reserveCapacity() bool {
+	q.capacityMu.Lock()
+	defer q.capacityMu.Unlock()
+	if q.active >= q.maxConcurrency {
+		return false
+	}
+	q.active++
+	return true
+}
+
+func (q *queue) releaseCapacity() {
+	q.capacityMu.Lock()
+	if q.active > 0 {
+		q.active--
+	}
+	q.capacityMu.Unlock()
+}
+
+func (q *queue) wake() {
+	select {
+	case q.wakeCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -250,6 +337,7 @@ func (q *queue) recoverExpiredLeases() {
 				log.Printf("[JobQueue] recover expired leases failed: %v", err)
 			} else if recovered > 0 {
 				log.Printf("[JobQueue] recovered %d expired job leases", recovered)
+				q.wake()
 			}
 		case <-cleanupTicker.C:
 			q.cleanupTerminalJobs()

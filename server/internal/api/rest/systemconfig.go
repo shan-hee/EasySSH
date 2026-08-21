@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/oauthprovider"
 	"github.com/easyssh/server/internal/domain/systemconfig"
 	"github.com/gin-gonic/gin"
@@ -12,7 +13,11 @@ import (
 
 // SystemConfigHandler 系统配置处理器
 type SystemConfigHandler struct {
-	service                   systemconfig.Service
+	service  systemconfig.Service
+	jobQueue interface {
+		SetMaxConcurrency(maxConcurrency int)
+		RuntimeStatus(ctx context.Context) (jobqueue.RuntimeStatus, error)
+	}
 	externalOAuthProviderGate *oauthprovider.ExternalProviderGate
 	roleService               interface {
 		RoleExists(ctx context.Context, key string) (bool, error)
@@ -22,9 +27,12 @@ type SystemConfigHandler struct {
 // NewSystemConfigHandler 创建系统配置处理器
 func NewSystemConfigHandler(service systemconfig.Service, roleService interface {
 	RoleExists(ctx context.Context, key string) (bool, error)
-}, externalOAuthProviderGate *oauthprovider.ExternalProviderGate) *SystemConfigHandler {
+}, externalOAuthProviderGate *oauthprovider.ExternalProviderGate, jobQueue interface {
+	SetMaxConcurrency(maxConcurrency int)
+	RuntimeStatus(ctx context.Context) (jobqueue.RuntimeStatus, error)
+}) *SystemConfigHandler {
 	return &SystemConfigHandler{
-		service: service, roleService: roleService, externalOAuthProviderGate: externalOAuthProviderGate,
+		service: service, roleService: roleService, externalOAuthProviderGate: externalOAuthProviderGate, jobQueue: jobQueue,
 	}
 }
 
@@ -73,6 +81,7 @@ type SystemConfigDTOV2 struct {
 	SFTPConnTimeoutSeconds     int    `json:"sftp_conn_timeout_seconds"`
 	SFTPMaxSessionsPerConn     int    `json:"sftp_max_sessions_per_conn"`
 	GeoIPDatabasePath          string `json:"geoip_database_path"`
+	JobQueueMaxConcurrency     int    `json:"job_queue_max_concurrency"`
 }
 
 type BasicInfoConfigDTO struct {
@@ -123,6 +132,15 @@ type FileTransferConfigDTO struct {
 
 type RuntimeConfigDTO struct {
 	GeoIPDatabasePath string `json:"geoip_database_path"`
+}
+
+type ScheduledTaskConfigDTO struct {
+	JobQueueMaxConcurrency int `json:"job_queue_max_concurrency"`
+}
+
+type ScheduledTaskConfigResponse struct {
+	Config ScheduledTaskConfigDTO `json:"config"`
+	Status jobqueue.RuntimeStatus `json:"status"`
 }
 
 // GetSystemConfig 获取系统配置
@@ -182,6 +200,7 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 		SFTPConnTimeoutSeconds:          config.SFTPConnTimeoutSeconds,
 		SFTPMaxSessionsPerConn:          config.SFTPMaxSessionsPerConn,
 		GeoIPDatabasePath:               config.GeoIPDatabasePath,
+		JobQueueMaxConcurrency:          config.JobQueueMaxConcurrency,
 	}
 
 	return dto
@@ -409,6 +428,70 @@ func (h *SystemConfigHandler) PatchRuntimeConfig(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Runtime configuration saved successfully"})
+}
+
+// GetScheduledTaskConfig 获取后台任务队列配置与当前运行状态。
+// @Summary 获取定时任务运行配置
+// @Tags 系统设置
+// @Produce json
+// @Success 200 {object} ScheduledTaskConfigResponse
+// @Router /api/v1/settings/system/scheduled-tasks [get]
+func (h *SystemConfigHandler) GetScheduledTaskConfig(c *gin.Context) {
+	if h.jobQueue == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Job queue runtime is unavailable"})
+		return
+	}
+	config, err := h.service.Get(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	status, err := h.jobQueue.RuntimeStatus(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ScheduledTaskConfigResponse{
+		Config: ScheduledTaskConfigDTO{JobQueueMaxConcurrency: config.JobQueueMaxConcurrency},
+		Status: status,
+	})
+}
+
+// PatchScheduledTaskConfig 更新后台任务最大并发并立即应用。
+// @Summary 更新定时任务运行配置
+// @Tags 系统设置
+// @Accept json
+// @Produce json
+// @Param request body ScheduledTaskConfigDTO true "定时任务运行配置"
+// @Success 200 {object} ScheduledTaskConfigResponse
+// @Router /api/v1/settings/system/scheduled-tasks [patch]
+func (h *SystemConfigHandler) PatchScheduledTaskConfig(c *gin.Context) {
+	if h.jobQueue == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Job queue runtime is unavailable"})
+		return
+	}
+	var dto ScheduledTaskConfigDTO
+	if err := c.ShouldBindJSON(&dto); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+	existingConfig, err := h.service.Get(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	existingConfig.JobQueueMaxConcurrency = dto.JobQueueMaxConcurrency
+	if err := h.service.SaveScheduledTasks(c.Request.Context(), existingConfig); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	h.jobQueue.SetMaxConcurrency(existingConfig.JobQueueMaxConcurrency)
+	status, err := h.jobQueue.RuntimeStatus(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, ScheduledTaskConfigResponse{Config: dto, Status: status})
 }
 
 func (h *SystemConfigHandler) validateExternalOAuthProvider(c *gin.Context, enabled bool) bool {

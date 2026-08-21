@@ -20,6 +20,7 @@ type Service interface {
 	SaveOAuthProvider(ctx context.Context, config *SystemConfig) error
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
 	SaveRuntime(ctx context.Context, config *SystemConfig) error
+	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
 }
 
 type service struct {
@@ -130,6 +131,16 @@ func (s *service) SaveRuntime(ctx context.Context, config *SystemConfig) error {
 	}
 	config.GeoIPDatabasePath = strings.TrimSpace(config.GeoIPDatabasePath)
 	return s.repo.SaveRuntime(ctx, config)
+}
+
+func (s *service) SaveScheduledTasks(ctx context.Context, config *SystemConfig) error {
+	if config == nil {
+		return errors.New("scheduled task configuration is required")
+	}
+	if config.JobQueueMaxConcurrency < 1 || config.JobQueueMaxConcurrency > 16 {
+		return errors.New("job queue max concurrency must be between 1 and 16")
+	}
+	return s.repo.SaveScheduledTasks(ctx, config)
 }
 
 func (s *service) validateBasic(config *SystemConfig) error {

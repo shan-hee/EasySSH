@@ -61,6 +61,9 @@ type SystemConfig struct {
 	// 运行数据服务（空路径表示使用数据目录下的 GeoLite2-City.mmdb）
 	GeoIPDatabasePath string `gorm:"type:text" json:"geoip_database_path"`
 
+	// 后台任务队列（运行时动态生效）
+	JobQueueMaxConcurrency int `gorm:"not null;default:2" json:"job_queue_max_concurrency"`
+
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
@@ -217,6 +220,10 @@ func DefaultTransferMaxConcurrency() int {
 	return 2
 }
 
+func DefaultJobQueueMaxConcurrency() int {
+	return 2
+}
+
 func (c *SystemConfig) ApplyTransferDefaults() {
 	if c == nil {
 		return
@@ -238,6 +245,12 @@ func (c *SystemConfig) ApplyTransferDefaults() {
 	}
 	if c.SFTPConnTimeoutSeconds <= 0 {
 		c.SFTPConnTimeoutSeconds = 10
+	}
+}
+
+func (c *SystemConfig) ApplyJobQueueDefaults() {
+	if c != nil && c.JobQueueMaxConcurrency <= 0 {
+		c.JobQueueMaxConcurrency = DefaultJobQueueMaxConcurrency()
 	}
 }
 

@@ -345,7 +345,9 @@ func main() {
 	batchTaskService := batchtask.NewService(batchTaskRepo)
 	jobQueueRepo := jobqueue.NewRepository(database)
 	jobQueue := jobqueue.New(jobQueueRepo, jobqueue.Options{
-		Workers: 8, PollInterval: 500 * time.Millisecond, LeaseDuration: 60 * time.Second,
+		MaxConcurrency:       systemCfg.JobQueueMaxConcurrency,
+		FallbackPollInterval: 2 * time.Second,
+		LeaseDuration:        60 * time.Second,
 	})
 	batchTaskService.SetQueue(jobQueue)
 
@@ -516,7 +518,7 @@ func main() {
 	permissionHandler := rest.NewPermissionHandler(permissionService)
 	// 新的配置处理器
 	securityHandler := rest.NewSecurityHandler(securityService)
-	systemConfigHandler := rest.NewSystemConfigHandler(systemConfigService, permissionService, externalOAuthProviderGate)
+	systemConfigHandler := rest.NewSystemConfigHandler(systemConfigService, permissionService, externalOAuthProviderGate, jobQueue)
 	notificationConfigHandler := rest.NewNotificationConfigHandler(notificationConfigService)
 	aiConfigHandler := rest.NewAIConfigHandler(aiConfigService)
 	userAIConfigHandler := rest.NewUserAIConfigHandler(userAIConfigService)
@@ -1010,6 +1012,8 @@ func main() {
 			settingsGroup.PATCH("/system/google-auth", systemConfigHandler.PatchGoogleAuthConfig)
 			settingsGroup.PATCH("/system/oauth-provider", systemConfigHandler.PatchOAuthProviderConfig)
 			settingsGroup.PATCH("/system/runtime", systemConfigHandler.PatchRuntimeConfig)
+			settingsGroup.GET("/system/scheduled-tasks", systemConfigHandler.GetScheduledTaskConfig)
+			settingsGroup.PATCH("/system/scheduled-tasks", systemConfigHandler.PatchScheduledTaskConfig)
 
 			settingsGroup.GET("/workspace", securityHandler.GetWorkspaceConfig)
 			settingsGroup.POST("/workspace", securityHandler.SaveWorkspaceConfig)

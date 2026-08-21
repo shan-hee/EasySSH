@@ -7,6 +7,7 @@ export const queryKeys = {
   },
   settings: {
     form: (cacheKey: string) => ["settings", "form", cacheKey] as const,
+    scheduledTaskRuntime: ["settings", "scheduled-tasks", "runtime"] as const,
   },
   users: {
     administration: ["users", "administration"] as const,

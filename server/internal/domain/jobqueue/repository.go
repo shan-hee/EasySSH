@@ -20,8 +20,15 @@ type Repository interface {
 	Complete(ctx context.Context, id uuid.UUID, workerID string) (bool, error)
 	Fail(ctx context.Context, id uuid.UUID, workerID, message string, retryAt time.Time) (bool, error)
 	CancelBySource(ctx context.Context, sourceType, sourceID string) ([]uuid.UUID, error)
+	CountQueued(ctx context.Context) (int64, error)
 	RecoverExpiredLeases(ctx context.Context, now time.Time) (int64, error)
 	CleanupTerminalBefore(ctx context.Context, before time.Time) (int64, error)
+}
+
+func (r *repository) CountQueued(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&Job{}).Where("status = ?", StatusQueued).Count(&count).Error
+	return count, err
 }
 
 type repository struct {

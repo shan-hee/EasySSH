@@ -66,9 +66,14 @@ export const fileTransferSchema = z.object({
   sftp_max_sessions_per_conn: z.number().min(0).max(64).default(8),
 })
 
+export const scheduledTaskConfigSchema = z.object({
+  job_queue_max_concurrency: z.number().int().min(1).max(16),
+})
+
 // 导出类型
 export type BasicInfoFormData = z.infer<typeof basicInfoSchema>
 export type RegistrationConfigFormData = z.infer<typeof registrationConfigSchema>
 export type GoogleAuthConfigFormData = z.infer<typeof googleAuthConfigSchema>
 export type OAuthProviderConfigFormData = z.infer<typeof oauthProviderConfigSchema>
 export type FileTransferFormData = z.infer<typeof fileTransferSchema>
+export type ScheduledTaskConfigFormData = z.infer<typeof scheduledTaskConfigSchema>
