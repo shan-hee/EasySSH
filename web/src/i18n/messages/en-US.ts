@@ -686,13 +686,13 @@ const messages = {
     aiResetConfirmCancel: "Cancel",
     aiResetConfirmOk: "Confirm Reset",
 
-    // Monitor data source settings (for dashboard only)
-    navMonitor: "Dashboard Source",
-    monitorTitle: "Dashboard Data Source Settings",
-    monitorDescription: "Configure the data source for server status cards on the dashboard. You can use EasySSH's built-in SSH collection or integrate with existing third-party monitoring platforms.",
+    // Monitor data source settings
+    navMonitor: "Monitoring",
+    monitorTitle: "Monitoring Data Source",
+    monitorDescription: "Configure where server monitoring data comes from. Use EasySSH's built-in SSH collection or connect an existing third-party monitoring platform.",
     monitorDataSourceLabel: "Data Source Type",
     monitorDataSourcePlaceholder: "Select data source",
-    monitorDataSourceHint: "Choose the source for dashboard server status",
+    monitorDataSourceHint: "Choose the source for server monitoring data",
     monitorDataSourceEasySSHDesc: "Built-in SSH (uses added servers)",
     monitorDataSourceNezhaDesc: "Nezha Dashboard (shows Nezha servers)",
     monitorDataSourceKomariDesc: "Komari REST API",

@@ -641,13 +641,13 @@ const messages = {
     aiResetConfirmCancel: "取消",
     aiResetConfirmOk: "确认恢复",
 
-    // 监控数据源设置（仅用于首页仪表盘）
-    navMonitor: "仪表盘数据源",
-    monitorTitle: "仪表盘数据源设置",
-    monitorDescription: "配置首页仪表盘服务器状态卡片的数据来源。您可以使用 EasySSH 内置的 SSH 采集，或对接已有的第三方监控平台来显示服务器状态。",
+    // 监控数据源设置
+    navMonitor: "监控集成",
+    monitorTitle: "监控数据源",
+    monitorDescription: "配置服务器监控数据的来源。您可以使用 EasySSH 内置的 SSH 采集，或连接已有的第三方监控平台。",
     monitorDataSourceLabel: "数据源类型",
     monitorDataSourcePlaceholder: "选择数据源",
-    monitorDataSourceHint: "选择首页服务器状态数据的来源",
+    monitorDataSourceHint: "选择服务器监控数据的来源",
     monitorDataSourceEasySSHDesc: "内置 SSH 采集（使用已添加的服务器）",
     monitorDataSourceNezhaDesc: "哪吒面板（显示哪吒监控的服务器）",
     monitorDataSourceKomariDesc: "Komari REST API",

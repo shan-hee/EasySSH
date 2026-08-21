@@ -68,7 +68,9 @@ function mixColor(
   )) as [number, number, number]
 }
 
-function getInteractiveAppearance(isDark: boolean): GlobeAppearance {
+function getInteractiveAppearance(isDark: boolean, themeRevision = 0): GlobeAppearance {
+  // CSS token changes are external to React values; the revision intentionally invalidates memoized reads.
+  void themeRevision
   const background = readThemeColor(
     "background",
     isDark ? [0.08, 0.08, 0.08] : [0.98, 0.98, 0.98],
@@ -142,7 +144,7 @@ export function DashboardGlobe({
   ), [interactiveLocations])
 
   const appearance = useMemo(
-    () => getInteractiveAppearance(mode === "dark"),
+    () => getInteractiveAppearance(mode === "dark", version),
     [mode, version],
   )
 

@@ -774,13 +774,8 @@
   /* Logo 和 Icon 优化 */
   img[src*="logo.svg"],
   img[src*="icon.svg"] {
-    /* 固定尺寸防止偏移 */
     display: block;
-    /* GPU 加速 */
     transform: translateZ(0);
-    /* 抗锯齿 */
-    image-rendering: -webkit-optimize-contrast;
-    image-rendering: crisp-edges;
   }
 
   /* 连接加载动画 - 从左边滑入 */
