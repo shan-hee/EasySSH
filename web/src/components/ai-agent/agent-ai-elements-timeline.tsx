@@ -657,12 +657,8 @@ function ToolGroupView({
   tText: TimelineTranslate
 }) {
   const { stopScroll } = useStickToBottomContext()
-  const [groupOpen, setGroupOpen] = useState(() => parts.some((part) => part.state !== "output-available"))
-  const [openToolIds, setOpenToolIds] = useState<Set<string>>(() => new Set(
-    parts
-      .filter((part) => part.state !== "output-available")
-      .map((part) => part.toolCallId)
-  ))
+  const [groupOpen, setGroupOpen] = useState(false)
+  const [openToolIds, setOpenToolIds] = useState<Set<string>>(() => new Set())
   const { completedCount, pendingCount } = useMemo(() => ({
     completedCount: parts.filter((part) => part.state === "output-available").length,
     pendingCount: parts.filter((part) => isToolPending(part.state)).length,
