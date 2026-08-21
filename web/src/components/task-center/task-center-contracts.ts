@@ -46,8 +46,10 @@ export interface TaskEvent {
   created_at: string
 }
 
+export type TaskRunSummary = Omit<TaskRun, "description" | "result_json" | "progress_json">
+
 export interface TaskRunListResponse {
-  runs: TaskRun[]
+  runs: TaskRunSummary[]
   total: number
   page: number
   page_size: number

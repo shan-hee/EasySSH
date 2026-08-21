@@ -501,6 +501,66 @@ components:
           type: string
           format: date-time
 
+    TaskRunSummary:
+      type: object
+      description: 任务列表摘要；输入、结果与进度明细仅由任务详情接口返回。
+      required:
+        - id
+        - user_id
+        - task_type
+        - title
+        - trigger_type
+        - runner
+        - status
+        - progress
+        - total_count
+        - success_count
+        - failure_count
+        - bytes_total
+        - bytes_processed
+        - cancelable
+        - retryable
+        - attempt
+        - max_attempts
+        - created_at
+        - updated_at
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        definition_id: { type: string, format: uuid }
+        retry_of_id: { type: string, format: uuid }
+        source_type: { type: string }
+        source_id: { type: string }
+        task_type: { type: string }
+        title: { type: string }
+        trigger_type:
+          type: string
+          enum: [manual, scheduled, system, api]
+        runner: { type: string }
+        status:
+          $ref: '#/components/schemas/TaskRunStatus'
+        stage: { type: string }
+        server_id: { type: string, format: uuid }
+        server_name: { type: string }
+        resource: { type: string }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        total_count: { type: integer }
+        success_count: { type: integer }
+        failure_count: { type: integer }
+        bytes_total: { type: integer, format: int64 }
+        bytes_processed: { type: integer, format: int64 }
+        cancelable: { type: boolean }
+        retryable: { type: boolean }
+        attempt: { type: integer, minimum: 1 }
+        max_attempts: { type: integer, minimum: 1 }
+        error_code: { type: string }
+        error_message: { type: string }
+        cancel_requested_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
     TaskRunList:
       type: object
       required: [runs, total, page, page_size, total_pages]
@@ -508,7 +568,7 @@ components:
         runs:
           type: array
           items:
-            $ref: '#/components/schemas/TaskRun'
+            $ref: '#/components/schemas/TaskRunSummary'
         total:
           type: integer
         page:
@@ -3438,20 +3498,18 @@ paths:
             format: uuid
       responses:
         '200':
-          description: 已提交取消请求
+          description: 已取消排队任务，或已向运行中任务提交取消请求
           content:
             application/json:
               schema:
                 type: object
+                required: [id, status]
                 properties:
-                  data:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                        format: uuid
-                      status:
-                        enum: [canceling]
+                  id:
+                    type: string
+                    format: uuid
+                  status:
+                    $ref: '#/components/schemas/TaskRunStatus'
         '409':
           description: 当前任务不可取消
           content:
@@ -3480,18 +3538,18 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [id, definition_id, retry_of_id]
                 properties:
-                  success:
-                    type: boolean
-                  data:
-                    type: object
-                    properties:
-                      definition_id:
-                        type: string
-                        format: uuid
-                      retry_of_id:
-                        type: string
-                        format: uuid
+                  id:
+                    type: string
+                    format: uuid
+                    description: 新任务运行 ID；相同重试请求返回同一个 ID。
+                  definition_id:
+                    type: string
+                    format: uuid
+                  retry_of_id:
+                    type: string
+                    format: uuid
         '409':
           description: 任务不可重试
           content:
@@ -5060,7 +5118,18 @@ paths:
               $ref: '#/components/schemas/JSONObject'
       responses:
         '200':
-          $ref: '#/components/responses/JSON'
+          description: 任务已进入持久化队列
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message, task_run_id]
+                properties:
+                  message:
+                    type: string
+                  task_run_id:
+                    type: string
+                    format: uuid
         '400':
           $ref: '#/components/responses/Error'
 

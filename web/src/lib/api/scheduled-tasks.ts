@@ -153,8 +153,8 @@ export const scheduledTasksApi = {
   /**
    * 手动触发定时任务
    */
-  async trigger(id: string): Promise<{ message: string }> {
-    return apiFetch<{ message: string }>(`/scheduled-tasks/${id}/trigger`, {
+  async trigger(id: string): Promise<{ message: string; task_run_id: string }> {
+    return apiFetch<{ message: string; task_run_id: string }>(`/scheduled-tasks/${id}/trigger`, {
       method: "POST",
     })
   },

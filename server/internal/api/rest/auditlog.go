@@ -66,7 +66,7 @@ func (h *AuditLogHandler) GetAllStatistics(c *gin.Context) {
 	RespondSuccess(c, stats)
 }
 
-// CleanupOldLogs 清理旧日志（由 audit:view 策略授权）
+// CleanupOldLogs 清理旧日志（由 audit:view + audit:manage 策略授权）
 // DELETE /api/v1/logs/cleanup?retention_days=90
 func (h *AuditLogHandler) CleanupOldLogs(c *gin.Context) {
 	retentionStr := c.DefaultQuery("retention_days", "90")
@@ -215,13 +215,7 @@ func parseAuditLogStatisticsRequest(c *gin.Context, allowUserID bool) (*auditlog
 	return req, true
 }
 
-func respondLogList(c *gin.Context, logs []*auditlog.AuditLog, total int64, req *auditlog.ListAuditLogsRequest) {
-	if req.Page < 1 {
-		req.Page = 1
-	}
-	if req.PageSize < 1 {
-		req.PageSize = 20
-	}
+func respondLogList(c *gin.Context, logs []*auditlog.AuditLogSummary, total int64, req *auditlog.ListAuditLogsRequest) {
 	totalPages := int(total) / req.PageSize
 	if int(total)%req.PageSize > 0 {
 		totalPages++

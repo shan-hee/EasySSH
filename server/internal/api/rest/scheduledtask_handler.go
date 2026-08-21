@@ -451,7 +451,8 @@ func (h *ScheduledTaskHandler) Trigger(c *gin.Context) {
 		return
 	}
 
-	if err := h.scheduledTaskService.TriggerTask(uid, id); err != nil {
+	runID, err := h.scheduledTaskService.TriggerTask(uid, id)
+	if err != nil {
 		if err == scheduledtask.ErrScheduledTaskNotFound {
 			RespondError(c, http.StatusNotFound, "not_found", "Scheduled task not found")
 			return
@@ -464,5 +465,5 @@ func (h *ScheduledTaskHandler) Trigger(c *gin.Context) {
 		return
 	}
 
-	RespondSuccess(c, gin.H{"message": "Task queued successfully"})
+	RespondSuccess(c, gin.H{"message": "Task queued successfully", "task_run_id": runID})
 }

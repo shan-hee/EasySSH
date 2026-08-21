@@ -11,7 +11,7 @@ import (
 
 type Repository interface {
 	Create(ctx context.Context, log *AuditLog) error
-	List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLog, int64, error)
+	List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLogSummary, int64, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*AuditLog, error)
 	GetStatistics(ctx context.Context, req *AuditLogStatisticsRequest) (*AuditLogStatistics, error)
 	DeleteOldLogs(ctx context.Context, before time.Time, category LogCategory) (int64, error)
@@ -34,18 +34,18 @@ func (r *repository) Create(ctx context.Context, log *AuditLog) error {
 	return r.records.Upsert(ctx, record)
 }
 
-func (r *repository) List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLog, int64, error) {
-	response, err := r.records.List(ctx, auditListRequestToOperationRecordRequest(req))
+func (r *repository) List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLogSummary, int64, error) {
+	result, err := r.records.List(ctx, auditListRequestToOperationRecordRequest(req))
 	if err != nil {
 		return nil, 0, err
 	}
 
-	logs := make([]*AuditLog, 0, len(response.Records))
-	for _, record := range response.Records {
-		logs = append(logs, operationRecordToAuditLog(record))
+	logs := make([]*AuditLogSummary, 0, len(result.Records))
+	for _, record := range result.Records {
+		logs = append(logs, operationRecordSummaryToAuditLogSummary(record))
 	}
 
-	return logs, response.Total, nil
+	return logs, result.Total, nil
 }
 
 func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*AuditLog, error) {
@@ -57,73 +57,30 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*AuditLog, erro
 }
 
 func (r *repository) GetStatistics(ctx context.Context, req *AuditLogStatisticsRequest) (*AuditLogStatistics, error) {
-	statsReq := &operationrecord.StatisticsRequest{}
-	if req != nil {
-		statsReq.UserID = req.UserID
-		statsReq.Category = mapLogCategory(req.Category)
-		statsReq.StartTime = req.StartTime
-		statsReq.EndTime = req.EndTime
-		statsReq.Days = req.Days
-	}
-
-	recordStats, err := r.records.GetStatistics(ctx, statsReq)
-	if err != nil {
-		return nil, err
-	}
-
 	stats := &AuditLogStatistics{
-		TotalLogs:      recordStats.Total,
-		SuccessCount:   recordStats.SuccessCount,
-		FailureCount:   recordStats.FailureCount,
-		ActionStats:    make(map[ActionType]int64),
-		RecentFailures: make([]*AuditLog, 0, 10),
+		ActionStats: make(map[ActionType]int64),
 	}
 
-	var actionRows []struct {
+	var rows []struct {
 		Action string
+		Status operationrecord.Status
 		Count  int64
 	}
 	if err := r.statisticsQuery(ctx, req).
-		Select("action, count(*) as count").
-		Group("action").
-		Find(&actionRows).Error; err != nil {
+		Select("action, status, count(*) as count").
+		Group("action, status").
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	for _, row := range actionRows {
-		stats.ActionStats[ActionType(row.Action)] = row.Count
-	}
-
-	var failureRows []*operationrecord.OperationRecord
-	if err := r.statisticsQuery(ctx, req).
-		Where("status = ?", operationrecord.StatusFailure).
-		Order("created_at DESC").
-		Limit(10).
-		Find(&failureRows).Error; err != nil {
-		return nil, err
-	}
-	for _, record := range failureRows {
-		stats.RecentFailures = append(stats.RecentFailures, operationRecordToAuditLog(record))
-	}
-
-	var userRows []struct {
-		UserID   uuid.UUID
-		Username string
-		Count    int64
-	}
-	if err := r.statisticsQuery(ctx, req).
-		Select("user_id, username, count(*) as count").
-		Group("user_id, username").
-		Order("count DESC").
-		Limit(5).
-		Find(&userRows).Error; err != nil {
-		return nil, err
-	}
-	for _, row := range userRows {
-		stats.TopUsers = append(stats.TopUsers, UserActionCount{
-			UserID:   row.UserID,
-			Username: row.Username,
-			Count:    row.Count,
-		})
+	for _, row := range rows {
+		stats.TotalLogs += row.Count
+		stats.ActionStats[ActionType(row.Action)] += row.Count
+		switch row.Status {
+		case operationrecord.StatusSuccess:
+			stats.SuccessCount += row.Count
+		case operationrecord.StatusFailure:
+			stats.FailureCount += row.Count
+		}
 	}
 
 	return stats, nil

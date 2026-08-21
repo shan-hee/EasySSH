@@ -70,12 +70,10 @@ func AuditLogMiddleware(auditService auditlog.Service, cfg *AuditConfig) gin.Han
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), cfg.AsyncTimeout)
-		go func() {
-			defer cancel()
-			if err := auditService.Log(ctx, req); err != nil {
-				log.Printf("Failed to log audit: %v (action=%s, user=%s)", err, req.Action, req.Username)
-			}
-		}()
+		defer cancel()
+		if err := auditService.Log(ctx, req); err != nil {
+			log.Printf("Failed to log audit: %v (action=%s, user=%s)", err, req.Action, req.Username)
+		}
 	}
 }
 
@@ -132,6 +130,7 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 	{"DELETE", "/api/v1/servers/:id"}:    auditlog.ActionServerDelete,
 	{"POST", "/api/v1/servers/:id/test"}: auditlog.ActionServerTest,
 	{"POST", "/api/v1/servers/test"}:     auditlog.ActionServerTest,
+	{"PATCH", "/api/v1/servers/reorder"}: auditlog.ActionServerReorder,
 
 	{"POST", "/api/v1/users"}:              auditlog.ActionUserCreate,
 	{"PUT", "/api/v1/users/:id"}:           auditlog.ActionUserUpdate,
@@ -145,6 +144,49 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 	{"DELETE", "/api/v1/scheduled-tasks/:id"}:       auditlog.ActionScheduledTaskDelete,
 	{"POST", "/api/v1/scheduled-tasks/:id/toggle"}:  auditlog.ActionScheduledTaskToggle,
 	{"POST", "/api/v1/scheduled-tasks/:id/trigger"}: auditlog.ActionScheduledTaskTrigger,
+
+	{"PUT", "/api/v1/users/me"}:                         auditlog.ActionProfileUpdate,
+	{"PUT", "/api/v1/users/me/password"}:                auditlog.ActionSecurityUpdate,
+	{"POST", "/api/v1/users/me/2fa/enable"}:             auditlog.ActionSecurityUpdate,
+	{"POST", "/api/v1/users/me/2fa/disable"}:            auditlog.ActionSecurityUpdate,
+	{"DELETE", "/api/v1/users/me/sessions/:session_id"}: auditlog.ActionSecurityUpdate,
+	{"POST", "/api/v1/users/me/sessions/revoke-others"}: auditlog.ActionSecurityUpdate,
+	{"PUT", "/api/v1/users/me/notifications"}:           auditlog.ActionProfileUpdate,
+	{"PUT", "/api/v1/users/me/monitor-datasource"}:      auditlog.ActionProfileUpdate,
+	{"PUT", "/api/v1/users/me/ai-config"}:               auditlog.ActionAIConfigUpdate,
+	{"DELETE", "/api/v1/users/me/ai-config"}:            auditlog.ActionAIConfigUpdate,
+
+	{"POST", "/api/v1/roles"}:       auditlog.ActionRoleCreate,
+	{"PUT", "/api/v1/roles/:id"}:    auditlog.ActionRoleUpdate,
+	{"DELETE", "/api/v1/roles/:id"}: auditlog.ActionRoleDelete,
+
+	{"POST", "/api/v1/resource-grants"}:        auditlog.ActionResourceGrant,
+	{"POST", "/api/v1/resource-grants/revoke"}: auditlog.ActionResourceRevoke,
+
+	{"POST", "/api/v1/scripts"}:             auditlog.ActionScriptCreate,
+	{"PUT", "/api/v1/scripts/:id"}:          auditlog.ActionScriptUpdate,
+	{"DELETE", "/api/v1/scripts/:id"}:       auditlog.ActionScriptDelete,
+	{"POST", "/api/v1/scripts/:id/execute"}: auditlog.ActionScriptExecute,
+
+	{"PATCH", "/api/v1/settings/system/basic"}:          auditlog.ActionSystemSettingsUpdate,
+	{"PATCH", "/api/v1/settings/system/file-transfer"}:  auditlog.ActionSystemSettingsUpdate,
+	{"PATCH", "/api/v1/settings/system/registration"}:   auditlog.ActionSystemSettingsUpdate,
+	{"PATCH", "/api/v1/settings/system/google-auth"}:    auditlog.ActionSystemSettingsUpdate,
+	{"PATCH", "/api/v1/settings/system/oauth-provider"}: auditlog.ActionSystemSettingsUpdate,
+	{"PATCH", "/api/v1/settings/system/runtime"}:        auditlog.ActionSystemSettingsUpdate,
+	{"POST", "/api/v1/settings/workspace"}:              auditlog.ActionSecuritySettingsUpdate,
+	{"POST", "/api/v1/settings/login-session"}:          auditlog.ActionSecuritySettingsUpdate,
+	{"POST", "/api/v1/settings/login-security"}:         auditlog.ActionSecuritySettingsUpdate,
+	{"POST", "/api/v1/settings/web-security"}:           auditlog.ActionSecuritySettingsUpdate,
+	{"POST", "/api/v1/settings/cors"}:                   auditlog.ActionSecuritySettingsUpdate,
+	{"POST", "/api/v1/settings/access-control"}:         auditlog.ActionSecuritySettingsUpdate,
+	{"POST", "/api/v1/settings/notifications"}:          auditlog.ActionNotificationSettingsUpdate,
+	{"POST", "/api/v1/settings/smtp"}:                   auditlog.ActionNotificationSettingsUpdate,
+	{"POST", "/api/v1/settings/webhook"}:                auditlog.ActionNotificationSettingsUpdate,
+	{"POST", "/api/v1/settings/dingtalk"}:               auditlog.ActionNotificationSettingsUpdate,
+	{"POST", "/api/v1/settings/wecom"}:                  auditlog.ActionNotificationSettingsUpdate,
+	{"POST", "/api/v1/settings/ai/system"}:              auditlog.ActionAIConfigUpdate,
+	{"DELETE", "/api/v1/logs/cleanup"}:                  auditlog.ActionAuditLogsCleanup,
 }
 
 func determineAction(method, path string) auditlog.ActionType {

@@ -1,8 +1,6 @@
 package auditlog
 
 import (
-	"encoding/json"
-	"fmt"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/operationrecord"
@@ -50,7 +48,7 @@ func auditLogToOperationRecord(log *AuditLog) *operationrecord.OperationRecord {
 		FinishedAt:   &log.CreatedAt,
 		DurationMs:   log.Duration,
 		ErrorMessage: log.ErrorMsg,
-		DetailJSON:   normalizeDetails(log.Details, log.UserAgent),
+		DetailJSON:   log.Details,
 		SourceTable:  "audit_events",
 		SourceID:     log.ID.String(),
 		CreatedAt:    log.CreatedAt,
@@ -75,7 +73,30 @@ func operationRecordToAuditLog(record *operationrecord.OperationRecord) *AuditLo
 		Status:    Status(record.Status),
 		IP:        record.IP,
 		UserAgent: record.UserAgent,
-		Details:   firstNonEmpty(record.DetailJSON, record.Source),
+		Details:   record.DetailJSON,
+		ErrorMsg:  record.ErrorMessage,
+		Duration:  record.DurationMs,
+		CreatedAt: record.CreatedAt,
+	}
+}
+
+func operationRecordSummaryToAuditLogSummary(record *operationrecord.OperationRecordSummary) *AuditLogSummary {
+	if record == nil {
+		return nil
+	}
+
+	return &AuditLogSummary{
+		ID:        record.ID,
+		UserID:    record.UserID,
+		Username:  record.Username,
+		ServerID:  record.ServerID,
+		Type:      string(record.Type),
+		Action:    ActionType(record.Action),
+		Category:  unmapLogCategory(record.Category),
+		Resource:  firstNonEmpty(record.Resource, record.Title, record.Source),
+		Source:    record.Source,
+		Status:    Status(record.Status),
+		IP:        record.IP,
 		ErrorMsg:  record.ErrorMessage,
 		Duration:  record.DurationMs,
 		CreatedAt: record.CreatedAt,
@@ -167,21 +188,6 @@ func unmapLogCategory(category operationrecord.Category) LogCategory {
 	default:
 		return CategoryOf(ActionType(""))
 	}
-}
-
-func normalizeDetails(details string, userAgent string) string {
-	if details != "" {
-		return details
-	}
-	if userAgent == "" {
-		return ""
-	}
-
-	payload, err := json.Marshal(map[string]string{"user_agent": userAgent})
-	if err != nil {
-		return fmt.Sprintf(`{"user_agent":%q}`, userAgent)
-	}
-	return string(payload)
 }
 
 func firstNonEmpty(values ...string) string {

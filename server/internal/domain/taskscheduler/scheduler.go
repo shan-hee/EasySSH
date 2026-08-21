@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
+	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/easyssh/server/internal/domain/taskexecutor"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
@@ -20,8 +22,10 @@ type Scheduler struct {
 	cron        *cron.Cron
 	taskRepo    scheduledtask.Repository
 	queue       jobqueue.Enqueuer
+	taskRuns    taskcenter.Service
 	taskEntries map[uuid.UUID]cron.EntryID
 	mu          sync.RWMutex
+	enqueueMu   sync.Mutex
 	ctx         context.Context
 	cancel      context.CancelFunc
 	started     bool
@@ -31,6 +35,7 @@ type Scheduler struct {
 func NewScheduler(
 	taskRepo scheduledtask.Repository,
 	queue jobqueue.Enqueuer,
+	taskRuns taskcenter.Service,
 ) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -43,6 +48,7 @@ func NewScheduler(
 		cron:        c,
 		taskRepo:    taskRepo,
 		queue:       queue,
+		taskRuns:    taskRuns,
 		taskEntries: make(map[uuid.UUID]cron.EntryID),
 		ctx:         ctx,
 		cancel:      cancel,
@@ -53,6 +59,9 @@ func NewScheduler(
 // Start 启动调度器
 func (s *Scheduler) Start() error {
 	log.Println("[TaskScheduler] 启动定时任务调度器...")
+	if err := s.recoverQueuedRuns(); err != nil {
+		return fmt.Errorf("recover queued task runs: %w", err)
+	}
 
 	// 加载所有启用的任务
 	tasks, err := s.taskRepo.GetEnabledTasks()
@@ -164,7 +173,7 @@ func (s *Scheduler) executeTask(taskID uuid.UUID) {
 	s.updateNextRunTime(taskID)
 
 	dedupeKey := fmt.Sprintf("scheduled:%s:%s", task.ID, time.Now().UTC().Truncate(time.Minute).Format(time.RFC3339))
-	if err := s.enqueueTask(task, taskexecutor.TriggerSchedule, nil, 1, dedupeKey); err != nil {
+	if _, err := s.enqueueTask(task, taskexecutor.TriggerSchedule, nil, 1, dedupeKey); err != nil {
 		log.Printf("[TaskScheduler] 任务入队失败: taskID=%s, error=%v", taskID, err)
 	}
 }
@@ -233,31 +242,154 @@ func (s *Scheduler) UpdateTask(task *scheduledtask.ScheduledTask) error {
 }
 
 // TriggerTaskManually 手动触发任务
-func (s *Scheduler) TriggerTaskManually(taskID uuid.UUID) error {
+func (s *Scheduler) TriggerTaskManually(taskID uuid.UUID) (uuid.UUID, error) {
 	task, err := s.taskRepo.GetByID(taskID)
 	if err != nil {
-		return fmt.Errorf("task not found: %w", err)
+		return uuid.Nil, fmt.Errorf("task not found: %w", err)
 	}
 
 	return s.enqueueTask(task, taskexecutor.TriggerManual, nil, 1, "")
 }
 
-func (s *Scheduler) RetryTask(taskID, retryOfID uuid.UUID, attempt int) error {
+func (s *Scheduler) RetryTask(taskID, retryOfID uuid.UUID, attempt int) (uuid.UUID, error) {
 	task, err := s.taskRepo.GetByID(taskID)
 	if err != nil {
-		return fmt.Errorf("task not found: %w", err)
+		return uuid.Nil, fmt.Errorf("task not found: %w", err)
 	}
-	return s.enqueueTask(task, taskexecutor.TriggerManual, &retryOfID, attempt, "")
+	if attempt < 2 {
+		attempt = 2
+	}
+	dedupeKey := fmt.Sprintf("retry:%s:%d", retryOfID, attempt)
+	return s.enqueueTask(task, taskexecutor.TriggerManual, &retryOfID, attempt, dedupeKey)
 }
 
-func (s *Scheduler) enqueueTask(task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, retryOfID *uuid.UUID, attempt int, dedupeKey string) error {
+func (s *Scheduler) enqueueTask(task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, retryOfID *uuid.UUID, attempt int, dedupeKey string) (uuid.UUID, error) {
 	if s.queue == nil {
-		return errors.New("job queue is not initialized")
+		return uuid.Nil, errors.New("job queue is not initialized")
 	}
-	_, err := s.queue.Enqueue(s.ctx, taskexecutor.QueueJobKind, "scheduled_task", task.ID.String(), taskexecutor.QueuePayload{
-		TaskID: task.ID, Trigger: trigger, Source: taskexecutor.SourceScheduledTask, RetryOfID: retryOfID, Attempt: attempt,
-	}, jobqueue.EnqueueOptions{MaxAttempts: 3, DedupeKey: dedupeKey})
-	return err
+	if s.taskRuns == nil {
+		return uuid.Nil, errors.New("task center is not initialized")
+	}
+
+	s.enqueueMu.Lock()
+	defer s.enqueueMu.Unlock()
+
+	runID := uuid.New()
+	if dedupeKey != "" {
+		runID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("easyssh:task-run:"+dedupeKey))
+	}
+	run, err := s.taskRuns.Get(s.ctx, task.UserID, runID)
+	if err == nil && isTerminalRun(run.Status) {
+		return runID, nil
+	}
+	if err != nil && !errors.Is(err, taskcenter.ErrNotFound) {
+		return uuid.Nil, fmt.Errorf("load task run: %w", err)
+	}
+	if errors.Is(err, taskcenter.ErrNotFound) {
+		triggerType := taskcenter.TriggerManual
+		if trigger == taskexecutor.TriggerSchedule {
+			triggerType = taskcenter.TriggerScheduled
+		}
+		definitionID := task.ID
+		run = &taskcenter.TaskRun{
+			ID: runID, UserID: task.UserID, DefinitionID: &definitionID, RetryOfID: retryOfID,
+			SourceType: string(taskexecutor.SourceScheduledTask), SourceID: task.ID.String(), TaskType: task.TaskType,
+			Title: task.TaskName, Description: task.Description, TriggerType: triggerType, Runner: "server",
+			Status: taskcenter.StatusQueued, Resource: strings.Join(task.ServerIDs, ","), PayloadJSON: task.PayloadJSON,
+			Cancelable: !isTransferTask(task.TaskType), Retryable: true, Attempt: attempt, MaxAttempts: attempt,
+		}
+		if err := s.taskRuns.Create(s.ctx, run); err != nil {
+			return uuid.Nil, fmt.Errorf("create task run: %w", err)
+		}
+	}
+
+	_, err = s.queue.Enqueue(s.ctx, taskexecutor.QueueJobKind, "task_run", runID.String(), taskexecutor.QueuePayload{
+		RunID: runID, TaskID: task.ID, Trigger: trigger, Source: taskexecutor.SourceScheduledTask,
+		RetryOfID: retryOfID, Attempt: attempt,
+	}, jobqueue.EnqueueOptions{MaxAttempts: 3, DedupeKey: taskRunDedupeKey(runID)})
+	if err != nil {
+		completeErr := s.taskRuns.Complete(s.ctx, runID, taskcenter.StatusFailed, "", "enqueue_failed", err.Error(), 0, 0)
+		if completeErr != nil {
+			log.Printf("[TaskScheduler] 标记入队失败任务失败: runID=%s, error=%v", runID, completeErr)
+		}
+		return runID, fmt.Errorf("enqueue task run: %w", err)
+	}
+	return runID, nil
+}
+
+func (s *Scheduler) recoverQueuedRuns() error {
+	if s.queue == nil || s.taskRuns == nil {
+		return errors.New("task queue dependencies are not initialized")
+	}
+	runs, err := s.taskRuns.ListActive(s.ctx)
+	if err != nil {
+		return err
+	}
+	for i := range runs {
+		run := &runs[i]
+		if run.SourceType != string(taskexecutor.SourceScheduledTask) || run.Status != taskcenter.StatusQueued {
+			continue
+		}
+		if run.DefinitionID == nil {
+			if err := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "definition_missing", "排队任务缺少定时任务定义", 0, 0); err != nil {
+				return err
+			}
+			continue
+		}
+		task, err := s.taskRepo.GetByID(*run.DefinitionID)
+		if err != nil {
+			if completeErr := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "task_definition_unavailable", err.Error(), 0, 0); completeErr != nil {
+				return completeErr
+			}
+			continue
+		}
+		trigger := taskexecutor.TriggerManual
+		if run.TriggerType == taskcenter.TriggerScheduled {
+			trigger = taskexecutor.TriggerSchedule
+		}
+		job, err := s.queue.Enqueue(s.ctx, taskexecutor.QueueJobKind, "task_run", run.ID.String(), taskexecutor.QueuePayload{
+			RunID: run.ID, TaskID: task.ID, Trigger: trigger, Source: taskexecutor.SourceScheduledTask,
+			RetryOfID: run.RetryOfID, Attempt: run.Attempt,
+		}, jobqueue.EnqueueOptions{MaxAttempts: 3, DedupeKey: taskRunDedupeKey(run.ID)})
+		if err != nil {
+			if completeErr := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "queue_recovery_failed", err.Error(), 0, 0); completeErr != nil {
+				return completeErr
+			}
+			continue
+		}
+		switch job.Status {
+		case jobqueue.StatusFailed:
+			message := job.LastError
+			if message == "" {
+				message = "持久队列任务已失败"
+			}
+			if err := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "queue_failed", message, 0, 0); err != nil {
+				return err
+			}
+		case jobqueue.StatusCancelled:
+			if err := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusCanceled, "", "", "持久队列任务已取消", 0, 0); err != nil {
+				return err
+			}
+		case jobqueue.StatusSucceeded:
+			if err := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "queue_state_inconsistent", "任务运行状态与持久队列状态不一致", 0, 0); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func taskRunDedupeKey(runID uuid.UUID) string {
+	return "task-run:" + runID.String()
+}
+
+func isTerminalRun(status taskcenter.Status) bool {
+	return status == taskcenter.StatusSucceeded || status == taskcenter.StatusFailed || status == taskcenter.StatusPartialSuccess ||
+		status == taskcenter.StatusCanceled || status == taskcenter.StatusTimeout
+}
+
+func isTransferTask(taskType string) bool {
+	return taskType == "sftp_upload" || taskType == "sftp_download"
 }
 
 // GetTaskStatus 获取任务调度状态

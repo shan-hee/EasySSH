@@ -18,6 +18,7 @@ import type {
 import type {
   AuditLog,
   AuditLogListResponse,
+  AuditLogSummary,
   AuditLogStatisticsResponse,
 } from "@/lib/log-types"
 
@@ -182,7 +183,8 @@ export interface WorkspaceLogsApiLike {
   }) => Promise<AuditLogStatisticsResponse>
 }
 
-export function mapAuditLogToWorkspaceActivityLogItem(log: AuditLog): WorkspaceActivityLogItem {
+export function mapAuditLogToWorkspaceActivityLogItem(log: AuditLog | AuditLogSummary): WorkspaceActivityLogItem {
+  const details = "details" in log ? log.details : undefined
   return {
     id: log.id,
     action: log.action,
@@ -190,7 +192,7 @@ export function mapAuditLogToWorkspaceActivityLogItem(log: AuditLog): WorkspaceA
     status: log.status,
     serverId: log.server_id,
     durationMs: log.duration,
-    detail: log.error_msg || log.details,
+    detail: log.error_msg || details,
     createdAt: log.created_at,
   }
 }

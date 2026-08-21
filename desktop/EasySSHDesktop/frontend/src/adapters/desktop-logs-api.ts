@@ -11,8 +11,6 @@ import type {
   AuditLogStatisticsResponse,
 } from "@easyssh/ssh-workspace/desktop"
 import {
-  desktopLogUserId,
-  desktopLogUsername,
   mapDesktopActivityLogItemToAuditLog,
   normalizeDesktopActivityLogStatusFilter,
 } from "./desktop-activity-log-mappers"
@@ -144,6 +142,10 @@ export function createDesktopLogsApi() {
       }
     },
 
+    async getById(id: string): Promise<AuditLog> {
+      return mapDesktopActivityLogItemToAuditLog(await ActivityLogService.GetById(id))
+    },
+
     async getStatistics(params?: {
       category?: "activity" | "audit"
       start_date?: string
@@ -156,19 +158,11 @@ export function createDesktopLogsApi() {
         acc[log.action] = (acc[log.action] || 0) + 1
         return acc
       }, {})
-      const recentFailures = logs
-        .filter((log) => log.status !== "success")
-        .slice(0, 10)
-
       return {
         total_logs: logs.length,
         success_count: logs.filter((log) => log.status === "success").length,
         failure_count: logs.filter((log) => log.status !== "success").length,
         action_stats: actionStats,
-        recent_failures: recentFailures,
-        top_users: logs.length
-          ? [{ user_id: desktopLogUserId, username: desktopLogUsername, count: logs.length }]
-          : [],
       }
     },
 

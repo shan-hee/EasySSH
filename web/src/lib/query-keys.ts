@@ -33,6 +33,8 @@ export const queryKeys = {
   logs: {
     auditRoot: ["logs", "audit"] as const,
     audit: (params: unknown) => ["logs", "audit", params] as const,
+    auditDetail: (id: string) => ["logs", "audit", "detail", id] as const,
     operations: (params: unknown) => ["logs", "operations", params] as const,
+    operationDetail: (id: string) => ["logs", "operations", "detail", id] as const,
   },
 } as const

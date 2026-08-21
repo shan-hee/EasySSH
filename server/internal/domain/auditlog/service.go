@@ -3,6 +3,7 @@ package auditlog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,7 +13,7 @@ type Service interface {
 	Log(ctx context.Context, req *CreateAuditLogRequest) error
 	LogSuccess(ctx context.Context, userID uuid.UUID, username string, action ActionType, resource string, details interface{}) error
 	LogFailure(ctx context.Context, userID uuid.UUID, username string, action ActionType, resource string, err error) error
-	List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLog, int64, error)
+	List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLogSummary, int64, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*AuditLog, error)
 	GetStatistics(ctx context.Context, req *AuditLogStatisticsRequest) (*AuditLogStatistics, error)
 	CleanupOldLogs(ctx context.Context, retentionDays int) (int64, error)
@@ -27,6 +28,14 @@ func NewService(repo Repository) Service {
 }
 
 func (s *service) Log(ctx context.Context, req *CreateAuditLogRequest) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+	}
 	log := &AuditLog{
 		UserID:    req.UserID,
 		Username:  req.Username,
@@ -44,7 +53,26 @@ func (s *service) Log(ctx context.Context, req *CreateAuditLogRequest) error {
 		Duration:  req.Duration,
 	}
 
-	return s.repo.Create(ctx, log)
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err = s.repo.Create(ctx, log); err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return errors.Join(err, ctx.Err())
+		}
+		if attempt == 2 {
+			break
+		}
+		timer := time.NewTimer(time.Duration(attempt+1) * 100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return errors.Join(err, ctx.Err())
+		case <-timer.C:
+		}
+	}
+	return err
 }
 
 func (s *service) LogSuccess(ctx context.Context, userID uuid.UUID, username string, action ActionType, resource string, details interface{}) error {
@@ -76,7 +104,19 @@ func (s *service) LogFailure(ctx context.Context, userID uuid.UUID, username str
 	})
 }
 
-func (s *service) List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLog, int64, error) {
+func (s *service) List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLogSummary, int64, error) {
+	if req == nil {
+		req = &ListAuditLogsRequest{}
+	}
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.PageSize < 1 {
+		req.PageSize = 20
+	}
+	if req.PageSize > 100 {
+		req.PageSize = 100
+	}
 	return s.repo.List(ctx, req)
 }
 

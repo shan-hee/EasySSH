@@ -13,6 +13,7 @@ export type {
   AuditLogListParams,
   AuditLogListResponse,
   AuditLogStatisticsResponse,
+  AuditLogSummary,
   AuditLogStatus,
 } from "@/lib/log-types"
 

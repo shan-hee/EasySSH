@@ -188,7 +188,7 @@ server/
 - `GET /api/v1/logs` - 活动日志/安全审计统一列表
 - `GET /api/v1/logs/statistics` - 日志统计
 - `GET /api/v1/logs/:id` - 日志详情
-- `DELETE /api/v1/logs/cleanup` - 清理旧日志
+- `DELETE /api/v1/logs/cleanup` - 清理旧日志（需要 `audit:manage`）
 - `GET /api/v1/operation-records` - 历史连接、传输、执行统一操作记录
 - `GET /api/v1/operation-records/statistics` - 操作记录统计
 - `GET /api/v1/operation-records/:id` - 操作记录详情

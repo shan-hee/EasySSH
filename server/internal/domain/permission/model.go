@@ -89,7 +89,8 @@ func PermissionDefinitions() []Permission {
 		{Code: "terminal:execute", Name: "终端执行", Description: "在远程服务器执行命令", Module: ModuleTerminal, Resource: "server/*"},
 		{Code: "docker:view", Name: "Docker 查看", Description: "查看远程服务器 Docker 资源", Module: ModuleServer, Resource: "server/*"},
 		{Code: "docker:manage", Name: "Docker 管理", Description: "管理远程服务器 Docker 容器", Module: ModuleServer, Resource: "server/*"},
-		{Code: "audit:view", Name: "审计日志查看", Description: "查看和清理系统审计日志", Module: ModuleAudit, Resource: "audit/*"},
+		{Code: "audit:view", Name: "审计日志查看", Description: "查看系统审计日志", Module: ModuleAudit, Resource: "audit/*"},
+		{Code: "audit:manage", Name: "审计日志管理", Description: "清理系统审计日志", Module: ModuleAudit, Resource: "audit/*"},
 		{Code: "dashboard:view-all", Name: "全局仪表盘", Description: "查看所有用户的聚合统计", Module: ModuleAudit, Resource: "dashboard/*"},
 		{Code: "system:settings", Name: "系统设置", Description: "查看和修改系统配置", Module: ModuleSystem, Resource: "system/*"},
 		{Code: "backup:manage", Name: "备份恢复", Description: "导出和恢复系统备份", Module: ModuleSystem, Resource: "backup/*"},
@@ -105,7 +106,7 @@ func defaultRoles() []defaultRole {
 			Description: "拥有全部系统管理权限",
 			PermissionCodes: []string{
 				"server:manage", "server:view", "server:connect", "file:manage", "file:view", "terminal:execute",
-				"docker:view", "docker:manage", "audit:view", "dashboard:view-all", "system:settings", "backup:manage", "user:manage",
+				"docker:view", "docker:manage", "audit:view", "audit:manage", "dashboard:view-all", "system:settings", "backup:manage", "user:manage",
 			},
 		},
 		{

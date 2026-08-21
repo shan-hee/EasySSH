@@ -43,6 +43,6 @@ export const taskCenterApi: TaskCenterApi = {
     return apiFetch<{ id: string; status: TaskRunStatus }>(`/tasks/${id}/cancel`, { method: "POST" })
   },
   retry(id: string) {
-    return apiFetch<{ definition_id: string; retry_of_id: string }>(`/tasks/${id}/retry`, { method: "POST" })
+    return apiFetch<{ id: string; definition_id: string; retry_of_id: string }>(`/tasks/${id}/retry`, { method: "POST" })
   },
 }

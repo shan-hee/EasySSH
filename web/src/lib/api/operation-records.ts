@@ -26,7 +26,7 @@ export interface OperationRecord {
   resource: string
   source: string
   ip: string
-  user_agent: string
+  user_agent?: string
   started_at?: string
   finished_at?: string
   duration_ms: number
@@ -45,8 +45,10 @@ export interface OperationRecord {
   updated_at: string
 }
 
+export type OperationRecordSummary = Omit<OperationRecord, "user_agent" | "detail_json">
+
 export interface OperationRecordListResponse {
-  records: OperationRecord[]
+  records: OperationRecordSummary[]
   total: number
   page: number
   page_size: number

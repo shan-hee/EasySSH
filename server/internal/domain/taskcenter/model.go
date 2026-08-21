@@ -119,11 +119,47 @@ type ListRequest struct {
 }
 
 type ListResponse struct {
-	Runs       []*TaskRun `json:"runs"`
-	Total      int64      `json:"total"`
-	Page       int        `json:"page"`
-	PageSize   int        `json:"page_size"`
-	TotalPages int        `json:"total_pages"`
+	Runs       []*TaskRunSummary `json:"runs"`
+	Total      int64             `json:"total"`
+	Page       int               `json:"page"`
+	PageSize   int               `json:"page_size"`
+	TotalPages int               `json:"total_pages"`
+}
+
+// TaskRunSummary 是列表所需的轻量视图。任务输入、结果和进度明细只由详情接口返回。
+type TaskRunSummary struct {
+	ID                uuid.UUID   `json:"id"`
+	UserID            uuid.UUID   `json:"user_id"`
+	DefinitionID      *uuid.UUID  `json:"definition_id,omitempty"`
+	RetryOfID         *uuid.UUID  `json:"retry_of_id,omitempty"`
+	SourceType        string      `json:"source_type,omitempty"`
+	SourceID          string      `json:"source_id,omitempty"`
+	TaskType          string      `json:"task_type"`
+	Title             string      `json:"title"`
+	TriggerType       TriggerType `json:"trigger_type"`
+	Runner            string      `json:"runner"`
+	Status            Status      `json:"status"`
+	Stage             string      `json:"stage,omitempty"`
+	ServerID          *uuid.UUID  `json:"server_id,omitempty"`
+	ServerName        string      `json:"server_name,omitempty"`
+	Resource          string      `json:"resource,omitempty"`
+	Progress          int         `json:"progress"`
+	TotalCount        int         `json:"total_count"`
+	SuccessCount      int         `json:"success_count"`
+	FailureCount      int         `json:"failure_count"`
+	BytesTotal        int64       `json:"bytes_total"`
+	BytesProcessed    int64       `json:"bytes_processed"`
+	Cancelable        bool        `json:"cancelable"`
+	Retryable         bool        `json:"retryable"`
+	Attempt           int         `json:"attempt"`
+	MaxAttempts       int         `json:"max_attempts"`
+	ErrorCode         string      `json:"error_code,omitempty"`
+	ErrorMessage      string      `json:"error_message,omitempty"`
+	CancelRequestedAt *time.Time  `json:"cancel_requested_at,omitempty"`
+	StartedAt         *time.Time  `json:"started_at,omitempty"`
+	FinishedAt        *time.Time  `json:"finished_at,omitempty"`
+	CreatedAt         time.Time   `json:"created_at"`
+	UpdatedAt         time.Time   `json:"updated_at"`
 }
 
 type Statistics struct {

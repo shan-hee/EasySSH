@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -522,7 +523,9 @@ func (s *service) deleteLoadedJob(ctx context.Context, job *TransferJob) error {
 		return err
 	}
 	if s.operationRecords != nil {
-		_ = s.operationRecords.DeleteBySource(ctx, "transfer_jobs", job.ID.String())
+		if err := s.operationRecords.DeleteBySource(ctx, "transfer_jobs", job.ID.String()); err != nil {
+			log.Printf("[TransferJob] delete operation record failed: job=%s error=%v", job.ID, err)
+		}
 	}
 	return nil
 }
@@ -1157,6 +1160,7 @@ func (s *service) upsertOperationRecord(ctx context.Context, id uuid.UUID) {
 	}
 	job, err := s.repo.GetByID(ctx, id)
 	if err != nil {
+		log.Printf("[TransferJob] load operation record source failed: job=%s error=%v", id, err)
 		return
 	}
 	status := operationrecord.StatusRunning
@@ -1215,7 +1219,9 @@ func (s *service) upsertOperationRecord(ctx context.Context, id uuid.UUID) {
 		CreatedAt:      job.CreatedAt,
 		UpdatedAt:      time.Now(),
 	}
-	_ = s.operationRecords.Upsert(ctx, record)
+	if err := s.operationRecords.Upsert(ctx, record); err != nil {
+		log.Printf("[TransferJob] persist operation record failed: job=%s error=%v", job.ID, err)
+	}
 }
 
 func (s *service) ensureTaskRun(ctx context.Context, job *TransferJob) {

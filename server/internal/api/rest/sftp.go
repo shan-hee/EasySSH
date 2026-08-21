@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path"
@@ -293,7 +294,9 @@ func (h *SFTPHandler) upsertSFTPTransferRecord(c *gin.Context, input sftpTransfe
 		UpdatedAt:      now,
 	}
 
-	_ = h.operationRecords.Upsert(context.Background(), record)
+	if err := h.operationRecords.Upsert(context.Background(), record); err != nil {
+		log.Printf("[SFTP] persist operation record failed: task=%s error=%v", input.TaskID, err)
+	}
 }
 
 func (h *SFTPHandler) sftpRecordServerName(ctx context.Context, userID uuid.UUID, serverID uuid.UUID) string {

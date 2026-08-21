@@ -14,6 +14,7 @@ type Repository interface {
 	Upsert(ctx context.Context, record *OperationRecord) error
 	List(ctx context.Context, req *ListRequest) (*ListResponse, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*OperationRecord, error)
+	GetByUserID(ctx context.Context, userID, id uuid.UUID) (*OperationRecord, error)
 	GetStatistics(ctx context.Context, req *StatisticsRequest) (*Statistics, error)
 	DeleteBySource(ctx context.Context, sourceTable string, sourceID string) error
 	DeleteOld(ctx context.Context, before time.Time, category Category) (int64, error)
@@ -87,7 +88,7 @@ func (r *repository) List(ctx context.Context, req *ListRequest) (*ListResponse,
 		req.PageSize = 100
 	}
 
-	var records []*OperationRecord
+	var records []*OperationRecordSummary
 	err := query.
 		Order(r.listOrder(req)).
 		Limit(req.PageSize).
@@ -119,6 +120,14 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*OperationRecor
 	return &record, nil
 }
 
+func (r *repository) GetByUserID(ctx context.Context, userID, id uuid.UUID) (*OperationRecord, error) {
+	var record OperationRecord
+	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&record).Error; err != nil {
+		return nil, err
+	}
+	return &record, nil
+}
+
 func (r *repository) GetStatistics(ctx context.Context, req *StatisticsRequest) (*Statistics, error) {
 	stats := &Statistics{
 		ByType:   make(map[RecordType]int64),
@@ -128,46 +137,29 @@ func (r *repository) GetStatistics(ctx context.Context, req *StatisticsRequest) 
 	if req == nil {
 		req = &StatisticsRequest{}
 	}
-	query := r.statisticsQuery(ctx, req)
-	if err := query.Count(&stats.Total).Error; err != nil {
-		return nil, err
-	}
-	if err := r.statisticsQuery(ctx, req).Where("status = ?", StatusSuccess).Count(&stats.SuccessCount).Error; err != nil {
-		return nil, err
-	}
-	if err := r.statisticsQuery(ctx, req).Where("status = ?", StatusFailure).Count(&stats.FailureCount).Error; err != nil {
-		return nil, err
-	}
-	if err := r.statisticsQuery(ctx, req).Where("status = ?", StatusRunning).Count(&stats.RunningCount).Error; err != nil {
-		return nil, err
-	}
-
-	var typeRows []struct {
-		Type  RecordType
-		Count int64
-	}
-	if err := r.statisticsQuery(ctx, req).
-		Select("type, count(*) as count").
-		Group("type").
-		Find(&typeRows).Error; err != nil {
-		return nil, err
-	}
-	for _, row := range typeRows {
-		stats.ByType[row.Type] = row.Count
-	}
-
-	var statusRows []struct {
+	var rows []struct {
+		Type   RecordType
 		Status Status
 		Count  int64
 	}
 	if err := r.statisticsQuery(ctx, req).
-		Select("status, count(*) as count").
-		Group("status").
-		Find(&statusRows).Error; err != nil {
+		Select("type, status, count(*) as count").
+		Group("type, status").
+		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	for _, row := range statusRows {
-		stats.ByStatus[row.Status] = row.Count
+	for _, row := range rows {
+		stats.Total += row.Count
+		stats.ByType[row.Type] += row.Count
+		stats.ByStatus[row.Status] += row.Count
+		switch row.Status {
+		case StatusSuccess:
+			stats.SuccessCount += row.Count
+		case StatusFailure:
+			stats.FailureCount += row.Count
+		case StatusRunning:
+			stats.RunningCount += row.Count
+		}
 	}
 
 	return stats, nil
@@ -223,8 +215,8 @@ func (r *repository) applyListFilters(query *gorm.DB, req *ListRequest) *gorm.DB
 	if keyword := strings.TrimSpace(req.Keyword); keyword != "" {
 		like := "%" + strings.ToLower(keyword) + "%"
 		query = query.Where(
-			"LOWER(username) LIKE ? OR LOWER(action) LIKE ? OR LOWER(status) LIKE ? OR LOWER(server_name) LIKE ? OR LOWER(title) LIKE ? OR LOWER(resource) LIKE ? OR LOWER(source) LIKE ? OR LOWER(ip) LIKE ? OR LOWER(error_message) LIKE ? OR LOWER(detail_json) LIKE ?",
-			like, like, like, like, like, like, like, like, like, like,
+			"LOWER(username) LIKE ? OR LOWER(action) LIKE ? OR LOWER(status) LIKE ? OR LOWER(server_name) LIKE ? OR LOWER(title) LIKE ? OR LOWER(resource) LIKE ? OR LOWER(source) LIKE ? OR LOWER(ip) LIKE ? OR LOWER(error_message) LIKE ?",
+			like, like, like, like, like, like, like, like, like,
 		)
 	}
 	if req.StartTime != nil {

@@ -34,7 +34,8 @@ func (h *TaskCenterHandler) Retry(c *gin.Context) {
 		RespondError(c, http.StatusConflict, "task_not_retryable", "Task run cannot be retried")
 		return
 	}
-	if err := h.scheduledTasks.RetryTask(userID, *run.DefinitionID, run.ID, run.Attempt+1); err != nil {
+	retryRunID, err := h.scheduledTasks.RetryTask(userID, *run.DefinitionID, run.ID, run.Attempt+1)
+	if err != nil {
 		status := http.StatusInternalServerError
 		code := "retry_task_failed"
 		switch err {
@@ -48,7 +49,7 @@ func (h *TaskCenterHandler) Retry(c *gin.Context) {
 		RespondError(c, status, code, err.Error())
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"definition_id": run.DefinitionID, "retry_of_id": run.ID})
+	c.JSON(http.StatusAccepted, gin.H{"id": retryRunID, "definition_id": run.DefinitionID, "retry_of_id": run.ID})
 }
 
 func (h *TaskCenterHandler) List(c *gin.Context) {
@@ -161,7 +162,12 @@ func (h *TaskCenterHandler) Cancel(c *gin.Context) {
 		RespondError(c, status, "task_cancel_failed", err.Error())
 		return
 	}
-	RespondSuccess(c, gin.H{"id": id, "status": taskcenter.StatusCanceling})
+	run, err := h.service.Get(c.Request.Context(), userID, id)
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, "task_cancel_status_failed", err.Error())
+		return
+	}
+	RespondSuccess(c, gin.H{"id": id, "status": run.Status})
 }
 
 func taskCenterUserAndID(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {

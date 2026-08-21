@@ -115,11 +115,43 @@ type ListRequest struct {
 }
 
 type ListResponse struct {
-	Records    []*OperationRecord `json:"records"`
-	Total      int64              `json:"total"`
-	Page       int                `json:"page"`
-	PageSize   int                `json:"page_size"`
-	TotalPages int                `json:"total_pages"`
+	Records    []*OperationRecordSummary `json:"records"`
+	Total      int64                     `json:"total"`
+	Page       int                       `json:"page"`
+	PageSize   int                       `json:"page_size"`
+	TotalPages int                       `json:"total_pages"`
+}
+
+// OperationRecordSummary 是列表查询的轻量视图。UserAgent 与 DetailJSON 仅在详情查询返回。
+type OperationRecordSummary struct {
+	ID             uuid.UUID  `json:"id"`
+	UserID         uuid.UUID  `json:"user_id"`
+	Username       string     `json:"username"`
+	Type           RecordType `json:"type"`
+	Category       Category   `json:"category"`
+	Action         string     `json:"action"`
+	Status         Status     `json:"status"`
+	ServerID       *uuid.UUID `json:"server_id,omitempty"`
+	ServerName     string     `json:"server_name"`
+	Title          string     `json:"title"`
+	Resource       string     `json:"resource"`
+	Source         string     `json:"source"`
+	IP             string     `json:"ip"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	FinishedAt     *time.Time `json:"finished_at,omitempty"`
+	DurationMs     int64      `json:"duration_ms"`
+	Progress       int        `json:"progress"`
+	TotalCount     int        `json:"total_count"`
+	SuccessCount   int        `json:"success_count"`
+	FailureCount   int        `json:"failure_count"`
+	BytesTotal     int64      `json:"bytes_total"`
+	BytesProcessed int64      `json:"bytes_processed"`
+	SpeedBps       int64      `json:"speed_bps"`
+	ErrorMessage   string     `json:"error_message,omitempty"`
+	SourceTable    string     `json:"source_table"`
+	SourceID       string     `json:"source_id"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type StatisticsRequest struct {

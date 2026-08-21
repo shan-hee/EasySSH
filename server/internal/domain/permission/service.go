@@ -377,6 +377,24 @@ func (s *service) EnsureDefaults(ctx context.Context) error {
 		var role Role
 		err := s.db.WithContext(ctx).Where("key = ?", definition.Key).First(&role).Error
 		if err == nil {
+			if role.Name != definition.Name || role.Description != definition.Description || !role.System || role.ParentKey != nil {
+				if err := s.db.WithContext(ctx).Model(&role).Updates(map[string]interface{}{
+					"name":        definition.Name,
+					"description": definition.Description,
+					"system":      true,
+					"parent_key":  nil,
+				}).Error; err != nil {
+					return err
+				}
+			}
+			if role.ParentKey != nil {
+				if _, err := s.enforcer.RemoveFilteredGroupingPolicy(0, roleSubject(role.Key)); err != nil {
+					return err
+				}
+			}
+			if err := s.syncDefaultRolePolicies(role.Key, definition.PermissionCodes); err != nil {
+				return err
+			}
 			continue
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -387,6 +405,57 @@ func (s *service) EnsureDefaults(ctx context.Context) error {
 			return err
 		}
 		if err := s.replaceRolePolicies(role.Key, nil, definition.PermissionCodes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// syncDefaultRolePolicies 对齐内置角色的全局基础权限，同时保留其资源级授权。
+func (s *service) syncDefaultRolePolicies(key string, permissionCodes []string) error {
+	subject := roleSubject(key)
+	policies, err := s.enforcer.GetFilteredPolicy(0, subject)
+	if err != nil {
+		return err
+	}
+
+	desiredCodes := uniqueSorted(permissionCodes)
+	desired := make(map[string]struct{}, len(desiredCodes))
+	for _, code := range desiredCodes {
+		desired[code] = struct{}{}
+	}
+	current := make(map[string]struct{}, len(policies))
+	obsolete := make([][]string, 0)
+	for _, policy := range policies {
+		if len(policy) < 3 {
+			continue
+		}
+		definition, ok := s.byCode[policy[2]]
+		if !ok || policy[1] != definition.Resource {
+			continue
+		}
+		if _, ok := desired[policy[2]]; ok {
+			current[policy[2]] = struct{}{}
+			continue
+		}
+		obsolete = append(obsolete, policy)
+	}
+	if len(obsolete) > 0 {
+		if _, err := s.enforcer.RemovePolicies(obsolete); err != nil {
+			return err
+		}
+	}
+
+	missing := make([][]string, 0, len(desiredCodes))
+	for _, code := range desiredCodes {
+		if _, ok := current[code]; ok {
+			continue
+		}
+		definition := s.byCode[code]
+		missing = append(missing, []string{subject, definition.Resource, code})
+	}
+	if len(missing) > 0 {
+		if _, err := s.enforcer.AddPolicies(missing); err != nil {
 			return err
 		}
 	}

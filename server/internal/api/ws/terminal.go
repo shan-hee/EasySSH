@@ -1320,7 +1320,9 @@ func (h *TerminalHandler) upsertTerminalOperationRecord(input terminalOperationR
 		UpdatedAt:    now,
 	}
 
-	_ = h.operationRecords.Upsert(context.Background(), record)
+	if err := h.operationRecords.Upsert(context.Background(), record); err != nil {
+		log.Printf("[Terminal] persist operation record failed: session=%s error=%v", input.SessionID, err)
+	}
 }
 
 // sendMessage 发送消息

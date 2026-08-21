@@ -56,8 +56,8 @@ func (h *OperationRecordHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	record, err := h.service.GetByID(c.Request.Context(), id)
-	if err != nil || record.UserID != currentUserID {
+	record, err := h.service.GetByID(c.Request.Context(), currentUserID, id)
+	if err != nil {
 		RespondError(c, http.StatusNotFound, "record_not_found", "Operation record not found")
 		return
 	}

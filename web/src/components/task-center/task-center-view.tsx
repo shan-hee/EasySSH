@@ -35,6 +35,7 @@ import type {
   TaskCenterApi,
   TaskEvent,
   TaskRun,
+  TaskRunListResponse,
   TaskRunStatus,
   TaskStatistics,
 } from "@/components/task-center/task-center-contracts"
@@ -46,6 +47,7 @@ import {
   taskCenterRunsQueryOptions,
   taskCenterStatisticsQueryOptions,
 } from "@/lib/dashboard-query-options"
+import { patchTaskRunDetail, patchTaskRunList, taskRealtimePatchFromEvent } from "@/components/task-center/task-center-realtime"
 
 const emptyStatistics: TaskStatistics = { total: 0, queued: 0, running: 0, canceling: 0, succeeded: 0, failed: 0, partial_success: 0, canceled: 0, timeout: 0 }
 
@@ -75,7 +77,10 @@ export function TaskCenterView({
   const [triggerFilters, setTriggerFilters] = useState<TaskRun["trigger_type"][]>([])
   const [keyword, setKeyword] = useState("")
   const deferredKeyword = useDeferredValue(keyword.trim())
-  const [selected, setSelected] = useState<{ run: TaskRun; events: TaskEvent[] } | null>(null)
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const selectedRunIdRef = useRef<string | null>(null)
+  const [pendingActions, setPendingActions] = useState<Record<string, "cancel" | "retry">>({})
+  const pendingActionsRef = useRef<Record<string, "cancel" | "retry">>({})
   const [cleanupOpen, setCleanupOpen] = useState(false)
   const [cleanupLoading, setCleanupLoading] = useState(false)
   const [retentionDays, setRetentionDays] = useState("90")
@@ -102,6 +107,13 @@ export function TaskCenterView({
     ...taskCenterStatisticsQueryOptions(api),
     refetchInterval: 60_000,
   })
+  const detailQuery = useQuery({
+    queryKey: queryKeys.taskCenter.detail(selectedRunId ?? "none"),
+    queryFn: () => api.get(selectedRunId as string),
+    enabled: selectedRunId !== null,
+    staleTime: 0,
+  })
+  const selected = detailQuery.data ?? null
   const runs = runsQuery.data?.runs ?? []
   const totalPages = Math.max(1, runsQuery.data?.total_pages ?? 1)
   const totalRuns = runsQuery.data?.total ?? 0
@@ -118,6 +130,14 @@ export function TaskCenterView({
   }, [refetchRuns, refetchStatistics])
 
   useEffect(() => {
+    if (page > totalPages && !runsQuery.isPlaceholderData) setPage(totalPages)
+  }, [page, runsQuery.isPlaceholderData, totalPages])
+
+  useEffect(() => {
+    selectedRunIdRef.current = selectedRunId
+  }, [selectedRunId])
+
+  useEffect(() => {
     const error = !runsQuery.data
       ? runsQuery.error
       : !statisticsQuery.data
@@ -129,42 +149,72 @@ export function TaskCenterView({
 
   useEffect(() => {
     if (!subscribeEvents) return
-    let refreshTimer: number | null = null
-    const changedTaskIDs = new Set<string>()
+    let authoritativeRefreshTimer: number | null = null
+    let detailRefreshTimer: number | null = null
+    let detailRefreshTaskId: string | null = null
+
+    const scheduleAuthoritativeRefresh = () => {
+      if (authoritativeRefreshTimer !== null) return
+      authoritativeRefreshTimer = window.setTimeout(() => {
+        authoritativeRefreshTimer = null
+        void refetchAll()
+      }, 500)
+    }
+
+    const scheduleDetailRefresh = (taskId: string) => {
+      if (selectedRunIdRef.current !== taskId) return
+      if (detailRefreshTimer !== null && detailRefreshTaskId === taskId) return
+      if (detailRefreshTimer !== null) window.clearTimeout(detailRefreshTimer)
+      detailRefreshTaskId = taskId
+      detailRefreshTimer = window.setTimeout(() => {
+        detailRefreshTimer = null
+        detailRefreshTaskId = null
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.taskCenter.detail(taskId),
+        })
+      }, 750)
+    }
+
     const unsubscribe = subscribeEvents((event) => {
       if (!event.type.startsWith("task.")) return
-      if (typeof event.data.task_id === "string") changedTaskIDs.add(event.data.task_id)
-      if (refreshTimer !== null) return
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = null
-        void refetchAll()
-        if (selected?.run.id && (changedTaskIDs.size === 0 || changedTaskIDs.has(selected.run.id))) {
-          void queryClient.fetchQuery({
-            queryKey: queryKeys.taskCenter.detail(selected.run.id),
-            queryFn: () => api.get(selected.run.id),
-            staleTime: 0,
-          }).then(setSelected).catch(() => undefined)
-        }
-        changedTaskIDs.clear()
-      }, 250)
+      const patch = taskRealtimePatchFromEvent(event)
+      if (!patch || event.type !== "task.updated") {
+        scheduleAuthoritativeRefresh()
+        return
+      }
+      const taskId = patch.taskId
+
+      let foundCachedRun = false
+      let statusChanged = false
+      queryClient.setQueriesData<TaskRunListResponse>(
+        { queryKey: ["task-center", "runs"] },
+        (current) => {
+          if (!current) return current
+          const result = patchTaskRunList(current, patch)
+          foundCachedRun = foundCachedRun || result.found
+          statusChanged = statusChanged || result.statusChanged
+          return result.data
+        },
+      )
+
+      queryClient.setQueryData<{ run: TaskRun; events: TaskEvent[] }>(
+        queryKeys.taskCenter.detail(taskId),
+        (current) => current ? patchTaskRunDetail(current, patch) : current,
+      )
+
+      scheduleDetailRefresh(taskId)
+      if (!foundCachedRun || statusChanged) scheduleAuthoritativeRefresh()
     })
     return () => {
       unsubscribe()
-      if (refreshTimer !== null) window.clearTimeout(refreshTimer)
+      if (authoritativeRefreshTimer !== null) window.clearTimeout(authoritativeRefreshTimer)
+      if (detailRefreshTimer !== null) window.clearTimeout(detailRefreshTimer)
     }
-  }, [api, queryClient, refetchAll, selected?.run.id, subscribeEvents])
+  }, [queryClient, refetchAll, subscribeEvents])
 
-  const openDetails = useCallback(async (run: TaskRun) => {
-    try {
-      setSelected(await queryClient.fetchQuery({
-        queryKey: queryKeys.taskCenter.detail(run.id),
-        queryFn: () => api.get(run.id),
-        staleTime: 15_000,
-      }))
-    } catch (error) {
-      toast.error(getErrorMessage(error, t("detailsLoadFailed")))
-    }
-  }, [api, queryClient, t])
+  const openDetails = useCallback((run: TaskRun) => {
+    setSelectedRunId(run.id)
+  }, [])
 
   const requestedRunID = externalRequestedRunID ?? null
   const clearRequestedRun = useCallback(() => {
@@ -180,28 +230,38 @@ export function TaskCenterView({
     }
     if (handledRequestedRunRef.current === requestedRunID) return
     handledRequestedRunRef.current = requestedRunID
-    void queryClient.fetchQuery({
-      queryKey: queryKeys.taskCenter.detail(requestedRunID),
-      queryFn: () => api.get(requestedRunID),
-      staleTime: 15_000,
-    }).then(setSelected).catch((error) => {
-      toast.error(getErrorMessage(error, t("detailsLoadFailed")))
-      clearRequestedRun()
-    })
-  }, [api, clearRequestedRun, queryClient, requestedRunID, t])
+    setSelectedRunId(requestedRunID)
+  }, [requestedRunID])
+
+  useEffect(() => {
+    if (!detailQuery.error || detailQuery.data) return
+    toast.error(getErrorMessage(detailQuery.error, t("detailsLoadFailed")))
+    setSelectedRunId(null)
+    clearRequestedRun()
+  }, [clearRequestedRun, detailQuery.data, detailQuery.error, t])
 
   const runAction = useCallback(async (action: "cancel" | "retry", run: TaskRun) => {
+    if (pendingActionsRef.current[run.id]) return
+    pendingActionsRef.current = { ...pendingActionsRef.current, [run.id]: action }
+    setPendingActions(pendingActionsRef.current)
     try {
-      if (action === "cancel") await api.cancel(run.id)
-      else await api.retry(run.id)
+      const result = action === "cancel"
+        ? await api.cancel(run.id)
+        : await api.retry(run.id)
       toast.success(t(action === "cancel" ? "cancelRequested" : "retrySubmitted"))
       await queryClient.invalidateQueries({ queryKey: queryKeys.taskCenter.root })
-      setSelected(null)
-      clearRequestedRun()
+      if (action === "retry" && "retry_of_id" in result && result.id) {
+        setSelectedRunId(result.id)
+      }
     } catch (error) {
       toast.error(getErrorMessage(error, t(action === "cancel" ? "cancelFailed" : "retryFailed")))
+    } finally {
+      const next = { ...pendingActionsRef.current }
+      delete next[run.id]
+      pendingActionsRef.current = next
+      setPendingActions(next)
     }
-  }, [api, clearRequestedRun, queryClient, t])
+  }, [api, queryClient, t])
 
   const cleanupRuns = useCallback(async () => {
     const parsedRetentionDays = Number(retentionDays)
@@ -215,7 +275,7 @@ export function TaskCenterView({
       toast.success(t("cleanupSuccess", { count: result.deleted_count }))
       await queryClient.invalidateQueries({ queryKey: queryKeys.taskCenter.root })
       setCleanupOpen(false)
-      setSelected(null)
+      setSelectedRunId(null)
       clearRequestedRun()
       setPage(1)
     } catch (error) {
@@ -293,14 +353,15 @@ export function TaskCenterView({
         meta: meta({ align: "center" }),
         cell: ({ row }) => {
           const run = row.original
+          const pendingAction = pendingActions[run.id]
           const canCancel = run.cancelable && ["queued", "running"].includes(run.status)
           const canRetry = run.retryable && ["failed", "partial_success", "canceled", "timeout"].includes(run.status)
           return (
             <div className="flex justify-center" onClick={(event) => event.stopPropagation()}>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon-sm" title={t("taskActions")} aria-label={t("taskActions")}>
-                    <MoreHorizontal className="size-4" />
+                  <Button variant="ghost" size="icon-sm" title={t("taskActions")} aria-label={t("taskActions")} disabled={Boolean(pendingAction)}>
+                    {pendingAction ? <Loader2 className="size-4 animate-spin" /> : <MoreHorizontal className="size-4" />}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -310,14 +371,14 @@ export function TaskCenterView({
                   </DropdownMenuItem>
                   {canCancel || canRetry ? <DropdownMenuSeparator /> : null}
                   {canCancel ? (
-                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void runAction("cancel", run)}>
-                      <CircleStop className="size-4" />
+                    <DropdownMenuItem disabled={Boolean(pendingAction)} className="text-destructive focus:text-destructive" onClick={() => void runAction("cancel", run)}>
+                      {pendingAction === "cancel" ? <Loader2 className="size-4 animate-spin" /> : <CircleStop className="size-4" />}
                       {t("cancelTask")}
                     </DropdownMenuItem>
                   ) : null}
                   {canRetry ? (
-                    <DropdownMenuItem onClick={() => void runAction("retry", run)}>
-                      <RotateCcw className="size-4" />
+                    <DropdownMenuItem disabled={Boolean(pendingAction)} onClick={() => void runAction("retry", run)}>
+                      {pendingAction === "retry" ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}
                       {t("retryTask")}
                     </DropdownMenuItem>
                   ) : null}
@@ -328,7 +389,7 @@ export function TaskCenterView({
         },
       },
     ]
-  }, [i18n.language, openDetails, runAction, t])
+  }, [i18n.language, openDetails, pendingActions, runAction, t])
 
   return (
     <>
@@ -432,14 +493,31 @@ export function TaskCenterView({
         </Tabs>
       </DashboardPageContent>
 
-      <Dialog open={selected !== null} onOpenChange={(open) => {
+      <Dialog open={selectedRunId !== null} onOpenChange={(open) => {
         if (open) return
-        setSelected(null)
+        setSelectedRunId(null)
         clearRequestedRun()
       }}>
         <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-5xl">
-          <DialogHeader><DialogTitle>{selected?.run.title}</DialogTitle><DialogDescription>{selected?.run.resource || selected?.run.task_type}</DialogDescription></DialogHeader>
-          {selected ? <TaskDetails run={selected.run} events={selected.events} onAction={runAction} t={t} locale={i18n.language} /> : null}
+          <DialogHeader>
+            <DialogTitle>{selected?.run.title || t("viewDetails")}</DialogTitle>
+            <DialogDescription>{selected?.run.resource || selected?.run.task_type || t("loading")}</DialogDescription>
+          </DialogHeader>
+          {selected ? (
+            <TaskDetails
+              run={selected.run}
+              events={selected.events}
+              pendingAction={pendingActions[selected.run.id]}
+              onAction={runAction}
+              t={t}
+              locale={i18n.language}
+            />
+          ) : (
+            <div className="flex min-h-56 items-center justify-center text-sm text-muted-foreground">
+              <Loader2 className="mr-2 size-4 animate-spin" />
+              {t("loading")}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -501,7 +579,7 @@ function TaskStatusBadge({ status, t }: { status: TaskRunStatus; t: TFunction })
   return <Badge variant={variants[status]}>{t(statusLabelKeys[status])}</Badge>
 }
 
-function TaskDetails({ run, events, onAction, t, locale }: { run: TaskRun; events: TaskEvent[]; onAction: (action: "cancel" | "retry", run: TaskRun) => void; t: TFunction; locale: string }) {
+function TaskDetails({ run, events, pendingAction, onAction, t, locale }: { run: TaskRun; events: TaskEvent[]; pendingAction?: "cancel" | "retry"; onAction: (action: "cancel" | "retry", run: TaskRun) => void; t: TFunction; locale: string }) {
   const formattedResult = formatTaskResult(run.result_json)
   return <div className="max-h-[calc(85vh-120px)] space-y-4 overflow-y-auto pr-2">
     <div className="grid grid-cols-2 gap-x-6 gap-y-3 border-y py-3 text-sm sm:grid-cols-4">
@@ -523,8 +601,8 @@ function TaskDetails({ run, events, onAction, t, locale }: { run: TaskRun; event
       <pre className="whitespace-pre-wrap break-words p-3 font-mono text-xs leading-5">{formattedResult}</pre>
     </ScrollArea></div> : null}
     {(run.cancelable || run.retryable) ? <div className="flex justify-end gap-2">
-      {run.cancelable && ["queued", "running"].includes(run.status) ? <Button variant="outline" size="sm" onClick={() => onAction("cancel", run)}><CircleStop className="size-4" />{t("cancelTask")}</Button> : null}
-      {run.retryable && ["failed", "partial_success", "canceled", "timeout"].includes(run.status) ? <Button size="sm" onClick={() => onAction("retry", run)}><RotateCcw className="size-4" />{t("retryTask")}</Button> : null}
+      {run.cancelable && ["queued", "running"].includes(run.status) ? <Button variant="outline" size="sm" disabled={Boolean(pendingAction)} onClick={() => onAction("cancel", run)}>{pendingAction === "cancel" ? <Loader2 className="size-4 animate-spin" /> : <CircleStop className="size-4" />}{t("cancelTask")}</Button> : null}
+      {run.retryable && ["failed", "partial_success", "canceled", "timeout"].includes(run.status) ? <Button size="sm" disabled={Boolean(pendingAction)} onClick={() => onAction("retry", run)}>{pendingAction === "retry" ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}{t("retryTask")}</Button> : null}
     </div> : null}
   </div>
 }

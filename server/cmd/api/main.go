@@ -377,6 +377,7 @@ func main() {
 		taskCenterService,
 	)
 	taskExecutor.SetHostKeyCallback(sshHostKeyService.GetHostKeyCallback())
+	taskExecutor.SetQueue(jobQueue)
 	taskCenterService.SetCanceler(taskExecutor)
 	taskCenterService.SetDefinitionStatusUpdater(taskExecutor)
 	if err := taskCenterService.RecoverInterrupted(context.Background()); err != nil {
@@ -388,7 +389,7 @@ func main() {
 	batchTaskService.SetExecutor(taskExecutor)
 
 	// 任务调度器
-	taskScheduler := taskscheduler.NewScheduler(scheduledTaskRepo, jobQueue)
+	taskScheduler := taskscheduler.NewScheduler(scheduledTaskRepo, jobQueue, taskCenterService)
 
 	// 注入调度器到定时任务服务
 	scheduledTaskService.SetScheduler(taskScheduler)
@@ -640,6 +641,7 @@ func main() {
 		// 用户路由（需要认证）
 		userRoutes := v1.Group("/users")
 		userRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		userRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
 			userRoutes.GET("/me", authHandler.GetCurrentUser)
 			userRoutes.PUT("/me", authHandler.UpdateProfile)
@@ -673,8 +675,8 @@ func main() {
 		// 用户管理路由（需要认证）
 		userManagementRoutes := v1.Group("/users")
 		userManagementRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		userManagementRoutes.Use(middleware.RequirePermission(permissionService, "user:manage"))
 		userManagementRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
+		userManagementRoutes.Use(middleware.RequirePermission(permissionService, "user:manage"))
 		{
 			userManagementRoutes.GET("", userHandler.ListUsers)                    // 获取用户列表
 			userManagementRoutes.GET("/statistics", userHandler.GetStatistics)     // 获取统计信息
@@ -700,6 +702,7 @@ func main() {
 		roleRoutes := v1.Group("/roles")
 		roleRoutes.Use(openAPIValidation)
 		roleRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		roleRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
 			roleRoutes.GET("", permissionHandler.ListRoles)
 			roleRoutes.GET("/:id", permissionHandler.GetRole)
@@ -712,6 +715,7 @@ func main() {
 		resourceGrantRoutes := v1.Group("/resource-grants")
 		resourceGrantRoutes.Use(openAPIValidation)
 		resourceGrantRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		resourceGrantRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		resourceGrantRoutes.Use(middleware.RequirePermission(permissionService, "user:manage"))
 		{
 			resourceGrantRoutes.GET("", permissionHandler.ListResourceGrants)
@@ -891,7 +895,7 @@ func main() {
 		{
 			logRoutes.GET("", auditLogHandler.ListAll)
 			logRoutes.GET("/statistics", auditLogHandler.GetAllStatistics)
-			logRoutes.DELETE("/cleanup", auditLogHandler.CleanupOldLogs)
+			logRoutes.DELETE("/cleanup", middleware.RequirePermission(permissionService, "audit:manage"), auditLogHandler.CleanupOldLogs)
 			logRoutes.GET("/:id", auditLogHandler.GetAnyByID)
 		}
 
@@ -952,6 +956,7 @@ func main() {
 		// 脚本管理路由（需要认证）
 		scriptRoutes := v1.Group("/scripts")
 		scriptRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		scriptRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
 			scriptRoutes.GET("", scriptHandler.List)                 // 脚本列表
 			scriptRoutes.POST("", scriptHandler.Create)              // 创建脚本
@@ -993,6 +998,7 @@ func main() {
 		// 系统设置路由（需要认证）
 		settingsGroup := v1.Group("/settings")
 		settingsGroup.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		settingsGroup.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		settingsGroup.Use(middleware.RequirePermission(permissionService, "system:settings"))
 		{
 			// 系统配置

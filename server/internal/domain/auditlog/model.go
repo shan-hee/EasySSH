@@ -12,10 +12,11 @@ const (
 	ActionLogin  ActionType = "login"
 	ActionLogout ActionType = "logout"
 
-	ActionServerCreate ActionType = "server_create"
-	ActionServerUpdate ActionType = "server_update"
-	ActionServerDelete ActionType = "server_delete"
-	ActionServerTest   ActionType = "server_test"
+	ActionServerCreate  ActionType = "server_create"
+	ActionServerUpdate  ActionType = "server_update"
+	ActionServerDelete  ActionType = "server_delete"
+	ActionServerTest    ActionType = "server_test"
+	ActionServerReorder ActionType = "server_reorder"
 
 	ActionSSHConnect    ActionType = "ssh_connect"
 	ActionSSHDisconnect ActionType = "ssh_disconnect"
@@ -37,6 +38,23 @@ const (
 	ActionScheduledTaskDelete  ActionType = "scheduled_task_delete"
 	ActionScheduledTaskToggle  ActionType = "scheduled_task_toggle"
 	ActionScheduledTaskTrigger ActionType = "scheduled_task_trigger"
+
+	ActionProfileUpdate              ActionType = "profile_update"
+	ActionSecurityUpdate             ActionType = "security_update"
+	ActionRoleCreate                 ActionType = "role_create"
+	ActionRoleUpdate                 ActionType = "role_update"
+	ActionRoleDelete                 ActionType = "role_delete"
+	ActionResourceGrant              ActionType = "resource_grant"
+	ActionResourceRevoke             ActionType = "resource_revoke"
+	ActionScriptCreate               ActionType = "script_create"
+	ActionScriptUpdate               ActionType = "script_update"
+	ActionScriptDelete               ActionType = "script_delete"
+	ActionScriptExecute              ActionType = "script_execute"
+	ActionSystemSettingsUpdate       ActionType = "system_settings_update"
+	ActionSecuritySettingsUpdate     ActionType = "security_settings_update"
+	ActionNotificationSettingsUpdate ActionType = "notification_settings_update"
+	ActionAIConfigUpdate             ActionType = "ai_config_update"
+	ActionAuditLogsCleanup           ActionType = "audit_logs_cleanup"
 )
 
 type LogCategory string
@@ -80,6 +98,24 @@ type AuditLog struct {
 	IP        string      `json:"ip"`
 	UserAgent string      `json:"user_agent"`
 	Details   string      `json:"details"`
+	ErrorMsg  string      `json:"error_msg,omitempty"`
+	Duration  int64       `json:"duration"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
+// AuditLogSummary 是管理员活动日志列表的轻量视图。UserAgent 与 Details 仅在详情查询返回。
+type AuditLogSummary struct {
+	ID        uuid.UUID   `json:"id"`
+	UserID    uuid.UUID   `json:"user_id"`
+	Username  string      `json:"username"`
+	ServerID  *uuid.UUID  `json:"server_id,omitempty"`
+	Type      string      `json:"type"`
+	Action    ActionType  `json:"action"`
+	Category  LogCategory `json:"category"`
+	Resource  string      `json:"resource"`
+	Source    string      `json:"source"`
+	Status    Status      `json:"status"`
+	IP        string      `json:"ip"`
 	ErrorMsg  string      `json:"error_msg,omitempty"`
 	Duration  int64       `json:"duration"`
 	CreatedAt time.Time   `json:"created_at"`
@@ -131,16 +167,8 @@ type AuditLogStatisticsRequest struct {
 }
 
 type AuditLogStatistics struct {
-	TotalLogs      int64                `json:"total_logs"`
-	SuccessCount   int64                `json:"success_count"`
-	FailureCount   int64                `json:"failure_count"`
-	ActionStats    map[ActionType]int64 `json:"action_stats"`
-	RecentFailures []*AuditLog          `json:"recent_failures"`
-	TopUsers       []UserActionCount    `json:"top_users"`
-}
-
-type UserActionCount struct {
-	UserID   uuid.UUID `json:"user_id"`
-	Username string    `json:"username"`
-	Count    int64     `json:"count"`
+	TotalLogs    int64                `json:"total_logs"`
+	SuccessCount int64                `json:"success_count"`
+	FailureCount int64                `json:"failure_count"`
+	ActionStats  map[ActionType]int64 `json:"action_stats"`
 }

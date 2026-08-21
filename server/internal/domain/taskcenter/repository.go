@@ -96,7 +96,7 @@ func (r *repository) List(ctx context.Context, req *ListRequest) (*ListResponse,
 	if req.PageSize > 100 {
 		req.PageSize = 100
 	}
-	var runs []*TaskRun
+	var runs []*TaskRunSummary
 	if err := query.Order("created_at DESC").Offset((req.Page - 1) * req.PageSize).Limit(req.PageSize).Find(&runs).Error; err != nil {
 		return nil, err
 	}
@@ -109,21 +109,36 @@ func (r *repository) List(ctx context.Context, req *ListRequest) (*ListResponse,
 
 func (r *repository) Statistics(ctx context.Context, userID uuid.UUID) (*Statistics, error) {
 	stats := &Statistics{}
-	base := func() *gorm.DB { return r.db.WithContext(ctx).Model(&TaskRun{}).Where("user_id = ?", userID) }
-	if err := base().Count(&stats.Total).Error; err != nil {
+	var rows []struct {
+		Status Status
+		Count  int64
+	}
+	if err := r.db.WithContext(ctx).Model(&TaskRun{}).
+		Select("status, COUNT(*) AS count").
+		Where("user_id = ?", userID).
+		Group("status").
+		Scan(&rows).Error; err != nil {
 		return nil, err
 	}
-	counts := []struct {
-		status Status
-		target *int64
-	}{
-		{StatusQueued, &stats.Queued}, {StatusRunning, &stats.Running}, {StatusCanceling, &stats.Canceling}, {StatusSucceeded, &stats.Succeeded},
-		{StatusFailed, &stats.Failed}, {StatusPartialSuccess, &stats.PartialSuccess}, {StatusCanceled, &stats.Canceled},
-		{StatusTimeout, &stats.Timeout},
-	}
-	for _, item := range counts {
-		if err := base().Where("status = ?", item.status).Count(item.target).Error; err != nil {
-			return nil, err
+	for _, row := range rows {
+		stats.Total += row.Count
+		switch row.Status {
+		case StatusQueued:
+			stats.Queued = row.Count
+		case StatusRunning:
+			stats.Running = row.Count
+		case StatusCanceling:
+			stats.Canceling = row.Count
+		case StatusSucceeded:
+			stats.Succeeded = row.Count
+		case StatusFailed:
+			stats.Failed = row.Count
+		case StatusPartialSuccess:
+			stats.PartialSuccess = row.Count
+		case StatusCanceled:
+			stats.Canceled = row.Count
+		case StatusTimeout:
+			stats.Timeout = row.Count
 		}
 	}
 	return stats, nil

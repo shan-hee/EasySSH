@@ -582,7 +582,9 @@ func (h *SFTPTransferHandler) upsertTransferOperationRecord(task *TransferTask, 
 		UpdatedAt:      now,
 	}
 
-	_ = h.operationRecords.Upsert(context.Background(), record)
+	if err := h.operationRecords.Upsert(context.Background(), record); err != nil {
+		log.Printf("[SFTPTransfer] persist operation record failed: task=%s error=%v", task.ID, err)
+	}
 }
 
 // CancelTaskForUser 取消传输任务（强校验 userID）

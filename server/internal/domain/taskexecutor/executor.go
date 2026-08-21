@@ -41,6 +41,7 @@ const (
 const QueueJobKind = "task.execute"
 
 type QueuePayload struct {
+	RunID     uuid.UUID       `json:"run_id"`
 	TaskID    uuid.UUID       `json:"task_id"`
 	Trigger   TriggerType     `json:"trigger"`
 	Source    ExecutionSource `json:"source"`
@@ -77,6 +78,7 @@ type Executor struct {
 	hostKeyCallback  gossh.HostKeyCallback
 	transferJobs     transferjob.Service
 	taskRuns         taskcenter.Service
+	queue            jobqueue.Enqueuer
 	maxConcurrency   int
 	cancelMu         sync.Mutex
 	cancels          map[uuid.UUID]context.CancelFunc
@@ -117,35 +119,53 @@ func (e *Executor) SetTransferJobService(service transferjob.Service) {
 	e.transferJobs = service
 }
 
+func (e *Executor) SetQueue(queue jobqueue.Enqueuer) {
+	e.queue = queue
+}
+
 // Execute 执行任务
 func (e *Executor) Execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource) ExecutionOutcome {
-	return e.execute(ctx, task, trigger, source, nil, 1, "parallel")
+	return e.execute(ctx, uuid.Nil, task, trigger, source, nil, 1, "parallel")
 }
 
 func (e *Executor) ExecuteBatch(ctx context.Context, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, executionMode string) ExecutionOutcome {
-	return e.execute(ctx, task, trigger, source, nil, 1, executionMode)
+	return e.execute(ctx, uuid.Nil, task, trigger, source, nil, 1, executionMode)
 }
 
-func (e *Executor) ExecuteRetry(ctx context.Context, task *scheduledtask.ScheduledTask, retryOfID uuid.UUID, attempt int) ExecutionOutcome {
-	if attempt < 2 {
-		attempt = 2
-	}
-	return e.execute(ctx, task, TriggerManual, SourceScheduledTask, &retryOfID, attempt, "parallel")
-}
-
-func (e *Executor) HandleQueueJob(ctx context.Context, job *jobqueue.Job) error {
+func (e *Executor) HandleQueueJob(ctx context.Context, job *jobqueue.Job) (handlerErr error) {
 	var payload QueuePayload
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			message := fmt.Sprintf("task execution panic: %v", recovered)
+			if payload.RunID != uuid.Nil {
+				e.failQueuedRun(context.Background(), payload.RunID, "execution_panic", message)
+				handlerErr = nil
+			} else {
+				handlerErr = errors.New(message)
+			}
+			log.Printf("[TaskExecutor] %s", message)
+		}
+	}()
 	if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil {
 		return fmt.Errorf("decode task execution payload: %w", err)
 	}
 	if payload.TaskID == uuid.Nil {
 		return errors.New("task execution payload is missing task_id")
 	}
+	if payload.RunID == uuid.Nil {
+		return errors.New("task execution payload is missing run_id")
+	}
 	task, err := e.taskRepo.GetByID(payload.TaskID)
 	if err != nil {
-		return fmt.Errorf("load scheduled task: %w", err)
+		e.failQueuedRun(ctx, payload.RunID, "task_definition_unavailable", fmt.Sprintf("load scheduled task: %v", err))
+		return nil
 	}
 	if payload.Trigger == TriggerSchedule && !task.Enabled {
+		if e.taskRuns != nil {
+			if err := e.taskRuns.Complete(ctx, payload.RunID, taskcenter.StatusCanceled, "", "task_disabled", "定时任务已禁用", 0, 0); err != nil {
+				log.Printf("[TaskExecutor] 标记已禁用任务取消失败: runID=%s, error=%v", payload.RunID, err)
+			}
+		}
 		return nil
 	}
 	if payload.Source == "" {
@@ -154,20 +174,28 @@ func (e *Executor) HandleQueueJob(ctx context.Context, job *jobqueue.Job) error 
 	if payload.Trigger == "" {
 		payload.Trigger = TriggerManual
 	}
-	if payload.RetryOfID != nil {
-		e.ExecuteRetry(ctx, task, *payload.RetryOfID, payload.Attempt)
-	} else {
-		e.Execute(ctx, task, payload.Trigger, payload.Source)
-	}
-	return ctx.Err()
+	e.execute(ctx, payload.RunID, task, payload.Trigger, payload.Source, payload.RetryOfID, payload.Attempt, "parallel")
+	return nil
 }
 
-func (e *Executor) execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, retryOfID *uuid.UUID, attempt int, executionMode string) ExecutionOutcome {
+func (e *Executor) failQueuedRun(ctx context.Context, runID uuid.UUID, code, message string) {
+	if e.taskRuns == nil {
+		return
+	}
+	if err := e.taskRuns.Complete(ctx, runID, taskcenter.StatusFailed, "", code, message, 0, 0); err != nil {
+		log.Printf("[TaskExecutor] 标记任务失败失败: runID=%s, error=%v", runID, err)
+	}
+}
+
+func (e *Executor) execute(ctx context.Context, runID uuid.UUID, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, retryOfID *uuid.UUID, attempt int, executionMode string) ExecutionOutcome {
 	log.Printf("[TaskExecutor] 开始执行任务: taskID=%s, type=%s, trigger=%s",
 		task.ID, task.TaskType, trigger)
 
 	startTime := time.Now()
-	executionID := uuid.New()
+	executionID := runID
+	if executionID == uuid.Nil {
+		executionID = uuid.New()
+	}
 	executionCtx, cancel := context.WithCancel(ctx)
 	e.cancelMu.Lock()
 	e.cancels[executionID] = cancel
@@ -196,7 +224,7 @@ func (e *Executor) execute(ctx context.Context, task *scheduledtask.ScheduledTas
 	if record.IsScheduledDefinition {
 		record.ScheduledTaskID = task.ID
 	}
-	if e.taskRuns != nil {
+	if e.taskRuns != nil && runID == uuid.Nil {
 		triggerType := taskcenter.TriggerManual
 		if trigger == TriggerSchedule {
 			triggerType = taskcenter.TriggerScheduled
@@ -213,8 +241,22 @@ func (e *Executor) execute(ctx context.Context, task *scheduledtask.ScheduledTas
 			definitionID := task.ID
 			run.DefinitionID = &definitionID
 		}
-		if err := e.taskRuns.Create(ctx, run); err == nil {
-			_ = e.taskRuns.Start(ctx, executionID, "executing")
+		if err := e.taskRuns.Create(ctx, run); err != nil {
+			log.Printf("[TaskExecutor] 创建任务运行记录失败: runID=%s, error=%v", executionID, err)
+			return makeExecutionOutcome(executionStatusFailed, 0, 0, err.Error())
+		}
+	}
+	if e.taskRuns != nil {
+		if err := e.taskRuns.Start(ctx, executionID, "executing"); err != nil {
+			log.Printf("[TaskExecutor] 启动任务运行记录失败: runID=%s, error=%v", executionID, err)
+			return makeExecutionOutcome(executionStatusFailed, 0, 0, err.Error())
+		}
+		currentRun, err := e.taskRuns.Get(ctx, task.UserID, executionID)
+		if err != nil {
+			return makeExecutionOutcome(executionStatusFailed, 0, 0, err.Error())
+		}
+		if isTerminalTaskStatus(currentRun.Status) || currentRun.Status == taskcenter.StatusCanceling {
+			return makeExecutionOutcome(executionStatusCanceled, 0, 0, "任务已取消")
 		}
 	}
 	e.upsertOperationRecord(record)
@@ -272,15 +314,24 @@ func (e *Executor) execute(ctx context.Context, task *scheduledtask.ScheduledTas
 	return makeExecutionOutcome(finalStatus, successCount, failedCount, "")
 }
 
-func (e *Executor) CancelTask(id uuid.UUID) bool {
+func (e *Executor) CancelTask(ctx context.Context, id uuid.UUID) error {
+	if e.queue != nil {
+		if err := e.queue.CancelBySource(ctx, "task_run", id.String()); err != nil {
+			return fmt.Errorf("cancel queued task: %w", err)
+		}
+	}
 	e.cancelMu.Lock()
 	cancel := e.cancels[id]
 	e.cancelMu.Unlock()
-	if cancel == nil {
-		return false
+	if cancel != nil {
+		cancel()
 	}
-	cancel()
-	return true
+	return nil
+}
+
+func isTerminalTaskStatus(status taskcenter.Status) bool {
+	return status == taskcenter.StatusSucceeded || status == taskcenter.StatusFailed || status == taskcenter.StatusPartialSuccess ||
+		status == taskcenter.StatusCanceled || status == taskcenter.StatusTimeout
 }
 
 func isTransferTask(taskType string) bool {
@@ -550,7 +601,9 @@ func (e *Executor) completeExecution(
 		taskStatus, ok := statusMap[status]
 		if ok {
 			resultJSON, _ := json.Marshal(serverResults)
-			_ = e.taskRuns.Complete(context.Background(), execution.ID, taskStatus, string(resultJSON), "", errorMsg, successCount, failedCount)
+			if err := e.taskRuns.Complete(context.Background(), execution.ID, taskStatus, string(resultJSON), "", errorMsg, successCount, failedCount); err != nil {
+				log.Printf("[TaskExecutor] 完成任务运行记录失败: runID=%s, error=%v", execution.ID, err)
+			}
 		}
 	}
 }
@@ -632,7 +685,9 @@ func (e *Executor) upsertOperationRecord(execution taskExecutionRecord) {
 		UpdatedAt:    now,
 	}
 
-	_ = e.operationRecords.Upsert(context.Background(), record)
+	if err := e.operationRecords.Upsert(context.Background(), record); err != nil {
+		log.Printf("[TaskExecutor] persist operation record failed: run=%s error=%v", execution.ID, err)
+	}
 }
 
 // updateTaskStatus 更新任务状态

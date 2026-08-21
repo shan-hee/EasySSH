@@ -22,8 +22,8 @@ type TaskScheduler interface {
 	AddTask(task *ScheduledTask) error
 	UpdateTask(task *ScheduledTask) error
 	RemoveTask(taskID uuid.UUID)
-	TriggerTaskManually(taskID uuid.UUID) error
-	RetryTask(taskID, retryOfID uuid.UUID, attempt int) error
+	TriggerTaskManually(taskID uuid.UUID) (uuid.UUID, error)
+	RetryTask(taskID, retryOfID uuid.UUID, attempt int) (uuid.UUID, error)
 }
 
 // Service 定时任务业务逻辑接口
@@ -35,8 +35,8 @@ type Service interface {
 	ListScheduledTasks(userID uuid.UUID, req *ListScheduledTasksRequest) (*ListScheduledTasksResponse, error)
 	GetStatistics(userID uuid.UUID) (*ScheduledTaskStatistics, error)
 	ToggleTask(userID uuid.UUID, id uuid.UUID, enabled bool) error
-	TriggerTask(userID uuid.UUID, id uuid.UUID) error
-	RetryTask(userID, id, retryOfID uuid.UUID, attempt int) error
+	TriggerTask(userID uuid.UUID, id uuid.UUID) (uuid.UUID, error)
+	RetryTask(userID, id, retryOfID uuid.UUID, attempt int) (uuid.UUID, error)
 	IsStagedJobReferenced(userID uuid.UUID, stagedJobID uuid.UUID, excludeTaskID uuid.UUID) (bool, error)
 	SetScheduler(scheduler TaskScheduler)
 }
@@ -407,16 +407,16 @@ func (s *service) ToggleTask(userID uuid.UUID, id uuid.UUID, enabled bool) error
 }
 
 // TriggerTask 手动触发定时任务
-func (s *service) TriggerTask(userID uuid.UUID, id uuid.UUID) error {
+func (s *service) TriggerTask(userID uuid.UUID, id uuid.UUID) (uuid.UUID, error) {
 	// 获取任务
 	task, err := s.repo.GetByID(id)
 	if err != nil {
-		return ErrScheduledTaskNotFound
+		return uuid.Nil, ErrScheduledTaskNotFound
 	}
 
 	// 验证所有权
 	if task.UserID != userID {
-		return ErrUnauthorized
+		return uuid.Nil, ErrUnauthorized
 	}
 
 	// 使用调度器手动触发任务
@@ -424,19 +424,19 @@ func (s *service) TriggerTask(userID uuid.UUID, id uuid.UUID) error {
 		return s.scheduler.TriggerTaskManually(id)
 	}
 
-	return ErrSchedulerNotInitialized
+	return uuid.Nil, ErrSchedulerNotInitialized
 }
 
-func (s *service) RetryTask(userID, id, retryOfID uuid.UUID, attempt int) error {
+func (s *service) RetryTask(userID, id, retryOfID uuid.UUID, attempt int) (uuid.UUID, error) {
 	task, err := s.repo.GetByID(id)
 	if err != nil {
-		return ErrScheduledTaskNotFound
+		return uuid.Nil, ErrScheduledTaskNotFound
 	}
 	if task.UserID != userID {
-		return ErrUnauthorized
+		return uuid.Nil, ErrUnauthorized
 	}
 	if s.scheduler == nil {
-		return ErrSchedulerNotInitialized
+		return uuid.Nil, ErrSchedulerNotInitialized
 	}
 	return s.scheduler.RetryTask(id, retryOfID, attempt)
 }

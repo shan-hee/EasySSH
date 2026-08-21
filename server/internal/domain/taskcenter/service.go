@@ -28,7 +28,7 @@ type CompletionNotifier interface {
 }
 
 type CancelHandler interface {
-	CancelTask(id uuid.UUID) bool
+	CancelTask(ctx context.Context, id uuid.UUID) error
 }
 
 type DefinitionStatusUpdater interface {
@@ -45,6 +45,7 @@ type Service interface {
 	List(ctx context.Context, req *ListRequest) (*ListResponse, error)
 	Statistics(ctx context.Context, userID uuid.UUID) (*Statistics, error)
 	Events(ctx context.Context, userID, runID uuid.UUID) ([]TaskEvent, error)
+	ListActive(ctx context.Context) ([]TaskRun, error)
 	Cleanup(ctx context.Context, userID uuid.UUID, retentionDays int) (*CleanupResult, error)
 	StartRetention(ctx context.Context)
 	StopRetention()
@@ -109,7 +110,9 @@ func (s *service) Start(ctx context.Context, id uuid.UUID, stage string) error {
 	if !started {
 		return nil
 	}
-	_ = s.AppendEvent(ctx, id, run.UserID, "info", "任务开始执行", "")
+	if err := s.AppendEvent(ctx, id, run.UserID, "info", "任务开始执行", ""); err != nil {
+		log.Printf("[TaskCenter] append start event failed: run=%s error=%v", id, err)
+	}
 	run.Status = StatusRunning
 	run.Stage = stage
 	run.StartedAt = &now
@@ -174,14 +177,18 @@ func (s *service) Complete(ctx context.Context, id uuid.UUID, status Status, res
 	if status == StatusCanceled {
 		level, message = "warning", "任务已取消"
 	}
-	_ = s.AppendEvent(ctx, id, run.UserID, level, message, "")
+	if err := s.AppendEvent(ctx, id, run.UserID, level, message, ""); err != nil {
+		log.Printf("[TaskCenter] append completion event failed: run=%s error=%v", id, err)
+	}
 	s.publishTask("task.updated", run)
 	if run.DefinitionID != nil && s.updater != nil {
 		s.updater.UpdateDefinitionStatus(*run.DefinitionID, status)
 	}
 	if s.notifier != nil {
 		if err := s.notifier.NotifyTaskFinished(context.Background(), run); err != nil {
-			_ = s.AppendEvent(context.Background(), id, run.UserID, "warning", "任务通知入队失败", err.Error())
+			if eventErr := s.AppendEvent(context.Background(), id, run.UserID, "warning", "任务通知入队失败", err.Error()); eventErr != nil {
+				log.Printf("[TaskCenter] append notification failure event failed: run=%s error=%v", id, eventErr)
+			}
 		}
 	}
 	return nil
@@ -219,6 +226,10 @@ func (s *service) Statistics(ctx context.Context, userID uuid.UUID) (*Statistics
 }
 func (s *service) Events(ctx context.Context, userID, runID uuid.UUID) ([]TaskEvent, error) {
 	return s.repo.ListEvents(ctx, userID, runID)
+}
+
+func (s *service) ListActive(ctx context.Context) ([]TaskRun, error) {
+	return s.repo.ListActive(ctx)
 }
 
 func (s *service) Cleanup(ctx context.Context, userID uuid.UUID, retentionDays int) (*CleanupResult, error) {
@@ -325,6 +336,7 @@ func (s *service) RequestCancel(ctx context.Context, userID, id uuid.UUID) error
 	if !run.Cancelable || (run.Status != StatusQueued && run.Status != StatusRunning) {
 		return ErrNotCancelable
 	}
+	wasQueued := run.Status == StatusQueued
 	now := time.Now()
 	requested, err := s.repo.UpdateIfStatus(ctx, id, []Status{StatusQueued, StatusRunning}, map[string]interface{}{"status": StatusCanceling, "cancel_requested_at": &now})
 	if err != nil {
@@ -333,13 +345,24 @@ func (s *service) RequestCancel(ctx context.Context, userID, id uuid.UUID) error
 	if !requested {
 		return ErrNotCancelable
 	}
-	if s.canceler == nil || !s.canceler.CancelTask(id) {
-		_, _ = s.repo.UpdateIfStatus(ctx, id, []Status{StatusCanceling}, map[string]interface{}{"status": run.Status, "cancel_requested_at": nil})
+	if s.canceler == nil {
+		if _, rollbackErr := s.repo.UpdateIfStatus(ctx, id, []Status{StatusCanceling}, map[string]interface{}{"status": run.Status, "cancel_requested_at": nil}); rollbackErr != nil {
+			log.Printf("[TaskCenter] rollback cancel state failed: run=%s error=%v", id, rollbackErr)
+		}
 		return ErrNotCancelable
+	}
+	if err := s.canceler.CancelTask(ctx, id); err != nil {
+		if _, rollbackErr := s.repo.UpdateIfStatus(ctx, id, []Status{StatusCanceling}, map[string]interface{}{"status": run.Status, "cancel_requested_at": nil}); rollbackErr != nil {
+			log.Printf("[TaskCenter] rollback cancel state failed: run=%s error=%v", id, rollbackErr)
+		}
+		return err
 	}
 	run.Status = StatusCanceling
 	run.CancelRequestedAt = &now
 	s.publishTask("task.updated", run)
+	if wasQueued {
+		return s.Complete(ctx, id, StatusCanceled, "", "", "任务在开始执行前已取消", 0, 0)
+	}
 	return nil
 }
 
@@ -366,7 +389,23 @@ func (s *service) RecoverInterrupted(ctx context.Context) error {
 				return updateErr
 			}
 			if recovered {
-				_ = s.AppendEvent(ctx, runs[i].ID, runs[i].UserID, "warning", "传输任务将在租约恢复后继续执行", "")
+				if err := s.AppendEvent(ctx, runs[i].ID, runs[i].UserID, "warning", "传输任务将在租约恢复后继续执行", ""); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+		if runs[i].SourceType == "scheduled_task" {
+			if runs[i].Status == StatusCanceling {
+				if err := s.Complete(ctx, runs[i].ID, StatusCanceled, "", "", "任务取消期间服务重启", runs[i].SuccessCount, runs[i].FailureCount); err != nil {
+					return err
+				}
+				continue
+			}
+			if runs[i].Status == StatusRunning {
+				if err := s.Complete(ctx, runs[i].ID, StatusFailed, "", "server_restarted", "任务因服务重启而中断；为避免重复执行，未自动重试", runs[i].SuccessCount, runs[i].FailureCount); err != nil {
+					return err
+				}
 			}
 			continue
 		}

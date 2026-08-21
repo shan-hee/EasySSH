@@ -3147,8 +3147,56 @@ export interface components {
             /** Format: date-time */
             created_at: string;
         };
+        /** @description 任务列表摘要；输入、结果与进度明细仅由任务详情接口返回。 */
+        TaskRunSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            /** Format: uuid */
+            definition_id?: string;
+            /** Format: uuid */
+            retry_of_id?: string;
+            source_type?: string;
+            source_id?: string;
+            task_type: string;
+            title: string;
+            /** @enum {string} */
+            trigger_type: "manual" | "scheduled" | "system" | "api";
+            runner: string;
+            status: components["schemas"]["TaskRunStatus"];
+            stage?: string;
+            /** Format: uuid */
+            server_id?: string;
+            server_name?: string;
+            resource?: string;
+            progress: number;
+            total_count: number;
+            success_count: number;
+            failure_count: number;
+            /** Format: int64 */
+            bytes_total: number;
+            /** Format: int64 */
+            bytes_processed: number;
+            cancelable: boolean;
+            retryable: boolean;
+            attempt: number;
+            max_attempts: number;
+            error_code?: string;
+            error_message?: string;
+            /** Format: date-time */
+            cancel_requested_at?: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         TaskRunList: {
-            runs: components["schemas"]["TaskRun"][];
+            runs: components["schemas"]["TaskRunSummary"][];
             total: number;
             page: number;
             page_size: number;
@@ -5310,19 +5358,16 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 已提交取消请求 */
+            /** @description 已取消排队任务，或已向运行中任务提交取消请求 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        data?: {
-                            /** Format: uuid */
-                            id?: string;
-                            /** @enum {unknown} */
-                            status?: "canceling";
-                        };
+                        /** Format: uuid */
+                        id: string;
+                        status: components["schemas"]["TaskRunStatus"];
                     };
                 };
             };
@@ -5355,13 +5400,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        success?: boolean;
-                        data?: {
-                            /** Format: uuid */
-                            definition_id?: string;
-                            /** Format: uuid */
-                            retry_of_id?: string;
-                        };
+                        /**
+                         * Format: uuid
+                         * @description 新任务运行 ID；相同重试请求返回同一个 ID。
+                         */
+                        id: string;
+                        /** Format: uuid */
+                        definition_id: string;
+                        /** Format: uuid */
+                        retry_of_id: string;
                     };
                 };
             };
@@ -6775,7 +6822,19 @@ export interface operations {
             };
         };
         responses: {
-            200: components["responses"]["JSON"];
+            /** @description 任务已进入持久化队列 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        message: string;
+                        /** Format: uuid */
+                        task_run_id: string;
+                    };
+                };
+            };
             400: components["responses"]["Error"];
         };
     };

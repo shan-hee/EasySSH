@@ -16,6 +16,7 @@ import {
 import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 import { PageHeader } from "@/components/page-header"
+import { CopyCheckIcon } from "@/components/animate-ui/icons/copy-check"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,15 +34,15 @@ import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 import {
-  type OperationRecord,
+  operationRecordsApi,
   type OperationRecordCategory,
   type OperationRecordListParams,
   type OperationRecordStatus,
+  type OperationRecordSummary,
   type OperationRecordType,
 } from "@/lib/api/operation-records"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import {
-  DashboardStatusLine,
   InlineStatusBadge,
   type DashboardTone,
 } from "@/components/logs/log-dashboard-widgets"
@@ -51,6 +52,8 @@ import {
   type ServerFilterOption,
 } from "@/components/logs/log-server-filters"
 import { operationRecordsQueryOptions } from "@/lib/dashboard-query-options"
+import { queryKeys } from "@/lib/query-keys"
+import { operationRecordDetailPreview } from "@/pages/dashboard/operation-record-utils"
 
 type SortOrder = "asc" | "desc"
 
@@ -175,6 +178,7 @@ function actionLabel(t: (key: string) => string, action: string) {
     server_update: t("actionServerUpdate"),
     server_delete: t("actionServerDelete"),
     server_test: t("actionServerTest"),
+    server_reorder: t("actionServerReorder"),
     user_create: t("actionUserCreate"),
     user_update: t("actionUserUpdate"),
     user_delete: t("actionUserDelete"),
@@ -183,6 +187,21 @@ function actionLabel(t: (key: string) => string, action: string) {
     scheduled_task_delete: t("actionScheduledTaskDelete"),
     scheduled_task_toggle: t("actionScheduledTaskToggle"),
     scheduled_task_trigger: t("actionScheduledTaskTrigger"),
+    profile_update: t("actionProfileUpdate"),
+    security_update: t("actionSecurityUpdate"),
+    role_create: t("actionRoleCreate"),
+    role_update: t("actionRoleUpdate"),
+    role_delete: t("actionRoleDelete"),
+    resource_grant: t("actionResourceGrant"),
+    resource_revoke: t("actionResourceRevoke"),
+    script_create: t("actionScriptCreate"),
+    script_update: t("actionScriptUpdate"),
+    script_delete: t("actionScriptDelete"),
+    script_execute: t("actionScriptExecute"),
+    system_settings_update: t("actionSystemSettingsUpdate"),
+    security_settings_update: t("actionSecuritySettingsUpdate"),
+    notification_settings_update: t("actionNotificationSettingsUpdate"),
+    ai_config_update: t("actionAIConfigUpdate"),
     create: t("actionCreate"),
     update: t("actionUpdate"),
     delete: t("actionDelete"),
@@ -190,7 +209,7 @@ function actionLabel(t: (key: string) => string, action: string) {
   return labels[action] || action
 }
 
-function exportRecords(records: OperationRecord[]) {
+function exportCurrentPageRecords(records: OperationRecordSummary[]) {
   const blob = new Blob([JSON.stringify(records, null, 2)], { type: "application/json;charset=utf-8" })
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
@@ -247,6 +266,8 @@ function OperationLogsContent() {
   const [pageSize, setPageSize] = React.useState(20)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = React.useState(false)
+  const [copied, setCopied] = React.useState(false)
+  const copyResetTimerRef = React.useRef<number | null>(null)
 
   const typeLabels = React.useMemo<Record<OperationRecordType, string>>(() => ({
     connection: t("typeConnection"),
@@ -280,12 +301,28 @@ function OperationLogsContent() {
   const recordsQuery = useQuery({
     ...operationRecordsQueryOptions(queryParams),
     enabled: ready,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      return data?.records.some((record) => record.status === "pending" || record.status === "running")
+        ? 3_000
+        : 60_000
+    },
+  })
+  const detailQuery = useQuery({
+    queryKey: queryKeys.logs.operationDetail(selectedId ?? "none"),
+    queryFn: () => operationRecordsApi.getById(selectedId as string),
+    enabled: ready && isDetailDialogOpen && selectedId !== null,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status === "pending" || status === "running" ? 3_000 : false
+    },
   })
   const records = React.useMemo(
     () => recordsQuery.data?.records ?? [],
     [recordsQuery.data?.records],
   )
-  const totalPages = recordsQuery.data?.total_pages ?? 1
+  const totalPages = Math.max(1, recordsQuery.data?.total_pages ?? 1)
   const totalRows = recordsQuery.data?.total ?? 0
   const loading = recordsQuery.isPending
   const refreshing = recordsQuery.isFetching && !recordsQuery.isPending
@@ -296,12 +333,17 @@ function OperationLogsContent() {
   }, [recordsQuery.error, t])
 
   React.useEffect(() => {
-    setSelectedId((current) => (
-      current && records.some((record) => record.id === current)
-        ? current
-        : records[0]?.id || null
-    ))
-  }, [records])
+    if (!detailQuery.error || detailQuery.data) return
+    toast.error(getErrorMessage(detailQuery.error, t("detailLoadFailed")))
+  }, [detailQuery.data, detailQuery.error, t])
+
+  React.useEffect(() => {
+    if (page > totalPages && !recordsQuery.isPlaceholderData) setPage(totalPages)
+  }, [page, recordsQuery.isPlaceholderData, totalPages])
+
+  React.useEffect(() => () => {
+    if (copyResetTimerRef.current !== null) window.clearTimeout(copyResetTimerRef.current)
+  }, [])
 
   React.useEffect(() => {
     if (previousTypeParamRef.current === initialType) return
@@ -311,12 +353,30 @@ function OperationLogsContent() {
     setAppliedFilters((current) => ({ ...current, type }))
     setPage(1)
     setSelectedId(null)
+    setIsDetailDialogOpen(false)
   }, [initialType])
 
-  const selectedRecord = React.useMemo(
-    () => records.find((record) => record.id === selectedId) || records[0] || null,
+  const selectedSummary = React.useMemo(
+    () => records.find((record) => record.id === selectedId) || null,
     [records, selectedId]
   )
+  const selectedRecord = detailQuery.data ?? selectedSummary
+  const detailPreviewValue = operationRecordDetailPreview(selectedRecord)
+
+  const handleCopyDetail = React.useCallback(async () => {
+    if (!detailPreviewValue || !navigator.clipboard?.writeText) return
+    try {
+      await navigator.clipboard.writeText(detailPreviewValue)
+      setCopied(true)
+      if (copyResetTimerRef.current !== null) window.clearTimeout(copyResetTimerRef.current)
+      copyResetTimerRef.current = window.setTimeout(() => {
+        setCopied(false)
+        copyResetTimerRef.current = null
+      }, 2_000)
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("copyFailed")))
+    }
+  }, [detailPreviewValue, t])
 
   const handlePageChange = (nextPage: number) => {
     setPage(nextPage)
@@ -329,6 +389,7 @@ function OperationLogsContent() {
 
   const handleRefresh = () => {
     void recordsQuery.refetch()
+    if (isDetailDialogOpen && selectedId) void detailQuery.refetch()
   }
 
   const handleApplyFilters = () => {
@@ -355,7 +416,7 @@ function OperationLogsContent() {
     setPage(1)
   }, [sort])
 
-  const recordColumns = React.useMemo<ColumnDef<OperationRecord>[]>(() => {
+  const recordColumns = React.useMemo<ColumnDef<OperationRecordSummary>[]>(() => {
     const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
     return [
     {
@@ -497,13 +558,13 @@ function OperationLogsContent() {
     },
     {
       id: "result",
-      accessorFn: (record) => record.error_message || record.detail_json || "",
+      accessorFn: (record) => record.error_message || record.resource || record.source || "",
       size: 260,
       minSize: 220,
       meta: meta({ align: "left" }),
       header: t("columnResult"),
       cell: ({ row }) => {
-        const result = row.original.error_message || row.original.detail_json || row.original.source || "-"
+        const result = row.original.error_message || row.original.resource || row.original.source || "-"
         return (
           <span className="block w-full truncate text-muted-foreground" title={result === "-" ? undefined : result}>
             {result}
@@ -517,7 +578,13 @@ function OperationLogsContent() {
     <DashboardPageContent className="gap-3 sm:gap-4">
       <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
         <p>{t("dashboardDescription")}</p>
-        <DashboardStatusLine label={t("systemHealthy")} timestamp={formatDateTime(new Date().toISOString())} />
+        <span className="shrink-0 tabular-nums">
+          {t("lastUpdated", {
+            time: recordsQuery.dataUpdatedAt
+              ? formatTime(new Date(recordsQuery.dataUpdatedAt).toISOString())
+              : "-",
+          })}
+        </span>
       </div>
 
       <div className="min-h-[520px] flex-1">
@@ -551,7 +618,7 @@ function OperationLogsContent() {
                   onFiltersChange={setFilters}
                   onApply={handleApplyFilters}
                   onReset={handleResetFilters}
-                  hasActiveFilters={hasActiveFilters(filters)}
+                  hasActiveFilters={hasActiveFilters(filters) || hasActiveFilters(appliedFilters)}
                   t={t}
                 />
               }
@@ -559,16 +626,22 @@ function OperationLogsContent() {
               onRefresh={handleRefresh}
               isRefreshing={refreshing}
             >
-              <Button variant="outline" size="sm" onClick={() => exportRecords(table.getFilteredRowModel().rows.map((row) => row.original))} className="h-8">
+              <Button variant="outline" size="sm" onClick={() => exportCurrentPageRecords(table.getFilteredRowModel().rows.map((row) => row.original))} className="h-8">
                 <Download className="mr-2 h-4 w-4" />
-                {t("exportRecords")}
+                {t("exportCurrentPage")}
               </Button>
             </DataTableToolbar>
           )}
         />
       </div>
 
-      <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+      <Dialog open={isDetailDialogOpen} onOpenChange={(open) => {
+        setIsDetailDialogOpen(open)
+        if (!open) {
+          setSelectedId(null)
+          setCopied(false)
+        }
+      }}>
         <DialogContent className="flex max-h-[90vh] flex-col sm:max-w-3xl">
           <DialogHeader className="shrink-0 pr-8">
             <div className="flex flex-wrap items-center gap-2">
@@ -598,15 +671,26 @@ function OperationLogsContent() {
               </div>
               <div className="rounded-lg border bg-muted/25 p-4">
                 <div className="mb-2 flex items-center justify-between gap-2 text-sm font-medium">
-                  <span>{t("detailPreviewTitle")}</span>
-                  <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => navigator.clipboard?.writeText(selectedRecord.detail_json || selectedRecord.error_message || "")}>
-                    {t("copy")}
+                  <span>{t(`detailPreview${selectedRecord.type.charAt(0).toUpperCase()}${selectedRecord.type.slice(1)}`)}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("copy")}
+                    title={t("copy")}
+                    disabled={!detailPreviewValue}
+                    onClick={() => void handleCopyDetail()}
+                  >
+                    <CopyCheckIcon copied={copied} size={14} />
                   </Button>
                 </div>
                 <pre className="max-h-[42vh] overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/70 p-3 font-mono text-xs text-muted-foreground">
-                  {selectedRecord.detail_json || selectedRecord.error_message || selectedRecord.resource || selectedRecord.user_agent || "-"}
+                  {detailPreviewValue}
                 </pre>
               </div>
+            </div>
+          ) : detailQuery.isPending ? (
+            <div className="flex min-h-56 items-center justify-center text-sm text-muted-foreground">
+              {t("loading")}
             </div>
           ) : (
             <div className="py-10 text-center text-sm text-muted-foreground">{t("empty")}</div>

@@ -8,7 +8,7 @@ export type AuditLogStatus =
   | "timeout"
   | "warning"
 
-export interface AuditLog {
+export interface AuditLogSummary {
   id: string
   user_id: string
   username: string
@@ -20,15 +20,18 @@ export interface AuditLog {
   source?: string
   status: AuditLogStatus
   ip: string
-  user_agent: string
-  details?: string
   error_msg?: string
   duration?: number
   created_at: string
 }
 
+export interface AuditLog extends AuditLogSummary {
+  user_agent: string
+  details?: string
+}
+
 export interface AuditLogListResponse {
-  logs: AuditLog[]
+  logs: AuditLogSummary[]
   total: number
   page: number
   page_size: number
@@ -40,12 +43,6 @@ export interface AuditLogStatisticsResponse {
   success_count: number
   failure_count: number
   action_stats: Record<string, number>
-  recent_failures: AuditLog[]
-  top_users: Array<{
-    user_id: string
-    username: string
-    count: number
-  }>
 }
 
 export interface AuditLogCleanupResponse {
