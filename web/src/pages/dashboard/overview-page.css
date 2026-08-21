@@ -1,6 +1,12 @@
+.dashboard-overview-shell {
+  container-name: dashboard-overview;
+  container-type: inline-size;
+}
+
 .dashboard-orbit {
   isolation: isolate;
   min-height: 900px;
+  container-type: inline-size;
   background:
     radial-gradient(circle at 73% 73%, color-mix(in oklab, var(--primary) 11%, transparent), transparent 34%),
     radial-gradient(circle at 18% 18%, color-mix(in oklab, var(--primary) 6%, transparent), transparent 30%),
@@ -103,12 +109,29 @@
     0 14px 36px color-mix(in oklab, var(--primary) 22%, transparent);
 }
 
+.dashboard-hero-copy {
+  width: min(46rem, 48cqi);
+  padding-top: clamp(4rem, 8vh, 6rem);
+}
+
+.dashboard-orbit-headline {
+  max-width: 9.5ch;
+  font-size: clamp(3.5rem, 4.65cqi, 5rem);
+  line-height: 0.94;
+  letter-spacing: -0.062em;
+  text-wrap: balance;
+}
+
+.dashboard-orbit-description {
+  max-width: 36rem;
+}
+
 .dashboard-globe-stage {
   position: absolute;
   z-index: 2;
-  right: clamp(-4rem, -2vw, -1.5rem);
-  bottom: clamp(-10rem, -13vh, -6rem);
-  width: clamp(60rem, 64vw, 84rem);
+  right: clamp(-4.5rem, -3.5cqi, -2rem);
+  bottom: clamp(-9rem, -8vh, -5.5rem);
+  width: clamp(50rem, 60cqi, 66rem);
   aspect-ratio: 1;
 }
 
@@ -126,7 +149,7 @@
   z-index: 20;
   left: 2.5rem;
   bottom: 2rem;
-  width: min(25rem, 34vw);
+  width: min(25rem, 34cqi);
   padding: 1.1rem 1.2rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 1.15rem;
@@ -233,19 +256,58 @@
   to { transform: scale(1.08); opacity: 1; }
 }
 
-@media (max-width: 1279px) {
+@container dashboard-overview (max-width: 84rem) {
   .dashboard-metrics {
     display: none;
   }
 
+  .dashboard-hero-copy {
+    width: min(42rem, 56cqi);
+    padding-top: clamp(3.5rem, 7vh, 5rem);
+  }
+
+  .dashboard-orbit-headline {
+    max-width: 9.5ch;
+    font-size: clamp(3.35rem, 5.6cqi, 4.6rem);
+  }
+
   .dashboard-globe-stage {
-    right: -4rem;
-    bottom: -8rem;
-    width: 52rem;
+    right: -7rem;
+    bottom: -5.5rem;
+    width: clamp(48rem, 70cqi, 54rem);
   }
 
   .dashboard-node-panel {
-    width: min(24rem, 43vw);
+    width: min(24rem, 43cqi);
+  }
+}
+
+@container dashboard-overview (max-width: 64rem) {
+  .dashboard-hero-copy {
+    width: min(38rem, 67cqi);
+    padding-top: 4rem;
+  }
+
+  .dashboard-orbit-headline {
+    max-width: 9ch;
+    font-size: clamp(3rem, 7cqi, 4.1rem);
+  }
+
+  .dashboard-orbit-description {
+    max-width: min(32rem, 62cqi);
+  }
+
+  .dashboard-globe-stage {
+    right: -10rem;
+    bottom: -2rem;
+    width: min(50rem, 82cqi);
+    opacity: 0.9;
+  }
+
+  .dashboard-node-panel {
+    left: 1.75rem;
+    bottom: 1.75rem;
+    width: min(23rem, 48cqi);
   }
 }
 
@@ -261,10 +323,33 @@
   }
 }
 
-@media (max-width: 767px) {
+@container dashboard-overview (max-width: 48rem) {
+  .dashboard-orbit {
+    min-height: 940px;
+  }
+
+  .dashboard-hero-copy {
+    width: 100%;
+    padding-top: 4.5rem;
+  }
+
+  .dashboard-orbit-headline {
+    max-width: 10ch;
+    font-size: clamp(2.65rem, 10.5cqi, 4rem);
+    line-height: 0.96;
+  }
+
+  .dashboard-orbit-description {
+    max-width: min(34rem, 88cqi);
+  }
+
+  .dashboard-orbit-actions {
+    max-width: 18rem;
+  }
+
   .dashboard-globe-stage {
-    right: -9rem;
-    bottom: -7rem;
+    right: -13rem;
+    bottom: 8.5rem;
     width: 42rem;
     opacity: 0.82;
   }
@@ -289,6 +374,26 @@
         transparent 40%,
         color-mix(in oklab, var(--background) 70%, transparent) 115%
       );
+  }
+}
+
+@container dashboard-overview (max-width: 30rem) {
+  .dashboard-orbit {
+    min-height: 980px;
+  }
+
+  .dashboard-hero-copy {
+    padding-top: 3.5rem;
+  }
+
+  .dashboard-orbit-description {
+    max-width: 100%;
+  }
+
+  .dashboard-globe-stage {
+    right: -16rem;
+    bottom: 10rem;
+    width: 40rem;
   }
 }
 

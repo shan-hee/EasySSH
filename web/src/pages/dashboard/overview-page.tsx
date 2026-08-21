@@ -103,8 +103,8 @@ export default function DashboardPage() {
     <>
       <PageHeader title={t("title")} />
 
-      <main className="flex min-h-0 flex-1 px-3 pb-3 sm:px-4 sm:pb-4">
-        <section className="dashboard-orbit relative min-h-[900px] w-full overflow-hidden rounded-[1.35rem] sm:min-h-[820px] lg:rounded-[1.75rem]">
+      <main className="dashboard-overview-shell flex min-h-0 flex-1 px-3 pb-3 sm:px-4 sm:pb-4">
+        <section className="dashboard-orbit relative w-full overflow-hidden rounded-[1.35rem] lg:rounded-[1.75rem]">
           <div className="dashboard-orbit-grid" aria-hidden="true" />
           <div className="dashboard-orbit-vignette" aria-hidden="true" />
 
@@ -156,7 +156,7 @@ export default function DashboardPage() {
             </div>
           </motion.div>
 
-          <div className="relative z-20 max-w-[46rem] px-5 pt-24 sm:px-7 sm:pt-28 lg:px-10 lg:pt-[clamp(5rem,10vh,8.5rem)]">
+          <div className="dashboard-hero-copy relative z-20 px-5 sm:px-7 lg:px-10">
             <motion.div
               {...reveal}
               transition={{ duration: 0.75, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
@@ -166,14 +166,14 @@ export default function DashboardPage() {
                 {t("orbitWorkspace")}
               </div>
 
-              <h2 className="max-w-[11ch] text-[clamp(2.8rem,6.2vw,6.8rem)] font-medium leading-[0.92] tracking-[-0.065em] text-foreground">
+              <h2 className="dashboard-orbit-headline font-medium text-foreground">
                 {t("orbitHeadline")}
               </h2>
-              <p className="mt-6 max-w-xl text-sm leading-7 text-muted-foreground sm:text-base sm:leading-8">
+              <p className="dashboard-orbit-description mt-6 text-sm leading-7 text-muted-foreground sm:text-base sm:leading-8">
                 {t("orbitDescription")}
               </p>
 
-              <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="dashboard-orbit-actions mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <button
                   type="button"
                   onClick={() => navigate("/dashboard/terminal")}
