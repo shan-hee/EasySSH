@@ -9,6 +9,17 @@ const repoRoot = resolve(scriptDir, "../..")
 
 const rules = [
   {
+    name: "Base UI primitives must not depend on animation enhancement layers",
+    root: "web/src/components/ui",
+    include: [".ts", ".tsx"],
+    forbidden: [
+      /from\s+["']motion(?:\/react)?["']/,
+      /from\s+["']@\/components\/(?:motion|animate-ui)(?:\/|["'])/,
+      /import\(["']motion(?:\/react)?["']\)/,
+      /import\(["']@\/components\/(?:motion|animate-ui)(?:\/|["'])/,
+    ],
+  },
+  {
     name: "Desktop frontend must not import Web Dashboard/API modules",
     root: "desktop/EasySSHDesktop/frontend/src",
     include: [".ts", ".tsx"],

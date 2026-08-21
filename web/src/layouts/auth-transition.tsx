@@ -1,5 +1,6 @@
 
-import { motion } from "motion/react"
+import { FadeIn } from "@/components/motion/fade-in"
+import { motionTransitions } from "@/lib/motion"
 
 export default function AuthTemplate({
   children,
@@ -7,12 +8,8 @@ export default function AuthTemplate({
   children: React.ReactNode
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
-    >
+    <FadeIn transition={motionTransitions.fade}>
       {children}
-    </motion.div>
+    </FadeIn>
   )
 }

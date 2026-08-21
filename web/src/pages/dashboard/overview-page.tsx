@@ -9,10 +9,12 @@ import {
   TerminalSquare,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-import { motion, useReducedMotion } from "motion/react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 
+import { CountingNumber } from "@/components/animate-ui/primitives/texts/counting-number"
+import { AnimatedStateText } from "@/components/motion/animated-state-text"
+import { FadeIn } from "@/components/motion/fade-in"
 import { useClientAuth } from "@/components/client-auth-provider"
 import { PageHeader } from "@/components/page-header"
 import { useAuthReady } from "@/hooks/use-auth-ready"
@@ -77,7 +79,6 @@ export default function DashboardPage() {
   const { user } = useClientAuth()
   const { ready } = useAuthReady()
   const { t } = useTranslation("dashboard")
-  const reduceMotion = useReducedMotion()
   const now = useCurrentTime()
   const greetingKey = getGreetingKey(now.getHours())
   const username = user?.username ?? "EasySSH"
@@ -92,13 +93,6 @@ export default function DashboardPage() {
   const dataUnavailable = overviewQuery.isError
   const dataLoading = overviewQuery.isPending
 
-  const reveal = reduceMotion
-    ? undefined
-    : {
-        initial: { opacity: 0, y: 18 },
-        animate: { opacity: 1, y: 0 },
-      }
-
   return (
     <>
       <PageHeader title={t("title")} />
@@ -108,9 +102,8 @@ export default function DashboardPage() {
           <div className="dashboard-orbit-grid" aria-hidden="true" />
           <div className="dashboard-orbit-vignette" aria-hidden="true" />
 
-          <motion.div
-            {...reveal}
-            transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+          <FadeIn
+            offsetY={10}
             className="relative z-20 flex items-center justify-between gap-4 px-5 pt-5 sm:px-7 sm:pt-7 lg:px-10 lg:pt-8"
           >
             <div className="min-w-0">
@@ -147,20 +140,27 @@ export default function DashboardPage() {
                   }
                   aria-hidden="true"
                 />
-                {dataUnavailable
-                  ? t("orbitDataUnavailable")
-                  : dataLoading
-                    ? t("orbitDataLoading")
-                    : t("orbitDataLive")}
+                <AnimatedStateText
+                  value={
+                    dataUnavailable
+                      ? "unavailable"
+                      : dataLoading
+                        ? "loading"
+                        : "live"
+                  }
+                >
+                  {dataUnavailable
+                    ? t("orbitDataUnavailable")
+                    : dataLoading
+                      ? t("orbitDataLoading")
+                      : t("orbitDataLive")}
+                </AnimatedStateText>
               </span>
             </div>
-          </motion.div>
+          </FadeIn>
 
           <div className="dashboard-hero-copy relative z-20 px-5 sm:px-7 lg:px-10">
-            <motion.div
-              {...reveal}
-              transition={{ duration: 0.75, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
-            >
+            <FadeIn delay={40} offsetY={12}>
               <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-border bg-card/55 px-3 py-1.5 text-[0.65rem] font-medium tracking-[0.16em] text-muted-foreground backdrop-blur-md">
                 <Radio className="size-3.5 text-primary" />
                 {t("orbitWorkspace")}
@@ -192,24 +192,15 @@ export default function DashboardPage() {
                   {t("orbitOpenFiles")}
                 </button>
               </div>
-            </motion.div>
+            </FadeIn>
           </div>
 
-          <motion.div
-            initial={reduceMotion ? undefined : { opacity: 0, scale: 0.94 }}
-            animate={reduceMotion ? undefined : { opacity: 1, scale: 1 }}
-            transition={{ duration: 1.1, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-            className="dashboard-globe-stage"
-          >
+          <div className="dashboard-globe-stage">
             <div className="dashboard-globe-aura" aria-hidden="true" />
             <DashboardGlobe distribution={overview?.distribution ?? []} />
-          </motion.div>
+          </div>
 
-          <motion.div
-            {...reveal}
-            transition={{ duration: 0.7, delay: 0.28, ease: [0.22, 1, 0.36, 1] }}
-            className="dashboard-node-panel"
-          >
+          <FadeIn delay={80} offsetY={10} className="dashboard-node-panel">
             <div className="flex items-end justify-between gap-4 border-b border-border pb-4">
               <div>
                 <p className="text-[0.62rem] font-semibold tracking-[0.2em] text-muted-foreground">
@@ -263,30 +254,36 @@ export default function DashboardPage() {
                 </button>
               ))}
             </div>
-          </motion.div>
+          </FadeIn>
 
-          <motion.div
-            {...reveal}
-            transition={{ duration: 0.7, delay: 0.36, ease: [0.22, 1, 0.36, 1] }}
-            className="dashboard-metrics"
-          >
+          <FadeIn delay={120} offsetY={8} className="dashboard-metrics">
             <div className="dashboard-metric">
               <Server className="size-4 text-muted-foreground" />
               <div>
-                <p className="text-[0.61rem] tracking-[0.14em] text-muted-foreground">{t("orbitNodes")}</p>
-                <p className="mt-1 text-lg font-medium tracking-[-0.03em] text-foreground/78">
-                  {overview
-                    ? `${overview.stats.online_servers} / ${overview.stats.total_servers}`
-                    : "—"}
+                <p className="text-[0.61rem] tracking-[0.14em] text-muted-foreground">
+                  {t("orbitNodes")}
+                </p>
+                <p className="mt-1 text-lg font-medium tabular-nums tracking-[-0.03em] text-foreground/78">
+                  {overview ? (
+                    <>
+                      <CountingNumber number={overview.stats.online_servers} />
+                      <span aria-hidden="true"> / </span>
+                      <CountingNumber number={overview.stats.total_servers} />
+                    </>
+                  ) : "—"}
                 </p>
               </div>
             </div>
             <div className="dashboard-metric">
               <TerminalSquare className="size-4 text-muted-foreground" />
               <div>
-                <p className="text-[0.61rem] tracking-[0.14em] text-muted-foreground">{t("orbitSessions")}</p>
-                <p className="mt-1 text-lg font-medium tracking-[-0.03em] text-foreground/78">
-                  {overview ? overview.stats.active_sessions : "—"}
+                <p className="text-[0.61rem] tracking-[0.14em] text-muted-foreground">
+                  {t("orbitSessions")}
+                </p>
+                <p className="mt-1 text-lg font-medium tabular-nums tracking-[-0.03em] text-foreground/78">
+                  {overview ? (
+                    <CountingNumber number={overview.stats.active_sessions} />
+                  ) : "—"}
                 </p>
               </div>
             </div>
@@ -296,12 +293,14 @@ export default function DashboardPage() {
                 <p className="text-[0.61rem] tracking-[0.14em] text-muted-foreground">
                   {t("orbitTodayCommands")}
                 </p>
-                <p className="mt-1 text-lg font-medium tracking-[-0.03em] text-foreground/78">
-                  {overview ? overview.stats.today_commands : "—"}
+                <p className="mt-1 text-lg font-medium tabular-nums tracking-[-0.03em] text-foreground/78">
+                  {overview ? (
+                    <CountingNumber number={overview.stats.today_commands} />
+                  ) : "—"}
                 </p>
               </div>
             </div>
-          </motion.div>
+          </FadeIn>
         </section>
       </main>
     </>

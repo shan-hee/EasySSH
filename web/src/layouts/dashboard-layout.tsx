@@ -1,6 +1,5 @@
 
 import { useEffect, useLayoutEffect, useRef } from "react"
-import { motion } from "motion/react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import SidebarProviderServer from "@/components/sidebar-provider-server"
@@ -16,7 +15,8 @@ import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-polic
 import { Button } from "@/components/ui/button"
 import { AppLoadingScreen } from "@/components/app-loading"
 import { cn } from "@/lib/utils"
-import { pageTransition } from "@/lib/motion"
+import { FadeIn } from "@/components/motion/fade-in"
+import { motionTransitions } from "@/lib/motion"
 import { preloadCommonDashboardRoutes } from "@/lib/dashboard-route-preload"
 import { buildNavigationGroups } from "@/shell/navigation/navigation-registry"
 
@@ -56,15 +56,13 @@ function DashboardRouteOutlet({
   }
 
   return (
-    <motion.div
+    <FadeIn
       key={pathname}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={pageTransition}
+      transition={motionTransitions.fade}
       className="flex min-h-full w-full min-w-0 flex-1 flex-col"
     >
       <Outlet />
-    </motion.div>
+    </FadeIn>
   )
 }
 

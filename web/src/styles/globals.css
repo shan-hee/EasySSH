@@ -58,8 +58,10 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --animate-overlay-content-in: overlay-content-in 200ms ease-out;
-  --animate-overlay-content-out: overlay-content-out 150ms ease-in;
+  --animate-overlay-content-in: overlay-content-in var(--motion-duration-content)
+    var(--motion-ease-enter);
+  --animate-overlay-content-out: overlay-content-out var(--motion-duration-exit)
+    var(--motion-ease-exit);
 
   @keyframes overlay-content-in {
     from {
@@ -81,6 +83,14 @@
 }
 
 :root {
+  --motion-duration-fast: 120ms;
+  --motion-duration-exit: 120ms;
+  --motion-duration-state: 160ms;
+  --motion-duration-page: 160ms;
+  --motion-duration-content: 180ms;
+  --motion-duration-layout: 260ms;
+  --motion-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --window-opacity: 1;
   --font-inter: "Inter Variable";
   --font-noto-sans-sc: "Noto Sans SC";
@@ -820,11 +830,11 @@
   }
 
   .animate-collapsible-down {
-    animation: collapsible-down 0.1s ease-in-out;
+    animation: collapsible-down var(--motion-duration-fast) var(--motion-ease-enter);
   }
 
   .animate-collapsible-up {
-    animation: collapsible-up 0.1s ease-in-out;
+    animation: collapsible-up var(--motion-duration-fast) var(--motion-ease-exit);
   }
 
   /* Skeleton 呼吸动画 - 比 animate-pulse 更柔和自然 */

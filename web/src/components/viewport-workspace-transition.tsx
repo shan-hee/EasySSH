@@ -1,17 +1,15 @@
 import type { PropsWithChildren } from "react"
-import { motion } from "motion/react"
 
-import { pageTransition } from "@/lib/motion"
+import { FadeIn } from "@/components/motion/fade-in"
+import { motionTransitions } from "@/lib/motion"
 
 export function ViewportWorkspaceTransition({ children }: PropsWithChildren) {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={pageTransition}
+    <FadeIn
+      transition={motionTransitions.fade}
       className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     >
       {children}
-    </motion.div>
+    </FadeIn>
   )
 }

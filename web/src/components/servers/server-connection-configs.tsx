@@ -44,7 +44,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { AnimatedList } from "@/components/ui/animated-list"
+import { AnimatedList } from "@/components/motion/animated-list"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
 
