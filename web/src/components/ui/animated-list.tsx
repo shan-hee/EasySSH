@@ -1,6 +1,31 @@
-import React, { type ReactNode } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { motionDurations, motionEase } from "@/lib/motion"
+import React, { useRef, type ReactNode } from "react"
+import { motion, useInView } from "motion/react"
+
+interface AnimatedItemProps {
+  children: ReactNode
+  delay?: number
+  index: number
+}
+
+const AnimatedItem: React.FC<AnimatedItemProps> = ({ children, delay = 0, index }) => {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { amount: 0.5, once: true })
+
+  return (
+    <motion.div
+      ref={ref}
+      data-index={index}
+      initial={{ scale: 0.95, opacity: 0, y: 10 }}
+      animate={inView
+        ? { scale: 1, opacity: 1, y: 0 }
+        : { scale: 0.95, opacity: 0, y: 10 }}
+      transition={{ duration: 0.3, delay, ease: "easeOut" }}
+      className="w-full"
+    >
+      {children}
+    </motion.div>
+  )
+}
 
 interface AnimatedListProps {
   children: ReactNode
@@ -11,32 +36,21 @@ interface AnimatedListProps {
 export const AnimatedList: React.FC<AnimatedListProps> = ({
   children,
   className = "",
-  staggerDelay = 0.035,
+  staggerDelay = 0.05,
 }) => {
-  const shouldReduceMotion = useReducedMotion()
   const childrenArray = React.Children.toArray(children)
 
   return (
     <div className={className}>
-      <AnimatePresence initial={false}>
-        {childrenArray.map((child, index) => (
-          <motion.div
-            key={(child as React.ReactElement).key ?? index}
-            layout={shouldReduceMotion ? false : "position"}
-            initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={shouldReduceMotion ? undefined : { opacity: 0, y: -4 }}
-            transition={{
-              duration: motionDurations.layout,
-              delay: shouldReduceMotion ? 0 : Math.min(index, 6) * staggerDelay,
-              ease: motionEase,
-            }}
-            className="w-full"
-          >
-            {child}
-          </motion.div>
-        ))}
-      </AnimatePresence>
+      {childrenArray.map((child, index) => (
+        <AnimatedItem
+          key={(child as React.ReactElement).key || index}
+          index={index}
+          delay={index * staggerDelay}
+        >
+          {child}
+        </AnimatedItem>
+      ))}
     </div>
   )
 }
