@@ -46,7 +46,34 @@ const chartConfig = {
  * 使用 ECharts 双折线图显示上行和下行流量
  * 图表高度由监控面板密度控制
  */
-export const NetworkChart: React.FC<NetworkChartProps> = React.memo(({
+const MiniNetworkChart: React.FC<Pick<
+  NetworkChartProps,
+  "currentDownload" | "currentUpload"
+>> = ({ currentDownload, currentUpload }) => {
+  const { t } = useTranslation("terminalMonitor");
+  const colors = useEchartsColors(chartConfig);
+  const chartTheme = useMonitorChartTheme();
+  const downloadColor = colors.download || chartTheme.download;
+  const uploadColor = colors.upload || chartTheme.upload;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between items-center h-6">
+        <span className="text-xs font-semibold">{t("networkLabel")}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono tabular-nums">
+        <div className="min-w-0 rounded bg-muted/45 px-2 py-1" style={{ color: downloadColor }}>
+          <span className="truncate">↓ {formatSpeed(currentDownload)}</span>
+        </div>
+        <div className="min-w-0 rounded bg-muted/45 px-2 py-1" style={{ color: uploadColor }}>
+          <span className="truncate">↑ {formatSpeed(currentUpload)}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const FullNetworkChart: React.FC<NetworkChartProps> = ({
   data,
   currentDownload,
   currentUpload,
@@ -272,24 +299,6 @@ export const NetworkChart: React.FC<NetworkChartProps> = React.memo(({
     };
   }, [chartData, downloadColor, uploadColor, maxValue, t, chartTheme]);
 
-  if (density === "mini") {
-    return (
-      <div className="space-y-1">
-        <div className="flex justify-between items-center h-6">
-          <span className="text-xs font-semibold">{t("networkLabel")}</span>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono tabular-nums">
-          <div className="min-w-0 rounded bg-muted/45 px-2 py-1" style={{ color: downloadColor }}>
-            <span className="truncate">↓ {formatSpeed(currentDownload)}</span>
-          </div>
-          <div className="min-w-0 rounded bg-muted/45 px-2 py-1" style={{ color: uploadColor }}>
-            <span className="truncate">↑ {formatSpeed(currentUpload)}</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-1">
       {/* 标题栏 - 高度 28px */}
@@ -328,6 +337,17 @@ export const NetworkChart: React.FC<NetworkChartProps> = React.memo(({
       </div>
     </div>
   );
-});
+};
+
+export const NetworkChart: React.FC<NetworkChartProps> = React.memo((props) => (
+  props.density === "mini"
+    ? (
+      <MiniNetworkChart
+        currentDownload={props.currentDownload}
+        currentUpload={props.currentUpload}
+      />
+    )
+    : <FullNetworkChart {...props} />
+));
 
 NetworkChart.displayName = 'NetworkChart';

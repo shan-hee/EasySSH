@@ -76,32 +76,27 @@ export const MonitorPanel: React.FC<MonitorPanelProps> = ({
 }) => {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [panelHeight, setPanelHeight] = useState<number | null>(null);
-  // 【性能优化】只订阅监控数据，不订阅延迟数据
   const { metrics, getMetricsHistory } = useMonitoringData();
-  const [frozenSnapshot, setFrozenSnapshot] = useState<{
+  const frozenSnapshotRef = useRef<{
     metrics: typeof metrics;
     history: ReturnType<typeof getMetricsHistory>;
-  }>(() => ({
+  }>({
     metrics: null,
     history: [],
-  }));
+  });
   const liveHistory = isLive ? getMetricsHistory() : EMPTY_METRICS_HISTORY;
 
   useEffect(() => {
     if (!isLive) return;
 
-    const frame = window.requestAnimationFrame(() => {
-      setFrozenSnapshot({
-        metrics,
-        history: liveHistory,
-      });
-    });
+    frozenSnapshotRef.current = {
+      metrics,
+      history: [...liveHistory],
+    };
+  }, [isLive, liveHistory, metrics]);
 
-    return () => window.cancelAnimationFrame(frame);
-  }, [isLive, metrics, liveHistory]);
-
-  const displayMetrics = isLive ? metrics : frozenSnapshot.metrics;
-  const displayHistory = isLive ? liveHistory : frozenSnapshot.history;
+  const displayMetrics = isLive ? metrics : frozenSnapshotRef.current.metrics;
+  const displayHistory = isLive ? liveHistory : frozenSnapshotRef.current.history;
   const density = useMemo<MonitorPanelDensity>(() => {
     if (panelHeight === null) return "full";
     if (panelHeight < MINI_HEIGHT_THRESHOLD) return "mini";
@@ -159,7 +154,7 @@ export const MonitorPanel: React.FC<MonitorPanelProps> = ({
 
     // 构建历史数据（用于图表）
     // 使用历史数据队列，而不是单个数据点
-    const cpuHistory = displayHistory.map((m) => {
+    const cpuHistory = density === "mini" ? [] : displayHistory.map((m) => {
       const time = new Date(m.timestamp * 1000);
       return {
         time: time.toTimeString().split(' ')[0],
@@ -168,7 +163,7 @@ export const MonitorPanel: React.FC<MonitorPanelProps> = ({
       };
     });
 
-    const networkHistory = displayHistory.map((m) => {
+    const networkHistory = density === "mini" ? [] : displayHistory.map((m) => {
       const time = new Date(m.timestamp * 1000);
       return {
         time: time.toTimeString().split(' ')[0],
@@ -212,7 +207,7 @@ export const MonitorPanel: React.FC<MonitorPanelProps> = ({
         download: Math.round(displayMetrics.network.bytesRecvPerSec / 1024),
         upload: Math.round(displayMetrics.network.bytesSentPerSec / 1024),
       },
-      disks: displayMetrics.disks.map(disk => ({
+      disks: density === "mini" ? [] : displayMetrics.disks.map(disk => ({
         name: disk.mountPoint,
         usedBytes: disk.usedBytes,
         totalBytes: disk.totalBytes,
@@ -225,7 +220,7 @@ export const MonitorPanel: React.FC<MonitorPanelProps> = ({
       })),
       diskTotalPercent: Math.round(displayMetrics.diskTotalPercent),
     };
-  }, [displayMetrics, displayHistory]);
+  }, [density, displayMetrics, displayHistory]);
 
   const panelContent = useMemo(() => {
     if (!formattedMetrics) {

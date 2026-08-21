@@ -81,7 +81,7 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
 
   // 从监控 Store 获取 Docker 统计（实时数据，用于工具栏显示）
   const dockerStats = useMonitorStore(
-    (state) => state.connections.get(serverId)?.metrics?.docker
+    (state) => state.metrics.get(serverId)?.docker
   )
 
   // 当前页签

@@ -517,7 +517,6 @@ export function TabTerminalContent({
       serverId={connectedServerId}
       enabled={monitorEnabled}
       interval={settings.monitorInterval || 2}
-      latencyIntervalMs={5000}
       monitorApi={workspaceMonitorApi}
     >
       <div className={cn(

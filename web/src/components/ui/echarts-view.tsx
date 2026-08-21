@@ -1,8 +1,21 @@
 import * as React from "react"
-import * as echarts from "echarts"
+import * as echarts from "echarts/core"
+import { BarChart, LineChart, PieChart } from "echarts/charts"
+import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components"
+import { CanvasRenderer } from "echarts/renderers"
 import type { ECharts, EChartsOption, SetOptionOpts } from "echarts"
 
 import { cn } from "@/lib/utils"
+
+echarts.use([
+  BarChart,
+  LineChart,
+  PieChart,
+  GridComponent,
+  LegendComponent,
+  TooltipComponent,
+  CanvasRenderer,
+])
 
 export interface EChartsViewHandle {
   getInstance: () => ECharts | null
@@ -22,7 +35,7 @@ interface EChartsViewProps extends Omit<React.ComponentProps<"div">, "children">
  * 的重复挂载以及快速切换页面时不会留下图表实例或尺寸监听器。
  */
 export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>(
-  ({ className, option, notMerge = false, lazyUpdate = false, resizeDebounce = 0, ...props }, ref) => {
+  ({ className, option, notMerge = false, lazyUpdate = false, resizeDebounce = 80, ...props }, ref) => {
     const containerRef = React.useRef<HTMLDivElement | null>(null)
     const chartRef = React.useRef<ECharts | null>(null)
     const optionRef = React.useRef(option)

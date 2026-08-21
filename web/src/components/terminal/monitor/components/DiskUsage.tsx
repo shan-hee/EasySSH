@@ -18,6 +18,12 @@ interface DiskUsageProps {
 }
 
 const DISK_COLOR_VARS = MONITOR_COLORS.disk.usedPalette;
+const miniDiskChartConfig = {
+  disk_0: {
+    label: "disk_0",
+    color: DISK_COLOR_VARS[0],
+  },
+} satisfies ChartConfig;
 
 function formatCompactBytes(bytes: number): string {
   const formatted = formatBytes(Math.max(0, bytes));
@@ -29,7 +35,38 @@ function formatCompactBytes(bytes: number): string {
  * 使用 ECharts 堆叠条形图显示磁盘使用情况
  * 图表高度由监控面板密度控制
  */
-export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({
+const MiniDiskUsage: React.FC<Pick<DiskUsageProps, "totalPercent">> = ({
+  totalPercent,
+}) => {
+  const { t } = useTranslation("terminalMonitor");
+  const colors = useEchartsColors(miniDiskChartConfig);
+  const chartTheme = useMonitorChartTheme();
+  const usedColor = colors.disk_0 || chartTheme.diskPalette[0];
+  const percentColorClass =
+    totalPercent > 90 ? 'text-destructive' : totalPercent > 80 ? 'text-status-warning' : 'text-muted-foreground';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between items-center h-6">
+        <span className="text-xs font-semibold">{t("diskLabel")}</span>
+        <span className={cn("text-xs font-mono font-semibold tabular-nums transition-colors duration-500", percentColorClass)}>
+          {totalPercent}%
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{
+            width: `${Math.max(0, Math.min(100, totalPercent))}%`,
+            backgroundColor: usedColor,
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+const FullDiskUsage: React.FC<DiskUsageProps> = ({
   data,
   totalPercent,
   density = "full",
@@ -271,30 +308,6 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({
     };
   }, [axis, chartData, diskColors, t, chartTheme, freeSegmentColor]);
 
-  if (density === "mini") {
-    const usedColor = diskColors[0] || chartTheme.diskPalette[0];
-
-    return (
-      <div className="space-y-2">
-        <div className="flex justify-between items-center h-6">
-          <span className="text-xs font-semibold">{t("diskLabel")}</span>
-          <span className={cn("text-xs font-mono font-semibold tabular-nums transition-colors duration-500", percentColorClass)}>
-            {totalPercent}%
-          </span>
-        </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${Math.max(0, Math.min(100, totalPercent))}%`,
-              backgroundColor: usedColor,
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-1">
       {/* 标题栏 - 高度 28px */}
@@ -316,6 +329,12 @@ export const DiskUsage: React.FC<DiskUsageProps> = React.memo(({
       </div>
     </div>
   );
-});
+};
+
+export const DiskUsage: React.FC<DiskUsageProps> = React.memo((props) => (
+  props.density === "mini"
+    ? <MiniDiskUsage totalPercent={props.totalPercent} />
+    : <FullDiskUsage {...props} />
+));
 
 DiskUsage.displayName = 'DiskUsage';

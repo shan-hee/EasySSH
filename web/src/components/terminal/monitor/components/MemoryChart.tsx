@@ -34,7 +34,55 @@ const chartConfig = {
  * 使用 ECharts 同心环形图显示 RAM 和 Swap
  * 图表高度由监控面板密度控制
  */
-export const MemoryChart: React.FC<MemoryChartProps> = React.memo(({
+const MiniMemoryChart: React.FC<Pick<MemoryChartProps, "data">> = ({ data }) => {
+  const { t } = useTranslation("terminalMonitor");
+  const colors = useEchartsColors(chartConfig);
+  const chartTheme = useMonitorChartTheme();
+  const ramColor = colors.ram || chartTheme.ram;
+  const swapColor = colors.swap || chartTheme.swap;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between items-center h-6">
+        <span className="text-xs font-semibold">{t("memoryLabel")}</span>
+      </div>
+      <div className="space-y-2">
+        {[
+          { label: "RAM", value: data.ram, color: ramColor },
+          { label: "Swap", value: data.swap, color: swapColor },
+        ].map((item) => (
+          <div key={item.label} className="space-y-1">
+            <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: item.color }}
+                />
+                <span className="font-medium" style={{ color: item.color }}>
+                  {item.label}
+                </span>
+              </div>
+              <span className="min-w-0 truncate font-mono text-[11px] font-semibold tabular-nums text-muted-foreground">
+                {item.value.percent}% · {item.value.value} {item.value.unit}
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.max(0, Math.min(100, item.value.percent))}%`,
+                  backgroundColor: item.color,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const FullMemoryChart: React.FC<MemoryChartProps> = ({
   data,
   density = "full",
   chartHeight,
@@ -182,48 +230,6 @@ export const MemoryChart: React.FC<MemoryChartProps> = React.memo(({
     };
   }, [chartData, ramColor, swapColor, data, memoryTooltipUsedLabel, chartTheme]);
 
-  if (density === "mini") {
-    return (
-      <div className="space-y-2">
-        <div className="flex justify-between items-center h-6">
-          <span className="text-xs font-semibold">{t("memoryLabel")}</span>
-        </div>
-        <div className="space-y-2">
-          {[
-            { label: "RAM", value: data.ram, color: ramColor },
-            { label: "Swap", value: data.swap, color: swapColor },
-          ].map((item) => (
-            <div key={item.label} className="space-y-1">
-              <div className="flex min-w-0 items-center justify-between gap-2 text-xs">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="font-medium" style={{ color: item.color }}>
-                    {item.label}
-                  </span>
-                </div>
-                <span className="min-w-0 truncate font-mono text-[11px] font-semibold tabular-nums text-muted-foreground">
-                  {item.value.percent}% · {item.value.value} {item.value.unit}
-                </span>
-              </div>
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.max(0, Math.min(100, item.value.percent))}%`,
-                    backgroundColor: item.color,
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-1">
       {/* 标题栏 - 高度 28px */}
@@ -298,6 +304,12 @@ export const MemoryChart: React.FC<MemoryChartProps> = React.memo(({
       </div>
     </div>
   );
-});
+};
+
+export const MemoryChart: React.FC<MemoryChartProps> = React.memo((props) => (
+  props.density === "mini"
+    ? <MiniMemoryChart data={props.data} />
+    : <FullMemoryChart {...props} />
+));
 
 MemoryChart.displayName = 'MemoryChart';

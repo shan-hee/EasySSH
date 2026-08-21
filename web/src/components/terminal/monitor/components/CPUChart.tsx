@@ -31,7 +31,39 @@ const chartConfig = {
  * 使用 ECharts 折线面积图显示最近 20 个数据点的 CPU 使用率
  * 图表高度由监控面板密度控制
  */
-export const CPUChart: React.FC<CPUChartProps> = React.memo(({
+const MiniCPUChart: React.FC<Pick<CPUChartProps, "currentUsage">> = ({
+  currentUsage,
+}) => {
+  const { t } = useTranslation("terminalMonitor");
+  const colors = useEchartsColors(chartConfig);
+  const chartTheme = useMonitorChartTheme();
+  const usageColor = colors.usage || chartTheme.cpu;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between items-center h-6">
+        <span className="text-xs font-semibold">{t("cpuLabel")}</span>
+        <span className={cn(
+          "text-xs font-mono font-semibold tabular-nums transition-colors duration-500",
+          currentUsage > 80 ? 'text-destructive' : currentUsage > 60 ? 'text-status-warning' : 'text-muted-foreground'
+        )}>
+          {currentUsage}%
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full rounded-full transition-all duration-500"
+          style={{
+            width: `${Math.max(0, Math.min(100, currentUsage))}%`,
+            backgroundColor: usageColor,
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+const FullCPUChart: React.FC<CPUChartProps> = ({
   data,
   currentUsage,
   density = "full",
@@ -214,31 +246,6 @@ export const CPUChart: React.FC<CPUChartProps> = React.memo(({
     };
   }, [chartData, usageColor, maxValue, t, chartTheme]);
 
-  if (density === "mini") {
-    return (
-      <div className="space-y-2">
-        <div className="flex justify-between items-center h-6">
-          <span className="text-xs font-semibold">{t("cpuLabel")}</span>
-          <span className={cn(
-            "text-xs font-mono font-semibold tabular-nums transition-colors duration-500",
-            currentUsage > 80 ? 'text-destructive' : currentUsage > 60 ? 'text-status-warning' : 'text-muted-foreground'
-          )}>
-            {currentUsage}%
-          </span>
-        </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${Math.max(0, Math.min(100, currentUsage))}%`,
-              backgroundColor: usageColor,
-            }}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-1">
       {/* 标题栏 - 高度 28px */}
@@ -278,6 +285,12 @@ export const CPUChart: React.FC<CPUChartProps> = React.memo(({
       </div>
     </div>
   );
-});
+};
+
+export const CPUChart: React.FC<CPUChartProps> = React.memo((props) => (
+  props.density === "mini"
+    ? <MiniCPUChart currentUsage={props.currentUsage} />
+    : <FullCPUChart {...props} />
+));
 
 CPUChart.displayName = 'CPUChart';

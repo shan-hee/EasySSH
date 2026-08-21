@@ -4,8 +4,9 @@
  * 支持点击复制功能
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from "react-i18next"
+import { Check, Copy } from 'lucide-react';
 import type { MonitorPanelDensity, SystemInfo as SystemInfoType } from '../types/metrics';
 import { cn } from '@/lib/utils';
 
@@ -17,47 +18,81 @@ interface SystemInfoProps {
 /**
  * 信息行组件
  */
-const InfoRow: React.FC<{
+const InfoRow = React.memo(function InfoRow({
+  label,
+  value,
+  monospace = false,
+}: {
   label: string;
   value: string;
   monospace?: boolean;
-}> = ({ label, value, monospace = false }) => {
+}) {
   const { t } = useTranslation("terminalMonitor");
   const [copied, setCopied] = useState(false);
+  const resetTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      if (resetTimerRef.current !== null) {
+        window.clearTimeout(resetTimerRef.current);
+      }
+      resetTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        resetTimerRef.current = null;
+      }, 1500);
     } catch (err) {
       console.error('复制失败:', err);
     }
   };
 
   return (
-    <div
+    <button
+      type="button"
       className={cn(
-        "flex justify-between items-center h-5 leading-5 text-xs cursor-pointer",
-        "transition-all duration-300 ease-in-out",
+        "group flex w-[calc(100%+0.75rem)] justify-between items-center h-5 leading-5 text-xs cursor-pointer border-0 bg-transparent text-left",
+        "transition-colors duration-300 ease-in-out",
         "hover:bg-accent/50 rounded px-1.5 -mx-1.5",
         copied && "bg-status-connected/10"
       )}
       onClick={handleCopy}
       title={t("copyTooltip", { value })}
+      aria-label={copied ? t("copyCopied") : t("copyTooltip", { value })}
     >
       <span className="text-muted-foreground shrink-0">{label}</span>
-      <span className={cn(
-        "font-medium truncate ml-2",
-        "transition-colors duration-300",
-        monospace && "font-mono text-[11px]",
-        copied && "text-status-connected"
-      )}>
-        {copied ? t("copyCopied") : value}
+      <span className="ml-2 flex min-w-0 items-center gap-1.5">
+        <span className={cn(
+          "font-medium truncate",
+          "transition-colors duration-300",
+          monospace && "font-mono text-[11px]",
+          copied && "text-status-connected"
+        )}>
+          {value}
+        </span>
+        {copied ? (
+          <Check className="size-3 shrink-0 text-status-connected" aria-hidden="true" />
+        ) : (
+          <Copy
+            className="size-3 shrink-0 text-muted-foreground/35 transition-colors group-hover:text-muted-foreground"
+            aria-hidden="true"
+          />
+        )}
+        <span className="sr-only" aria-live="polite">
+          {copied ? t("copyCopied") : ""}
+        </span>
       </span>
-    </div>
+    </button>
   );
-};
+});
 
 /**
  * 系统信息组件

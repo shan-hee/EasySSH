@@ -1262,18 +1262,6 @@ export function TerminalComponent({
       }
     }
 
-    // ==================== P0 修复：删除直接销毁调用，依赖 useMonitorWebSocket 的引用计数自动管理 ====================
-    // 注释说明：
-    // - useMonitorWebSocket 的 useEffect 清理函数会自动调用 unsubscribe()
-    // - unsubscribe() 会减少引用计数
-    // - 当引用计数归零时，monitor-store.ts 会自动调用 destroyConnection()
-    // - 这样可以确保：同一服务器的多个页签共享连接，只有最后一个页签关闭时才断开连接
-
-    // ❌ 旧代码（导致BUG）：
-    // if (session?.serverId) {
-    //   destroyMonitorConnection(String(session.serverId))
-    // }
-
     // 1. 通知父组件更新会话列表，让 UI 先切走
     removeSessionFromWorkspace(sessionId)
     onCloseSession(sessionId)
