@@ -863,7 +863,7 @@ const ChatMessage = memo(function ChatMessage({
   return (
     <Message
       from={message.role}
-      className={cn("ai-command-message", compact ? "max-w-full" : "max-w-[90%]")}
+      className={compact ? "max-w-full" : "max-w-[90%]"}
     >
       <MessageContent
         className={cn(
@@ -906,7 +906,7 @@ const ChatMessage = memo(function ChatMessage({
         )}
       </MessageContent>
       {isUserMessage && (
-        <MessageActions className="ml-auto pr-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100">
+        <MessageActions className="ml-auto pr-1 text-muted-foreground">
           {isEditing ? (
             <>
               <MessageAction

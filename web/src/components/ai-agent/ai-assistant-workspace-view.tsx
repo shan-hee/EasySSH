@@ -4,8 +4,6 @@ import { ArrowLeft, Loader2, Plus, RefreshCw, Send, Server as ServerIcon, Settin
 
 import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
 import { AgentApprovalQueue } from "@/components/ai-agent/agent-approval-queue"
-import { AIAssistantCommandBar } from "@/components/ai-agent/ai-assistant-command-bar"
-import { AIModelControl, AIPermissionControl } from "@/components/ai-agent/ai-model-permission-controls"
 import { AISessionHistoryPopover } from "@/components/ai-agent/ai-session-history-popover"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
 import {
@@ -30,6 +28,11 @@ import {
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import {
   PromptInput,
+  PromptInputModelSelect,
+  PromptInputModelSelectContent,
+  PromptInputModelSelectItem,
+  PromptInputModelSelectTrigger,
+  PromptInputModelSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
@@ -49,7 +52,7 @@ import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useAISessionHistory } from "@/hooks/use-ai-session-history"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { serversApi, type Server as ManagedServer } from "@/lib/api"
-import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type CreateSessionResponse } from "@/lib/api/ai-agent"
+import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type CreateSessionResponse, type PermissionMode } from "@/lib/api/ai-agent"
 import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
 import type { ServerListResponse } from "@/lib/api/servers"
 import { getServerDisplayName } from "@/lib/server-utils"
@@ -780,6 +783,7 @@ export function AIAssistantWorkspaceView({
       onRestore={handleRestoreSession}
       t={t}
       triggerClassName={actionButtonClass}
+      className="border-zinc-200/80 dark:border-zinc-800 dark:bg-zinc-950"
     />
   )
 
@@ -825,61 +829,34 @@ export function AIAssistantWorkspaceView({
       />
     </>
   )
-  const activeSessionTitle = history.items.find((item) => item.id === sessionId)?.title
-    ?? session?.messages.find((message) => message.role === "user")?.content.trim()
-    ?? t("pageTitle")
-  const activeScopeLabel = session?.scope?.server_name || t("scopeGlobal")
-  const statusLabel = t(
-    session?.status === "running"
-      ? "statusRunning"
-      : session?.status === "waiting_confirmation"
-        ? "statusWaitingConfirmation"
-        : session?.status === "closed"
-          ? "statusClosed"
-          : "statusIdle"
-  )
-
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {confirmDialog}
       {!hidePageHeader && <PageHeader title={t("pageTitle")} />}
 
-      <AIAssistantCommandBar
-        title={activeSessionTitle}
-        scope={activeScopeLabel}
-        model={selectedModel ? (
-          <AIModelControl
-            value={selectedModel}
-            models={models}
-            onChange={setSelectedModel}
-            disabled={modelSelectDisabled}
-          />
-        ) : undefined}
-        permission={(
-          <AIPermissionControl
-            value={permissionMode}
-            options={permissionOptions}
-            onChange={setPermissionMode}
-            disabled={isConfigChecking}
-          />
-        )}
-        status={session?.status ?? "idle"}
-        statusLabel={statusLabel}
-        leading={onReturnToTerminal ? (
+      <div className="shrink-0 px-4 pb-1 md:px-4">
+        <div className="flex h-9 items-center justify-between gap-2">
+          {onReturnToTerminal ? (
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="-ml-2 size-8 text-muted-foreground hover:text-foreground"
+              size="sm"
+              className="-ml-2 h-9 gap-1 bg-transparent px-2 text-sm font-medium text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
               aria-label="返回终端"
               title="返回终端"
               onClick={onReturnToTerminal}
             >
               <ArrowLeft className="size-4" />
+              <span>返回终端</span>
             </Button>
-          ) : undefined}
-        actions={sessionToolbar}
-      />
+          ) : (
+            <div />
+          )}
+          <div className="flex items-center justify-end gap-1">
+            {sessionToolbar}
+          </div>
+        </div>
+      </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden pb-4 md:pb-6">
@@ -951,7 +928,7 @@ export function AIAssistantWorkspaceView({
                 />
 
                 <PromptInput
-                  className="ai-command-composer rounded-xl border border-border/70 bg-card/85 shadow-sm"
+                  className="border-border/0 bg-card/0 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-card/0"
                   onSubmit={(message) => submit(message.text)}
                 >
                   <Popover
@@ -1076,6 +1053,40 @@ export function AIAssistantWorkspaceView({
 
                   <PromptInputToolbar className="flex-wrap gap-3 px-2 py-1.5">
                     <PromptInputTools className="flex flex-wrap items-center gap-2">
+                      <PromptInputModelSelect
+                        value={selectedModel}
+                        onValueChange={setSelectedModel}
+                        disabled={modelSelectDisabled}
+                      >
+                        <PromptInputModelSelectTrigger className="h-9 rounded-md border-none !bg-transparent px-2.5 text-xs font-normal text-muted-foreground !shadow-none hover:!bg-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:!bg-transparent dark:hover:!bg-transparent [aria-expanded='true']:!bg-transparent [aria-expanded='true']:text-foreground sm:text-sm">
+                          <PromptInputModelSelectValue placeholder={t("modelPlaceholder")} />
+                        </PromptInputModelSelectTrigger>
+                        <PromptInputModelSelectContent>
+                          {models.map((model) => (
+                            <PromptInputModelSelectItem key={model} value={model}>
+                              {model}
+                            </PromptInputModelSelectItem>
+                          ))}
+                        </PromptInputModelSelectContent>
+                      </PromptInputModelSelect>
+
+                      <PromptInputModelSelect
+                        value={permissionMode}
+                        onValueChange={(value) => setPermissionMode(value as PermissionMode)}
+                        disabled={isConfigChecking}
+                      >
+                        <PromptInputModelSelectTrigger className="h-9 rounded-md border-none !bg-transparent px-2.5 text-xs font-normal text-muted-foreground !shadow-none hover:!bg-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:!bg-transparent dark:hover:!bg-transparent [aria-expanded='true']:!bg-transparent [aria-expanded='true']:text-foreground sm:text-sm">
+                          <PromptInputModelSelectValue />
+                        </PromptInputModelSelectTrigger>
+                        <PromptInputModelSelectContent>
+                          {permissionOptions.map((option) => (
+                            <PromptInputModelSelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </PromptInputModelSelectItem>
+                          ))}
+                        </PromptInputModelSelectContent>
+                      </PromptInputModelSelect>
+
                       <Button
                         type="button"
                         variant="ghost"

@@ -2093,8 +2093,6 @@ const messages = {
     terminalEmptyDescription: "我会默认围绕当前终端会话分析和操作，需要执行命令时会使用本页签的服务器。",
     terminalContextHeader: "【当前终端会话】以下是本次提问默认面向的终端目标：",
     terminalContextRule: "请默认围绕当前终端会话分析和执行；除非用户明确要求切换目标，否则工具调用必须优先使用该服务器。",
-    scopeGlobal: "全局工作区",
-    scopeCurrentTerminal: "当前终端",
     addContext: "添加终端上下文",
     contextTerminalSelection: "当前终端选区",
     contextRecentOutput: "最近 80 行终端输出",

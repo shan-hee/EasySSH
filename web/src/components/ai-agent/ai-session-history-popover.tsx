@@ -1,6 +1,6 @@
 import type { ComponentProps } from "react"
 import type { TFunction } from "i18next"
-import { Check, Circle, History, Loader2, Pencil, Search, Trash2, X } from "lucide-react"
+import { Check, History, Loader2, Pencil, Search, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -35,13 +35,6 @@ function formatSessionTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   })
-}
-
-function statusClass(status: SessionListItem["status"]) {
-  if (status === "running") return "fill-primary text-primary"
-  if (status === "waiting_confirmation") return "fill-amber-500 text-amber-500"
-  if (status === "closed") return "fill-muted-foreground/40 text-muted-foreground/40"
-  return "fill-emerald-500 text-emerald-500"
 }
 
 export function AISessionHistoryPopover({
@@ -80,23 +73,23 @@ export function AISessionHistoryPopover({
       <PopoverContent
         align={align}
         sideOffset={8}
-        className={cn("ai-command-popover w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl p-0", className)}
+        className={cn("w-[330px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg p-0 shadow-2xl", className)}
       >
-        <div className="border-b border-border/60 p-2.5">
+        <div className="border-b border-border/60 p-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={history.search}
               onChange={(event) => history.setSearch(event.target.value)}
               placeholder={t("searchPlaceholder")}
-              className="h-9 border-transparent bg-muted/45 pl-8 pr-8 text-sm shadow-none focus-visible:ring-1"
+              className="h-8 border-transparent bg-muted/50 pl-8 pr-8 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-ring"
             />
             {history.search && (
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="absolute right-1 top-1/2 size-7 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
+                className="absolute right-1 top-1/2 size-6 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
                 onClick={() => history.setSearch("")}
                 aria-label={t("cancel")}
               >
@@ -106,17 +99,17 @@ export function AISessionHistoryPopover({
           </div>
         </div>
 
-        <ScrollArea className="h-[380px]">
+        <ScrollArea className="h-[360px]">
           <div className="p-2">
             {history.loading ? (
-              <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
                 <span>{t("loading")}</span>
               </div>
             ) : history.error ? (
-              <div className="px-3 py-12 text-center text-sm text-destructive">{history.error}</div>
+              <div className="px-3 py-10 text-center text-sm text-destructive">{history.error}</div>
             ) : history.items.length === 0 ? (
-              <div className="px-3 py-12 text-center text-sm text-muted-foreground">{t("sessionListEmpty")}</div>
+              <div className="px-3 py-10 text-center text-sm text-muted-foreground">{t("sessionListEmpty")}</div>
             ) : (
               <div className="space-y-1">
                 {history.items.map((item) => {
@@ -127,8 +120,8 @@ export function AISessionHistoryPopover({
                     <div
                       key={item.id}
                       className={cn(
-                        "group/session grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-lg px-2.5 py-2.5 text-left outline-none transition-colors",
-                        active ? "bg-accent text-foreground" : "hover:bg-muted/65 focus-visible:bg-muted/65",
+                        "grid cursor-pointer grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-md px-2 py-2 text-left outline-none transition-colors",
+                        active ? "bg-accent text-foreground" : "hover:bg-accent focus-visible:bg-accent",
                       )}
                       onClick={() => void onRestore(item.id)}
                       role="button"
@@ -189,30 +182,19 @@ export function AISessionHistoryPopover({
                             </Button>
                           </div>
                         ) : (
-                          <div className="flex min-w-0 items-center gap-2">
-                            <Circle className={cn("size-2 shrink-0", statusClass(item.status))} />
-                            <span className="truncate text-sm font-medium">{item.title}</span>
-                          </div>
+                          <div className="truncate text-sm font-medium">{item.title}</div>
                         )}
                         {!renaming && (
-                          <div className="mt-1.5 flex items-center gap-2 pl-4 text-[11px] text-muted-foreground">
-                            {item.scope?.server_name && (
-                              <>
-                                <span className="max-w-24 truncate">{item.scope.server_name}</span>
-                                <span aria-hidden="true">·</span>
-                              </>
-                            )}
-                            <span>{item.model}</span>
-                            <span aria-hidden="true">·</span>
+                          <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
                             <span>{t("sidebarMessageCount", { count: item.message_count })}</span>
-                            <span className="ml-auto shrink-0">{formatSessionTime(item.updated_at)}</span>
+                            <span className="shrink-0">{formatSessionTime(item.updated_at)}</span>
                           </div>
                         )}
                       </div>
 
                       {!renaming && (
                         <div
-                          className="flex shrink-0 items-start gap-0.5 opacity-0 transition-opacity group-hover/session:opacity-100 group-focus-within/session:opacity-100"
+                          className="flex shrink-0 items-start gap-0.5 opacity-100"
                           onClick={(event) => event.stopPropagation()}
                         >
                           <Button

@@ -2254,8 +2254,6 @@ const messages = {
     terminalContextHeader: "[Current Terminal Session] Default target for this request:",
     terminalContextRule:
       "Focus analysis and actions on the current terminal session. Unless the user explicitly switches targets, tool calls should prioritize this server.",
-    scopeGlobal: "Global workspace",
-    scopeCurrentTerminal: "Current terminal",
     addContext: "Add terminal context",
     contextTerminalSelection: "Current terminal selection",
     contextRecentOutput: "Last 80 terminal lines",

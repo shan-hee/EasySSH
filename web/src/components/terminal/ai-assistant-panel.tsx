@@ -5,6 +5,8 @@ import {
   Loader2,
   Plus,
   Settings2,
+  Shield,
+  Sparkles,
   Square,
   SquarePen,
   X,
@@ -13,8 +15,6 @@ import { useTranslation } from "react-i18next"
 
 import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
 import { AgentApprovalQueue } from "@/components/ai-agent/agent-approval-queue"
-import { AIAssistantCommandBar } from "@/components/ai-agent/ai-assistant-command-bar"
-import { AIModelControl, AIPermissionControl } from "@/components/ai-agent/ai-model-permission-controls"
 import { AISessionHistoryPopover } from "@/components/ai-agent/ai-session-history-popover"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
 import {
@@ -37,6 +37,11 @@ import {
 } from "@/components/ai-elements/conversation"
 import {
   PromptInput,
+  PromptInputModelSelect,
+  PromptInputModelSelectContent,
+  PromptInputModelSelectItem,
+  PromptInputModelSelectTrigger,
+  PromptInputModelSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
@@ -49,6 +54,7 @@ import {
   listAISessions as listAISessionsAPI,
   renameAISession as renameAISessionAPI,
   type AgentSessionScope,
+  type PermissionMode,
 } from "@/lib/api/ai-agent"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { cn } from "@/lib/utils"
@@ -834,42 +840,13 @@ export function AiAssistantPanel({
     terminalSession.id,
     tAI,
   ])
-  const statusLabel = tAI(
-    session?.status === "running"
-      ? "statusRunning"
-      : session?.status === "waiting_confirmation"
-        ? "statusWaitingConfirmation"
-        : session?.status === "closed"
-          ? "statusClosed"
-          : "statusIdle"
-  )
-
   const toolbar = (
-    <AIAssistantCommandBar
-      compact
-      className="terminal-ai-glass-toolbar relative z-[1]"
-      title={tAI("terminalPanelTitle")}
-      scope={terminalSession.serverName || terminalSession.host || tAI("scopeCurrentTerminal")}
-      model={(
-        <AIModelControl
-          value={resolvedModel}
-          models={modelOptions}
-          onChange={setModel}
-          disabled={!isConfigured || isConfigLoading}
-        />
-      )}
-      permission={(
-        <AIPermissionControl
-          value={permissionMode}
-          options={permissionOptions}
-          onChange={setPermissionMode}
-          disabled={!isConfigured || isConfigLoading}
-        />
-      )}
-      status={session?.status ?? "idle"}
-      statusLabel={statusLabel}
-      actions={(
-        <>
+    <div className="terminal-ai-glass-toolbar relative z-[1] flex min-h-10 shrink-0 items-center justify-between gap-3 px-3 text-foreground">
+      <div className="min-w-0">
+        <span className="truncate text-sm font-medium">{tAI("terminalPanelTitle")}</span>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
         <AISessionHistoryPopover
           activeSessionId={sessionId}
           history={history}
@@ -877,6 +854,7 @@ export function AiAssistantPanel({
           onRestore={handleRestoreSession}
           t={tAI}
           triggerClassName="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="terminal-ai-glass-popover text-popover-foreground"
         />
 
         <Button
@@ -907,9 +885,8 @@ export function AiAssistantPanel({
         >
           <X className="size-4" />
         </Button>
-        </>
-      )}
-    />
+      </div>
+    </div>
   )
 
   return (
@@ -1100,7 +1077,46 @@ export function AiAssistantPanel({
                     reference,
                   ])}
                 />
-                {!isConfigured && (isConfigLoading ? (
+                {isConfigured ? (
+                  <>
+                    <PromptInputModelSelect
+                      value={resolvedModel}
+                      onValueChange={setModel}
+                    >
+                      <PromptInputModelSelectTrigger className="h-8 max-w-[150px] gap-1.5 rounded-md px-2 text-xs">
+                        <Sparkles className="size-3.5 shrink-0" />
+                        <PromptInputModelSelectValue />
+                      </PromptInputModelSelectTrigger>
+                      <PromptInputModelSelectContent>
+                        {modelOptions.map((option) => (
+                          <PromptInputModelSelectItem key={option} value={option}>
+                            {option}
+                          </PromptInputModelSelectItem>
+                        ))}
+                      </PromptInputModelSelectContent>
+                    </PromptInputModelSelect>
+
+                    <PromptInputModelSelect
+                      value={permissionMode}
+                      onValueChange={(value) => setPermissionMode(value as PermissionMode)}
+                    >
+                      <PromptInputModelSelectTrigger
+                        className="h-8 max-w-[150px] gap-1.5 rounded-md px-2 text-xs"
+                        title={permissionOptions.find((option) => option.value === permissionMode)?.description}
+                      >
+                        <Shield className="size-3.5 shrink-0" />
+                        <PromptInputModelSelectValue />
+                      </PromptInputModelSelectTrigger>
+                      <PromptInputModelSelectContent>
+                        {permissionOptions.map((option) => (
+                          <PromptInputModelSelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </PromptInputModelSelectItem>
+                        ))}
+                      </PromptInputModelSelectContent>
+                    </PromptInputModelSelect>
+                  </>
+                ) : isConfigLoading ? (
                   <div className="flex h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground">
                     <Loader2 className="size-3.5 animate-spin" />
                     <span>{tAI("checkingConfig")}</span>
@@ -1137,7 +1153,7 @@ export function AiAssistantPanel({
                       <span>{tAI("configureAI")}</span>
                     </Link>
                   </Button>
-                ) : null)}
+                ) : null}
               </PromptInputTools>
 
               <div className="ml-auto flex items-center gap-2">
