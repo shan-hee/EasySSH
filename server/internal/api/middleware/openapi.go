@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"context"
-
 	api "github.com/easyssh/server/internal/api/openapi"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
@@ -21,9 +19,9 @@ func OpenAPIRequestValidation() gin.HandlerFunc {
 	return ginmiddleware.OapiRequestValidatorWithOptions(spec, &ginmiddleware.Options{
 		SilenceServersWarning: true,
 		Options: openapi3filter.Options{
-			AuthenticationFunc: func(context.Context, *openapi3filter.AuthenticationInput) error {
-				return nil
-			},
+			// OpenAPI validates the request shape only. The route group's Gin
+			// authentication middleware performs the actual credential check.
+			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
 		},
 		ErrorHandler: func(c *gin.Context, message string, statusCode int) {
 			c.AbortWithStatusJSON(statusCode, gin.H{
