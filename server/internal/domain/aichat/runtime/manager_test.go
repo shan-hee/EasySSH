@@ -132,6 +132,14 @@ func TestManagerAutoExecutesSafeTaskAndCompletesSession(t *testing.T) {
 
 	require.NoError(t, manager.SendUserMessage(context.Background(), userID, session.ID, "帮我看一下服务器情况"))
 
+	accepted := waitForEvent(t, events, func(evt Event) bool {
+		return evt.Type == EventSessionUpdated && evt.Session != nil
+	})
+	require.Equal(t, SessionStatusRunning, accepted.Session.Status)
+	require.Len(t, accepted.Session.Messages, 1)
+	require.Equal(t, "user", accepted.Session.Messages[0].Role)
+	require.Equal(t, "帮我看一下服务器情况", accepted.Session.Messages[0].Content)
+
 	completed := waitForEvent(t, events, func(evt Event) bool {
 		return evt.Type == EventSessionCompleted && evt.Session != nil && evt.Session.Status == SessionStatusIdle && len(evt.Session.Tasks) == 1
 	})

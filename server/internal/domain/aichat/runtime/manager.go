@@ -573,10 +573,18 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 	s.processing = true
 	s.currentRunID = runID
 	s.updatedAt = now
+	view := m.snapshotSessionLocked(s)
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
 
 	m.saveSnapshot(ctx, snapshot)
+	m.emitEvent(s, Event{
+		ID:        uuid.NewString(),
+		Type:      EventSessionUpdated,
+		SessionID: s.id,
+		CreatedAt: now,
+		Session:   &view,
+	})
 	go m.runSession(sessionID, runID)
 	return nil
 }

@@ -38,6 +38,7 @@ type EventType string
 
 const (
 	EventSessionStarted        EventType = "session.started"
+	EventSessionUpdated        EventType = "session.updated"
 	EventAssistantDelta        EventType = "assistant.delta"
 	EventAssistantCompleted    EventType = "assistant.completed"
 	EventProviderToolStarted   EventType = "provider.tool.started"

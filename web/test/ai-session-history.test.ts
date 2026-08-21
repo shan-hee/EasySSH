@@ -4,6 +4,7 @@ import { describe, it } from "node:test"
 import {
   createAISessionListItem,
   getDefaultAISessionTitle,
+  syncAISessionHistoryItems,
 } from "../src/hooks/use-ai-session-history"
 import type { CreateSessionResponse, SessionView } from "../src/lib/ai-agent-types"
 
@@ -69,5 +70,34 @@ describe("AI session history helpers", () => {
     assert.equal(item.message_count, 1)
     assert.equal(item.task_count, 1)
     assert.equal(item.custom_title, false)
+  })
+
+  it("updates a closed history list immediately after the first user message", () => {
+    const emptySession = createSession()
+    const initialItem = createAISessionListItem({
+      session_id: emptySession.id,
+      session: emptySession,
+      default_transport: "ai_sdk_ui",
+    }, "新会话")
+    const runningSession = createSession({
+      status: "running",
+      messages: [{
+        id: "client-user-message",
+        role: "user",
+        content: "检查服务器负载",
+        created_at: "2026-08-20T00:01:01Z",
+      }],
+    })
+
+    const items = syncAISessionHistoryItems(
+      [initialItem],
+      runningSession,
+      "新会话",
+      "",
+    )
+
+    assert.equal(items[0]?.title, "检查服务器负载")
+    assert.equal(items[0]?.message_count, 1)
+    assert.equal(items[0]?.status, "running")
   })
 })

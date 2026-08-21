@@ -136,6 +136,9 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
       cancelSession: async (sessionId: string) => {
         await DesktopAIService.CancelSession(sessionId)
       },
+      deleteSession: async (sessionId: string) => {
+        await DesktopAIService.DeleteSession(sessionId)
+      },
     },
     servers: {
       list: (params?: Parameters<ServerConnectionConfigsApi["list"]>[0]) => serverApi.list(params),

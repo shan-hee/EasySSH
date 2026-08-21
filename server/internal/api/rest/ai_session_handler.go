@@ -575,6 +575,16 @@ func (s *aiSDKUIMessageStreamer) writeRuntimeEvent(event runtime.Event) (bool, e
 	switch event.Type {
 	case runtime.EventSessionStarted:
 		return false, nil
+	case runtime.EventSessionUpdated:
+		if event.Session == nil {
+			return false, nil
+		}
+		return false, s.writeChunk(map[string]interface{}{
+			"type":      "data-session",
+			"id":        event.Session.ID,
+			"data":      event.Session,
+			"transient": true,
+		})
 	case runtime.EventAssistantDelta, runtime.EventAssistantCompleted:
 		if event.UIMessage != nil {
 			if err := s.writeAssistantSnapshot(*event.UIMessage); err != nil {

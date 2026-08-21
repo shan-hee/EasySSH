@@ -222,6 +222,7 @@ export function AIAssistantWorkspaceView({
     confirmTask,
     cancelSession,
     detachSession,
+    discardSessionIfEmpty,
   } = agentSession
 
   const [draft, setDraft] = useState("")
@@ -271,6 +272,7 @@ export function AIAssistantWorkspaceView({
     deleteErrorMessage: t("deleteSessionFailed"),
   })
   const {
+    forget: forgetHistorySession,
     prepend: prependHistorySession,
     syncSession: syncHistorySession,
   } = history
@@ -415,6 +417,7 @@ export function AIAssistantWorkspaceView({
 
     const submittedAttachments = detachAttachments()
     setDraft("")
+    let createdSessionId: string | null = null
 
     if (!sessionId || session?.status === "closed") {
       sessionCreatingRef.current = true
@@ -438,6 +441,7 @@ export function AIAssistantWorkspaceView({
         restoreAttachments(submittedAttachments)
         return
       }
+      createdSessionId = response.session_id
       prependSessionListItem(response)
     }
 
@@ -445,13 +449,16 @@ export function AIAssistantWorkspaceView({
     try {
       imageAttachments = await toAgentImageAttachments(submittedAttachments)
     } catch {
+      if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
+        forgetHistorySession(createdSessionId)
+      }
       setDraft((current) => current || messageText)
       restoreAttachments(submittedAttachments)
       toast.error(t("attachmentReadFailed"))
       return
     }
 
-    const sent = await sendMessage(
+    const sendResult = await sendMessage(
       normalizedDraft || t("contextOnlyPrompt"),
       contextText,
       selectedModel || undefined,
@@ -459,7 +466,10 @@ export function AIAssistantWorkspaceView({
       submittedScope,
       imageAttachments
     )
-    if (!sent) {
+    if (sendResult === "failed") {
+      if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
+        forgetHistorySession(createdSessionId)
+      }
       setDraft((current) => current || messageText)
       restoreAttachments(submittedAttachments)
     } else {

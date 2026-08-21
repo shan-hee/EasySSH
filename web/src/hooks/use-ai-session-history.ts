@@ -63,6 +63,24 @@ export function getDefaultAISessionTitle(session: SessionView, fallback: string)
   return chars.length > 40 ? `${chars.slice(0, 40).join("")}…` : firstUserMessage
 }
 
+export function syncAISessionHistoryItems(
+  items: SessionListItem[],
+  session: SessionView,
+  fallbackTitle: string,
+  search: string,
+) {
+  const existing = items.find((item) => item.id === session.id)
+  const title = existing?.custom_title
+    ? existing.title
+    : getDefaultAISessionTitle(session, fallbackTitle)
+  const next = createSessionListItemFromSession(session, title, existing?.custom_title ?? false)
+  const query = search.trim().toLocaleLowerCase()
+  if (query && !next.title.toLocaleLowerCase().includes(query)) {
+    return items.filter((item) => item.id !== session.id)
+  }
+  return [next, ...items.filter((item) => item.id !== session.id)].slice(0, SESSION_LIST_LIMIT)
+}
+
 export function useAISessionHistory({
   enabled,
   listSessions,
@@ -138,22 +156,8 @@ export function useAISessionHistory({
   }, [search])
 
   const syncSession = useCallback((session: SessionView, fallbackTitle: string) => {
-    if (!open) {
-      return
-    }
-    setItems((current) => {
-      const existing = current.find((item) => item.id === session.id)
-      const title = existing?.custom_title
-        ? existing.title
-        : getDefaultAISessionTitle(session, fallbackTitle)
-      const next = createSessionListItemFromSession(session, title, existing?.custom_title ?? false)
-      const query = search.trim().toLocaleLowerCase()
-      if (query && !next.title.toLocaleLowerCase().includes(query)) {
-        return current.filter((item) => item.id !== session.id)
-      }
-      return [next, ...current.filter((item) => item.id !== session.id)].slice(0, SESSION_LIST_LIMIT)
-    })
-  }, [open, search])
+    setItems((current) => syncAISessionHistoryItems(current, session, fallbackTitle, search))
+  }, [search])
 
   const beginRename = useCallback((item: SessionListItem) => {
     setRenamingId(item.id)
@@ -212,6 +216,13 @@ export function useAISessionHistory({
     }
   }, [actionLoadingId, cancelRename, deleteErrorMessage, deleteSession, renamingId])
 
+  const forget = useCallback((sessionId: string) => {
+    setItems((current) => current.filter((item) => item.id !== sessionId))
+    if (renamingId === sessionId) {
+      cancelRename()
+    }
+  }, [cancelRename, renamingId])
+
   return {
     open,
     setOpen,
@@ -229,6 +240,7 @@ export function useAISessionHistory({
     cancelRename,
     submitRename,
     remove,
+    forget,
     prepend,
     syncSession,
     reload,

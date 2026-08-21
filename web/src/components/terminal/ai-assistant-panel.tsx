@@ -45,9 +45,9 @@ import {
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAISessionHistory } from "@/hooks/use-ai-session-history"
 import {
-  deleteAISession,
-  listAISessions,
-  renameAISession,
+  deleteAISession as deleteAISessionAPI,
+  listAISessions as listAISessionsAPI,
+  renameAISession as renameAISessionAPI,
   type AgentSessionScope,
 } from "@/lib/api/ai-agent"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
@@ -204,10 +204,11 @@ export function AiAssistantPanel({
     confirmTask,
     cancelSession,
     detachSession,
+    discardSessionIfEmpty,
   } = agentSession
-  const listSessions = adapters?.listAISessions ?? listAISessions
-  const renameSession = adapters?.renameAISession ?? renameAISession
-  const deleteSession = adapters?.deleteAISession ?? deleteAISession
+  const listSessions = adapters?.listAISessions ?? listAISessionsAPI
+  const renameSession = adapters?.renameAISession ?? renameAISessionAPI
+  const deleteSession = adapters?.deleteAISession ?? deleteAISessionAPI
 
   const [input, setInput] = useState("")
   const attachmentLimitNotice = useCallback(() => {
@@ -277,6 +278,7 @@ export function AiAssistantPanel({
   })
   const {
     actionLoadingId: historyActionLoadingId,
+    forget: forgetHistorySession,
     prepend: prependHistorySession,
     remove: removeHistorySession,
     renamingId: historyRenamingId,
@@ -743,6 +745,7 @@ export function AiAssistantPanel({
     const submittedReferences = contextReferences
     setInput("")
     setContextReferences([])
+    let createdSessionId: string | null = null
 
     if (!session || session.status === "closed") {
       sessionCreatingRef.current = true
@@ -769,6 +772,7 @@ export function AiAssistantPanel({
       }
 
       storeTerminalAISessionId(terminalSession.id, response.session_id)
+      createdSessionId = response.session_id
       prependHistorySession(response, tAI("newSession"))
     }
 
@@ -776,6 +780,10 @@ export function AiAssistantPanel({
     try {
       imageAttachments = await toAgentImageAttachments(submittedAttachments)
     } catch {
+      if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
+        forgetHistorySession(createdSessionId)
+        removeStoredTerminalAISessionId(terminalSession.id, createdSessionId)
+      }
       setInput((current) => current || messageText)
       restoreAttachments(submittedAttachments)
       setContextReferences(submittedReferences)
@@ -783,7 +791,7 @@ export function AiAssistantPanel({
       return
     }
 
-    const sent = await sendMessage(
+    const sendResult = await sendMessage(
       normalizedInput || tAI("contextOnlyPrompt"),
       outboundContextText,
       activeModel,
@@ -791,7 +799,11 @@ export function AiAssistantPanel({
       terminalScope,
       imageAttachments
     )
-    if (!sent) {
+    if (sendResult === "failed") {
+      if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
+        forgetHistorySession(createdSessionId)
+        removeStoredTerminalAISessionId(terminalSession.id, createdSessionId)
+      }
       setInput((current) => current || messageText)
       restoreAttachments(submittedAttachments)
       setContextReferences(submittedReferences)
@@ -804,6 +816,8 @@ export function AiAssistantPanel({
     canSendToSession,
     contextReferences,
     detachAttachments,
+    discardSessionIfEmpty,
+    forgetHistorySession,
     input,
     isConfigLoading,
     isConfigured,

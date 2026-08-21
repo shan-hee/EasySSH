@@ -4,6 +4,7 @@ import { DefaultChatTransport } from "ai"
 import {
   cancelAISession,
   createAISession,
+  deleteAISession,
   deleteAIMessage,
   getAISession,
   getLatestAISession,
@@ -11,6 +12,7 @@ import {
   type AgentSessionScope,
   type AgentImageAttachment,
   type CreateSessionResponse,
+  type MessageView,
   type PermissionMode,
   type SessionView,
   type TaskView,
@@ -69,6 +71,7 @@ export interface AgentSessionAdapter {
     decision: "confirm" | "reject"
   }) => Promise<CreateSessionResponse>
   cancelSession: (sessionId: string) => Promise<void>
+  deleteSession: (sessionId: string) => Promise<void>
 }
 
 function createLocalId(prefix: string) {
@@ -158,6 +161,50 @@ function getUIMessageTextLength(message: UIMessage) {
   }, 0)
 }
 
+function isSessionView(value: unknown): value is SessionView {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+  const session = value as Partial<SessionView>
+  return typeof session.id === "string"
+    && Array.isArray(session.messages)
+    && Array.isArray(session.tasks)
+    && Array.isArray(session.ui_messages)
+}
+
+function createOptimisticUserUIMessage(
+  id: string,
+  content: string,
+  attachments: AgentImageAttachment[],
+): UIMessage {
+  return {
+    id,
+    role: "user",
+    parts: [
+      ...attachments.map((attachment) => ({
+        type: "file" as const,
+        filename: attachment.name,
+        mediaType: attachment.media_type,
+        url: `data:${attachment.media_type};base64,${attachment.data}`,
+      })),
+      ...(content ? [{ type: "text" as const, text: content }] : []),
+    ],
+  }
+}
+
+function createOptimisticUserMessage(
+  id: string,
+  content: string,
+  createdAt: string,
+): MessageView {
+  return {
+    id,
+    role: "user",
+    content,
+    created_at: createdAt,
+  }
+}
+
 export function useAgentSession(adapter?: AgentSessionAdapter) {
   const [session, setSession] = useState<SessionView | null>(null)
   const [transport, setTransport] = useState<TransportState>("idle")
@@ -213,6 +260,19 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     []
   )
 
+  const commitSessionSnapshot = useCallback((
+    nextSession: SessionView,
+    input: { syncMessages?: boolean } = {},
+  ) => {
+    closingSessionIdRef.current = null
+    sessionRef.current = nextSession
+    setSession(nextSession)
+    setTransport(getAdapterTransport(adapter))
+    syncedMessagesKeyRef.current = input.syncMessages === false
+      ? getSessionMessagesSyncKey(nextSession)
+      : null
+  }, [adapter])
+
   const refreshSessionSnapshot = useCallback(async (
     targetSessionId = sessionRef.current?.id,
     input: { syncMessages?: boolean } = {}
@@ -228,19 +288,14 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       if (closingSessionIdRef.current === targetSessionId) {
         return null
       }
-      syncedMessagesKeyRef.current = input.syncMessages === false
-        ? getSessionMessagesSyncKey(response.session)
-        : null
-      sessionRef.current = response.session
-      setSession(response.session)
-      setTransport(getAdapterTransport(adapter))
+      commitSessionSnapshot(response.session, input)
       return response.session
     } catch (refreshError) {
       const message = toErrorMessage(refreshError)
       setError(message)
       return null
     }
-  }, [adapter])
+  }, [adapter, commitSessionSnapshot])
 
   const chat = useChat<UIMessage>({
     id: chatId,
@@ -249,6 +304,11 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     onError(chatError) {
       setError(chatError.message)
       setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
+    },
+    onData(dataPart) {
+      if (dataPart.type === "data-session" && isSessionView(dataPart.data)) {
+        commitSessionSnapshot(dataPart.data, { syncMessages: false })
+      }
     },
     onFinish() {
       void refreshSessionSnapshot()
@@ -318,16 +378,10 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     response: CreateSessionResponse,
     input: { syncMessages?: boolean } = {}
   ) => {
-    closingSessionIdRef.current = null
     setError(null)
-    sessionRef.current = response.session
-    setSession(response.session)
-    setTransport(getAdapterTransport(adapter))
-    syncedMessagesKeyRef.current = input.syncMessages === false
-      ? getSessionMessagesSyncKey(response.session)
-      : null
+    commitSessionSnapshot(response.session, input)
     return response
-  }, [adapter])
+  }, [commitSessionSnapshot])
 
   const restoreLatestSession = useCallback(async (scope?: AgentSessionScope) => {
     const restoreKey = getSessionScopeKey(scope)
@@ -429,15 +483,42 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     const activeSessionId = sessionRef.current?.id
     const normalizedContent = content.trim()
     if (!activeSessionId || (!normalizedContent && attachments.length === 0)) {
-      return false
+      return "failed" as const
+    }
+
+    const createdAt = new Date().toISOString()
+    const outgoingMessageId = createLocalId("user")
+    const optimisticUIMessage = createOptimisticUserUIMessage(
+      outgoingMessageId,
+      normalizedContent,
+      attachments,
+    )
+    const activeSession = sessionRef.current
+    if (!activeSession) {
+      return "failed" as const
+    }
+    const previousMessageCount = activeSession.messages.length
+    const optimisticSession: SessionView = {
+      ...activeSession,
+      model: model || activeSession.model,
+      permission_mode: permissionMode || activeSession.permission_mode,
+      scope: scope || activeSession.scope,
+      status: "running",
+      updated_at: createdAt,
+      messages: [
+        ...activeSession.messages.filter((message) => message.id !== outgoingMessageId),
+        createOptimisticUserMessage(outgoingMessageId, normalizedContent, createdAt),
+      ],
+      ui_messages: adapter
+        ? mergeUIMessage(activeSession.ui_messages, optimisticUIMessage)
+        : activeSession.ui_messages,
     }
 
     setError(null)
-    setSession((current) => current
-      ? { ...current, status: "running", updated_at: new Date().toISOString() }
-      : current
-    )
-    setTransport(getAdapterTransport(adapter))
+    commitSessionSnapshot(optimisticSession, { syncMessages: false })
+    if (adapter) {
+      setChatMessages((current) => mergeUIMessage(current, optimisticUIMessage))
+    }
 
     try {
       if (adapter) {
@@ -451,18 +532,10 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           attachments,
         })
         applySessionResponse(response, { syncMessages: Boolean(adapter.subscribeSessionEvents) })
-        return true
+        return "sent" as const
       }
 
-      await chat.sendMessage({
-        text: normalizedContent,
-        files: attachments.map((attachment) => ({
-          type: "file" as const,
-          filename: attachment.name,
-          mediaType: attachment.media_type,
-          url: `data:${attachment.media_type};base64,${attachment.data}`,
-        })),
-      }, {
+      await chat.sendMessage(optimisticUIMessage, {
         body: {
           [TARGET_SESSION_ID_BODY_KEY]: activeSessionId,
           context: contextText,
@@ -472,14 +545,18 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           attachments,
         },
       })
-      return true
+      return "sent" as const
     } catch (sendError) {
       const message = toErrorMessage(sendError)
       pushLocalError(message)
-      void refreshSessionSnapshot(activeSessionId)
-      return false
+      const refreshed = await refreshSessionSnapshot(activeSessionId)
+      const accepted = Boolean(refreshed && (
+        refreshed.messages.some((item) => item.id === outgoingMessageId)
+        || refreshed.messages.length > previousMessageCount
+      ))
+      return accepted ? "accepted" as const : "failed" as const
     }
-  }, [adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot])
+  }, [adapter, applySessionResponse, chat, commitSessionSnapshot, pushLocalError, refreshSessionSnapshot, setChatMessages])
 
   const regenerateAfterUpdate = useCallback(async (
     activeSessionId: string,
@@ -671,6 +748,38 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     setTransport("idle")
   }, [chat])
 
+  const discardSessionIfEmpty = useCallback(async (targetSessionId: string) => {
+    if (!targetSessionId) {
+      return false
+    }
+
+    try {
+      const response = adapter
+        ? await adapter.getSession(targetSessionId)
+        : await getAISession(targetSessionId)
+      const targetSession = response.session
+      if (
+        targetSession.messages.length > 0
+        || targetSession.ui_messages.length > 0
+        || targetSession.tasks.length > 0
+      ) {
+        return false
+      }
+
+      if (adapter) {
+        await adapter.deleteSession(targetSessionId)
+      } else {
+        await deleteAISession(targetSessionId)
+      }
+      if (sessionRef.current?.id === targetSessionId) {
+        detachSession()
+      }
+      return true
+    } catch {
+      return false
+    }
+  }, [adapter, detachSession])
+
   const tasks = useMemo(
     () => [...(session?.tasks || [])].sort(compareTaskExecutionOrder),
     [session?.tasks]
@@ -710,5 +819,6 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     confirmTask,
     cancelSession,
     detachSession,
+    discardSessionIfEmpty,
   }
 }
