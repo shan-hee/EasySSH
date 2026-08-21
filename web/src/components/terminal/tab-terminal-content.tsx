@@ -11,7 +11,10 @@ import { FolderOpen, Activity, Bot } from 'lucide-react'
 import { NetworkLatencyPopover } from './network-latency-popover'
 import { WebTerminal } from './web-terminal'
 import { ServerConnectionConfigs, type ServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
-import { ConnectionLoader } from './connection-loader'
+import {
+  ConnectionLoader,
+  type ConnectionLoaderOutcome,
+} from './connection-loader'
 import { FileManagerPanel } from './file-manager-panel'
 import type { AIAssistantWorkspaceAdapters } from '@/components/ai-agent/ai-assistant-workspace-view'
 import { DockerPopover } from './docker'
@@ -48,9 +51,13 @@ const AiAssistantPanel = React.lazy(() => (
 
 const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
 const DEFAULT_TERMINAL_SFTP_INITIAL_PATH = '/root'
+const BACKGROUND_WEBGL_HIBERNATE_DELAY_MS = 5_000
 
 type ConnectionLoaderMessageKey =
   | "connectionLoaderConnecting"
+  | "connectionLoaderPreparing"
+  | "connectionLoaderTransport"
+  | "connectionLoaderSsh"
   | "connectionLoaderAuthenticating"
   | "connectionLoaderReconnecting"
   | "connectionLoaderSuccess"
@@ -64,6 +71,18 @@ type InternalBackHandler = {
 const getConnectionLoaderMessageKey = (
   phase: TerminalConnectionPhase
 ): ConnectionLoaderMessageKey => {
+  if (phase === "idle" || phase === "ticket") {
+    return "connectionLoaderPreparing"
+  }
+
+  if (phase === "ws_connecting") {
+    return "connectionLoaderTransport"
+  }
+
+  if (phase === "ssh_connecting") {
+    return "connectionLoaderSsh"
+  }
+
   if (phase === "authenticating") {
     return "connectionLoaderAuthenticating"
   }
@@ -89,6 +108,14 @@ const getConnectionLoaderExitMessageKey = (
   return "connectionLoaderSuccess"
 }
 
+const getConnectionLoaderOutcome = (
+  phase: TerminalConnectionPhase
+): ConnectionLoaderOutcome => {
+  if (phase === "failed") return "error"
+  if (phase === "closed" || phase === "idle") return "neutral"
+  return "success"
+}
+
 interface TabTerminalContentProps {
   session: TerminalSession
   isActive: boolean
@@ -97,13 +124,13 @@ interface TabTerminalContentProps {
   surface?: "normal" | "transparent"
   effectiveIsLoading: boolean
   loaderState: "entering" | "loading" | "exiting"
-  onAnimationComplete: () => void
+  onAnimationComplete: (sessionId: string) => void
   isFullscreen: boolean
-  onCommand: (command: string) => void
-  onConnectionPhaseChange: (phase: TerminalConnectionPhase) => void
-  onAuthCancelled: () => void
+  onCommand: (sessionId: string, command: string) => void
+  onConnectionPhaseChange?: (sessionId: string, phase: TerminalConnectionPhase) => void
+  onAuthCancelled?: (sessionId: string) => void
   onToggleFullscreen: () => void
-  onStartConnectionFromConfig: (server: Server) => void
+  onStartConnectionFromConfig: (sessionId: string, server: Server) => void
   serverApi?: ServerConnectionConfigsApi
   serverConfigsReady?: boolean
   aiAssistantAdapters?: AIAssistantWorkspaceAdapters
@@ -120,7 +147,7 @@ interface TabTerminalContentProps {
   onCancelExternalTransfer?: (taskId: string) => void
 }
 
-export function TabTerminalContent({
+function TabTerminalContentComponent({
   session,
   isActive,
   settings,
@@ -216,14 +243,25 @@ export function TabTerminalContent({
   const canMountAi = canRenderInlinePanels && canUseAiCapability && isActive && isTerminalSession && !effectiveIsLoading
   const canUseAi = canMountAi && isAiInputOpen
   const shouldMountAi = canMountAi && (canUseAi || hasOpenedAi)
+  // 连接覆盖层显示期间先按用户状态预留宽度，避免终端露出后再把面板从 0 推到 280px。
+  // 真实监控内容仍等服务器 ready 后挂载，连接阶段不会提前启动监控请求。
   const shouldReserveInlineMonitor =
     canRenderInlinePanels &&
     canUseMonitorCapability &&
     isDesktopLayout &&
-    hasReadyServer &&
     isDesktopMonitorOpen &&
+    (effectiveIsLoading || hasReadyServer)
+  const shouldMountInlineMonitor =
+    shouldReserveInlineMonitor &&
+    hasReadyServer &&
     !!session.serverId
-  const canUseMobileMonitor = canRenderInlinePanels && canUseMonitorCapability && canUseHeavyPanels && isMobileMonitorOpen && !isDesktopLayout
+  const shouldReserveMobileMonitor =
+    canRenderInlinePanels &&
+    canUseMonitorCapability &&
+    hasReadyServer &&
+    isMobileMonitorOpen &&
+    !isDesktopLayout
+  const canUseMobileMonitor = isActive && shouldReserveMobileMonitor
 
   useEffect(() => {
     if (!canMountFileManager) {
@@ -297,6 +335,18 @@ export function TabTerminalContent({
   const handleTerminalInputApiChange = React.useCallback((api: TerminalInputApi | null) => {
     terminalInputApiRef.current = api
   }, [])
+  const handleSessionCommand = React.useCallback((command: string) => {
+    onCommand(session.id, command)
+  }, [onCommand, session.id])
+  const handleSessionConnectionPhaseChange = React.useCallback((phase: TerminalConnectionPhase) => {
+    onConnectionPhaseChange?.(session.id, phase)
+  }, [onConnectionPhaseChange, session.id])
+  const handleSessionAuthCancelled = React.useCallback(() => {
+    onAuthCancelled?.(session.id)
+  }, [onAuthCancelled, session.id])
+  const handleStartSessionConnectionFromConfig = React.useCallback((server: Server) => {
+    onStartConnectionFromConfig(session.id, server)
+  }, [onStartConnectionFromConfig, session.id])
   const handleInsertTerminalText = React.useCallback((text: string) => {
     terminalInputApiRef.current?.insertText(text)
   }, [])
@@ -382,8 +432,7 @@ export function TabTerminalContent({
     sftpSession.cancelTransfer(taskId)
   }, [externalTransferTaskIds, onCancelExternalTransfer, sftpSession])
 
-  // 监控数据源跟随已就绪的终端页签保持订阅。
-  // 桌面端监控面板也保持实时模式，和终端一样只切换可见性，避免切回时图表从冻结快照重绘而闪一下。
+  // 监控数据源跟随已就绪的终端页签保持订阅；后台面板仅暂停图表绘制，历史仍持续积累。
   const connectedServerId =
     hasReadyServer && session.serverId
       ? session.serverId
@@ -425,15 +474,31 @@ export function TabTerminalContent({
   )
   const pathCompletionCwd = sftpSession.currentPath || sftpSessionInitialPath || initialSftpPath
   const hasBackgroundImage = isTerminalSession && settings.backgroundImage.trim().length > 0
-  const enableTerminalWebgl = true
+  const [enableTerminalWebgl, setEnableTerminalWebgl] = useState(
+    () => isActive || !settings.hibernateBackground
+  )
+
+  useEffect(() => {
+    if (isActive || !settings.hibernateBackground) {
+      setEnableTerminalWebgl(true)
+      return
+    }
+
+    const hibernateTimer = window.setTimeout(() => {
+      setEnableTerminalWebgl(false)
+    }, BACKGROUND_WEBGL_HIBERNATE_DELAY_MS)
+
+    return () => window.clearTimeout(hibernateTimer)
+  }, [isActive, settings.hibernateBackground])
   const connectionLoaderServerName =
     session.username && session.host
       ? `${session.username}@${session.host}`
       : session.serverName || session.host || session.serverId
-  const shouldRenderToolbar =
+  // 工具栏外壳始终占用固定高度；连接完成只挂载操作内容，不再改变终端可用高度。
+  const shouldReserveToolbar =
     chrome !== "content" &&
-    isTerminalSession &&
-    !effectiveIsLoading
+    isTerminalSession
+  const shouldRenderToolbarActions = !effectiveIsLoading
   const shouldRenderBody = chrome !== "toolbar"
   const shouldRenderSurface = surface !== "transparent"
 
@@ -553,7 +618,8 @@ export function TabTerminalContent({
               message={tTerminal(getConnectionLoaderMessageKey(session.connectionPhase))}
               exitMessage={tTerminal(getConnectionLoaderExitMessageKey(session.connectionPhase))}
               state={loaderState}
-              onAnimationComplete={onAnimationComplete}
+              outcome={getConnectionLoaderOutcome(session.connectionPhase)}
+              onAnimationComplete={() => onAnimationComplete(session.id)}
             />
           </div>
         )}
@@ -563,12 +629,13 @@ export function TabTerminalContent({
           shouldRenderBody ? "flex-1" : "shrink-0"
         )}>
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {shouldRenderToolbar && (
+          {shouldReserveToolbar && (
             <div
               className="flex min-h-10 items-stretch text-sm text-foreground transition-colors"
             >
               {/* 左侧工具图标组 */}
-              <div className="flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5">
+              {shouldRenderToolbarActions && (
+                <div className="flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5">
                 {canUseSftpCapability && (
                   <Button
                     variant="ghost"
@@ -622,7 +689,8 @@ export function TabTerminalContent({
                     <Bot className="h-3.5 w-3.5" />
                   </Button>
                 )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -639,9 +707,9 @@ export function TabTerminalContent({
                     : 'w-0 opacity-0 -translate-x-4'
                 )}
               >
-                {shouldReserveInlineMonitor && (
+                {shouldMountInlineMonitor && (
                   <React.Suspense fallback={null}>
-                    <MonitorPanel className="h-full min-h-0" />
+                    <MonitorPanel className="h-full min-h-0" isLive={isActive} />
                   </React.Suspense>
                 )}
               </div>
@@ -652,7 +720,7 @@ export function TabTerminalContent({
               {session.type === 'config' ? (
                 <ServerConnectionConfigs
                   key={`terminal-config-${session.id}`}
-                  onConnect={onStartConnectionFromConfig}
+                  onConnect={handleStartSessionConnectionFromConfig}
                   serverApi={serverApi}
                   ready={serverConfigsReady}
                 />
@@ -666,9 +734,9 @@ export function TabTerminalContent({
                   username={session.username}
                   isActive={isActive}
                   shouldConnect={session.shouldConnect}
-                  onConnectionPhaseChange={onConnectionPhaseChange}
-                  onAuthCancelled={onAuthCancelled}
-                  onCommand={onCommand}
+                  onConnectionPhaseChange={handleSessionConnectionPhaseChange}
+                  onAuthCancelled={handleSessionAuthCancelled}
+                  onCommand={handleSessionCommand}
                   onInputApiChange={handleTerminalInputApiChange}
                   theme={settings.theme}
                   fontSize={settings.fontSize}
@@ -693,7 +761,7 @@ export function TabTerminalContent({
               ) : null}
             </div>
 
-            {canUseMobileMonitor && (
+            {shouldReserveMobileMonitor && (
               <div
                 className={cn(
                   'absolute inset-0 z-30 overflow-hidden border-t md:hidden',
@@ -790,3 +858,6 @@ export function TabTerminalContent({
     </MonitorWebSocketProvider>
   )
 }
+
+export const TabTerminalContent = React.memo(TabTerminalContentComponent)
+TabTerminalContent.displayName = 'TabTerminalContent'

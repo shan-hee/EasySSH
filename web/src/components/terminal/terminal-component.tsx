@@ -501,6 +501,11 @@ export function TerminalComponent({
   const activeTerminalSession = active?.type === "terminal" ? active : null
   const canUseFullscreenCapability = workspace?.capabilities.fullscreen !== false
   const crossSessionTransferTasks = crossSessionTransfer.tasks
+  const clearCrossSessionCompletedTransfers = crossSessionTransfer.clearCompleted
+  const cancelCrossSessionTransfer = crossSessionTransfer.cancelDirectTransfer
+  const handleCancelCrossSessionTransfer = useCallback((taskId: string) => {
+    void cancelCrossSessionTransfer(taskId)
+  }, [cancelCrossSessionTransfer])
   const handleToggleFullscreen = useCallback(() => {
     setIsFullscreen((current) => !current)
   }, [])
@@ -750,6 +755,10 @@ export function TerminalComponent({
   const visibleExtraSessions = useMemo(
     () => extraSessions.filter((session) => !splitWorkspaceSessionIdSet.has(session.id)),
     [extraSessions, splitWorkspaceSessionIdSet]
+  )
+  const persistentTerminalSessions = useMemo(
+    () => terminalSessions.filter((session) => !splitWorkspaceSessionIdSet.has(session.id)),
+    [splitWorkspaceSessionIdSet, terminalSessions]
   )
   const isActiveExtraSessionInWorkspace = !!(
     activeExtraSession && splitWorkspaceSessionIdSet.has(activeExtraSession.id)
@@ -1409,13 +1418,13 @@ export function TerminalComponent({
         surface={surface}
         effectiveIsLoading={sessionIsLoading}
         loaderState={sessionLoaderState || "entering"}
-        onAnimationComplete={() => handleAnimationComplete(session.id)}
+        onAnimationComplete={handleAnimationComplete}
         isFullscreen={isFullscreen}
-        onCommand={(command) => handleCommand(session.id, command)}
-        onConnectionPhaseChange={(phase) => onConnectionPhaseChange?.(session.id, phase)}
-        onAuthCancelled={() => onAuthCancelled?.(session.id)}
+        onCommand={handleCommand}
+        onConnectionPhaseChange={onConnectionPhaseChange}
+        onAuthCancelled={onAuthCancelled}
         onToggleFullscreen={handleToggleFullscreen}
-        onStartConnectionFromConfig={(server) => onStartConnectionFromConfig(session.id, server)}
+        onStartConnectionFromConfig={onStartConnectionFromConfig}
         serverApi={serverApi}
         serverConfigsReady={serverConfigsReady}
         aiAssistantAdapters={aiAssistantAdapters}
@@ -1425,19 +1434,18 @@ export function TerminalComponent({
         initialSftpPath={sftpPathBySessionId[session.id] ?? DEFAULT_TERMINAL_SFTP_PATH}
         sftpRefreshRequestVersion={sftpRefreshRequests[session.id] ?? 0}
         externalTransferTasks={crossSessionTransferTasks}
-        onClearExternalCompletedTransfers={crossSessionTransfer.clearCompleted}
-        onCancelExternalTransfer={(taskId) => {
-          void crossSessionTransfer.cancelDirectTransfer(taskId)
-        }}
+        onClearExternalCompletedTransfers={clearCrossSessionCompletedTransfers}
+        onCancelExternalTransfer={handleCancelCrossSessionTransfer}
       />
     )
   }, [
-    crossSessionTransfer,
+    clearCrossSessionCompletedTransfers,
     crossSessionTransferTasks,
     handleInternalBackAvailabilityChange,
     handleAnimationComplete,
     handleCommand,
     handleInternalBackHandlerChange,
+    handleCancelCrossSessionTransfer,
     handleSftpPathChange,
     handleToggleFullscreen,
     aiAssistantAdapters,
@@ -1600,53 +1608,82 @@ export function TerminalComponent({
               <div className="flex flex-1 items-center justify-center text-muted-foreground">
                 {tTerminal("emptySessionHint")}
               </div>
-            ) : activeConfigSession ? (
-              <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-                <ServerConnectionConfigs
-                  key={`terminal-config-${activeConfigSession.id}`}
-                  onConnect={handleStartConnectionFromActiveConfig}
-                  serverApi={serverApi}
-                  ready={serverConfigsReady}
-                />
-              </div>
-            ) : isMultiSessionGrid && splitLayout ? (
-              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-                {workspaceToolbarSession && renderTerminalSessionContent(workspaceToolbarSession, "toolbar", true)}
-                <div className="relative flex min-h-0 min-w-0 flex-1 overflow-auto p-2">
-                  <SessionSplitView
-                    node={splitLayout}
-                    renderLeaf={renderSplitLeaf}
-                    onResize={handleSplitResize}
-                    hiddenSessionId={hiddenSplitSessionId}
-                  />
-                </div>
-              </div>
-            ) : activeExtraSession ? (
-              <div
-                data-extra-session-id={activeExtraSession.id}
-                className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
-                onMouseDown={() => setActiveSessionFromUser(activeExtraSession.id)}
-              >
-                {renderExtraSessionContent?.(
-                  activeExtraSession,
-                  getExtraSessionRenderOptions(activeExtraSession, "normal")
-                )}
-              </div>
             ) : (
-              activeTerminalSession && (
-                <div
-                  data-split-session-id={activeTerminalSession.id}
-                  className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
-                  onMouseDown={() => setActiveSessionFromUser(activeTerminalSession.id)}
-                >
-                  <SessionSplitDropOverlay
-                    side={tabDropTargetId === activeTerminalSession.id ? tabDropSide : null}
-                    edgeInset="workspace"
-                    topOffset={40}
-                  />
-                  {renderTerminalSessionContent(activeTerminalSession, "full", true)}
-                </div>
-              )
+              <>
+                {/*
+                  普通终端页签始终保留各自的组件树，切换时只改变可见性。
+                  这样监控 Provider、图表历史和 xterm 实例都不会因页签切换而重建；
+                  已进入分屏工作区的会话由 SessionSplitView 唯一挂载，避免重复实例。
+                */}
+                {persistentTerminalSessions.map((session) => {
+                  const isVisible = !!(
+                    activeTerminalSession?.id === session.id &&
+                    !isMultiSessionGrid
+                  )
+
+                  return (
+                    <div
+                      key={session.id}
+                      data-split-session-id={session.id}
+                      aria-hidden={!isVisible}
+                      className={cn(
+                        "absolute inset-0 min-h-0 min-w-0 overflow-hidden",
+                        isVisible
+                          ? "visible z-10"
+                          : "invisible z-0 pointer-events-none"
+                      )}
+                      onMouseDown={isVisible ? () => setActiveSessionFromUser(session.id) : undefined}
+                    >
+                      {isVisible && (
+                        <SessionSplitDropOverlay
+                          side={tabDropTargetId === session.id ? tabDropSide : null}
+                          edgeInset="workspace"
+                          topOffset={40}
+                        />
+                      )}
+                      {renderTerminalSessionContent(session, "full", isVisible)}
+                    </div>
+                  )
+                })}
+
+                {activeConfigSession && (
+                  <div className="absolute inset-0 z-20 min-h-0 min-w-0 overflow-hidden">
+                    <ServerConnectionConfigs
+                      key={`terminal-config-${activeConfigSession.id}`}
+                      onConnect={handleStartConnectionFromActiveConfig}
+                      serverApi={serverApi}
+                      ready={serverConfigsReady}
+                    />
+                  </div>
+                )}
+
+                {isMultiSessionGrid && splitLayout && (
+                  <div className="absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col overflow-hidden">
+                    {workspaceToolbarSession && renderTerminalSessionContent(workspaceToolbarSession, "toolbar", true)}
+                    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-auto p-2">
+                      <SessionSplitView
+                        node={splitLayout}
+                        renderLeaf={renderSplitLeaf}
+                        onResize={handleSplitResize}
+                        hiddenSessionId={hiddenSplitSessionId}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {activeExtraSession && !isMultiSessionGrid && (
+                  <div
+                    data-extra-session-id={activeExtraSession.id}
+                    className="absolute inset-0 z-20 min-h-0 min-w-0 overflow-hidden"
+                    onMouseDown={() => setActiveSessionFromUser(activeExtraSession.id)}
+                  >
+                    {renderExtraSessionContent?.(
+                      activeExtraSession,
+                      getExtraSessionRenderOptions(activeExtraSession, "normal")
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

@@ -1,15 +1,53 @@
-
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, type CSSProperties } from "react"
+import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import {
+  Check,
+  CircleX,
+  Server as ServerIcon,
+  SquareTerminal,
+  Unplug,
+} from "lucide-react"
 import { useTranslation } from "react-i18next"
 
+import { motionDurations, motionEase } from "@/lib/motion"
+
 type LoaderState = "entering" | "loading" | "exiting"
+
+export type ConnectionLoaderOutcome = "success" | "error" | "neutral"
 
 interface ConnectionLoaderProps {
   serverName?: string
   message?: string
   exitMessage?: string
   state?: LoaderState
+  outcome?: ConnectionLoaderOutcome
   onAnimationComplete?: () => void
+}
+
+type ConnectionLoaderStyle = CSSProperties & {
+  "--connection-accent": string
+}
+
+const getOutcomeAccent = (outcome: ConnectionLoaderOutcome) => {
+  switch (outcome) {
+    case "success":
+      return "var(--status-connected)"
+    case "error":
+      return "var(--status-danger)"
+    default:
+      return "var(--muted-foreground)"
+  }
+}
+
+const getOutcomeIcon = (outcome: ConnectionLoaderOutcome) => {
+  switch (outcome) {
+    case "success":
+      return Check
+    case "error":
+      return CircleX
+    default:
+      return Unplug
+  }
 }
 
 export function ConnectionLoader({
@@ -17,456 +55,170 @@ export function ConnectionLoader({
   message,
   exitMessage,
   state = "loading",
-  onAnimationComplete
+  outcome = "success",
+  onAnimationComplete,
 }: ConnectionLoaderProps) {
   const { t } = useTranslation("terminal")
-  const [animationState, setAnimationState] = useState<LoaderState>(state)
-  const isEnteringRef = useRef(false)  // 标记是否正在播放进入动画
-  const pendingExitRef = useRef(false) // 缓存待执行的退出请求
+  const shouldReduceMotion = useReducedMotion()
+  const exitCompletedRef = useRef(false)
+  const isExiting = state === "exiting"
+  const displayMessage = isExiting
+    ? exitMessage ?? t("connectionLoaderSuccess")
+    : message ?? t("connectionLoaderConnecting")
+  const accentColor = isExiting
+    ? getOutcomeAccent(outcome)
+    : "var(--primary)"
+  const OutcomeIcon = getOutcomeIcon(outcome)
 
-  // 处理外部 state 变化
+  const completeExit = useCallback(() => {
+    if (exitCompletedRef.current) return
+    exitCompletedRef.current = true
+    onAnimationComplete?.()
+  }, [onAnimationComplete])
+
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null
-
-    if (state === "entering") {
-      timer = setTimeout(() => {
-        setAnimationState("entering")
-      }, 0)
-      isEnteringRef.current = true
-      pendingExitRef.current = false
-    } else if (state === "exiting") {
-      // 如果正在播放进入动画，缓存退出请求
-      if (isEnteringRef.current) {
-        pendingExitRef.current = true
-      } else {
-        // 否则立即切换到退出
-        timer = setTimeout(() => {
-          setAnimationState("exiting")
-        }, 0)
-      }
-    } else {
-      timer = setTimeout(() => {
-        setAnimationState(state)
-      }, 0)
+    if (!isExiting) {
+      exitCompletedRef.current = false
     }
+  }, [isExiting])
 
-    return () => {
-      if (timer) {
-        clearTimeout(timer)
-      }
-    }
-  }, [state])
-
-  // 处理动画状态转换
-  useEffect(() => {
-    if (animationState === "entering") {
-      const timer = setTimeout(() => {
-        isEnteringRef.current = false
-
-        // 进入动画完成，检查是否有待执行的退出
-        if (pendingExitRef.current) {
-          setAnimationState("exiting")
-          pendingExitRef.current = false
-        } else {
-          setAnimationState("loading")
-        }
-      }, 500)
-      return () => clearTimeout(timer)
-    } else if (animationState === "exiting") {
-      const timer = setTimeout(() => {
-        onAnimationComplete?.()
-      }, 500)
-      return () => clearTimeout(timer)
-    }
-  }, [animationState, onAnimationComplete])
-
-  // 根据状态计算飞船的样式（只有飞船移动）
-  const getSpaceshipStyle = (): React.CSSProperties => {
-    switch (animationState) {
-      case "entering":
-        return {
-          animation: "slide-in-from-left 0.5s linear forwards"
-        }
-      case "loading":
-        return {}
-      case "exiting":
-        return {
-          animation: "slide-out-to-right 0.5s linear forwards"
-        }
-      default:
-        return {}
-    }
+  const loaderStyle: ConnectionLoaderStyle = {
+    "--connection-accent": accentColor,
   }
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-background transition-colors [--loader-color:var(--foreground)]">
-      {/* 动画背景线条：所有阶段都显示。为避免首帧闪线，给每条线加内联 transform 初始在屏外 */}
-      <div className="longfazers absolute inset-0" data-state={animationState}>
-        <span className="longfazer-1" style={{ transform: 'translateX(120vw)' }} />
-        <span className="longfazer-2" style={{ transform: 'translateX(120vw)' }} />
-        <span className="longfazer-3" style={{ transform: 'translateX(120vw)' }} />
-        <span className="longfazer-4" style={{ transform: 'translateX(120vw)' }} />
-      </div>
-
-      {/* 飞船动画 - 绝对定位，独立移动 */}
-      <div
-        className="spaceship-wrapper"
-        style={getSpaceshipStyle()}
+    <div
+      className="relative h-full w-full overflow-hidden text-foreground"
+      style={loaderStyle}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-busy={!isExiting}
+      aria-label={`${displayMessage}: ${serverName ?? t("connectionLoaderServerFallback")}`}
+    >
+      <motion.div
+        className="absolute inset-0 flex items-center justify-center bg-background px-5 py-10"
+        initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.985 }}
+        animate={isExiting
+          ? { opacity: 0, scale: shouldReduceMotion ? 1 : 1.01 }
+          : { opacity: 1, scale: 1 }}
+        transition={{
+          duration: shouldReduceMotion ? 0 : motionDurations.state,
+          ease: motionEase,
+        }}
+        onAnimationComplete={() => {
+          if (isExiting) completeExit()
+        }}
       >
-        <div className="spaceship-container">
-          <div className="body">
-            <span className="body-main">
-              <span />
-              <span />
-              <span />
-              <span />
-            </span>
-            <div className="base">
-              <span />
-              <div className="face" />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background: "radial-gradient(circle at 50% 46%, color-mix(in oklab, var(--connection-accent) 10%, transparent), transparent 48%)",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 opacity-[0.035]"
+          style={{
+            backgroundImage: "linear-gradient(to right, var(--foreground) 1px, transparent 1px), linear-gradient(to bottom, var(--foreground) 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
+            maskImage: "radial-gradient(circle at center, black, transparent 72%)",
+          }}
+        />
+
+        <div className="relative z-10 flex w-full max-w-xl flex-col items-center">
+          <div className="flex h-14 w-full items-center justify-center" aria-hidden="true">
+            <div className="relative flex size-12 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-card/70 text-foreground shadow-sm backdrop-blur-sm sm:size-14">
+              <SquareTerminal className="size-5 sm:size-6" strokeWidth={1.7} />
+              <span className="absolute -bottom-1 -right-1 size-3 rounded-full border-2 border-background bg-status-connected" />
+            </div>
+
+            <div className="relative mx-4 h-8 w-[clamp(7rem,28vw,18rem)] overflow-hidden sm:mx-6">
+              <div className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-border" />
+              <motion.div
+                className="absolute left-[-34%] top-1/2 h-px w-1/3 -translate-y-1/2"
+                style={{
+                  background: "linear-gradient(90deg, transparent, var(--connection-accent))",
+                }}
+                animate={isExiting
+                  ? { x: "400%", opacity: outcome === "success" ? 1 : 0.45 }
+                  : shouldReduceMotion
+                    ? { x: "200%", opacity: 0.7 }
+                    : { x: ["0%", "400%"], opacity: [0, 1, 1, 0] }}
+                transition={isExiting
+                  ? { duration: shouldReduceMotion ? 0 : motionDurations.state, ease: motionEase }
+                  : shouldReduceMotion
+                    ? { duration: 0 }
+                    : {
+                        duration: 1.35,
+                        ease: "linear",
+                        repeat: Infinity,
+                        times: [0, 0.14, 0.82, 1],
+                      }}
+              >
+                <span
+                  className="absolute right-0 top-1/2 size-1.5 -translate-y-1/2 rounded-full"
+                  style={{
+                    backgroundColor: "var(--connection-accent)",
+                    boxShadow: "0 0 16px color-mix(in oklab, var(--connection-accent) 70%, transparent)",
+                  }}
+                />
+              </motion.div>
+            </div>
+
+            <div className="relative flex size-12 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-card/70 text-foreground shadow-sm backdrop-blur-sm sm:size-14">
+              <motion.span
+                className="pointer-events-none absolute inset-0 rounded-2xl border"
+                style={{ borderColor: "var(--connection-accent)" }}
+                animate={isExiting
+                  ? { opacity: [0.55, 0], scale: [1, 1.22] }
+                  : shouldReduceMotion
+                    ? { opacity: 0.3, scale: 1 }
+                    : { opacity: [0.15, 0.5, 0.15], scale: [1, 1.08, 1] }}
+                transition={isExiting
+                  ? { duration: shouldReduceMotion ? 0 : motionDurations.layout, ease: motionEase }
+                  : shouldReduceMotion
+                    ? { duration: 0 }
+                    : { duration: 1.8, ease: "easeInOut", repeat: Infinity }}
+              />
+              <AnimatePresence mode="sync" initial={false}>
+                <motion.span
+                  key={isExiting ? outcome : "connecting"}
+                  className="absolute inset-0 flex items-center justify-center"
+                  initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
+                  transition={{ duration: shouldReduceMotion ? 0 : motionDurations.press, ease: motionEase }}
+                  style={isExiting ? { color: "var(--connection-accent)" } : undefined}
+                >
+                  {isExiting
+                    ? <OutcomeIcon className="size-5 sm:size-6" strokeWidth={1.8} />
+                    : <ServerIcon className="size-5 sm:size-6" strokeWidth={1.7} />}
+                </motion.span>
+              </AnimatePresence>
             </div>
           </div>
+
+          <div className="relative mt-8 h-12 w-full text-center">
+            <AnimatePresence mode="sync" initial={false}>
+              <motion.p
+                key={displayMessage}
+                className="absolute inset-x-0 top-0 truncate text-sm font-medium tracking-wide text-foreground"
+                initial={shouldReduceMotion ? false : { opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+                transition={{ duration: shouldReduceMotion ? 0 : motionDurations.press, ease: motionEase }}
+              >
+                {displayMessage}
+              </motion.p>
+            </AnimatePresence>
+            <p className="absolute inset-x-0 top-7 truncate font-mono text-xs text-muted-foreground">
+              {serverName ?? t("connectionLoaderServerFallback")}
+            </p>
+          </div>
         </div>
-      </div>
-
-      {/* 文字信息 - 绝对定位，固定在中间 */}
-      <div className="text-wrapper">
-        <h1 className="text-sm font-semibold uppercase tracking-wider text-foreground">
-          {animationState === "exiting"
-            ? exitMessage ?? t("connectionLoaderSuccess")
-            : message ?? t("connectionLoaderConnecting")}
-        </h1>
-        <p className="font-mono text-xs text-muted-foreground">
-          {serverName ?? t("connectionLoaderServerFallback")}
-        </p>
-      </div>
-
-      <style>{`
-        .spaceship-wrapper {
-          position: absolute;
-          top: calc(50% - 60px);
-          left: 50%;
-          margin-left: -60px;
-          width: 120px;
-          height: 40px;
-          z-index: 10;
-        }
-
-        .spaceship-container {
-          position: relative;
-          width: 100%;
-          height: 100%;
-        }
-
-        .text-wrapper {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, 20px);
-          text-align: center;
-          z-index: 10;
-        }
-
-        .text-wrapper h1 {
-          margin-bottom: 8px;
-        }
-
-        /* 进入和退出动画 - 飞船水平移动，无淡入淡出 */
-        @keyframes slide-in-from-left {
-          from {
-            transform: translateX(calc(-50vw ));
-          }
-          to {
-            transform: translateX(0);
-          }
-        }
-
-        @keyframes slide-out-to-right {
-          from {
-            transform: translateX(0);
-          }
-          to {
-            transform: translateX(calc(50vw));
-          }
-        }
-
-        .body {
-          position: absolute;
-          left: 50%;
-          top: 50%;
-          margin-left: -50px;
-          margin-top: -20px;
-          animation: speeder 0.4s linear infinite;
-        }
-
-        .body .body-main {
-          height: 5px;
-          width: 35px;
-          background: var(--loader-color);
-          position: absolute;
-          top: -19px;
-          left: 60px;
-          border-radius: 2px 10px 1px 0;
-        }
-
-        .base {
-          position: relative;
-        }
-
-        .base span {
-          position: absolute;
-          width: 0;
-          height: 0;
-          border-top: 6px solid transparent;
-          border-right: 100px solid var(--loader-color);
-          border-bottom: 6px solid transparent;
-        }
-
-        .base span:before {
-          content: "";
-          height: 22px;
-          width: 22px;
-          border-radius: 50%;
-          background: var(--loader-color);
-          position: absolute;
-          right: -110px;
-          top: -16px;
-        }
-
-        .base span:after {
-          content: "";
-          position: absolute;
-          width: 0;
-          height: 0;
-          border-top: 0 solid transparent;
-          border-right: 55px solid var(--loader-color);
-          border-bottom: 16px solid transparent;
-          top: -16px;
-          right: -98px;
-        }
-
-        .face {
-          position: absolute;
-          height: 12px;
-          width: 20px;
-          background: var(--loader-color);
-          border-radius: 20px 20px 0 0;
-          transform: rotate(-40deg);
-          right: -125px;
-          top: -15px;
-        }
-
-        .face:after {
-          content: "";
-          height: 12px;
-          width: 12px;
-          background: var(--loader-color);
-          right: 4px;
-          top: 7px;
-          position: absolute;
-          transform: rotate(40deg);
-          transform-origin: 50% 50%;
-          border-radius: 0 0 0 2px;
-        }
-
-        .body .body-main > span {
-          width: 30px;
-          height: 1px;
-          background: var(--loader-color);
-          position: absolute;
-        }
-
-        .body .body-main > span:nth-child(1) {
-          animation: fazer1 0.2s linear infinite;
-        }
-
-        .body .body-main > span:nth-child(2) {
-          top: 3px;
-          animation: fazer2 0.4s linear infinite;
-        }
-
-        .body .body-main > span:nth-child(3) {
-          top: 1px;
-          animation: fazer3 0.4s linear infinite;
-          animation-delay: -1s;
-        }
-
-        .body .body-main > span:nth-child(4) {
-          top: 4px;
-          animation: fazer4 1s linear infinite;
-          animation-delay: -1s;
-        }
-
-        @keyframes fazer1 {
-          0% {
-            left: 0;
-            opacity: 1;
-          }
-          100% {
-            left: -80px;
-            opacity: 0;
-          }
-        }
-
-        @keyframes fazer2 {
-          0% {
-            left: 0;
-            opacity: 1;
-          }
-          100% {
-            left: -100px;
-            opacity: 0;
-          }
-        }
-
-        @keyframes fazer3 {
-          0% {
-            left: 0;
-            opacity: 1;
-          }
-          100% {
-            left: -50px;
-            opacity: 0;
-          }
-        }
-
-        @keyframes fazer4 {
-          0% {
-            left: 0;
-            opacity: 1;
-          }
-          100% {
-            left: -150px;
-            opacity: 0;
-          }
-        }
-
-        @keyframes speeder {
-          0% {
-            transform: translate(2px, 1px) rotate(0deg);
-          }
-          10% {
-            transform: translate(-1px, -3px) rotate(-1deg);
-          }
-          20% {
-            transform: translate(-2px, 0px) rotate(1deg);
-          }
-          30% {
-            transform: translate(1px, 2px) rotate(0deg);
-          }
-          40% {
-            transform: translate(1px, -1px) rotate(1deg);
-          }
-          50% {
-            transform: translate(-1px, 3px) rotate(-1deg);
-          }
-          60% {
-            transform: translate(-1px, 1px) rotate(0deg);
-          }
-          70% {
-            transform: translate(3px, 1px) rotate(-1deg);
-          }
-          80% {
-            transform: translate(-2px, -1px) rotate(1deg);
-          }
-          90% {
-            transform: translate(2px, 1px) rotate(0deg);
-          }
-          100% {
-            transform: translate(1px, -2px) rotate(-1deg);
-          }
-        }
-
-        .longfazers {
-          position: absolute;
-          width: 100%;
-          height: 100%;
-        }
-
-        .longfazers span {
-          position: absolute;
-          height: 2px;
-          width: 20%;
-          background: var(--loader-color);
-          box-shadow: 0 0 10px color-mix(in oklch, var(--loader-color) 50%, transparent);
-          /* 首帧就在屏幕外：用 transform 而不是 left，通常更稳定且更早生效 */
-          left: 0;
-          /* 使用视口单位，确保一定在屏幕外开始 */
-          transform: translateX(120vw);
-          animation-fill-mode: both;
-          will-change: transform, opacity;
-          pointer-events: none;
-        }
-
-        .longfazer-1 {
-          top: 20%;
-          animation: lf 0.6s linear infinite;
-          animation-delay: -5s;
-        }
-
-        .longfazer-2 {
-          top: 40%;
-          animation: lf2 0.8s linear infinite;
-          animation-delay: -1s;
-        }
-
-        .longfazer-3 {
-          top: 60%;
-          animation: lf3 0.6s linear infinite;
-        }
-
-        .longfazer-4 {
-          top: 80%;
-          animation: lf4 0.5s linear infinite;
-          animation-delay: -3s;
-        }
-
-        /* 退出阶段：速度线加速（动画时长缩短约一半） */
-        .longfazers[data-state='exiting'] .longfazer-1 { animation-duration: 0.35s; }
-        .longfazers[data-state='exiting'] .longfazer-2 { animation-duration: 0.40s; }
-        .longfazers[data-state='exiting'] .longfazer-3 { animation-duration: 0.35s; }
-        .longfazers[data-state='exiting'] .longfazer-4 { animation-duration: 0.25s; }
-
-        @keyframes lf {
-          0% {
-            transform: translateX(120vw);
-          }
-          100% {
-            transform: translateX(-120vw);
-            opacity: 0;
-          }
-        }
-
-        @keyframes lf2 {
-          0% {
-            transform: translateX(120vw);
-          }
-          100% {
-            transform: translateX(-120vw);
-            opacity: 0;
-          }
-        }
-
-        @keyframes lf3 {
-          0% {
-            transform: translateX(120vw);
-          }
-          100% {
-            transform: translateX(-120vw);
-            opacity: 0;
-          }
-        }
-
-        @keyframes lf4 {
-          0% {
-            transform: translateX(120vw);
-          }
-          100% {
-            transform: translateX(-120vw);
-            opacity: 0;
-          }
-        }
-      `}</style>
+      </motion.div>
     </div>
   )
 }

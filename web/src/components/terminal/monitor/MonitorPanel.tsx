@@ -70,7 +70,7 @@ interface MonitorPanelProps {
  * 宽度: 280px (固定宽度)
  * 高度: 跟随父容器，按可用高度切换 full / compact / mini 三档
  */
-export const MonitorPanel: React.FC<MonitorPanelProps> = ({
+const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
   className,
   isLive = true,
 }) => {
@@ -283,4 +283,5 @@ export const MonitorPanel: React.FC<MonitorPanelProps> = ({
   );
 };
 
+export const MonitorPanel = React.memo(MonitorPanelComponent);
 MonitorPanel.displayName = 'MonitorPanel';
