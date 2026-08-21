@@ -1208,6 +1208,8 @@ components:
           $ref: '#/components/schemas/AIPermissionMode'
         status:
           $ref: '#/components/schemas/AISessionStatus'
+        scope:
+          $ref: '#/components/schemas/AISessionScope'
         title:
           type: string
           description: 会话标题。未手动命名时从首条用户消息生成。

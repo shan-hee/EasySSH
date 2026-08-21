@@ -85,6 +85,7 @@ export interface SessionListItem {
   model: string
   permission_mode: PermissionMode
   status: AgentSessionStatus
+  scope?: AgentSessionScope
   title: string
   custom_title: boolean
   message_count: number

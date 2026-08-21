@@ -442,6 +442,7 @@ export class DesktopAISessionListItem {
     "model": string;
     "permission_mode": DesktopAIPermissionMode;
     "status": DesktopAISessionStatus;
+    "scope"?: DesktopAISessionScope | null;
     "title": string;
     "custom_title": boolean;
     "message_count": number;
@@ -489,7 +490,11 @@ export class DesktopAISessionListItem {
      * Creates a new DesktopAISessionListItem instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopAISessionListItem {
+        const $$createField4_0 = $$createType2;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("scope" in $$parsedSource) {
+            $$parsedSource["scope"] = $$createField4_0($$parsedSource["scope"]);
+        }
         return new DesktopAISessionListItem($$parsedSource as Partial<DesktopAISessionListItem>);
     }
 }

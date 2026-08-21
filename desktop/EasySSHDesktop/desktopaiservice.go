@@ -194,6 +194,7 @@ type DesktopAISessionListItem struct {
 	Model          string                  `json:"model"`
 	PermissionMode DesktopAIPermissionMode `json:"permission_mode"`
 	Status         DesktopAISessionStatus  `json:"status"`
+	Scope          *DesktopAISessionScope  `json:"scope,omitempty"`
 	Title          string                  `json:"title"`
 	CustomTitle    bool                    `json:"custom_title"`
 	MessageCount   int                     `json:"message_count"`
@@ -529,7 +530,8 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 		if err := rows.Scan(&id, &title, &customTitle, &model, &permissionMode, &scopeJSON, &status, &messagesJSON, &tasksJSON, &createdAt, &updatedAt); err != nil {
 			return DesktopAIListSessionsResult{}, err
 		}
-		if !desktopAIScopeMatches(decodeDesktopAIScope(scopeJSON), params) {
+		scope := decodeDesktopAIScope(scopeJSON)
+		if !desktopAIScopeMatches(scope, params) {
 			continue
 		}
 		sessionStatus := s.activeDesktopAISessionStatus(id, DesktopAISessionStatus(status))
@@ -547,6 +549,7 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 			Model:          model,
 			PermissionMode: DesktopAIPermissionMode(permissionMode),
 			Status:         sessionStatus,
+			Scope:          scope,
 			Title:          desktopAISessionTitle(title, customTitle == 1, messages),
 			CustomTitle:    customTitle == 1,
 			MessageCount:   len(messages),

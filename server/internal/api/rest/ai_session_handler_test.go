@@ -179,7 +179,7 @@ func chatRequestBody(content string, extra map[string]interface{}) map[string]in
 	return body
 }
 
-func TestAISessionHandlerCreateSendConfirmAndClose(t *testing.T) {
+func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 	userID := uuid.New()
 	runner := &restFakeTurnRunner{
 		scripts: []restFakeTurnScript{
@@ -327,7 +327,10 @@ func TestAISessionHandlerUpdateAndDeleteUserMessage(t *testing.T) {
 	var created CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(createResp.Body.Bytes(), &created))
 
-	sendResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.SessionID+"/chat", chatRequestBody("你是谁", nil))
+	sendBody := chatRequestBody("你是谁", nil)
+	clientMessageID, ok := sendBody["messageId"].(string)
+	require.True(t, ok)
+	sendResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.SessionID+"/chat", sendBody)
 	require.Equal(t, http.StatusOK, sendResp.Code)
 
 	latestResp := performJSONRequest(t, router, http.MethodGet, "/sessions/"+created.SessionID, nil)
@@ -336,6 +339,7 @@ func TestAISessionHandlerUpdateAndDeleteUserMessage(t *testing.T) {
 	require.NoError(t, json.Unmarshal(latestResp.Body.Bytes(), &latest))
 	require.Len(t, latest.Session.Messages, 2)
 	userMessageID := latest.Session.Messages[0].ID
+	require.Equal(t, clientMessageID, userMessageID)
 
 	updateResp := performJSONRequest(t, router, http.MethodPatch, "/sessions/"+created.SessionID+"/messages/"+userMessageID, map[string]interface{}{
 		"content": "你能做什么",

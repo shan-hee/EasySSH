@@ -103,6 +103,7 @@ type SessionListItem struct {
 	Model          string        `json:"model"`
 	PermissionMode string        `json:"permission_mode"`
 	Status         SessionStatus `json:"status"`
+	Scope          SessionScope  `json:"scope,omitempty"`
 	Title          string        `json:"title"`
 	CustomTitle    bool          `json:"custom_title"`
 	MessageCount   int           `json:"message_count"`
@@ -157,6 +158,7 @@ type CreateSessionInput struct {
 }
 
 type SendUserMessageInput struct {
+	MessageID      string
 	Content        string
 	Attachments    []provider.Attachment
 	Context        string

@@ -3527,6 +3527,7 @@ export interface components {
             model: string;
             permission_mode: components["schemas"]["AIPermissionMode"];
             status: components["schemas"]["AISessionStatus"];
+            scope?: components["schemas"]["AISessionScope"];
             /** @description 会话标题。未手动命名时从首条用户消息生成。 */
             title: string;
             /** @description 是否为用户手动重命名的标题。 */

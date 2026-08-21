@@ -541,6 +541,10 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 
 	now := time.Now()
 	runID := uuid.NewString()
+	messageID := strings.TrimSpace(input.MessageID)
+	if messageID == "" {
+		messageID = uuid.NewString()
+	}
 	if model != "" {
 		s.model = model
 	}
@@ -558,7 +562,7 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 		Attachments: append([]provider.Attachment(nil), input.Attachments...),
 	})
 	s.messageViews = append(s.messageViews, MessageView{
-		ID:          uuid.NewString(),
+		ID:          messageID,
 		Role:        "user",
 		Content:     content,
 		Attachments: attachmentViews(input.Attachments),
@@ -801,74 +805,6 @@ func (m *Manager) CancelSession(ctx context.Context, userID uuid.UUID, sessionID
 		Session:   &view,
 	})
 	return nil
-}
-
-func (m *Manager) CloseSession(userID uuid.UUID, sessionID string) error {
-	s, err := m.getOrRestoreSession(context.Background(), userID, sessionID)
-	if err != nil {
-		return err
-	}
-
-	m.closeSession(s)
-	return nil
-}
-
-func (m *Manager) closeSession(s *session) {
-	m.mu.Lock()
-	if s.closed {
-		m.mu.Unlock()
-		return
-	}
-	s.closed = true
-	s.status = SessionStatusClosed
-	s.updatedAt = time.Now()
-	cancel := s.currentRun
-	toolCancel := s.toolRunCancel
-	s.currentRun = nil
-	s.currentRunID = ""
-	s.toolRunCtx = nil
-	s.toolRunCancel = nil
-	s.toolRunID = ""
-	s.activeToolRuns = 0
-	s.processing = false
-	s.pendingContext = ""
-	cancelledTasks := m.cancelActiveTasksLocked(s, s.updatedAt)
-	view := m.snapshotSessionLocked(s)
-	snapshot := m.snapshotForPersistenceLocked(s)
-	subs := cloneSubscribersLocked(s)
-	s.subscribers = make(map[string]chan Event)
-	delete(m.sessions, s.id)
-	m.mu.Unlock()
-
-	if cancel != nil {
-		cancel()
-	}
-	if toolCancel != nil {
-		toolCancel()
-	}
-
-	m.saveSnapshot(context.Background(), snapshot)
-	for _, task := range cancelledTasks {
-		m.emitToSubscribers(subs, Event{
-			ID:        uuid.NewString(),
-			Type:      EventTaskUpdated,
-			SessionID: s.id,
-			CreatedAt: time.Now(),
-			Task:      &task,
-			UIMessage: aichatui.TaskMessagePtr(task),
-		})
-	}
-	m.emitToSubscribers(subs, Event{
-		ID:        uuid.NewString(),
-		Type:      EventSessionCompleted,
-		SessionID: s.id,
-		CreatedAt: time.Now(),
-		Session:   &view,
-	})
-
-	for _, ch := range subs {
-		close(ch)
-	}
 }
 
 func (m *Manager) runSession(sessionID, runID string) {
@@ -1780,6 +1716,7 @@ func sessionListItemFromSnapshot(snapshot SessionSnapshot) SessionListItem {
 		Model:          snapshot.Model,
 		PermissionMode: snapshot.PermissionMode,
 		Status:         snapshot.Status,
+		Scope:          snapshot.Scope,
 		Title:          title,
 		CustomTitle:    customTitle,
 		MessageCount:   len(snapshot.MessageViews),

@@ -224,6 +224,7 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			userID,
 			sessionID,
 			runtime.SendUserMessageInput{
+				MessageID:      req.MessageID,
 				Content:        action.content,
 				Attachments:    action.attachments,
 				Context:        req.Context,
@@ -416,27 +417,6 @@ func (h *AISessionHandler) DeleteMessage(c *gin.Context) {
 		Session:          view,
 		DefaultTransport: view.DefaultTransport,
 	})
-}
-
-func (h *AISessionHandler) CloseSession(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
-
-	sessionID := strings.TrimSpace(c.Param("session_id"))
-	if sessionID == "" {
-		RespondError(c, http.StatusBadRequest, "invalid_session_id", "session_id is required")
-		return
-	}
-
-	if err := h.manager.CloseSession(userID, sessionID); err != nil {
-		h.respondRuntimeError(c, err)
-		return
-	}
-
-	RespondNoContent(c)
 }
 
 type aiSDKChatAction struct {
