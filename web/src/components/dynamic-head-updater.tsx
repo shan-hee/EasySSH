@@ -1,6 +1,7 @@
 
 import { useEffect, useRef } from "react"
 import { useSystemConfig } from "@/contexts/system-config-context"
+import { DEFAULT_BRAND_ICON, DEFAULT_BRAND_NAME } from "@/lib/brand"
 
 /**
  * 动态页面头部更新组件
@@ -14,38 +15,40 @@ export function DynamicHeadUpdater() {
     if (!config) return
 
     // 更新页面标题
-    document.title = config.system_name
+    document.title = config.system_name || DEFAULT_BRAND_NAME
 
     // 更新favicon
-    if (config.system_favicon) {
-      // 查找或创建favicon link
-      let faviconLink = faviconLinkRef.current
+    const faviconUrl = config.system_favicon?.trim() || DEFAULT_BRAND_ICON
+    // 查找或创建favicon link
+    let faviconLink = faviconLinkRef.current
+
+    if (!faviconLink) {
+      // 尝试找到现有的favicon
+      faviconLink = document.querySelector("link[rel*='icon']") as HTMLLinkElement
 
       if (!faviconLink) {
-        // 尝试找到现有的favicon
-        faviconLink = document.querySelector("link[rel*='icon']") as HTMLLinkElement
-
-        if (!faviconLink) {
-          // 如果不存在,创建新的
-          faviconLink = document.createElement("link")
-          faviconLink.rel = "icon"
-          document.head.appendChild(faviconLink)
-        }
-
-        faviconLinkRef.current = faviconLink
+        // 如果不存在,创建新的
+        faviconLink = document.createElement("link")
+        faviconLink.rel = "icon"
+        document.head.appendChild(faviconLink)
       }
 
-      // 更新href
-      faviconLink.href = config.system_favicon
+      faviconLinkRef.current = faviconLink
+    }
 
-      // 根据文件扩展名设置type
-      if (config.system_favicon.endsWith(".svg")) {
-        faviconLink.type = "image/svg+xml"
-      } else if (config.system_favicon.endsWith(".png")) {
-        faviconLink.type = "image/png"
-      } else if (config.system_favicon.endsWith(".ico")) {
-        faviconLink.type = "image/x-icon"
-      }
+    // 更新href
+    faviconLink.href = faviconUrl
+
+    // 根据文件扩展名设置type
+    const faviconPath = faviconUrl.split(/[?#]/, 1)[0]?.toLowerCase() ?? ""
+    if (faviconPath.endsWith(".svg")) {
+      faviconLink.type = "image/svg+xml"
+    } else if (faviconPath.endsWith(".png")) {
+      faviconLink.type = "image/png"
+    } else if (faviconPath.endsWith(".ico")) {
+      faviconLink.type = "image/x-icon"
+    } else {
+      faviconLink.removeAttribute("type")
     }
   }, [config])
 

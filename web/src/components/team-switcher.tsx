@@ -10,14 +10,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { useSystemConfig } from "@/contexts/system-config-context"
+import { DEFAULT_BRAND_LOGO, DEFAULT_BRAND_NAME } from "@/lib/brand"
 
 export const TeamSwitcher = React.memo(function TeamSwitcher({
   teams,
 }: {
   teams: {
     name: string
-    logo: React.ElementType
-    plan: string
   }[]
 }) {
   const { toggleSidebar, state } = useSidebar()
@@ -56,8 +55,8 @@ export const TeamSwitcher = React.memo(function TeamSwitcher({
             <div className="flex aspect-square size-8 items-center justify-center rounded-lg relative">
               {/* 默认显示的logo */}
               <img
-                src={config?.system_logo || "/logo.svg"}
-                alt={`${config?.system_name || "EasySSH"} Logo`}
+                src={config?.system_logo || DEFAULT_BRAND_LOGO}
+                alt={`${config?.system_name || DEFAULT_BRAND_NAME} Logo`}
                 width={24}
                 height={24}
                 className="size-6 group-data-[collapsible=icon]:group-hover:opacity-0 transition-opacity"

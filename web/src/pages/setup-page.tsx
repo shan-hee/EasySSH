@@ -14,6 +14,7 @@ import LightRays from "@/components/LightRays"
 import { AuthI18nProvider } from "@/providers/auth-i18n-provider"
 import { beginAuthenticatedSession } from "@/lib/auth-session-activity"
 import { resumeSessionRefresh } from "@/lib/session-refresh"
+import { DEFAULT_BRAND_LOGO } from "@/lib/brand"
 
 type RunMode = "demo" | "development" | "production"
 
@@ -193,7 +194,7 @@ function SetupPageInner() {
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="flex size-16 items-center justify-center">
                 <img
-                  src="/logo.svg"
+                  src={DEFAULT_BRAND_LOGO}
                   alt="EasySSH Logo"
                   width={64}
                   height={64}

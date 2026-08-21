@@ -11,6 +11,7 @@ import { useSystemConfig } from "@/contexts/system-config-context"
 import { authApi } from "@/lib/api/auth"
 import { getErrorMessage } from "@/lib/error-utils"
 import { AuthPageFooter } from "@/components/auth-page-footer"
+import { DEFAULT_BRAND_LOGO, DEFAULT_BRAND_NAME } from "@/lib/brand"
 
 export function ForgotPasswordForm({
   className,
@@ -145,8 +146,8 @@ export function ForgotPasswordForm({
               <div className="flex flex-col items-center gap-3">
                 <div className="flex size-16 items-center justify-center">
                   <img
-                    src={config?.system_logo || "/logo.svg"}
-                    alt={`${config?.system_name || "EasySSH"} Logo`}
+                    src={config?.system_logo || DEFAULT_BRAND_LOGO}
+                    alt={`${config?.system_name || DEFAULT_BRAND_NAME} Logo`}
                     width={64}
                     height={64}
                     className="size-16 transition-opacity duration-200"

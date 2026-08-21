@@ -1,6 +1,5 @@
 
 import * as React from "react"
-import { Server } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { NavMain } from "@/components/nav-main"
@@ -21,6 +20,7 @@ import { useClientAuth } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { useRuntime } from "@/shell/runtime/runtime-provider"
 import { buildNavigationGroups } from "@/shell/navigation/navigation-registry"
+import { DEFAULT_BRAND_NAME } from "@/lib/brand"
 
 export const AppSidebar = React.memo(function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useClientAuth()
@@ -40,10 +40,8 @@ export const AppSidebar = React.memo(function AppSidebar({ ...props }: React.Com
 
   // 动态构建 teams 数据
   const teamsData = React.useMemo(() => [{
-    name: config?.system_name || "EasySSH",
-    logo: Server,
-    plan: tNav("planPro"),
-  }], [config?.system_name, tNav])
+    name: config?.system_name || DEFAULT_BRAND_NAME,
+  }], [config?.system_name])
 
   // 构建真实用户数据
   const userData = React.useMemo(() => {

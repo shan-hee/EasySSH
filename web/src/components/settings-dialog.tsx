@@ -84,6 +84,7 @@ import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 import { generateCodeVerifier, deriveCodeChallenge } from "@/lib/pkce"
 import { appVersion, getCurrentYear } from "@/lib/app-metadata"
+import { DEFAULT_BRAND_LOGO, DEFAULT_BRAND_NAME } from "@/lib/brand"
 
 /**
  * 从错误对象安全提取错误消息
@@ -2281,8 +2282,8 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                       <div className="mb-4">
                         <div className="inline-flex items-center justify-center w-16 h-16 mb-3">
                           <img
-                            src={config?.system_logo || "/logo.svg"}
-                            alt={`${config?.system_name || "EasySSH"} Logo`}
+                            src={config?.system_logo || DEFAULT_BRAND_LOGO}
+                            alt={`${config?.system_name || DEFAULT_BRAND_NAME} Logo`}
                             width={64}
                             height={64}
                             className="w-16 h-16"

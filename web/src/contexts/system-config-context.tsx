@@ -3,6 +3,11 @@ import { createContext, useCallback, useContext, useState, useEffect, type React
 import { useLocation } from "react-router-dom"
 import type { SystemConfig } from "@/lib/api/settings"
 import { authApi, type AuthStatusResponse, type User } from "@/lib/api/auth"
+import {
+  DEFAULT_BRAND_ICON,
+  DEFAULT_BRAND_LOGO,
+  DEFAULT_BRAND_NAME,
+} from "@/lib/brand"
 import { useAuthStore } from "@/stores/auth-store"
 
 /**
@@ -46,9 +51,9 @@ interface SystemConfigProviderProps {
 
 // 默认系统配置（用于未能从后端获取配置时的兜底）
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
-  system_name: "EasySSH",
-  system_logo: "/logo.svg",
-  system_favicon: "/favicon.ico",
+  system_name: DEFAULT_BRAND_NAME,
+  system_logo: DEFAULT_BRAND_LOGO,
+  system_favicon: DEFAULT_BRAND_ICON,
   default_language: "zh-CN",
   default_timezone: "Asia/Shanghai",
   date_format: "YYYY-MM-DD HH:mm:ss",
@@ -61,6 +66,7 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   transfer_max_storage_gb: 10,
   transfer_max_concurrency: 2,
   transfer_cleanup_enabled: true,
+  job_queue_max_concurrency: 2,
   tab_session: {
     max_tabs: 50,
     inactive_minutes: 60,
