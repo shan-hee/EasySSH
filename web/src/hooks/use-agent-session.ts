@@ -3,7 +3,6 @@ import { useChat, type UIMessage } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import {
   cancelAISession,
-  closeAISession,
   createAISession,
   deleteAIMessage,
   getAISession,
@@ -18,6 +17,7 @@ import {
   type ToolView,
 } from "@/lib/api/ai-agent"
 import { authenticatedFetch, getApiUrl } from "@/lib/api-client"
+import { resolveOutgoingUserMessageId } from "@/lib/ai-agent/message-transport"
 
 type TransportState = "idle" | "connecting" | "ai_sdk_ui" | "desktop_local"
 const TARGET_SESSION_ID_BODY_KEY = "__easyssh_target_session_id"
@@ -69,7 +69,6 @@ export interface AgentSessionAdapter {
     decision: "confirm" | "reject"
   }) => Promise<CreateSessionResponse>
   cancelSession: (sessionId: string) => Promise<void>
-  closeSession: (sessionId: string) => Promise<void>
 }
 
 function createLocalId(prefix: string) {
@@ -90,8 +89,28 @@ function getSessionChatApi(sessionId?: string | null) {
 
 function getSessionMessagesSyncKey(session: SessionView) {
   const messages = session.ui_messages ?? []
+  const lastMessage = messages.at(-1)
+  const lastTextLength = lastMessage ? getUIMessageTextLength(lastMessage) : 0
+  const lastPart = lastMessage?.parts.at(-1) as { state?: unknown; toolCallId?: unknown } | undefined
 
-  return `${session.id}:${JSON.stringify(messages)}`
+  return [
+    session.id,
+    session.updated_at,
+    messages.length,
+    lastMessage?.id ?? "",
+    lastMessage?.parts.length ?? 0,
+    lastTextLength,
+    typeof lastPart?.state === "string" ? lastPart.state : "",
+    typeof lastPart?.toolCallId === "string" ? lastPart.toolCallId : "",
+  ].join(":")
+}
+
+function getSessionScopeKey(scope?: AgentSessionScope) {
+  return [
+    scope?.kind ?? "global",
+    scope?.terminal_session_id?.trim() ?? "",
+    scope?.server_id?.trim() ?? "",
+  ].join(":")
 }
 
 function getAdapterTransport(adapter?: AgentSessionAdapter): TransportState {
@@ -139,52 +158,13 @@ function getUIMessageTextLength(message: UIMessage) {
   }, 0)
 }
 
-function getUIMessageText(message: UIMessage) {
-  return message.parts
-    .map((part) => ("text" in part && typeof part.text === "string" ? part.text : ""))
-    .join("")
-}
-
-function resolveUserMessageId(session: SessionView | null, uiMessages: UIMessage[], messageId: string) {
-  const sessionMessages = session?.messages ?? []
-  if (sessionMessages.some((message) => message.id === messageId)) {
-    return messageId
-  }
-
-  const uiMessageIndex = uiMessages.findIndex((message) => message.id === messageId && message.role === "user")
-  if (uiMessageIndex >= 0) {
-    const userMessageIndex = uiMessages
-      .slice(0, uiMessageIndex + 1)
-      .filter((message) => message.role === "user")
-      .length - 1
-    const sessionUserMessage = sessionMessages.filter((message) => message.role === "user")[userMessageIndex]
-    if (sessionUserMessage?.id) {
-      return sessionUserMessage.id
-    }
-  }
-
-  const uiMessage = uiMessages.find((message) => message.id === messageId && message.role === "user")
-  const content = uiMessage ? getUIMessageText(uiMessage).trim() : ""
-  if (content) {
-    const matches = sessionMessages.filter((message) => (
-      message.role === "user" && message.content.trim() === content
-    ))
-    if (matches.length === 1) {
-      return matches[0].id
-    }
-  }
-
-  return messageId
-}
-
 export function useAgentSession(adapter?: AgentSessionAdapter) {
   const [session, setSession] = useState<SessionView | null>(null)
   const [transport, setTransport] = useState<TransportState>("idle")
   const [error, setError] = useState<string | null>(null)
-  const [localErrorMessages, setLocalErrorMessages] = useState<UIMessage[]>([])
 
   const sessionRef = useRef<SessionView | null>(null)
-  const latestRestoreAttemptedRef = useRef(false)
+  const lastRestoreKeyRef = useRef<string | null>(null)
   const closingSessionIdRef = useRef<string | null>(null)
   const syncedMessagesKeyRef = useRef<string | null>(null)
   const idleChatIdRef = useRef(createLocalId("agent-chat"))
@@ -225,7 +205,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
             id: options.id,
             messages: requestMessages,
             trigger: options.trigger,
-            messageId: options.messageId,
+            messageId: resolveOutgoingUserMessageId(latestMessage, options.messageId),
           },
         }
       },
@@ -327,25 +307,12 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
   const pushLocalError = useCallback((message: string) => {
     setError(message)
-    setLocalErrorMessages((current) => [
-      ...current,
-      {
-        id: createLocalId("error"),
-        role: "assistant",
-        metadata: {
-          source: "local-error",
-          createdAt: new Date().toISOString(),
-        },
-        parts: [
-          {
-            type: "data-error",
-            id: createLocalId("error-part"),
-            data: { message },
-          },
-        ],
-      } satisfies UIMessage,
-    ])
   }, [])
+
+  const clearError = useCallback(() => {
+    setError(null)
+    chat.clearError()
+  }, [chat])
 
   const applySessionResponse = useCallback((
     response: CreateSessionResponse,
@@ -353,7 +320,6 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   ) => {
     closingSessionIdRef.current = null
     setError(null)
-    setLocalErrorMessages([])
     sessionRef.current = response.session
     setSession(response.session)
     setTransport(getAdapterTransport(adapter))
@@ -364,11 +330,12 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   }, [adapter])
 
   const restoreLatestSession = useCallback(async (scope?: AgentSessionScope) => {
-    if (latestRestoreAttemptedRef.current || sessionRef.current || transport !== "idle") {
+    const restoreKey = getSessionScopeKey(scope)
+    if (lastRestoreKeyRef.current === restoreKey || sessionRef.current || transport !== "idle") {
       return false
     }
 
-    latestRestoreAttemptedRef.current = true
+    lastRestoreKeyRef.current = restoreKey
     setTransport("connecting")
 
     try {
@@ -414,9 +381,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   }, [adapter, applySessionResponse, pushLocalError])
 
   const startNewSession = useCallback(async (input: { model?: string; permissionMode?: PermissionMode; scope?: AgentSessionScope }) => {
-    latestRestoreAttemptedRef.current = true
+    lastRestoreKeyRef.current = getSessionScopeKey(input.scope)
     setError(null)
-    setLocalErrorMessages([])
     setTransport("connecting")
 
     const currentSession = sessionRef.current
@@ -586,21 +552,20 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return false
     }
 
-    const canonicalMessageId = resolveUserMessageId(sessionRef.current, chat.messages, messageId)
     setError(null)
     setTransport(getAdapterTransport(adapter))
     try {
       const response = adapter
         ? await adapter.updateMessage({
           session_id: activeSessionId,
-          message_id: canonicalMessageId,
+          message_id: messageId,
           content: normalizedContent,
         })
-        : await updateAIMessage(activeSessionId, canonicalMessageId, { content: normalizedContent })
+        : await updateAIMessage(activeSessionId, messageId, { content: normalizedContent })
       applySessionResponse(response)
       setChatMessages(response.session.ui_messages || [])
       if (input.regenerate !== false) {
-        void regenerateAfterUpdate(activeSessionId, canonicalMessageId, normalizedContent, input)
+        void regenerateAfterUpdate(activeSessionId, messageId, normalizedContent, input)
       }
       return true
     } catch (updateError) {
@@ -609,7 +574,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       void refreshSessionSnapshot(activeSessionId)
       return false
     }
-  }, [adapter, applySessionResponse, chat.messages, pushLocalError, refreshSessionSnapshot, regenerateAfterUpdate, setChatMessages])
+  }, [adapter, applySessionResponse, pushLocalError, refreshSessionSnapshot, regenerateAfterUpdate, setChatMessages])
 
   const deleteMessage = useCallback(async (messageId: string) => {
     const activeSessionId = sessionRef.current?.id
@@ -617,16 +582,15 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return false
     }
 
-    const canonicalMessageId = resolveUserMessageId(sessionRef.current, chat.messages, messageId)
     setError(null)
     setTransport(getAdapterTransport(adapter))
     try {
       const response = adapter
         ? await adapter.deleteMessage({
           session_id: activeSessionId,
-          message_id: canonicalMessageId,
+          message_id: messageId,
         })
-        : await deleteAIMessage(activeSessionId, canonicalMessageId)
+        : await deleteAIMessage(activeSessionId, messageId)
       applySessionResponse(response)
       return true
     } catch (deleteError) {
@@ -635,7 +599,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       void refreshSessionSnapshot(activeSessionId)
       return false
     }
-  }, [adapter, applySessionResponse, chat.messages, pushLocalError, refreshSessionSnapshot])
+  }, [adapter, applySessionResponse, pushLocalError, refreshSessionSnapshot])
 
   const confirmTask = useCallback(async (taskId: string, decision: "confirm" | "reject") => {
     const activeSessionId = sessionRef.current?.id
@@ -686,59 +650,43 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return
     }
 
-    try {
-      if (adapter) {
-        await adapter.cancelSession(activeSessionId)
-      } else {
-        await chat.stop()
-        await cancelAISession(activeSessionId)
-      }
-      await refreshSessionSnapshot(activeSessionId)
-    } catch (cancelError) {
-      const message = toErrorMessage(cancelError)
-      pushLocalError(message)
+    const results = adapter
+      ? await Promise.allSettled([adapter.cancelSession(activeSessionId)])
+      : await Promise.allSettled([chat.stop(), cancelAISession(activeSessionId)])
+    await refreshSessionSnapshot(activeSessionId)
+
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected")
+    if (failure) {
+      pushLocalError(toErrorMessage(failure.reason))
     }
   }, [adapter, chat, pushLocalError, refreshSessionSnapshot])
 
-  const closeSession = useCallback(async () => {
-    const activeSessionId = sessionRef.current?.id
-    if (activeSessionId) {
-      closingSessionIdRef.current = activeSessionId
-      try {
-        if (adapter) {
-          await adapter.closeSession(activeSessionId)
-        } else {
-          await closeAISession(activeSessionId)
-        }
-      } catch {
-        // ignore close errors for local detach
-      }
-    }
-
+  const detachSession = useCallback(() => {
+    closingSessionIdRef.current = sessionRef.current?.id ?? null
     setSession(null)
     sessionRef.current = null
     setError(null)
-    setLocalErrorMessages([])
     chat.setMessages([])
     syncedMessagesKeyRef.current = null
-    closingSessionIdRef.current = null
-    latestRestoreAttemptedRef.current = true
     setTransport("idle")
-  }, [adapter, chat])
+  }, [chat])
 
   const tasks = useMemo(
     () => [...(session?.tasks || [])].sort(compareTaskExecutionOrder),
     [session?.tasks]
   )
-  const pendingConfirmationTasks = tasks.filter((task) => task.status === "waiting_confirm")
-  const availableTools: ToolView[] = session?.available_tools || []
+  const pendingConfirmationTasks = useMemo(
+    () => tasks.filter((task) => task.status === "waiting_confirm"),
+    [tasks]
+  )
+  const availableTools = useMemo<ToolView[]>(
+    () => session?.available_tools ?? [],
+    [session?.available_tools]
+  )
   const canSend = Boolean(sessionId) && session?.status === "idle" && (Boolean(adapter) || chat.status === "ready")
-  const snapshotMessages = session?.ui_messages || []
-  const uiMessages = adapter
-    ? adapter.subscribeSessionEvents
-      ? [...chat.messages, ...localErrorMessages]
-      : [...snapshotMessages, ...localErrorMessages]
-    : [...chat.messages, ...localErrorMessages]
+  const uiMessages = adapter && !adapter.subscribeSessionEvents
+    ? session?.ui_messages ?? []
+    : chat.messages
 
   return {
     session,
@@ -751,6 +699,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     pendingConfirmationTasks,
     availableTools,
     error,
+    clearError,
     canSend,
     restoreLatestSession,
     restoreSession,
@@ -760,6 +709,6 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     deleteMessage,
     confirmTask,
     cancelSession,
-    closeSession,
+    detachSession,
   }
 }

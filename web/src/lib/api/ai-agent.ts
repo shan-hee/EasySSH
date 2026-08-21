@@ -100,7 +100,3 @@ export async function deleteAIMessage(sessionId: string, messageId: string): Pro
     method: "DELETE",
   })
 }
-
-export async function closeAISession(sessionId: string): Promise<void> {
-  await deleteAISession(sessionId)
-}

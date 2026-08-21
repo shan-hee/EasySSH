@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/tooltip"
 import type { Server as ManagedServer } from "@/lib/api"
 import { getServerDisplayName, getServerShortName } from "@/lib/server-utils"
-import { attachmentDataURL, formatFileSize, type ComposerAttachment } from "./attachments"
+import { formatFileSize, type ComposerAttachment } from "./attachments"
 
 type ComposerTranslate = TFunction<"aiAssistant">
 
@@ -197,7 +197,7 @@ export function ComposerReferenceChips({
                     aria-label={`${t("attachedImage")}: ${attachment.name}`}
                   >
                     <img
-                      src={attachmentDataURL(attachment)}
+                      src={attachment.previewUrl}
                       alt=""
                       className="size-5 rounded object-cover"
                     />
@@ -247,7 +247,7 @@ export function ComposerReferenceChips({
             <AttachmentImagePreview
               key={previewAttachment.id}
               name={previewAttachment.name}
-              src={attachmentDataURL(previewAttachment) || ""}
+              src={previewAttachment.previewUrl || ""}
             />
           </DialogContent>
         )}

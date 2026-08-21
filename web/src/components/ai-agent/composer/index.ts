@@ -1,4 +1,6 @@
 export * from "./attachments"
 export * from "./composer-reference-chips"
 export * from "./context"
+export * from "./context-references"
 export * from "./prompt-template-grid"
+export * from "./use-composer-attachments"

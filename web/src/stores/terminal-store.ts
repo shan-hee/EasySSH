@@ -64,6 +64,7 @@ export interface TerminalInstanceState {
   createdAt: number
   serverId?: string  // 记录关联的服务器 ID
   latency?: TerminalLatencyData
+  cwd?: string
 }
 
 /**
@@ -109,6 +110,8 @@ interface TerminalStoreState {
 
   // 更新终端链路延迟
   updateLatency: (sessionId: string, latency: Partial<TerminalLatencyData>) => void
+
+  updateCwd: (sessionId: string, cwd?: string) => void
 
   // 销毁终端实例（页签关闭时调用）
   destroySession: (sessionId: string) => void
@@ -227,6 +230,16 @@ export const useTerminalStore = create<TerminalStoreState>((set, get) => ({
         }
       })
       return { terminals: newTerminals }
+    })
+  },
+
+  updateCwd: (sessionId: string, cwd?: string) => {
+    set((state) => {
+      const instance = state.terminals.get(sessionId)
+      if (!instance || instance.cwd === cwd) return state
+      const next = new Map(state.terminals)
+      next.set(sessionId, { ...instance, cwd })
+      return { terminals: next }
     })
   },
 

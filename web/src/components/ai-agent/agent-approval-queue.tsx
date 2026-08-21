@@ -3,7 +3,7 @@ import { getToolName, isToolUIPart, type UIMessage } from "ai"
 import { Check, ShieldAlert, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import type { TaskView } from "@/lib/api/ai-agent"
+import type { AgentSessionScope, TaskView } from "@/lib/api/ai-agent"
 import type { TimelineTranslate } from "@/lib/ai-agent/timeline-utils"
 import { cn } from "@/lib/utils"
 
@@ -96,6 +96,7 @@ export function AgentApprovalQueue({
   onConfirmTask,
   compact = false,
   className,
+  scope,
 }: {
   tasks: TaskView[]
   messages: UIMessage[]
@@ -103,6 +104,7 @@ export function AgentApprovalQueue({
   onConfirmTask: (taskId: string, decision: ApprovalDecision) => boolean | Promise<boolean>
   compact?: boolean
   className?: string
+  scope?: AgentSessionScope
 }) {
   const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(() => new Set())
   const confirmationTasks = useMemo(
@@ -129,6 +131,19 @@ export function AgentApprovalQueue({
   }
 
   const description = getTaskDescription(task)
+  const taskCwd = typeof task.arguments?.cwd === "string"
+    ? task.arguments.cwd
+    : typeof task.arguments?.working_directory === "string"
+      ? task.arguments.working_directory
+      : undefined
+  const argumentTarget = typeof task.arguments?.server_name === "string"
+    ? task.arguments.server_name
+    : typeof task.arguments?.server_id === "string"
+      ? task.arguments.server_id
+      : typeof task.arguments?.host === "string"
+        ? task.arguments.host
+        : undefined
+  const targetLabel = argumentTarget || scope?.server_name || scope?.host
   const submitDecision = async (decision: ApprovalDecision) => {
     const submittedTaskId = task.id
     setHiddenTaskIds((current) => new Set(current).add(submittedTaskId))
@@ -200,6 +215,11 @@ export function AgentApprovalQueue({
               {description}
             </div>
           )}
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            {targetLabel && <span>{tText("approvalTarget")}: {targetLabel}</span>}
+            {taskCwd && <span>{tText("approvalWorkingDirectory")}: {taskCwd}</span>}
+            <span>{tText(task.dangerous ? "approvalImpactDangerous" : "approvalImpactRoutine")}</span>
+          </div>
         </div>
         <div className={cn(
           "flex shrink-0 items-center gap-1.5 self-center",

@@ -1,5 +1,6 @@
 
 import {
+  memo,
   useEffect,
   useMemo,
   useState,
@@ -165,25 +166,6 @@ function toolError(part: AgentToolPart) {
 
 function isToolPending(state: AgentToolPart["state"]) {
   return state !== "output-available" && state !== "output-error" && state !== "output-denied"
-}
-
-export function getAgentToolActivity(messages: UIMessage[]) {
-  let hasToolParts = false
-  let hasActiveTools = false
-
-  for (const message of messages) {
-    for (const part of message.parts) {
-      if (!isToolUIPart(part)) {
-        continue
-      }
-      hasToolParts = true
-      if (isToolPending(part.state)) {
-        hasActiveTools = true
-      }
-    }
-  }
-
-  return { hasActiveTools, hasToolParts }
 }
 
 function translateWithFallback(
@@ -675,10 +657,16 @@ function ToolGroupView({
   tText: TimelineTranslate
 }) {
   const { stopScroll } = useStickToBottomContext()
-  const [groupOpen, setGroupOpen] = useState(false)
-  const [openToolIds, setOpenToolIds] = useState<Set<string>>(() => new Set())
-  const completedCount = parts.filter((part) => part.state === "output-available").length
-  const pendingCount = parts.filter((part) => isToolPending(part.state)).length
+  const [groupOpen, setGroupOpen] = useState(() => parts.some((part) => part.state !== "output-available"))
+  const [openToolIds, setOpenToolIds] = useState<Set<string>>(() => new Set(
+    parts
+      .filter((part) => part.state !== "output-available")
+      .map((part) => part.toolCallId)
+  ))
+  const { completedCount, pendingCount } = useMemo(() => ({
+    completedCount: parts.filter((part) => part.state === "output-available").length,
+    pendingCount: parts.filter((part) => isToolPending(part.state)).length,
+  }), [parts])
 
   const setToolOpen = (toolCallId: string, open: boolean) => {
     setOpenToolIds((current) => {
@@ -755,7 +743,7 @@ function ToolGroupView({
   )
 }
 
-function ChatMessage({
+const ChatMessage = memo(function ChatMessage({
   message,
   tText,
   onUpdateUserMessage,
@@ -776,6 +764,7 @@ function ChatMessage({
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [copied, setCopied] = useState(false)
+  const renderSegments = useMemo(() => createMessageRenderSegments(message), [message])
 
   useEffect(() => {
     if (!isEditing) {
@@ -872,7 +861,10 @@ function ChatMessage({
   }
 
   return (
-    <Message from={message.role} className={compact ? "max-w-full" : "max-w-[90%]"}>
+    <Message
+      from={message.role}
+      className={cn("ai-command-message", compact ? "max-w-full" : "max-w-[90%]")}
+    >
       <MessageContent
         className={cn(
           message.role === "user" && "whitespace-pre-wrap break-words leading-6",
@@ -894,7 +886,7 @@ function ChatMessage({
             disabled={actionDisabled}
           />
         ) : (
-          createMessageRenderSegments(message).map((segment) => (
+          renderSegments.map((segment) => (
             segment.type === "tool-group" ? (
               <ToolGroupView
                 key={`${message.id}:tools:${segment.parts[0]?.toolCallId ?? segment.startIndex}`}
@@ -914,7 +906,7 @@ function ChatMessage({
         )}
       </MessageContent>
       {isUserMessage && (
-        <MessageActions className="ml-auto pr-1 text-muted-foreground">
+        <MessageActions className="ml-auto pr-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 max-md:opacity-100">
           {isEditing ? (
             <>
               <MessageAction
@@ -975,7 +967,7 @@ function ChatMessage({
       )}
     </Message>
   )
-}
+})
 
 export function AgentAIElementsTimeline({
   messages,
@@ -988,7 +980,10 @@ export function AgentAIElementsTimeline({
   className,
 }: AgentAIElementsTimelineProps) {
   const [renderedTailCount, setRenderedTailCount] = useState(MESSAGE_RENDER_BATCH)
-  const renderableMessages = messages.filter(hasRenderableContent)
+  const renderableMessages = useMemo(
+    () => messages.filter(hasRenderableContent),
+    [messages]
+  )
   const shouldShowLoadingIndicator = assistantLoadingState !== false
   const hiddenMessageCount = Math.max(0, renderableMessages.length - renderedTailCount)
   const displayedMessages = useMemo(
@@ -1044,6 +1039,8 @@ export function AgentAIElementsTimeline({
             <div className="terminal-ai-glass-status inline-flex min-h-9 items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-foreground">
               <Loader2 className="size-3.5 animate-spin" />
               {assistantLoadingState === "thinking" && <span>{tText("panelThinking")}</span>}
+              {assistantLoadingState === "waiting" && <span>{tText("responseWaiting")}</span>}
+              {assistantLoadingState === "generating" && <span>{tText("responseGenerating")}</span>}
             </div>
           </MessageContent>
         </Message>

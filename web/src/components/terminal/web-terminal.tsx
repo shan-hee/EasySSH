@@ -28,6 +28,7 @@ import type { Terminal } from "@xterm/xterm"
 import { TerminalThemeProvider } from "@/contexts/terminal-theme-context"
 import { useTerminalAuthFlow, type TerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
+import { useTerminalStore } from "@/stores/terminal-store"
 import { useTerminalInstance } from "@/hooks/useTerminalInstance"
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
 import { createWorkspaceTerminalAuthTicketProviderAdapter } from "@/lib/session/workspace-adapters"
@@ -130,6 +131,7 @@ export function WebTerminal({
   const { t: tTerminal } = useTranslation("terminal")
   const workspace = useOptionalSshWorkspace()
   const workspaceTerminalApi = workspace?.adapters.apiClient?.terminal
+  const updateTerminalCwd = useTerminalStore((state) => state.updateCwd)
   if (workspace?.layout === "desktop" && !workspaceTerminalApi?.createWebSocketUrl) {
     throw new Error("Desktop terminal requires a desktop terminal WebSocket adapter")
   }
@@ -195,7 +197,8 @@ export function WebTerminal({
 
   useEffect(() => {
     osc7CwdRef.current = undefined
-  }, [serverId, sessionId])
+    updateTerminalCwd(sessionId, undefined)
+  }, [serverId, sessionId, updateTerminalCwd])
 
   useEffect(() => {
     if (!terminal) return
@@ -207,13 +210,14 @@ export function WebTerminal({
       }
 
       osc7CwdRef.current = cwd
+      updateTerminalCwd(sessionId, cwd)
       return true
     })
 
     return () => {
       disposable.dispose()
     }
-  }, [terminal])
+  }, [sessionId, terminal, updateTerminalCwd])
 
   const effectiveAuthFlowAdapters = useTerminalAuthFlowAdapters({ authFlowAdapters })
   const terminalAuthTicketProvider = useMemo(

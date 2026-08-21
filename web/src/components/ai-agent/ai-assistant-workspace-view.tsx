@@ -1,24 +1,25 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent, type SyntheticEvent } from "react"
-import { ArrowLeft, Check, History, Loader2, Pencil, Plus, RefreshCw, Search, Send, Server as ServerIcon, Settings2, Square, SquarePen, Trash2, X } from "lucide-react"
+import { ArrowLeft, Loader2, Plus, RefreshCw, Send, Server as ServerIcon, Settings2, Square, SquarePen, X } from "lucide-react"
 
-import { AgentAIElementsTimeline, getAgentToolActivity } from "@/components/ai-agent/agent-ai-elements-timeline"
+import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
 import { AgentApprovalQueue } from "@/components/ai-agent/agent-approval-queue"
+import { AIAssistantCommandBar } from "@/components/ai-agent/ai-assistant-command-bar"
+import { AIModelControl, AIPermissionControl } from "@/components/ai-agent/ai-model-permission-controls"
+import { AISessionHistoryPopover } from "@/components/ai-agent/ai-session-history-popover"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
 import {
   ComposerReferenceChips,
   MAX_COMPOSER_ATTACHMENTS,
   PromptTemplateGrid,
   buildAgentMessageContext,
-  createComposerAttachment,
   sortReferencedServers,
   toAgentImageAttachments,
-  type ComposerAttachment,
+  useComposerAttachments,
 } from "@/components/ai-agent/composer"
 import { PageHeader } from "@/components/page-header"
 import { toast } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   Command,
   CommandEmpty,
@@ -26,20 +27,9 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import {
   PromptInput,
-  PromptInputModelSelect,
-  PromptInputModelSelectContent,
-  PromptInputModelSelectItem,
-  PromptInputModelSelectTrigger,
-  PromptInputModelSelectValue,
   PromptInputSubmit,
   PromptInputTextarea,
   PromptInputToolbar,
@@ -52,14 +42,14 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation"
 import { AgentNoticeCard } from "@/components/ai-agent/agent-notice"
-import { useAgentSession } from "@/hooks/use-agent-session"
 import type { AgentSessionAdapter } from "@/hooks/use-agent-session"
-import { useAIConfig } from "@/hooks/use-ai-config"
 import type { AIConfigAdapter } from "@/hooks/use-ai-config"
+import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAuthReady } from "@/hooks/use-auth-ready"
+import { useAISessionHistory } from "@/hooks/use-ai-session-history"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { serversApi, type Server as ManagedServer } from "@/lib/api"
-import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type CreateSessionResponse, type PermissionMode, type SessionListItem, type SessionView } from "@/lib/api/ai-agent"
+import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type CreateSessionResponse } from "@/lib/api/ai-agent"
 import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
 import type { ServerListResponse } from "@/lib/api/servers"
 import { getServerDisplayName } from "@/lib/server-utils"
@@ -67,7 +57,6 @@ import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
 
-const SESSION_LIST_LIMIT = 30
 const SERVER_MENTION_LIMIT = 8
 
 export interface AIAssistantWorkspaceAdapters {
@@ -92,48 +81,6 @@ export interface AIAssistantWorkspaceViewProps {
   customConfigOnly?: boolean
   onReturnToTerminal?: () => void
   adapters?: AIAssistantWorkspaceAdapters
-}
-
-function createSessionListItem(response: CreateSessionResponse, title: string): SessionListItem {
-  return createSessionListItemFromSession(response.session, title)
-}
-
-function createSessionListItemFromSession(
-  session: SessionView,
-  title: string,
-  customTitle = false
-): SessionListItem {
-  return {
-    id: session.id,
-    model: session.model,
-    permission_mode: session.permission_mode,
-    status: session.status,
-    title,
-    custom_title: customTitle,
-    message_count: session.messages.length,
-    task_count: session.tasks.length,
-    created_at: session.created_at,
-    updated_at: session.updated_at,
-  }
-}
-
-function getDefaultSessionListTitle(session: SessionView, fallback: string) {
-  const firstUserMessage = session.messages.find((message) => message.role === "user")?.content.trim()
-  if (!firstUserMessage) {
-    return fallback
-  }
-
-  const chars = Array.from(firstUserMessage)
-  return chars.length > 40 ? `${chars.slice(0, 40).join("")}...` : firstUserMessage
-}
-
-function formatSessionTime(value: string) {
-  return new Date(value).toLocaleString(undefined, {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
 }
 
 function createWorkspaceScopeFromServer(server: ManagedServer): AgentSessionScope {
@@ -243,8 +190,21 @@ export function AIAssistantWorkspaceView({
   const { t } = useTranslation("aiAssistant")
   const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
-  const { isLoading, isConfigured, models, refetch: refetchAIConfig } = useAIConfig(adapters?.aiConfig)
-  const agentSession = useAgentSession(adapters?.aiSession)
+  const controller = useAIAssistantController({
+    aiConfigAdapter: adapters?.aiConfig,
+    aiSessionAdapter: adapters?.aiSession,
+  })
+  const {
+    config: { isLoading, isConfigured, models, refetch: refetchAIConfig },
+    agentSession,
+    model: selectedModel,
+    setModel: setSelectedModel,
+    permissionMode,
+    setPermissionMode,
+    isChatRequestActive,
+    isAssistantActive,
+    assistantLoadingState,
+  } = controller
   const {
     session,
     sessionId,
@@ -252,6 +212,7 @@ export function AIAssistantWorkspaceView({
     uiMessages,
     pendingConfirmationTasks,
     error,
+    clearError,
     restoreLatestSession,
     restoreSession,
     startNewSession,
@@ -260,12 +221,10 @@ export function AIAssistantWorkspaceView({
     deleteMessage: deleteUserMessage,
     confirmTask,
     cancelSession,
-    closeSession,
+    detachSession,
   } = agentSession
 
   const [draft, setDraft] = useState("")
-  const [selectedModel, setSelectedModel] = useState("")
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>("balanced")
   const [availableServers, setAvailableServers] = useState<ManagedServer[]>([])
   const [serversLoading, setServersLoading] = useState(false)
   const [serverMention, setServerMention] = useState<{
@@ -276,46 +235,45 @@ export function AIAssistantWorkspaceView({
   const [serverMentionIndex, setServerMentionIndex] = useState(0)
   const serverMentionListRef = useRef<HTMLDivElement>(null)
   const serverMentionItemRefs = useRef<Map<string, HTMLDivElement>>(new Map())
-  const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
-  const [attachmentsLoading, setAttachmentsLoading] = useState(false)
-  const [sessionList, setSessionList] = useState<SessionListItem[]>([])
-  const [sessionListLoading, setSessionListLoading] = useState(false)
-  const [sessionListError, setSessionListError] = useState("")
-  const [sessionSearch, setSessionSearch] = useState("")
+  const attachmentLimitNotice = useCallback(() => {
+    toast.info(t("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
+  }, [t])
+  const attachmentRejectedNotice = useCallback((file: File, reason: "total-size" | "read") => {
+    toast.error(reason === "total-size"
+      ? t("attachmentTotalSizeHint")
+      : t("attachmentReadFailed", { file: file.name }))
+  }, [t])
+  const {
+    attachments,
+    loading: attachmentsLoading,
+    addFiles: addAttachmentFiles,
+    remove: removeAttachment,
+    clear: clearAttachments,
+    detach: detachAttachments,
+    restore: restoreAttachments,
+    release: releaseAttachments,
+  } = useComposerAttachments({
+    onLimit: attachmentLimitNotice,
+    onRejected: attachmentRejectedNotice,
+  })
   const [configOpen, setConfigOpen] = useState(false)
-  const [historyOpen, setHistoryOpen] = useState(false)
   const [sessionCreating, setSessionCreating] = useState(false)
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
-  const [renameDraft, setRenameDraft] = useState("")
-  const [sessionActionLoadingId, setSessionActionLoadingId] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sessionCreatingRef = useRef(false)
-
-  useEffect(() => {
-    if (models.length === 0) {
-      setSelectedModel("")
-      return
-    }
-
-    if (!selectedModel || !models.includes(selectedModel)) {
-      setSelectedModel(models[0])
-    }
-  }, [models, selectedModel])
-
-  useEffect(() => {
-    if (!session?.id) {
-      return
-    }
-
-    if (session.permission_mode) {
-      setPermissionMode(session.permission_mode)
-    }
-
-    if (session.model && models.includes(session.model)) {
-      setSelectedModel(session.model)
-    }
-  }, [models, session?.id, session?.model, session?.permission_mode])
+  const history = useAISessionHistory({
+    enabled: ready && !isLoading && isConfigured,
+    listSessions: adapters?.listAISessions ?? listAISessions,
+    renameSession: adapters?.renameAISession ?? renameAISession,
+    deleteSession: adapters?.deleteAISession ?? deleteAISession,
+    loadErrorMessage: t("sessionListLoadFailed"),
+    renameErrorMessage: t("renameSessionFailed"),
+    deleteErrorMessage: t("deleteSessionFailed"),
+  })
+  const {
+    prepend: prependHistorySession,
+    syncSession: syncHistorySession,
+  } = history
 
   const loadServers = useCallback(async () => {
     if (!ready) {
@@ -375,14 +333,6 @@ export function AIAssistantWorkspaceView({
   const attachmentDisabled = attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || !ready || isLoading || !isConfigured
 
   const hasTimeline = uiMessages.length > 0
-  const isSessionRunning = session?.status === "running"
-  const isChatRequestActive = chatStatus === "submitted" || chatStatus === "streaming"
-  const isAssistantActive = isSessionRunning || isChatRequestActive
-  const toolActivity = getAgentToolActivity(uiMessages)
-  const shouldShowLoadingIndicator =
-    isAssistantActive &&
-    !toolActivity.hasActiveTools
-  const assistantLoadingState = shouldShowLoadingIndicator ? "thinking" : false
   const isCurrentSessionBlank = Boolean(
     session &&
     session.status !== "closed" &&
@@ -390,7 +340,7 @@ export function AIAssistantWorkspaceView({
     agentSession.tasks.length === 0
   )
   const createSessionDisabled = !ready || isLoading || !isConfigured || sessionCreating
-  const canAttemptSubmit = Boolean(draft.trim()) || attachments.some((attachment) => attachment.source === "image")
+  const canAttemptSubmit = Boolean(draft.trim()) || attachments.length > 0
 
   const buildMessageContext = useCallback(
     (messageText: string) => buildAgentMessageContext({
@@ -402,38 +352,15 @@ export function AIAssistantWorkspaceView({
   )
 
   const prependSessionListItem = useCallback((response: CreateSessionResponse) => {
-    if (sessionSearch.trim()) {
-      return
-    }
-
-    setSessionList((current) => [
-      createSessionListItem(response, t("newSession")),
-      ...current.filter((item) => item.id !== response.session_id),
-    ].slice(0, SESSION_LIST_LIMIT))
-  }, [sessionSearch, t])
+    prependHistorySession(response, t("newSession"))
+  }, [prependHistorySession, t])
 
   useEffect(() => {
-    if (!session?.id || !historyOpen) {
+    if (!session?.id) {
       return
     }
-
-    setSessionList((current) => {
-      const existing = current.find((item) => item.id === session.id)
-      const title = existing?.custom_title
-        ? existing.title
-        : getDefaultSessionListTitle(session, existing?.title || t("newSession"))
-      const nextItem = createSessionListItemFromSession(session, title, existing?.custom_title ?? false)
-      const query = sessionSearch.trim().toLowerCase()
-      if (query && !nextItem.title.toLowerCase().includes(query)) {
-        return current.filter((item) => item.id !== session.id)
-      }
-
-      return [
-        nextItem,
-        ...current.filter((item) => item.id !== session.id),
-      ].slice(0, SESSION_LIST_LIMIT)
-    })
-  }, [historyOpen, session, sessionSearch, t])
+    syncHistorySession(session, t("newSession"))
+  }, [session, syncHistorySession, t])
 
   const submit = async (messageText = draft) => {
     const normalizedDraft = messageText.trim()
@@ -442,7 +369,7 @@ export function AIAssistantWorkspaceView({
     const contextText = buildMessageContext(normalizedDraft)
     const blockReasons: string[] = []
 
-    if (!normalizedDraft && !attachments.some((attachment) => attachment.source === "image")) {
+    if (!normalizedDraft && attachments.length === 0) {
       blockReasons.push("empty_message")
     }
     if (!ready) {
@@ -486,9 +413,8 @@ export function AIAssistantWorkspaceView({
       return
     }
 
-    const submittedAttachments = attachments
+    const submittedAttachments = detachAttachments()
     setDraft("")
-    setAttachments([])
 
     if (!sessionId || session?.status === "closed") {
       sessionCreatingRef.current = true
@@ -509,23 +435,35 @@ export function AIAssistantWorkspaceView({
 
       if (!response) {
         setDraft((current) => current || messageText)
-        setAttachments((current) => current.length > 0 ? current : submittedAttachments)
+        restoreAttachments(submittedAttachments)
         return
       }
       prependSessionListItem(response)
     }
 
+    let imageAttachments
+    try {
+      imageAttachments = await toAgentImageAttachments(submittedAttachments)
+    } catch {
+      setDraft((current) => current || messageText)
+      restoreAttachments(submittedAttachments)
+      toast.error(t("attachmentReadFailed"))
+      return
+    }
+
     const sent = await sendMessage(
-      normalizedDraft,
+      normalizedDraft || t("contextOnlyPrompt"),
       contextText,
       selectedModel || undefined,
       permissionMode,
       submittedScope,
-      toAgentImageAttachments(submittedAttachments)
+      imageAttachments
     )
     if (!sent) {
       setDraft((current) => current || messageText)
-      setAttachments((current) => current.length > 0 ? current : submittedAttachments)
+      restoreAttachments(submittedAttachments)
+    } else {
+      releaseAttachments(submittedAttachments)
     }
   }
 
@@ -560,15 +498,22 @@ export function AIAssistantWorkspaceView({
   }
 
   const handleCreateNewSession = async () => {
+    if (isAssistantActive) {
+      const confirmed = await requestConfirm({
+        description: t("replaceRunningSessionConfirm"),
+        variant: "destructive",
+      })
+      if (!confirmed) return
+    }
     setDraft("")
-    setAttachments([])
+    clearAttachments()
 
     if (sessionCreatingRef.current) {
       return
     }
 
     if (isCurrentSessionBlank) {
-      setHistoryOpen(false)
+      history.setOpen(false)
       requestAnimationFrame(() => {
         inputRef.current?.focus()
       })
@@ -593,42 +538,19 @@ export function AIAssistantWorkspaceView({
       setSessionCreating(false)
     }
 
-    setHistoryOpen(false)
+    history.setOpen(false)
     requestAnimationFrame(() => {
       inputRef.current?.focus()
     })
   }
 
-  const loadSessionList = useCallback(async () => {
-    if (!ready || isLoading || !isConfigured) {
-      return
-    }
-
-    setSessionListLoading(true)
-    try {
-      setSessionListError("")
-      const response = await (adapters?.listAISessions ?? listAISessions)({ limit: SESSION_LIST_LIMIT, q: sessionSearch })
-      setSessionList(response.items)
-    } catch {
-      setSessionListError(t("sessionListLoadFailed"))
-    } finally {
-      setSessionListLoading(false)
-    }
-  }, [adapters?.listAISessions, isConfigured, isLoading, ready, sessionSearch, t])
-
-  useEffect(() => {
-    if (historyOpen) {
-      void loadSessionList()
-    }
-  }, [historyOpen, loadSessionList])
-
   const handleRestoreSession = async (targetSessionId: string) => {
-    if (!targetSessionId || sessionCreatingRef.current || renamingSessionId) {
+    if (!targetSessionId || sessionCreatingRef.current || history.renamingId) {
       return
     }
 
     if (targetSessionId === sessionId) {
-      setHistoryOpen(false)
+      history.setOpen(false)
       requestAnimationFrame(() => {
         inputRef.current?.focus()
       })
@@ -637,53 +559,15 @@ export function AIAssistantWorkspaceView({
 
     const restored = await restoreSession(targetSessionId)
     if (restored) {
-      setHistoryOpen(false)
+      history.setOpen(false)
       requestAnimationFrame(() => {
         inputRef.current?.focus()
       })
     }
   }
 
-  const beginRenameSession = (item: SessionListItem) => {
-    setRenamingSessionId(item.id)
-    setRenameDraft(item.title)
-  }
-
-  const cancelRenameSession = () => {
-    setRenamingSessionId(null)
-    setRenameDraft("")
-  }
-
-  const submitRenameSession = async (targetSessionId: string) => {
-    const title = renameDraft.trim()
-    if (sessionActionLoadingId) {
-      return
-    }
-
-    if (!title) {
-      toast.error("会话名称不能为空")
-      return
-    }
-
-    setSessionActionLoadingId(targetSessionId)
-    try {
-      await (adapters?.renameAISession ?? renameAISession)(targetSessionId, title)
-      cancelRenameSession()
-      setSessionList((current) => current.map((item) => (
-        item.id === targetSessionId
-          ? { ...item, title, custom_title: true, updated_at: new Date().toISOString() }
-          : item
-      )))
-      toast.success("会话已重命名")
-    } catch {
-      toast.error(t("renameSessionFailed"))
-    } finally {
-      setSessionActionLoadingId(null)
-    }
-  }
-
   const handleDeleteSession = async (targetSessionId: string) => {
-    if (!targetSessionId || sessionActionLoadingId) {
+    if (!targetSessionId || history.actionLoadingId) {
       return
     }
 
@@ -695,21 +579,14 @@ export function AIAssistantWorkspaceView({
       return
     }
 
-    setSessionActionLoadingId(targetSessionId)
-    try {
-      await (adapters?.deleteAISession ?? deleteAISession)(targetSessionId)
-      setSessionList((current) => current.filter((item) => item.id !== targetSessionId))
+    const removed = await history.remove(targetSessionId)
+    if (removed) {
       if (targetSessionId === sessionId) {
-        await closeSession()
-      }
-      if (renamingSessionId === targetSessionId) {
-        cancelRenameSession()
+        detachSession()
       }
       toast.success("会话已删除")
-    } catch {
+    } else {
       toast.error(t("deleteSessionFailed"))
-    } finally {
-      setSessionActionLoadingId(null)
     }
   }
 
@@ -864,48 +741,6 @@ export function AIAssistantWorkspaceView({
     serverMentionOptions,
   ])
 
-  const removeAttachment = useCallback((attachmentId: string) => {
-    setAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId))
-  }, [])
-
-  const addAttachmentFiles = useCallback(async (files: File[]) => {
-    if (files.length === 0) {
-      return
-    }
-    const remainingSlots = MAX_COMPOSER_ATTACHMENTS - attachments.length
-
-    if (remainingSlots <= 0) {
-      toast.info(t("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
-      return
-    }
-
-    if (files.length > remainingSlots) {
-      toast.info(t("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
-    }
-
-    setAttachmentsLoading(true)
-
-    try {
-      const nextAttachments = await Promise.all(
-        files.slice(0, remainingSlots).map(async (file) => {
-          try {
-            return await createComposerAttachment(file)
-          } catch {
-            toast.error(t("attachmentReadFailed", { file: file.name }))
-            return null
-          }
-        })
-      )
-
-      setAttachments((current) => [
-        ...current,
-        ...nextAttachments.filter((attachment): attachment is ComposerAttachment => attachment !== null),
-      ])
-    } finally {
-      setAttachmentsLoading(false)
-    }
-  }, [attachments.length, t])
-
   const handleAttachmentSelection = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     event.target.value = ""
@@ -927,204 +762,15 @@ export function AIAssistantWorkspaceView({
   const actionButtonClass = "size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-zinc-900"
 
   const historyPopover = (
-    <Popover open={historyOpen} onOpenChange={setHistoryOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className={actionButtonClass}
-          aria-label={t("sidebarTitle")}
-          title={t("sidebarTitle")}
-        >
-          <History className="size-4" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="start"
-        sideOffset={8}
-        className="w-[330px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border-zinc-200/80 p-0 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
-      >
-        <div className="border-b border-border/60 p-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={sessionSearch}
-              onChange={(event) => setSessionSearch(event.target.value)}
-              placeholder={t("searchPlaceholder")}
-              className="h-8 border-transparent bg-muted/50 pl-8 pr-8 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-ring"
-            />
-            {sessionSearch && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1/2 size-6 -translate-y-1/2 text-muted-foreground hover:bg-transparent hover:text-foreground"
-                onClick={() => setSessionSearch("")}
-                aria-label={t("cancel")}
-              >
-                <X className="size-3.5" />
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <ScrollArea className="h-[360px]">
-          <div className="p-2">
-            {sessionListLoading ? (
-              <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                <span>{t("loading")}</span>
-              </div>
-            ) : sessionListError ? (
-              <div className="px-3 py-10 text-center text-sm text-destructive">
-                {sessionListError}
-              </div>
-            ) : sessionList.length === 0 ? (
-              <div className="px-3 py-10 text-center text-sm text-muted-foreground">
-                {t("sessionListEmpty")}
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {sessionList.map((item) => {
-                  const isActive = item.id === sessionId
-                  const isRenaming = renamingSessionId === item.id
-                  const isActionLoading = sessionActionLoadingId === item.id
-
-                  return (
-                    <div
-                      key={item.id}
-                      className={cn(
-                        "w-full rounded-md px-2 py-2 text-left transition-colors",
-                        isActive
-                          ? "bg-accent text-foreground dark:bg-zinc-900"
-                          : "text-foreground hover:bg-accent dark:hover:bg-zinc-900"
-                      )}
-                      onClick={() => void handleRestoreSession(item.id)}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(event) => {
-                        if (isRenaming) {
-                          return
-                        }
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault()
-                          void handleRestoreSession(item.id)
-                        }
-                      }}
-                    >
-                      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                          {isRenaming ? (
-                            <div className="flex items-center gap-1" onClick={(event) => event.stopPropagation()}>
-                              <Input
-                                autoFocus
-                                value={renameDraft}
-                                onChange={(event) => setRenameDraft(event.target.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    event.preventDefault()
-                                    void submitRenameSession(item.id)
-                                  }
-                                  if (event.key === "Escape") {
-                                    event.preventDefault()
-                                    cancelRenameSession()
-                                  }
-                                }}
-                                className="h-7 min-w-0 text-xs"
-                                disabled={isActionLoading}
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-                                disabled={isActionLoading}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  void submitRenameSession(item.id)
-                                }}
-                                aria-label={t("saveSessionTitle")}
-                                title={t("saveSessionTitle")}
-                              >
-                                {isActionLoading ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Check className="size-3.5" />
-                                )}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-                                disabled={isActionLoading}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  cancelRenameSession()
-                                }}
-                                aria-label={t("cancel")}
-                                title={t("cancel")}
-                              >
-                                <X className="size-3.5" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="truncate text-sm font-medium">
-                              {item.title}
-                            </div>
-                          )}
-                        </div>
-
-                        {!isRenaming && (
-                          <div
-                            className="flex shrink-0 items-center gap-0.5 opacity-100"
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground dark:hover:bg-zinc-800"
-                              disabled={Boolean(sessionActionLoadingId)}
-                              onClick={() => beginRenameSession(item)}
-                              aria-label={t("rename")}
-                              title={t("rename")}
-                            >
-                              <Pencil className="size-3.5" />
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="size-7 rounded-md text-muted-foreground hover:bg-background/80 hover:text-destructive dark:hover:bg-zinc-800"
-                              disabled={Boolean(sessionActionLoadingId)}
-                              onClick={() => void handleDeleteSession(item.id)}
-                              aria-label={t("delete")}
-                              title={t("delete")}
-                            >
-                              {isActionLoading ? (
-                                <Loader2 className="size-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="size-3.5" />
-                              )}
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                        <span>{t("sidebarMessageCount", { count: item.message_count })}</span>
-                        <span className="shrink-0">{formatSessionTime(item.updated_at)}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-      </PopoverContent>
-    </Popover>
+    <AISessionHistoryPopover
+      activeSessionId={sessionId}
+      align="start"
+      history={history}
+      onDelete={handleDeleteSession}
+      onRestore={handleRestoreSession}
+      t={t}
+      triggerClassName={actionButtonClass}
+    />
   )
 
   const sessionToolbar = (
@@ -1169,35 +815,61 @@ export function AIAssistantWorkspaceView({
       />
     </>
   )
+  const activeSessionTitle = history.items.find((item) => item.id === sessionId)?.title
+    ?? session?.messages.find((message) => message.role === "user")?.content.trim()
+    ?? t("pageTitle")
+  const activeScopeLabel = session?.scope?.server_name || t("scopeGlobal")
+  const statusLabel = t(
+    session?.status === "running"
+      ? "statusRunning"
+      : session?.status === "waiting_confirmation"
+        ? "statusWaitingConfirmation"
+        : session?.status === "closed"
+          ? "statusClosed"
+          : "statusIdle"
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {confirmDialog}
       {!hidePageHeader && <PageHeader title={t("pageTitle")} />}
 
-      <div className="shrink-0 px-4 pb-1 md:px-4">
-        <div className="flex h-9 items-center justify-between gap-2">
-          {onReturnToTerminal ? (
+      <AIAssistantCommandBar
+        title={activeSessionTitle}
+        scope={activeScopeLabel}
+        model={selectedModel ? (
+          <AIModelControl
+            value={selectedModel}
+            models={models}
+            onChange={setSelectedModel}
+            disabled={modelSelectDisabled}
+          />
+        ) : undefined}
+        permission={(
+          <AIPermissionControl
+            value={permissionMode}
+            options={permissionOptions}
+            onChange={setPermissionMode}
+            disabled={isConfigChecking}
+          />
+        )}
+        status={session?.status ?? "idle"}
+        statusLabel={statusLabel}
+        leading={onReturnToTerminal ? (
             <Button
               type="button"
               variant="ghost"
-              size="sm"
-              className="-ml-2 h-9 gap-1 bg-transparent px-2 text-sm font-medium text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
+              size="icon"
+              className="-ml-2 size-8 text-muted-foreground hover:text-foreground"
               aria-label="返回终端"
               title="返回终端"
               onClick={onReturnToTerminal}
             >
               <ArrowLeft className="size-4" />
-              <span>返回终端</span>
             </Button>
-          ) : (
-            <div />
-          )}
-          <div className="flex items-center justify-end gap-1">
-            {sessionToolbar}
-          </div>
-        </div>
-      </div>
+          ) : undefined}
+        actions={sessionToolbar}
+      />
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden pb-4 md:pb-6">
@@ -1231,7 +903,12 @@ export function AIAssistantWorkspaceView({
             <div className="shrink-0 pt-4">
               {error && (
                 <AgentNoticeCard tone="error" size="md" className="mx-auto mb-3 w-full max-w-5xl shadow-sm">
-                  {error}
+                  <div className="flex items-start justify-between gap-3">
+                    <span>{error}</span>
+                    <Button type="button" variant="ghost" size="icon" className="-my-1 size-7 shrink-0" onClick={clearError} aria-label={t("cancel")}>
+                      <X className="size-3.5" />
+                    </Button>
+                  </div>
                 </AgentNoticeCard>
               )}
 
@@ -1259,11 +936,12 @@ export function AIAssistantWorkspaceView({
                   messages={uiMessages}
                   tText={t}
                   onConfirmTask={confirmTask}
+                  scope={session?.scope}
                   className="mb-2"
                 />
 
                 <PromptInput
-                  className="border-border/0 bg-card/0 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-card/0"
+                  className="ai-command-composer rounded-xl border border-border/70 bg-card/85 shadow-sm"
                   onSubmit={(message) => submit(message.text)}
                 >
                   <Popover
@@ -1388,40 +1066,6 @@ export function AIAssistantWorkspaceView({
 
                   <PromptInputToolbar className="flex-wrap gap-3 px-2 py-1.5">
                     <PromptInputTools className="flex flex-wrap items-center gap-2">
-                      <PromptInputModelSelect
-                        value={selectedModel}
-                        onValueChange={setSelectedModel}
-                        disabled={modelSelectDisabled}
-                      >
-                      <PromptInputModelSelectTrigger className="h-9 rounded-md border-none !bg-transparent px-2.5 text-xs font-normal text-muted-foreground !shadow-none hover:!bg-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:!bg-transparent dark:hover:!bg-transparent [aria-expanded='true']:!bg-transparent [aria-expanded='true']:text-foreground sm:text-sm">
-                        <PromptInputModelSelectValue placeholder={t("modelPlaceholder")} />
-                        </PromptInputModelSelectTrigger>
-                      <PromptInputModelSelectContent>
-                          {models.map((model) => (
-                          <PromptInputModelSelectItem key={model} value={model}>
-                              {model}
-                            </PromptInputModelSelectItem>
-                          ))}
-                        </PromptInputModelSelectContent>
-                      </PromptInputModelSelect>
-
-                    <PromptInputModelSelect
-                        value={permissionMode}
-                        onValueChange={(value) => setPermissionMode(value as PermissionMode)}
-                        disabled={isConfigChecking}
-                      >
-                      <PromptInputModelSelectTrigger className="h-9 rounded-md border-none !bg-transparent px-2.5 text-xs font-normal text-muted-foreground !shadow-none hover:!bg-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:!bg-transparent dark:hover:!bg-transparent [aria-expanded='true']:!bg-transparent [aria-expanded='true']:text-foreground sm:text-sm">
-                        <PromptInputModelSelectValue />
-                        </PromptInputModelSelectTrigger>
-                      <PromptInputModelSelectContent>
-                          {permissionOptions.map((option) => (
-                          <PromptInputModelSelectItem key={option.value} value={option.value}>
-                              {option.label}
-                            </PromptInputModelSelectItem>
-                          ))}
-                        </PromptInputModelSelectContent>
-                      </PromptInputModelSelect>
-
                       <Button
                         type="button"
                         variant="ghost"

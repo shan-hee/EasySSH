@@ -6,6 +6,7 @@ import {
   formatFileSize,
   type ComposerAttachment,
 } from "./attachments"
+import type { ComposerContextReference } from "./context-references"
 
 type ComposerTranslate = TFunction<"aiAssistant">
 
@@ -22,10 +23,12 @@ export function sortReferencedServers(servers: ManagedServer[]) {
 export function buildAgentMessageContext({
   attachments,
   selectedServers,
+  references = [],
   t,
 }: {
   attachments: ComposerAttachment[]
   selectedServers: ManagedServer[]
+  references?: ComposerContextReference[]
   t: ComposerTranslate
 }) {
   const sections: string[] = []
@@ -61,6 +64,17 @@ export function buildAgentMessageContext({
     })
 
     sections.push(attachmentLines.join("\n"))
+  }
+
+  if (references.length > 0) {
+    sections.push([
+      t("contextReferenceHeader"),
+      ...references.flatMap((reference) => [
+        `## ${reference.label}`,
+        reference.content,
+      ]),
+      t("contextReferenceRule"),
+    ].join("\n"))
   }
 
   return sections.length > 0 ? sections.join("\n\n") : undefined

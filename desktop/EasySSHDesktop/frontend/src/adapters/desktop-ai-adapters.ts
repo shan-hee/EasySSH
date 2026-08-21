@@ -136,9 +136,6 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
       cancelSession: async (sessionId: string) => {
         await DesktopAIService.CancelSession(sessionId)
       },
-      closeSession: async (sessionId: string) => {
-        await DesktopAIService.CloseSession(sessionId)
-      },
     },
     servers: {
       list: (params?: Parameters<ServerConnectionConfigsApi["list"]>[0]) => serverApi.list(params),
@@ -269,6 +266,7 @@ function fromDesktopSessionListItem(item: DesktopAISessionListItem): SessionList
     model: item.model,
     permission_mode: fromDesktopPermissionMode(item.permission_mode),
     status: fromDesktopSessionStatus(item.status),
+    scope: fromDesktopSessionScope(item.scope),
     title: item.title,
     custom_title: item.custom_title,
     message_count: item.message_count,

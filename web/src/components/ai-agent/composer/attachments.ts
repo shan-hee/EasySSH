@@ -2,6 +2,7 @@ export const MAX_COMPOSER_ATTACHMENTS = 5
 export const ATTACHMENT_TEXT_READ_LIMIT = 64 * 1024
 export const ATTACHMENT_TEXT_PREVIEW_LIMIT = 12_000
 export const ATTACHMENT_IMAGE_SIZE_LIMIT = 8 * 1024 * 1024
+export const ATTACHMENT_TOTAL_SIZE_LIMIT = 16 * 1024 * 1024
 
 export type AgentImageAttachment = {
   id: string
@@ -18,7 +19,8 @@ export type ComposerAttachment = {
   type: string
   source: "text" | "metadata" | "image"
   content?: string
-  data?: string
+  file?: File
+  previewUrl?: string
   truncated: boolean
 }
 
@@ -84,20 +86,14 @@ export async function createComposerAttachment(file: File): Promise<ComposerAtta
     if (file.size <= 0 || file.size > ATTACHMENT_IMAGE_SIZE_LIMIT) {
       throw new Error(`Image exceeds ${ATTACHMENT_IMAGE_SIZE_LIMIT} byte limit`)
     }
-    const buffer = await file.arrayBuffer()
-    const bytes = new Uint8Array(buffer)
-    let binary = ""
-    const chunkSize = 0x8000
-    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
-    }
     return {
       id,
       name: file.name || `pasted-image-${Date.now()}.png`,
       size: file.size,
       type: file.type,
       source: "image",
-      data: btoa(binary),
+      file,
+      previewUrl: URL.createObjectURL(file),
       truncated: false,
     }
   }
@@ -131,20 +127,36 @@ export async function createComposerAttachment(file: File): Promise<ComposerAtta
   }
 }
 
-export function toAgentImageAttachments(attachments: ComposerAttachment[]): AgentImageAttachment[] {
-  return attachments
-    .filter((attachment) => attachment.source === "image" && attachment.data)
-    .map((attachment) => ({
+async function fileToBase64(file: File) {
+  const buffer = await file.arrayBuffer()
+  const bytes = new Uint8Array(buffer)
+  let binary = ""
+  const chunkSize = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+  return btoa(binary)
+}
+
+export async function toAgentImageAttachments(attachments: ComposerAttachment[]): Promise<AgentImageAttachment[]> {
+  const result: AgentImageAttachment[] = []
+  for (const attachment of attachments) {
+    if (attachment.source !== "image" || !attachment.file) {
+      continue
+    }
+    result.push({
       id: attachment.id,
       name: attachment.name,
       media_type: attachment.type,
-      data: attachment.data!,
+      data: await fileToBase64(attachment.file),
       size: attachment.size,
-    }))
+    })
+  }
+  return result
 }
 
-export function attachmentDataURL(attachment: ComposerAttachment) {
-  return attachment.source === "image" && attachment.data
-    ? `data:${attachment.type};base64,${attachment.data}`
-    : undefined
+export function releaseComposerAttachment(attachment: ComposerAttachment) {
+  if (attachment.previewUrl) {
+    URL.revokeObjectURL(attachment.previewUrl)
+  }
 }
