@@ -1,5 +1,6 @@
 
 import * as React from "react"
+import { applyThemeChange } from "@/lib/apply-theme-change"
 
 type ThemePreference = "light" | "dark" | "system"
 type ResolvedTheme = "light" | "dark"
@@ -78,22 +79,6 @@ function applyTheme(theme: ResolvedTheme) {
   root.classList.toggle("dark", theme === "dark")
 }
 
-function disableTransitionsTemporarily() {
-  const css = document.createElement("style")
-  css.appendChild(
-    document.createTextNode(
-      "*,*::before,*::after{transition:none!important;animation-duration:0.01ms!important;animation-delay:0s!important}",
-    ),
-  )
-  document.head.appendChild(css)
-  window.getComputedStyle(document.body)
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      css.remove()
-    })
-  })
-}
-
 export function ThemeProvider({
   children,
   defaultTheme = "light",
@@ -106,10 +91,9 @@ export function ThemeProvider({
 
   const applyResolvedTheme = React.useCallback(
     (nextResolvedTheme: ResolvedTheme) => {
-      if (disableTransitionOnChange) {
-        disableTransitionsTemporarily()
-      }
-      applyTheme(nextResolvedTheme)
+      if (document.documentElement.classList.contains("dark") === (nextResolvedTheme === "dark")) return
+      if (disableTransitionOnChange) applyThemeChange(() => applyTheme(nextResolvedTheme))
+      else applyTheme(nextResolvedTheme)
     },
     [disableTransitionOnChange],
   )
@@ -143,8 +127,11 @@ export function ThemeProvider({
   }, [applyResolvedTheme, enableSystem, theme])
 
   const setTheme = React.useCallback((nextTheme: ThemePreference) => {
+    const nextResolvedTheme = resolveTheme(nextTheme, enableSystem)
+    applyResolvedTheme(nextResolvedTheme)
+    setResolvedTheme(nextResolvedTheme)
     setThemeState(nextTheme)
-  }, [])
+  }, [applyResolvedTheme, enableSystem])
 
   const setWindowOpacity = React.useCallback((nextOpacity: number) => {
     setWindowOpacityState(normalizeWindowOpacity(nextOpacity))

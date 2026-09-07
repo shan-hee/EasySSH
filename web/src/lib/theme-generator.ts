@@ -1,3 +1,4 @@
+import { applyThemeChange } from "@/lib/apply-theme-change"
 import { SHADCN_STUDIO_PRESET_STYLES } from "@/lib/theme-generator-presets"
 import { dispatchThemeGeneratorChange } from "@/lib/theme-generator-events"
 import { hexToRgb } from "@/lib/color-utils"
@@ -534,7 +535,7 @@ export function clearThemeGeneratorState() {
   }
 
   if (typeof document !== "undefined") {
-    document.getElementById(THEME_GENERATOR_STYLE_ID)?.remove()
+    applyThemeChange(() => document.getElementById(THEME_GENERATOR_STYLE_ID)?.remove())
   }
 }
 
@@ -546,25 +547,27 @@ export function applyThemeGeneratorState(
     return
   }
 
-  if (isDefaultThemeState(state)) {
-    document.getElementById(THEME_GENERATOR_STYLE_ID)?.remove()
+  applyThemeChange(() => {
+    if (isDefaultThemeState(state)) {
+      document.getElementById(THEME_GENERATOR_STYLE_ID)?.remove()
+      if (options.notify !== false) {
+        dispatchThemeGeneratorChange()
+      }
+      return
+    }
+
+    let styleElement = document.getElementById(THEME_GENERATOR_STYLE_ID) as HTMLStyleElement | null
+    if (!styleElement) {
+      styleElement = document.createElement("style")
+      styleElement.id = THEME_GENERATOR_STYLE_ID
+      document.head.appendChild(styleElement)
+    }
+
+    styleElement.textContent = generateRuntimeThemeCSS(state.styles, true)
     if (options.notify !== false) {
       dispatchThemeGeneratorChange()
     }
-    return
-  }
-
-  let styleElement = document.getElementById(THEME_GENERATOR_STYLE_ID) as HTMLStyleElement | null
-  if (!styleElement) {
-    styleElement = document.createElement("style")
-    styleElement.id = THEME_GENERATOR_STYLE_ID
-    document.head.appendChild(styleElement)
-  }
-
-  styleElement.textContent = generateRuntimeThemeCSS(state.styles, true)
-  if (options.notify !== false) {
-    dispatchThemeGeneratorChange()
-  }
+  })
 }
 
 export function generateRuntimeThemeCSS(styles: ThemeStyles, important = false): string {
