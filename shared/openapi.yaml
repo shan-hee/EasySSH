@@ -975,7 +975,7 @@ components:
           type: string
         providerExecuted:
           type: boolean
-        toolMetadata:
+        callProviderMetadata:
           type: object
           additionalProperties: true
         state:
@@ -1019,7 +1019,7 @@ components:
           type: string
         providerExecuted:
           type: boolean
-        toolMetadata:
+        callProviderMetadata:
           type: object
           additionalProperties: true
         state:
@@ -1308,19 +1308,9 @@ components:
           maxLength: 80
           description: 新的会话标题，服务端会 trim 并限制长度。
 
-    AISDKChatApprovalRequest:
-      type: object
-      properties:
-        task_id:
-          type: string
-          description: EasySSH 工具任务 ID，同时作为 AI SDK tool approval id。
-        decision:
-          type: string
-          enum: [confirm, reject]
-
     AISDKChatRequest:
       type: object
-      description: Vercel AI SDK UI DefaultChatTransport 请求体。context/model/permission_mode/scope/approval 是 EasySSH 在标准 UI 协议外追加的会话能力。
+      description: Vercel AI SDK UI DefaultChatTransport 请求体。context/model/permission_mode/scope 是 EasySSH 追加的会话能力；工具审批通过 messages 中的 approval-responded 工具片段提交。
       properties:
         id:
           type: string
@@ -1342,8 +1332,6 @@ components:
           $ref: '#/components/schemas/AIPermissionMode'
         scope:
           $ref: '#/components/schemas/AISessionScope'
-        approval:
-          $ref: '#/components/schemas/AISDKChatApprovalRequest'
 
     AIUIMessageChunk:
       description: Vercel AI SDK UIMessageChunk，用于 X-Vercel-AI-UI-Message-Stream v1 SSE data 载荷。
@@ -1470,7 +1458,7 @@ components:
           type: boolean
         title:
           type: string
-        toolMetadata:
+        providerMetadata:
           type: object
           additionalProperties: true
       additionalProperties: true
@@ -1503,7 +1491,7 @@ components:
           type: boolean
         title:
           type: string
-        toolMetadata:
+        providerMetadata:
           type: object
           additionalProperties: true
       additionalProperties: true
@@ -1526,7 +1514,7 @@ components:
           type: boolean
         title:
           type: string
-        toolMetadata:
+        providerMetadata:
           type: object
           additionalProperties: true
       additionalProperties: true

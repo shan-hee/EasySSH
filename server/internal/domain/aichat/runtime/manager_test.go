@@ -217,12 +217,11 @@ func TestManagerWaitsForConfirmationAndContinuesAfterConfirm(t *testing.T) {
 		return evt.Type == EventConfirmationRequested && evt.Confirmation != nil
 	})
 
-	require.NoError(t, manager.ConfirmTask(
+	require.NoError(t, manager.ConfirmTasks(
 		context.Background(),
 		userID,
 		session.ID,
-		confirmation.Confirmation.TaskID,
-		DecisionConfirm,
+		[]ConfirmTaskInput{{TaskID: confirmation.Confirmation.TaskID, Decision: DecisionConfirm}},
 	))
 
 	completed := waitForEvent(t, events, func(evt Event) bool {
@@ -294,12 +293,11 @@ func TestManagerContinuesAfterRejectingDangerousTask(t *testing.T) {
 		return evt.Type == EventConfirmationRequested && evt.Confirmation != nil
 	})
 
-	require.NoError(t, manager.ConfirmTask(
+	require.NoError(t, manager.ConfirmTasks(
 		context.Background(),
 		userID,
 		session.ID,
-		confirmation.Confirmation.TaskID,
-		DecisionReject,
+		[]ConfirmTaskInput{{TaskID: confirmation.Confirmation.TaskID, Decision: DecisionReject}},
 	))
 
 	completed := waitForEvent(t, events, func(evt Event) bool {

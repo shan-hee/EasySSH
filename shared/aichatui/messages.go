@@ -298,14 +298,16 @@ func TaskPart(task TaskView) map[string]interface{} {
 		"title":            firstNonEmpty(task.ToolDisplayName, task.ToolName),
 		"providerExecuted": false,
 		"input":            task.Arguments,
-		"toolMetadata": map[string]interface{}{
-			"taskId":               task.ID,
-			"assistantMessageId":   task.AssistantMessageID,
-			"taskStatus":           task.Status,
-			"dangerous":            task.Dangerous,
-			"requiresConfirmation": task.RequiresConfirmation,
-			"displayName":          task.ToolDisplayName,
-			"summary":              task.Summary,
+		"callProviderMetadata": map[string]interface{}{
+			"easyssh": map[string]interface{}{
+				"taskId":               task.ID,
+				"assistantMessageId":   task.AssistantMessageID,
+				"taskStatus":           task.Status,
+				"dangerous":            task.Dangerous,
+				"requiresConfirmation": task.RequiresConfirmation,
+				"displayName":          task.ToolDisplayName,
+				"summary":              task.Summary,
+			},
 		},
 	}
 

@@ -658,10 +658,6 @@ func (m *Manager) RegenerateAfterUserMessage(ctx context.Context, userID uuid.UU
 	return nil
 }
 
-func (m *Manager) ConfirmTask(ctx context.Context, userID uuid.UUID, sessionID, taskID string, decision Decision) error {
-	return m.ConfirmTasks(ctx, userID, sessionID, []ConfirmTaskInput{{TaskID: taskID, Decision: decision}})
-}
-
 func (m *Manager) ConfirmTasks(ctx context.Context, userID uuid.UUID, sessionID string, inputs []ConfirmTaskInput) error {
 	s, err := m.getOrRestoreSession(ctx, userID, sessionID)
 	if err != nil {
@@ -991,7 +987,7 @@ func (m *Manager) resolvePendingTask(ctx context.Context, runID string, sessionI
 	if ctx.Err() == nil && input.Decision == DecisionConfirm {
 		m.executeTask(ctx, s, input.TaskID)
 	} else if input.Decision == DecisionReject {
-		m.rejectTask(s, input.TaskID)
+		m.rejectTask(s, input.TaskID, input.Reason)
 	}
 
 	m.mu.Lock()
@@ -1158,7 +1154,7 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 	m.emitTaskEvent(s, EventTaskUpdated, view)
 }
 
-func (m *Manager) rejectTask(s *session, taskID string) {
+func (m *Manager) rejectTask(s *session, taskID string, reason string) {
 	m.mu.Lock()
 	task, ok := s.tasks[taskID]
 	if !ok {
@@ -1169,6 +1165,9 @@ func (m *Manager) rejectTask(s *session, taskID string) {
 	now := time.Now()
 	task.view.Status = TaskStatusCancelled
 	task.view.Result = "用户已拒绝执行该操作。"
+	if reason = strings.TrimSpace(reason); reason != "" {
+		task.view.Result += " " + reason
+	}
 	task.view.UpdatedAt = now
 	s.updatedAt = now
 	s.messages = append(s.messages, provider.Message{

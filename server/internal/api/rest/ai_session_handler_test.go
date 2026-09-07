@@ -268,10 +268,17 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 
 	confirmResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.SessionID+"/chat", map[string]interface{}{
 		"id": "test-chat",
-		"approval": map[string]interface{}{
-			"task_id":  taskID,
-			"decision": "confirm",
-		},
+		"messages": []map[string]interface{}{{
+			"id":   "approval-response",
+			"role": "assistant",
+			"parts": []map[string]interface{}{{
+				"type":       "dynamic-tool",
+				"toolName":   "execute_command",
+				"toolCallId": approvalChunk["toolCallId"],
+				"state":      "approval-responded",
+				"approval":   map[string]interface{}{"id": taskID, "approved": true},
+			}},
+		}},
 	})
 	require.Equal(t, http.StatusOK, confirmResp.Code)
 	confirmChunks := parseSSEChunks(t, confirmResp)

@@ -175,4 +175,5 @@ type UpdateMessageInput struct {
 type ConfirmTaskInput struct {
 	TaskID   string
 	Decision Decision
+	Reason   string
 }

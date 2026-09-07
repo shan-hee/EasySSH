@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/easyssh/server/internal/domain/aichat/runtime"
+	"github.com/easyssh/shared/aichatui"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,23 +39,17 @@ type ListAISessionsResponse struct {
 	Total int64                     `json:"total"`
 }
 
-type AISDKChatApprovalRequest struct {
-	TaskID   string `json:"task_id,omitempty"`
-	Decision string `json:"decision,omitempty" binding:"omitempty,oneof=confirm reject"`
-}
-
 type AISDKChatRequest struct {
-	ID             string                    `json:"id,omitempty"`
-	Messages       []runtime.UIMessage       `json:"messages,omitempty"`
-	Trigger        string                    `json:"trigger,omitempty"`
-	MessageID      string                    `json:"messageId,omitempty"`
-	Context        string                    `json:"context,omitempty"`
-	Model          string                    `json:"model,omitempty"`
-	Mode           string                    `json:"mode,omitempty"`
-	PermissionMode string                    `json:"permission_mode,omitempty" binding:"omitempty,oneof=readonly balanced privileged"`
-	Scope          runtime.SessionScope      `json:"scope,omitempty"`
-	Approval       *AISDKChatApprovalRequest `json:"approval,omitempty"`
-	Attachments    []runtime.Attachment      `json:"attachments,omitempty"`
+	ID             string               `json:"id,omitempty"`
+	Messages       []runtime.UIMessage  `json:"messages,omitempty"`
+	Trigger        string               `json:"trigger,omitempty"`
+	MessageID      string               `json:"messageId,omitempty"`
+	Context        string               `json:"context,omitempty"`
+	Model          string               `json:"model,omitempty"`
+	Mode           string               `json:"mode,omitempty"`
+	PermissionMode string               `json:"permission_mode,omitempty" binding:"omitempty,oneof=readonly balanced privileged"`
+	Scope          runtime.SessionScope `json:"scope,omitempty"`
+	Attachments    []runtime.Attachment `json:"attachments,omitempty"`
 }
 
 type RenameAISessionRequest struct {
@@ -212,6 +207,7 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			confirmations = append(confirmations, runtime.ConfirmTaskInput{
 				TaskID:   approval.taskID,
 				Decision: approval.decision,
+				Reason:   approval.reason,
 			})
 		}
 		if err := h.manager.ConfirmTasks(c.Request.Context(), userID, sessionID, confirmations); err != nil {
@@ -430,17 +426,10 @@ type aiSDKChatAction struct {
 type aiSDKChatApproval struct {
 	taskID   string
 	decision runtime.Decision
+	reason   string
 }
 
 func resolveAISDKChatAction(req AISDKChatRequest) (aiSDKChatAction, error) {
-	if req.Approval != nil && strings.TrimSpace(req.Approval.TaskID) != "" {
-		decision := runtime.Decision(strings.TrimSpace(req.Approval.Decision))
-		if decision != runtime.DecisionConfirm && decision != runtime.DecisionReject {
-			return aiSDKChatAction{}, errors.New("invalid approval decision")
-		}
-		return aiSDKChatAction{kind: "approval", approvals: []aiSDKChatApproval{{taskID: strings.TrimSpace(req.Approval.TaskID), decision: decision}}}, nil
-	}
-
 	if approvals := approvalResponsesFromUIMessages(req.Messages); len(approvals) > 0 {
 		return aiSDKChatAction{kind: "approval", approvals: approvals}, nil
 	}
@@ -528,7 +517,7 @@ func approvalResponsesFromUIMessages(messages []runtime.UIMessage) []aiSDKChatAp
 		if approved {
 			decision = runtime.DecisionConfirm
 		}
-		approvals = append(approvals, aiSDKChatApproval{taskID: taskID, decision: decision})
+		approvals = append(approvals, aiSDKChatApproval{taskID: taskID, decision: decision, reason: strings.TrimSpace(stringValue(approval["reason"]))})
 	}
 
 	for left, right := 0, len(approvals)-1; left < right; left, right = left+1, right-1 {
@@ -702,12 +691,8 @@ func (s *aiSDKUIMessageStreamer) writeTextPart(parts map[string]*aiSDKTextPartSt
 }
 
 func (s *aiSDKUIMessageStreamer) writeTask(task runtime.TaskView) error {
-	message := runtime.UIMessage{
-		ID:       coalesceString(task.AssistantMessageID, "task:"+task.ID),
-		Role:     "assistant",
-		Metadata: taskMetadata(task),
-		Parts:    []map[string]interface{}{taskToolPart(task)},
-	}
+	message := aichatui.TaskMessage(task)
+	message.ID = coalesceString(task.AssistantMessageID, message.ID)
 	return s.writeToolUIMessage(message)
 }
 
@@ -755,14 +740,9 @@ func (s *aiSDKUIMessageStreamer) writeToolPart(messageID string, metadata map[st
 			"input":      defaultMap(part["input"]),
 			"dynamic":    stringValue(part["type"]) == "dynamic-tool",
 			"title":      coalesceString(stringValue(part["title"]), stringValue(metadata["displayName"]), toolName),
-			"toolMetadata": map[string]interface{}{
-				"taskId":               metadata["taskId"],
-				"taskStatus":           metadata["taskStatus"],
-				"dangerous":            metadata["dangerous"],
-				"requiresConfirmation": metadata["requiresConfirmation"],
-				"displayName":          metadata["displayName"],
-				"summary":              metadata["summary"],
-			},
+		}
+		if providerMetadata, ok := mapValue(part["callProviderMetadata"]); ok {
+			chunk["providerMetadata"] = providerMetadata
 		}
 		if err := s.writeChunk(chunk); err != nil {
 			return err
@@ -931,58 +911,6 @@ func (s *aiSDKUIMessageStreamer) writeChunk(chunk map[string]interface{}) error 
 func (s *aiSDKUIMessageStreamer) writeDone() error {
 	_, err := fmt.Fprint(s.writer, "data: [DONE]\n\n")
 	return err
-}
-
-func taskMetadata(task runtime.TaskView) map[string]interface{} {
-	return map[string]interface{}{
-		"source":               "task",
-		"createdAt":            task.CreatedAt,
-		"updatedAt":            task.UpdatedAt,
-		"taskId":               task.ID,
-		"assistantMessageId":   task.AssistantMessageID,
-		"taskStatus":           task.Status,
-		"dangerous":            task.Dangerous,
-		"requiresConfirmation": task.RequiresConfirmation,
-		"displayName":          task.ToolDisplayName,
-		"summary":              task.Summary,
-	}
-}
-
-func taskToolPart(task runtime.TaskView) map[string]interface{} {
-	part := map[string]interface{}{
-		"type":             "dynamic-tool",
-		"toolName":         task.ToolName,
-		"toolCallId":       coalesceString(task.ToolCallID, task.ID),
-		"title":            coalesceString(task.ToolDisplayName, task.ToolName),
-		"providerExecuted": false,
-		"input":            task.Arguments,
-	}
-
-	switch task.Status {
-	case runtime.TaskStatusWaitingConfirm:
-		part["state"] = "approval-requested"
-		part["approval"] = map[string]interface{}{"id": task.ID}
-	case runtime.TaskStatusSucceeded:
-		part["state"] = "output-available"
-		part["output"] = task.Result
-	case runtime.TaskStatusFailed:
-		part["state"] = "output-error"
-		part["errorText"] = coalesceString(task.Error, "Tool execution failed")
-	case runtime.TaskStatusCancelled:
-		part["state"] = "output-denied"
-		part["approval"] = map[string]interface{}{
-			"id":       task.ID,
-			"approved": false,
-			"reason":   coalesceString(task.Error, task.Result),
-		}
-	default:
-		part["state"] = "input-available"
-	}
-
-	if task.Arguments == nil {
-		part["input"] = map[string]interface{}{}
-	}
-	return part
 }
 
 func approvalIDFromPart(part map[string]interface{}) string {
