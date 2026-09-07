@@ -34,7 +34,7 @@ export {
 
 export {
     DesktopAIConfigStatus,
-    DesktopAIConfirmTaskInput,
+    DesktopAIToolApprovalInput,
     DesktopAICreateSessionInput,
     DesktopAICreateSessionResponse,
     DesktopAIImageAttachment,

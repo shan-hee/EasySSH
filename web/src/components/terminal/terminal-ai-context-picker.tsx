@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 
 import type { ComposerContextReference, ComposerContextReferenceKind } from "@/components/ai-agent/composer"
 import { Button } from "@/components/ui/button"
+import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { toast } from "@/components/ui/sonner"
 import { useMonitorStore } from "@/stores/monitor-store"
@@ -85,17 +86,14 @@ export function TerminalAIContextPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
+        <TooltipIconButton
           type="button"
-          variant="ghost"
-          size="icon"
           className="size-8 rounded-md"
           disabled={disabled}
-          aria-label={t("addContext")}
-          title={t("addContext")}
+          tooltip={t("addContext")}
         >
           <ListPlus className="size-3.5" />
-        </Button>
+        </TooltipIconButton>
       </PopoverTrigger>
       <PopoverContent align="start" side="top" className="w-64 p-1.5">
         <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">{t("addContext")}</div>

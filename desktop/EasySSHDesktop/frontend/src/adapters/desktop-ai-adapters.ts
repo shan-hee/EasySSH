@@ -18,7 +18,7 @@ import type {
 import type { ServerConnectionConfigsApi } from "@easyssh/ssh-workspace/desktop"
 import * as DesktopAIService from "../../bindings/github.com/easyssh/easyssh-desktop/desktopaiservice"
 import {
-  DesktopAIConfirmTaskInput,
+  DesktopAIToolApprovalInput,
   DesktopAICreateSessionInput,
   DesktopAIModelsProbeRequest,
   type DesktopAICreateSessionResponse,
@@ -126,11 +126,12 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           error: data.error,
         })
       }),
-      confirmTask: async (input) => fromDesktopSessionResponse(
-        await DesktopAIService.ConfirmTask(new DesktopAIConfirmTaskInput({
+      respondToToolApproval: async (input) => fromDesktopSessionResponse(
+        await DesktopAIService.RespondToToolApproval(new DesktopAIToolApprovalInput({
           session_id: input.session_id,
-          task_id: input.task_id,
-          decision: input.decision,
+          id: input.id,
+          approved: input.approved,
+          reason: input.reason,
         }))
       ),
       cancelSession: async (sessionId: string) => {
@@ -362,5 +363,6 @@ function fromDesktopTaskStatus(status: string): AgentTaskStatus {
 }
 
 function fromDesktopTransport(transport: string): AgentTransportType {
-  return transport === "ai_sdk_ui" ? "ai_sdk_ui" : "desktop_local"
+  if (transport !== "ai_sdk_ui") throw new Error(`Unsupported AI message transport: ${transport}`)
+  return transport
 }

@@ -3436,7 +3436,7 @@ export interface components {
             toolCallId: string;
             title?: string;
             providerExecuted?: boolean;
-            toolMetadata?: {
+            callProviderMetadata?: {
                 [key: string]: unknown;
             };
             /** @enum {string} */
@@ -3461,7 +3461,7 @@ export interface components {
             toolCallId: string;
             title?: string;
             providerExecuted?: boolean;
-            toolMetadata?: {
+            callProviderMetadata?: {
                 [key: string]: unknown;
             };
             /** @enum {string} */
@@ -3611,13 +3611,7 @@ export interface components {
             /** @description 新的会话标题，服务端会 trim 并限制长度。 */
             title: string;
         };
-        AISDKChatApprovalRequest: {
-            /** @description EasySSH 工具任务 ID，同时作为 AI SDK tool approval id。 */
-            task_id?: string;
-            /** @enum {string} */
-            decision?: "confirm" | "reject";
-        };
-        /** @description Vercel AI SDK UI DefaultChatTransport 请求体。context/model/permission_mode/scope/approval 是 EasySSH 在标准 UI 协议外追加的会话能力。 */
+        /** @description Vercel AI SDK UI DefaultChatTransport 请求体。context/model/permission_mode/scope 是 EasySSH 追加的会话能力；工具审批通过 messages 中的 approval-responded 工具片段提交。 */
         AISDKChatRequest: {
             id?: string;
             messages?: components["schemas"]["AIUIMessage"][];
@@ -3629,7 +3623,6 @@ export interface components {
             model?: string;
             permission_mode?: components["schemas"]["AIPermissionMode"];
             scope?: components["schemas"]["AISessionScope"];
-            approval?: components["schemas"]["AISDKChatApprovalRequest"];
         };
         /** @description Vercel AI SDK UIMessageChunk，用于 X-Vercel-AI-UI-Message-Stream v1 SSE data 载荷。 */
         AIUIMessageChunk: components["schemas"]["AIUIStartChunk"] | components["schemas"]["AIUITextStartChunk"] | components["schemas"]["AIUITextDeltaChunk"] | components["schemas"]["AIUITextEndChunk"] | components["schemas"]["AIUIReasoningStartChunk"] | components["schemas"]["AIUIReasoningDeltaChunk"] | components["schemas"]["AIUIReasoningEndChunk"] | components["schemas"]["AIUIToolInputStartChunk"] | components["schemas"]["AIUIToolInputDeltaChunk"] | components["schemas"]["AIUIToolInputAvailableChunk"] | components["schemas"]["AIUIToolInputErrorChunk"] | components["schemas"]["AIUIToolApprovalRequestChunk"] | components["schemas"]["AIUIToolOutputAvailableChunk"] | components["schemas"]["AIUIToolOutputErrorChunk"] | components["schemas"]["AIUIToolOutputDeniedChunk"] | components["schemas"]["AIUISourceURLChunk"] | components["schemas"]["AIUISourceDocumentChunk"] | components["schemas"]["AIUIFileChunk"] | components["schemas"]["AIUIDataChunk"] | components["schemas"]["AIUIErrorChunk"] | components["schemas"]["AIUIStartStepChunk"] | components["schemas"]["AIUIFinishStepChunk"] | components["schemas"]["AIUIFinishChunk"] | components["schemas"]["AIUIAbortChunk"] | components["schemas"]["AIUIMessageMetadataChunk"] | ({
@@ -3697,7 +3690,7 @@ export interface components {
             toolName: string;
             dynamic?: boolean;
             title?: string;
-            toolMetadata?: {
+            providerMetadata?: {
                 [key: string]: unknown;
             };
         } & {
@@ -3720,7 +3713,7 @@ export interface components {
             input: unknown;
             dynamic?: boolean;
             title?: string;
-            toolMetadata?: {
+            providerMetadata?: {
                 [key: string]: unknown;
             };
         } & {
@@ -3736,7 +3729,7 @@ export interface components {
             errorText: string;
             dynamic?: boolean;
             title?: string;
-            toolMetadata?: {
+            providerMetadata?: {
                 [key: string]: unknown;
             };
         } & {

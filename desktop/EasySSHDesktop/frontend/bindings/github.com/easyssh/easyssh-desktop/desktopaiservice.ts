@@ -19,8 +19,8 @@ export function CloseSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(2012466751, id);
 }
 
-export function ConfirmTask(input: $models.DesktopAIConfirmTaskInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
-    return $Call.ByID(1018369184, input).then(($result: any) => {
+export function RespondToToolApproval(input: $models.DesktopAIToolApprovalInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
+    return $Call.ByID(1110211044, input).then(($result: any) => {
         return $$createType1($result);
     });
 }

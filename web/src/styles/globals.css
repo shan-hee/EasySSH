@@ -1,7 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "tw-shimmer";
 
 @source "../";
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/math/dist/*.js";
+@source "../../node_modules/@streamdown/mermaid/dist/*.js";
+@source "../../node_modules/@streamdown/cjk/dist/*.js";
 @source "../../packages/ssh-workspace/src";
 @source "../../../desktop/EasySSHDesktop/frontend/src";
 
@@ -229,6 +235,18 @@
     --terminal-glass-text-shadow: 0 1px 2px rgb(0 0 0 / 55%);
   }
 
+  .terminal-ai-glass,
+  .dark .terminal-ai-glass {
+    --terminal-glass-panel: var(--background);
+    --terminal-glass-raised: var(--muted);
+    --terminal-glass-border: var(--border);
+    --terminal-glass-highlight: var(--accent);
+    --terminal-glass-sheen: none;
+    --terminal-glass-edge-shadow: 0 0 0 1px var(--border);
+    --terminal-glass-shadow: var(--shadow-md);
+    --terminal-glass-text-shadow: none;
+  }
+
   .terminal-ai-glass-surface,
   .terminal-sftp-glass-surface {
     background-color: var(--terminal-glass-panel);
@@ -245,7 +263,7 @@
     background-color: color-mix(in oklab, var(--terminal-glass-raised) 46%, transparent);
   }
 
-  .terminal-ai-glass [data-slot="message"].is-user > [data-slot="message-content"],
+  .terminal-ai-glass [data-role="user"] .agent-message-content,
   .terminal-ai-glass .terminal-ai-glass-composer,
   .terminal-ai-glass .terminal-ai-glass-editor,
   .terminal-ai-glass .terminal-ai-glass-control,
@@ -264,7 +282,7 @@
     -webkit-backdrop-filter: blur(18px) saturate(1.2);
   }
 
-  .terminal-ai-glass [data-slot="message"].is-assistant > [data-slot="message-content"] {
+  .terminal-ai-glass [data-role="assistant"] > .agent-message-content {
     text-shadow: var(--terminal-glass-text-shadow);
   }
 
@@ -282,7 +300,7 @@
     word-break: break-word;
   }
 
-  .terminal-ai-glass .terminal-ai-glass-composer:has([data-slot="input-group-control"]:focus-visible) {
+  .terminal-ai-glass .terminal-ai-glass-composer:has(textarea:focus-visible) {
     border-color: color-mix(in oklab, var(--ring) 58%, var(--terminal-glass-border));
     box-shadow:
       inset 0 1px var(--terminal-glass-highlight),
@@ -297,25 +315,10 @@
   }
 
   .terminal-ai-glass-popover {
-    border-color: rgb(255 255 255 / 64%);
-    background-color: rgb(255 255 255 / 72%);
-    background-image: linear-gradient(135deg, rgb(255 255 255 / 30%), transparent 46%, rgb(255 255 255 / 8%));
-    box-shadow:
-      inset 0 1px rgb(255 255 255 / 82%),
-      0 0 0 1px rgb(15 23 42 / 8%),
-      0 18px 44px rgb(15 23 42 / 18%);
-    backdrop-filter: blur(22px) saturate(1.18);
-    -webkit-backdrop-filter: blur(22px) saturate(1.18);
-  }
-
-  .dark .terminal-ai-glass-popover {
-    border-color: rgb(255 255 255 / 13%);
-    background-color: rgb(8 11 16 / 78%);
-    background-image: linear-gradient(135deg, rgb(255 255 255 / 8%), transparent 46%, rgb(255 255 255 / 2%));
-    box-shadow:
-      inset 0 1px rgb(255 255 255 / 8%),
-      0 0 0 1px rgb(255 255 255 / 3%),
-      0 20px 48px rgb(0 0 0 / 34%);
+    border-color: var(--border);
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: var(--shadow-lg);
   }
 
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -325,7 +328,7 @@
       background-image: none;
     }
 
-    .terminal-ai-glass [data-slot="message"].is-user > [data-slot="message-content"],
+    .terminal-ai-glass [data-role="user"] .agent-message-content,
     .terminal-ai-glass .terminal-ai-glass-composer,
     .terminal-ai-glass .terminal-ai-glass-editor,
     .terminal-ai-glass .terminal-ai-glass-control,

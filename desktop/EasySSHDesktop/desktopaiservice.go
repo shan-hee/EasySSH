@@ -254,10 +254,11 @@ type DesktopAIRegenerateMessageInput struct {
 	Scope          *DesktopAISessionScope  `json:"scope,omitempty"`
 }
 
-type DesktopAIConfirmTaskInput struct {
+type DesktopAIToolApprovalInput struct {
 	SessionID string `json:"session_id"`
-	TaskID    string `json:"task_id"`
-	Decision  string `json:"decision"`
+	ID        string `json:"id"`
+	Approved  *bool  `json:"approved"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 type DesktopAISessionEvent struct {
@@ -852,22 +853,27 @@ func (s *DesktopAIService) failDesktopAITurn(record desktopAISessionRecord, turn
 	return DesktopAICreateSessionResponse{}, turnErr
 }
 
-func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfirmTaskInput) (DesktopAICreateSessionResponse, error) {
+func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input DesktopAIToolApprovalInput) (DesktopAICreateSessionResponse, error) {
 	sessionID := strings.TrimSpace(input.SessionID)
-	taskID := strings.TrimSpace(input.TaskID)
-	decision := strings.ToLower(strings.TrimSpace(input.Decision))
+	taskID := strings.TrimSpace(input.ID)
 	if sessionID == "" || taskID == "" {
 		return DesktopAICreateSessionResponse{}, errors.New("AI session id and task id are required")
 	}
-	if decision != "confirm" && decision != "reject" {
-		return DesktopAICreateSessionResponse{}, errors.New("AI task decision must be confirm or reject")
+	if input.Approved == nil {
+		return DesktopAICreateSessionResponse{}, errors.New("AI tool approval decision is required")
 	}
+	approved := *input.Approved
 
 	s.sessionMu.Lock()
 	record, err := s.loadSession(sessionID)
 	if err != nil {
 		s.sessionMu.Unlock()
 		return DesktopAICreateSessionResponse{}, err
+	}
+
+	if record.Status != DesktopAISessionWaitingConfirmation && record.Status != DesktopAISessionRunning {
+		s.sessionMu.Unlock()
+		return DesktopAICreateSessionResponse{}, errors.New("AI session is not awaiting tool approval")
 	}
 
 	taskIndex := desktopAIFindTaskIndex(record.Tasks, taskID)
@@ -895,9 +901,12 @@ func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfi
 
 	taskName := record.Tasks[taskIndex].ToolName
 	taskArguments := record.Tasks[taskIndex].Arguments
-	if decision == "reject" {
+	if !approved {
 		record.Tasks[taskIndex].Status = DesktopAITaskCancelled
 		record.Tasks[taskIndex].Result = "用户已拒绝执行该操作。"
+		if reason := strings.TrimSpace(input.Reason); reason != "" {
+			record.Tasks[taskIndex].Result += " " + reason
+		}
 		record.Tasks[taskIndex].Error = ""
 		record.Tasks[taskIndex].UpdatedAt = now
 	} else {
@@ -930,7 +939,7 @@ func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfi
 	s.sessionMu.Unlock()
 
 	s.emitAISessionSnapshot(record)
-	go s.resolveDesktopConfirmedTask(sessionID, taskID, decision, taskName, taskArguments, run)
+	go s.resolveDesktopConfirmedTask(sessionID, taskID, approved, taskName, taskArguments, run)
 
 	return DesktopAICreateSessionResponse{
 		SessionID:        view.ID,
@@ -942,14 +951,14 @@ func (s *DesktopAIService) ConfirmTask(ctx context.Context, input DesktopAIConfi
 func (s *DesktopAIService) resolveDesktopConfirmedTask(
 	sessionID string,
 	taskID string,
-	decision string,
+	approved bool,
 	toolName string,
 	arguments map[string]any,
 	run *desktopAIConfirmedToolRun,
 ) {
 	var result desktopAIToolResult
 	var executeErr error
-	if decision == "confirm" && run.Context.Err() == nil {
+	if approved && run.Context.Err() == nil {
 		result, executeErr = s.executeDesktopAITool(run.Context, toolName, arguments)
 	}
 
@@ -967,7 +976,7 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 
 	taskIndex := desktopAIFindTaskIndex(record.Tasks, taskID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	if taskIndex >= 0 && decision == "confirm" && record.Tasks[taskIndex].Status != DesktopAITaskCancelled {
+	if taskIndex >= 0 && approved && record.Tasks[taskIndex].Status != DesktopAITaskCancelled {
 		switch {
 		case run.Context.Err() != nil:
 			record.Tasks[taskIndex].Status = DesktopAITaskCancelled
@@ -2215,7 +2224,7 @@ func (record desktopAISessionRecord) toView() DesktopAISessionView {
 		Tasks:            record.Tasks,
 		UIMessages:       uiMessages,
 		AvailableTools:   desktopAIToolViews(desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)),
-		DefaultTransport: "desktop_local",
+		DefaultTransport: "ai_sdk_ui",
 	}
 }
 

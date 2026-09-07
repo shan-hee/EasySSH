@@ -2,7 +2,7 @@ import { useState } from "react"
 import { Activity, FileText, FolderOpen, ScrollText, TextSelect, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { Button } from "@/components/ui/button"
+import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 export type ComposerContextReferenceKind = "terminal-selection" | "terminal-output" | "working-directory" | "monitor-snapshot"
@@ -50,16 +50,14 @@ export function ComposerContextReferences({
               <ReferenceIcon kind={reference.kind} />
               <span className="max-w-40 truncate">{reference.label}</span>
             </button>
-            <Button
+            <TooltipIconButton
               type="button"
-              variant="ghost"
-              size="icon"
               className="size-5 shrink-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
               onClick={() => onRemove(reference.id)}
-              aria-label={t("removeContext", { label: reference.label })}
+              tooltip={t("removeContext", { label: reference.label })}
             >
               <X className="size-3" />
-            </Button>
+            </TooltipIconButton>
           </span>
         ))}
       </div>

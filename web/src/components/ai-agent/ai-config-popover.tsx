@@ -1,34 +1,23 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Bot, CheckCircle2, Loader2, Settings2 } from "lucide-react"
+import { Loader2, Settings2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AIModelSelector } from "@/components/ai-agent/ai-model-selector"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SettingsPanel, SettingsPanelToggle } from "@/components/assistant-ui/elements/settings-panel"
 import { toast } from "@/components/ui/sonner"
 import {
   userAIConfigApi,
   type ProbeAISystemModelsResponse,
   type ProbeUserAIModelsRequest,
-  type UserAIConfig,
+  type UserAIConfig
 } from "@/lib/api/settings"
 import type { SaveUserAIConfigRequest } from "@/lib/api/settings"
-import { cn } from "@/lib/utils"
 
 export interface AIAssistantConfigAdapter {
   queryKey?: unknown[]
@@ -61,7 +50,7 @@ const DEFAULT_FORM: AIConfigForm = {
   custom_provider: "openai",
   custom_api_key: "",
   custom_endpoint: "",
-  custom_models: "",
+  custom_models: ""
 }
 
 function getErrorMessage(error: unknown, defaultMessage: string): string {
@@ -94,7 +83,7 @@ function toForm(config: UserAIConfig, customConfigOnly = false): AIConfigForm {
     custom_provider: config.custom_provider || "openai",
     custom_api_key: "",
     custom_endpoint: config.custom_endpoint || "",
-    custom_models: config.custom_models || "",
+    custom_models: config.custom_models || ""
   }
 }
 
@@ -104,7 +93,7 @@ export function AIAssistantConfigPopover({
   trigger,
   onSaved,
   customConfigOnly = false,
-  adapter,
+  adapter
 }: AIAssistantConfigPopoverProps) {
   const { t } = useTranslation("aiAssistant")
   const { t: tAccount } = useTranslation("accountSettings")
@@ -122,7 +111,7 @@ export function AIAssistantConfigPopover({
       { value: "openai", label: tAccount("aiProviderOpenAI") },
       { value: "openai-response", label: tAccount("aiProviderOpenAIResponse") },
       { value: "gemini", label: tAccount("aiProviderGemini") },
-      { value: "anthropic", label: tAccount("aiProviderAnthropic") },
+      { value: "anthropic", label: tAccount("aiProviderAnthropic") }
     ],
     [tAccount]
   )
@@ -157,7 +146,7 @@ export function AIAssistantConfigPopover({
     setForm((current) => ({
       ...current,
       use_system_config: checked,
-      custom_enabled: !checked,
+      custom_enabled: !checked
     }))
   }
 
@@ -165,7 +154,7 @@ export function AIAssistantConfigPopover({
     setForm((current) => ({
       ...current,
       use_system_config: customConfigOnly ? false : !checked,
-      custom_enabled: customConfigOnly ? true : checked,
+      custom_enabled: customConfigOnly ? true : checked
     }))
   }
 
@@ -189,7 +178,7 @@ export function AIAssistantConfigPopover({
         custom_provider: form.custom_provider,
         custom_api_key: form.custom_api_key.trim(),
         custom_endpoint: form.custom_endpoint.trim(),
-        custom_models: form.custom_models.trim(),
+        custom_models: form.custom_models.trim()
       })
       toast.success(t("aiConfigSaveSuccess"))
       await loadConfig()
@@ -209,11 +198,9 @@ export function AIAssistantConfigPopover({
       const response = await (adapter?.probeModels ?? userAIConfigApi.probeModels)({
         custom_provider: form.custom_provider,
         custom_api_key: form.custom_api_key.trim(),
-        custom_endpoint: form.custom_endpoint.trim(),
+        custom_endpoint: form.custom_endpoint.trim()
       })
-      const models = Array.from(
-        new Set((response.models || []).map((model) => model.trim()).filter(Boolean)),
-      )
+      const models = Array.from(new Set((response.models || []).map((model) => model.trim()).filter(Boolean)))
       setAvailableModels(models)
       if (models.length > 0) {
         toast.success(t("aiConfigProbeModelsSuccess", { count: models.length }))
@@ -229,13 +216,11 @@ export function AIAssistantConfigPopover({
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        {trigger}
-      </PopoverTrigger>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="w-[420px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-lg border-zinc-200/80 p-0 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950"
+        className="w-[420px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[calc(var(--radius)+8px)] border-border bg-popover p-0 shadow-2xl"
       >
         <div className="border-b border-border/60 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -250,171 +235,114 @@ export function AIAssistantConfigPopover({
             <span>{t("aiConfigLoading")}</span>
           </div>
         ) : (
-          <div className="max-h-[70vh] overflow-y-auto p-3 scrollbar-custom">
-            <div className="space-y-2">
-              {!customConfigOnly && (
-                <div
-                  className={cn(
-                    "rounded-md border bg-card transition-colors",
-                    isSystemActive && "border-primary/40 bg-primary/5"
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-3 p-3">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                        <Settings2 className="size-4" />
-                      </div>
-                      <div className="flex min-w-0 items-center gap-2">
-                        <h4 className="truncate text-sm font-medium">
-                          {t("aiConfigSystemTitle")}
-                        </h4>
-                        {isSystemActive && (
-                          <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
-                        )}
-                      </div>
-                    </div>
-                    <Switch
-                      checked={isSystemActive}
-                      onCheckedChange={setSystemEnabled}
-                      disabled={saving}
-                      aria-label={t("aiConfigSystemTitle")}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div
-                className={cn(
-                  "rounded-md border bg-card transition-colors",
-                  isCustomActive && "border-primary/40 bg-primary/5"
-                )}
-              >
-                <div className="flex items-center justify-between gap-3 p-3">
-                  <div className="flex min-w-0 items-start gap-3">
-                    <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                      <Bot className="size-4" />
-                    </div>
-                    <div className="flex min-w-0 items-center gap-2">
-                      <h4 className="truncate text-sm font-medium">
-                        {t("aiConfigCustomTitle")}
-                      </h4>
-                      {isCustomActive && (
-                        <CheckCircle2 className="size-3.5 shrink-0 text-primary" />
-                      )}
-                    </div>
-                  </div>
-                  {!customConfigOnly && (
-                    <Switch
-                      checked={isCustomActive}
-                      onCheckedChange={setCustomEnabled}
-                      disabled={saving}
-                      aria-label={t("aiConfigCustomTitle")}
-                    />
-                  )}
-                </div>
-
-                <div className="space-y-3 border-t border-border/60 p-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="assistant-ai-provider" className="text-xs">
-                      {tAccount("aiProviderLabel")}
-                    </Label>
-                    <Select
-                      value={form.custom_provider}
-                      onValueChange={(value) =>
-                        setForm((current) => ({ ...current, custom_provider: value }))
-                      }
-                      disabled={saving}
-                    >
-                      <SelectTrigger id="assistant-ai-provider" className="h-8 text-xs">
-                        <SelectValue placeholder={tAccount("aiProviderPlaceholder")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {providerOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label htmlFor="assistant-ai-api-key" className="text-xs">
-                        {tAccount("aiAPIKeyLabel")}
-                      </Label>
-                      <span className="text-[11px] text-muted-foreground">
-                        {config.has_api_key ? tAccount("aiAPIKeySet") : tAccount("aiAPIKeyNotSet")}
-                      </span>
-                    </div>
-                    <Input
-                      id="assistant-ai-api-key"
-                      type="password"
-                      className="h-8 text-xs"
-                      placeholder={tAccount("aiAPIKeyPlaceholder")}
-                      value={form.custom_api_key}
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, custom_api_key: event.target.value }))
-                      }
-                      disabled={saving}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label htmlFor="assistant-ai-endpoint" className="text-xs">
-                      {tAccount("aiEndpointLabel")}
-                    </Label>
-                    <Input
-                      id="assistant-ai-endpoint"
-                      className="h-8 text-xs"
-                      placeholder={tAccount("aiEndpointPlaceholder")}
-                      value={form.custom_endpoint}
-                      onChange={(event) =>
-                        setForm((current) => ({ ...current, custom_endpoint: event.target.value }))
-                      }
-                      disabled={saving}
-                    />
-                  </div>
-
-                  <AIModelSelector
-                    value={form.custom_models}
-                    availableModels={availableModels}
-                    onChange={(value) =>
-                      setForm((current) => ({ ...current, custom_models: value }))
-                    }
-                    onProbe={() => void probeModels()}
-                    probing={probingModels}
-                    disabled={saving}
-                    compact
-                    labels={{
-                      label: tAccount("aiModelsLabel"),
-                      manualPlaceholder: tAccount("aiModelsPlaceholder"),
-                      probe: t("aiConfigProbeModels"),
-                      probing: t("aiConfigProbingModels"),
-                      clear: t("aiConfigClearModels"),
-                      selectPlaceholder: t("aiConfigModelSelectPlaceholder"),
-                      selectSummary: (availableCount, selectedCount) =>
-                        t("aiConfigModelSelectSummary", { availableCount, selectedCount }),
-                      noOptions: t("aiConfigModelSelectNoOptions"),
-                      createModel: (value) => t("aiConfigModelSelectCreate", { value }),
-                    }}
-                  />
-                </div>
+          <SettingsPanel className="max-h-[70vh] overflow-y-auto rounded-none border-0 scrollbar-custom">
+            {!customConfigOnly && (
+              <div className="flex flex-col gap-3 border-b border-border/60 pb-4">
+                <SettingsPanelToggle
+                  label={t("aiConfigSystemTitle")}
+                  checked={isSystemActive}
+                  onCheckedChange={setSystemEnabled}
+                  disabled={saving}
+                />
+                <SettingsPanelToggle
+                  label={t("aiConfigCustomTitle")}
+                  checked={isCustomActive}
+                  onCheckedChange={setCustomEnabled}
+                  disabled={saving}
+                />
               </div>
+            )}
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="assistant-ai-provider" className="text-xs">
+                  {tAccount("aiProviderLabel")}
+                </Label>
+                <Select
+                  value={form.custom_provider}
+                  onValueChange={(value) => setForm((current) => ({ ...current, custom_provider: value }))}
+                  disabled={saving}
+                >
+                  <SelectTrigger id="assistant-ai-provider" className="h-8 text-xs">
+                    <SelectValue placeholder={tAccount("aiProviderPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providerOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="assistant-ai-api-key" className="text-xs">
+                    {tAccount("aiAPIKeyLabel")}
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">
+                    {config.has_api_key ? tAccount("aiAPIKeySet") : tAccount("aiAPIKeyNotSet")}
+                  </span>
+                </div>
+                <Input
+                  id="assistant-ai-api-key"
+                  type="password"
+                  className="h-8 text-xs"
+                  placeholder={tAccount("aiAPIKeyPlaceholder")}
+                  value={form.custom_api_key}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, custom_api_key: event.target.value }))
+                  }
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="assistant-ai-endpoint" className="text-xs">
+                  {tAccount("aiEndpointLabel")}
+                </Label>
+                <Input
+                  id="assistant-ai-endpoint"
+                  className="h-8 text-xs"
+                  placeholder={tAccount("aiEndpointPlaceholder")}
+                  value={form.custom_endpoint}
+                  onChange={(event) =>
+                    setForm((current) => ({ ...current, custom_endpoint: event.target.value }))
+                  }
+                  disabled={saving}
+                />
+              </div>
+
+              <AIModelSelector
+                value={form.custom_models}
+                availableModels={availableModels}
+                onChange={(value) => setForm((current) => ({ ...current, custom_models: value }))}
+                onProbe={() => void probeModels()}
+                probing={probingModels}
+                disabled={saving}
+                compact
+                labels={{
+                  label: tAccount("aiModelsLabel"),
+                  manualPlaceholder: tAccount("aiModelsPlaceholder"),
+                  probe: t("aiConfigProbeModels"),
+                  probing: t("aiConfigProbingModels"),
+                  clear: t("aiConfigClearModels"),
+                  selectPlaceholder: t("aiConfigModelSelectPlaceholder"),
+                  selectSummary: (availableCount, selectedCount) =>
+                    t("aiConfigModelSelectSummary", { availableCount, selectedCount }),
+                  noOptions: t("aiConfigModelSelectNoOptions"),
+                  createModel: (value) => t("aiConfigModelSelectCreate", { value })
+                }}
+              />
             </div>
 
             <div className="mt-3 flex justify-end border-t border-border/60 pt-3">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void saveConfig()}
-                disabled={saving}
-              >
+              <Button type="button" size="sm" onClick={() => void saveConfig()} disabled={saving}>
                 {saving && <Loader2 className="mr-2 size-3.5 animate-spin" />}
                 {t("aiConfigSaveButton")}
               </Button>
             </div>
-          </div>
+          </SettingsPanel>
         )}
       </PopoverContent>
     </Popover>

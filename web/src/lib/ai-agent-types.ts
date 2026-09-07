@@ -12,7 +12,7 @@ export interface AIConfigStatus {
 export type PermissionMode = "readonly" | "balanced" | "privileged"
 export type AgentSessionStatus = "idle" | "running" | "waiting_confirmation" | "closed"
 export type AgentTaskStatus = "queued" | "waiting_confirm" | "running" | "succeeded" | "failed" | "cancelled"
-export type AgentTransportType = "ai_sdk_ui" | "desktop_local"
+export type AgentTransportType = "ai_sdk_ui"
 
 export interface AgentImageAttachment {
   id: string

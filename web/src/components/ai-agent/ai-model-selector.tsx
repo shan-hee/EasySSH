@@ -3,6 +3,7 @@ import { Check, ChevronsUpDown, Plus, Search, Trash2, X, Loader2 } from "lucide-
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
 import {
   Command,
   CommandEmpty,
@@ -228,15 +229,15 @@ export function AIModelSelector({
             <Badge key={model} variant="secondary" className="max-w-full gap-1 font-mono text-xs">
               <Check className="size-3 shrink-0" />
               <span className="truncate">{model}</span>
-              <button
+              <TooltipIconButton
                 type="button"
                 onClick={() => toggleModel(model, false)}
-                className="ml-0.5 shrink-0 hover:text-destructive"
+                className="ml-0.5 size-4 shrink-0 p-0 hover:text-destructive"
                 disabled={disabled}
-                aria-label={`${labels.clear} ${model}`}
+                tooltip={`${labels.clear} ${model}`}
               >
                 <X className="size-3" />
-              </button>
+              </TooltipIconButton>
             </Badge>
           ))}
         </div>

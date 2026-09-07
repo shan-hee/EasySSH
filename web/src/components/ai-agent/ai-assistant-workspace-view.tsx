@@ -1,15 +1,15 @@
+import type { Unstable_TriggerAdapter } from "@assistant-ui/core"
+import { AssistantRuntimeProvider, type Unstable_DirectiveFormatter } from "@assistant-ui/react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent } from "react"
+import { ArrowLeft, Loader2, Server as ServerIcon, Settings2, SquarePen, X } from "lucide-react"
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent, type SyntheticEvent } from "react"
-import { ArrowLeft, Loader2, Plus, RefreshCw, Send, Server as ServerIcon, Settings2, Square, SquarePen, X } from "lucide-react"
-
-import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
-import { AgentApprovalQueue } from "@/components/ai-agent/agent-approval-queue"
+import { AgentThread } from "@/components/ai-agent/agent-thread"
 import { AISessionHistoryPopover } from "@/components/ai-agent/ai-session-history-popover"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
 import {
-  ComposerReferenceChips,
+  ComposerAttachmentList,
   MAX_COMPOSER_ATTACHMENTS,
-  PromptTemplateGrid,
+  AgentSuggestions,
   buildAgentMessageContext,
   sortReferencedServers,
   toAgentImageAttachments,
@@ -18,35 +18,17 @@ import {
 import { PageHeader } from "@/components/page-header"
 import { toast } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command"
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
-import {
-  PromptInput,
-  PromptInputModelSelect,
-  PromptInputModelSelectContent,
-  PromptInputModelSelectItem,
-  PromptInputModelSelectTrigger,
-  PromptInputModelSelectValue,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputToolbar,
-  PromptInputTools,
-} from "@/components/ai-elements/prompt-input"
-import {
-  Conversation,
-  ConversationContent,
-  ConversationInitialScroll,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation"
-import { AgentNoticeCard } from "@/components/ai-agent/agent-notice"
+import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
+import { ErrorState } from "@/components/assistant-ui/elements/error-state"
+import { AgentComposer, AgentComposerInput, AgentComposerSubmit, AgentComposerToolbar, AgentComposerTools, AgentComposerAttachButton, AgentComposerDictation } from "@/components/ai-agent/agent-composer"
+import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
+import { modelSelectorTriggerVariants } from "@/components/assistant-ui/elements/model-selector"
+import { EmptyState, EmptyStateGreeting } from "@/components/assistant-ui/elements/empty-state"
+import { ComposerTriggerPopover } from "@/components/assistant-ui/elements/composer-trigger-popover.aui"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { AgentSessionAdapter } from "@/hooks/use-agent-session"
 import type { AIConfigAdapter } from "@/hooks/use-ai-config"
+import { useAgentComposerDraft } from "@/hooks/use-agent-composer-draft"
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useAISessionHistory } from "@/hooks/use-ai-session-history"
@@ -58,7 +40,6 @@ import type { ServerListResponse } from "@/lib/api/servers"
 import { getServerDisplayName } from "@/lib/server-utils"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
-import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
 
 const SERVER_MENTION_LIMIT = 8
 
@@ -141,27 +122,10 @@ function getServerMentionSearchText(server: ManagedServer) {
     .toLowerCase()
 }
 
-function getActiveServerMention(value: string, caretPosition: number | null | undefined) {
-  if (caretPosition === null || caretPosition === undefined) {
-    return null
-  }
-
-  const beforeCaret = value.slice(0, caretPosition)
-  const triggerStart = beforeCaret.lastIndexOf("@")
-  if (triggerStart < 0) {
-    return null
-  }
-
-  const query = beforeCaret.slice(triggerStart + 1)
-  if (/\s/.test(query)) {
-    return null
-  }
-
-  return {
-    end: caretPosition,
-    query,
-    start: triggerStart,
-  }
+const serverMentionFormatter: Unstable_DirectiveFormatter = {
+  serialize: (item) => `@${item.label}`,
+  // Server references remain ordinary message text; EasySSH resolves them into execution context.
+  parse: (text) => [{ kind: "text", text }],
 }
 
 function assertCustomConfigAdapters(customConfigOnly: boolean, adapters?: AIAssistantWorkspaceAdapters) {
@@ -213,7 +177,7 @@ export function AIAssistantWorkspaceView({
     sessionId,
     chatStatus,
     uiMessages,
-    pendingConfirmationTasks,
+    pendingApprovalCount,
     error,
     clearError,
     restoreLatestSession,
@@ -221,24 +185,17 @@ export function AIAssistantWorkspaceView({
     startNewSession,
     sendMessage,
     updateMessage: updateUserMessage,
+    regenerateMessage,
     deleteMessage: deleteUserMessage,
-    confirmTask,
     cancelSession,
     detachSession,
     discardSessionIfEmpty,
   } = agentSession
 
-  const [draft, setDraft] = useState("")
+  const [draft, setDraft] = useAgentComposerDraft(agentSession.runtime)
   const [availableServers, setAvailableServers] = useState<ManagedServer[]>([])
   const [serversLoading, setServersLoading] = useState(false)
-  const [serverMention, setServerMention] = useState<{
-    end: number
-    query: string
-    start: number
-  } | null>(null)
-  const [serverMentionIndex, setServerMentionIndex] = useState(0)
-  const serverMentionListRef = useRef<HTMLDivElement>(null)
-  const serverMentionItemRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+
   const attachmentLimitNotice = useCallback(() => {
     toast.info(t("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
   }, [t])
@@ -409,8 +366,8 @@ export function AIAssistantWorkspaceView({
           toast.info(t("loading"))
         } else if (isChatRequestActive || (session && session.status !== "idle" && session.status !== "closed")) {
           toast.info(
-            pendingConfirmationTasks.length > 0
-              ? t("pendingToolsHint", { count: pendingConfirmationTasks.length })
+            pendingApprovalCount > 0
+              ? t("pendingToolsHint", { count: pendingApprovalCount })
               : t(session?.status === "waiting_confirmation" ? "statusWaitingConfirmation" : "statusRunning")
           )
         }
@@ -490,6 +447,22 @@ export function AIAssistantWorkspaceView({
       scope: workspaceScopeFromMentionedServers(mentionedServers),
     })
   }, [availableServers, buildMessageContext, permissionMode, selectedModel, updateUserMessage])
+
+  const handleRegenerateUserMessage = useCallback(async (messageId: string, content: string) => {
+    const messages = session?.messages ?? []
+    const index = messages.findIndex((message) => message.id === messageId)
+    if (index >= 0 && messages.slice(index + 1).some((message) => message.role === "user")) {
+      const confirmed = await requestConfirm({ description: t("regenerateMessageConfirm"), variant: "destructive" })
+      if (!confirmed) return false
+    }
+    const mentionedServers = getMentionedServers(content, availableServers)
+    return regenerateMessage(messageId, {
+      contextText: buildMessageContext(content),
+      model: selectedModel || undefined,
+      permissionMode,
+      scope: workspaceScopeFromMentionedServers(mentionedServers),
+    })
+  }, [availableServers, buildMessageContext, permissionMode, selectedModel, regenerateMessage, requestConfirm, session?.messages, t])
 
   const handleDeleteUserMessage = useCallback(async (messageId: string) => {
     const confirmed = await requestConfirm({
@@ -603,156 +576,14 @@ export function AIAssistantWorkspaceView({
     }
   }
 
-  const closeServerMention = useCallback(() => {
-    setServerMention(null)
-    setServerMentionIndex(0)
-  }, [])
-
-  const updateServerMention = useCallback((value: string, caretPosition: number | null) => {
-    if (serverReferenceDisabled) {
-      closeServerMention()
-      return
-    }
-
-    const nextMention = getActiveServerMention(value, caretPosition)
-    if (!nextMention) {
-      closeServerMention()
-      return
-    }
-
-    setServerMention(nextMention)
-  }, [closeServerMention, serverReferenceDisabled])
-
-  const handleDraftChange = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    const nextDraft = event.currentTarget.value
-    setDraft(nextDraft)
-    updateServerMention(nextDraft, event.currentTarget.selectionStart)
-  }, [updateServerMention])
-
-  const handleDraftCaretChange = useCallback((event: SyntheticEvent<HTMLTextAreaElement>) => {
-    updateServerMention(event.currentTarget.value, event.currentTarget.selectionStart)
-  }, [updateServerMention])
-
-  const handleDraftKeyUp = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
-      return
-    }
-
-    updateServerMention(event.currentTarget.value, event.currentTarget.selectionStart)
-  }, [updateServerMention])
-
-  const serverMentionOpen = Boolean(serverMention) && !serverReferenceDisabled
-  const serverMentionQuery = serverMention?.query.trim().toLowerCase() ?? ""
-  const serverMentionOptions = useMemo(() => {
-    const candidates = serverMentionQuery
-      ? availableServers.filter((server) => getServerMentionSearchText(server).includes(serverMentionQuery))
-      : availableServers
-
-    return candidates.slice(0, SERVER_MENTION_LIMIT)
-  }, [availableServers, serverMentionQuery])
-
-  useEffect(() => {
-    setServerMentionIndex(0)
-  }, [serverMention?.start, serverMentionQuery])
-
-  useEffect(() => {
-    if (serverMentionIndex >= serverMentionOptions.length) {
-      setServerMentionIndex(0)
-    }
-  }, [serverMentionIndex, serverMentionOptions.length])
-
-  const getSelectedServerMentionElement = useCallback(() => {
-    const selectedServer = serverMentionOptions[serverMentionIndex]
-    return selectedServer
-      ? serverMentionItemRefs.current.get(selectedServer.id)
-      : null
-  }, [serverMentionIndex, serverMentionOptions])
-
-  useSynchronousSelectedItemScroll({
-    enabled: serverMentionOpen,
-    getSelectedElement: getSelectedServerMentionElement,
-    listRef: serverMentionListRef,
-    selectedKey: serverMentionIndex,
-  })
-
-  const selectedServerMentionValue = serverMentionOptions[serverMentionIndex]?.id ?? ""
-
-  useEffect(() => {
-    if (serverMentionOpen && availableServers.length === 0 && !serversLoading) {
-      void loadServers()
-    }
-  }, [availableServers.length, loadServers, serverMentionOpen, serversLoading])
-
-  const selectServerMention = useCallback((server: ManagedServer) => {
-    const activeMention = serverMention
-    if (!activeMention) {
-      return
-    }
-
-    const mentionText = getServerMentionText(server)
-    const suffix = draft.slice(activeMention.end)
-    const suffixStartsWithWhitespace = /^\s/.test(suffix)
-    const separator = suffix.length === 0 || !suffixStartsWithWhitespace ? " " : ""
-    const nextDraft = `${draft.slice(0, activeMention.start)}${mentionText}${separator}${suffix}`
-    const nextCaretPosition = activeMention.start + mentionText.length + (
-      separator.length || (suffixStartsWithWhitespace ? 1 : 0)
-    )
-
-    setDraft(nextDraft)
-    closeServerMention()
-
-    requestAnimationFrame(() => {
-      inputRef.current?.focus()
-      inputRef.current?.setSelectionRange(nextCaretPosition, nextCaretPosition)
-    })
-  }, [closeServerMention, draft, serverMention])
-
-  const handleComposerKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (!serverMentionOpen) {
-      return
-    }
-
-    if (event.nativeEvent.isComposing) {
-      return
-    }
-
-    if (event.key === "ArrowDown") {
-      event.preventDefault()
-      setServerMentionIndex((current) => (
-        serverMentionOptions.length === 0 ? 0 : (current + 1) % serverMentionOptions.length
-      ))
-      return
-    }
-
-    if (event.key === "ArrowUp") {
-      event.preventDefault()
-      setServerMentionIndex((current) => (
-        serverMentionOptions.length === 0
-          ? 0
-          : (current - 1 + serverMentionOptions.length) % serverMentionOptions.length
-      ))
-      return
-    }
-
-    if (event.key === "Enter" || event.key === "Tab") {
-      event.preventDefault()
-      if (serverMentionOptions.length > 0) {
-        selectServerMention(serverMentionOptions[serverMentionIndex] ?? serverMentionOptions[0])
-      }
-      return
-    }
-
-    if (event.key === "Escape") {
-      event.preventDefault()
-      closeServerMention()
-    }
-  }, [
-    closeServerMention,
-    selectServerMention,
-    serverMentionIndex,
-    serverMentionOpen,
-    serverMentionOptions,
-  ])
+  const serverMentionAdapter = useMemo<Unstable_TriggerAdapter>(() => ({
+    categories: () => [],
+    categoryItems: () => [],
+    search: (query) => availableServers
+      .filter((server) => getServerMentionSearchText(server).includes(query.trim().toLowerCase()))
+      .slice(0, SERVER_MENTION_LIMIT)
+      .map((server) => ({ id: server.id, type: "server", label: getServerDisplayName(server), description: `${server.username}@${server.host}:${server.port} · ${server.status}` })),
+  }), [availableServers])
 
   const handleAttachmentSelection = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
@@ -772,7 +603,7 @@ export function AIAssistantWorkspaceView({
     void addAttachmentFiles(files)
   }, [addAttachmentFiles])
 
-  const actionButtonClass = "size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-zinc-900"
+  const actionButtonClass = "size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-accent"
 
   const historyPopover = (
     <AISessionHistoryPopover
@@ -783,28 +614,25 @@ export function AIAssistantWorkspaceView({
       onRestore={handleRestoreSession}
       t={t}
       triggerClassName={actionButtonClass}
-      className="border-zinc-200/80 dark:border-zinc-800 dark:bg-zinc-950"
+      className="border-border bg-popover"
     />
   )
 
   const sessionToolbar = (
     <>
-      <Button
+      <TooltipIconButton
         type="button"
-        variant="ghost"
-        size="icon"
         className={actionButtonClass}
         disabled={createSessionDisabled}
         onClick={() => void handleCreateNewSession()}
-        aria-label={t("newSession")}
-        title={t("newSession")}
+        tooltip={t("newSession")}
       >
         {sessionCreating ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
           <SquarePen className="size-4" />
         )}
-      </Button>
+      </TooltipIconButton>
       {historyPopover}
       <AIAssistantConfigPopover
         open={configOpen}
@@ -815,21 +643,19 @@ export function AIAssistantWorkspaceView({
           void refetchAIConfig()
         }}
         trigger={
-          <Button
+          <TooltipIconButton
             type="button"
-            variant="ghost"
-            size="icon"
             className={actionButtonClass}
-            aria-label={t("configureAI")}
-            title={t("configureAI")}
+            tooltip={t("configureAI")}
           >
             <Settings2 className="size-4" />
-          </Button>
+          </TooltipIconButton>
         }
       />
     </>
   )
   return (
+    <AssistantRuntimeProvider runtime={agentSession.runtime}>
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {confirmDialog}
       {!hidePageHeader && <PageHeader title={t("pageTitle")} />}
@@ -859,47 +685,35 @@ export function AIAssistantWorkspaceView({
       </div>
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden pb-4 md:pb-6">
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="min-h-0 flex-1 overflow-hidden">
-              {hasTimeline ? (
-                <Conversation className="h-full w-full [&>div]:scrollbar-custom">
-                  <ConversationContent
-                    className="min-h-full w-full px-4 py-6 md:px-6"
-                  >
-                    <AgentAIElementsTimeline
-                      messages={uiMessages}
-                      tText={t}
-                      onUpdateUserMessage={handleUpdateUserMessage}
-                      onDeleteUserMessage={handleDeleteUserMessage}
-                      assistantLoadingState={assistantLoadingState}
-                      className="mx-auto w-full max-w-5xl"
-                    />
-                  </ConversationContent>
-                  <ConversationInitialScroll
-                    enabled={Boolean(sessionId) && uiMessages.length > 0}
-                    scrollKey={sessionId ? `${sessionId}:${uiMessages[0]?.id ?? ""}` : null}
-                  />
-                  <ConversationScrollButton />
-                </Conversation>
-              ) : (
-                <PromptTemplateGrid onUseTemplate={handleUseTemplate} t={t} />
+        <div className={cn("flex min-h-0 flex-1 min-w-0 flex-col pb-4 md:pb-6", hasTimeline ? "overflow-hidden" : "overflow-y-auto")}>
+          <div className={cn("flex flex-1 flex-col", hasTimeline ? "min-h-0" : "min-h-fit py-8")}>
+            <div className={hasTimeline ? "min-h-0 flex-1 overflow-hidden" : "hidden"}>
+              {hasTimeline && (
+                <AgentThread
+                  key={sessionId ?? "new"}
+                  tText={t}
+                  scope={session?.scope}
+                  onUpdateUserMessage={handleUpdateUserMessage}
+                  onRegenerateUserMessage={handleRegenerateUserMessage}
+                  onDeleteUserMessage={handleDeleteUserMessage}
+                  assistantLoadingState={assistantLoadingState}
+                  className="h-full w-full"
+                  contentClassName="mx-auto max-w-5xl px-4 py-6 md:px-6"
+                />
               )}
             </div>
 
-            <div className="shrink-0 pt-4">
+            <div className={cn("w-full shrink-0 px-4 md:px-6", hasTimeline ? "pt-4" : "my-auto")}>
               {error && (
-                <AgentNoticeCard tone="error" size="md" className="mx-auto mb-3 w-full max-w-5xl shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <span>{error}</span>
-                    <Button type="button" variant="ghost" size="icon" className="-my-1 size-7 shrink-0" onClick={clearError} aria-label={t("cancel")}>
-                      <X className="size-3.5" />
-                    </Button>
-                  </div>
-                </AgentNoticeCard>
+                <ErrorState detail={error} className="mx-auto mb-3 max-w-5xl" action={
+                  <TooltipIconButton type="button" className="-my-1 size-7 shrink-0" onClick={clearError} tooltip={t("cancel")}>
+                    <X className="size-3.5" />
+                  </TooltipIconButton>
+                } />
               )}
 
-              <div className="mx-auto w-full max-w-5xl">
+              <EmptyState className="mx-auto block w-full max-w-3xl">
+                {!hasTimeline && <EmptyStateGreeting className="mb-8 text-3xl font-semibold">{t("auiWelcomeGreeting")}</EmptyStateGreeting>}
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -909,200 +723,64 @@ export function AIAssistantWorkspaceView({
                   onChange={(event) => void handleAttachmentSelection(event)}
                 />
 
-                <ComposerReferenceChips
-                  attachments={attachments}
-                  onClearServers={() => undefined}
-                  onRemoveAttachment={removeAttachment}
-                  onToggleServer={() => undefined}
-                  selectedServers={[]}
-                  t={t}
-                />
-
-                <AgentApprovalQueue
-                  tasks={agentSession.tasks}
-                  messages={uiMessages}
-                  tText={t}
-                  onConfirmTask={confirmTask}
-                  scope={session?.scope}
-                  className="mb-2"
-                />
-
-                <PromptInput
-                  className="border-border/0 bg-card/0 shadow-xl backdrop-blur supports-[backdrop-filter]:bg-card/0"
-                  onSubmit={(message) => submit(message.text)}
+                <AgentComposer
+                  onSubmit={(text) => submit(text)}
                 >
-                  <Popover
-                    open={serverMentionOpen}
-                    onOpenChange={(open) => {
-                      if (!open) {
-                        closeServerMention()
-                      }
-                    }}
-                  >
-                    <PopoverAnchor asChild>
-                      <PromptInputTextarea
-                        ref={inputRef}
-                        value={draft}
-                        onChange={handleDraftChange}
-                        onClick={handleDraftCaretChange}
-                        onKeyDown={handleComposerKeyDown}
-                        onPaste={handleAttachmentPaste}
-                        onKeyUp={handleDraftKeyUp}
-                        onSelect={handleDraftCaretChange}
-                        placeholder={hasTimeline ? t("composerPlaceholder") : t("inputPlaceholderWithMention")}
-                        minHeight={56}
-                        maxHeight={180}
-                        className="px-4 pt-3 text-sm"
-                      />
-                    </PopoverAnchor>
-                    <PopoverContent
-                      align="start"
-                      side="top"
-                      sideOffset={8}
-                      onCloseAutoFocus={(event) => event.preventDefault()}
-                      onOpenAutoFocus={(event) => event.preventDefault()}
-                      className="w-[min(34rem,calc(100vw-2rem))] overflow-hidden p-0 shadow-2xl"
-                    >
-                      <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
-                        <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-muted-foreground">
-                          <ServerIcon className="size-3.5" />
-                          <span className="truncate">{t("referenceServer")}</span>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 shrink-0 text-muted-foreground hover:text-foreground"
-                          onClick={() => void loadServers()}
-                          disabled={serversLoading}
-                          aria-label={t("referenceServerRefresh")}
-                          title={t("referenceServerRefresh")}
-                        >
-                          <RefreshCw className={cn("size-3.5", serversLoading && "animate-spin")} />
-                        </Button>
-                      </div>
+                  <ComposerAttachmentList
+                    attachments={attachments}
+                    onRemoveAttachment={removeAttachment}
+                    t={t}
+                  />
+                  <AgentComposerInput
+                    ref={inputRef}
+                    onPaste={handleAttachmentPaste}
+                    placeholder={hasTimeline ? t("composerPlaceholder") : t("inputPlaceholderWithMention")}
+                  />
+                  {!serverReferenceDisabled && <ComposerTriggerPopover
+                    char="@"
+                    adapter={serverMentionAdapter}
+                    isLoading={serversLoading}
+                    directive={{ formatter: serverMentionFormatter }}
+                    fallbackIcon={ServerIcon}
+                    emptyItemsLabel={t("referenceServerEmpty")}
+                    emptyCategoriesLabel={t("referenceServerEmpty")}
+                    loadingLabel={t("referenceServerLoading")}
+                    backLabel={t("auiBack")}
+                    className="w-[min(34rem,calc(100vw-2rem))]"
+                  />}
 
-                      <Command
-                        shouldFilter={false}
-                        disablePointerSelection
-                        value={selectedServerMentionValue}
-                        className="bg-popover"
-                      >
-                        <CommandList ref={serverMentionListRef} className="max-h-72 p-1">
-                          {serversLoading && availableServers.length === 0 ? (
-                            <div className="flex items-center justify-center gap-2 px-3 py-8 text-sm text-muted-foreground">
-                              <Loader2 className="size-4 animate-spin" />
-                              <span>{t("referenceServerLoading")}</span>
-                            </div>
-                          ) : serverMentionOptions.length === 0 ? (
-                            <CommandEmpty className="px-3 py-8 text-center text-sm text-muted-foreground">
-                              {t("referenceServerEmpty")}
-                            </CommandEmpty>
-                          ) : (
-                            <CommandGroup className="p-0">
-                              {serverMentionOptions.map((server, index) => {
-                                const isSelected = index === serverMentionIndex
+                  <AgentComposerToolbar className="gap-2">
+                    <AgentComposerTools className="min-w-0 flex-wrap">
+                      <AgentComposerAttachButton onClick={() => fileInputRef.current?.click()} disabled={attachmentDisabled} aria-busy={attachmentsLoading} title={t("attachFile")} />
+                      <AgentModelSelector models={models} value={selectedModel} onValueChange={setSelectedModel} disabled={modelSelectDisabled} />
 
-                                return (
-                                  <CommandItem
-                                    key={server.id}
-                                    ref={(element) => {
-                                      if (element) {
-                                        serverMentionItemRefs.current.set(server.id, element)
-                                      } else {
-                                        serverMentionItemRefs.current.delete(server.id)
-                                      }
-                                    }}
-                                    value={server.id}
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onMouseMove={() => setServerMentionIndex(index)}
-                                    onSelect={() => selectServerMention(server)}
-                                    className={cn(
-                                      "gap-2 rounded-md px-2 py-2 text-foreground hover:bg-accent/70 data-[selected=true]:bg-transparent data-[selected=true]:text-foreground",
-                                      isSelected && "!bg-accent !text-accent-foreground hover:!bg-accent"
-                                    )}
-                                  >
-                                    <span className="flex size-5 shrink-0 items-center justify-center rounded-md border border-border text-[10px] text-muted-foreground">
-                                      @
-                                    </span>
-                                    <span className="min-w-0 flex-1">
-                                      <span className="block truncate text-sm font-medium">
-                                        {getServerDisplayName(server)}
-                                      </span>
-                                      <span className="block truncate text-xs text-muted-foreground">
-                                        {server.username}@{server.host}:{server.port}
-                                      </span>
-                                    </span>
-                                    <span
-                                      className={cn(
-                                        "shrink-0 text-[10px] uppercase tracking-wide",
-                                        server.status === "online" ? "text-emerald-600" : "text-muted-foreground"
-                                      )}
-                                    >
-                                      {server.status}
-                                    </span>
-                                  </CommandItem>
-                                )
-                              })}
-                            </CommandGroup>
-                          )}
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-
-                  <PromptInputToolbar className="flex-wrap gap-3 px-2 py-1.5">
-                    <PromptInputTools className="flex flex-wrap items-center gap-2">
-                      <PromptInputModelSelect
-                        value={selectedModel}
-                        onValueChange={setSelectedModel}
-                        disabled={modelSelectDisabled}
-                      >
-                        <PromptInputModelSelectTrigger className="h-9 rounded-md border-none !bg-transparent px-2.5 text-xs font-normal text-muted-foreground !shadow-none hover:!bg-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:!bg-transparent dark:hover:!bg-transparent [aria-expanded='true']:!bg-transparent [aria-expanded='true']:text-foreground sm:text-sm">
-                          <PromptInputModelSelectValue placeholder={t("modelPlaceholder")} />
-                        </PromptInputModelSelectTrigger>
-                        <PromptInputModelSelectContent>
-                          {models.map((model) => (
-                            <PromptInputModelSelectItem key={model} value={model}>
-                              {model}
-                            </PromptInputModelSelectItem>
-                          ))}
-                        </PromptInputModelSelectContent>
-                      </PromptInputModelSelect>
-
-                      <PromptInputModelSelect
+                      <Select
                         value={permissionMode}
                         onValueChange={(value) => setPermissionMode(value as PermissionMode)}
                         disabled={isConfigChecking}
                       >
-                        <PromptInputModelSelectTrigger className="h-9 rounded-md border-none !bg-transparent px-2.5 text-xs font-normal text-muted-foreground !shadow-none hover:!bg-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:!bg-transparent dark:hover:!bg-transparent [aria-expanded='true']:!bg-transparent [aria-expanded='true']:text-foreground sm:text-sm">
-                          <PromptInputModelSelectValue />
-                        </PromptInputModelSelectTrigger>
-                        <PromptInputModelSelectContent>
+                        <SelectTrigger
+                          size="sm"
+                          className={cn(modelSelectorTriggerVariants({ variant: "ghost", size: "sm" }), "rounded-full text-muted-foreground")}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent
+                          align="start"
+                          sideOffset={6}
+                          className="terminal-ai-glass-popover w-auto rounded-xl data-[side=bottom]:translate-y-0 data-[side=left]:translate-x-0 data-[side=right]:translate-x-0 data-[side=top]:translate-y-0"
+                        >
                           {permissionOptions.map((option) => (
-                            <PromptInputModelSelectItem key={option.value} value={option.value}>
+                            <SelectItem
+                              key={option.value}
+                              value={option.value}
+                              className="rounded-lg py-2 pl-3 pr-9 font-medium [&>span:first-child]:right-3"
+                            >
                               {option.label}
-                            </PromptInputModelSelectItem>
+                            </SelectItem>
                           ))}
-                        </PromptInputModelSelectContent>
-                      </PromptInputModelSelect>
-
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-9 bg-transparent text-muted-foreground hover:bg-transparent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={attachmentDisabled}
-                        aria-label={t("attachFile")}
-                        title={t("attachFile")}
-                      >
-                        {attachmentsLoading ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <Plus className="size-4" />
-                        )}
-                      </Button>
+                        </SelectContent>
+                      </Select>
 
                       {showConfigAction && (
                         <Button
@@ -1115,44 +793,25 @@ export function AIAssistantWorkspaceView({
                           {t("configureAI")}
                         </Button>
                       )}
-                    </PromptInputTools>
+                    </AgentComposerTools>
 
                     <div className="ml-auto flex items-center gap-2">
-                      {isAssistantActive ? (
-                        <PromptInputSubmit
-                          type="button"
-                          status="streaming"
-                          size="icon-sm"
-                          className="h-9 w-9"
-                          aria-label="中断回复"
-                          title="中断回复"
-                          onClick={() => void cancelSession()}
-                        >
-                          <Square className="size-4" />
-                        </PromptInputSubmit>
-                      ) : (
-                        <PromptInputSubmit
-                          disabled={!canAttemptSubmit}
-                          size="icon-sm"
-                          className="h-9 w-9"
-                          aria-label={t("send")}
-                          title={t("send")}
-                        >
-                          <Send className="size-4" />
-                        </PromptInputSubmit>
-                      )}
+                      <AgentComposerDictation disabled={isConfigChecking || !isConfigured || isAssistantActive} />
+                      <AgentComposerSubmit running={isAssistantActive} disabled={!canAttemptSubmit} onCancel={cancelSession} />
                     </div>
-                  </PromptInputToolbar>
-                </PromptInput>
+                  </AgentComposerToolbar>
+                </AgentComposer>
+                {!hasTimeline && <AgentSuggestions onUseTemplate={handleUseTemplate} />}
 
                 <div className="mt-2 text-center text-xs text-muted-foreground">
                   {t("safetyNotice")}
                 </div>
-              </div>
+              </EmptyState>
             </div>
           </div>
         </div>
       </div>
     </div>
+    </AssistantRuntimeProvider>
   )
 }

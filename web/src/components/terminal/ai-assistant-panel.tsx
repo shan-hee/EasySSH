@@ -1,25 +1,21 @@
-
+import { AssistantRuntimeProvider } from "@assistant-ui/react"
 import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent, type PointerEvent } from "react"
 import { Link } from "react-router-dom"
 import {
   Loader2,
-  Plus,
   Settings2,
   Shield,
-  Sparkles,
-  Square,
   SquarePen,
   X,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { AgentAIElementsTimeline } from "@/components/ai-agent/agent-ai-elements-timeline"
-import { AgentApprovalQueue } from "@/components/ai-agent/agent-approval-queue"
+import { AgentThread } from "@/components/ai-agent/agent-thread"
 import { AISessionHistoryPopover } from "@/components/ai-agent/ai-session-history-popover"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
 import {
   ComposerContextReferences,
-  ComposerReferenceChips,
+  ComposerAttachmentList,
   MAX_COMPOSER_ATTACHMENTS,
   buildAgentMessageContext,
   toAgentImageAttachments,
@@ -28,25 +24,14 @@ import {
 } from "@/components/ai-agent/composer"
 import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
 import { Button } from "@/components/ui/button"
+import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
+import { ErrorState } from "@/components/assistant-ui/elements/error-state"
 import { toast } from "@/components/ui/sonner"
-import {
-  Conversation,
-  ConversationContent,
-  ConversationInitialScroll,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation"
-import {
-  PromptInput,
-  PromptInputModelSelect,
-  PromptInputModelSelectContent,
-  PromptInputModelSelectItem,
-  PromptInputModelSelectTrigger,
-  PromptInputModelSelectValue,
-  PromptInputSubmit,
-  PromptInputTextarea,
-  PromptInputToolbar,
-  PromptInputTools,
-} from "@/components/ai-elements/prompt-input"
+import { AgentComposer, AgentComposerInput, AgentComposerSubmit, AgentComposerToolbar, AgentComposerTools, AgentComposerAttachButton, AgentComposerDictation } from "@/components/ai-agent/agent-composer"
+import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
+import { modelSelectorTriggerVariants } from "@/components/assistant-ui/elements/model-selector"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useAgentComposerDraft } from "@/hooks/use-agent-composer-draft"
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAISessionHistory } from "@/hooks/use-ai-session-history"
 import {
@@ -206,8 +191,8 @@ export function AiAssistantPanel({
     startNewSession,
     sendMessage,
     updateMessage: updateUserMessage,
+    regenerateMessage,
     deleteMessage: deleteUserMessage,
-    confirmTask,
     cancelSession,
     detachSession,
     discardSessionIfEmpty,
@@ -216,7 +201,7 @@ export function AiAssistantPanel({
   const renameSession = adapters?.renameAISession ?? renameAISessionAPI
   const deleteSession = adapters?.deleteAISession ?? deleteAISessionAPI
 
-  const [input, setInput] = useState("")
+  const [input, setInput] = useAgentComposerDraft(agentSession.runtime)
   const attachmentLimitNotice = useCallback(() => {
     toast.info(tAI("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
   }, [tAI])
@@ -641,6 +626,7 @@ export function AiAssistantPanel({
     prependHistorySession,
     requestConfirm,
     setHistoryOpen,
+    setInput,
     isAssistantActive,
     startNewSession,
     terminalScope,
@@ -706,6 +692,21 @@ export function AiAssistantPanel({
       scope: terminalScope,
     })
   }, [activeModel, permissionMode, terminalContextText, terminalScope, updateUserMessage])
+
+  const handleRegenerateUserMessage = useCallback(async (messageId: string) => {
+    const messages = session?.messages ?? []
+    const index = messages.findIndex((message) => message.id === messageId)
+    if (index >= 0 && messages.slice(index + 1).some((message) => message.role === "user")) {
+      const confirmed = await requestConfirm({ description: tAI("regenerateMessageConfirm"), variant: "destructive" })
+      if (!confirmed) return false
+    }
+    return regenerateMessage(messageId, {
+      contextText: terminalContextText,
+      model: activeModel,
+      permissionMode,
+      scope: terminalScope,
+    })
+  }, [activeModel, permissionMode, terminalContextText, terminalScope, regenerateMessage, requestConfirm, session?.messages, tAI])
 
   const handleDeleteUserMessage = useCallback(async (messageId: string) => {
     const confirmed = await requestConfirm({
@@ -835,6 +836,7 @@ export function AiAssistantPanel({
     restoreAttachments,
     sendMessage,
     session,
+    setInput,
     startNewSession,
     terminalScope,
     terminalSession.id,
@@ -857,39 +859,34 @@ export function AiAssistantPanel({
           className="terminal-ai-glass-popover text-popover-foreground"
         />
 
-        <Button
+        <TooltipIconButton
           type="button"
-          variant="ghost"
-          size="icon"
           className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
           disabled={createSessionDisabled}
           onClick={() => void handleCreateNewSession()}
-          aria-label={tAI("newSession")}
-          title={tAI("newSession")}
+          tooltip={tAI("newSession")}
         >
           {sessionCreating ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <SquarePen className="size-4" />
           )}
-        </Button>
+        </TooltipIconButton>
 
-        <Button
+        <TooltipIconButton
           type="button"
-          variant="ghost"
-          size="icon"
           className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           onClick={onClose}
-          aria-label={tAI("panelHintClose")}
-          title={tAI("panelHintClose")}
+          tooltip={tAI("panelHintClose")}
         >
           <X className="size-4" />
-        </Button>
+        </TooltipIconButton>
       </div>
     </div>
   )
 
   return (
+    <AssistantRuntimeProvider runtime={agentSession.runtime}>
     <aside
       ref={panelRef}
       role="complementary"
@@ -955,43 +952,26 @@ export function AiAssistantPanel({
           onPointerCancel={handleResizeEnd}
         />
 
-        <Conversation className="z-[1] min-h-0 w-full flex-1 [&>div]:scrollbar-custom">
-          <ConversationContent
-            aria-label={tAI("panelAriaHistoryLabel")}
-            className="min-h-full w-full px-4 py-4"
-          >
-            <AgentAIElementsTimeline
-              messages={uiMessages}
-              tText={tAI}
-              onUpdateUserMessage={handleUpdateUserMessage}
-              onDeleteUserMessage={handleDeleteUserMessage}
-              assistantLoadingState={assistantLoadingState}
-              emptyDescription={tAI("terminalEmptyDescription")}
-              compact
-              className="w-full"
-            />
-          </ConversationContent>
-          <ConversationInitialScroll
-            enabled={isOpenSettled && Boolean(sessionId) && uiMessages.length > 0}
-            scrollKey={sessionId ? `${sessionId}:${uiMessages[0]?.id ?? ""}` : null}
-          />
-          <ConversationScrollButton className="terminal-ai-glass-control bottom-3 size-8" />
-        </Conversation>
+        <AgentThread
+          key={`${sessionId ?? "new"}:${isOpenSettled}`}
+          tText={tAI}
+          scope={session?.scope}
+          onUpdateUserMessage={handleUpdateUserMessage}
+                  onRegenerateUserMessage={handleRegenerateUserMessage}
+          onDeleteUserMessage={handleDeleteUserMessage}
+          assistantLoadingState={assistantLoadingState}
+          emptyDescription={tAI("terminalEmptyDescription")}
+          compact
+          className="z-[1] min-h-0 w-full flex-1"
+        />
 
         <div className="relative z-[1] shrink-0 p-3">
           {error && (
-            <div
-              role="alert"
-              aria-live="assertive"
-              className="mb-2 rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-xs text-destructive"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <span>{error}</span>
-                <Button type="button" variant="ghost" size="icon" className="-my-1 size-6 shrink-0" onClick={clearError} aria-label={tAI("cancel")}>
-                  <X className="size-3" />
-                </Button>
-              </div>
-            </div>
+            <ErrorState detail={error} className="mb-2 px-3 py-2" action={
+              <TooltipIconButton type="button" className="-my-1 size-6 shrink-0" onClick={clearError} tooltip={tAI("cancel")}>
+                <X className="size-3" />
+              </TooltipIconButton>
+            } />
           )}
 
           <input
@@ -1003,38 +983,22 @@ export function AiAssistantPanel({
             onChange={handleAttachmentSelection}
           />
 
-          <ComposerReferenceChips
-            attachments={attachments}
-            onClearServers={() => undefined}
-            onRemoveAttachment={removeAttachment}
-            onToggleServer={() => undefined}
-            selectedServers={[]}
-            t={tAI}
-          />
+          <AgentComposer
+            onSubmit={(text) => handleSubmit(text)}
+            className="terminal-ai-glass-composer"
+          >
+            <ComposerAttachmentList
+              attachments={attachments}
+              onRemoveAttachment={removeAttachment}
+              t={tAI}
+            />
 
           <ComposerContextReferences
             references={contextReferences}
             onRemove={(referenceId) => setContextReferences((current) => current.filter((reference) => reference.id !== referenceId))}
           />
-
-          <AgentApprovalQueue
-            tasks={tasks}
-            messages={uiMessages}
-            tText={tAI}
-            onConfirmTask={confirmTask}
-            scope={session?.scope}
-            compact
-            className="mb-2"
-          />
-
-          <PromptInput
-            onSubmit={(message) => handleSubmit(message.text)}
-            className="terminal-ai-glass-composer rounded-xl"
-          >
-            <PromptInputTextarea
+            <AgentComposerInput
               ref={inputRef}
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
               onPaste={handleAttachmentPaste}
               placeholder={
                 isConfigLoading
@@ -1043,9 +1007,6 @@ export function AiAssistantPanel({
                     ? tAI("aiNotConfiguredPlaceholder")
                     : tAI("terminalPanelInputPlaceholder")
               }
-              minHeight={74}
-              maxHeight={176}
-              className="px-3 py-3 text-sm"
               disabled={
                 isConfigLoading ||
                 !isConfigured ||
@@ -1055,20 +1016,9 @@ export function AiAssistantPanel({
               }
             />
 
-            <PromptInputToolbar className="gap-2 px-2 py-1.5">
-              <PromptInputTools className="flex flex-wrap items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 rounded-md"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || !isConfigured}
-                  aria-label={tAI("attachFile")}
-                  title={tAI("attachFile")}
-                >
-                  {attachmentsLoading ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
-                </Button>
+            <AgentComposerToolbar className="gap-2">
+              <AgentComposerTools className="flex flex-wrap items-center gap-1.5">
+                <AgentComposerAttachButton onClick={() => fileInputRef.current?.click()} disabled={attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || !isConfigured} aria-busy={attachmentsLoading} title={tAI("attachFile")} />
                 <TerminalAIContextPicker
                   session={terminalSession}
                   disabled={!isConfigured || isConfigLoading}
@@ -1079,42 +1029,36 @@ export function AiAssistantPanel({
                 />
                 {isConfigured ? (
                   <>
-                    <PromptInputModelSelect
-                      value={resolvedModel}
-                      onValueChange={setModel}
-                    >
-                      <PromptInputModelSelectTrigger className="h-8 max-w-[150px] gap-1.5 rounded-md px-2 text-xs">
-                        <Sparkles className="size-3.5 shrink-0" />
-                        <PromptInputModelSelectValue />
-                      </PromptInputModelSelectTrigger>
-                      <PromptInputModelSelectContent>
-                        {modelOptions.map((option) => (
-                          <PromptInputModelSelectItem key={option} value={option}>
-                            {option}
-                          </PromptInputModelSelectItem>
-                        ))}
-                      </PromptInputModelSelectContent>
-                    </PromptInputModelSelect>
+                    <AgentModelSelector models={modelOptions} value={resolvedModel} onValueChange={setModel} />
 
-                    <PromptInputModelSelect
+                    <Select
                       value={permissionMode}
                       onValueChange={(value) => setPermissionMode(value as PermissionMode)}
                     >
-                      <PromptInputModelSelectTrigger
-                        className="h-8 max-w-[150px] gap-1.5 rounded-md px-2 text-xs"
+                      <SelectTrigger
+                        size="sm"
+                        className={cn(modelSelectorTriggerVariants({ variant: "ghost", size: "sm" }), "max-w-[150px] rounded-full text-muted-foreground")}
                         title={permissionOptions.find((option) => option.value === permissionMode)?.description}
                       >
                         <Shield className="size-3.5 shrink-0" />
-                        <PromptInputModelSelectValue />
-                      </PromptInputModelSelectTrigger>
-                      <PromptInputModelSelectContent>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent
+                        align="start"
+                        sideOffset={6}
+                        className="terminal-ai-glass-popover w-auto rounded-xl data-[side=bottom]:translate-y-0 data-[side=left]:translate-x-0 data-[side=right]:translate-x-0 data-[side=top]:translate-y-0"
+                      >
                         {permissionOptions.map((option) => (
-                          <PromptInputModelSelectItem key={option.value} value={option.value}>
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            className="rounded-lg py-2 pl-3 pr-9 font-medium [&>span:first-child]:right-3"
+                          >
                             {option.label}
-                          </PromptInputModelSelectItem>
+                          </SelectItem>
                         ))}
-                      </PromptInputModelSelectContent>
-                    </PromptInputModelSelect>
+                      </SelectContent>
+                    </Select>
                   </>
                 ) : isConfigLoading ? (
                   <div className="flex h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground">
@@ -1154,33 +1098,17 @@ export function AiAssistantPanel({
                     </Link>
                   </Button>
                 ) : null}
-              </PromptInputTools>
+              </AgentComposerTools>
 
               <div className="ml-auto flex items-center gap-2">
-                {isAssistantActive ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 rounded-md"
-                    onClick={() => void cancelSession()}
-                    aria-label={tAI("stopGenerating")}
-                    title={tAI("stopGenerating")}
-                  >
-                    <Square className="size-3.5" />
-                  </Button>
-                ) : (
-                  <PromptInputSubmit
-                    disabled={!canSend}
-                    className="size-8 rounded-md"
-                    aria-label={tAI("send")}
-                  />
-                )}
+                <AgentComposerDictation disabled={isConfigLoading || !isConfigured || isAssistantActive} />
+                <AgentComposerSubmit running={isAssistantActive} disabled={!canSend} onCancel={cancelSession} />
               </div>
-            </PromptInputToolbar>
-          </PromptInput>
+            </AgentComposerToolbar>
+          </AgentComposer>
         </div>
       </div>
     </aside>
+    </AssistantRuntimeProvider>
   )
 }

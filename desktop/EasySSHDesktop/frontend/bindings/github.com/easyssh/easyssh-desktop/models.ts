@@ -45,32 +45,33 @@ export class DesktopAIConfigStatus {
     }
 }
 
-export class DesktopAIConfirmTaskInput {
+export class DesktopAIToolApprovalInput {
     "session_id": string;
-    "task_id": string;
-    "decision": string;
+    "id": string;
+    "approved": boolean | null;
+    "reason"?: string;
 
-    /** Creates a new DesktopAIConfirmTaskInput instance. */
-    constructor($$source: Partial<DesktopAIConfirmTaskInput> = {}) {
+    /** Creates a new DesktopAIToolApprovalInput instance. */
+    constructor($$source: Partial<DesktopAIToolApprovalInput> = {}) {
         if (!("session_id" in $$source)) {
             this["session_id"] = "";
         }
-        if (!("task_id" in $$source)) {
-            this["task_id"] = "";
+        if (!("id" in $$source)) {
+            this["id"] = "";
         }
-        if (!("decision" in $$source)) {
-            this["decision"] = "";
+        if (!("approved" in $$source)) {
+            this["approved"] = null;
         }
 
         Object.assign(this, $$source);
     }
 
     /**
-     * Creates a new DesktopAIConfirmTaskInput instance from a string or object.
+     * Creates a new DesktopAIToolApprovalInput instance from a string or object.
      */
-    static createFrom($$source: any = {}): DesktopAIConfirmTaskInput {
+    static createFrom($$source: any = {}): DesktopAIToolApprovalInput {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopAIConfirmTaskInput($$parsedSource as Partial<DesktopAIConfirmTaskInput>);
+        return new DesktopAIToolApprovalInput($$parsedSource as Partial<DesktopAIToolApprovalInput>);
     }
 }
 
