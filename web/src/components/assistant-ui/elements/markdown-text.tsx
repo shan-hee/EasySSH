@@ -4,6 +4,8 @@ import { createCodePlugin, type ThemeInput } from "@streamdown/code"
 import { math } from "@streamdown/math"
 import { mermaid } from "@streamdown/mermaid"
 import type { MermaidOptions } from "streamdown"
+import { useAuiState } from "@assistant-ui/react"
+import { StreamingText, streamingTextAnimation } from "./streaming-text"
 
 // CSS variables update already-highlighted code synchronously with the application theme.
 const syntaxTheme: ThemeInput = {
@@ -14,12 +16,18 @@ const syntaxTheme: ThemeInput = {
       scope: ["comment", "punctuation.definition.comment"],
       settings: { foreground: "var(--muted-foreground)" }
     },
-    { scope: ["keyword", "storage", "entity.name.tag"], settings: { foreground: "var(--primary)" } },
+    {
+      scope: ["keyword", "storage", "entity.name.tag"],
+      settings: { foreground: "var(--primary)" }
+    },
     {
       scope: ["string", "constant.numeric", "constant.language"],
       settings: { foreground: "var(--chart-2)" }
     },
-    { scope: ["entity.name.function", "support.function"], settings: { foreground: "var(--chart-1)" } },
+    {
+      scope: ["entity.name.function", "support.function"],
+      settings: { foreground: "var(--chart-1)" }
+    },
     { scope: ["entity.name.type", "support.type"], settings: { foreground: "var(--chart-3)" } },
     { scope: ["invalid"], settings: { foreground: "var(--destructive)" } }
   ]
@@ -48,13 +56,19 @@ const diagramOptions: MermaidOptions = {
   }
 }
 export function MarkdownText() {
+  const streaming = useAuiState((s) => s.message.status?.type === "running")
   return (
-    <StreamdownTextPrimitive
-      plugins={plugins}
-      shikiTheme={syntaxThemes}
-      mermaid={diagramOptions}
-      defer
-      className="min-w-0 w-full text-sm leading-6 break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-    />
+    <StreamingText streaming={streaming}>
+      <StreamdownTextPrimitive
+        plugins={plugins}
+        shikiTheme={syntaxThemes}
+        mermaid={diagramOptions}
+        defer
+        smooth
+        animated={streaming ? streamingTextAnimation : false}
+        caret="block"
+        className="min-w-0 w-full text-sm leading-6 break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+      />
+    </StreamingText>
   )
 }

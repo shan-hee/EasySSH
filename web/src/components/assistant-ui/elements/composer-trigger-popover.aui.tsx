@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useRef, type ComponentPropsWithoutRef, type FC } from "react"
+import { memo, useLayoutEffect, useRef, type ComponentPropsWithoutRef, type FC } from "react"
 import {
   ComposerPrimitive,
   unstable_defaultDirectiveFormatter,
@@ -8,7 +8,7 @@ import {
   type Unstable_DirectiveFormatter,
   type Unstable_TriggerItem
 } from "@assistant-ui/react"
-import { ChevronLeftIcon, ChevronRightIcon, SparklesIcon } from "lucide-react"
+import { ChevronLeftIcon, ChevronRightIcon, CornerDownLeftIcon, SparklesIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type IconComponent = FC<{ className?: string }>
@@ -48,6 +48,9 @@ type ComposerTriggerPopoverBaseProps = Omit<
   emptyItemsLabel?: string
   /** Label shown while an async adapter is resolving items. @default "Loading…" */
   loadingLabel?: string
+  /** Heading and keyboard guidance for the item list. */
+  label?: string
+  navigationHint?: string
 }
 
 type ComposerTriggerPopoverProps = ComposerTriggerPopoverBaseProps &
@@ -82,14 +85,14 @@ type CategoriesProps = {
 const Categories: FC<CategoriesProps> = ({ iconMap, fallbackIcon, emptyLabel }) => (
   <ComposerPrimitive.Unstable_TriggerPopoverCategories>
     {(categories) => (
-      <div data-slot="composer-trigger-popover-categories" className="flex flex-col py-1">
+      <div data-slot="composer-trigger-popover-categories" className="scrollbar-custom flex max-h-[min(18rem,40dvh)] flex-col overflow-y-auto overscroll-contain p-1">
         {categories.map((cat) => {
           const Icon = resolveIcon(cat.id, iconMap, fallbackIcon)
           return (
             <ComposerPrimitive.Unstable_TriggerPopoverCategoryItem
               key={cat.id}
               categoryId={cat.id}
-              className="hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent flex cursor-pointer items-center justify-between gap-2 px-3 py-2 text-sm transition-colors outline-none"
+              className="hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm transition-colors outline-none"
             >
               <span className="flex items-center gap-2">
                 <Icon className="text-muted-foreground size-4" />
@@ -113,20 +116,41 @@ type ItemsProps = {
   backLabel: string
   emptyLabel: string
   loadingLabel: string
+  label?: string
+  navigationHint?: string
 }
 
-const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, loadingLabel }) => {
-  const { isLoading } = unstable_useTriggerPopoverScopeContext()
+const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, loadingLabel, label, navigationHint }) => {
+  const { isLoading, highlightedIndex, items, open } = unstable_useTriggerPopoverScopeContext()
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const list = listRef.current
+    const highlighted = list?.querySelector<HTMLElement>("[data-highlighted]")
+    if (!list || !highlighted) return
+    // Scroll only the results, preserving the composer and page position.
+    const viewport = list.getBoundingClientRect()
+    const option = highlighted.getBoundingClientRect()
+    if (option.top < viewport.top) list.scrollTop -= viewport.top - option.top
+    else if (option.bottom > viewport.bottom) list.scrollTop += option.bottom - viewport.bottom
+  }, [highlightedIndex, items, open])
+
   return (
-    <ComposerPrimitive.Unstable_TriggerPopoverItems>
+    <ComposerPrimitive.Unstable_TriggerPopoverItems aria-label={label}>
       {(items) => (
         <div data-slot="composer-trigger-popover-items" className="flex flex-col">
+          {label && (
+            <div className="flex items-center justify-between gap-2 px-3 pb-1 pt-2.5 text-xs text-muted-foreground">
+              <span>{label}</span>
+              {!isLoading && <span className="tabular-nums">{items.length}</span>}
+            </div>
+          )}
           <ComposerPrimitive.Unstable_TriggerPopoverBack className="text-muted-foreground hover:bg-accent flex cursor-pointer items-center gap-1.5 border-b px-3 py-2 text-xs tracking-wide uppercase transition-colors">
             <ChevronLeftIcon className="size-3.5" />
             {backLabel}
           </ComposerPrimitive.Unstable_TriggerPopoverBack>
 
-          <div className="py-1">
+          <div ref={listRef} className="scrollbar-custom max-h-[min(15rem,32dvh)] overflow-y-auto overscroll-contain p-1">
             {items.map((item, index) => {
               const iconKey = typeof item.metadata?.icon === "string" ? item.metadata.icon : undefined
               const Icon = resolveIcon(iconKey, iconMap, fallbackIcon)
@@ -135,26 +159,30 @@ const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, l
                   key={item.id}
                   item={item}
                   index={index}
-                  className="hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent flex w-full cursor-pointer flex-col items-start gap-0.5 px-3 py-2 text-start transition-colors outline-none"
+                  className="group/trigger-item hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-start transition-colors outline-none"
                 >
-                  <span className="flex items-center gap-2 text-sm font-medium">
-                    <Icon className="text-primary size-3.5" />
-                    {item.label}
+                  <Icon className="size-4 shrink-0 text-muted-foreground group-data-[highlighted]/trigger-item:text-accent-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium" title={item.label}>{item.label}</span>
+                    {item.description && (
+                      <span className="mt-0.5 block truncate text-xs leading-4 text-muted-foreground" title={item.description}>
+                        {item.description}
+                      </span>
+                    )}
                   </span>
-                  {item.description && (
-                    <span className="text-muted-foreground ms-5.5 text-xs leading-tight">
-                      {item.description}
-                    </span>
-                  )}
+                  <CornerDownLeftIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-data-[highlighted]/trigger-item:opacity-100" />
                 </ComposerPrimitive.Unstable_TriggerPopoverItem>
               )
             })}
             {items.length === 0 && (
-              <div className="text-muted-foreground px-3 py-2 text-sm">
+              <div role="status" className="px-3 py-5 text-center text-sm text-muted-foreground">
                 {isLoading ? loadingLabel : emptyLabel}
               </div>
             )}
           </div>
+          {navigationHint && items.length > 0 && (
+            <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{navigationHint}</div>
+          )}
         </div>
       )}
     </ComposerPrimitive.Unstable_TriggerPopoverItems>
@@ -172,6 +200,8 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
   emptyCategoriesLabel = "No items available",
   emptyItemsLabel = "No matching items",
   loadingLabel = "Loading…",
+  label,
+  navigationHint,
   className,
   directive,
   action,
@@ -189,7 +219,7 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
     <ComposerPrimitive.Unstable_TriggerPopover
       data-slot="composer-trigger-popover"
       className={cn(
-        "aui-composer-trigger-popover bg-popover text-popover-foreground absolute start-0 bottom-full z-50 mb-2 w-64 overflow-hidden rounded-xl border",
+        "aui-composer-trigger-popover bg-popover text-popover-foreground absolute start-0 bottom-full z-50 mb-2 w-80 max-w-full overflow-hidden rounded-xl border border-border shadow-md",
         className
       )}
       {...props}
@@ -213,6 +243,8 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
         backLabel={backLabel}
         emptyLabel={emptyItemsLabel}
         loadingLabel={loadingLabel}
+        label={label}
+        navigationHint={navigationHint}
       />
     </ComposerPrimitive.Unstable_TriggerPopover>
   )

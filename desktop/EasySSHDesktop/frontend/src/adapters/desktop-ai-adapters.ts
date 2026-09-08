@@ -290,6 +290,7 @@ function fromDesktopMessage(message: DesktopAIMessageView): MessageView {
     usage: message.usage ?? undefined,
     provider_metadata: message.provider_metadata ?? undefined,
     created_at: message.created_at,
+    stopped_at: message.stopped_at,
   }
 }
 

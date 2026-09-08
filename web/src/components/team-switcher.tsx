@@ -14,10 +14,12 @@ import { DEFAULT_BRAND_LOGO, DEFAULT_BRAND_NAME } from "@/lib/brand"
 
 export const TeamSwitcher = React.memo(function TeamSwitcher({
   teams,
+  onHome,
 }: {
   teams: {
     name: string
   }[]
+  onHome?: () => void
 }) {
   const { toggleSidebar, state } = useSidebar()
   const navigate = useNavigate()
@@ -31,11 +33,12 @@ export const TeamSwitcher = React.memo(function TeamSwitcher({
   // 侧边栏展开时点击logo和文字返回主页
   const handleLogoClick = React.useCallback(() => {
     if (state === "expanded") {
-      navigate("/dashboard")
+      if (onHome) onHome()
+      else navigate("/dashboard")
     } else {
       toggleSidebar()
     }
-  }, [navigate, state, toggleSidebar])
+  }, [navigate, onHome, state, toggleSidebar])
 
   if (!activeTeam) {
     return null

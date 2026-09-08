@@ -26,6 +26,7 @@ type MessageView struct {
 	Usage            *UsageView        `json:"usage,omitempty"`
 	ProviderMetadata *ProviderMetadata `json:"provider_metadata,omitempty"`
 	CreatedAt        time.Time         `json:"created_at"`
+	StoppedAt        *time.Time        `json:"stopped_at,omitempty"`
 }
 
 type AttachmentView struct {
@@ -158,6 +159,18 @@ func BuildMessages(messages []MessageView, tasks []TaskView) []UIMessage {
 		}
 	}
 
+	for index := range uiMessages {
+		parts := make([]map[string]interface{}, 0, len(uiMessages[index].Parts))
+		var stopped []map[string]interface{}
+		for _, part := range uiMessages[index].Parts {
+			if part["type"] == "data-stopped-run" {
+				stopped = append(stopped, part)
+			} else {
+				parts = append(parts, part)
+			}
+		}
+		uiMessages[index].Parts = append(parts, stopped...)
+	}
 	return uiMessages
 }
 
@@ -263,6 +276,12 @@ func AssistantParts(message MessageView, streaming bool) []map[string]interface{
 		})
 	}
 
+	if message.StoppedAt != nil {
+		parts = append(parts, map[string]interface{}{
+			"type": "data-stopped-run", "id": message.ID + ":stopped",
+			"data": map[string]interface{}{"messageId": message.ID, "stoppedAt": message.StoppedAt},
+		})
+	}
 	return parts
 }
 
@@ -300,6 +319,8 @@ func TaskPart(task TaskView) map[string]interface{} {
 		"input":            task.Arguments,
 		"callProviderMetadata": map[string]interface{}{
 			"easyssh": map[string]interface{}{
+				"createdAt":            task.CreatedAt,
+				"updatedAt":            task.UpdatedAt,
 				"taskId":               task.ID,
 				"assistantMessageId":   task.AssistantMessageID,
 				"taskStatus":           task.Status,

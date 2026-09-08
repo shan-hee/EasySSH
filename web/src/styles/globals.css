@@ -13,6 +13,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@keyframes aui-stream-word {
+  from { opacity: 0.25; color: var(--primary); }
+  to { opacity: 1; color: inherit; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aui-streaming-text span { animation: none !important; }
+}
+
 @supports not (anchor-name: --cobe-marker) {
   .cobe-server-marker {
     display: none;

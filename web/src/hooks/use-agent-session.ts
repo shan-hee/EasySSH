@@ -121,6 +121,14 @@ function getSessionScopeKey(scope?: AgentSessionScope) {
   ].join(":")
 }
 
+function isReusableEmptySession(session: SessionView, scope?: AgentSessionScope) {
+  return session.status === "idle"
+    && session.messages.length === 0
+    && session.ui_messages.length === 0
+    && session.tasks.length === 0
+    && getSessionScopeKey(session.scope) === getSessionScopeKey(scope)
+}
+
 function mergeUIMessage(messages: UIMessage[], nextMessage: UIMessage) {
   const existingIndex = messages.findIndex((message) => message.id === nextMessage.id)
   if (existingIndex < 0) {
@@ -178,6 +186,7 @@ function createOptimisticUserUIMessage(
   return {
     id,
     role: "user",
+    metadata: { createdAt: new Date().toISOString() },
     parts: [
       ...attachments.map((attachment) => ({
         type: "file" as const,
@@ -443,7 +452,12 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
   }, [adapter, applySessionResponse, chat, pushLocalError])
 
-  const startNewSession = useCallback(async (input: { model?: string; permissionMode?: PermissionMode; scope?: AgentSessionScope }) => {
+  const startNewSession = useCallback(async (input: {
+    model?: string
+    permissionMode?: PermissionMode
+    scope?: AgentSessionScope
+    findEmptySession?: () => Promise<string | null>
+  }) => {
     sessionRevisionRef.current++
     lastRestoreKeyRef.current = getSessionScopeKey(input.scope)
     setError(null)
@@ -464,6 +478,23 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
 
     try {
+      if (input.findEmptySession) {
+        if (currentSession && isReusableEmptySession(currentSession, input.scope)) {
+          setTransport("ai_sdk_ui")
+          return { session_id: currentSession.id, session: currentSession, default_transport: "ai_sdk_ui" } satisfies CreateSessionResponse
+        }
+        const emptySessionId = await input.findEmptySession()
+        if (emptySessionId) {
+          const existing = adapter
+            ? await adapter.getSession(emptySessionId)
+            : await getAISession(emptySessionId)
+          // History counters can change; verify the full snapshot before reusing it.
+          if (isReusableEmptySession(existing.session, input.scope)) {
+            applySessionResponse(existing)
+            return existing
+          }
+        }
+      }
       const createInput = {
         model: input.model,
         permission_mode: input.permissionMode,
@@ -621,6 +652,21 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return false
     }
   }, [adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot])
+
+  const continuationRef = useRef(false)
+  const continueRun = useCallback(async (messageId: string, prompt: string, input: {
+    contextText?: string
+    model?: string
+    permissionMode?: PermissionMode
+  } = {}) => {
+    const current = sessionRef.current
+    const index = current?.messages.findIndex(message => message.id === messageId && !!message.stopped_at) ?? -1
+    if (!current || index < 0 || current.status !== "idle" || continuationRef.current || chat.status === "submitted" || chat.status === "streaming" || current.messages.slice(index + 1).some(message => message.role === "user")) return false
+    continuationRef.current = true
+    try {
+      return await sendMessage(prompt, input.contextText, input.model, input.permissionMode, current.scope) !== "failed"
+    } finally { continuationRef.current = false }
+  }, [chat.status, sendMessage])
 
   const regenerationRef = useRef(false)
   const regenerateMessage = useCallback(async (
@@ -864,6 +910,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     sendMessage,
     updateMessage,
     regenerateMessage,
+    continueRun,
     deleteMessage,
     cancelSession,
     detachSession,

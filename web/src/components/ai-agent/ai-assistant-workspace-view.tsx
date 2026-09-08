@@ -1,3 +1,5 @@
+import { AISessionSidebar } from "./ai-session-sidebar"
+import { AISidebarContent, useAISidebarHost } from "./ai-sidebar-host"
 import type { Unstable_TriggerAdapter } from "@assistant-ui/core"
 import { AssistantRuntimeProvider, type Unstable_DirectiveFormatter } from "@assistant-ui/react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent } from "react"
@@ -41,8 +43,6 @@ import { getServerDisplayName } from "@/lib/server-utils"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 
-const SERVER_MENTION_LIMIT = 8
-
 export interface AIAssistantWorkspaceAdapters {
   aiConfig?: AIConfigAdapter
   aiSettings?: AIAssistantConfigAdapter
@@ -61,6 +61,7 @@ export interface AIAssistantWorkspaceAdapters {
 }
 
 export interface AIAssistantWorkspaceViewProps {
+  active?: boolean
   hidePageHeader?: boolean
   customConfigOnly?: boolean
   onReturnToTerminal?: () => void
@@ -147,6 +148,7 @@ function assertCustomConfigAdapters(customConfigOnly: boolean, adapters?: AIAssi
 }
 
 export function AIAssistantWorkspaceView({
+  active = true,
   hidePageHeader = false,
   customConfigOnly = false,
   onReturnToTerminal,
@@ -155,6 +157,7 @@ export function AIAssistantWorkspaceView({
   assertCustomConfigAdapters(customConfigOnly, adapters)
 
   const { t } = useTranslation("aiAssistant")
+  const sidebar = useAISidebarHost()
   const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const controller = useAIAssistantController({
@@ -223,7 +226,8 @@ export function AIAssistantWorkspaceView({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sessionCreatingRef = useRef(false)
   const history = useAISessionHistory({
-    enabled: ready && !isLoading && isConfigured,
+    enabled: ready,
+    visible: Boolean(sidebar) && active,
     listSessions: adapters?.listAISessions ?? listAISessions,
     renameSession: adapters?.renameAISession ?? renameAISession,
     deleteSession: adapters?.deleteAISession ?? deleteAISession,
@@ -235,10 +239,18 @@ export function AIAssistantWorkspaceView({
     forget: forgetHistorySession,
     prepend: prependHistorySession,
     syncSession: syncHistorySession,
+    setOpen: setHistoryOpen,
   } = history
 
+  useEffect(() => {
+    if (!active) {
+      setConfigOpen(false)
+      setHistoryOpen(false)
+    }
+  }, [active, setHistoryOpen])
+
   const loadServers = useCallback(async () => {
-    if (!ready) {
+    if (!ready || !active) {
       return
     }
 
@@ -252,19 +264,19 @@ export function AIAssistantWorkspaceView({
     } finally {
       setServersLoading(false)
     }
-  }, [adapters?.servers, ready, t])
+  }, [active, adapters?.servers, ready, t])
 
   useEffect(() => {
     void loadServers()
   }, [loadServers])
 
   useEffect(() => {
-    if (!ready || isLoading || !isConfigured || session || agentSession.transport !== "idle") {
+    if (!active || !ready || isLoading || !isConfigured || session || agentSession.transport !== "idle") {
       return
     }
 
     void restoreLatestSession()
-  }, [agentSession.transport, isConfigured, isLoading, ready, restoreLatestSession, session])
+  }, [active, agentSession.transport, isConfigured, isLoading, ready, restoreLatestSession, session])
 
   const permissionOptions = useMemo(
     () =>
@@ -295,12 +307,6 @@ export function AIAssistantWorkspaceView({
   const attachmentDisabled = attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || !ready || isLoading || !isConfigured
 
   const hasTimeline = uiMessages.length > 0
-  const isCurrentSessionBlank = Boolean(
-    session &&
-    session.status !== "closed" &&
-    uiMessages.length === 0 &&
-    agentSession.tasks.length === 0
-  )
   const createSessionDisabled = !ready || isLoading || !isConfigured || sessionCreating
   const canAttemptSubmit = Boolean(draft.trim()) || attachments.length > 0
 
@@ -465,8 +471,9 @@ export function AIAssistantWorkspaceView({
   }, [availableServers, buildMessageContext, permissionMode, selectedModel, regenerateMessage, requestConfirm, session?.messages, t])
 
   const handleDeleteUserMessage = useCallback(async (messageId: string) => {
+    const stopped = session?.messages.some((message) => message.id === messageId && !!message.stopped_at)
     const confirmed = await requestConfirm({
-      description: t("deleteMessageConfirm"),
+      description: t(stopped ? "auiDiscardRunConfirm" : "deleteMessageConfirm"),
       variant: "destructive",
     })
     if (!confirmed) {
@@ -474,7 +481,7 @@ export function AIAssistantWorkspaceView({
     }
 
     return deleteUserMessage(messageId)
-  }, [deleteUserMessage, requestConfirm, t])
+  }, [deleteUserMessage, requestConfirm, session?.messages, t])
 
   const handleUseTemplate = (prompt: string) => {
     setDraft(prompt)
@@ -484,50 +491,37 @@ export function AIAssistantWorkspaceView({
   }
 
   const handleCreateNewSession = async () => {
-    if (isAssistantActive) {
-      const confirmed = await requestConfirm({
-        description: t("replaceRunningSessionConfirm"),
-        variant: "destructive",
-      })
-      if (!confirmed) return
-    }
-    setDraft("")
-    clearAttachments()
-
-    if (sessionCreatingRef.current) {
-      return
-    }
-
-    if (isCurrentSessionBlank) {
-      history.setOpen(false)
-      requestAnimationFrame(() => {
-        inputRef.current?.focus()
-      })
-      return
-    }
-
+    if (createSessionDisabled || sessionCreatingRef.current) return
     sessionCreatingRef.current = true
     setSessionCreating(true)
 
     try {
+      if (isAssistantActive) {
+        const confirmed = await requestConfirm({
+          description: t("replaceRunningSessionConfirm"),
+          variant: "destructive",
+        })
+        if (!confirmed) return
+      }
       const response = await startNewSession({
         model: selectedModel || undefined,
         permissionMode,
         scope: { kind: "global" },
+        findEmptySession: () => history.findEmptySession({ kind: "global" }),
       })
 
       if (response) {
-        prependSessionListItem(response)
+        setDraft("")
+        clearAttachments()
+        history.setOpen(false)
+        history.setSearch("")
+        sidebar?.closeMobile()
+        requestAnimationFrame(() => inputRef.current?.focus())
       }
     } finally {
       sessionCreatingRef.current = false
       setSessionCreating(false)
     }
-
-    history.setOpen(false)
-    requestAnimationFrame(() => {
-      inputRef.current?.focus()
-    })
   }
 
   const handleRestoreSession = async (targetSessionId: string) => {
@@ -537,6 +531,7 @@ export function AIAssistantWorkspaceView({
 
     if (targetSessionId === sessionId) {
       history.setOpen(false)
+      sidebar?.closeMobile()
       requestAnimationFrame(() => {
         inputRef.current?.focus()
       })
@@ -546,6 +541,7 @@ export function AIAssistantWorkspaceView({
     const restored = await restoreSession(targetSessionId)
     if (restored) {
       history.setOpen(false)
+      sidebar?.closeMobile()
       requestAnimationFrame(() => {
         inputRef.current?.focus()
       })
@@ -581,9 +577,13 @@ export function AIAssistantWorkspaceView({
     categoryItems: () => [],
     search: (query) => availableServers
       .filter((server) => getServerMentionSearchText(server).includes(query.trim().toLowerCase()))
-      .slice(0, SERVER_MENTION_LIMIT)
-      .map((server) => ({ id: server.id, type: "server", label: getServerDisplayName(server), description: `${server.username}@${server.host}:${server.port} · ${server.status}` })),
-  }), [availableServers])
+      .map((server) => ({
+        id: server.id,
+        type: "server",
+        label: getServerDisplayName(server),
+        description: `${server.username}@${server.host}:${server.port} · ${t(server.status === "online" ? "statusOnline" : "statusOffline")}`,
+      })),
+  }), [availableServers, t])
 
   const handleAttachmentSelection = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
@@ -618,23 +618,9 @@ export function AIAssistantWorkspaceView({
     />
   )
 
-  const sessionToolbar = (
-    <>
-      <TooltipIconButton
-        type="button"
-        className={actionButtonClass}
-        disabled={createSessionDisabled}
-        onClick={() => void handleCreateNewSession()}
-        tooltip={t("newSession")}
-      >
-        {sessionCreating ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <SquarePen className="size-4" />
-        )}
-      </TooltipIconButton>
-      {historyPopover}
-      <AIAssistantConfigPopover
+  const configuration = (
+    <AIAssistantConfigPopover
+        side={sidebar ? "right" : "bottom"}
         open={configOpen}
         onOpenChange={setConfigOpen}
         customConfigOnly={customConfigOnly}
@@ -652,15 +638,44 @@ export function AIAssistantWorkspaceView({
           </TooltipIconButton>
         }
       />
+  )
+
+  const sessionToolbar = (
+    <>
+      <TooltipIconButton
+        type="button"
+        className={actionButtonClass}
+        disabled={createSessionDisabled}
+        onClick={() => void handleCreateNewSession()}
+        tooltip={t("newSession")}
+      >
+        {sessionCreating ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : (
+          <SquarePen className="size-4" />
+        )}
+      </TooltipIconButton>
+      {historyPopover}
+      {configuration}
     </>
   )
   return (
     <AssistantRuntimeProvider runtime={agentSession.runtime}>
+    {sidebar && active && <AISidebarContent>
+      <AssistantRuntimeProvider runtime={agentSession.runtime}>
+      <AISessionSidebar
+        history={history} activeSessionId={sessionId}
+        onCreate={handleCreateNewSession} onRestore={handleRestoreSession} onDelete={handleDeleteSession}
+        creating={sessionCreating} createDisabled={createSessionDisabled}
+        configuration={configuration} t={t}
+      />
+      </AssistantRuntimeProvider>
+    </AISidebarContent>}
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {confirmDialog}
       {!hidePageHeader && <PageHeader title={t("pageTitle")} />}
 
-      <div className="shrink-0 px-4 pb-1 md:px-4">
+      {(!sidebar || onReturnToTerminal) && <div className="shrink-0 px-4 pb-1 md:px-4">
         <div className="flex h-9 items-center justify-between gap-2">
           {onReturnToTerminal ? (
             <Button
@@ -679,10 +694,10 @@ export function AIAssistantWorkspaceView({
             <div />
           )}
           <div className="flex items-center justify-end gap-1">
-            {sessionToolbar}
+            {!sidebar && sessionToolbar}
           </div>
         </div>
-      </div>
+      </div>}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className={cn("flex min-h-0 flex-1 min-w-0 flex-col pb-4 md:pb-6", hasTimeline ? "overflow-hidden" : "overflow-y-auto")}>
@@ -695,6 +710,7 @@ export function AIAssistantWorkspaceView({
                   scope={session?.scope}
                   onUpdateUserMessage={handleUpdateUserMessage}
                   onRegenerateUserMessage={handleRegenerateUserMessage}
+                  onContinueStoppedRun={(id) => agentSession.continueRun(id, t("auiContinuePrompt"), { model: selectedModel || undefined, permissionMode })}
                   onDeleteUserMessage={handleDeleteUserMessage}
                   assistantLoadingState={assistantLoadingState}
                   className="h-full w-full"
@@ -742,11 +758,13 @@ export function AIAssistantWorkspaceView({
                     isLoading={serversLoading}
                     directive={{ formatter: serverMentionFormatter }}
                     fallbackIcon={ServerIcon}
-                    emptyItemsLabel={t("referenceServerEmpty")}
+                    aria-label={t("referenceServer")}
+                    label={t("referenceServer")}
+                    navigationHint={t("referenceServerNavigationHint")}
+                    emptyItemsLabel={t("referenceServerNoMatch")}
                     emptyCategoriesLabel={t("referenceServerEmpty")}
                     loadingLabel={t("referenceServerLoading")}
                     backLabel={t("auiBack")}
-                    className="w-[min(34rem,calc(100vw-2rem))]"
                   />}
 
                   <AgentComposerToolbar className="gap-2">
@@ -788,7 +806,7 @@ export function AIAssistantWorkspaceView({
                           variant="ghost"
                           size="sm"
                           className="h-9 px-2.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground sm:text-sm"
-                          onClick={() => setConfigOpen(true)}
+                          onClick={() => { sidebar?.reveal(); setConfigOpen(true) }}
                         >
                           {t("configureAI")}
                         </Button>

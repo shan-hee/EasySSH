@@ -20,6 +20,7 @@ type ListSessions = (input?: {
 
 interface UseAISessionHistoryOptions {
   enabled: boolean
+  visible?: boolean
   listSessions: ListSessions
   renameSession: (sessionId: string, title: string) => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
@@ -54,7 +55,9 @@ export function createAISessionListItem(response: CreateSessionResponse, title: 
 }
 
 export function getDefaultAISessionTitle(session: SessionView, fallback: string) {
-  const firstUserMessage = session.messages.find((message) => message.role === "user")?.content.trim()
+  const firstUserMessage = session.messages
+    .find((message) => message.role === "user")
+    ?.content.trim()
   if (!firstUserMessage) {
     return fallback
   }
@@ -78,11 +81,12 @@ export function syncAISessionHistoryItems(
   if (query && !next.title.toLocaleLowerCase().includes(query)) {
     return items.filter((item) => item.id !== session.id)
   }
-  return [next, ...items.filter((item) => item.id !== session.id)].slice(0, SESSION_LIST_LIMIT)
+  return [next, ...items.filter((item) => item.id !== session.id)]
 }
 
 export function useAISessionHistory({
   enabled,
+  visible = false,
   listSessions,
   renameSession,
   deleteSession,
@@ -96,6 +100,10 @@ export function useAISessionHistory({
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [items, setItems] = useState<SessionListItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const nextPageRef = useRef(2)
+  const loadingMoreRef = useRef(false)
   const [error, setError] = useState("")
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState("")
@@ -109,11 +117,17 @@ export function useAISessionHistory({
 
   const reload = useCallback(async () => {
     if (!enabled) {
+      setLoading(false)
+      setLoadingMore(false)
+      loadingMoreRef.current = false
       return
     }
 
     const sequence = ++requestSequenceRef.current
     setLoading(true)
+    setHasMore(false)
+    setLoadingMore(false)
+    loadingMoreRef.current = false
     setError("")
     try {
       const response = await listSessions({
@@ -123,6 +137,8 @@ export function useAISessionHistory({
       })
       if (requestSequenceRef.current === sequence) {
         setItems(response.items)
+        nextPageRef.current = 2
+        setHasMore(response.items.length > 0 && SESSION_LIST_LIMIT < response.total)
       }
     } catch {
       if (requestSequenceRef.current === sequence) {
@@ -136,28 +152,91 @@ export function useAISessionHistory({
   }, [debouncedSearch, enabled, listSessions, loadErrorMessage, scope])
 
   useEffect(() => {
-    if (open) {
+    if (open || visible) {
       void reload()
-      return
+      return () => {
+        requestSequenceRef.current += 1
+      }
     }
 
     requestSequenceRef.current += 1
     setLoading(false)
-  }, [open, reload])
+    setLoadingMore(false)
+    loadingMoreRef.current = false
+  }, [open, visible, reload])
 
-  const prepend = useCallback((response: CreateSessionResponse, title: string) => {
-    if (search.trim()) {
+  const loadMore = useCallback(async () => {
+    if (
+      !enabled ||
+      loading ||
+      loadingMoreRef.current ||
+      !hasMore ||
+      search.trim() !== debouncedSearch
+    )
       return
+    const sequence = requestSequenceRef.current
+    const page = nextPageRef.current
+    loadingMoreRef.current = true
+    setLoadingMore(true)
+    setError("")
+    try {
+      const response = await listSessions({
+        page,
+        limit: SESSION_LIST_LIMIT,
+        q: debouncedSearch,
+        scope,
+      })
+      if (sequence !== requestSequenceRef.current) return
+      setItems((current) => {
+        const ids = new Set(current.map((item) => item.id))
+        return [...current, ...response.items.filter((item) => !ids.has(item.id))]
+      })
+      nextPageRef.current = page + 1
+      setHasMore(response.items.length > 0 && page * SESSION_LIST_LIMIT < response.total)
+    } catch {
+      if (sequence === requestSequenceRef.current) setError(loadErrorMessage)
+    } finally {
+      if (sequence === requestSequenceRef.current) {
+        loadingMoreRef.current = false
+        setLoadingMore(false)
+      }
     }
-    setItems((current) => [
-      createAISessionListItem(response, title),
-      ...current.filter((item) => item.id !== response.session_id),
-    ].slice(0, SESSION_LIST_LIMIT))
-  }, [search])
+  }, [debouncedSearch, enabled, hasMore, listSessions, loadErrorMessage, loading, scope, search])
 
-  const syncSession = useCallback((session: SessionView, fallbackTitle: string) => {
-    setItems((current) => syncAISessionHistoryItems(current, session, fallbackTitle, search))
-  }, [search])
+  const prepend = useCallback(
+    (response: CreateSessionResponse, title: string) => {
+      if (search.trim()) {
+        return
+      }
+      setItems((current) => [
+        createAISessionListItem(response, title),
+        ...current.filter((item) => item.id !== response.session_id),
+      ])
+    },
+    [search],
+  )
+
+  const findEmptySession = useCallback(
+    async (targetScope: AgentSessionScope) => {
+      // Search the actual scoped history, independently of the visible search or page.
+      for (let page = 1; ; page++) {
+        const response = await listSessions({ page, limit: SESSION_LIST_LIMIT, scope: targetScope })
+        const empty = response.items.find(
+          (item) => item.status === "idle" && item.message_count === 0 && item.task_count === 0,
+        )
+        if (empty) return empty.id
+        if (response.items.length === 0 || page * SESSION_LIST_LIMIT >= response.total) return null
+      }
+    },
+    [listSessions],
+  )
+
+  const syncSession = useCallback(
+    (session: SessionView, fallbackTitle: string) => {
+      setItems((current) => syncAISessionHistoryItems(current, session, fallbackTitle, search))
+    },
+    [search],
+  )
 
   const beginRename = useCallback((item: SessionListItem) => {
     setRenamingId(item.id)
@@ -169,59 +248,80 @@ export function useAISessionHistory({
     setRenameDraft("")
   }, [])
 
-  const submitRename = useCallback(async (sessionId: string) => {
-    const title = renameDraft.trim()
-    if (!title || actionLoadingId) {
-      return false
-    }
+  const submitRename = useCallback(
+    async (sessionId: string) => {
+      const title = renameDraft.trim()
+      if (!title || actionLoadingId) {
+        return false
+      }
 
-    setActionLoadingId(sessionId)
-    setError("")
-    try {
-      await renameSession(sessionId, title)
-      setItems((current) => current.map((item) => (
-        item.id === sessionId
-          ? { ...item, title, custom_title: true, updated_at: new Date().toISOString() }
-          : item
-      )))
-      cancelRename()
-      return true
-    } catch {
-      setError(renameErrorMessage)
-      return false
-    } finally {
-      setActionLoadingId(null)
-    }
-  }, [actionLoadingId, cancelRename, renameDraft, renameErrorMessage, renameSession])
+      setActionLoadingId(sessionId)
+      setError("")
+      try {
+        await renameSession(sessionId, title)
+        setItems((current) =>
+          current.map((item) =>
+            item.id === sessionId
+              ? { ...item, title, custom_title: true, updated_at: new Date().toISOString() }
+              : item,
+          ),
+        )
+        cancelRename()
+        if (visible) void reload()
+        return true
+      } catch {
+        setError(renameErrorMessage)
+        return false
+      } finally {
+        setActionLoadingId(null)
+      }
+    },
+    [
+      actionLoadingId,
+      cancelRename,
+      reload,
+      renameDraft,
+      renameErrorMessage,
+      renameSession,
+      visible,
+    ],
+  )
 
-  const remove = useCallback(async (sessionId: string) => {
-    if (!sessionId || actionLoadingId) {
-      return false
-    }
+  const remove = useCallback(
+    async (sessionId: string) => {
+      if (!sessionId || actionLoadingId) {
+        return false
+      }
 
-    setActionLoadingId(sessionId)
-    setError("")
-    try {
-      await deleteSession(sessionId)
+      setActionLoadingId(sessionId)
+      setError("")
+      try {
+        await deleteSession(sessionId)
+        setItems((current) => current.filter((item) => item.id !== sessionId))
+        if (renamingId === sessionId) {
+          cancelRename()
+        }
+        if (visible) void reload()
+        return true
+      } catch {
+        setError(deleteErrorMessage)
+        return false
+      } finally {
+        setActionLoadingId(null)
+      }
+    },
+    [actionLoadingId, cancelRename, deleteErrorMessage, deleteSession, reload, renamingId, visible],
+  )
+
+  const forget = useCallback(
+    (sessionId: string) => {
       setItems((current) => current.filter((item) => item.id !== sessionId))
       if (renamingId === sessionId) {
         cancelRename()
       }
-      return true
-    } catch {
-      setError(deleteErrorMessage)
-      return false
-    } finally {
-      setActionLoadingId(null)
-    }
-  }, [actionLoadingId, cancelRename, deleteErrorMessage, deleteSession, renamingId])
-
-  const forget = useCallback((sessionId: string) => {
-    setItems((current) => current.filter((item) => item.id !== sessionId))
-    if (renamingId === sessionId) {
-      cancelRename()
-    }
-  }, [cancelRename, renamingId])
+    },
+    [cancelRename, renamingId],
+  )
 
   return {
     open,
@@ -230,6 +330,9 @@ export function useAISessionHistory({
     setSearch,
     items,
     loading,
+    loadingMore,
+    hasMore,
+    loadMore,
     error,
     clearError: () => setError(""),
     renamingId,
@@ -242,7 +345,10 @@ export function useAISessionHistory({
     remove,
     forget,
     prepend,
+    findEmptySession,
     syncSession,
     reload,
   }
 }
+
+export type AISessionHistoryState = ReturnType<typeof useAISessionHistory>

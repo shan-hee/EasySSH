@@ -60,6 +60,7 @@ export interface MessageView {
   usage?: AgentUsage
   provider_metadata?: AgentProviderMetadata
   created_at: string
+  stopped_at?: string
 }
 
 export interface TaskView {

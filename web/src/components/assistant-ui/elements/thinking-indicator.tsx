@@ -1,37 +1,48 @@
 "use client"
 
-import type { ComponentProps } from "react"
+import { useEffect, useState, type ComponentProps } from "react"
 import { cn } from "@/lib/utils"
 import { mono } from "./surfaces"
 
 export function ThinkingIndicator({
   label,
   elapsed,
+  active = true,
   className,
   ...props
 }: Omit<ComponentProps<"div">, "children" | "label" | "elapsed"> & {
   label: string
   elapsed?: string
+  active?: boolean
 }) {
+  const [seconds, setSeconds] = useState(0)
+  useEffect(() => {
+    if (!active) return
+    const started = Date.now()
+    const timer = window.setInterval(
+      () => setSeconds(Math.floor((Date.now() - started) / 1000)),
+      1000
+    )
+    return () => window.clearInterval(timer)
+  }, [active])
+  const elapsedLabel = elapsed ?? (active && seconds > 0 ? `${seconds}s` : undefined)
   return (
     <div
       role="status"
       data-slot="thinking-indicator"
-      className={cn("text-foreground/55 flex items-center gap-2.5 text-sm", className)}
+      className={cn("flex items-center gap-2 font-mono text-xs text-muted-foreground", className)}
       {...props}
     >
+      <span aria-hidden className="shrink-0 text-primary">
+        {">"}
+      </span>
       <span
-        aria-hidden
-        className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary motion-reduce:animate-none"
-      />
-      <span
-        key={label}
-        className="shimmer motion-reduce:animate-none fade-in slide-in-from-bottom-1 animate-in relative inline-block leading-none duration-300"
+        className={cn("inline-block leading-5", active && "shimmer motion-reduce:animate-none")}
       >
         {label}
       </span>
-      {elapsed !== undefined && (
-        <span className={cn(mono, "text-foreground/30 tabular-nums")}>{elapsed}</span>
+      {elapsedLabel !== undefined && (
+        <span className={cn(mono, "text-muted-foreground tabular-nums")}>{elapsedLabel}</span>
       )}
     </div>
   )

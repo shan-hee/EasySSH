@@ -3379,6 +3379,11 @@ export interface components {
             content: string;
             /** Format: date-time */
             created_at: string;
+            /**
+             * Format: date-time
+             * @description 用户停止本轮生成的时间；已生成的部分内容仍保留。
+             */
+            stopped_at?: string;
         };
         /** @description Vercel AI SDK UIMessage。前端直接渲染 parts，不再从 MessageView/TaskView 做本地适配。 */
         AIUIMessage: {

@@ -74,14 +74,15 @@ type session struct {
 
 	subscribers map[string]chan Event
 
-	processing     bool
-	currentRun     context.CancelFunc
-	currentRunID   string
-	toolRunCtx     context.Context
-	toolRunCancel  context.CancelFunc
-	toolRunID      string
-	activeToolRuns int
-	closed         bool
+	processing         bool
+	currentRun         context.CancelFunc
+	currentRunID       string
+	streamingMessageID string
+	toolRunCtx         context.Context
+	toolRunCancel      context.CancelFunc
+	toolRunID          string
+	activeToolRuns     int
+	closed             bool
 }
 
 type taskState struct {
@@ -373,7 +374,6 @@ func (m *Manager) UpdateUserMessage(ctx context.Context, userID uuid.UUID, sessi
 	s.messageViews[messageIndex].Content = content
 	s.updateProviderMessageContentForVisibleMessage(messageIndex+1, content)
 	s.truncateAfterMessageIndex(messageIndex + 1)
-	s.truncateProviderMessagesAfterVisibleMessage(messageIndex + 1)
 	s.status = SessionStatusIdle
 	s.pendingContext = ""
 	s.updatedAt = time.Now()
@@ -419,13 +419,16 @@ func (m *Manager) DeleteMessage(ctx context.Context, userID uuid.UUID, sessionID
 		m.mu.Unlock()
 		return nil, ErrMessageNotFound
 	}
-	if s.messageViews[messageIndex].Role != "user" {
+	if s.messageViews[messageIndex].Role == "assistant" && s.messageViews[messageIndex].StoppedAt != nil {
+		for messageIndex > 0 && s.messageViews[messageIndex-1].Role != "user" {
+			messageIndex--
+		}
+	} else if s.messageViews[messageIndex].Role != "user" {
 		m.mu.Unlock()
 		return nil, ErrMessageNotDeletable
 	}
 
 	s.truncateAfterMessageIndex(messageIndex)
-	s.truncateProviderMessagesAfterVisibleMessage(messageIndex)
 	s.status = SessionStatusIdle
 	s.pendingContext = ""
 	s.updatedAt = time.Now()
@@ -644,7 +647,6 @@ func (m *Manager) RegenerateAfterUserMessage(ctx context.Context, userID uuid.UU
 		s.scope = scope
 	}
 	s.truncateAfterMessageIndex(messageIndex + 1)
-	s.truncateProviderMessagesAfterVisibleMessage(messageIndex + 1)
 	s.pendingContext = contextText
 	s.status = SessionStatusRunning
 	s.processing = true
@@ -775,6 +777,7 @@ func (m *Manager) CancelSession(ctx context.Context, userID uuid.UUID, sessionID
 	}
 	cancel := s.currentRun
 	toolCancel := s.toolRunCancel
+	wasActive := s.processing || s.status == SessionStatusRunning || s.status == SessionStatusWaitingConfirmation
 	s.currentRun = nil
 	s.currentRunID = ""
 	s.toolRunCtx = nil
@@ -787,6 +790,9 @@ func (m *Manager) CancelSession(ctx context.Context, userID uuid.UUID, sessionID
 	now := time.Now()
 	s.updatedAt = now
 	cancelledTasks := m.cancelActiveTasksLocked(s, now)
+	if wasActive {
+		s.markRunStopped(now)
+	}
 	view := m.snapshotSessionLocked(s)
 	snapshot := m.snapshotForPersistenceLocked(s)
 	m.mu.Unlock()
@@ -875,6 +881,13 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		m.mu.RUnlock()
 
 		assistantMessageID := uuid.NewString()
+		m.mu.Lock()
+		if s.currentRunID != runID {
+			m.mu.Unlock()
+			return
+		}
+		s.streamingMessageID = assistantMessageID
+		m.mu.Unlock()
 		result, err := m.factory.StreamTurn(turnCtx, config, provider.TurnRequest{
 			Model:    model,
 			Messages: reqMessages,
@@ -932,13 +945,15 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 			return
 		}
 
-		m.finalizeAssistantTurn(s, assistantMessageID, result)
+		if !m.finalizeAssistantTurn(s, assistantMessageID, result) {
+			return
+		}
 		if len(result.ToolCalls) == 0 {
 			m.completeTurn(s, false, runID)
 			return
 		}
 
-		autoTasks, pendingConfirm := m.materializeTasks(s, assistantMessageID, result.ToolCalls)
+		autoTasks, pendingConfirm := m.materializeTasks(s, assistantMessageID, result.ToolCalls, runID)
 		for _, taskID := range autoTasks {
 			m.executeTask(turnCtx, s, taskID)
 			if errors.Is(turnCtx.Err(), context.DeadlineExceeded) {
@@ -1190,7 +1205,7 @@ func (m *Manager) cancelActiveTasksLocked(s *session, now time.Time) []TaskView 
 		if !ok {
 			continue
 		}
-		if task.view.Status != TaskStatusQueued && task.view.Status != TaskStatusRunning {
+		if task.view.Status != TaskStatusQueued && task.view.Status != TaskStatusRunning && task.view.Status != TaskStatusWaitingConfirm {
 			continue
 		}
 		task.view.Status = TaskStatusCancelled
@@ -1198,11 +1213,21 @@ func (m *Manager) cancelActiveTasksLocked(s *session, now time.Time) []TaskView 
 		task.view.Error = ""
 		task.view.UpdatedAt = now
 		cancelled = append(cancelled, task.view)
+		answered := false
+		for _, message := range s.messages {
+			if message.Role == "tool" && message.ToolCallID == task.toolCall.ID {
+				answered = true
+				break
+			}
+		}
+		if !answered {
+			s.messages = append(s.messages, provider.Message{Role: "tool", Content: task.view.Result, ToolCallID: task.toolCall.ID})
+		}
 	}
 	return cancelled
 }
 
-func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCalls []registry.ToolCall) ([]string, bool) {
+func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCalls []registry.ToolCall, runID string) ([]string, bool) {
 	autoTasks := make([]string, 0, len(toolCalls))
 	pendingConfirm := false
 
@@ -1234,6 +1259,10 @@ func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCa
 			view.Result = view.Error
 
 			m.mu.Lock()
+			if s.currentRunID != runID {
+				m.mu.Unlock()
+				return nil, false
+			}
 			s.tasks[taskID] = &taskState{
 				spec:     spec,
 				toolCall: tc,
@@ -1256,6 +1285,10 @@ func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCa
 		}
 
 		m.mu.Lock()
+		if s.currentRunID != runID {
+			m.mu.Unlock()
+			return nil, false
+		}
 		s.tasks[taskID] = &taskState{
 			spec:     spec,
 			toolCall: tc,
@@ -1271,6 +1304,10 @@ func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCa
 
 		if requiresUserConfirmation(s.permissionMode, spec) {
 			m.mu.Lock()
+			if s.currentRunID != runID {
+				m.mu.Unlock()
+				return nil, false
+			}
 			task := s.tasks[taskID]
 			task.view.Status = TaskStatusWaitingConfirm
 			task.view.UpdatedAt = time.Now()
@@ -1303,8 +1340,13 @@ func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCa
 	return autoTasks, pendingConfirm
 }
 
-func (m *Manager) finalizeAssistantTurn(s *session, messageID string, result provider.TurnResult) {
+func (m *Manager) finalizeAssistantTurn(s *session, messageID string, result provider.TurnResult) bool {
 	m.mu.Lock()
+	if s.streamingMessageID != messageID {
+		m.mu.Unlock()
+		return false
+	}
+	s.streamingMessageID = ""
 	if result.Content != "" || result.Reasoning != "" {
 		s.upsertAssistantMessage(messageID, result.Content, result.Reasoning, result.Usage, result.Metadata)
 	}
@@ -1333,10 +1375,58 @@ func (m *Manager) finalizeAssistantTurn(s *session, messageID string, result pro
 		},
 		UIMessage: m.uiMessageForAssistantMessage(s, messageID),
 	})
+	return true
+}
+
+// Preserve the interrupted turn both for rendering and the next provider request.
+// Caller holds m.mu; clearing streamingMessageID also rejects late stream deltas.
+func (s *session) markRunStopped(now time.Time) {
+	answered := make(map[string]bool)
+	for _, message := range s.messages {
+		if message.Role == "tool" {
+			answered[message.ToolCallID] = true
+		}
+	}
+	for _, message := range s.messages {
+		for _, call := range message.ToolCalls {
+			if !answered[call.ID] {
+				s.messages = append(s.messages, provider.Message{Role: "tool", ToolCallID: call.ID, Content: "操作已取消。"})
+				answered[call.ID] = true
+			}
+		}
+	}
+	index := -1
+	for i := len(s.messageViews) - 1; i >= 0; i-- {
+		if s.messageViews[i].Role == "user" {
+			break
+		}
+		if s.messageViews[i].Role == "assistant" {
+			index = i
+			break
+		}
+	}
+	if s.streamingMessageID != "" && (index < 0 || s.messageViews[index].ID != s.streamingMessageID) {
+		s.messageViews = append(s.messageViews, MessageView{ID: s.streamingMessageID, Role: "assistant", CreatedAt: now})
+		index = len(s.messageViews) - 1
+	}
+	if index < 0 {
+		s.messageViews = append(s.messageViews, MessageView{ID: uuid.NewString(), Role: "assistant", CreatedAt: now})
+		index = len(s.messageViews) - 1
+	}
+	message := &s.messageViews[index]
+	message.StoppedAt = &now
+	if s.streamingMessageID != "" && strings.TrimSpace(message.Content) != "" {
+		s.messages = append(s.messages, provider.Message{Role: "assistant", Content: message.Content})
+	}
+	s.streamingMessageID = ""
 }
 
 func (m *Manager) appendAssistantDelta(s *session, messageID, delta string) {
 	m.mu.Lock()
+	if s.streamingMessageID != messageID {
+		m.mu.Unlock()
+		return
+	}
 	s.appendAssistantDelta(messageID, delta)
 	s.updatedAt = time.Now()
 	m.mu.Unlock()
@@ -1344,6 +1434,10 @@ func (m *Manager) appendAssistantDelta(s *session, messageID, delta string) {
 
 func (m *Manager) appendAssistantReasoningDelta(s *session, messageID, delta string) {
 	m.mu.Lock()
+	if s.streamingMessageID != messageID {
+		m.mu.Unlock()
+		return
+	}
 	s.appendAssistantReasoningDelta(messageID, delta)
 	s.updatedAt = time.Now()
 	m.mu.Unlock()
@@ -1833,9 +1927,12 @@ func (s *session) truncateAfterMessageIndex(messageIndex int) {
 		messageIndex = len(s.messageViews)
 	}
 
-	keepIDs := make(map[string]struct{}, messageIndex)
-	for _, message := range s.messageViews[:messageIndex] {
-		keepIDs[message.ID] = struct{}{}
+	s.truncateProviderMessagesAfterVisibleMessage(messageIndex)
+	keepToolCalls := make(map[string]struct{})
+	for _, message := range s.messages {
+		for _, call := range message.ToolCalls {
+			keepToolCalls[call.ID] = struct{}{}
+		}
 	}
 
 	s.messageViews = append([]MessageView(nil), s.messageViews[:messageIndex]...)
@@ -1845,7 +1942,7 @@ func (s *session) truncateAfterMessageIndex(messageIndex int) {
 		if !ok {
 			continue
 		}
-		if _, keep := keepIDs[task.view.AssistantMessageID]; keep {
+		if _, keep := keepToolCalls[task.toolCall.ID]; keep {
 			nextTaskOrder = append(nextTaskOrder, taskID)
 			continue
 		}
@@ -1855,17 +1952,23 @@ func (s *session) truncateAfterMessageIndex(messageIndex int) {
 }
 
 func (s *session) updateProviderMessageContentForVisibleMessage(visibleMessageCount int, content string) {
-	if visibleMessageCount <= 0 {
+	if visibleMessageCount <= 0 || visibleMessageCount > len(s.messageViews) || s.messageViews[visibleMessageCount-1].Role != "user" {
 		return
 	}
 
+	userCount := 0
+	for _, message := range s.messageViews[:visibleMessageCount] {
+		if message.Role == "user" {
+			userCount++
+		}
+	}
 	seen := 0
 	for index := range s.messages {
-		if s.messages[index].Role == "tool" {
+		if s.messages[index].Role != "user" {
 			continue
 		}
 		seen++
-		if seen == visibleMessageCount {
+		if seen == userCount {
 			s.messages[index].Content = content
 			return
 		}
@@ -1876,16 +1979,30 @@ func (s *session) truncateProviderMessagesAfterVisibleMessage(visibleMessageCoun
 	if visibleMessageCount < 0 {
 		visibleMessageCount = 0
 	}
-
+	if visibleMessageCount > len(s.messageViews) {
+		visibleMessageCount = len(s.messageViews)
+	}
+	kept := s.messageViews[:visibleMessageCount]
+	userCount := 0
+	for _, message := range kept {
+		if message.Role == "user" {
+			userCount++
+		}
+	}
+	endsAtUser := len(kept) > 0 && kept[len(kept)-1].Role == "user"
 	seen := 0
 	end := len(s.messages)
 	for index, message := range s.messages {
-		if message.Role == "tool" {
+		if message.Role != "user" {
 			continue
 		}
 		seen++
-		if seen > visibleMessageCount {
+		if seen > userCount {
 			end = index
+			break
+		}
+		if endsAtUser && seen == userCount {
+			end = index + 1
 			break
 		}
 	}

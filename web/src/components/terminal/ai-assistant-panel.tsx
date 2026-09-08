@@ -1,5 +1,5 @@
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
-import { useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent, type PointerEvent } from "react"
+import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent, type PointerEvent } from "react"
 import { Link } from "react-router-dom"
 import {
   Loader2,
@@ -10,7 +10,6 @@ import {
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-import { AgentThread } from "@/components/ai-agent/agent-thread"
 import { AISessionHistoryPopover } from "@/components/ai-agent/ai-session-history-popover"
 import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
 import {
@@ -53,6 +52,8 @@ const PANEL_WIDTH_STORAGE_KEY = "easyssh:terminal-ai-assistant:panel-width"
 const DEFAULT_PANEL_WIDTH = 420
 const MIN_PANEL_WIDTH = 320
 const MAX_PANEL_WIDTH = 720
+const loadAgentThread = () => import("@/components/ai-agent/agent-thread").then(module => ({ default: module.AgentThread }))
+const AgentThread = lazy(loadAgentThread)
 
 interface AiAssistantPanelProps {
   isOpen: boolean
@@ -182,8 +183,6 @@ export function AiAssistantPanel({
     session,
     sessionId,
     transport,
-    uiMessages,
-    tasks,
     error,
     clearError,
     canSend: canSendToSession,
@@ -194,6 +193,7 @@ export function AiAssistantPanel({
     regenerateMessage,
     deleteMessage: deleteUserMessage,
     cancelSession,
+    continueRun,
     detachSession,
     discardSessionIfEmpty,
   } = agentSession
@@ -229,6 +229,7 @@ export function AiAssistantPanel({
   const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const [isOpenSettled, setIsOpenSettled] = useState(false)
+  const [hasMountedThread, setHasMountedThread] = useState(false)
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -275,6 +276,7 @@ export function AiAssistantPanel({
     renamingId: historyRenamingId,
     setOpen: setHistoryOpen,
     syncSession: syncHistorySession,
+    findEmptySession: findEmptyHistorySession,
   } = history
 
   useEffect(() => {
@@ -354,12 +356,6 @@ export function AiAssistantPanel({
     !isChatRequestActive &&
     (canSendToSession || (!session && transport === "idle") || session?.status === "closed")
   const createSessionDisabled = !isConfigured || isConfigLoading || sessionCreating
-  const isCurrentSessionBlank = Boolean(
-    session &&
-    session.status !== "closed" &&
-    uiMessages.length === 0 &&
-    tasks.length === 0
-  )
   useEffect(() => {
     if (!isOpen) {
       setHistoryOpen(false)
@@ -371,8 +367,11 @@ export function AiAssistantPanel({
     const frame = window.requestAnimationFrame(() => {
       timer = window.setTimeout(() => {
         setIsOpenSettled(true)
+        setHasMountedThread(true)
       }, PANEL_OPEN_SETTLE_DELAY)
     })
+
+    void loadAgentThread().catch(error => console.error('Failed to preload AI thread:', error))
 
     return () => {
       window.cancelAnimationFrame(frame)
@@ -574,56 +573,44 @@ export function AiAssistantPanel({
   }, [])
 
   const handleCreateNewSession = useCallback(async () => {
-    if (isAssistantActive) {
-      const confirmed = await requestConfirm({
-        description: tAI("replaceRunningSessionConfirm"),
-        variant: "destructive",
-      })
-      if (!confirmed) return
-    }
-    setInput("")
-    clearAttachments()
-    setContextReferences([])
-
-    if (createSessionDisabled || sessionCreatingRef.current) {
-      return
-    }
-
-    if (isCurrentSessionBlank) {
-      setHistoryOpen(false)
-      focusComposer()
-      return
-    }
-
+    if (createSessionDisabled || sessionCreatingRef.current) return
     sessionCreatingRef.current = true
     setSessionCreating(true)
 
     try {
+      if (isAssistantActive) {
+        const confirmed = await requestConfirm({
+          description: tAI("replaceRunningSessionConfirm"),
+          variant: "destructive",
+        })
+        if (!confirmed) return
+      }
       const response = await startNewSession({
         model: activeModel,
         permissionMode,
         scope: terminalScope,
+        findEmptySession: () => findEmptyHistorySession(terminalScope),
       })
 
       if (response) {
+        setInput("")
+        clearAttachments()
+        setContextReferences([])
         storeTerminalAISessionId(terminalSession.id, response.session_id)
-        prependHistorySession(response, tAI("newSession"))
+        setHistoryOpen(false)
+        focusComposer()
       }
     } finally {
       sessionCreatingRef.current = false
       setSessionCreating(false)
     }
-
-    setHistoryOpen(false)
-    focusComposer()
   }, [
     activeModel,
     clearAttachments,
     createSessionDisabled,
     focusComposer,
-    isCurrentSessionBlank,
+    findEmptyHistorySession,
     permissionMode,
-    prependHistorySession,
     requestConfirm,
     setHistoryOpen,
     setInput,
@@ -709,8 +696,9 @@ export function AiAssistantPanel({
   }, [activeModel, permissionMode, terminalContextText, terminalScope, regenerateMessage, requestConfirm, session?.messages, tAI])
 
   const handleDeleteUserMessage = useCallback(async (messageId: string) => {
+    const stopped = session?.messages.some((message) => message.id === messageId && !!message.stopped_at)
     const confirmed = await requestConfirm({
-      description: tAI("deleteMessageConfirm"),
+      description: tAI(stopped ? "auiDiscardRunConfirm" : "deleteMessageConfirm"),
       variant: "destructive",
     })
     if (!confirmed) {
@@ -718,7 +706,7 @@ export function AiAssistantPanel({
     }
 
     return deleteUserMessage(messageId)
-  }, [deleteUserMessage, requestConfirm, tAI])
+  }, [deleteUserMessage, requestConfirm, session?.messages, tAI])
 
   const handleAttachmentSelection = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
@@ -842,6 +830,10 @@ export function AiAssistantPanel({
     terminalSession.id,
     tAI,
   ])
+  const handleContinueStoppedRun = useCallback((id: string) => (
+    continueRun(id, tAI("auiContinuePrompt"), { contextText: terminalContextText, model: activeModel, permissionMode })
+  ), [continueRun, tAI, terminalContextText, activeModel, permissionMode])
+
   const toolbar = (
     <div className="terminal-ai-glass-toolbar relative z-[1] flex min-h-10 shrink-0 items-center justify-between gap-3 px-3 text-foreground">
       <div className="min-w-0">
@@ -889,12 +881,13 @@ export function AiAssistantPanel({
     <AssistantRuntimeProvider runtime={agentSession.runtime}>
     <aside
       ref={panelRef}
+      data-terminal-panel
       role="complementary"
       aria-label={tAI("panelAriaPanelLabel")}
       className={cn(
         "terminal-ai-glass absolute inset-0 z-40 flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden text-foreground",
         "md:relative md:inset-auto md:translate-x-0",
-        isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-150 ease-out",
+        isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
         isOpen
           ? "translate-x-0 md:w-[var(--terminal-ai-panel-width)] md:max-w-[55vw]"
           : "translate-x-full md:w-0 md:max-w-[0px]"
@@ -903,7 +896,10 @@ export function AiAssistantPanel({
         pointerEvents: isOpen ? "auto" : "none",
         "--terminal-ai-panel-width": `${panelWidth}px`,
       } as CSSProperties}
+      inert={!isOpen}
+      aria-hidden={!isOpen}
     >
+      <div className="relative flex h-full min-h-0 w-full shrink-0 flex-col md:w-[min(var(--terminal-ai-panel-width),55vw)]">
       {confirmDialog}
       <div
         aria-hidden="true"
@@ -952,18 +948,21 @@ export function AiAssistantPanel({
           onPointerCancel={handleResizeEnd}
         />
 
-        <AgentThread
-          key={`${sessionId ?? "new"}:${isOpenSettled}`}
+        <Suspense fallback={<div className="min-h-0 flex-1" aria-busy="true" />}>
+        {hasMountedThread ? <AgentThread
+          key={sessionId ?? "new"}
           tText={tAI}
           scope={session?.scope}
           onUpdateUserMessage={handleUpdateUserMessage}
-                  onRegenerateUserMessage={handleRegenerateUserMessage}
+          onRegenerateUserMessage={handleRegenerateUserMessage}
+          onContinueStoppedRun={handleContinueStoppedRun}
           onDeleteUserMessage={handleDeleteUserMessage}
           assistantLoadingState={assistantLoadingState}
           emptyDescription={tAI("terminalEmptyDescription")}
           compact
           className="z-[1] min-h-0 w-full flex-1"
-        />
+        /> : <div className="min-h-0 flex-1" aria-busy="true" />}
+        </Suspense>
 
         <div className="relative z-[1] shrink-0 p-3">
           {error && (
@@ -1107,6 +1106,7 @@ export function AiAssistantPanel({
             </AgentComposerToolbar>
           </AgentComposer>
         </div>
+      </div>
       </div>
     </aside>
     </AssistantRuntimeProvider>

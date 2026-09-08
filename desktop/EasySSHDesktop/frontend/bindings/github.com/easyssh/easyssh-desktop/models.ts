@@ -230,6 +230,7 @@ export class DesktopAIMessageView {
     "usage"?: DesktopAIUsage | null;
     "provider_metadata"?: DesktopAIProviderMetadata | null;
     "created_at": string;
+    "stopped_at"?: string;
 
     /** Creates a new DesktopAIMessageView instance. */
     constructor($$source: Partial<DesktopAIMessageView> = {}) {

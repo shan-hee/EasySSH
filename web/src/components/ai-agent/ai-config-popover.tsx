@@ -33,6 +33,7 @@ interface AIAssistantConfigPopoverProps {
   onSaved?: () => void
   customConfigOnly?: boolean
   adapter?: AIAssistantConfigAdapter
+  side?: "bottom" | "right"
 }
 
 interface AIConfigForm {
@@ -93,7 +94,8 @@ export function AIAssistantConfigPopover({
   trigger,
   onSaved,
   customConfigOnly = false,
-  adapter
+  adapter,
+  side = "bottom"
 }: AIAssistantConfigPopoverProps) {
   const { t } = useTranslation("aiAssistant")
   const { t: tAccount } = useTranslation("accountSettings")
@@ -218,7 +220,8 @@ export function AIAssistantConfigPopover({
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
-        align="end"
+        side={side}
+        align={side === "right" ? "start" : "end"}
         sideOffset={8}
         className="w-[420px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[calc(var(--radius)+8px)] border-border bg-popover p-0 shadow-2xl"
       >

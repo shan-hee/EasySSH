@@ -750,7 +750,7 @@ function App() {
   }
 
   return (
-    <DesktopProviders>
+    <DesktopProviders aiAssistantActive={activeView === "ai"}>
       <SshWorkspace adapters={adapters} capabilities={capabilities} layout="desktop">
         <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -813,9 +813,11 @@ function App() {
               className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
               data-active={activeView === "ai"}
               aria-hidden={activeView !== "ai"}
+              inert={activeView !== "ai"}
             >
               {aiAssistantMounted ? (
                 <DesktopAIAssistantView
+                  active={activeView === "ai"}
                   adapters={aiAssistantAdapters}
                   locale={locale}
                   onReturnToTerminal={handleReturnToTerminal}

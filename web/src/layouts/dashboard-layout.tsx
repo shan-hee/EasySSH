@@ -1,9 +1,9 @@
-
 import { useEffect, useLayoutEffect, useRef } from "react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import SidebarProviderServer from "@/components/sidebar-provider-server"
 import { AppSidebar } from "@/components/app-sidebar"
+import { AISidebarHost } from "@/components/ai-agent/ai-sidebar-host"
 import { PageHeaderHost } from "@/components/page-header"
 import { SidebarInset, useSidebar } from "@/components/ui/sidebar"
 import { ClientAuthProvider } from "@/components/client-auth-provider"
@@ -40,11 +40,7 @@ function MobileSidebarRouteCloser() {
   return null
 }
 
-function DashboardRouteOutlet({
-  usesViewportWorkspace,
-}: {
-  usesViewportWorkspace: boolean
-}) {
+function DashboardRouteOutlet({ usesViewportWorkspace }: { usesViewportWorkspace: boolean }) {
   const { pathname } = useLocation()
 
   if (usesViewportWorkspace) {
@@ -103,10 +99,9 @@ export default function DashboardLayout() {
       permissions,
       t: tNav,
     })
-    const availableRoutes = [
-      ...navigationGroups.workbench,
-      ...navigationGroups.systemOrg,
-    ].map((item) => item.url)
+    const availableRoutes = [...navigationGroups.workbench, ...navigationGroups.systemOrg].map(
+      (item) => item.url,
+    )
     const preload = () => preloadCommonDashboardRoutes(availableRoutes)
 
     if (typeof window.requestIdleCallback === "function") {
@@ -129,13 +124,23 @@ export default function DashboardLayout() {
   }, [authStatus, error, isLoading, navigate, pathname])
 
   useEffect(() => {
-    if (isLoading || (error && !authStatus?.is_authenticated) || isRuntimeLoading || !runtime) return
-		const permissions = user?.permissions || []
-		const isOwner = runtime.principal.role === "owner"
-		if (isRouteAllowed(runtime, pathname, permissions, isOwner)) return
+    if (isLoading || (error && !authStatus?.is_authenticated) || isRuntimeLoading || !runtime)
+      return
+    const permissions = user?.permissions || []
+    const isOwner = runtime.principal.role === "owner"
+    if (isRouteAllowed(runtime, pathname, permissions, isOwner)) return
 
-		navigate(getRouteFallback(pathname, runtime, permissions, isOwner), { replace: true })
-	}, [authStatus?.is_authenticated, error, isLoading, isRuntimeLoading, navigate, pathname, runtime, user?.permissions])
+    navigate(getRouteFallback(pathname, runtime, permissions, isOwner), { replace: true })
+  }, [
+    authStatus?.is_authenticated,
+    error,
+    isLoading,
+    isRuntimeLoading,
+    navigate,
+    pathname,
+    runtime,
+    user?.permissions,
+  ])
 
   if (isLoading && !authStatus) {
     return <AppLoadingScreen />
@@ -146,9 +151,7 @@ export default function DashboardLayout() {
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md space-y-4 text-center">
           <p className="text-muted-foreground">{t("authStatusUnavailable")}</p>
-          <Button onClick={() => void refreshConfig({ refreshAuth: true })}>
-            {t("retry")}
-          </Button>
+          <Button onClick={() => void refreshConfig({ refreshAuth: true })}>{t("retry")}</Button>
         </div>
       </div>
     )
@@ -162,21 +165,25 @@ export default function DashboardLayout() {
     <ClientAuthProvider>
       <DashboardI18nProvider>
         <SidebarProviderServer className="h-svh overflow-hidden">
-          <MobileSidebarRouteCloser />
-          <AppSidebar />
-          <SidebarInset className="h-svh overflow-hidden">
-            <PageHeaderHost>
-              <div
-                ref={pageScrollRef}
-                className={cn(
-                  "flex min-h-0 min-w-0 flex-1 flex-col scrollbar-custom",
-                  usesPageManagedScroll ? "overflow-hidden" : "overflow-y-scroll overscroll-y-contain",
-                )}
-              >
-                <DashboardRouteOutlet usesViewportWorkspace={usesViewportWorkspace} />
-              </div>
-            </PageHeaderHost>
-          </SidebarInset>
+          <AISidebarHost>
+            <MobileSidebarRouteCloser />
+            <AppSidebar />
+            <SidebarInset className="h-svh overflow-hidden">
+              <PageHeaderHost>
+                <div
+                  ref={pageScrollRef}
+                  className={cn(
+                    "flex min-h-0 min-w-0 flex-1 flex-col scrollbar-custom",
+                    usesPageManagedScroll
+                      ? "overflow-hidden"
+                      : "overflow-y-scroll overscroll-y-contain",
+                  )}
+                >
+                  <DashboardRouteOutlet usesViewportWorkspace={usesViewportWorkspace} />
+                </div>
+              </PageHeaderHost>
+            </SidebarInset>
+          </AISidebarHost>
         </SidebarProviderServer>
       </DashboardI18nProvider>
     </ClientAuthProvider>

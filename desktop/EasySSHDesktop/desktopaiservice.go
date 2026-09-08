@@ -154,6 +154,7 @@ type DesktopAIMessageView struct {
 	Usage            *DesktopAIUsage            `json:"usage,omitempty"`
 	ProviderMetadata *DesktopAIProviderMetadata `json:"provider_metadata,omitempty"`
 	CreatedAt        string                     `json:"created_at"`
+	StoppedAt        string                     `json:"stopped_at,omitempty"`
 }
 
 type DesktopAITaskView struct {
@@ -293,8 +294,9 @@ type desktopAISessionRecord struct {
 }
 
 type desktopAIActiveRequest struct {
-	ID     string
 	Cancel context.CancelFunc
+	Done   chan struct{}
+	finish sync.Once
 }
 
 type desktopAIToolSpec struct {
@@ -313,17 +315,17 @@ type desktopAIToolResult struct {
 }
 
 type desktopAIConfirmedToolRun struct {
-	Context   context.Context
-	Cancel    context.CancelFunc
-	RequestID string
-	Active    int
+	Context context.Context
+	Cancel  context.CancelFunc
+	Request *desktopAIActiveRequest
+	Active  int
 }
 
 type DesktopAIService struct {
 	mu             sync.Mutex
 	sessionMu      sync.Mutex
 	db             *sql.DB
-	activeRequests map[string]desktopAIActiveRequest
+	activeRequests map[string]*desktopAIActiveRequest
 	confirmedRuns  map[string]*desktopAIConfirmedToolRun
 	serverService  *DesktopServerService
 	sftpService    *DesktopSFTPService
@@ -332,7 +334,7 @@ type DesktopAIService struct {
 
 func NewDesktopAIService(serverService *DesktopServerService, sftpService *DesktopSFTPService, monitorService *DesktopMonitorService) *DesktopAIService {
 	return &DesktopAIService{
-		activeRequests: map[string]desktopAIActiveRequest{},
+		activeRequests: map[string]*desktopAIActiveRequest{},
 		confirmedRuns:  map[string]*desktopAIConfirmedToolRun{},
 		serverService:  serverService,
 		sftpService:    sftpService,
@@ -352,21 +354,18 @@ func (s *DesktopAIService) ServiceStartup(_ context.Context, _ application.Servi
 func (s *DesktopAIService) ServiceShutdown() error {
 	var cancels []context.CancelFunc
 	var confirmedCancels []context.CancelFunc
-	var database *sql.DB
+	var completions []chan struct{}
 
 	s.mu.Lock()
 	for _, active := range s.activeRequests {
 		cancels = append(cancels, active.Cancel)
+		completions = append(completions, active.Done)
 	}
-	s.activeRequests = map[string]desktopAIActiveRequest{}
-	database = s.db
-	s.db = nil
 	s.mu.Unlock()
 	s.sessionMu.Lock()
 	for _, run := range s.confirmedRuns {
 		confirmedCancels = append(confirmedCancels, run.Cancel)
 	}
-	s.confirmedRuns = map[string]*desktopAIConfirmedToolRun{}
 	s.sessionMu.Unlock()
 
 	for _, cancel := range cancels {
@@ -375,6 +374,13 @@ func (s *DesktopAIService) ServiceShutdown() error {
 	for _, cancel := range confirmedCancels {
 		cancel()
 	}
+	for _, done := range completions {
+		<-done
+	}
+	s.mu.Lock()
+	database := s.db
+	s.db = nil
+	s.mu.Unlock()
 
 	if database == nil {
 		return nil
@@ -713,8 +719,8 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 
 func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record desktopAISessionRecord, config desktopAIConfigRecord, contextText string, model string) (DesktopAICreateSessionResponse, error) {
 	sessionID := record.ID
-	requestContext, requestID := s.beginAIRequest(ctx, sessionID)
-	defer s.finishAIRequest(sessionID, requestID)
+	requestContext, request := s.beginAIRequest(ctx, sessionID)
+	defer s.finishAIRequest(sessionID, request)
 	return s.completeDesktopAITurnWithContext(requestContext, record, config, contextText, model)
 }
 
@@ -757,9 +763,16 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		completedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		if err != nil {
 			if errors.Is(err, context.Canceled) || errors.Is(turnContext.Err(), context.Canceled) {
+				record.Messages = append(record.Messages, DesktopAIMessageView{
+					ID: assistantMessageID, Role: "assistant", Content: assistantContentBuilder.String(),
+					Reasoning: assistantReasoningBuilder.String(), CreatedAt: assistantStartedAt, StoppedAt: completedAt,
+				})
 				record.Status = DesktopAISessionIdle
 				record.UpdatedAt = completedAt
-				_ = s.saveSession(record)
+				cancelDesktopAIActiveTasks(&record, completedAt)
+				if saveErr := s.saveSession(record); saveErr != nil {
+					return DesktopAICreateSessionResponse{}, saveErr
+				}
 				s.emitAISessionSnapshot(record)
 				view := record.toView()
 				return DesktopAICreateSessionResponse{
@@ -780,7 +793,7 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		assistantMessage := DesktopAIMessageView{
 			ID: assistantMessageID, Role: "assistant", Content: strings.TrimSpace(turnResult.Content),
 			Reasoning: strings.TrimSpace(turnResult.Reasoning), Usage: desktopAIUsage(&turnResult.Usage),
-			ProviderMetadata: desktopAIProviderMetadata(&turnResult.Metadata), CreatedAt: completedAt,
+			ProviderMetadata: desktopAIProviderMetadata(&turnResult.Metadata), CreatedAt: assistantStartedAt,
 		}
 		record.Messages = append(record.Messages, assistantMessage)
 		record.UpdatedAt = completedAt
@@ -890,11 +903,11 @@ func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input Desk
 	run := s.confirmedRuns[sessionID]
 	if run == nil {
 		turnContext, cancelTurn := context.WithTimeout(context.Background(), aiprovider.DefaultLimits().TurnTimeout)
-		requestContext, requestID := s.beginAIRequest(turnContext, sessionID)
+		requestContext, request := s.beginAIRequest(turnContext, sessionID)
 		run = &desktopAIConfirmedToolRun{
-			Context:   requestContext,
-			Cancel:    cancelTurn,
-			RequestID: requestID,
+			Context: requestContext,
+			Cancel:  cancelTurn,
+			Request: request,
 		}
 		s.confirmedRuns[sessionID] = run
 	}
@@ -930,7 +943,7 @@ func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input Desk
 		if run.Active == 0 {
 			delete(s.confirmedRuns, sessionID)
 			run.Cancel()
-			s.finishAIRequest(sessionID, run.RequestID)
+			s.finishAIRequest(sessionID, run.Request)
 		}
 		s.sessionMu.Unlock()
 		return DesktopAICreateSessionResponse{}, err
@@ -1011,15 +1024,19 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 	_ = s.saveSession(record)
 	shouldContinue := run.Active == 0 && !pendingConfirmation && run.Context.Err() == nil
 	shouldWait := run.Active == 0 && pendingConfirmation
-	if run.Active == 0 {
+	runFinished := run.Active == 0
+	if runFinished {
 		delete(s.confirmedRuns, sessionID)
 	}
 	s.sessionMu.Unlock()
 
 	s.emitAISessionSnapshot(record)
+	if !runFinished {
+		return
+	}
 	if shouldWait || run.Context.Err() != nil {
 		run.Cancel()
-		s.finishAIRequest(sessionID, run.RequestID)
+		s.finishAIRequest(sessionID, run.Request)
 		return
 	}
 	if !shouldContinue {
@@ -1027,7 +1044,7 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 	}
 
 	defer run.Cancel()
-	defer s.finishAIRequest(sessionID, run.RequestID)
+	defer s.finishAIRequest(sessionID, run.Request)
 	config, err := s.loadConfig()
 	if err != nil {
 		s.emitAISessionEvent(DesktopAISessionEvent{SessionID: sessionID, Type: "error", Error: err.Error()})
@@ -1062,7 +1079,7 @@ func (s *DesktopAIService) finishDesktopConfirmedRunLocked(sessionID string, run
 	}
 	delete(s.confirmedRuns, sessionID)
 	run.Cancel()
-	s.finishAIRequest(sessionID, run.RequestID)
+	s.finishAIRequest(sessionID, run.Request)
 }
 
 func (s *DesktopAIService) cancelDesktopConfirmedRun(sessionID string) {
@@ -1074,7 +1091,7 @@ func (s *DesktopAIService) cancelDesktopConfirmedRun(sessionID string) {
 		return
 	}
 	run.Cancel()
-	s.finishAIRequest(sessionID, run.RequestID)
+	s.finishAIRequest(sessionID, run.Request)
 }
 
 func (s *DesktopAIService) CancelSession(id string) (map[string]bool, error) {
@@ -1086,6 +1103,9 @@ func (s *DesktopAIService) CancelSession(id string) (map[string]bool, error) {
 		return nil, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if cancelled || record.Status == DesktopAISessionRunning || record.Status == DesktopAISessionWaitingConfirmation {
+		markDesktopAIRunStopped(&record, now)
+	}
 	record.Status = DesktopAISessionIdle
 	record.UpdatedAt = now
 	cancelDesktopAIActiveTasks(&record, now)
@@ -1257,7 +1277,11 @@ func (s *DesktopAIService) DeleteMessage(sessionID string, messageID string) (De
 	if messageIndex < 0 {
 		return DesktopAICreateSessionResponse{}, errors.New("AI message not found")
 	}
-	if record.Messages[messageIndex].Role != "user" {
+	if record.Messages[messageIndex].Role == "assistant" && record.Messages[messageIndex].StoppedAt != "" {
+		for messageIndex > 0 && record.Messages[messageIndex-1].Role != "user" {
+			messageIndex--
+		}
+	} else if record.Messages[messageIndex].Role != "user" {
 		return DesktopAICreateSessionResponse{}, errors.New("AI message cannot be deleted")
 	}
 
@@ -1485,43 +1509,43 @@ func (s *DesktopAIService) saveSession(record desktopAISessionRecord) error {
 	return err
 }
 
-func (s *DesktopAIService) beginAIRequest(parent context.Context, sessionID string) (context.Context, string) {
+func (s *DesktopAIService) beginAIRequest(parent context.Context, sessionID string) (context.Context, *desktopAIActiveRequest) {
 	requestContext, cancel := context.WithCancel(parent)
-	requestID := newDesktopAIID("ai-request")
+	request := &desktopAIActiveRequest{Cancel: cancel, Done: make(chan struct{})}
 
 	s.mu.Lock()
 	if s.activeRequests == nil {
-		s.activeRequests = map[string]desktopAIActiveRequest{}
+		s.activeRequests = map[string]*desktopAIActiveRequest{}
 	}
 	if previous, ok := s.activeRequests[sessionID]; ok {
 		previous.Cancel()
 	}
-	s.activeRequests[sessionID] = desktopAIActiveRequest{ID: requestID, Cancel: cancel}
+	s.activeRequests[sessionID] = request
 	s.mu.Unlock()
 
-	return requestContext, requestID
+	return requestContext, request
 }
 
-func (s *DesktopAIService) finishAIRequest(sessionID string, requestID string) {
+func (s *DesktopAIService) finishAIRequest(sessionID string, request *desktopAIActiveRequest) {
 	s.mu.Lock()
-	if active, ok := s.activeRequests[sessionID]; ok && active.ID == requestID {
+	if s.activeRequests[sessionID] == request {
 		delete(s.activeRequests, sessionID)
 	}
 	s.mu.Unlock()
+	request.finish.Do(func() { close(request.Done) })
 }
 
 func (s *DesktopAIService) cancelAIRequest(sessionID string) bool {
 	s.mu.Lock()
 	active, ok := s.activeRequests[sessionID]
-	if ok {
-		delete(s.activeRequests, sessionID)
-	}
 	s.mu.Unlock()
 
 	if !ok {
 		return false
 	}
 	active.Cancel()
+	// The final snapshot owns the partial reply. Wait before loading and saving it again.
+	<-active.Done
 	return true
 }
 
@@ -1592,6 +1616,9 @@ func desktopAIProviderMessages(record desktopAISessionRecord, contextText string
 		}
 		if message.Role == "assistant" {
 			providerMessage.ToolCalls = desktopAIProviderToolCalls(record.Tasks, message.ID)
+			if message.StoppedAt != "" && strings.TrimSpace(content) == "" && len(providerMessage.ToolCalls) == 0 {
+				continue
+			}
 		}
 		result = append(result, providerMessage)
 
@@ -2492,6 +2519,7 @@ func toAichatUIMessages(messages []DesktopAIMessageView) []aichatui.MessageView 
 			ID: message.ID, Role: message.Role, Content: message.Content, Reasoning: message.Reasoning,
 			Attachments: attachments, Usage: desktopAIUsageView(message.Usage),
 			ProviderMetadata: desktopAIProviderMetadataView(message.ProviderMetadata), CreatedAt: parseDesktopAITime(message.CreatedAt),
+			StoppedAt: parseDesktopAIStoppedAt(message.StoppedAt),
 		})
 	}
 	return result
@@ -2502,6 +2530,7 @@ func desktopAIUIMessagePtr(message DesktopAIMessageView, streaming bool) *aichat
 		ID: message.ID, Role: message.Role, Content: message.Content, Reasoning: message.Reasoning,
 		Attachments: desktopAIAttachmentViews(message.Attachments), Usage: desktopAIUsageView(message.Usage),
 		ProviderMetadata: desktopAIProviderMetadataView(message.ProviderMetadata), CreatedAt: parseDesktopAITime(message.CreatedAt),
+		StoppedAt: parseDesktopAIStoppedAt(message.StoppedAt),
 	}, streaming)
 	if !ok {
 		return nil
@@ -2792,7 +2821,7 @@ func desktopAIHasPendingConfirmation(tasks []DesktopAITaskView) bool {
 
 func cancelDesktopAIActiveTasks(record *desktopAISessionRecord, now string) {
 	for index := range record.Tasks {
-		if record.Tasks[index].Status != DesktopAITaskQueued && record.Tasks[index].Status != DesktopAITaskRunning {
+		if record.Tasks[index].Status != DesktopAITaskQueued && record.Tasks[index].Status != DesktopAITaskRunning && record.Tasks[index].Status != DesktopAITaskWaitingConfirm {
 			continue
 		}
 		record.Tasks[index].Status = DesktopAITaskCancelled
@@ -2800,6 +2829,29 @@ func cancelDesktopAIActiveTasks(record *desktopAISessionRecord, now string) {
 		record.Tasks[index].Error = ""
 		record.Tasks[index].UpdatedAt = now
 	}
+}
+
+func parseDesktopAIStoppedAt(value string) *time.Time {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+func markDesktopAIRunStopped(record *desktopAISessionRecord, now string) {
+	for index := len(record.Messages) - 1; index >= 0; index-- {
+		if record.Messages[index].Role == "user" {
+			break
+		}
+		if record.Messages[index].Role == "assistant" {
+			if record.Messages[index].StoppedAt == "" {
+				record.Messages[index].StoppedAt = now
+			}
+			return
+		}
+	}
+	record.Messages = append(record.Messages, DesktopAIMessageView{ID: newDesktopAIID("msg"), Role: "assistant", CreatedAt: now, StoppedAt: now})
 }
 
 func desktopAIStringArg(args map[string]any, key string) string {

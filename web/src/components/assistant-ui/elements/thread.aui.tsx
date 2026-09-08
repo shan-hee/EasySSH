@@ -16,11 +16,10 @@ import {
   ReasoningTrigger
 } from "@/components/assistant-ui/elements/reasoning.aui"
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui"
-import {
-  ToolGroupContent,
-  ToolGroupRoot,
-  ToolGroupTrigger
-} from "@/components/assistant-ui/elements/tool-group.aui"
+import { ToolTimeline } from "./tool-timeline"
+import { MessagePair } from "./message-pair"
+import { MessageTimestamp } from "./timeline"
+import { StoppedRun } from "./stopped-run"
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
 import { Button } from "@/components/ui/button"
 import { Sources } from "./sources.aui"
@@ -65,6 +64,7 @@ import {
   useContext,
   useState,
   useRef,
+  useMemo,
   type ComponentType,
   type FC,
   type PropsWithChildren
@@ -98,6 +98,7 @@ export type ThreadProps = {
   onUpdateUserMessage?: (id: string, text: string) => boolean | Promise<boolean>
   onRegenerateUserMessage?: (id: string, text: string) => boolean | Promise<boolean>
   onDeleteUserMessage?: (id: string) => boolean | Promise<boolean>
+  onContinueStoppedRun?: (id: string) => boolean | Promise<boolean>
 }
 
 const ThreadComponentsContext = createContext<ThreadComponents>({})
@@ -106,9 +107,26 @@ const MESSAGE_BATCH = 50
 
 export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
   const { t } = useTranslation("aiAssistant")
-  const count = useAuiState((s) => s.thread.messages.length)
+  const messages = useAuiState((s) => s.thread.messages)
+  const count = messages.length
+  const hasRunningAssistant = useAuiState((s) => {
+    const last = s.thread.messages[s.thread.messages.length - 1]
+    return last?.role === "assistant" && last.status.type === "running"
+  })
   const [visibleCount, setVisibleCount] = useState(MESSAGE_BATCH)
-  const hidden = Math.max(0, count - visibleCount)
+  const pairs = useMemo(() => {
+    const groups: { id: string; indices: number[] }[] = []
+    messages.forEach((message, index) => {
+      if (message.role === "system") return
+      if (message.role === "user" || groups.length === 0)
+        groups.push({ id: message.id, indices: [] })
+      groups[groups.length - 1]!.indices.push(index)
+    })
+    return groups.filter(
+      (group) => group.indices[group.indices.length - 1]! >= Math.max(0, count - visibleCount)
+    )
+  }, [count, messages, visibleCount])
+  const hidden = pairs[0]?.indices[0] ?? 0
   const { className, contentClassName, loadingText, compact } = options
   const { Welcome = ThreadWelcome } = components
   return (
@@ -135,7 +153,10 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
             <div
               role="log"
               aria-label={t("panelAriaHistoryLabel")}
-              className={cn("mx-auto flex min-h-full w-full flex-col gap-6 px-4 py-4", contentClassName)}
+              className={cn(
+                "mx-auto flex min-h-full w-full flex-col gap-6 px-4 py-4",
+                contentClassName
+              )}
             >
               {hidden > 0 && (
                 <Button
@@ -149,10 +170,23 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
                 </Button>
               )}
               {count === 0 && !loadingText && <Welcome />}
-              <ThreadPrimitive.Messages>
-                {({ message }) => (message.index >= hidden ? <ThreadMessage /> : null)}
-              </ThreadPrimitive.Messages>
-              {loadingText && <ThinkingIndicator label={loadingText} className="px-2 py-1 text-xs" />}
+              {pairs.map((pair, index) => (
+                <MessagePair key={pair.id}>
+                  {pair.indices.map((messageIndex) => (
+                    <ThreadPrimitive.MessageByIndex
+                      key={messages[messageIndex]!.id}
+                      index={messageIndex}
+                      components={{ Message: ThreadMessage, EditComposer: ThreadMessage }}
+                    />
+                  ))}
+                  {index === pairs.length - 1 && loadingText && !hasRunningAssistant && (
+                    <ThinkingIndicator label={loadingText} className="px-2 py-1" />
+                  )}
+                </MessagePair>
+              ))}
+              {pairs.length === 0 && loadingText && (
+                <ThinkingIndicator label={loadingText} className="px-2 py-1" />
+              )}
             </div>
             <ThreadScrollToBottom />
           </ThreadPrimitive.Viewport>
@@ -211,6 +245,7 @@ const MessageError: FC = () => {
 
 const AssistantMessage: FC = () => {
   const { t } = useTranslation("aiAssistant")
+  const { loadingText } = useContext(ThreadOptionsContext)
   const {
     ToolFallback: ToolFallbackComponent = ToolFallback,
     ToolGroup,
@@ -269,7 +304,10 @@ const AssistantMessage: FC = () => {
               case "tool-call":
                 return part.toolUI ?? <ToolFallbackComponent {...part} />
               case "data":
-                return part.dataRendererUI ?? (Data ? <Data name={part.name} data={part.data} /> : null)
+                if (part.name === "stopped-run") return <StoppedRunMessage data={part.data} />
+                return (
+                  part.dataRendererUI ?? (Data ? <Data name={part.name} data={part.data} /> : null)
+                )
               case "source":
                 return <Sources {...part} />
               case "file":
@@ -286,13 +324,11 @@ const AssistantMessage: FC = () => {
                 )
               case "indicator":
                 return (
-                  <span
+                  <ThinkingIndicator
                     data-slot="aui_assistant-message-indicator"
-                    className="animate-pulse font-sans"
-                    aria-label={t("responseGenerating")}
-                  >
-                    {"●"}
-                  </span>
+                    label={loadingText || t("auiThinking")}
+                    className="py-1"
+                  />
                 )
               default:
                 return null
@@ -327,11 +363,61 @@ function ThreadToolGroup({ group, children }: PropsWithChildren<{ group: ThreadG
   )
   const [open, setOpen] = useState(false)
   return (
-    <ToolGroupRoot variant="ghost" open={waiting || open} onOpenChange={setOpen}>
-      <ToolGroupTrigger count={group.indices.length} active={group.status.type === "running"} />
-      <ToolGroupContent>{children}</ToolGroupContent>
-    </ToolGroupRoot>
+    <ToolTimeline
+      count={group.indices.length}
+      active={group.status.type === "running"}
+      open={waiting || open}
+      onOpenChange={setOpen}
+    >
+      {children}
+    </ToolTimeline>
   )
+}
+
+function StoppedRunMessage({ data }: { data: unknown }) {
+  const { onContinueStoppedRun, onDeleteUserMessage } = useContext(ThreadOptionsContext)
+  const disabled = useAuiState((s) => s.thread.isRunning || !s.message.isLast)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  const lock = useRef(false)
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !("messageId" in data) ||
+    !("stoppedAt" in data) ||
+    typeof data.messageId !== "string" ||
+    typeof data.stoppedAt !== "string"
+  )
+    return null
+  const id = data.messageId
+  const act = async (action: ((id: string) => boolean | Promise<boolean>) | undefined) => {
+    if (!action || disabled || lock.current) return
+    lock.current = true
+    setBusy(true)
+    setError("")
+    try {
+      await action(id)
+    } catch (cause) {
+      setError(String(cause))
+    } finally {
+      lock.current = false
+      setBusy(false)
+    }
+  }
+  return (
+    <StoppedRun
+      stoppedAt={data.stoppedAt}
+      disabled={disabled || busy || !onContinueStoppedRun || !onDeleteUserMessage}
+      onContinue={() => void act(onContinueStoppedRun)}
+      onDiscard={() => void act(onDeleteUserMessage)}
+      error={error}
+    />
+  )
+}
+
+function CurrentMessageTimestamp() {
+  const value = useAuiState((s) => s.message.metadata.custom?.createdAt)
+  return <MessageTimestamp value={typeof value === "string" ? value : undefined} />
 }
 
 function MessageCopyButton({ children }: { children: React.ReactElement }) {
@@ -346,9 +432,15 @@ function MessageCopyButton({ children }: { children: React.ReactElement }) {
 const AssistantActionBar: FC = () => {
   const { t } = useTranslation("aiAssistant")
   const { onRegenerateUserMessage } = useContext(ThreadOptionsContext)
-  const parent = useAuiState((s) => s.thread.messages
-    .slice(0, s.thread.messages.findIndex((message) => message.id === s.message.id))
-    .reverse().find((message) => message.role === "user"))
+  const parent = useAuiState((s) =>
+    s.thread.messages
+      .slice(
+        0,
+        s.thread.messages.findIndex((message) => message.id === s.message.id)
+      )
+      .reverse()
+      .find((message) => message.role === "user")
+  )
   const [regenerating, setRegenerating] = useState(false)
   const [regenerateError, setRegenerateError] = useState("")
   const regenerateLock = useRef(false)
@@ -369,26 +461,38 @@ const AssistantActionBar: FC = () => {
         </TooltipIconButton>
       </MessageCopyButton>
       <ActionBarPrimitive.FeedbackPositive asChild>
-        <TooltipIconButton tooltip={t("auiLike")} className="data-submitted:bg-accent data-submitted:text-foreground">
+        <TooltipIconButton
+          tooltip={t("auiLike")}
+          className="data-submitted:bg-accent data-submitted:text-foreground"
+        >
           <ThumbsUpIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.FeedbackPositive>
       <ActionBarPrimitive.FeedbackNegative asChild>
-        <TooltipIconButton tooltip={t("auiDislike")} className="data-submitted:bg-accent data-submitted:text-foreground">
+        <TooltipIconButton
+          tooltip={t("auiDislike")}
+          className="data-submitted:bg-accent data-submitted:text-foreground"
+        >
           <ThumbsDownIcon />
         </TooltipIconButton>
       </ActionBarPrimitive.FeedbackNegative>
       <AuiIf condition={(s) => !s.message.speech || s.message.speech.status.type !== "running"}>
         <ActionBarPrimitive.Speak asChild>
-          <TooltipIconButton tooltip={t("auiReadAloud")}><Volume2Icon /></TooltipIconButton>
+          <TooltipIconButton tooltip={t("auiReadAloud")}>
+            <Volume2Icon />
+          </TooltipIconButton>
         </ActionBarPrimitive.Speak>
       </AuiIf>
       <AuiIf condition={(s) => s.message.speech?.status.type === "running"}>
         <ActionBarPrimitive.StopSpeaking asChild>
-          <TooltipIconButton tooltip={t("auiStopReading")}><SquareIcon /></TooltipIconButton>
+          <TooltipIconButton tooltip={t("auiStopReading")}>
+            <SquareIcon />
+          </TooltipIconButton>
         </ActionBarPrimitive.StopSpeaking>
       </AuiIf>
-      <ActionBarPrimitive.Reload asChild disabled={!parent || !onRegenerateUserMessage || regenerating}
+      <ActionBarPrimitive.Reload
+        asChild
+        disabled={!parent || !onRegenerateUserMessage || regenerating}
         onClick={(event) => {
           // The host owns persistence and execution context. Prevent the default local branch operation.
           event.preventDefault()
@@ -396,13 +500,22 @@ const AssistantActionBar: FC = () => {
           regenerateLock.current = true
           setRegenerating(true)
           setRegenerateError("")
-          const content = parent.content.filter((part) => part.type === "text").map((part) => part.text).join("\n")
-          void Promise.resolve().then(() => onRegenerateUserMessage(parent.id, content)).catch((cause) => setRegenerateError(String(cause))).finally(() => {
-            regenerateLock.current = false
-            setRegenerating(false)
-          })
-        }}>
-        <TooltipIconButton tooltip={t("regenerate")}><RefreshCwIcon className={regenerating ? "animate-spin" : undefined} /></TooltipIconButton>
+          const content = parent.content
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("\n")
+          void Promise.resolve()
+            .then(() => onRegenerateUserMessage(parent.id, content))
+            .catch((cause) => setRegenerateError(String(cause)))
+            .finally(() => {
+              regenerateLock.current = false
+              setRegenerating(false)
+            })
+        }}
+      >
+        <TooltipIconButton tooltip={t("regenerate")}>
+          <RefreshCwIcon className={regenerating ? "animate-spin" : undefined} />
+        </TooltipIconButton>
       </ActionBarPrimitive.Reload>
       <ActionBarMorePrimitive.Root>
         <ActionBarMorePrimitive.Trigger asChild>
@@ -425,7 +538,12 @@ const AssistantActionBar: FC = () => {
         </ActionBarMorePrimitive.Content>
       </ActionBarMorePrimitive.Root>
       <MessageTiming />
-      {regenerateError && <span role="alert" className="basis-full text-xs text-destructive">{regenerateError}</span>}
+      <CurrentMessageTimestamp />
+      {regenerateError && (
+        <span role="alert" className="basis-full text-xs text-destructive">
+          {regenerateError}
+        </span>
+      )}
     </ActionBarPrimitive.Root>
   )
 }
@@ -452,7 +570,7 @@ const UserMessage: FC = () => {
       <UserMessageAttachments />
 
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-        <div className="agent-message-content aui-user-message-content peer ms-auto w-fit max-w-full bg-muted text-foreground rounded-xl px-4 py-2 wrap-break-word empty:hidden">
+        <div className="agent-message-content aui-user-message-content peer ms-auto w-fit max-w-full border border-border/60 bg-background text-foreground dark:bg-popover rounded-2xl px-3.5 py-2 wrap-break-word empty:hidden">
           <MessagePrimitive.Parts components={{ File: UserFilePart, Image: UserImagePart }} />
         </div>
         <div className="aui-user-action-bar-wrapper mt-1 flex min-h-6 justify-end peer-empty:hidden">
@@ -481,6 +599,7 @@ const UserActionBar: FC = () => {
       autohide="not-last"
       className="aui-user-action-bar-root flex flex-wrap items-center justify-end gap-1 text-muted-foreground"
     >
+      <CurrentMessageTimestamp />
       {onUpdateUserMessage && (
         <ActionBarPrimitive.Edit asChild>
           <TooltipIconButton tooltip={t("edit")} disabled={busy || running}>
@@ -564,7 +683,12 @@ const EditComposer: FC = () => {
               {t("cancel")}
             </Button>
           </ComposerPrimitive.Cancel>
-          <Button type="submit" disabled={busy || running} size="sm" className="h-8 rounded-full px-3.5">
+          <Button
+            type="submit"
+            disabled={busy || running}
+            size="sm"
+            className="h-8 rounded-full px-3.5"
+          >
             {t("save")}
           </Button>
         </div>
