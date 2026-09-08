@@ -3,7 +3,6 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   type CSSProperties,
 } from "react"
 import createGlobe, { type COBEOptions, type Globe, type Marker } from "cobe"
@@ -17,6 +16,7 @@ import { cn } from "@/lib/utils"
 
 interface InteractiveLocation {
   id: string
+  countryCode: string
   name: string
   location: [number, number]
   count: number
@@ -100,8 +100,12 @@ function getInteractiveAppearance(isDark: boolean, themeRevision = 0): GlobeAppe
 
 export function DashboardGlobe({
   distribution,
+  selectedCountryCode,
+  onSelectCountry,
 }: {
   distribution: OverviewRegionCount[]
+  selectedCountryCode: string | null
+  onSelectCountry: (countryCode: string | null) => void
 }) {
   const { t } = useTranslation("dashboard")
   const { mode, version } = useEffectiveThemeMode()
@@ -110,6 +114,7 @@ export function DashboardGlobe({
   const globeRef = useRef<Globe | null>(null)
   const appearanceRef = useRef<GlobeAppearance>(getInteractiveAppearance(mode === "dark"))
   const markersRef = useRef<Marker[]>([])
+  const selectedCountryRef = useRef(selectedCountryCode)
   const rotationRef = useRef({ phi: 4.35, theta: 0.17 })
   const dragRef = useRef<{
     pointerId: number
@@ -118,16 +123,16 @@ export function DashboardGlobe({
     phi: number
     theta: number
   } | null>(null)
-  const [expandedLocationId, setExpandedLocationId] = useState<string | null>(null)
 
   const interactiveLocations = useMemo<InteractiveLocation[]>(() => {
     const maxCount = Math.max(1, ...distribution.map((item) => item.count))
-    return distribution.flatMap((item, index) => {
+    return distribution.flatMap((item) => {
       const coordinate = getCountryCoord(item.country_code)
       if (!coordinate) return []
       const [longitude, latitude] = coordinate
       return [{
-        id: `dashboard-region-${item.country_code.toLowerCase()}-${index}`,
+        id: `dashboard-region-${item.country_code.toLowerCase()}`,
+        countryCode: item.country_code,
         name: item.region || item.country_code,
         location: [latitude, longitude],
         count: item.count,
@@ -155,6 +160,10 @@ export function DashboardGlobe({
   useLayoutEffect(() => {
     markersRef.current = interactiveMarkers
   }, [interactiveMarkers])
+
+  useLayoutEffect(() => {
+    selectedCountryRef.current = selectedCountryCode
+  }, [selectedCountryCode])
 
   useEffect(() => {
     globeRef.current?.update(appearance)
@@ -209,7 +218,7 @@ export function DashboardGlobe({
     const render = () => {
       animationFrame = window.requestAnimationFrame(render)
       if (!visible || document.hidden) return
-      if (!dragRef.current && !reduceMotion.matches) {
+      if (!dragRef.current && !selectedCountryRef.current && !reduceMotion.matches) {
         rotationRef.current.phi += 0.00125
       }
       globe.update(rotationRef.current)
@@ -279,10 +288,11 @@ export function DashboardGlobe({
       />
 
       {interactiveLocations.map((location) => {
-        const expanded = expandedLocationId === location.id
+        const expanded = selectedCountryCode === location.countryCode
         return (
           <button
             key={location.id}
+            id={location.id}
             type="button"
             className={cn(
               "cobe-server-marker dashboard-interactive-marker",
@@ -298,14 +308,13 @@ export function DashboardGlobe({
               filter: `blur(calc((1 - var(--cobe-visible-${location.id}, 0)) * 8px))`,
             } as MarkerAnchorStyle}
             aria-expanded={expanded}
+            aria-controls={expanded ? "dashboard-region-servers" : undefined}
             aria-label={t("orbitInteractiveLocationLabel", {
               region: location.name,
               count: location.count,
             })}
             onClick={() => {
-              setExpandedLocationId((current) => (
-                current === location.id ? null : location.id
-              ))
+              onSelectCountry(expanded ? null : location.countryCode)
             }}
           >
             <span className="dashboard-interactive-name">{location.name}</span>

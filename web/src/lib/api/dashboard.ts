@@ -1,7 +1,7 @@
 import { apiFetch } from "@/lib/api-client"
 
 /**
- * 顶部统计卡片数据块
+ * 统计卡片数据块
  */
 export interface OverviewStatsBlock {
   online_servers: number
@@ -17,22 +17,19 @@ export interface OverviewRegionCount {
   region: string
   country_code: string
   count: number
+  servers: OverviewRegionServer[]
 }
 
 /**
- * 仪表盘最近连接服务器（仅包含首页展示所需字段）
+ * 地区服务器列表（仅包含展示与连接入口所需字段）
  */
-export interface OverviewRecentServer {
+export interface OverviewRegionServer {
   id: string
   name: string
   host: string
   port: number
   username: string
-  group: string
   status: "online" | "offline"
-  country: string
-  city: string
-  last_connected?: string
 }
 
 /**
@@ -41,7 +38,6 @@ export interface OverviewRecentServer {
 export interface DashboardOverview {
   stats: OverviewStatsBlock
   distribution: OverviewRegionCount[]
-  recent_servers: OverviewRecentServer[]
 }
 
 /**

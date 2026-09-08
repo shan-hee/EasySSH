@@ -2,6 +2,8 @@ package dashboard
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,7 +14,6 @@ type Repository interface {
 	CountCommandsSince(ctx context.Context, userID *uuid.UUID, since time.Time) (int64, error)
 	CountActiveSessions(ctx context.Context, userID *uuid.UUID) (int64, error)
 	GetServerDistribution(ctx context.Context, userID *uuid.UUID) ([]RegionCount, error)
-	GetRecentServers(ctx context.Context, userID *uuid.UUID, limit int) ([]RecentServer, error)
 	CountServers(ctx context.Context, userID *uuid.UUID) (total int64, online int64, err error)
 }
 
@@ -56,18 +57,16 @@ func (r *repository) CountActiveSessions(ctx context.Context, userID *uuid.UUID)
 
 func (r *repository) GetServerDistribution(ctx context.Context, userID *uuid.UUID) ([]RegionCount, error) {
 	var results []struct {
+		RegionServer
 		Country     string
 		CountryCode string
-		Region      string
-		Count       int
 	}
 
 	query := r.db.WithContext(ctx).
 		Table("servers").
-		Select("country, country_code, region, count(*) as count").
+		Select("id, name, host, port, username, status, country, country_code").
 		Where("deleted_at IS NULL").
-		Group("country, country_code, region").
-		Order("count DESC")
+		Order("sort_order ASC, name ASC, id ASC")
 
 	if userID != nil {
 		query = query.Where("user_id = ?", *userID)
@@ -78,38 +77,33 @@ func (r *repository) GetServerDistribution(ctx context.Context, userID *uuid.UUI
 	}
 
 	distribution := make([]RegionCount, 0, len(results))
+	regionIndices := make(map[string]int)
 	for _, row := range results {
-		name := row.Country
-		if name == "" {
-			name = row.Region
+		code := strings.ToUpper(strings.TrimSpace(row.CountryCode))
+		if code == "" || code == "LAN" {
+			continue
 		}
-		distribution = append(distribution, RegionCount{
-			Region:      name,
-			CountryCode: row.CountryCode,
-			Count:       row.Count,
-		})
+		index, exists := regionIndices[code]
+		if !exists {
+			name := row.Country
+			if name == "" {
+				name = code
+			}
+			index = len(distribution)
+			regionIndices[code] = index
+			distribution = append(distribution, RegionCount{Region: name, CountryCode: code})
+		}
+		region := &distribution[index]
+		region.Servers = append(region.Servers, row.RegionServer)
+		region.Count = len(region.Servers)
 	}
+	sort.Slice(distribution, func(i, j int) bool {
+		if distribution[i].Count == distribution[j].Count {
+			return distribution[i].CountryCode < distribution[j].CountryCode
+		}
+		return distribution[i].Count > distribution[j].Count
+	})
 	return distribution, nil
-}
-
-func (r *repository) GetRecentServers(ctx context.Context, userID *uuid.UUID, limit int) ([]RecentServer, error) {
-	query := r.db.WithContext(ctx).
-		Table("servers").
-		Select("id, name, host, port, username, server_group, status, country, city, last_connected").
-		Where("deleted_at IS NULL")
-
-	if userID != nil {
-		query = query.Where("user_id = ?", *userID)
-	}
-
-	var servers []RecentServer
-	err := query.
-		Order("CASE WHEN last_connected IS NULL THEN 1 ELSE 0 END").
-		Order("last_connected DESC").
-		Order("updated_at DESC").
-		Limit(limit).
-		Scan(&servers).Error
-	return servers, err
 }
 
 func (r *repository) CountServers(ctx context.Context, userID *uuid.UUID) (int64, int64, error) {

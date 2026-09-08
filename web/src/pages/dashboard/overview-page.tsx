@@ -18,10 +18,10 @@ import { FadeIn } from "@/components/motion/fade-in"
 import { useClientAuth } from "@/components/client-auth-provider"
 import { PageHeader } from "@/components/page-header"
 import { useAuthReady } from "@/hooks/use-auth-ready"
-import type { OverviewRecentServer } from "@/lib/api/dashboard"
 import { dashboardOverviewQueryOptions } from "@/lib/dashboard-query-options"
 
 import { DashboardGlobe } from "./components/dashboard-globe"
+import { DashboardRegionPanel } from "./components/dashboard-region-panel"
 import "./overview-page.css"
 
 const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000
@@ -65,15 +65,6 @@ function LocalTime({ now }: { now: Date }) {
   return <time dateTime={now.toISOString()}>{display}</time>
 }
 
-function getServerDisplayName(server: OverviewRecentServer) {
-  return server.name || `${server.username}@${server.host}`
-}
-
-function getServerLocation(server: OverviewRecentServer) {
-  const location = [server.city, server.country].filter(Boolean).join(", ")
-  return location || server.group || `${server.host}:${server.port}`
-}
-
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { user } = useClientAuth()
@@ -89,7 +80,17 @@ export default function DashboardPage() {
     refetchInterval: AUTO_REFRESH_INTERVAL,
   })
   const overview = overviewQuery.data
-  const recentServers = overview?.recent_servers ?? []
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string | null>(null)
+  const selectedRegion = overview?.distribution.find((region) => (
+    region.country_code === selectedCountryCode
+  ))
+
+  const closeRegionPanel = () => {
+    setSelectedCountryCode(null)
+    if (selectedRegion) {
+      document.getElementById(`dashboard-region-${selectedRegion.country_code.toLowerCase()}`)?.focus({ preventScroll: true })
+    }
+  }
   const dataUnavailable = overviewQuery.isError
   const dataLoading = overviewQuery.isPending
 
@@ -98,7 +99,15 @@ export default function DashboardPage() {
       <PageHeader title={t("title")} />
 
       <main className="dashboard-overview-shell flex min-h-0 flex-1 px-3 pb-3 sm:px-4 sm:pb-4">
-        <section className="dashboard-orbit relative w-full overflow-hidden rounded-[1.35rem] lg:rounded-[1.75rem]">
+        <section
+          className="dashboard-orbit relative w-full overflow-hidden rounded-[1.35rem] lg:rounded-[1.75rem]"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && selectedRegion) {
+              event.stopPropagation()
+              closeRegionPanel()
+            }
+          }}
+        >
           <div className="dashboard-orbit-grid" aria-hidden="true" />
           <div className="dashboard-orbit-vignette" aria-hidden="true" />
 
@@ -195,67 +204,6 @@ export default function DashboardPage() {
             </FadeIn>
           </div>
 
-          <div className="dashboard-globe-stage">
-            <div className="dashboard-globe-aura" aria-hidden="true" />
-            <DashboardGlobe distribution={overview?.distribution ?? []} />
-          </div>
-
-          <FadeIn delay={80} offsetY={10} className="dashboard-node-panel">
-            <div className="flex items-end justify-between gap-4 border-b border-border pb-4">
-              <div>
-                <p className="text-[0.62rem] font-semibold tracking-[0.2em] text-muted-foreground">
-                  {t("orbitRecentNodes")}
-                </p>
-                <p className="mt-1.5 text-sm text-foreground/70">
-                  {overviewQuery.isPending
-                    ? t("orbitDataLoading")
-                    : recentServers.length > 0
-                      ? t("orbitRecentHint")
-                      : t("noServers")}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-2 divide-y divide-border">
-              {overviewQuery.isPending ? (
-                Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="h-14 animate-pulse bg-muted/35" />
-                ))
-              ) : recentServers.map((server, index) => (
-                <button
-                  key={server.id}
-                  type="button"
-                  onClick={() => navigate(
-                    `/dashboard/terminal?serverId=${encodeURIComponent(server.id)}`,
-                  )}
-                  className="group flex w-full items-center gap-3 py-3 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
-                >
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border bg-muted/55 text-[0.62rem] font-semibold text-muted-foreground transition-colors group-hover:border-primary/30 group-hover:text-primary">
-                    0{index + 1}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-medium text-foreground/78">
-                      {getServerDisplayName(server)}
-                    </span>
-                    <span className="mt-0.5 block truncate text-[0.64rem] tracking-[0.08em] text-muted-foreground/70">
-                      {getServerLocation(server)}
-                    </span>
-                  </span>
-                  <span
-                    className={
-                      server.status === "online"
-                        ? "text-[0.66rem] text-status-connected"
-                        : "text-[0.66rem] text-muted-foreground"
-                    }
-                  >
-                    {t(server.status === "online" ? "statusOnline" : "statusOffline")}
-                  </span>
-                  <ArrowUpRight className="size-3.5 text-muted-foreground/50 transition-all group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground/70" />
-                </button>
-              ))}
-            </div>
-          </FadeIn>
-
           <FadeIn delay={120} offsetY={8} className="dashboard-metrics">
             <div className="dashboard-metric">
               <Server className="size-4 text-muted-foreground" />
@@ -301,6 +249,19 @@ export default function DashboardPage() {
               </div>
             </div>
           </FadeIn>
+
+          <div className="dashboard-globe-stage">
+            <div className="dashboard-globe-aura" aria-hidden="true" />
+            <DashboardGlobe
+              distribution={overview?.distribution ?? []}
+              selectedCountryCode={selectedRegion?.country_code ?? null}
+              onSelectCountry={setSelectedCountryCode}
+            />
+          </div>
+
+          {selectedRegion ? (
+            <DashboardRegionPanel region={selectedRegion} onClose={closeRegionPanel} />
+          ) : null}
         </section>
       </main>
     </>

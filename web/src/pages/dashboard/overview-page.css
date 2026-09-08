@@ -129,7 +129,7 @@
 .dashboard-globe-stage {
   position: absolute;
   z-index: 2;
-  right: clamp(-4.5rem, -3.5cqi, -2rem);
+  right: clamp(-1rem, -0.5cqi, 0rem);
   bottom: clamp(-9rem, -8vh, -5.5rem);
   width: clamp(50rem, 60cqi, 66rem);
   aspect-ratio: 1;
@@ -144,12 +144,12 @@
   animation: dashboard-aura 7s ease-in-out infinite alternate;
 }
 
-.dashboard-node-panel {
+.dashboard-region-panel {
   position: absolute;
   z-index: 20;
-  left: 2.5rem;
+  right: 2.5rem;
   bottom: 2rem;
-  width: min(25rem, 34cqi);
+  width: min(22rem, 30cqi);
   padding: 1.1rem 1.2rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: 1.15rem;
@@ -165,11 +165,20 @@
   -webkit-backdrop-filter: blur(18px) saturate(1.15);
 }
 
+.dashboard-region-server-list {
+  max-height: min(22rem, 42vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
 .dashboard-metrics {
   position: absolute;
   z-index: 20;
-  right: 2.5rem;
-  top: 6.5rem;
+  left: 2.5rem;
+  bottom: 2rem;
+  width: min(25rem, 34cqi);
   display: flex;
   align-items: stretch;
   border: 1px solid var(--border);
@@ -181,10 +190,15 @@
 
 .dashboard-metric {
   display: flex;
-  min-width: 7.8rem;
+  flex: 1;
+  min-width: 0;
   align-items: flex-start;
   gap: 0.7rem;
-  padding: 0.9rem 1rem;
+  padding: 0.9rem 0.85rem;
+}
+
+.dashboard-metric > svg {
+  flex-shrink: 0;
 }
 
 .dashboard-metric + .dashboard-metric {
@@ -257,10 +271,6 @@
 }
 
 @container dashboard-overview (max-width: 84rem) {
-  .dashboard-metrics {
-    display: none;
-  }
-
   .dashboard-hero-copy {
     width: min(42rem, 56cqi);
     padding-top: clamp(3.5rem, 7vh, 5rem);
@@ -272,12 +282,12 @@
   }
 
   .dashboard-globe-stage {
-    right: -7rem;
+    right: -4rem;
     bottom: -5.5rem;
     width: clamp(48rem, 70cqi, 54rem);
   }
 
-  .dashboard-node-panel {
+  .dashboard-metrics {
     width: min(24rem, 43cqi);
   }
 }
@@ -298,16 +308,22 @@
   }
 
   .dashboard-globe-stage {
-    right: -10rem;
+    right: -7.5rem;
     bottom: -2rem;
     width: min(50rem, 82cqi);
     opacity: 0.9;
   }
 
-  .dashboard-node-panel {
+  .dashboard-metrics {
     left: 1.75rem;
     bottom: 1.75rem;
     width: min(23rem, 48cqi);
+  }
+
+  .dashboard-region-panel {
+    right: 1.75rem;
+    bottom: 1.75rem;
+    width: min(21rem, 38cqi);
   }
 }
 
@@ -325,7 +341,8 @@
 
 @container dashboard-overview (max-width: 48rem) {
   .dashboard-orbit {
-    min-height: 940px;
+    min-height: 0;
+    padding-bottom: 1.25rem;
   }
 
   .dashboard-hero-copy {
@@ -348,17 +365,26 @@
   }
 
   .dashboard-globe-stage {
-    right: -13rem;
-    bottom: 8.5rem;
-    width: 42rem;
+    position: relative;
+    right: auto;
+    bottom: auto;
+    width: 120cqi;
+    margin: 1rem -10cqi 0;
     opacity: 0.82;
   }
 
-  .dashboard-node-panel {
-    left: 1.25rem;
-    right: 1.25rem;
-    bottom: 1.25rem;
+  .dashboard-metrics,
+  .dashboard-region-panel {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
     width: auto;
+    margin: 1.5rem 1.25rem 0;
+  }
+
+  .dashboard-region-panel {
+    margin-top: 0;
   }
 
   .dashboard-orbit-vignette {
@@ -378,10 +404,6 @@
 }
 
 @container dashboard-overview (max-width: 30rem) {
-  .dashboard-orbit {
-    min-height: 980px;
-  }
-
   .dashboard-hero-copy {
     padding-top: 3.5rem;
   }
@@ -390,10 +412,10 @@
     max-width: 100%;
   }
 
-  .dashboard-globe-stage {
-    right: -16rem;
-    bottom: 10rem;
-    width: 40rem;
+  .dashboard-metric {
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.85rem 0.65rem;
   }
 }
 

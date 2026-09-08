@@ -41,11 +41,6 @@ func (s *service) GetOverview(ctx context.Context, userID *uuid.UUID) (*Overview
 		return nil, err
 	}
 
-	recentServers, err := s.repo.GetRecentServers(ctx, userID, 3)
-	if err != nil {
-		return nil, err
-	}
-
 	return &Overview{
 		Stats: StatsBlock{
 			OnlineServers:  online,
@@ -53,8 +48,7 @@ func (s *service) GetOverview(ctx context.Context, userID *uuid.UUID) (*Overview
 			ActiveSessions: activeConns,
 			TodayCommands:  todayCommands,
 		},
-		Distribution:  distribution,
-		RecentServers: recentServers,
+		Distribution: distribution,
 	}, nil
 }
 
