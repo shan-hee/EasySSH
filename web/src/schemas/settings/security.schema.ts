@@ -31,7 +31,6 @@ export const webSecuritySchema = z.object({
   cookie_same_site: z.enum(["lax", "strict", "none"]),
   csrf_trusted_origins: z.string(),
   content_security_policy: z.string(),
-  geoip_database_path: z.string(),
 })
 
 // CORS配置 Schema

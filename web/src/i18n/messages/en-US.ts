@@ -2940,10 +2940,6 @@ const messages = {
     browserPolicyDescription: "Restrict allowed sources for scripts, styles, images, connections, and frames.",
     cspDescription: "Leave empty for EasySSH's built-in policy. A custom value applies to subsequent requests immediately.",
     cspPlaceholder: "Leave empty to use the built-in Content-Security-Policy",
-    geoipTitle: "GeoIP database",
-    geoipDescription: "Used for login-location detection. A missing file disables GeoIP and never calls a third-party IP-location API.",
-    geoipPath: "GeoLite2 City MMDB path",
-    geoipPathDescription: "Leave empty to use GeoLite2-City.mmdb in the EasySSH data directory.",
   },
   settingsSecurityAccess: {
     sectionTitle: "IP access control",

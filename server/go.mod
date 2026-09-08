@@ -23,7 +23,6 @@ require (
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/ory/fosite v0.49.0
-	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/pkg/sftp v1.13.6
 	github.com/pquerna/otp v1.5.0
 	github.com/robfig/cron/v3 v3.0.1
@@ -130,7 +129,6 @@ require (
 	github.com/ory/go-acc v0.2.9-0.20230103102148-6b1c9a70dbbe // indirect
 	github.com/ory/go-convenience v0.1.0 // indirect
 	github.com/ory/x v0.0.665 // indirect
-	github.com/oschwald/maxminddb-golang v1.13.0 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

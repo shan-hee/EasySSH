@@ -3,7 +3,6 @@ package systemconfig
 import (
 	"fmt"
 	"net/url"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -57,9 +56,6 @@ type SystemConfig struct {
 	SFTPMaxLifeTimeMinutes     int `gorm:"not null;default:0" json:"sftp_max_life_time_minutes"`
 	SFTPConnTimeoutSeconds     int `gorm:"not null;default:10" json:"sftp_conn_timeout_seconds"`
 	SFTPMaxSessionsPerConn     int `gorm:"not null;default:8" json:"sftp_max_sessions_per_conn"`
-
-	// 运行数据服务（空路径表示使用数据目录下的 GeoLite2-City.mmdb）
-	GeoIPDatabasePath string `gorm:"type:text" json:"geoip_database_path"`
 
 	// 后台任务队列（运行时动态生效）
 	JobQueueMaxConcurrency int `gorm:"not null;default:2" json:"job_queue_max_concurrency"`
@@ -252,11 +248,4 @@ func (c *SystemConfig) ApplyJobQueueDefaults() {
 	if c != nil && c.JobQueueMaxConcurrency <= 0 {
 		c.JobQueueMaxConcurrency = DefaultJobQueueMaxConcurrency()
 	}
-}
-
-func (c *SystemConfig) ResolvedGeoIPDatabasePath(dataDir string) string {
-	if c != nil && strings.TrimSpace(c.GeoIPDatabasePath) != "" {
-		return filepath.Clean(strings.TrimSpace(c.GeoIPDatabasePath))
-	}
-	return filepath.Join(dataDir, "GeoLite2-City.mmdb")
 }

@@ -23,15 +23,13 @@ export function NetworkSecurityTab() {
     cacheKey: "network-security",
     schema,
     loadFn: async () => {
-      const [webSecurity, cors, system] = await Promise.all([
+      const [webSecurity, cors] = await Promise.all([
         settingsApi.getWebSecurityConfig(),
         settingsApi.getCORSConfig(),
-        settingsApi.getSystemConfig(),
       ])
       return {
         ...webSecurity,
         allowed_origins: cors.allowed_origins ?? [],
-        geoip_database_path: system.geoip_database_path ?? "",
       }
     },
     saveFn: async (data) => {
@@ -44,7 +42,6 @@ export function NetworkSecurityTab() {
         content_security_policy: data.content_security_policy,
       })
       await settingsApi.saveCORSConfig({ allowed_origins: data.allowed_origins })
-      await settingsApi.saveRuntimeConfig({ geoip_database_path: data.geoip_database_path })
     },
   })
 
@@ -68,7 +65,6 @@ export function NetworkSecurityTab() {
   const cookieDirty = Boolean(dirtyFields.cookie_secure_mode || dirtyFields.cookie_domain || dirtyFields.cookie_same_site)
   const originDirty = Boolean(dirtyFields.allowed_origins || dirtyFields.csrf_trusted_origins)
   const browserPolicyDirty = Boolean(dirtyFields.content_security_policy)
-  const geoIPDirty = Boolean(dirtyFields.geoip_database_path)
   const allowedOrigins = form.watch("allowed_origins") ?? []
 
   return (
@@ -153,16 +149,6 @@ export function NetworkSecurityTab() {
             actions={<SettingsFormActions visible={browserPolicyDirty} isSaving={isSaving} onReset={() => form.resetField("content_security_policy")} onSave={handleSave} />}
           >
             <FormTextarea form={form} name="content_security_policy" label="Content-Security-Policy" description={t("cspDescription")} rows={7} placeholder={t("cspPlaceholder")} />
-          </SettingsSection>
-
-          <SettingsSection
-            title={t("geoipTitle")}
-            description={t("geoipDescription")}
-            icon={<Globe className="h-5 w-5" />}
-            actions={<SettingsFormActions visible={geoIPDirty} isSaving={isSaving} onReset={() => form.resetField("geoip_database_path")} onSave={handleSave} />}
-          >
-            <FormInput form={form} name="geoip_database_path" label={t("geoipPath")} description={t("geoipPathDescription")} placeholder="/var/lib/easyssh/GeoLite2-City.mmdb" />
-            <Alert><Info className="h-4 w-4" /><AlertDescription>{t("restartRequired")}</AlertDescription></Alert>
           </SettingsSection>
         </div>
       </div>

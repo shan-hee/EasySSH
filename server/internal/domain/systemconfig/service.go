@@ -19,7 +19,6 @@ type Service interface {
 	SaveGoogleAuth(ctx context.Context, config *SystemConfig) error
 	SaveOAuthProvider(ctx context.Context, config *SystemConfig) error
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
-	SaveRuntime(ctx context.Context, config *SystemConfig) error
 	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
 }
 
@@ -123,14 +122,6 @@ func (s *service) SaveFileTransfer(ctx context.Context, config *SystemConfig) er
 		return err
 	}
 	return s.repo.SaveFileTransfer(ctx, config)
-}
-
-func (s *service) SaveRuntime(ctx context.Context, config *SystemConfig) error {
-	if config == nil {
-		return errors.New("runtime configuration is required")
-	}
-	config.GeoIPDatabasePath = strings.TrimSpace(config.GeoIPDatabasePath)
-	return s.repo.SaveRuntime(ctx, config)
 }
 
 func (s *service) SaveScheduledTasks(ctx context.Context, config *SystemConfig) error {

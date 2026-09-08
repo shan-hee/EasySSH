@@ -103,6 +103,11 @@ func (s *loginDetectionService) CheckNewLocation(ctx context.Context, userID uui
 		}
 	}
 
+	// 无法定位不代表位置发生变化，不能据此触发新位置告警。
+	if location == "" {
+		return false, "", nil
+	}
+
 	// 获取用户的可信设备列表，检查是否有相同位置
 	devices, err := s.trustedDeviceRepo.ListByUser(ctx, userID)
 	if err != nil {
@@ -193,8 +198,10 @@ func (s *loginDetectionService) RecordLogin(ctx context.Context, userID uuid.UUI
 		// 更新现有设备的最后使用信息
 		device, _ := s.trustedDeviceRepo.FindByUserAndFingerprint(ctx, userID, fingerprint)
 		if device != nil {
+			if location != "" || device.LastIPAddress != session.IPAddress {
+				device.LastLocation = location
+			}
 			device.LastIPAddress = session.IPAddress
-			device.LastLocation = location
 			device.LastUsed = time.Now()
 			device.TrustLevel++ // 增加信任等级
 			if device.TrustLevel > 10 {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
@@ -144,7 +145,7 @@ func (s *serverService) Create(ctx context.Context, userID uuid.UUID, req *Creat
 		server.PrivateKey = encrypted
 	}
 
-	// 查询 IP 地理位置（异步执行，不阻塞创建流程）
+	// 查询 IP 地理位置；查询失败不影响创建。
 	s.updateServerLocation(ctx, server)
 
 	// 保存到数据库
@@ -170,8 +171,9 @@ func (s *serverService) Update(ctx context.Context, userID, serverID uuid.UUID, 
 		return nil, err
 	}
 
+	hostChanged := req.Host != nil && *req.Host != server.Host
 	endpointConfigChanged :=
-		(req.Host != nil && *req.Host != server.Host) ||
+		hostChanged ||
 			(req.Port != nil && *req.Port != server.Port) ||
 			(req.Username != nil && *req.Username != server.Username)
 	authConfigChanged :=
@@ -234,8 +236,16 @@ func (s *serverService) Update(ctx context.Context, userID, serverID uuid.UUID, 
 		}
 	}
 
-	// 每次编辑提交时都更新地理位置
-	s.updateServerLocation(ctx, server)
+	// 主机改变后旧位置即失效；普通编辑不重复消耗在线查询额度。
+	if hostChanged {
+		server.Country = ""
+		server.CountryCode = ""
+		server.Region = ""
+		server.City = ""
+	}
+	if hostChanged || server.CountryCode == "" {
+		s.updateServerLocation(ctx, server)
+	}
 
 	if endpointConfigChanged || (authConfigChanged && !req.VerifiedConnectionCredential) {
 		server.Status = StatusOffline
@@ -340,11 +350,7 @@ func checkTCPConnection(host string, port int, timeout time.Duration) error {
 func (s *serverService) updateServerLocation(ctx context.Context, server *Server) {
 	loc, err := s.geoipClient.Lookup(ctx, server.Host)
 	if err != nil {
-		// 查询失败时不影响主流程，仅清空位置信息
-		server.Country = ""
-		server.CountryCode = ""
-		server.Region = ""
-		server.City = ""
+		slog.WarnContext(ctx, "failed to look up server location", "server_id", server.ID, "error", err)
 		return
 	}
 

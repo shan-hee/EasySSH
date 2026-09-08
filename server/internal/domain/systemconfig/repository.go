@@ -17,7 +17,6 @@ type Repository interface {
 	SaveGoogleAuth(ctx context.Context, config *SystemConfig, updateSecret bool) error
 	SaveOAuthProvider(ctx context.Context, config *SystemConfig) error
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
-	SaveRuntime(ctx context.Context, config *SystemConfig) error
 	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
 }
 
@@ -142,12 +141,6 @@ func (r *repository) SaveFileTransfer(ctx context.Context, config *SystemConfig)
 		"sftp_max_life_time_minutes":    config.SFTPMaxLifeTimeMinutes,
 		"sftp_conn_timeout_seconds":     config.SFTPConnTimeoutSeconds,
 		"sftp_max_sessions_per_conn":    config.SFTPMaxSessionsPerConn,
-	})
-}
-
-func (r *repository) SaveRuntime(ctx context.Context, config *SystemConfig) error {
-	return r.update(ctx, map[string]any{
-		"geo_ip_database_path": config.GeoIPDatabasePath,
 	})
 }
 

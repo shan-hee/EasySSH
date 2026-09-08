@@ -5604,24 +5604,6 @@ paths:
         '400':
           $ref: '#/components/responses/Error'
 
-  /settings/system/runtime:
-    patch:
-      operationId: patchSettingsSystemRuntime
-      tags: [settings]
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/JSONObject'
-      responses:
-        '200':
-          $ref: '#/components/responses/JSON'
-        '400':
-          $ref: '#/components/responses/Error'
-
   /settings/system/scheduled-tasks:
     get:
       operationId: getSettingsSystemScheduledTasks

@@ -162,13 +162,8 @@ func main() {
 	}
 	password.SetPwnedCheckEnabled(securityCfg.PasswordPwnedCheckEnabled)
 
-	geoipClient := geoip.NewClient(systemCfg.ResolvedGeoIPDatabasePath(runtimeInfo.DataDir))
-	defer geoipClient.Close()
-	if geoipClient.DatabaseAvailable() {
-		log.Printf("✅ GeoIP database loaded: %s", geoipClient.DatabasePath())
-	} else {
-		log.Printf("⚠️ GeoIP database unavailable (%s): %v", geoipClient.DatabasePath(), geoipClient.OpenError())
-	}
+	geoipClient := geoip.NewClient()
+	log.Println("🌍 GeoIP provider: ipwho.is")
 
 	oauthTokenSettings := systemCfg.OAuthTokenConfig()
 	externalOAuthConfigErr := oauthTokenSettings.ValidateExternalProvider(cfg.Server.Env == "production")
@@ -1011,7 +1006,6 @@ func main() {
 			settingsGroup.PATCH("/system/registration", systemConfigHandler.PatchRegistrationConfig)
 			settingsGroup.PATCH("/system/google-auth", systemConfigHandler.PatchGoogleAuthConfig)
 			settingsGroup.PATCH("/system/oauth-provider", systemConfigHandler.PatchOAuthProviderConfig)
-			settingsGroup.PATCH("/system/runtime", systemConfigHandler.PatchRuntimeConfig)
 			settingsGroup.GET("/system/scheduled-tasks", systemConfigHandler.GetScheduledTaskConfig)
 			settingsGroup.PATCH("/system/scheduled-tasks", systemConfigHandler.PatchScheduledTaskConfig)
 

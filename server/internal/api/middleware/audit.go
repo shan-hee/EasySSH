@@ -173,7 +173,6 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 	{"PATCH", "/api/v1/settings/system/registration"}:    auditlog.ActionSystemSettingsUpdate,
 	{"PATCH", "/api/v1/settings/system/google-auth"}:     auditlog.ActionSystemSettingsUpdate,
 	{"PATCH", "/api/v1/settings/system/oauth-provider"}:  auditlog.ActionSystemSettingsUpdate,
-	{"PATCH", "/api/v1/settings/system/runtime"}:         auditlog.ActionSystemSettingsUpdate,
 	{"PATCH", "/api/v1/settings/system/scheduled-tasks"}: auditlog.ActionSystemSettingsUpdate,
 	{"POST", "/api/v1/settings/workspace"}:               auditlog.ActionSecuritySettingsUpdate,
 	{"POST", "/api/v1/settings/login-session"}:           auditlog.ActionSecuritySettingsUpdate,

@@ -301,7 +301,7 @@ golangci-lint run
 | `ENCRYPTION_KEY` | 可选显式部署根密钥（32 字节，Base64）；多实例必须共享 | 自动生成到数据目录 | 否 |
 | `DB_DRIVER` | 数据库驱动 | sqlite | 否 |
 | `DB_DSN` | 数据库连接串 | ./data/easyssh.db | 否 |
-EasySSH 只保留启动自举配置。Cookie、CORS、CSRF、CSP、可信代理、GeoIP、SFTP 连接池、后台任务最大并发、Access Token/Refresh Token 生命周期以及对外 OAuth/OIDC Provider 地址与开关都在“系统设置”维护。后台任务队列按需创建执行协程，空闲时不保留 Worker；最大并发默认 2，保存后立即生效。对外 Provider 默认关闭，EasySSH 自身登录始终使用固定内部 issuer/redirect，不依赖部署域名。
+EasySSH 只保留启动自举配置。Cookie、CORS、CSRF、CSP、可信代理、SFTP 连接池、后台任务最大并发、Access Token/Refresh Token 生命周期以及对外 OAuth/OIDC Provider 地址与开关都在“系统设置”维护。后台任务队列按需创建执行协程，空闲时不保留 Worker；最大并发默认 2，保存后立即生效。对外 Provider 默认关闭，EasySSH 自身登录始终使用固定内部 issuer/redirect，不依赖部署域名。服务器与登录位置统一通过 HTTPS 调用 `ipwho.is`，无需 API Key 或本地位置库；成功结果缓存 24 小时，单次查询（含 DNS）最多等待 3 秒。免费接口按出口 IP 每天限额 1,000 次，收到 429 后按 `Retry-After` 暂停请求（未提供有效值时暂停 24 小时）；位置查询失败不阻止保存或登录。
 
 未设置 `ENCRYPTION_KEY` 时，服务首次启动会生成权限为 `0600` 的 `easyssh-root.key`。服务通过 HKDF-SHA256 派生 OAuth、CSRF 和 2FA 备份码子密钥，不再需要额外全局密钥。外部数据库多实例必须显式提供同一根密钥。首次填写或修改对外 Provider 地址后需重启，关闭/开启开关本身即时生效。
 

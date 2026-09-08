@@ -236,11 +236,11 @@ ENCRYPTION_KEY=$(openssl rand -base64 32)
 其余参数在 Web 管理界面维护：
 
 - **身份认证**：注册、默认角色、Google 登录、登录会话、限流、泄露密码检查、对外 OAuth/OIDC Provider 地址与开关。
-- **Web 与部署**：Cookie 自动 HTTP/HTTPS 策略、CORS、CSRF、CSP、可信代理和 GeoIP 路径。
+- **Web 与部署**：Cookie 自动 HTTP/HTTPS 策略、CORS、CSRF、CSP、可信代理。
 - **文件传输**：上传与暂存策略、SSH/SFTP 连接池参数。
 - **服务集成与数据保护**：通知、AI、备份与恢复。
 
-EasySSH 自身登录使用固定内部 PKCE 标识，不依赖域名。对外 OAuth/OIDC Provider 默认关闭；首次填写或修改公开地址后需重启加载，之后开关可以即时关闭或开启。GeoIP 默认读取运行数据目录中的 `GeoLite2-City.mmdb`，文件缺失时自动禁用且不会调用第三方 IP 定位接口。
+EasySSH 自身登录使用固定内部 PKCE 标识，不依赖域名。对外 OAuth/OIDC Provider 默认关闭；首次填写或修改公开地址后需重启加载，之后开关可以即时关闭或开启。服务器与登录位置通过 HTTPS 调用 `ipwho.is` 查询，无需 API Key 或本地位置库。成功结果按 IP 缓存 24 小时；内网地址直接识别为 LAN。免费接口按出口 IP 每天限额 1,000 次，限流时遵循 `Retry-After` 暂停查询；定位失败不影响服务器保存或登录。
 
 开发端口、外部数据库连接池和更新清单等高级启动参数见 [.env.example](.env.example)。
 

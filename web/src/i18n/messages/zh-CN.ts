@@ -2676,10 +2676,6 @@ const messages = {
     browserPolicyDescription: "限制脚本、样式、图片、连接和 iframe 的加载来源。",
     cspDescription: "留空使用 EasySSH 内置策略；自定义后立即应用到后续请求。",
     cspPlaceholder: "留空使用内置 Content-Security-Policy",
-    geoipTitle: "GeoIP 数据库",
-    geoipDescription: "用于登录位置识别；文件缺失时自动禁用，不会调用第三方 IP 定位接口。",
-    geoipPath: "GeoLite2 City MMDB 路径",
-    geoipPathDescription: "留空使用 EasySSH 数据目录下的 GeoLite2-City.mmdb。",
   },
   settingsSecurityAccess: {
     sectionTitle: "IP 访问控制",

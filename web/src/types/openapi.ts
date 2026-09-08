@@ -1923,22 +1923,6 @@ export interface paths {
         patch: operations["patchSettingsSystemOAuthProvider"];
         trace?: never;
     };
-    "/settings/system/runtime": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["patchSettingsSystemRuntime"];
-        trace?: never;
-    };
     "/settings/system/scheduled-tasks": {
         parameters: {
             query?: never;
@@ -7312,23 +7296,6 @@ export interface operations {
         };
     };
     patchSettingsSystemOAuthProvider: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["JSONObject"];
-            };
-        };
-        responses: {
-            200: components["responses"]["JSON"];
-            400: components["responses"]["Error"];
-        };
-    };
-    patchSettingsSystemRuntime: {
         parameters: {
             query?: never;
             header?: never;

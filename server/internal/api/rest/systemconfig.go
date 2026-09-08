@@ -75,13 +75,12 @@ type SystemConfigDTOV2 struct {
 	ExternalOAuthLoginURL           string `json:"external_oauth_login_url"`
 	ExternalOAuthRedirectURIs       string `json:"external_oauth_redirect_uris"`
 	// SFTP/SSH 连接池（保存后重启生效）
-	SFTPMaxIdleTimeSeconds     int    `json:"sftp_max_idle_time_seconds"`
-	SFTPCleanupIntervalSeconds int    `json:"sftp_cleanup_interval_seconds"`
-	SFTPMaxLifeTimeMinutes     int    `json:"sftp_max_life_time_minutes"`
-	SFTPConnTimeoutSeconds     int    `json:"sftp_conn_timeout_seconds"`
-	SFTPMaxSessionsPerConn     int    `json:"sftp_max_sessions_per_conn"`
-	GeoIPDatabasePath          string `json:"geoip_database_path"`
-	JobQueueMaxConcurrency     int    `json:"job_queue_max_concurrency"`
+	SFTPMaxIdleTimeSeconds     int `json:"sftp_max_idle_time_seconds"`
+	SFTPCleanupIntervalSeconds int `json:"sftp_cleanup_interval_seconds"`
+	SFTPMaxLifeTimeMinutes     int `json:"sftp_max_life_time_minutes"`
+	SFTPConnTimeoutSeconds     int `json:"sftp_conn_timeout_seconds"`
+	SFTPMaxSessionsPerConn     int `json:"sftp_max_sessions_per_conn"`
+	JobQueueMaxConcurrency     int `json:"job_queue_max_concurrency"`
 }
 
 type BasicInfoConfigDTO struct {
@@ -128,10 +127,6 @@ type FileTransferConfigDTO struct {
 	SFTPMaxLifeTimeMinutes     int    `json:"sftp_max_life_time_minutes"`
 	SFTPConnTimeoutSeconds     int    `json:"sftp_conn_timeout_seconds"`
 	SFTPMaxSessionsPerConn     int    `json:"sftp_max_sessions_per_conn"`
-}
-
-type RuntimeConfigDTO struct {
-	GeoIPDatabasePath string `json:"geoip_database_path"`
 }
 
 type ScheduledTaskConfigDTO struct {
@@ -199,7 +194,6 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 		SFTPMaxLifeTimeMinutes:          config.SFTPMaxLifeTimeMinutes,
 		SFTPConnTimeoutSeconds:          config.SFTPConnTimeoutSeconds,
 		SFTPMaxSessionsPerConn:          config.SFTPMaxSessionsPerConn,
-		GeoIPDatabasePath:               config.GeoIPDatabasePath,
 		JobQueueMaxConcurrency:          config.JobQueueMaxConcurrency,
 	}
 
@@ -401,33 +395,6 @@ func (h *SystemConfigHandler) PatchFileTransferConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "File transfer config updated successfully"})
-}
-
-// PatchRuntimeConfig 更新运行数据服务配置（保存后重启生效）。
-// @Summary 更新运行数据服务配置
-// @Tags 系统设置
-// @Accept json
-// @Produce json
-// @Param request body RuntimeConfigDTO true "运行数据服务配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/system/runtime [patch]
-func (h *SystemConfigHandler) PatchRuntimeConfig(c *gin.Context) {
-	var dto RuntimeConfigDTO
-	if err := c.ShouldBindJSON(&dto); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-	existingConfig, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	existingConfig.GeoIPDatabasePath = dto.GeoIPDatabasePath
-	if err := h.service.SaveRuntime(c.Request.Context(), existingConfig); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Runtime configuration saved successfully"})
 }
 
 // GetScheduledTaskConfig 获取后台任务队列配置与当前运行状态。

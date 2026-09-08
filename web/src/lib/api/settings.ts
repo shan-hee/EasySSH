@@ -103,7 +103,6 @@ export interface SystemConfig {
 	sftp_max_life_time_minutes?: number
 	sftp_conn_timeout_seconds?: number
 	sftp_max_sessions_per_conn?: number
-	geoip_database_path?: string
 	job_queue_max_concurrency?: number
 
   // 注册配置
@@ -427,10 +426,6 @@ export const settingsApi = {
     >
   ): Promise<void> {
     return apiFetch<void>("/settings/system/oauth-provider", { method: "PATCH", body: config })
-  },
-
-  async saveRuntimeConfig(config: Pick<SystemConfig, "geoip_database_path">): Promise<void> {
-	return apiFetch<void>("/settings/system/runtime", { method: "PATCH", body: config })
   },
 
   async getScheduledTaskSettings(): Promise<ScheduledTaskSettingsResponse> {

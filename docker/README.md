@@ -46,7 +46,7 @@ http://localhost:8520
 
 只有切换外部数据库时才需要设置 `DB_DRIVER` 和 `DB_DSN`；外部数据库多实例还必须显式提供相同的 `ENCRYPTION_KEY`。OAuth、CSRF 和 2FA 备份码使用 HKDF 派生的独立子密钥。EasySSH 自身登录使用固定内部 PKCE 标识，不需要配置部署域名。对外 OAuth/OIDC Provider 的公开地址和开关都在“系统设置 → 身份认证”维护，默认关闭。
 
-如需服务器位置与登录位置识别，将 MaxMind `GeoLite2-City.mmdb` 放入挂载的 `docker/data/` 目录；文件缺失时应用不会调用第三方 IP 查询服务。
+服务器位置与登录位置通过 `https://ipwho.is` 查询，无需挂载位置库或配置 API Key；容器需能访问该 HTTPS 服务。成功结果按 IP 缓存 24 小时，内网地址不发送到第三方。
 
 外部 PostgreSQL 示例：
 
@@ -62,7 +62,7 @@ DB_DRIVER=mysql
 DB_DSN="mysql://easyssh:your_secure_password@mysql.example.com:3306/easyssh_db?charset=utf8mb4&parseTime=true"
 ```
 
-正式镜像和默认 Compose 已使用 production 模式。Cookie 默认使用 `auto` 模式，根据当前 HTTP/HTTPS 请求自动选择 Secure 标志；可信代理、CORS、CSRF、CSP、GeoIP 路径和 SFTP 池参数都从系统设置维护。
+正式镜像和默认 Compose 已使用 production 模式。Cookie 默认使用 `auto` 模式，根据当前 HTTP/HTTPS 请求自动选择 Secure 标志；可信代理、CORS、CSRF、CSP 和 SFTP 池参数都从系统设置维护。
 
 ## 常用命令
 

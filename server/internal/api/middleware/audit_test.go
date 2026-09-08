@@ -15,7 +15,6 @@ func TestDetermineActionCoversGovernanceMutations(t *testing.T) {
 		{"POST", "/api/v1/roles", auditlog.ActionRoleCreate},
 		{"POST", "/api/v1/resource-grants/revoke", auditlog.ActionResourceRevoke},
 		{"POST", "/api/v1/scripts/:id/execute", auditlog.ActionScriptExecute},
-		{"PATCH", "/api/v1/settings/system/runtime", auditlog.ActionSystemSettingsUpdate},
 		{"PATCH", "/api/v1/settings/system/scheduled-tasks", auditlog.ActionSystemSettingsUpdate},
 		{"POST", "/api/v1/settings/notifications", auditlog.ActionNotificationSettingsUpdate},
 		{"POST", "/api/v1/settings/ai/system", auditlog.ActionAIConfigUpdate},
