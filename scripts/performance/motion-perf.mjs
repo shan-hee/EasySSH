@@ -1,0 +1,9 @@
+import { pathToFileURL, fileURLToPath } from 'node:url';
+const {chromium}=await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE || '/tmp/easyssh-browser-check/node_modules/playwright/index.mjs'));
+const probe=fileURLToPath(new URL('./terminal-probe.js',import.meta.url));
+import fs from 'node:fs';
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH || '/root/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome',args:['--no-sandbox','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
+const page=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'no-preference'});await page.addInitScript({path:probe});
+await page.goto(process.env.PERF_ORIGIN || 'http://localhost:5199');await page.waitForTimeout(1000);const cdp=await page.context().newCDPSession(page);const actions=[];
+for(const rate of [1,4]){await cdp.send('Emulation.setCPUThrottlingRate',{rate});for(let i=0;i<12;i++){const start=await page.evaluate(()=>performance.now());await page.getByRole('button').click();await page.waitForTimeout(550);const end=await page.evaluate(()=>performance.now());const d=await page.evaluate(()=>window.__terminalPerf);const dt=d.frames.slice(1).map((t,k)=>({t,dt:t-d.frames[k]})).filter(x=>x.t>=start&&x.t<=end).map(x=>x.dt);const sorted=[...dt].sort((a,b)=>a-b);actions.push({rate,iteration:i+1,start,end,frames:dt.length,p50:sorted[Math.ceil(dt.length*.5)-1],p95:sorted[Math.ceil(dt.length*.95)-1],max:Math.max(...dt),over25:dt.filter(x=>x>25).length,over50:dt.filter(x=>x>50).length,longTasks:d.longTasks.filter(x=>x.start>=start&&x.start<=end)});}}
+fs.writeFileSync(process.env.PERF_OUTPUT || '/tmp/easyssh-terminal-perf/motion-reference.json',JSON.stringify({browser:browser.version(),actions},null,2));console.log(JSON.stringify(actions));await browser.close();

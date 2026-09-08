@@ -40,6 +40,7 @@ export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>
     const chartRef = React.useRef<ECharts | null>(null)
     const optionRef = React.useRef(option)
     const setOptionOptionsRef = React.useRef<SetOptionOpts>({ notMerge, lazyUpdate })
+    const appliedOptionRef = React.useRef<{ option: EChartsOption; notMerge?: boolean; lazyUpdate?: boolean } | null>(null)
 
     optionRef.current = option
     setOptionOptionsRef.current = { notMerge, lazyUpdate }
@@ -55,6 +56,8 @@ export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>
       let chart: ECharts | null = null
       let resizeFrame: number | null = null
       let resizeTimer: number | null = null
+      let lastWidth = 0
+      let lastHeight = 0
       const applyChartSize = () => {
         if (resizeFrame !== null) {
           cancelAnimationFrame(resizeFrame)
@@ -65,10 +68,17 @@ export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>
           if (width <= 1 || height <= 1) return
 
           if (!chart || chart.isDisposed()) {
-            chart = echarts.getInstanceByDom(container) ?? echarts.init(container)
+            chart = echarts.getInstanceByDom(container) ?? echarts.init(container, undefined, { width, height })
             chartRef.current = chart
+            lastWidth = width
+            lastHeight = height
             chart.setOption(optionRef.current, setOptionOptionsRef.current)
+            appliedOptionRef.current = { option: optionRef.current, ...setOptionOptionsRef.current }
+            return
           }
+          if (lastWidth === width && lastHeight === height) return
+          lastWidth = width
+          lastHeight = height
           chart.resize({ width, height })
         })
       }
@@ -101,6 +111,7 @@ export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>
         }
         if (chart && chartRef.current === chart) {
           chartRef.current = null
+          appliedOptionRef.current = null
         }
         if (chart && !chart.isDisposed()) {
           chart.dispose()
@@ -108,9 +119,17 @@ export const EChartsView = React.forwardRef<EChartsViewHandle, EChartsViewProps>
       }
     }, [resizeDebounce])
 
-    React.useLayoutEffect(() => {
-      const setOptionOptions: SetOptionOpts = { notMerge, lazyUpdate }
-      chartRef.current?.setOption(option, setOptionOptions)
+    React.useEffect(() => {
+      // 让 React 先提交文本/交互状态，图表在下一帧应用最新配置；快速更新会取消旧帧。
+      const frame = requestAnimationFrame(() => {
+        const applied = appliedOptionRef.current
+        if (applied?.option === option && applied.notMerge === notMerge && applied.lazyUpdate === lazyUpdate) return
+        const chart = chartRef.current
+        if (!chart || chart.isDisposed()) return
+        chart.setOption(option, { notMerge, lazyUpdate })
+        appliedOptionRef.current = { option, notMerge, lazyUpdate }
+      })
+      return () => cancelAnimationFrame(frame)
     }, [lazyUpdate, notMerge, option])
 
     return (

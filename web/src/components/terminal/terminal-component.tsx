@@ -1555,7 +1555,7 @@ export function TerminalComponent({
           "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-colors",
           unframed
             ? "bg-background text-foreground"
-            : "rounded-xl border border-border/60 bg-background/70 text-foreground shadow-2xl backdrop-blur-md"
+            : "rounded-xl border border-border/60 bg-background/70 text-foreground shadow-2xl"
         )}>
           {/* 页签栏（仅保留标签，不显示面包屑） */}
           <SessionTabBar

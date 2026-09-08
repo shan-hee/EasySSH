@@ -7,7 +7,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { formatBytes } from '@/lib/format-utils';
+import { createMonitorViewData } from './monitor-view-data';
 import type { MonitorMetrics } from './hooks/useMonitorWebSocket';
 import type { MonitorPanelDensity } from './types/metrics';
 import { useMonitoringData } from './contexts/MonitorWebSocketContext';
@@ -140,87 +140,11 @@ const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
     };
   }, []);
 
-  // 转换数据格式以适配现有组件
-  const formattedMetrics = useMemo(() => {
-    if (!displayMetrics) return null;
-
-    // 格式化运行时间
-    const formatUptime = (seconds: number): string => {
-      const days = Math.floor(seconds / 86400);
-      const hours = Math.floor((seconds % 86400) / 3600);
-      const minutes = Math.floor((seconds % 3600) / 60);
-      return `${days}d ${hours}h ${minutes}m`;
-    };
-
-    // 构建历史数据（用于图表）
-    // 使用历史数据队列，而不是单个数据点
-    const cpuHistory = density === "mini" ? [] : displayHistory.map((m) => {
-      const time = new Date(m.timestamp * 1000);
-      return {
-        time: time.toTimeString().split(' ')[0],
-        usage: Math.round(m.cpu.usagePercent),
-        timestamp: time.getTime(),
-      };
-    });
-
-    const networkHistory = density === "mini" ? [] : displayHistory.map((m) => {
-      const time = new Date(m.timestamp * 1000);
-      return {
-        time: time.toTimeString().split(' ')[0],
-        download: Math.round(m.network.bytesRecvPerSec / 1024), // bytes to KB
-        upload: Math.round(m.network.bytesSentPerSec / 1024),
-        timestamp: time.getTime(),
-      };
-    });
-
-    return {
-      systemInfo: {
-        os: displayMetrics.systemInfo.os,
-        hostname: displayMetrics.systemInfo.hostname,
-        cpu: displayMetrics.systemInfo.cpuModel,
-        arch: displayMetrics.systemInfo.arch,
-        load: displayMetrics.systemInfo.loadAvg,
-        uptime: formatUptime(displayMetrics.systemInfo.uptimeSeconds),
-      },
-      cpuHistory: cpuHistory,
-      currentCPU: Math.round(displayMetrics.cpu.usagePercent),
-      memory: {
-        ram: {
-          ...formatBytes(displayMetrics.memory.ramUsedBytes),
-          total: formatBytes(displayMetrics.memory.ramTotalBytes).value,
-          totalUnit: formatBytes(displayMetrics.memory.ramTotalBytes).unit,
-          percent: displayMetrics.memory.ramTotalBytes > 0
-            ? Math.round((displayMetrics.memory.ramUsedBytes / displayMetrics.memory.ramTotalBytes) * 100)
-            : 0,
-        },
-        swap: {
-          ...formatBytes(displayMetrics.memory.swapUsedBytes),
-          total: formatBytes(displayMetrics.memory.swapTotalBytes).value,
-          totalUnit: formatBytes(displayMetrics.memory.swapTotalBytes).unit,
-          percent: displayMetrics.memory.swapTotalBytes > 0
-            ? Math.round((displayMetrics.memory.swapUsedBytes / displayMetrics.memory.swapTotalBytes) * 100)
-            : 0,
-        },
-      },
-      networkHistory: networkHistory,
-      currentNetwork: {
-        download: Math.round(displayMetrics.network.bytesRecvPerSec / 1024),
-        upload: Math.round(displayMetrics.network.bytesSentPerSec / 1024),
-      },
-      disks: density === "mini" ? [] : displayMetrics.disks.map(disk => ({
-        name: disk.mountPoint,
-        usedBytes: disk.usedBytes,
-        totalBytes: disk.totalBytes,
-        ...formatBytes(disk.usedBytes),
-        total: formatBytes(disk.totalBytes).value,
-        totalUnit: formatBytes(disk.totalBytes).unit,
-        percent: disk.totalBytes > 0
-          ? Math.round((disk.usedBytes / disk.totalBytes) * 100)
-          : 0,
-      })),
-      diskTotalPercent: Math.round(displayMetrics.diskTotalPercent),
-    };
-  }, [density, displayMetrics, displayHistory]);
+  const projectMetrics = useMemo(() => createMonitorViewData(), []);
+  const formattedMetrics = useMemo(
+    () => projectMetrics(displayMetrics, displayHistory, density),
+    [projectMetrics, displayMetrics, displayHistory, density],
+  );
 
   const panelContent = useMemo(() => {
     if (!formattedMetrics) {

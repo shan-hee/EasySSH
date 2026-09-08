@@ -192,7 +192,7 @@ export function FileManagerPanel({
       className={cn(
         "terminal-sftp-glass absolute inset-0 z-50 flex h-full min-h-0 w-full shrink-0 overflow-hidden text-foreground",
         "md:relative md:inset-auto md:translate-x-0",
-        isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-300 ease-out",
+        isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
         isOpen
           ? "translate-x-0 md:w-[var(--terminal-sftp-panel-width)] md:max-w-[70vw]"
           : "translate-x-full md:w-0 md:max-w-0",
@@ -201,7 +201,9 @@ export function FileManagerPanel({
         pointerEvents: isOpen ? "auto" : "none",
         "--terminal-sftp-panel-width": `${width}px`,
       } as React.CSSProperties}
+      data-terminal-panel
       aria-hidden={!isOpen}
+      inert={!isOpen}
     >
       <div
         className={cn(
@@ -220,7 +222,7 @@ export function FileManagerPanel({
         </div>
       </div>
 
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden text-foreground shadow-2xl md:shadow-none">
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden text-foreground shadow-2xl md:w-[min(var(--terminal-sftp-panel-width),70vw)] md:flex-none md:shrink-0 md:shadow-none">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 z-0 md:hidden"

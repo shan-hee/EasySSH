@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react'
 import { MonitorWebSocketProvider } from './monitor/contexts/MonitorWebSocketContext'
+import { MonitorSkeleton } from './monitor/components/MonitorSkeleton'
 import { Button } from '@/components/ui/button'
 import { FolderOpen, Activity, Bot } from 'lucide-react'
 import { NetworkLatencyPopover } from './network-latency-popover'
@@ -42,12 +43,16 @@ import {
   resolveTerminalThemeName,
 } from "./use-terminal-renderer-settings"
 
-const MonitorPanel = React.lazy(() => (
+const loadMonitorPanel = () => (
   import("./monitor/MonitorPanel").then((module) => ({ default: module.MonitorPanel }))
-))
-const AiAssistantPanel = React.lazy(() => (
+)
+const MonitorPanel = React.lazy(loadMonitorPanel)
+const loadAiAssistantPanel = () => (
   import("./ai-assistant-panel").then((module) => ({ default: module.AiAssistantPanel }))
-))
+)
+const AiAssistantPanel = React.lazy(loadAiAssistantPanel)
+
+const monitorFallback = <div className="h-full w-[280px] px-3 py-1.5"><MonitorSkeleton /></div>
 
 const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
 const DEFAULT_TERMINAL_SFTP_INITIAL_PATH = '/root'
@@ -178,6 +183,7 @@ function TabTerminalContentComponent({
     useState<InternalBackHandler | null>(null)
   const [hasOpenedFileManager, setHasOpenedFileManager] = useState(false)
   const [hasOpenedAi, setHasOpenedAi] = useState(false)
+  const [hasOpenedMonitor, setHasOpenedMonitor] = useState(false)
   const [sftpSessionInitialPath, setSftpSessionInitialPath] = useState(initialSftpPath)
   const terminalInputApiRef = React.useRef<TerminalInputApi | null>(null)
   const lastSftpRefreshRequestVersionRef = React.useRef(sftpRefreshRequestVersion)
@@ -244,7 +250,7 @@ function TabTerminalContentComponent({
   const canUseAi = canMountAi && isAiInputOpen
   const shouldMountAi = canMountAi && (canUseAi || hasOpenedAi)
   // 连接覆盖层显示期间先按用户状态预留宽度，避免终端露出后再把面板从 0 推到 280px。
-  // 真实监控内容仍等服务器 ready 后挂载，连接阶段不会提前启动监控请求。
+  // 连接期间预加载模块；数据订阅仍等 ready。关闭面板后保留图表实例。
   const shouldReserveInlineMonitor =
     canRenderInlinePanels &&
     canUseMonitorCapability &&
@@ -252,7 +258,10 @@ function TabTerminalContentComponent({
     isDesktopMonitorOpen &&
     (effectiveIsLoading || hasReadyServer)
   const shouldMountInlineMonitor =
-    shouldReserveInlineMonitor &&
+    canRenderInlinePanels &&
+    canUseMonitorCapability &&
+    isDesktopLayout &&
+    (isDesktopMonitorOpen || hasOpenedMonitor) &&
     hasReadyServer &&
     !!session.serverId
   const shouldReserveMobileMonitor =
@@ -262,6 +271,19 @@ function TabTerminalContentComponent({
     isMobileMonitorOpen &&
     !isDesktopLayout
   const canUseMobileMonitor = isActive && shouldReserveMobileMonitor
+
+  useEffect(() => {
+    if (!hasReadyServer) {
+      setHasOpenedMonitor(false)
+    } else if (isDesktopMonitorOpen) {
+      setHasOpenedMonitor(true)
+    }
+  }, [hasReadyServer, isDesktopMonitorOpen])
+
+  useEffect(() => {
+    if (!shouldReserveInlineMonitor || !isActive || !session.shouldConnect) return
+    void loadMonitorPanel().catch((error) => console.error('Failed to preload monitor panel:', error))
+  }, [isActive, session.shouldConnect, shouldReserveInlineMonitor])
 
   useEffect(() => {
     if (!canMountFileManager) {
@@ -624,7 +646,7 @@ function TabTerminalContentComponent({
           </div>
         )}
 
-        <div className={cn(
+        <div data-terminal-layout className={cn(
           "relative z-10 flex min-h-0 min-w-0",
           shouldRenderBody ? "flex-1" : "shrink-0"
         )}>
@@ -684,6 +706,8 @@ function TabTerminalContentComponent({
                     className="h-7 w-7 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
                     aria-label={tTerminal("ariaAiAssistant")}
                     title={tTerminal("titleAiAssistantWithShortcut")}
+                    onPointerEnter={() => { void loadAiAssistantPanel().catch((error) => console.error('Failed to preload AI panel:', error)) }}
+                    onFocus={() => { void loadAiAssistantPanel().catch((error) => console.error('Failed to preload AI panel:', error)) }}
                     onClick={() => setTabState(session.id, { isAiInputOpen: !isAiInputOpen })}
                   >
                     <Bot className="h-3.5 w-3.5" />
@@ -700,16 +724,19 @@ function TabTerminalContentComponent({
             {/* 监控面板 - 左侧固定 280px */}
             {isTerminalSession && isDesktopLayout && (
               <div
+                data-terminal-panel
                 className={cn(
-                  'overflow-hidden text-foreground transition-all duration-300 ease-out',
+                  'overflow-hidden text-foreground transition-[width,opacity,transform] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
                   shouldReserveInlineMonitor
                     ? 'h-full min-h-0 w-[280px] opacity-100 translate-x-0'
                     : 'w-0 opacity-0 -translate-x-4'
                 )}
+                inert={!shouldReserveInlineMonitor}
+                aria-hidden={!shouldReserveInlineMonitor}
               >
                 {shouldMountInlineMonitor && (
-                  <React.Suspense fallback={null}>
-                    <MonitorPanel className="h-full min-h-0" isLive={isActive} />
+                  <React.Suspense fallback={monitorFallback}>
+                    <MonitorPanel className="h-full min-h-0" isLive={isActive && shouldReserveInlineMonitor} />
                   </React.Suspense>
                 )}
               </div>
@@ -783,7 +810,7 @@ function TabTerminalContentComponent({
                     }}
                   />
                 )}
-                <React.Suspense fallback={null}>
+                <React.Suspense fallback={monitorFallback}>
                   <MonitorPanel className="relative h-full min-h-0 w-full" isLive={isActive} />
                 </React.Suspense>
               </div>

@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useRef } from "react"
+import { memo, useState, useEffect, useRef } from "react"
 import {
   Dialog,
   DialogContent,
@@ -54,9 +54,9 @@ interface TerminalSettingsDialogProps {
   onSettingsChange: (settings: TerminalSettings) => void
 }
 
-export function TerminalSettingsDialog({
+export const TerminalSettingsDialog = memo(function TerminalSettingsDialog({
   open,
-  onOpenChange,
+  onOpenChange: onDialogOpenChange,
   settings,
   onSettingsChange,
 }: TerminalSettingsDialogProps) {
@@ -64,7 +64,13 @@ export function TerminalSettingsDialog({
   const { mode: effectiveAppTheme } = useEffectiveThemeMode()
   const [localSettings, setLocalSettings] = useState(() => normalizeTerminalSettings(settings))
   const deferredApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleRef = useRef<HTMLHeadingElement | null>(null)
+  const [activeTab, setActiveTab] = useState("terminal")
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const onOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) setActiveTab("terminal")
+    onDialogOpenChange(nextOpen)
+  }
 
   const previewTheme = getTerminalTheme(localSettings.theme, effectiveAppTheme)
   const previewBaseBackgroundColor = previewTheme.background
@@ -72,7 +78,10 @@ export function TerminalSettingsDialog({
 
   // 当传入的 settings 变化时，同步到 localSettings
   useEffect(() => {
-    setLocalSettings(normalizeTerminalSettings(settings))
+    const normalized = normalizeTerminalSettings(settings)
+    setLocalSettings(current => (Object.keys(normalized) as (keyof TerminalSettings)[]).every(
+      key => current[key] === normalized[key]
+    ) ? current : normalized)
   }, [settings])
 
   // 清理定时器
@@ -153,6 +162,10 @@ export function TerminalSettingsDialog({
     key: K,
     value: TerminalSettings[K]
   ) => {
+    if (deferredApplyTimerRef.current) {
+      clearTimeout(deferredApplyTimerRef.current)
+      deferredApplyTimerRef.current = null
+    }
     const newSettings = { ...localSettings, [key]: value }
     setLocalSettings(newSettings)
     onSettingsChange(newSettings)
@@ -178,10 +191,17 @@ export function TerminalSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl h-[680px] flex flex-col p-0">
+      <DialogContent
+        className="max-w-3xl h-[680px] flex flex-col p-0"
+        onOpenAutoFocus={(event) => {
+          // 聚焦标题，避免打开时逐个扫描控件并读取样式。Tab 仍进入第一个控件。
+          event.preventDefault()
+          titleRef.current?.focus({ preventScroll: true })
+        }}
+      >
         <div className="px-6 pt-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle ref={titleRef} tabIndex={-1} className="flex items-center gap-2">
               <Settings className="h-5 w-5" />
               {t("dialogTitle")}
             </DialogTitle>
@@ -191,7 +211,7 @@ export function TerminalSettingsDialog({
           </DialogHeader>
         </div>
 
-        <Tabs defaultValue="terminal" className="w-full flex-1 flex flex-col overflow-hidden px-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col overflow-hidden px-6">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="terminal" className="flex items-center gap-2">
               <Terminal className="h-4 w-4" />
@@ -217,6 +237,8 @@ export function TerminalSettingsDialog({
 
           {/* 终端设置 */}
           <TabsContent value="terminal" className="space-y-4 overflow-y-auto scrollbar-custom pr-2 mt-4">
+            {activeTab === "terminal" && (
+              <>
             <div className="space-y-2">
               <Label htmlFor="fontSize">{t("fontSizeLabel")}</Label>
               <div className="flex items-center gap-4">
@@ -226,7 +248,8 @@ export function TerminalSettingsDialog({
                   max={24}
                   step={1}
                   value={[localSettings.fontSize]}
-                  onValueChange={(value) => updateSetting('fontSize', value[0])}
+                  onValueChange={(value) => updateSettingDeferred('fontSize', value[0], 80)}
+                  onValueCommit={(value) => updateSetting('fontSize', value[0])}
                   className="flex-1"
                 />
                 <span className="w-12 text-sm text-muted-foreground">
@@ -323,7 +346,8 @@ export function TerminalSettingsDialog({
                   max={10000}
                   step={100}
                   value={[localSettings.scrollback]}
-                  onValueChange={(value) => updateSetting('scrollback', value[0])}
+                  onValueChange={(value) => updateSettingDeferred('scrollback', value[0], 80)}
+                  onValueCommit={(value) => updateSetting('scrollback', value[0])}
                   className="flex-1"
                 />
                 <span className="w-20 text-sm text-muted-foreground">
@@ -331,10 +355,14 @@ export function TerminalSettingsDialog({
                 </span>
               </div>
             </div>
+                        </>
+            )}
           </TabsContent>
 
           {/* 外观设置 */}
           <TabsContent value="appearance" className="space-y-4 overflow-y-auto scrollbar-custom pr-2 mt-4">
+            {activeTab === "appearance" && (
+              <>
             <div className="space-y-2">
               <Label htmlFor="theme">{t("themeLabel")}</Label>
               <Select
@@ -444,10 +472,14 @@ export function TerminalSettingsDialog({
                 </div>
               )}
             </div>
+                        </>
+            )}
           </TabsContent>
 
           {/* 行为设置 */}
           <TabsContent value="behavior" className="space-y-4 overflow-y-auto scrollbar-custom pr-2 mt-4">
+            {activeTab === "behavior" && (
+              <>
             <div className="space-y-2">
               <Label htmlFor="maxTabs">{t("maxTabsLabel")}</Label>
               <div className="flex items-center gap-4">
@@ -556,10 +588,14 @@ export function TerminalSettingsDialog({
                 {t("monitorIntervalHelp")}
               </p>
             </div>
+                        </>
+            )}
           </TabsContent>
 
           {/* 快捷键设置 */}
           <TabsContent value="shortcuts" className="space-y-4 overflow-y-auto scrollbar-custom pr-2 mt-4">
+            {activeTab === "shortcuts" && (
+              <>
             <div className="space-y-2">
               <Label htmlFor="copyShortcut">{t("shortcutsCopyLabel")}</Label>
               <KeyboardShortcutInput
@@ -598,10 +634,14 @@ export function TerminalSettingsDialog({
                 <li>• {t("shortcutsTipClear")}</li>
               </ul>
             </div>
+                        </>
+            )}
           </TabsContent>
 
           {/* 补全设置 */}
           <TabsContent value="completion" className="space-y-5 overflow-y-auto scrollbar-custom pr-2 mt-4">
+            {activeTab === "completion" && (
+              <>
             <div className="space-y-2">
               <Label htmlFor="completionMode">{t("completionModeLabel")}</Label>
               <Select
@@ -682,6 +722,8 @@ export function TerminalSettingsDialog({
                 </div>
               </>
             )}
+                        </>
+            )}
           </TabsContent>
 
         </Tabs>
@@ -717,4 +759,4 @@ export function TerminalSettingsDialog({
       </DialogContent>
     </Dialog>
   )
-}
+})

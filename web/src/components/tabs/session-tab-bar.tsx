@@ -786,7 +786,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
     return (
       <ContextMenu key={session.id}>
         <ContextMenuTrigger asChild>
-          {tab}
+          <div className="shrink-0">{tab}</div>
         </ContextMenuTrigger>
         <ContextMenuContent className="min-w-48 rounded-lg border-border/60 bg-popover/95 text-popover-foreground backdrop-blur-xl">
           <ContextMenuLabel className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
