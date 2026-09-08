@@ -17,7 +17,7 @@
         PackageDisplayName="EasySSH"
         PublisherName="CN=EasySSH"
         PublisherDisplayName="EasySSH"
-        Version="1.0.35.0"
+        Version="1.0.36.0"
         PackageDescription="Cross-platform SSH/SFTP workspace">
         <Capabilities>
             <Capability Name="runFullTrust" />
