@@ -10,8 +10,8 @@ require (
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
 	github.com/openai/openai-go/v3 v3.43.0
-	golang.org/x/crypto v0.53.0
-	golang.org/x/text v0.38.0
+	golang.org/x/crypto v0.55.0
+	golang.org/x/text v0.41.0
 )
 
 require (
@@ -42,6 +42,6 @@ require (
 	go.opentelemetry.io/otel/metric v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
-	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 )
