@@ -68,10 +68,15 @@ type TransferTask struct {
 	Status           string // "pending", "running", "completed", "failed", "cancelled"
 }
 
+type transferProgressSocket struct {
+	*websocket.Conn
+	writeMu sync.Mutex
+}
+
 // SFTPTransferHandler 跨服务器传输 WebSocket 处理器
 type SFTPTransferHandler struct {
 	// 存储活跃的 WebSocket 连接，key 是 taskID
-	connections map[string]*websocket.Conn
+	connections map[string]*transferProgressSocket
 	// 存储传输任务
 	tasks map[string]*TransferTask
 	// 存储任务最新进度，用于 WS 迟到/重连补发
@@ -105,7 +110,7 @@ func NewSFTPTransferHandler(
 		webDevPort = 3000
 	}
 	return &SFTPTransferHandler{
-		connections:      make(map[string]*websocket.Conn),
+		connections:      make(map[string]*transferProgressSocket),
 		tasks:            make(map[string]*TransferTask),
 		lastProgress:     make(map[string]TransferProgressMessage),
 		serverService:    serverService,
@@ -161,7 +166,6 @@ func (h *SFTPTransferHandler) HandleTransferWebSocket(c *gin.Context) {
 	// 强校验任务归属（防止猜测 task_id 窃听/取消他人任务）
 	h.mu.RLock()
 	task, ok := h.tasks[taskID]
-	last, hasLast := h.lastProgress[taskID]
 	h.mu.RUnlock()
 	if !ok || task.UserID != userID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "task not owned by user"})
@@ -176,15 +180,26 @@ func (h *SFTPTransferHandler) HandleTransferWebSocket(c *gin.Context) {
 	}
 
 	h.mu.Lock()
-	h.connections[taskID] = wsConn
+	previous := h.connections[taskID]
+	socket := &transferProgressSocket{Conn: wsConn}
+	h.connections[taskID] = socket
 	h.mu.Unlock()
+	if previous != nil {
+		previous.Close()
+	}
 
 	log.Printf("[SFTPTransferWS] 连接已建立: taskID=%s", taskID)
 
 	// 补发最后一条进度（支持客户端晚连接/重连）
+	socket.writeMu.Lock()
+	h.mu.RLock()
+	last, hasLast := h.lastProgress[taskID]
+	h.mu.RUnlock()
 	if hasLast {
-		_ = h.SendProgress(taskID, last)
+		_ = socket.SetWriteDeadline(time.Now().Add(wsWriteWait))
+		_ = socket.WriteJSON(last)
 	}
+	socket.writeMu.Unlock()
 
 	_ = wsConn.SetReadDeadline(time.Now().Add(wsPongWait))
 	wsConn.SetReadLimit(4 << 10) // 4KB
@@ -225,7 +240,9 @@ func (h *SFTPTransferHandler) HandleTransferWebSocket(c *gin.Context) {
 
 	close(stopHeartbeat)
 	h.mu.Lock()
-	delete(h.connections, taskID)
+	if h.connections[taskID] == socket {
+		delete(h.connections, taskID)
+	}
 	h.mu.Unlock()
 	wsConn.Close()
 
@@ -260,6 +277,12 @@ func (h *SFTPTransferHandler) SendProgress(taskID string, msg TransferProgressMe
 		return nil
 	}
 
+	wsConn.writeMu.Lock()
+	defer wsConn.writeMu.Unlock()
+	// 等待写锁期间进度可能已更新，始终发送最新快照，避免补发后状态回退。
+	h.mu.RLock()
+	msg = h.lastProgress[taskID]
+	h.mu.RUnlock()
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return err
@@ -271,13 +294,31 @@ func (h *SFTPTransferHandler) SendProgress(taskID string, msg TransferProgressMe
 
 	if err := wsConn.WriteMessage(websocket.TextMessage, data); err != nil {
 		h.mu.Lock()
-		delete(h.connections, taskID)
+		if h.connections[taskID] == wsConn {
+			delete(h.connections, taskID)
+		}
 		h.mu.Unlock()
 		wsConn.Close()
 		return err
 	}
 
 	return nil
+}
+
+// retainCompletedTask keeps ownership and the final progress available to late subscribers.
+// Active SSH/SFTP resources are released by the transfer itself, independently of this TTL.
+func (h *SFTPTransferHandler) retainCompletedTask(taskID string, ttl time.Duration) {
+	time.AfterFunc(ttl, func() {
+		h.mu.Lock()
+		delete(h.tasks, taskID)
+		delete(h.lastProgress, taskID)
+		conn := h.connections[taskID]
+		delete(h.connections, taskID)
+		h.mu.Unlock()
+		if conn != nil {
+			conn.Close()
+		}
+	})
 }
 
 // StartDirectTransfer 启动直连传输（使用 rsync 或 scp）
@@ -352,12 +393,7 @@ func (h *SFTPTransferHandler) StartDirectTransfer(
 	// 在后台执行传输（使用 SFTP 中转，通过后端中转数据）
 	go func() {
 		defer cancel()
-		defer func() {
-			h.mu.Lock()
-			delete(h.tasks, taskID)
-			delete(h.lastProgress, taskID)
-			h.mu.Unlock()
-		}()
+		defer h.retainCompletedTask(taskID, 5*time.Minute)
 
 		log.Printf("[SFTPTransferWS] 开始 SFTP 中转传输: taskID=%s", taskID)
 		transferErr := h.executeSftpRelayTransfer(

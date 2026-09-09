@@ -79,6 +79,13 @@ func (c *Client) RawClient() *sftp.Client {
 
 // ListDirectory 列出目录
 func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
+	if path == "~" {
+		home, err := c.sftpClient.RealPath(".")
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve home directory: %w", err)
+		}
+		path = home
+	}
 	path = sftputil.NormalizePath(path)
 	// 读取目录
 	entries, err := c.sftpClient.ReadDir(path)

@@ -199,6 +199,9 @@ type desktopSFTPAuthenticatedSSHClient struct {
 	client          *ssh.Client
 	credential      DesktopSSHCredential
 	authenticatedAt time.Time
+	users           int
+	idleTimer       *time.Timer
+	idleGeneration  uint64
 }
 
 type DesktopSFTPService struct {
@@ -703,6 +706,12 @@ func (s *DesktopSFTPService) ListDirectoryContext(ctx context.Context, input Des
 
 	if err := ctx.Err(); err != nil {
 		return DesktopSFTPDirectoryListResult{}, err
+	}
+	if input.Path == "~" {
+		remotePath, err = client.RealPath(".")
+		if err != nil {
+			return DesktopSFTPDirectoryListResult{}, err
+		}
 	}
 	entries, err := client.ReadDir(remotePath)
 	if err != nil {
@@ -1723,6 +1732,9 @@ func (s *DesktopSFTPService) setAuthenticatedSSHClient(serverID string, client *
 
 	s.authenticatedMu.Lock()
 	if existing := s.authenticatedSSH[serverID]; existing != nil && existing.client != nil {
+		if existing.idleTimer != nil {
+			existing.idleTimer.Stop()
+		}
 		_ = existing.client.Close()
 	}
 	s.authenticatedSSH[serverID] = &desktopSFTPAuthenticatedSSHClient{
@@ -1730,13 +1742,30 @@ func (s *DesktopSFTPService) setAuthenticatedSSHClient(serverID string, client *
 		credential:      credential,
 		authenticatedAt: time.Now(),
 	}
+	s.scheduleAuthenticatedSSHExpiry(serverID, s.authenticatedSSH[serverID])
 	s.authenticatedMu.Unlock()
 }
 
-func (s *DesktopSFTPService) getAuthenticatedSSHClient(serverID string) (*ssh.Client, bool) {
+// 调用方持锁；仅在没有进行中的文件操作时回收空闲连接。
+func (s *DesktopSFTPService) scheduleAuthenticatedSSHExpiry(serverID string, entry *desktopSFTPAuthenticatedSSHClient) {
+	entry.idleGeneration++
+	generation := entry.idleGeneration
+	entry.idleTimer = time.AfterFunc(5*time.Minute, func() {
+		s.authenticatedMu.Lock()
+		if s.authenticatedSSH[serverID] != entry || entry.users != 0 || entry.idleGeneration != generation {
+			s.authenticatedMu.Unlock()
+			return
+		}
+		delete(s.authenticatedSSH, serverID)
+		s.authenticatedMu.Unlock()
+		_ = entry.client.Close()
+	})
+}
+
+func (s *DesktopSFTPService) acquireAuthenticatedSSHClient(serverID string) (*ssh.Client, func(), bool) {
 	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
-		return nil, false
+		return nil, nil, false
 	}
 
 	s.authenticatedMu.Lock()
@@ -1744,10 +1773,22 @@ func (s *DesktopSFTPService) getAuthenticatedSSHClient(serverID string) (*ssh.Cl
 
 	entry := s.authenticatedSSH[serverID]
 	if entry == nil || entry.client == nil {
-		return nil, false
+		return nil, nil, false
 	}
 
-	return entry.client, true
+	entry.users++
+	entry.idleGeneration++
+	if entry.idleTimer != nil {
+		entry.idleTimer.Stop()
+	}
+	return entry.client, func() {
+		s.authenticatedMu.Lock()
+		defer s.authenticatedMu.Unlock()
+		entry.users--
+		if s.authenticatedSSH[serverID] == entry && entry.users == 0 {
+			s.scheduleAuthenticatedSSHExpiry(serverID, entry)
+		}
+	}, true
 }
 
 func (s *DesktopSFTPService) clearAuthenticatedSSHClient(serverID string) {
@@ -1759,6 +1800,9 @@ func (s *DesktopSFTPService) clearAuthenticatedSSHClient(serverID string) {
 	s.authenticatedMu.Lock()
 	entry := s.authenticatedSSH[serverID]
 	delete(s.authenticatedSSH, serverID)
+	if entry != nil && entry.idleTimer != nil {
+		entry.idleTimer.Stop()
+	}
 	s.authenticatedMu.Unlock()
 
 	if entry != nil && entry.client != nil {
@@ -1780,8 +1824,8 @@ func (s *DesktopSFTPService) openSSHClientContext(ctx context.Context, serverID 
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	if client, ok := s.getAuthenticatedSSHClient(serverID); ok {
-		return client, func() {}, nil
+	if client, release, ok := s.acquireAuthenticatedSSHClient(serverID); ok {
+		return client, release, nil
 	}
 
 	if credential, hasCredential := s.serverService.getTemporaryCredential(serverID); hasCredential {
@@ -1805,14 +1849,16 @@ func (s *DesktopSFTPService) openClientContext(ctx context.Context, serverID str
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
 	}
-	if sshClient, ok := s.getAuthenticatedSSHClient(serverID); ok {
+	if sshClient, release, ok := s.acquireAuthenticatedSSHClient(serverID); ok {
 		sftpClient, err := sftp.NewClient(sshClient)
 		if err != nil {
+			release()
 			s.clearAuthenticatedSSHClient(serverID)
 			return nil, nil, err
 		}
 		return sftpClient, func() {
 			_ = sftpClient.Close()
+			release()
 		}, nil
 	}
 
