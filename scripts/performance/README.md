@@ -1,6 +1,6 @@
 # 终端真实连接性能测试
 
-测试通过正常登录后的浏览器会话连接已有的 **PVE-Debian 13**。不会模拟 SSH、监控、Docker 或 SFTP 响应，也不会执行远程文件写入、容器控制或 AI 推理。终端输出测试使用 `printf` 输出 300 行。
+原有终端性能测试通过正常登录后的浏览器会话连接已有的 **PVE-Debian 13**。原有终端性能脚本不会模拟 SSH、监控、Docker 或 SFTP 响应，也不会执行远程文件写入、容器控制或 AI 推理。终端输出测试使用 `printf` 输出 300 行。后文的页签/SFTP专项包含明确列出的故障注入和临时文件读写，需在已授权测试的主机上运行。
 
 ## 环境
 
@@ -109,3 +109,49 @@ node scripts/performance/summarize-panels.mjs /tmp/easyssh-terminal-round2
 同机资源限制：类型检查、lint、构建和浏览器采样必须串行执行。工具返回仍在运行的 session 时应继续等待退出，不能启动下一项。第二轮末次补测因违反这一约束造成主机资源争抢并中断，报告保留该记录。
 
 `PERF_DIAGNOSTICS_ONLY=1` 只运行设置和 AI 实例诊断，不进行尺寸操作；适合对旧版本保留对照数据。`PERF_VERIFY=1` 是新版本完整专项断言。
+
+## 页签、合并工作空间和 SFTP 专项审查
+
+这些脚本需手动执行，用于审查和修复回归，不自动加入默认测试套件。
+
+复用上述 Playwright、正常登录 storageState 和回环发布代理。发布产物必须对应待审查代码；本轮代理为 5200。按顺序单独运行，每个进程退出后再执行下一项：
+
+```bash
+PERF_ORIGIN=http://localhost:5200 PERF_AUTH_STATE=/your/private/storage-state.json node scripts/performance/tabs-sftp-audit.mjs
+PERF_ORIGIN=http://localhost:5200 PERF_AUTH_STATE=/your/private/storage-state.json node scripts/performance/tabs-sftp-workspace-audit.mjs
+PERF_ORIGIN=http://localhost:5200 PERF_AUTH_STATE=/your/private/storage-state.json node scripts/performance/tabs-sftp-extra-audit.mjs
+PERF_ORIGIN=http://localhost:5200 PERF_AUTH_STATE=/your/private/storage-state.json node scripts/performance/tabs-sftp-state-regression.mjs
+PERF_ORIGIN=http://localhost:5200 PERF_AUTH_STATE=/your/private/storage-state.json node scripts/performance/tabs-sftp-transfer-audit.mjs
+PERF_ORIGIN=http://localhost:5200 PERF_AUTH_STATE=/your/private/storage-state.json node scripts/performance/tabs-sftp-perf.mjs
+```
+
+- `AUDIT_OUTPUT_DIR` 默认 `/tmp/easyssh-tabs-audit`，提前创建目录；默认认证文件为该目录下的 `auth-state.json`。脚本退出会更新自己的认证状态文件，必须是测试专用副本。
+- `AUDIT_SERVER` 默认 `PVE-Debian 13`。跨服务器脚本的 `AUDIT_SECOND_SERVER` 默认 `PVE`，必须是另一台已获用户授权的主机。脚本按精确名称选择第二主机。
+- `tabs-sftp-audit.mjs` 检查首页、页签保持、拖动排序/合并、菜单、关闭等；`tabs-sftp-workspace-audit.mjs` 对焦点、拆回、关闭和连接标记单独复核。
+- `tabs-sftp-extra-audit.mjs` 注入服务器列表500，以及延迟真实目录响应1800ms；同时测试窄屏、大目录、上传/下载/编辑。`AUDIT_FILES_ONLY=1` 仅执行文件操作。默认整段输入验证保存链路；`AUDIT_TYPING_DELAY=80` 改为80ms/键，复核逐键输入异常。
+- 文件测试只在 `/tmp/easyssh-tabs-audit-<UUID>` 中创建数据，finally 通过正常认证API删除自己的目录。跨服务器脚本在两台测试主机创建独立临时目录，上传约64KiB二进制文件、双向传输并逐字节核验。没有同名覆盖或大文件压力测试。
+- Web 终端页已开启跨会话拖放；默认模式验证真实拖放、完成状态、自动刷新和文件内容。`AUDIT_TRANSFER_MODE=api` 使用同一登录会话的正常API启动直连传输、正常票据订阅WebSocket完成状态，再手动刷新和回读字节；此模式不代表UI拖放通过。
+- 若进程被强制终止，finally可能无法执行。用报告的 `remoteScratchPath` 和指定测试主机恢复清理，只删除该次UUID目录；清理后核验目录不存在。不要泛化删除其他 `/tmp` 内容。
+- `tabs-sftp-perf.mjs` 采集64个窗口，覆盖普通切换、弹窗开关、工作空间往返，分别1x/4x CPU；含rAF帧间隔、长任务、目录/关闭请求和GC后内存抽样。请求失败与秒级延迟保留在 `directoryResponses`，不能只看是否fatal。
+- 脚本将断言失败记录在 JSON；功能失败、fatal 或临时目录清理未通过时返回非零退出码。审核仍需检查 `checks[].passed`、`fatal` 和清理状态。
+- 不复制全页截图到公开报告，截图可能含账户或其他主机信息；认证文件不得入库。认证恢复失败时先通过正常UI重新登录，已中断记录保留，不计为业务通过。
+
+工作空间布局已迁移至 Dockview，原自写布局算法及对应的 `split-layout-audit.test.ts` 已移除。历史报告中的 7 项结果仅对应迁移前实现，不代表 Dockview 集成验证。浏览器脚本使用 `data-dockview-session-id` 定位工作空间页签标题。
+
+`tabs-sftp-state-regression.mjs` 还验证独立/内嵌 SFTP 的未保存草稿在普通页签、合并和拆回期间保留，隐藏编辑器快捷键隔离、固定页签保护、主目录解析和上次目录恢复。此脚本同样仅操作本次 UUID 临时目录。
+
+### 工作空间成熟库集成检查
+
+`workspace-libraries-audit.mjs` 配合 `web/test/fixtures/workspace-libraries.html`，在正在运行的 Web 开发服务上检查真实 Dockview、React portal 和 Pragmatic 拖放适配器。测试数据均为本地模拟会话，无需登录，不连接测试主机、不上传或移动远端文件。
+
+```bash
+EASYSSH_BASE_URL=http://localhost:3000 \
+PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs \
+CHROMIUM_PATH=/path/to/chrome \
+AUDIT_REPORT=/tmp/workspace-libraries.json \
+node scripts/performance/workspace-libraries-audit.mjs
+```
+
+覆盖加载样式区分、两页签合并、嵌套分屏、尺寸保存、同组页签切换、编辑草稿与会话实例保留、固定页签键盘关闭保护、拆回普通页签、拖回加号、单成员折叠、布局恢复、文件移动/跨会话拖放的单次触发，以及编辑器关闭后文件浏览区重新接收外部文件。另覆盖独立分区工具栏、同组切换工具栏、内嵌工具栏隔离、关闭按钮固定最右侧并关闭对应会话、合并预览及虚线包含标题区域，共 19 项检查。失败时返回非零退出码。
+
+结果仅证明前端库集成；真实 SSH/SFTP 链路与性能采样仍使用前述独立脚本，不能把本地模拟传输记为真实主机传输通过。
