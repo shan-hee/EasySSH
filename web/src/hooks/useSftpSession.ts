@@ -1,5 +1,5 @@
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useState, useCallback, useEffect, useEffectEvent, useMemo, useRef } from 'react';
 import type { FileInfo } from '@/lib/api/sftp';
 import { useFileTransfer, type FileTransferSftpApi, type UseFileTransferOptions } from './useFileTransfer';
 import { getErrorMessage } from "@/lib/error-utils";
@@ -129,11 +129,13 @@ export function useSftpSession(
   }, [api]);
   const [currentPath, setCurrentPath] = useState(initialPath);
   const currentPathRef = useRef(initialPath);
+  const directoryRequestVersion = useRef(0);
+  const [isConnected, setIsConnected] = useState(false);
   const loadedServerRef = useRef<string | null>(null);
   const [pathBackStack, setPathBackStack] = useState<string[]>(() => initialPathBackStack);
   const [pathForwardStack, setPathForwardStack] = useState<string[]>(() => initialPathForwardStack);
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(Boolean(serverId));
   const [error, setError] = useState<string | null>(null);
 
   const runSftpOperation = useCallback(<T,>(operation: () => Promise<T>) => {
@@ -247,6 +249,7 @@ export function useSftpSession(
   const loadDirectory = useCallback(async (path: string) => {
     if (!serverId) return;
 
+    const requestVersion = ++directoryRequestVersion.current;
     setIsLoading(true);
     setError(null);
 
@@ -259,18 +262,22 @@ export function useSftpSession(
         api: sessionApi,
       }));
 
+      if (requestVersion !== directoryRequestVersion.current) return null;
+      setIsConnected(true);
       setFiles(directory.files);
       setCurrentPath(directory.path);
       currentPathRef.current = directory.path;
       return directory.path;
     } catch (err: unknown) {
+      if (requestVersion !== directoryRequestVersion.current) return null;
+      setIsConnected(false);
       console.error('[useSftpSession] 加载目录失败:', err);
       const errorMessage = err instanceof Error ? err.message : '加载目录失败';
       setError(errorMessage);
       setFiles([]);
       return null;
     } finally {
-      setIsLoading(false);
+      if (requestVersion === directoryRequestVersion.current) setIsLoading(false);
     }
   }, [serverId, convertFileInfo, runSftpOperation, sessionApi]);
 
@@ -549,6 +556,7 @@ export function useSftpSession(
   useEffect(() => {
     if (!serverId || loadedServerRef.current === serverId) return;
     loadedServerRef.current = serverId;
+    setIsConnected(false);
     currentPathRef.current = initialPath;
     setCurrentPath(initialPath);
     setPathBackStack(initialPathBackStack);
@@ -556,26 +564,24 @@ export function useSftpSession(
     void loadDirectory(initialPath);
   }, [serverId, initialPath, initialPathBackStack, initialPathForwardStack, loadDirectory]);
 
+  const notifyHistoryChange = useEffectEvent((history: { currentPath: string; pathBackStack: string[]; pathForwardStack: string[] }) => onHistoryChange?.(history));
   useEffect(() => {
-    onHistoryChange?.({
+    notifyHistoryChange({
       currentPath,
       pathBackStack,
       pathForwardStack,
     });
-  }, [currentPath, onHistoryChange, pathBackStack, pathForwardStack]);
+  }, [currentPath, pathBackStack, pathForwardStack]);
 
-  // 页面卸载/切换 serverId 时，主动关闭连接以加速资源回收
+  // 视图不拥有服务器级连接。请求引用由后端连接池释放，空闲连接由池回收。
+  // 仅使卸载/切换服务器前的响应失效，避免写回过期视图。
   useEffect(() => {
-    if (!serverId) return;
-    return () => {
-      sessionApi.closeConnection?.(serverId)?.catch(() => {
-        // cleanup 阶段不打扰用户；失败时等待后端空闲回收即可
-      });
-    };
-  }, [serverId, sessionApi]);
+    return () => { directoryRequestVersion.current += 1; loadedServerRef.current = null; };
+  }, [serverId]);
 
   return {
     // 状态
+    isConnected,
     currentPath,
     files,
     isLoading,

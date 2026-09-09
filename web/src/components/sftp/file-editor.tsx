@@ -49,6 +49,7 @@ interface FileEditorProps {
   filePath: string
   fileContent: string
   isOpen: boolean
+  keyboardShortcutsEnabled?: boolean
   onClose: () => void
   onSave: (content: string) => void
   onDownload?: () => void
@@ -63,6 +64,8 @@ interface FileEditorProps {
 
 type MonacoEditorHandle = {
   getAction?: (id: string) => { run?: () => unknown } | null | undefined
+  getValue: () => string
+  setValue: (value: string) => void
   layout?: () => void
   revealLine?: (lineNumber: number) => void
 }
@@ -71,6 +74,7 @@ export function FileEditor({
   fileName,
   fileContent,
   isOpen,
+  keyboardShortcutsEnabled = true,
   onClose,
   onSave,
   onDownload,
@@ -110,6 +114,7 @@ export function FileEditor({
   // 当文件内容变化时更新编辑器内容
   useEffect(() => {
     setContent(fileContent || '')
+    editorRef.current?.setValue(fileContent || '')
     setIsModified(false)
   }, [fileContent, fileName])
 
@@ -213,7 +218,7 @@ export function FileEditor({
 
     setIsSaving(true)
     try {
-      await onSave(content || '')
+      await onSave(editorRef.current?.getValue() ?? content ?? '')
       setIsModified(false)
     } finally {
       setIsSaving(false)
@@ -223,6 +228,7 @@ export function FileEditor({
   // 重置内容
   const handleReset = () => {
     setContent(fileContent || '')
+    editorRef.current?.setValue(fileContent || '')
     setIsModified(false)
   }
 
@@ -248,6 +254,7 @@ export function FileEditor({
 
   // 键盘快捷键
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.defaultPrevented || !keyboardShortcutsEnabled || !editorContainerRef.current?.closest("[data-file-editor]")?.contains(e.target as Node)) return
     // Cmd/Ctrl + S 保存
     if ((e.metaKey || e.ctrlKey) && e.key === 's') {
       e.preventDefault()
@@ -264,7 +271,7 @@ export function FileEditor({
         onClose()
       }
     }
-  }, [isModified, isFullscreen, handleSave, onClose])
+  }, [isModified, isFullscreen, handleSave, onClose, keyboardShortcutsEnabled])
 
   useEffect(() => {
     if (isOpen) {
@@ -306,7 +313,7 @@ export function FileEditor({
 
   // 全屏内容
   const fullscreenContent = (
-    <div className="fixed inset-0 z-[9999] flex min-w-0 flex-col overflow-hidden bg-background">
+    <div data-file-editor className="fixed inset-0 z-[9999] flex min-w-0 flex-col overflow-hidden bg-background">
         <div
           className={cn(
             "flex h-full min-w-0 flex-col overflow-hidden bg-card",
@@ -479,7 +486,7 @@ export function FileEditor({
                height="100%"
                width="100%"
                language={getLanguage(fileName)}
-               value={content}
+               defaultValue={content}
                onChange={handleEditorChange}
               theme={monacoTheme}
                options={{
@@ -493,6 +500,8 @@ export function FileEditor({
                 tabSize: 2,
                 wordWrap: wordWrap,
                 readOnly,
+                editContext: false,
+                acceptSuggestionOnEnter: "smart",
                 formatOnPaste: false, // 关闭粘贴时自动格式化，避免性能问题
                 formatOnType: false, // 关闭输入时自动格式化，避免性能问题
                 renderWhitespace: "selection",
@@ -564,7 +573,7 @@ export function FileEditor({
 
   // 嵌入模式
   return (
-    <div className="flex h-full min-w-0 flex-col overflow-hidden">
+    <div data-file-editor className="flex h-full min-w-0 flex-col overflow-hidden">
       {/* Editor toolbar */}
       <div
         className={cn(
@@ -727,7 +736,7 @@ export function FileEditor({
           height="100%"
           width="100%"
           language={getLanguage(fileName)}
-          value={content}
+          defaultValue={content}
           onChange={handleEditorChange}
           theme={monacoTheme}
           options={{
@@ -741,6 +750,8 @@ export function FileEditor({
             tabSize: 2,
             wordWrap: wordWrap,
             readOnly,
+            editContext: false,
+            acceptSuggestionOnEnter: "smart",
             formatOnPaste: false, // 关闭粘贴时自动格式化，避免性能问题
             formatOnType: false, // 关闭输入时自动格式化，避免性能问题
             renderWhitespace: "selection",
