@@ -1,3 +1,4 @@
+import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 
 import { useRef, useMemo, useCallback, useEffect, type ChangeEvent } from "react"
 import { createPortal } from "react-dom"
@@ -194,29 +195,20 @@ export function SftpManager(props: SftpManagerProps) {
   }, [currentPath, setSelectedFiles])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const backgroundFileInputRef = useRef<HTMLInputElement>(null)
-  const dropZoneRef = useRef<HTMLDivElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const editingSessionLabelRef = useRef(false)
 
   const {
     isDragging,
+    dropZoneRef,
+    registerDragItem,
     draggedFileName,
     dragOverFolder,
-    clearDragOverFolder,
     handleFileUpload,
-    handleNativeDragStart,
-    handleNativeDragEnd,
-    handleNativeDragOver,
-    handleNativeDrop,
-    handleDragEnter,
-    handleDragLeave,
-    handleDragOver,
-    handleDrop,
   } = useSftpDragDropController({
     sessionId,
     currentPath,
     files,
-    dropZoneRef,
     onRename,
     onUpload,
   })
@@ -379,6 +371,7 @@ export function SftpManager(props: SftpManagerProps) {
           )}
         >
       {shouldRenderWorkspaceToolbar && (
+      <SessionWorkspaceToolbar kind="sftp">
       <SftpWorkspaceToolbar
         displayPath={displayPath}
         pathInputValue={pathInputValue}
@@ -406,6 +399,7 @@ export function SftpManager(props: SftpManagerProps) {
         onToggleFullscreen={onToggleFullscreen}
         onDisconnect={onDisconnect}
       />
+      </SessionWorkspaceToolbar>
       )}
 
       {/* 如果编辑器打开，只显示编辑器；否则显示搜索栏+文件列表 */}
@@ -415,6 +409,7 @@ export function SftpManager(props: SftpManagerProps) {
           filePath={editorState.filePath}
           fileContent={editorState.content}
           isOpen={editorState.isOpen}
+          keyboardShortcutsEnabled={keyboardShortcutsEnabled}
           onClose={handleCloseEditor}
           onSave={handleSaveFile}
           onDownload={() => onDownload(editorState.fileName)}
@@ -448,6 +443,7 @@ export function SftpManager(props: SftpManagerProps) {
             editingFileName={editingFileName}
             draggedFileName={draggedFileName}
             dragOverFolder={dragOverFolder}
+            registerDragItem={registerDragItem}
             dropZoneRef={dropZoneRef}
             fileInputRef={fileInputRef}
             editInputRef={editInputRef}
@@ -460,10 +456,6 @@ export function SftpManager(props: SftpManagerProps) {
             onUpload={() => fileInputRef.current?.click()}
             onBackgroundUpload={onCreateBackgroundUpload ? () => backgroundFileInputRef.current?.click() : undefined}
             onRefresh={onRefresh}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
             onEditingFileNameChange={setEditingFileName}
             onFinishCreate={finishCreate}
             onCancelCreate={cancelCreate}
@@ -471,11 +463,6 @@ export function SftpManager(props: SftpManagerProps) {
             onFinishRename={finishRename}
             onCancelRename={cancelRename}
             onRenameBlur={handleRenameBlur}
-            onNativeDragStart={handleNativeDragStart}
-            onNativeDragEnd={handleNativeDragEnd}
-            onNativeDragOver={handleNativeDragOver}
-            onNativeDragLeave={clearDragOverFolder}
-            onNativeDrop={handleNativeDrop}
             onFileSelect={handleFileMouseDown}
             onFileDoubleClick={handleFileDoubleClick}
             onOpenFileContextMenu={handleContextMenu}

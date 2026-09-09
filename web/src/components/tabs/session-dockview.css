@@ -1,0 +1,82 @@
+.easyssh-dockview {
+  --dv-background-color: transparent;
+  --dv-group-view-background-color: var(--background);
+  --dv-tabs-and-actions-container-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-background-color: transparent;
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-separator-border: var(--border);
+  --dv-paneview-header-border-color: var(--border);
+  --dv-tabs-and-actions-container-height: 40px;
+  --dv-drag-over-border: 1px dashed color-mix(in srgb, var(--primary) 70%, transparent);
+  --dv-drag-over-background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--primary);
+}
+.easyssh-dockview .dv-groupview { border-radius: 8px; overflow: hidden; }
+
+/* Drop feedback follows the pointer immediately; only neighbouring tabs ease aside. */
+.easyssh-dockview .dv-drop-target-container,
+.easyssh-dockview .dv-drop-target {
+  --dv-transition-duration: 0ms;
+}
+.easyssh-dockview .dv-tab {
+  --dv-transition-duration: 100ms;
+}
+.easyssh-dockview .dv-tab.dv-tab--dragging {
+  transition: none;
+}
+
+/* One toolbar per complete session pane, with a draggable connection label. */
+.easyssh-dockview .dv-groupview {
+  position: relative;
+}
+.easyssh-dockview .dv-groupview::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  border: 1px dashed color-mix(in srgb, var(--border) 55%, transparent);
+  border-radius: 8px;
+}
+.easyssh-dockview .dv-groupview.dv-active-group::after {
+  border-color: color-mix(in srgb, var(--primary) 70%, transparent);
+}
+.easyssh-dockview .dv-tabs-and-actions-container > .dv-right-actions-container {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.easyssh-dockview .dv-tabs-and-actions-container > .dv-void-container {
+  flex: 0;
+}
+.easyssh-dockview .dv-tab {
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.easyssh-dockview .dv-drop-target-anchor,
+.easyssh-dockview .dv-drop-target-selection {
+  border-radius: 8px;
+}
+.easyssh-dockview .dv-tabs-and-actions-container > .dv-scrollable {
+  max-width: 45%;
+  min-width: 0;
+}
+.easyssh-dockview .dv-right-actions-container [data-sftp-toolbar="workspace"] {
+  border-bottom: 0;
+}
+
+/* Docked content is positioned by the layout engine, not animated with transforms.
+   Avoid an extra compositing layer over terminal text and editor canvases. */
+.easyssh-dockview .dv-render-overlay:not(.dv-render-overlay-float) {
+  transform: none;
+  will-change: auto;
+  backface-visibility: visible;
+}

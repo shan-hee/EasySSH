@@ -1,269 +1,178 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react"
+import { AdvancedDnDModule, createDockview, registerModules, type DockviewApi, type SerializedDockview } from "dockview"
 import type { TerminalSession } from "@/components/terminal/types"
-import type {
-  SessionTabDragEvent,
-  SessionTabDropSide,
-} from "@/components/tabs/session-tab-bar"
-import {
-  addSessionToSplitLayout,
-  ensureMultiSessionLayout,
-  filterSplitLayout,
-  getSplitLayoutSessionIds,
-  removeSessionFromSplitLayout,
-  updateSplitLayoutSizes,
-  type SessionSplitLayoutNode,
-} from "@/lib/session/split-layout"
-import {
-  getSplitPaneDragSessionId,
-  hasSplitPaneDragSession,
-} from "@/lib/session/split-pane-drag"
+import type { SessionTabDragEvent, SessionTabDropSide } from "@/components/tabs/session-tab-bar"
+import { getSplitPaneDragSessionId, hasSplitPaneDragSession, setSplitPaneDragSessionId } from "@/lib/session/split-pane-drag"
 
-type SplitLayoutUpdater =
-  | SessionSplitLayoutNode
-  | null
-  | ((current: SessionSplitLayoutNode | null) => SessionSplitLayoutNode | null)
+registerModules([AdvancedDnDModule])
 
-interface WorkspaceTabSessionOptions {
-  id: string
-  label: string
-}
-
-interface UseSessionSplitWorkspaceOptions {
+type LayoutUpdater = SerializedDockview | null | ((current: SerializedDockview | null) => SerializedDockview | null)
+interface Options {
   sessions: TerminalSession[]
   workspaceSessions: TerminalSession[]
   activeSessionId: string
-  splitLayout?: SessionSplitLayoutNode | null
-  setSplitLayout?: (updater: SplitLayoutUpdater) => void
-  workspaceTab: WorkspaceTabSessionOptions
+  splitLayout: SerializedDockview | null
+  setSplitLayout: (updater: LayoutUpdater) => void
+  workspaceTab: { id: string; label: string }
   isActiveConfigSession: boolean
   isDisabled?: boolean
-  setActiveSessionId: (sessionId: string) => void
-  onWorkspaceSessionActivated?: (sessionId: string) => void
-  onSessionDroppedToWorkspace?: (sessionId: string) => void
+  setActiveSessionId: (id: string) => void
+  onWorkspaceSessionActivated?: (id: string) => void
   onWorkspaceExited?: () => void
-  buildTabSessions?: (params: {
-    hasWorkspace: boolean
-    workspaceTabSession: TerminalSession
-    workspaceSessionIds: string[]
-    sessions: TerminalSession[]
-  }) => TerminalSession[]
-  getSingleVisibleSessionId?: (params: {
-    activeSessionId: string
-    activeWorkspaceSession: TerminalSession | null
-    workspaceSessions: TerminalSession[]
-  }) => string | null
-  getDetachTargetSessionId?: (params: {
-    activeSessionId: string
-    activeWorkspaceSession: TerminalSession | null
-    workspaceSessions: TerminalSession[]
-  }) => string | null
-  getDropFallbackSessionIds?: (params: {
-    activeSessionId: string
-    activeWorkspaceSession: TerminalSession | null
-    workspaceSessions: TerminalSession[]
-  }) => string[]
+  buildTabSessions?: (params: { hasWorkspace: boolean; workspaceTabSession: TerminalSession; workspaceSessionIds: string[]; sessions: TerminalSession[] }) => TerminalSession[]
 }
 
+export interface SessionDockviewController {
+  element: HTMLDivElement
+  api: DockviewApi | null
+  contents: Map<string, HTMLElement>
+  tabs: Map<string, HTMLElement>
+  actions: Map<string, HTMLElement>
+}
 const getDropSideFromRect = (event: SessionTabDragEvent, rect: DOMRect): SessionTabDropSide => {
-  const distances: Array<[SessionTabDropSide, number]> = [
-    ["left", event.clientX - rect.left],
-    ["right", rect.right - event.clientX],
-    ["top", event.clientY - rect.top],
-    ["bottom", rect.bottom - event.clientY],
-  ]
-
-  return distances.reduce((best, item) => (item[1] < best[1] ? item : best))[0]
+  const distances: Array<[SessionTabDropSide, number]> = [["left", event.clientX - rect.left], ["right", rect.right - event.clientX], ["top", event.clientY - rect.top], ["bottom", rect.bottom - event.clientY]]
+  return distances.reduce((best, item) => item[1] < best[1] ? item : best)[0]
 }
 
-const createWorkspaceTabSession = ({ id, label }: WorkspaceTabSessionOptions): TerminalSession => ({
-  id,
-  serverName: label,
-  host: "",
-  username: "",
-  shouldConnect: false,
-  connectionPhase: "idle",
-  status: "connected",
-  lastActivity: 0,
-  type: "terminal",
-  pinned: false,
-})
-
-export function useSessionSplitWorkspace({
-  sessions,
-  workspaceSessions,
-  activeSessionId,
-  splitLayout: controlledSplitLayout,
-  setSplitLayout: setControlledSplitLayout,
-  workspaceTab,
-  isActiveConfigSession,
-  isDisabled = false,
-  setActiveSessionId,
-  onWorkspaceSessionActivated,
-  onSessionDroppedToWorkspace,
-  onWorkspaceExited,
-  buildTabSessions,
-  getSingleVisibleSessionId,
-  getDetachTargetSessionId,
-  getDropFallbackSessionIds,
-}: UseSessionSplitWorkspaceOptions) {
-  const { id: workspaceTabId, label: workspaceTabLabel } = workspaceTab
-  const [internalSplitLayout, setInternalSplitLayout] = useState<SessionSplitLayoutNode | null>(null)
+/** Dockview owns the layout. React stores only its serialized snapshot and application session state. */
+export function useSessionSplitWorkspace(options: Options) {
+  const { sessions, workspaceSessions, activeSessionId, splitLayout, workspaceTab, isActiveConfigSession } = options
+  const latest = useRef(options)
+  useLayoutEffect(() => { latest.current = options })
+  const [dockview] = useState<SessionDockviewController>(() => ({ element: document.createElement("div"), api: null, contents: new Map(), tabs: new Map(), actions: new Map() }))
+  const [, setRendererVersion] = useState(0)
+  const [visibleDockIds, setVisibleDockIds] = useState<string[]>([])
   const [tabDropSide, setTabDropSide] = useState<SessionTabDropSide | null>(null)
   const [tabDropTargetId, setTabDropTargetId] = useState<string | null>(null)
-  const [draggingSplitSessionId, setDraggingSplitSessionId] = useState<string | null>(null)
-  const [isSplitPanePreviewActive, setIsSplitPanePreviewActive] = useState(false)
   const workspaceDropRef = useRef<HTMLDivElement>(null)
-  const tabDragVisitedWorkspaceRef = useRef(false)
-  const splitLayout = controlledSplitLayout !== undefined ? controlledSplitLayout : internalSplitLayout
-  const setSplitLayout = useCallback((updater: SplitLayoutUpdater) => {
-    if (setControlledSplitLayout) {
-      setControlledSplitLayout(updater)
-      return
-    }
-
-    setInternalSplitLayout(updater)
-  }, [setControlledSplitLayout])
-
-  const workspaceSessionIdSet = useMemo(
-    () => new Set(workspaceSessions.map((session) => session.id)),
-    [workspaceSessions]
-  )
-  const hiddenSplitSessionId = isSplitPanePreviewActive ? draggingSplitSessionId : null
-  const detachedSessionIds = useMemo(() => getSplitLayoutSessionIds(splitLayout), [splitLayout])
-  const splitWorkspaceSessionIds = useMemo(
-    () => detachedSessionIds.filter((id) => workspaceSessionIdSet.has(id)),
-    [detachedSessionIds, workspaceSessionIdSet]
-  )
-  const splitWorkspaceSessionIdSet = useMemo(
-    () => new Set(splitWorkspaceSessionIds),
-    [splitWorkspaceSessionIds]
-  )
-  const hasWorkspace = !!splitLayout && splitWorkspaceSessionIds.length > 1
+  const mutating = useRef(false)
+  const disposed = useRef(false)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const detachedSessionIds = useMemo(() => Object.keys(splitLayout?.panels ?? {}), [splitLayout])
+  const workspaceSessionIdSet = useMemo(() => new Set(workspaceSessions.map(s => s.id)), [workspaceSessions])
+  const splitWorkspaceSessionIds = useMemo(() => detachedSessionIds.filter(id => workspaceSessionIdSet.has(id)), [detachedSessionIds, workspaceSessionIdSet])
+  const splitWorkspaceSessionIdSet = useMemo(() => new Set(splitWorkspaceSessionIds), [splitWorkspaceSessionIds])
+  const hasWorkspace = splitWorkspaceSessionIds.length > 1
   const isWorkspaceActive = hasWorkspace && splitWorkspaceSessionIdSet.has(activeSessionId)
-  const activeWorkspaceSession = useMemo(
-    () => workspaceSessions.find((session) => session.id === activeSessionId) ?? null,
-    [activeSessionId, workspaceSessions]
-  )
-
-  const visibleSessionIds = useMemo(() => {
-    if (isWorkspaceActive) {
-      return splitWorkspaceSessionIds
-    }
-
-    if (isActiveConfigSession) return []
-
-    const singleVisibleId = getSingleVisibleSessionId?.({
-      activeSessionId,
-      activeWorkspaceSession,
-      workspaceSessions,
-    }) ?? activeWorkspaceSession?.id ?? workspaceSessions[0]?.id ?? null
-
-    return singleVisibleId ? [singleVisibleId] : []
-  }, [
-    activeSessionId,
-    activeWorkspaceSession,
-    getSingleVisibleSessionId,
-    isActiveConfigSession,
-    isWorkspaceActive,
-    splitWorkspaceSessionIds,
-    workspaceSessions,
-  ])
+  const activeWorkspaceSession = workspaceSessions.find(s => s.id === activeSessionId) ?? null
+  const singleVisibleSessionId = activeWorkspaceSession?.id
+  const visibleSessionIds = useMemo(() => isActiveConfigSession ? [] : isWorkspaceActive ? visibleDockIds : singleVisibleSessionId ? [singleVisibleSessionId] : [], [isActiveConfigSession, isWorkspaceActive, visibleDockIds, singleVisibleSessionId])
   const visibleSessionIdSet = useMemo(() => new Set(visibleSessionIds), [visibleSessionIds])
-  const isMultiSessionGrid = isWorkspaceActive && visibleSessionIds.length > 1
-  const workspaceTabSession = useMemo(
-    () => createWorkspaceTabSession({ id: workspaceTabId, label: workspaceTabLabel }),
-    [workspaceTabId, workspaceTabLabel]
-  )
-  const tabSessions = useMemo(() => {
-    if (buildTabSessions) {
-      return buildTabSessions({
-        hasWorkspace,
-        workspaceTabSession,
-        workspaceSessionIds: splitWorkspaceSessionIds,
-        sessions,
-      })
+  const isMultiSessionGrid = isWorkspaceActive
+
+  const publish = useCallback(() => {
+    const api = dockview.api
+    if (!api || disposed.current || mutating.current) return
+    // One remaining member is an ordinary tab; Dockview releases only its layout slots.
+    if (api.panels.length === 1) {
+      mutating.current = true
+      api.clear()
+      mutating.current = false
     }
-
-    if (!hasWorkspace) return sessions
-
-    const detachedSet = new Set(splitWorkspaceSessionIds)
-    return [
-      workspaceTabSession,
-      ...sessions.filter((session) => !detachedSet.has(session.id)),
-    ]
-  }, [buildTabSessions, hasWorkspace, sessions, splitWorkspaceSessionIds, workspaceTabSession])
-  const tabActiveId = isWorkspaceActive ? workspaceTabId : activeSessionId
-
-  const handleActivateWorkspaceSession = useCallback((sessionId: string) => {
-    setActiveSessionId(sessionId)
-    onWorkspaceSessionActivated?.(sessionId)
-  }, [onWorkspaceSessionActivated, setActiveSessionId])
-
-  const handleChangeActiveSession = useCallback((nextSessionId: string) => {
-    if (nextSessionId === workspaceTabId) {
-      const nextWorkspaceSessionId = splitWorkspaceSessionIdSet.has(activeSessionId)
-        ? activeSessionId
-        : splitWorkspaceSessionIds[0]
-      if (nextWorkspaceSessionId) {
-        handleActivateWorkspaceSession(nextWorkspaceSessionId)
-      }
-      return
+    for (const group of api.groups) {
+      group.element.dataset.workspacePaneSessionId = group.activePanel?.id ?? ""
     }
+    setRendererVersion(version => version + 1)
+    const next = api.panels.length > 1 ? api.toJSON() : null
+    const visible = api.panels.filter(panel => panel.api.isVisible).map(panel => panel.id)
+    setVisibleDockIds(current => current.join("\0") === visible.join("\0") ? current : visible)
+    if (JSON.stringify(next) !== JSON.stringify(latest.current.splitLayout)) latest.current.setSplitLayout(next)
+  }, [dockview])
+  const mutate = useCallback((action: (api: DockviewApi) => void) => {
+    const api = dockview.api
+    if (!api) return
+    mutating.current = true
+    try { action(api) } finally { mutating.current = false; publish() }
+  }, [dockview, publish])
 
-    setActiveSessionId(nextSessionId)
-    if (!splitWorkspaceSessionIdSet.has(nextSessionId)) {
-      onWorkspaceExited?.()
+  useLayoutEffect(() => {
+    disposed.current = false
+    dockview.element.className = "h-full min-h-0 min-w-0 w-full"
+    const renderer = (map: Map<string, HTMLElement>, id: string) => {
+      const element = document.createElement("div")
+      element.className = "flex h-full min-h-0 min-w-0 flex-1 flex-col"
+      map.set(id, element)
+      return { element, init() {}, dispose() { if (map.get(id) === element) map.delete(id) } }
     }
-  }, [
-    activeSessionId,
-    handleActivateWorkspaceSession,
-    onWorkspaceExited,
-    setActiveSessionId,
-    splitWorkspaceSessionIds,
-    splitWorkspaceSessionIdSet,
-    workspaceTabId,
-  ])
-
-  const handleDetachSession = useCallback((sessionId: string) => {
-    if (!workspaceSessionIdSet.has(sessionId)) return
-
-    setSplitLayout((current) => {
-      const cleaned = filterSplitLayout(current, workspaceSessionIdSet)
-      if (getSplitLayoutSessionIds(cleaned).includes(sessionId)) {
-        return cleaned
-      }
-
-      const targetSessionId = getDetachTargetSessionId?.({
-        activeSessionId,
-        activeWorkspaceSession,
-        workspaceSessions,
-      }) ?? activeWorkspaceSession?.id ?? null
-
-      return addSessionToSplitLayout({
-        layout: cleaned,
-        sessionId,
-        targetSessionId,
-        side: "right",
-        fallbackSessionIds: workspaceSessions.map((session) => session.id),
-      })
+    const api = createDockview(dockview.element, {
+      theme: { name: "easyssh", className: "easyssh-dockview", gap: 8, dndPanelOverlay: "group" },
+      disableFloatingGroups: true,
+      defaultTabComponent: "session",
+      createComponent: ({ id }) => renderer(dockview.contents, id),
+      createTabComponent: ({ id }) => renderer(dockview.tabs, id),
+      createRightHeaderActionComponent: group => renderer(dockview.actions, group.id),
     })
-    handleActivateWorkspaceSession(sessionId)
-  }, [
-    activeSessionId,
-    activeWorkspaceSession,
-    getDetachTargetSessionId,
-    handleActivateWorkspaceSession,
-    setSplitLayout,
-    workspaceSessionIdSet,
-    workspaceSessions,
-  ])
+    dockview.api = api
+    const bounds = dockview.element.getBoundingClientRect()
+    api.layout(bounds.width, bounds.height)
+    if (latest.current.splitLayout) api.fromJSON(latest.current.splitLayout)
+    const listeners = [
+      api.onDidLayoutChange(() => {
+        if (saveTimer.current) clearTimeout(saveTimer.current)
+        saveTimer.current = setTimeout(publish, 120)
+      }),
+      api.onDidMutateLayout(() => { if (!mutating.current) queueMicrotask(publish) }),
+      api.onDidActivePanelChange(({ panel, origin }) => {
+        if (mutating.current || disposed.current) return
+        if (panel && origin === "user") {
+          latest.current.setActiveSessionId(panel.id)
+          latest.current.onWorkspaceSessionActivated?.(panel.id)
+        }
+        queueMicrotask(publish)
+      }),
+      api.onWillDragPanel(({ panel, nativeEvent }) => {
+        if (latest.current.isDisabled) { nativeEvent.preventDefault(); return }
+        if (nativeEvent instanceof DragEvent && nativeEvent.dataTransfer) setSplitPaneDragSessionId(nativeEvent.dataTransfer, panel.id)
+      }),
+      api.onWillDragGroup(({ group, nativeEvent }) => {
+        if (latest.current.isDisabled) { nativeEvent.preventDefault(); return }
+        if (group.panels.length === 1 && nativeEvent instanceof DragEvent && nativeEvent.dataTransfer) setSplitPaneDragSessionId(nativeEvent.dataTransfer, group.panels[0].id)
+      }),
+      // File drops belong to the SFTP transfer layer, never to the docking engine.
+      api.onWillShowOverlay(event => { if (!event.getData()) event.preventDefault() }),
+    ]
+    publish()
+    return () => {
+      disposed.current = true
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      listeners.forEach(listener => listener.dispose())
+      api.dispose()
+      dockview.api = null
+      dockview.contents.clear()
+      dockview.tabs.clear()
+      dockview.actions.clear()
+    }
+  }, [dockview, publish])
 
-  const getSessionById = useCallback((sessionId: string) => (
-    sessions.find((session) => session.id === sessionId)
-      ?? workspaceSessions.find((session) => session.id === sessionId)
-      ?? null
-  ), [sessions, workspaceSessions])
+  useEffect(() => { dockview.api?.updateOptions({ disableDnd: !!options.isDisabled }) }, [dockview, options.isDisabled])
 
+  useEffect(() => {
+    for (const session of workspaceSessions) {
+      const panel = dockview.api?.getPanel(session.id)
+      if (panel && panel.title !== session.serverName) panel.api.setTitle(session.serverName)
+    }
+  }, [dockview, workspaceSessions])
+  useEffect(() => {
+    if (isWorkspaceActive) dockview.api?.getPanel(activeSessionId)?.api.setActive()
+  }, [activeSessionId, dockview, isWorkspaceActive])
+
+  const clearDropTarget = useCallback(() => { setTabDropSide(null); setTabDropTargetId(null) }, [])
+  const activate = useCallback((id: string) => {
+    latest.current.setActiveSessionId(id)
+    latest.current.onWorkspaceSessionActivated?.(id)
+  }, [])
+  const merge = useCallback((source: string, target: string, side: SessionTabDropSide) => {
+    const valid = new Map(latest.current.workspaceSessions.map(session => [session.id, session]))
+    if (source === target || !valid.has(source) || !valid.has(target) || latest.current.isDisabled) return false
+    mutate(api => {
+      if (!api.getPanel(target)) api.addPanel({ id: target, component: "session", title: valid.get(target)!.serverName, renderer: "always", minimumWidth: 160, minimumHeight: 100 })
+      const existing = api.getPanel(source)
+      if (existing) existing.api.moveTo({ group: api.getPanel(target)!.group, position: side })
+      else api.addPanel({ id: source, component: "session", title: valid.get(source)!.serverName, renderer: "always", minimumWidth: 160, minimumHeight: 100, position: { referencePanel: target, direction: side === "top" ? "above" : side === "bottom" ? "below" : side } })
+    })
+    activate(source)
+    return true
+  }, [activate, mutate])
   const getTabDropTarget = useCallback((event: SessionTabDragEvent) => {
     const workspaceElement = workspaceDropRef.current
     const workspaceRect = workspaceElement?.getBoundingClientRect()
@@ -272,10 +181,10 @@ export function useSessionSplitWorkspace({
     if (event.clientY < workspaceRect.top || event.clientY > workspaceRect.bottom) return null
 
     const paneElements = Array.from(
-      workspaceElement.querySelectorAll<HTMLElement>("[data-split-session-id]")
+      workspaceElement.querySelectorAll<HTMLElement>("[data-workspace-pane-session-id], [data-split-session-id]")
     )
     const paneElement = paneElements.find((element) => {
-      const targetSessionId = element.dataset.splitSessionId ?? null
+      const targetSessionId = element.dataset.workspacePaneSessionId ?? element.dataset.splitSessionId ?? null
       if (!targetSessionId || targetSessionId === event.sessionId) return false
       if (element.closest('[aria-hidden="true"]')) return false
 
@@ -290,7 +199,7 @@ export function useSessionSplitWorkspace({
 
     if (paneElement) {
       const rect = paneElement.getBoundingClientRect()
-      const targetSessionId = paneElement.dataset.splitSessionId ?? null
+      const targetSessionId = paneElement.dataset.workspacePaneSessionId ?? paneElement.dataset.splitSessionId ?? null
       if (!targetSessionId) {
         return null
       }
@@ -305,11 +214,7 @@ export function useSessionSplitWorkspace({
       return null
     }
 
-    const fallbackTargetId = getDetachTargetSessionId?.({
-      activeSessionId,
-      activeWorkspaceSession,
-      workspaceSessions,
-    }) ?? activeWorkspaceSession?.id ?? workspaceSessions[0]?.id ?? null
+    const fallbackTargetId = activeWorkspaceSession?.id ?? workspaceSessions[0]?.id ?? null
 
     return {
       side: getDropSideFromRect(event, workspaceRect),
@@ -317,358 +222,75 @@ export function useSessionSplitWorkspace({
         ? fallbackTargetId
         : workspaceSessions.find((session) => session.id !== event.sessionId)?.id ?? null,
     }
-  }, [activeSessionId, activeWorkspaceSession, getDetachTargetSessionId, workspaceSessions])
-
-  const isSessionDropDisabled = useCallback((event: SessionTabDragEvent) => (
-    isDisabled || event.session.type === "config" || event.sessionId === workspaceTabId
-  ), [isDisabled, workspaceTabId])
-
-  const clearDropTarget = useCallback(() => {
-    setTabDropSide(null)
-    setTabDropTargetId(null)
-  }, [])
-
-  const clearSplitPaneDragState = useCallback(() => {
-    tabDragVisitedWorkspaceRef.current = false
-    setDraggingSplitSessionId(null)
-    setIsSplitPanePreviewActive(false)
-    clearDropTarget()
-  }, [clearDropTarget])
-
-  useEffect(() => {
-    if (!draggingSplitSessionId) return
-
-    const handleGlobalDragEnd = () => {
-      clearSplitPaneDragState()
-    }
-    const handleGlobalDrop = () => {
-      window.setTimeout(clearSplitPaneDragState, 0)
-    }
-    const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        clearSplitPaneDragState()
-      }
-    }
-
-    window.addEventListener("dragend", handleGlobalDragEnd, true)
-    window.addEventListener("drop", handleGlobalDrop, true)
-    window.addEventListener("keydown", handleGlobalKeyDown, true)
-
-    return () => {
-      window.removeEventListener("dragend", handleGlobalDragEnd, true)
-      window.removeEventListener("drop", handleGlobalDrop, true)
-      window.removeEventListener("keydown", handleGlobalKeyDown, true)
-    }
-  }, [clearSplitPaneDragState, draggingSplitSessionId])
-
-  const updateWorkspaceDropTarget = useCallback((event: SessionTabDragEvent) => {
-    if (isSessionDropDisabled(event)) {
-      clearDropTarget()
-      return false
-    }
-
-    const target = getTabDropTarget(event)
-    if (target) {
-      tabDragVisitedWorkspaceRef.current = true
-    }
-    const nextSide = target?.side ?? null
-    const nextTargetId = target?.targetSessionId ?? null
-    setTabDropSide((current) => (current === nextSide ? current : nextSide))
-    setTabDropTargetId((current) => (current === nextTargetId ? current : nextTargetId))
-    return !!target
-  }, [clearDropTarget, getTabDropTarget, isSessionDropDisabled])
-
-  const dropSessionToWorkspace = useCallback((event: SessionTabDragEvent) => {
-    if (isSessionDropDisabled(event)) return false
-
-    const target = getTabDropTarget(event)
-    if (!target || !target.targetSessionId) return false
-
-    setSplitLayout((current) => addSessionToSplitLayout({
-      layout: filterSplitLayout(current, workspaceSessionIdSet),
-      sessionId: event.sessionId,
-      targetSessionId: target.targetSessionId,
-      side: target.side,
-      fallbackSessionIds: getDropFallbackSessionIds?.({
-        activeSessionId,
-        activeWorkspaceSession,
-        workspaceSessions,
-      }) ?? [
-        activeWorkspaceSession?.id,
-        ...workspaceSessions.map((session) => session.id),
-      ].filter((id): id is string => Boolean(id)),
-    }))
-    handleActivateWorkspaceSession(event.sessionId)
-    onSessionDroppedToWorkspace?.(event.sessionId)
-    return true
-  }, [
-    activeSessionId,
-    activeWorkspaceSession,
-    getDropFallbackSessionIds,
-    getTabDropTarget,
-    handleActivateWorkspaceSession,
-    isSessionDropDisabled,
-    onSessionDroppedToWorkspace,
-    setSplitLayout,
-    workspaceSessionIdSet,
-    workspaceSessions,
-  ])
-
-  const createNativeDragEvent = useCallback((
-    event: ReactDragEvent<HTMLElement>,
-    session: TerminalSession,
-  ): SessionTabDragEvent => ({
-    session,
-    sessionId: session.id,
-    clientX: event.clientX,
-    clientY: event.clientY,
-    deltaX: 0,
-    deltaY: 0,
-    isOverTabBar: false,
-  }), [])
-
-  const handleTabDragStart = useCallback(() => {
-    tabDragVisitedWorkspaceRef.current = false
-    setDraggingSplitSessionId(null)
-    setIsSplitPanePreviewActive(false)
-    clearDropTarget()
-  }, [clearDropTarget])
+  }, [activeWorkspaceSession, workspaceSessions])
 
   const handleTabDragMove = useCallback((event: SessionTabDragEvent) => {
-    updateWorkspaceDropTarget(event)
-  }, [updateWorkspaceDropTarget])
-
+    const target = getTabDropTarget(event)
+    setTabDropSide(target?.side ?? null)
+    setTabDropTargetId(target?.targetSessionId ?? null)
+  }, [getTabDropTarget])
   const handleTabDragEnd = useCallback((event: SessionTabDragEvent) => {
-    const visitedWorkspace = tabDragVisitedWorkspaceRef.current
-    tabDragVisitedWorkspaceRef.current = false
-    setDraggingSplitSessionId(null)
-    setIsSplitPanePreviewActive(false)
     clearDropTarget()
-
-    if (dropSessionToWorkspace(event)) {
-      return true
+    const target = getTabDropTarget(event)
+    return target?.targetSessionId ? merge(event.sessionId, target.targetSessionId, target.side) : false
+  }, [clearDropTarget, getTabDropTarget, merge])
+  const handleRestoreDetachedSession = useCallback((id: string) => {
+    mutate(api => { const panel = api.getPanel(id); if (panel) api.removePanel(panel) })
+    activate(id)
+    clearDropTarget()
+  }, [activate, clearDropTarget, mutate])
+  const handleDetachSession = useCallback((id: string) => {
+    const target = latest.current.activeSessionId !== id ? latest.current.activeSessionId : latest.current.workspaceSessions.find(session => session.id !== id)?.id
+    if (target) merge(id, target, "right")
+  }, [merge])
+  const handleSplitPaneDropToTab = useCallback((source: string, target: string, side: SessionTabDropSide) => merge(target, source, side), [merge])
+  const syncSplitLayout = useCallback((valid: Set<string>) => {
+    const api = dockview.api
+    if (api?.panels.some(panel => !valid.has(panel.id))) mutate(api => {
+      for (const panel of [...api.panels]) if (!valid.has(panel.id)) api.removePanel(panel)
+    })
+  }, [dockview, mutate])
+  const removeSessionFromWorkspace = useCallback((id: string) => {
+    mutate(api => { const panel = api.getPanel(id); if (panel) api.removePanel(panel) })
+  }, [mutate])
+  const setSplitLayout = useCallback((update: LayoutUpdater) => {
+    const value = typeof update === "function" ? update(latest.current.splitLayout) : update
+    mutate(api => { if (value) api.fromJSON(value); else api.clear() })
+  }, [mutate])
+  const handleChangeActiveSession = useCallback((id: string) => {
+    if (id === workspaceTab.id) {
+      const next = dockview.api?.activePanel?.id
+      if (next) activate(next)
+    } else {
+      latest.current.setActiveSessionId(id)
+      if (!dockview.api?.getPanel(id)) latest.current.onWorkspaceExited?.()
     }
-
-    if (detachedSessionIds.includes(event.sessionId) && visitedWorkspace && event.isOverTabBar) {
-      setSplitLayout((current) => ensureMultiSessionLayout(removeSessionFromSplitLayout(current, event.sessionId)))
-      handleActivateWorkspaceSession(event.sessionId)
-      return true
-    }
-
-    return false
-  }, [
-    clearDropTarget,
-    detachedSessionIds,
-    dropSessionToWorkspace,
-    handleActivateWorkspaceSession,
-    setSplitLayout,
-  ])
-
-  const handleTabDragCancel = useCallback(() => {
-    clearSplitPaneDragState()
-  }, [clearSplitPaneDragState])
-
-  const isEventOverSplitPane = useCallback((
-    event: ReactDragEvent<HTMLElement>,
-    sessionId: string,
-  ) => {
-    const workspaceElement = workspaceDropRef.current
-    if (!workspaceElement) return false
-
-    const paneElement = Array.from(
-      workspaceElement.querySelectorAll<HTMLElement>("[data-split-session-id]")
-    ).find((element) => element.dataset.splitSessionId === sessionId)
-    if (!paneElement) return false
-
-    const rect = paneElement.getBoundingClientRect()
-    return (
-      event.clientX >= rect.left &&
-      event.clientX <= rect.right &&
-      event.clientY >= rect.top &&
-      event.clientY <= rect.bottom
-    )
-  }, [])
-
+  }, [activate, dockview, workspaceTab.id])
+  // Bridge native Dockview headers back to ordinary application tabs only.
+  const nativeEvent = useCallback((event: ReactDragEvent<HTMLElement>): SessionTabDragEvent | null => {
+    if (isWorkspaceActive || !hasSplitPaneDragSession(event.dataTransfer)) return null
+    const id = getSplitPaneDragSessionId(event.dataTransfer)
+    const session = latest.current.workspaceSessions.find(session => session.id === id)
+    return session ? { session, sessionId: session.id, clientX: event.clientX, clientY: event.clientY, deltaX: 0, deltaY: 0, isOverTabBar: false } : null
+  }, [isWorkspaceActive])
   const handleWorkspaceNativeDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
-    if (!hasSplitPaneDragSession(event.dataTransfer)) return
-
-    const sessionId = getSplitPaneDragSessionId(event.dataTransfer) ?? draggingSplitSessionId
-    const session = sessionId ? getSessionById(sessionId) : null
-    if (!sessionId || !session) {
-      clearDropTarget()
-      return
-    }
-
-    const isDetachedSplitDrag = detachedSessionIds.includes(sessionId)
-    if (isDetachedSplitDrag && draggingSplitSessionId !== sessionId) {
-      setDraggingSplitSessionId(sessionId)
-    }
-
-    if (isDetachedSplitDrag && !isSplitPanePreviewActive) {
-      if (isEventOverSplitPane(event, sessionId)) {
-        clearDropTarget()
-        event.preventDefault()
-        event.dataTransfer.dropEffect = "move"
-        return
-      }
-
-      setIsSplitPanePreviewActive(true)
-      clearDropTarget()
-      event.preventDefault()
-      event.dataTransfer.dropEffect = "move"
-      return
-    }
-
-    const canDrop = updateWorkspaceDropTarget(createNativeDragEvent(event, session))
-    if (!canDrop) return
-
-    event.preventDefault()
-    event.dataTransfer.dropEffect = "move"
-  }, [
-    clearDropTarget,
-    createNativeDragEvent,
-    detachedSessionIds,
-    draggingSplitSessionId,
-    getSessionById,
-    isEventOverSplitPane,
-    isSplitPanePreviewActive,
-    updateWorkspaceDropTarget,
-  ])
-
+    const drag = nativeEvent(event)
+    if (drag) { event.preventDefault(); handleTabDragMove(drag) }
+  }, [handleTabDragMove, nativeEvent])
   const handleWorkspaceNativeDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
-    if (!hasSplitPaneDragSession(event.dataTransfer)) return
-
-    event.preventDefault()
-    event.stopPropagation()
-
-    const sessionId = getSplitPaneDragSessionId(event.dataTransfer) ?? draggingSplitSessionId
-    const session = sessionId ? getSessionById(sessionId) : null
-    if (!session) {
-      clearSplitPaneDragState()
-      return
-    }
-
-    dropSessionToWorkspace(createNativeDragEvent(event, session))
-    clearSplitPaneDragState()
-  }, [clearSplitPaneDragState, createNativeDragEvent, draggingSplitSessionId, dropSessionToWorkspace, getSessionById])
-
-  const handleWorkspaceNativeDragLeave = useCallback((event: ReactDragEvent<HTMLElement>) => {
-    const relatedTarget = event.relatedTarget as Node | null
-    if (relatedTarget && event.currentTarget.contains(relatedTarget)) return
-    clearDropTarget()
-  }, [clearDropTarget])
-
-  const handleSplitPaneDragStart = useCallback((sessionId: string) => {
-    if (isDisabled || !detachedSessionIds.includes(sessionId)) {
-      clearSplitPaneDragState()
-      return
-    }
-
-    tabDragVisitedWorkspaceRef.current = false
-    setDraggingSplitSessionId(sessionId)
-    setIsSplitPanePreviewActive(false)
-    clearDropTarget()
-  }, [clearDropTarget, clearSplitPaneDragState, detachedSessionIds, isDisabled])
-
-  const handleSplitPaneDragEnd = useCallback(() => {
-    clearSplitPaneDragState()
-  }, [clearSplitPaneDragState])
-
-  const handleSplitPaneDropToTab = useCallback((
-    sessionId: string,
-    targetSessionId: string,
-    side: SessionTabDropSide,
-  ) => {
-    const session = getSessionById(sessionId)
-    const targetSession = getSessionById(targetSessionId)
-    if (!session || !targetSession || targetSession.type === "config") return false
-    if (sessionId === targetSessionId) return false
-    if (!workspaceSessionIdSet.has(sessionId) || !workspaceSessionIdSet.has(targetSessionId)) return false
-
-    setSplitLayout((current) => addSessionToSplitLayout({
-      layout: filterSplitLayout(current, workspaceSessionIdSet),
-      sessionId: targetSessionId,
-      targetSessionId: sessionId,
-      side,
-      fallbackSessionIds: [
-        sessionId,
-        ...workspaceSessions.map((item) => item.id),
-      ],
-    }))
-    handleActivateWorkspaceSession(targetSessionId)
-    onSessionDroppedToWorkspace?.(targetSessionId)
-    clearSplitPaneDragState()
-    return true
-  }, [
-    clearSplitPaneDragState,
-    getSessionById,
-    handleActivateWorkspaceSession,
-    onSessionDroppedToWorkspace,
-    setSplitLayout,
-    workspaceSessionIdSet,
-    workspaceSessions,
-  ])
-
-  const handleRestoreDetachedSession = useCallback((sessionId: string) => {
-    if (!detachedSessionIds.includes(sessionId)) return
-
-    setSplitLayout((current) => ensureMultiSessionLayout(removeSessionFromSplitLayout(current, sessionId)))
-    handleActivateWorkspaceSession(sessionId)
-    clearSplitPaneDragState()
-  }, [clearSplitPaneDragState, detachedSessionIds, handleActivateWorkspaceSession, setSplitLayout])
-
-  const handleSplitResize = useCallback((path: number[], sizes: number[]) => {
-    setSplitLayout((current) => updateSplitLayoutSizes(current, path, sizes))
-  }, [setSplitLayout])
-
-  const syncSplitLayout = useCallback((validSessionIds: Set<string>) => {
-    setSplitLayout((current) => ensureMultiSessionLayout(filterSplitLayout(current, validSessionIds)))
-  }, [setSplitLayout])
-
-  const removeSessionFromWorkspace = useCallback((sessionId: string) => {
-    setSplitLayout((current) => ensureMultiSessionLayout(removeSessionFromSplitLayout(current, sessionId)))
-  }, [setSplitLayout])
-
-  const filterWorkspaceSessions = useCallback((validSessionIds: Set<string>) => {
-    setSplitLayout((current) => ensureMultiSessionLayout(filterSplitLayout(current, validSessionIds)))
-  }, [setSplitLayout])
-
+    const drag = nativeEvent(event)
+    if (drag) { event.preventDefault(); event.stopPropagation(); handleTabDragEnd(drag) }
+  }, [handleTabDragEnd, nativeEvent])
+  const workspaceTabSession: TerminalSession = { id: workspaceTab.id, serverName: workspaceTab.label, host: "", username: "", shouldConnect: false, connectionPhase: "idle", status: "connected", lastActivity: 0, type: "terminal", pinned: false }
+  const tabSessions = options.buildTabSessions?.({ hasWorkspace, workspaceTabSession, workspaceSessionIds: splitWorkspaceSessionIds, sessions }) ?? (hasWorkspace ? [workspaceTabSession, ...sessions.filter(session => !splitWorkspaceSessionIdSet.has(session.id))] : sessions)
   return {
-    splitLayout,
-    setSplitLayout,
-    tabDropSide,
-    tabDropTargetId,
-    draggingSplitSessionId,
-    hiddenSplitSessionId,
-    isSplitPanePreviewActive,
-    workspaceDropRef,
-    detachedSessionIds,
-    workspaceSessionIds: splitWorkspaceSessionIds,
-    workspaceSessionIdSet: splitWorkspaceSessionIdSet,
-    hasWorkspace,
-    isWorkspaceActive,
-    visibleSessionIds,
-    visibleSessionIdSet,
-    isMultiSessionGrid,
-    workspaceTabSession,
-    tabSessions,
-    tabActiveId,
-    handleChangeActiveSession,
-    handleDetachSession,
-    handleTabDragStart,
-    handleTabDragMove,
-    handleTabDragEnd,
-    handleTabDragCancel,
-    handleSplitPaneDragStart,
-    handleWorkspaceNativeDragOver,
-    handleWorkspaceNativeDrop,
-    handleWorkspaceNativeDragLeave,
-    handleSplitPaneDragEnd,
-    handleSplitPaneDropToTab,
-    handleRestoreDetachedSession,
-    handleSplitResize,
-    syncSplitLayout,
-    removeSessionFromWorkspace,
-    filterWorkspaceSessions,
+    dockview, splitLayout, setSplitLayout, tabDropSide, tabDropTargetId, workspaceDropRef,
+    detachedSessionIds, workspaceSessionIds: splitWorkspaceSessionIds, workspaceSessionIdSet: splitWorkspaceSessionIdSet,
+    hasWorkspace, isWorkspaceActive, visibleSessionIds, visibleSessionIdSet, isMultiSessionGrid, workspaceTabSession, tabSessions,
+    tabActiveId: isWorkspaceActive ? workspaceTab.id : activeSessionId,
+    handleChangeActiveSession, handleDetachSession, handleTabDragStart: clearDropTarget, handleTabDragMove, handleTabDragEnd,
+    handleTabDragCancel: clearDropTarget, handleSplitPaneDropToTab, handleRestoreDetachedSession,
+    handleWorkspaceNativeDragOver, handleWorkspaceNativeDrop, handleWorkspaceNativeDragLeave: clearDropTarget,
+    syncSplitLayout, removeSessionFromWorkspace, filterWorkspaceSessions: syncSplitLayout,
   }
 }

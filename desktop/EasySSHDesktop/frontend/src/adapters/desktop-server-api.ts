@@ -95,6 +95,7 @@ export function mapServerInput(input: Parameters<ServerConnectionConfigsApi["cre
 
 export function createDesktopServerApi(): ServerConnectionConfigsApi {
   return {
+    async getById(id) { return mapDesktopServer(await DesktopServerService.GetById(id)) },
     async list(params) {
       const result = await DesktopServerService.List({
         page: params?.page,

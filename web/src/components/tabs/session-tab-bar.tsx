@@ -1,10 +1,11 @@
+import { useCrossSessionFileDropTarget } from "@/hooks/use-cross-session-file-drop-target"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { TerminalSession } from "@/components/terminal/types"
-import { Maximize2, Minimize2, Plus, Settings, X } from "lucide-react"
+import { Plus, Settings, X, FolderOpen, Terminal as TerminalIcon } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -41,17 +42,14 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable"
 import { CSS, getEventCoordinates } from "@dnd-kit/utilities"
-import { restrictToHorizontalAxis, snapCenterToCursor } from "@dnd-kit/modifiers"
+import { restrictToHorizontalAxis } from "@dnd-kit/modifiers"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { useTranslation } from "react-i18next"
 import {
   getSplitPaneDragSessionId,
   hasSplitPaneDragSession,
 } from "@/lib/session/split-pane-drag"
-import { getDragSourceSessionId } from "@/lib/drag-state"
 import {
-  hasCrossSessionFileDragData,
-  parseCrossSessionFileDragData,
   type CrossSessionFileDragData,
 } from "@/lib/session/cross-session-file-drag"
 
@@ -63,13 +61,12 @@ interface SessionTabBarProps {
   newSessionLabel?: string
   additionalNewSessionActions?: SessionTabBarNewSessionAction[]
   onCloseSession: (id: string) => void
+  onOpenSftpSession?: (sessionId: string) => void
   onDuplicateSession: (id: string) => void
   onCloseOthers: (id: string) => void
   onCloseAll: () => void
   onTogglePin: (id: string) => void
   onReorder: (newOrderIds: string[]) => void
-  isFullscreen: boolean
-  onToggleFullscreen?: () => void
   onOpenSettings?: () => void
   hideBreadcrumb?: boolean
   onDetachSession?: (id: string) => void
@@ -114,106 +111,6 @@ export type SessionTabDragEvent = {
 
 const TAB_DETACH_THRESHOLD_Y = 44
 const TAB_WORKSPACE_DROP_THRESHOLD_Y = 18
-
-const useCrossSessionFileDropTarget = ({
-  session,
-  canAcceptCrossSessionFileDrop,
-  onCrossSessionFileDrop,
-}: {
-  session: TerminalSession
-  canAcceptCrossSessionFileDrop?: (targetSession: TerminalSession) => boolean
-  onCrossSessionFileDrop?: (targetSessionId: string, dragData: CrossSessionFileDragData) => void
-}) => {
-  const [isCrossSessionFileDragOver, setIsCrossSessionFileDragOver] = useState(false)
-  const dragOverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => () => {
-    if (dragOverTimeoutRef.current) {
-      clearTimeout(dragOverTimeoutRef.current)
-    }
-  }, [])
-
-  const clearDragOver = useCallback(() => {
-    setIsCrossSessionFileDragOver(false)
-    if (dragOverTimeoutRef.current) {
-      clearTimeout(dragOverTimeoutRef.current)
-      dragOverTimeoutRef.current = null
-    }
-  }, [])
-
-  const canAcceptEvent = useCallback((event: React.DragEvent) => {
-    if (!onCrossSessionFileDrop || hasSplitPaneDragSession(event.dataTransfer)) {
-      return false
-    }
-
-    if (!hasCrossSessionFileDragData(event.dataTransfer)) {
-      return false
-    }
-
-    const sourceId = getDragSourceSessionId()
-    if (sourceId === session.id) {
-      return false
-    }
-
-    return canAcceptCrossSessionFileDrop?.(session) ?? true
-  }, [canAcceptCrossSessionFileDrop, onCrossSessionFileDrop, session])
-
-  const handleDragEnter = useCallback((event: React.DragEvent) => {
-    if (!canAcceptEvent(event)) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    event.dataTransfer.dropEffect = "move"
-    setIsCrossSessionFileDragOver(true)
-  }, [canAcceptEvent])
-
-  const handleDragOver = useCallback((event: React.DragEvent) => {
-    if (!canAcceptEvent(event)) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    event.dataTransfer.dropEffect = "move"
-    setIsCrossSessionFileDragOver(true)
-
-    if (dragOverTimeoutRef.current) {
-      clearTimeout(dragOverTimeoutRef.current)
-    }
-    dragOverTimeoutRef.current = setTimeout(() => {
-      setIsCrossSessionFileDragOver(false)
-    }, 120)
-  }, [canAcceptEvent])
-
-  const handleDragLeave = useCallback((event: React.DragEvent) => {
-    if (!canAcceptEvent(event)) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    clearDragOver()
-  }, [canAcceptEvent, clearDragOver])
-
-  const handleDrop = useCallback((event: React.DragEvent) => {
-    if (!canAcceptEvent(event)) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    clearDragOver()
-
-    const dragData = parseCrossSessionFileDragData(event.dataTransfer)
-    if (dragData && dragData.sourceSessionId !== session.id) {
-      onCrossSessionFileDrop?.(session.id, dragData)
-    }
-  }, [canAcceptEvent, clearDragOver, onCrossSessionFileDrop, session.id])
-
-  return {
-    isCrossSessionFileDragOver,
-    dropTargetHandlers: {
-      onDragEnter: handleDragEnter,
-      onDragOver: handleDragOver,
-      onDragLeave: handleDragLeave,
-      onDrop: handleDrop,
-    },
-  }
-}
 
 const getTabDragEvent = (
   event: DragStartEvent | DragMoveEvent | DragEndEvent,
@@ -288,18 +185,26 @@ function SortableTab({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: s.id })
+  } = useSortable({
+    id: s.id,
+    transition: { duration: 100, easing: "ease-out" },
+  })
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition: isDragging ? "none" : transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0 : 1,
   }
-  const { isCrossSessionFileDragOver, dropTargetHandlers } = useCrossSessionFileDropTarget({
-    session: s,
-    canAcceptCrossSessionFileDrop,
-    onCrossSessionFileDrop,
+  const { isCrossSessionFileDragOver, fileDropRef } = useCrossSessionFileDropTarget({
+    sessionId: s.id,
+    enabled: canAcceptCrossSessionFileDrop?.(s) ?? true,
+    onDrop: onCrossSessionFileDrop,
   })
+
+  const combinedTabRef = useCallback((element: HTMLDivElement | null) => {
+    setNodeRef(element)
+    fileDropRef(element)
+  }, [setNodeRef, fileDropRef])
 
   const statusColor =
     s.status === "connected"
@@ -310,18 +215,18 @@ function SortableTab({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={combinedTabRef}
       style={style}
       {...attributes}
       {...listeners}
+      title={s.type === "sftp" ? `${s.serverName} · SFTP · ${s.currentPath ?? "/"}` : `${s.serverName} · SSH`}
       data-session-tab-id={s.id}
       role="button"
       onClick={() => onChangeActive(s.id)}
       onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
       onDoubleClick={() => onDoubleClick(s.id)}
-      {...dropTargetHandlers}
       className={cn(
-        "group relative flex items-center gap-2 h-8 pl-3 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm cursor-grab active:cursor-grabbing",
+        "group relative flex items-center gap-2 h-8 pl-3 transition-colors duration-100 ease-out touch-none select-none rounded-lg border backdrop-blur-sm cursor-grab active:cursor-grabbing",
         canClose || s.pinned ? "pr-8" : "pr-3",
         active
           ? "border-border bg-card/90 text-foreground shadow-sm"
@@ -335,6 +240,7 @@ function SortableTab({
       {/* 状态指示点 */}
       <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", statusColor)} />
 
+      {s.type === "sftp" ? <FolderOpen className="h-3 w-3 shrink-0" aria-label="SFTP" /> : s.type === "terminal" ? <TerminalIcon className="h-3 w-3 shrink-0" aria-label="SSH" /> : null}
       <span className={cn(
         "max-w-32 truncate text-xs font-medium transition-colors",
         active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
@@ -375,10 +281,10 @@ function StaticTab(props: SortableTabProps) {
     onCrossSessionFileDrop,
   } = props
   const { t: tTerminal } = useTranslation("terminal")
-  const { isCrossSessionFileDragOver, dropTargetHandlers } = useCrossSessionFileDropTarget({
-    session: s,
-    canAcceptCrossSessionFileDrop,
-    onCrossSessionFileDrop,
+  const { isCrossSessionFileDragOver, fileDropRef } = useCrossSessionFileDropTarget({
+    sessionId: s.id,
+    enabled: canAcceptCrossSessionFileDrop?.(s) ?? true,
+    onDrop: onCrossSessionFileDrop,
   })
   const statusColor =
     s.status === "connected"
@@ -389,12 +295,13 @@ function StaticTab(props: SortableTabProps) {
 
   return (
     <div
+      title={s.type === "sftp" ? `${s.serverName} · SFTP · ${s.currentPath ?? "/"}` : `${s.serverName} · SSH`}
       data-session-tab-id={s.id}
       role="button"
       onClick={() => onChangeActive(s.id)}
       onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
       onDoubleClick={() => onDoubleClick(s.id)}
-      {...dropTargetHandlers}
+      ref={fileDropRef}
       className={cn(
         "group relative flex items-center gap-2 h-8 pl-3 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm",
         canClose || s.pinned ? "pr-8" : "pr-3",
@@ -408,6 +315,7 @@ function StaticTab(props: SortableTabProps) {
     >
       <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", statusColor)} />
 
+      {s.type === "sftp" ? <FolderOpen className="h-3 w-3 shrink-0" aria-label="SFTP" /> : s.type === "terminal" ? <TerminalIcon className="h-3 w-3 shrink-0" aria-label="SSH" /> : null}
       <span className={cn(
         "max-w-32 truncate text-xs font-medium transition-colors",
         active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
@@ -443,12 +351,11 @@ export function SessionTabBar(props: SessionTabBarProps) {
     additionalNewSessionActions = [],
     onCloseSession,
     onDuplicateSession,
+  onOpenSftpSession,
     onCloseOthers,
     onCloseAll,
     onTogglePin,
     onReorder,
-    isFullscreen,
-    onToggleFullscreen,
     onOpenSettings,
     hideBreadcrumb = false,
     onDetachSession,
@@ -475,13 +382,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
   const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
-    // 延迟到空闲时初始化 DnD，避免阻塞主线程
-    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      requestIdleCallback(() => setIsMounted(true))
-    } else {
-      // 降级方案：使用 setTimeout
-      setTimeout(() => setIsMounted(true), 0)
-    }
+    setIsMounted(true)
   }, [])
 
   // 溢出检测：判断页签是否超出容器
@@ -539,7 +440,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8, // 移动8px后才激活拖拽，避免与点击事件冲突
+        distance: 4, // 保留点击容差，同时缩短拖起前的空行程
       },
     })
   )
@@ -640,15 +541,18 @@ export function SessionTabBar(props: SessionTabBarProps) {
   const onDoubleClick = (id: string) => onTogglePin(id)
 
   const activeSession = sessions.find(s => s.id === activeId)
-  const fullscreenButtonLabel = isFullscreen
-    ? tTerminal("titleExitFullscreen")
-    : tTerminal("titleEnterFullscreen")
   const tabDragOverlay = (
-    <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]} zIndex={10000}>
+    <DragOverlay
+      dropAnimation={null}
+      transition="none"
+      style={{ pointerEvents: "none", willChange: "transform" }}
+      zIndex={10000}
+    >
       {draggedSession ? (
         <div className={cn(
-          "group relative flex h-8 items-center gap-2 rounded-lg border pl-3 pr-8 text-foreground shadow-2xl backdrop-blur-sm transition-none select-none",
-          "border-border bg-card/90",
+          "group relative flex h-8 items-center gap-2 rounded-lg border pl-3 text-foreground shadow-lg transition-none select-none",
+          "border-border bg-card",
+          (canCloseSession?.(draggedSession) ?? !draggedSession.pinned) || draggedSession.pinned ? "pr-8" : "pr-3",
           draggedSession.pinned && "ring-1 ring-blue-500/20"
         )}>
           <div className={cn(
@@ -659,6 +563,9 @@ export function SessionTabBar(props: SessionTabBarProps) {
               ? "bg-yellow-500"
               : "bg-red-500"
           )} />
+          {draggedSession.type === "sftp"
+            ? <FolderOpen className="h-3 w-3 shrink-0" />
+            : draggedSession.type === "terminal" ? <TerminalIcon className="h-3 w-3 shrink-0" /> : null}
           <span className="max-w-32 truncate text-xs font-medium text-foreground">
             {draggedSession.serverName}
           </span>
@@ -763,7 +670,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
       key: "primary-new-session",
       label: newSessionLabel,
       onClick: onNewSession,
-      ariaLabel: tTerminal("ariaNewSession"),
+      ariaLabel: newSessionLabel || tTerminal("ariaNewSession"),
       className,
     })
   )
@@ -777,7 +684,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
       title: action.title,
     }))
   )
-  const hasRightActions = additionalNewSessionActions.length > 0 || onOpenSettings || onToggleFullscreen
+  const hasRightActions = additionalNewSessionActions.length > 0 || onOpenSettings
   const renderTabContextMenu = (session: TerminalSession, tab: React.ReactElement) => {
     if (!showContextMenu || (canShowContextMenu && !canShowContextMenu(session))) {
       return tab
@@ -793,6 +700,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
             {tTerminal("tabMenuTitle")}
           </ContextMenuLabel>
           <ContextMenuSeparator />
+          {session.type === "terminal" && session.serverId && onOpenSftpSession && <ContextMenuItem onSelect={() => onOpenSftpSession(session.id)}>{tTerminal("sftpOpenCurrent")}</ContextMenuItem>}
+          <ContextMenuItem disabled={session.pinned} onSelect={() => onCloseSession(session.id)}>{tTerminal("ariaCloseTab")}</ContextMenuItem>
           <ContextMenuItem onSelect={() => onDuplicateSession(session.id)}>
             {tTerminal("tabMenuDuplicate")}
           </ContextMenuItem>
@@ -977,20 +886,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                 </Button>
               )}
 
-              {onToggleFullscreen && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground",
-                  )}
-                  onClick={onToggleFullscreen}
-                  aria-label={fullscreenButtonLabel}
-                  title={fullscreenButtonLabel}
-                >
-                  {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                </Button>
-              )}
+
             </div>
           )}
 

@@ -34,6 +34,7 @@ function readPanelWidthPreference(
 }
 
 export interface FileManagerPanelProps {
+  keyboardActive?: boolean
   isOpen: boolean
   onClose: () => void
   // SFTP Manager props
@@ -83,6 +84,7 @@ export interface FileManagerPanelProps {
 }
 
 export function FileManagerPanel({
+  keyboardActive = true,
   isOpen,
   onClose,
   transferTasks,
@@ -118,9 +120,11 @@ export function FileManagerPanel({
 
   // 快捷键支持 (Ctrl/Cmd + E)
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen || !keyboardActive) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
+      if (e.target instanceof Element && e.target.closest('[role="dialog"], [role="alertdialog"], .monaco-editor')) return
       if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
         e.preventDefault()
         onClose()
@@ -134,7 +138,7 @@ export function FileManagerPanel({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+  }, [isOpen, keyboardActive, onClose])
 
   // 调整大小处理
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -247,7 +251,7 @@ export function FileManagerPanel({
           {sftpProps.isConnected ? (
             <TerminalSftpPanel
               {...sftpProps}
-              keyboardShortcutsEnabled={isOpen}
+              keyboardShortcutsEnabled={isOpen && keyboardActive}
               isFullscreen={false}
               onDisconnect={onClose}
               transferTasks={transferTasks}

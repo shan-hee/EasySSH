@@ -10,6 +10,7 @@ export type { TerminalConnectionPhase } from '@/lib/websocket-terminal'
 export type SessionStatus = "connected" | "disconnected" | "reconnecting"
 
 export interface TerminalSession extends WorkspaceTerminalSession {
+  currentPath?: string
   lastActivity: number // 时间戳（ms）
   status: SessionStatus
 }

@@ -5,6 +5,7 @@ export type WorkspaceCapabilityPresetName = "webTerminal" | "webSftp" | "desktop
 export const WORKSPACE_CAPABILITY_PRESETS = {
   webTerminal: {
     defaults: {
+      crossSessionDrag: true,
       terminal: true,
       sftp: true,
       transfers: true,

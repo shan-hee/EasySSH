@@ -1,3 +1,4 @@
+import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
 import {
@@ -21,7 +22,8 @@ import {
   SessionSplitPane,
   type SessionSplitPaneHeaderBackground,
 } from "@/components/tabs/session-split-pane"
-import { SessionSplitView } from "@/components/tabs/session-split-view"
+import { PersistentSessionContent, SessionContentSlot, useSessionContentHosts } from "@/components/tabs/session-content-host"
+import { SessionDockview } from "@/components/tabs/session-dockview"
 import {
   TerminalSettingsDialog,
 } from "./terminal-settings-dialog"
@@ -51,6 +53,8 @@ import {
   resolveTerminalThemeName,
 } from "@/components/terminal/use-terminal-renderer-settings"
 
+import type { WorkspaceTransferTask } from "@/lib/session/workspace"
+
 type LoaderState = "entering" | "loading" | "exiting"
 
 type LoaderAction =
@@ -61,6 +65,10 @@ export interface TerminalExtraSessionRenderOptions {
   chrome?: "full" | "toolbar" | "content"
   surface?: "normal" | "transparent"
   isVisible?: boolean
+  isActive?: boolean
+  externalTransferTasks?: WorkspaceTransferTask[]
+  onClearExternalTransfers?: () => void
+  onCancelExternalTransfer?: (id: string) => void
   onPathChange?: (path: string) => void
   refreshRequestVersion?: number
   initialPath?: string
@@ -145,7 +153,6 @@ const reduceLoaderStates = (
   }
 }
 
-const PAGE_NAVIGATION_CLEANUP_DELAY_MS = 750
 const TAB_SWITCH_CLEANUP_DELAY_MS = 120
 
 const CONNECTION_LOADER_PHASES = new Set<TerminalConnectionPhase>([
@@ -264,22 +271,16 @@ const disabledFileTransferApi: FileTransferSftpApi = {
   },
 }
 
-const getSessionConnectionSubtitle = (session: Pick<TerminalSession, "username" | "host">) => {
-  if (session.username && session.host) return `${session.username}@${session.host}`
-  return session.username || session.host || undefined
-}
-
 interface TerminalComponentProps {
   sessions: TerminalSession[]
-  // 返回新建会话的 id，便于自动激活
-  onNewSession: () => string | void
   extraSessions?: TerminalSession[]
   extraNewSessionActions?: TerminalExtraNewSessionAction[]
   renderExtraSessionContent?: (session: TerminalSession, options?: TerminalExtraSessionRenderOptions) => ReactNode
+  onOpenSftpSession?: (session: TerminalSession, path?: string) => void
   onCloseExtraSession?: (sessionId: string) => void
   onReorderExtraSessions?: (newOrderIds: string[]) => void
   externalActiveExtraSessionId?: string | null
-  onActiveExtraSessionChange?: (sessionId: string) => void
+  onActiveExtraSessionChange?: (sessionId: string | null) => void
   onCloseSession: (sessionId: string) => void
   onCloseSessions?: (sessionIds: string[]) => void
   onSendCommand: (sessionId: string, command: string) => void
@@ -288,12 +289,12 @@ interface TerminalComponentProps {
   onCloseAll: () => void
   onTogglePin: (sessionId: string) => void
   onReorderSessions: (newOrderIds: string[]) => void
-  // 连接配置：在当前页签中选择服务器以开始终端
-  onStartConnectionFromConfig: (sessionId: string, server: Server) => void
+  // 选择服务器后创建会话，返回新页签 ID。
+  onStartConnection: (server: Server) => string | void
   onAuthCancelled?: (sessionId: string) => void
   // 外部控制激活的会话 ID
   externalActiveSessionId?: string | null
-  onActiveSessionChange?: (sessionId: string) => void
+  onActiveSessionChange?: (sessionId: string | null) => void
   onConnectionPhaseChange?: (sessionId: string, phase: TerminalConnectionPhase) => void
   onBehaviorSettingsChange?: (settings: { maxTabs: number; inactiveMinutes: number }) => void
   serverApi?: ServerConnectionConfigsApi
@@ -316,10 +317,10 @@ export interface TerminalExtraNewSessionAction {
 
 export function TerminalComponent({
   sessions,
-  onNewSession,
   extraSessions = [],
   extraNewSessionActions = [],
   renderExtraSessionContent,
+  onOpenSftpSession,
   onCloseExtraSession,
   onReorderExtraSessions,
   externalActiveExtraSessionId,
@@ -332,7 +333,7 @@ export function TerminalComponent({
   onCloseAll,
   onTogglePin,
   onReorderSessions,
-  onStartConnectionFromConfig,
+  onStartConnection,
   onAuthCancelled,
   externalActiveSessionId,
   onActiveSessionChange,
@@ -437,9 +438,8 @@ export function TerminalComponent({
   })
   const canUseCrossSessionTransfer = !!crossSessionFileTransferApi
   const [activeSession, setActiveSession] = useState<string>(
-    externalActiveSessionId || sessions[0]?.id || ""
+    externalActiveExtraSessionId ?? externalActiveSessionId ?? ""
   )
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const [loaderStates, dispatchLoaderStates] = useReducer(reduceLoaderStates, {})
   const [internalSettingsOpen, setInternalSettingsOpen] = useState(false)
   const isSettingsOpen = settingsDialogOpen ?? internalSettingsOpen
@@ -471,14 +471,10 @@ export function TerminalComponent({
   const deleteTabState = useTabUIStore(state => state.deleteTabState)
 
   // ==================== 获取活跃会话 ====================
-  const sessionIdSet = useMemo(
-    () => new Set(sessions.map((session) => session.id)),
-    [sessions]
-  )
-  const extraSessionIdSet = useMemo(
-    () => new Set(extraSessions.map((session) => session.id)),
-    [extraSessions]
-  )
+  const sessionIdsKey = sessions.map(session => session.id).join("\0")
+  const sessionIdSet = useMemo(() => new Set(sessionIdsKey.split("\0").filter(Boolean)), [sessionIdsKey])
+  const extraSessionIdsKey = extraSessions.map(session => session.id).join("\0")
+  const extraSessionIdSet = useMemo(() => new Set(extraSessionIdsKey.split("\0").filter(Boolean)), [extraSessionIdsKey])
   const terminalSessions = useMemo(
     () => sessions.filter((session) => session.type === "terminal"),
     [sessions]
@@ -491,24 +487,22 @@ export function TerminalComponent({
     () => [...terminalSessions, ...workspaceExtraSessions],
     [terminalSessions, workspaceExtraSessions]
   )
+  const getContentHost = useSessionContentHosts(workspaceSessions.map(session => session.id))
+  const getToolbarHost = useSessionContentHosts(workspaceSessions.map(session => session.id))
   const contentSessionIdSet = useMemo(
     () => new Set([...sessionIdSet, ...extraSessionIdSet]),
     [extraSessionIdSet, sessionIdSet]
   )
   const active = sessions.find((s) => s.id === activeSession)
   const activeExtraSession = extraSessions.find((s) => s.id === activeSession) ?? null
-  const activeConfigSession = active?.type === "config" ? active : null
+  const isConnectionConfigVisible = !activeSession || contentSessionIdSet.size === 0
   const activeTerminalSession = active?.type === "terminal" ? active : null
-  const canUseFullscreenCapability = workspace?.capabilities.fullscreen !== false
   const crossSessionTransferTasks = crossSessionTransfer.tasks
   const clearCrossSessionCompletedTransfers = crossSessionTransfer.clearCompleted
   const cancelCrossSessionTransfer = crossSessionTransfer.cancelDirectTransfer
   const handleCancelCrossSessionTransfer = useCallback((taskId: string) => {
     void cancelCrossSessionTransfer(taskId)
   }, [cancelCrossSessionTransfer])
-  const handleToggleFullscreen = useCallback(() => {
-    setIsFullscreen((current) => !current)
-  }, [])
 
   const setActiveSessionFromUser = useCallback((nextSessionId: string) => {
     setActiveSession((previousSessionId) => {
@@ -697,13 +691,11 @@ export function TerminalComponent({
   ])
 
   const {
+    dockview,
     splitLayout,
     setSplitLayout,
     tabDropSide,
     tabDropTargetId,
-    draggingSplitSessionId,
-    hiddenSplitSessionId,
-    isSplitPanePreviewActive,
     workspaceDropRef,
     detachedSessionIds,
     workspaceSessionIds,
@@ -718,14 +710,11 @@ export function TerminalComponent({
     handleTabDragMove,
     handleTabDragEnd,
     handleTabDragCancel,
-    handleSplitPaneDragStart,
     handleWorkspaceNativeDragOver,
     handleWorkspaceNativeDrop,
     handleWorkspaceNativeDragLeave,
-    handleSplitPaneDragEnd,
     handleSplitPaneDropToTab,
     handleRestoreDetachedSession,
-    handleSplitResize,
     syncSplitLayout,
     removeSessionFromWorkspace,
     filterWorkspaceSessions,
@@ -739,18 +728,9 @@ export function TerminalComponent({
       id: TERMINAL_WORKSPACE_TAB_ID,
       label: WORKSPACE_TAB_LABEL,
     },
-    isActiveConfigSession: !!activeConfigSession,
-    isDisabled: isFullscreen,
+    isActiveConfigSession: isConnectionConfigVisible,
     setActiveSessionId: setActiveSessionFromUser,
-    onSessionDroppedToWorkspace: () => setIsFullscreen(false),
-    getSingleVisibleSessionId: ({ activeWorkspaceSession, workspaceSessions }) => (
-      activeWorkspaceSession?.id ?? workspaceSessions[0]?.id ?? null
-    ),
-    getDetachTargetSessionId: ({ activeWorkspaceSession }) => activeWorkspaceSession?.id ?? null,
-    getDropFallbackSessionIds: ({ activeWorkspaceSession, workspaceSessions }) => [
-      activeWorkspaceSession?.id,
-      ...workspaceSessions.map((session) => session.id),
-    ].filter((id): id is string => Boolean(id)),
+
   })
   const visibleExtraSessions = useMemo(
     () => extraSessions.filter((session) => !splitWorkspaceSessionIdSet.has(session.id)),
@@ -854,13 +834,17 @@ export function TerminalComponent({
   useEffect(() => {
     activeSessionRef.current = activeSession
     if (
-      activeSession &&
       activeSession !== lastNotifiedActiveSessionRef.current
     ) {
       lastNotifiedActiveSessionRef.current = activeSession
-      if (sessionIdSet.has(activeSession)) {
+      if (!activeSession) {
+        onActiveSessionChange?.(null)
+        onActiveExtraSessionChange?.(null)
+      } else if (sessionIdSet.has(activeSession)) {
         onActiveSessionChange?.(activeSession)
+        onActiveExtraSessionChange?.(null)
       } else if (extraSessionIdSet.has(activeSession)) {
+        onActiveSessionChange?.(null)
         onActiveExtraSessionChange?.(activeSession)
       }
     }
@@ -1088,7 +1072,7 @@ export function TerminalComponent({
     prevSessionsRef.current = sessions
 
     // 只在会话被删除（而非新增）且当前激活会话不存在时才切换
-    if (!active && !activeExtraSession && sessions.length > 0 && !isSessionAdded) {
+    if (activeSession && !active && !activeExtraSession && !isSessionAdded) {
       // 位置策略：优先激活右侧页签，没有则激活左侧
       // 找到被删除页签在原数组中的索引位置
       const deletedIndex = prevSessions.findIndex((s) => s.id === activeSession)
@@ -1101,12 +1085,12 @@ export function TerminalComponent({
       }
 
       const timer = setTimeout(() => {
-        setActiveSessionWithoutHistory(sessions[targetIndex].id)
+        setActiveSessionWithoutHistory(sessions[targetIndex]?.id ?? extraSessions[0]?.id ?? "")
       }, 0)
 
       return () => clearTimeout(timer)
     }
-  }, [active, activeExtraSession, sessions, activeSession, setActiveSessionWithoutHistory])
+  }, [active, activeExtraSession, sessions, extraSessions, activeSession, setActiveSessionWithoutHistory])
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -1163,10 +1147,9 @@ export function TerminalComponent({
   ])
 
   const handleNewSessionClick = () => {
-    const id = onNewSession()
-    if (id) {
-      setActiveSessionFromUser(String(id))
-    }
+    setActiveSessionWithoutHistory("")
+    onActiveSessionChange?.(null)
+    onActiveExtraSessionChange?.(null)
   }
 
   const cleanupSession = useCallback((sessionId: string) => {
@@ -1192,10 +1175,6 @@ export function TerminalComponent({
       cleanupSessionsWhenIdle(sessionIds)
     }, delayMs)
   }, [cleanupSessionsWhenIdle])
-
-  const cleanupSessionsAfterNavigation = useCallback((sessionIds: string[]) => {
-    cleanupSessionsAfterDelay(sessionIds, PAGE_NAVIGATION_CLEANUP_DELAY_MS)
-  }, [cleanupSessionsAfterDelay])
 
   const cleanupSessionsAfterTabSwitch = useCallback((sessionIds: string[]) => {
     cleanupSessionsAfterDelay(sessionIds, TAB_SWITCH_CLEANUP_DELAY_MS)
@@ -1223,13 +1202,14 @@ export function TerminalComponent({
         return
       }
 
-      const terminalWorkspaceSessionIds = workspaceSessionIds.filter((id) => sessionIdSet.has(id))
-      const extraWorkspaceSessionIds = workspaceSessionIds.filter((id) => extraSessionIdSet.has(id))
-      const closingSessionIdSet = new Set(workspaceSessionIds)
+      const closingWorkspaceIds = workspaceSessionIds.filter(id => !workspaceSessions.find(session => session.id === id)?.pinned)
+      const terminalWorkspaceSessionIds = closingWorkspaceIds.filter((id) => sessionIdSet.has(id))
+      const extraWorkspaceSessionIds = closingWorkspaceIds.filter((id) => extraSessionIdSet.has(id))
+      const closingSessionIdSet = new Set(closingWorkspaceIds)
       const nextActiveSessionId = combinedTabSessions.find((session) => (
         session.id !== TERMINAL_WORKSPACE_TAB_ID &&
         !closingSessionIdSet.has(session.id)
-      ))?.id ?? ""
+      ))?.id ?? workspaceSessions.find(session => session.pinned)?.id ?? ""
       if (nextActiveSessionId) {
         setActiveSessionWithoutHistory(nextActiveSessionId)
       } else {
@@ -1249,26 +1229,9 @@ export function TerminalComponent({
       return
     }
 
-    const onlySession = sessions[0]
-    const willCloseTerminalPage = sessions.length <= 1
-
-    if (willCloseTerminalPage) {
-      if (onlySession?.type === "config") {
-        setActiveSessionWithoutHistory(onlySession.id)
-        return
-      }
-
-      removeSessionFromWorkspace(sessionId)
-      onCloseSession(sessionId)
-      cleanupSessionsAfterNavigation([sessionId])
-      return
-    }
-
     if (activeSession === sessionId) {
-      const nextActiveSessionId = getAdjacentSessionId(sessions, sessionId)
-      if (nextActiveSessionId) {
-        setActiveSessionWithoutHistory(nextActiveSessionId)
-      }
+      const nextActiveSessionId = getAdjacentSessionId(combinedTabSessions, sessionId)
+      setActiveSessionWithoutHistory(nextActiveSessionId ?? "")
     }
 
     // 1. 通知父组件更新会话列表，让 UI 先切走
@@ -1278,7 +1241,6 @@ export function TerminalComponent({
     cleanupSessionsAfterTabSwitch([sessionId])
   }, [
     activeSession,
-    cleanupSessionsAfterNavigation,
     cleanupSessionsAfterTabSwitch,
     combinedTabSessions,
     extraSessionIdSet,
@@ -1291,10 +1253,11 @@ export function TerminalComponent({
     setActiveSessionWithoutHistory,
     setSplitLayout,
     workspaceSessionIds,
+    workspaceSessions,
   ])
 
   const handleCloseOthers = (sessionId: string) => {
-    const remainingSessions = sessions.filter((session) => session.id === sessionId || session.pinned)
+    const remainingSessions = [...sessions, ...extraSessions].filter((session) => session.id === sessionId || session.pinned)
     const removedSessionIds = sessions
       .filter((session) => session.id !== sessionId && !session.pinned)
       .map((session) => session.id)
@@ -1318,23 +1281,10 @@ export function TerminalComponent({
   }
 
   const handleCloseAll = () => {
-    if (sessions.length <= 1 && sessions[0]?.type === "config") {
-      setActiveSessionWithoutHistory(sessions[0].id)
-      return
-    }
-
-    const pinnedSessions = sessions.filter((session) => session.pinned)
-    const willCloseTerminalPage = pinnedSessions.length === 0
-
-    if (willCloseTerminalPage) {
-      setSplitLayout(null)
-      onCloseAll()
-      cleanupSessionsAfterNavigation(sessions.map((session) => session.id))
-      return
-    }
+    const pinnedSessions = [...sessions, ...extraSessions].filter((session) => session.pinned)
 
     if (!pinnedSessions.some((session) => session.id === activeSession)) {
-      setActiveSessionWithoutHistory(pinnedSessions[0].id)
+      setActiveSessionWithoutHistory(pinnedSessions[0]?.id ?? "")
     }
 
     const removedSessionIds = sessions
@@ -1361,7 +1311,7 @@ export function TerminalComponent({
 
     if (isMultiSessionGrid && splitLayout) {
       workspaceSessionIds.forEach((sessionId) => {
-        if (sessionId !== hiddenSplitSessionId && sessionIdSet.has(sessionId)) {
+        if (visibleSessionIdSet.has(sessionId) && sessionIdSet.has(sessionId)) {
           visibleIds.add(sessionId)
         }
       })
@@ -1375,11 +1325,11 @@ export function TerminalComponent({
     return visibleIds
   }, [
     activeTerminalSession,
-    hiddenSplitSessionId,
     isMultiSessionGrid,
     sessionIdSet,
     splitLayout,
     workspaceSessionIds,
+    visibleSessionIdSet,
   ])
 
   // Loader 只跟随连接 phase，不再依赖额外的 onLoadingChange 回调。
@@ -1391,10 +1341,12 @@ export function TerminalComponent({
     })
   }, [sessions, visibleLoaderSessionIds])
 
-  const handleStartConnectionFromActiveConfig = useCallback((server: Server) => {
-    if (!activeConfigSession) return
-    onStartConnectionFromConfig(activeConfigSession.id, server)
-  }, [activeConfigSession, onStartConnectionFromConfig])
+  const handleConnectFromHome = useCallback((server: Server) => {
+    const sessionId = onStartConnection(server)
+    if (sessionId) {
+      setActiveSessionFromUser(sessionId)
+    }
+  }, [onStartConnection, setActiveSessionFromUser])
 
   const renderTerminalSessionContent = useCallback((
     session: TerminalSession,
@@ -1410,23 +1362,19 @@ export function TerminalComponent({
 
     return (
       <TabTerminalContent
-        key={`terminal-content-${session.id}-${chrome}`}
+        key={`terminal-content-${session.id}`}
         session={session}
         isActive={isVisible}
+        keyboardActive={isVisible && activeSession === session.id && chrome !== "toolbar"}
         settings={settings}
         chrome={chrome}
         surface={surface}
         effectiveIsLoading={sessionIsLoading}
         loaderState={sessionLoaderState || "entering"}
         onAnimationComplete={handleAnimationComplete}
-        isFullscreen={isFullscreen}
         onCommand={handleCommand}
         onConnectionPhaseChange={onConnectionPhaseChange}
         onAuthCancelled={onAuthCancelled}
-        onToggleFullscreen={handleToggleFullscreen}
-        onStartConnectionFromConfig={onStartConnectionFromConfig}
-        serverApi={serverApi}
-        serverConfigsReady={serverConfigsReady}
         aiAssistantAdapters={aiAssistantAdapters}
         onInternalBackHandlerChange={handleInternalBackHandlerChange}
         onInternalBackAvailabilityChange={handleInternalBackAvailabilityChange}
@@ -1439,6 +1387,7 @@ export function TerminalComponent({
       />
     )
   }, [
+    activeSession,
     clearCrossSessionCompletedTransfers,
     crossSessionTransferTasks,
     handleInternalBackAvailabilityChange,
@@ -1447,15 +1396,10 @@ export function TerminalComponent({
     handleInternalBackHandlerChange,
     handleCancelCrossSessionTransfer,
     handleSftpPathChange,
-    handleToggleFullscreen,
     aiAssistantAdapters,
-    isFullscreen,
     loaderStates,
     onAuthCancelled,
     onConnectionPhaseChange,
-    onStartConnectionFromConfig,
-    serverApi,
-    serverConfigsReady,
     settings,
     sftpPathBySessionId,
     sftpRefreshRequests,
@@ -1464,21 +1408,30 @@ export function TerminalComponent({
   const getExtraSessionRenderOptions = useCallback((
     session: TerminalSession,
     surface: "normal" | "transparent",
+    isVisible: boolean = true,
   ): TerminalExtraSessionRenderOptions => {
     const sftpHistory = sftpHistoryBySessionId[session.id]
 
     return {
       chrome: "full",
       surface,
-      isVisible: true,
+      isVisible,
+      isActive: isVisible && activeSession === session.id,
+      externalTransferTasks: crossSessionTransferTasks,
+      onClearExternalTransfers: clearCrossSessionCompletedTransfers,
+      onCancelExternalTransfer: handleCancelCrossSessionTransfer,
       onPathChange: (path) => handleSftpPathChange(session.id, path),
       refreshRequestVersion: sftpRefreshRequests[session.id] ?? 0,
-      initialPath: sftpHistory?.currentPath ?? sftpPathBySessionId[session.id] ?? "/",
+      initialPath: sftpHistory?.currentPath ?? sftpPathBySessionId[session.id],
       initialPathBackStack: sftpHistory?.pathBackStack,
       initialPathForwardStack: sftpHistory?.pathForwardStack,
       onHistoryChange: (history) => handleSftpHistoryChange(session.id, history),
     }
   }, [
+    activeSession,
+    crossSessionTransferTasks,
+    clearCrossSessionCompletedTransfers,
+    handleCancelCrossSessionTransfer,
     handleSftpHistoryChange,
     handleSftpPathChange,
     sftpHistoryBySessionId,
@@ -1486,62 +1439,51 @@ export function TerminalComponent({
     sftpRefreshRequests,
   ])
 
-  const renderSplitLeaf = useCallback((sessionId: string): ReactNode => {
+  const renderPersistentSession = (sessionId: string): ReactNode => {
     const session = workspaceSessions.find((item) => item.id === sessionId)
     if (!session) return null
 
     const isSftpSession = session.type === "sftp"
+    const inSplit = splitWorkspaceSessionIdSet.has(sessionId)
+    const isVisible = inSplit ? isMultiSessionGrid && visibleSessionIdSet.has(sessionId) : activeSession === sessionId
 
     return (
+      <SessionWorkspaceToolbarContext value={inSplit ? { host: getToolbarHost(session.id), kind: isSftpSession ? "sftp" : "terminal" } : null}>
       <SessionSplitPane
         key={session.id}
         sessionId={session.id}
-        title={session.serverName}
-        subtitle={getSessionConnectionSubtitle(session)}
-        status={session.status}
+        isVisible={isVisible}
+        isSplit={inSplit}
+        isSftp={isSftpSession}
         isActive={activeSession === session.id}
         background={isSftpSession ? undefined : splitPaneHeaderBackground}
-        onFocus={() => setActiveSessionFromUser(session.id)}
-        onClose={() => handleCloseSession(session.id)}
-        closeLabel={tTerminal("ariaCloseSplitPaneSession")}
-        onDragStart={() => handleSplitPaneDragStart(session.id)}
-        onDragEnd={handleSplitPaneDragEnd}
-        dropOverlay={<SessionSplitDropOverlay side={tabDropTargetId === session.id ? tabDropSide : null} />}
+        onFocus={isVisible ? () => setActiveSessionFromUser(session.id) : undefined}
+        dropOverlay={!inSplit && <SessionSplitDropOverlay side={tabDropTargetId === session.id ? tabDropSide : null} />}
         canAcceptCrossSessionFileDrop={canAcceptCrossSessionFileDrop(session)}
         onCrossSessionFileDrop={(targetSessionId, dragData) => {
           void handleCrossSessionFileDrop(targetSessionId, dragData)
         }}
       >
         {isSftpSession
-          ? renderExtraSessionContent?.(session, getExtraSessionRenderOptions(session, "transparent"))
-          : renderTerminalSessionContent(session, "content", true, "transparent")}
+          ? renderExtraSessionContent?.(session, getExtraSessionRenderOptions(session, inSplit ? "transparent" : "normal", isVisible))
+          : renderTerminalSessionContent(session, "full", isVisible, inSplit ? "transparent" : "normal")}
       </SessionSplitPane>
+      </SessionWorkspaceToolbarContext>
     )
-  }, [activeSession, canAcceptCrossSessionFileDrop, getExtraSessionRenderOptions, handleCloseSession, handleCrossSessionFileDrop, handleSplitPaneDragEnd, handleSplitPaneDragStart, renderExtraSessionContent, renderTerminalSessionContent, setActiveSessionFromUser, splitPaneHeaderBackground, tTerminal, tabDropSide, tabDropTargetId, workspaceSessions])
+  }
 
-  const workspaceToolbarSession = useMemo(() => {
-    if (!isMultiSessionGrid) return null
-    const ignoredSessionId = isSplitPanePreviewActive ? draggingSplitSessionId : null
-    return terminalSessions.find((session) => (
-      session.id === activeSession &&
-      session.id !== ignoredSessionId &&
-      visibleSessionIdSet.has(session.id)
-    ))
-      ?? terminalSessions.find((session) => (
-        session.id !== ignoredSessionId && visibleSessionIdSet.has(session.id)
-      ))
-      ?? terminalSessions.find((session) => visibleSessionIdSet.has(session.id))
-      ?? null
-  }, [activeSession, draggingSplitSessionId, isMultiSessionGrid, isSplitPanePreviewActive, terminalSessions, visibleSessionIdSet])
+  const renderSplitLeaf = useCallback((id: string) => <SessionContentSlot host={getContentHost(id)} />, [getContentHost])
+
+  const renderWorkspaceToolbar = useCallback((id: string) => <SessionContentSlot host={getToolbarHost(id)} />, [getToolbarHost])
 
   // 键盘快捷键支持
   // AI 助手快捷键（Ctrl+K）已移至 TabTerminalContent 组件内部
   // 每个页签独立管理快捷键
 
   return (
-    <div className={cn("flex min-h-0 min-w-0 flex-1 flex-col", isFullscreen && "fixed inset-0 z-50 bg-background")}>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {sftpTransferCredentialDialog}
-      {!hidePageHeader && !isFullscreen && (
+      {!hidePageHeader && (
         <PageHeader title={active?.serverName || activeExtraSession?.serverName || tTerminal("connectionConfigTitle")}>
           <ActivityLogPane />
         </PageHeader>
@@ -1566,12 +1508,11 @@ export function TerminalComponent({
             additionalNewSessionActions={combinedExtraNewSessionActions}
             onCloseSession={handleCloseSession}
             onDuplicateSession={onDuplicateSession}
+            onOpenSftpSession={onOpenSftpSession ? id => { const session = sessions.find(item => item.id === id); if (session) onOpenSftpSession(session, sftpPathBySessionId[id]) } : undefined}
             onCloseOthers={handleCloseOthers}
             onCloseAll={handleCloseAll}
             onTogglePin={onTogglePin}
             onReorder={handleReorderTabSessions}
-            isFullscreen={isFullscreen}
-            onToggleFullscreen={canUseFullscreenCapability ? handleToggleFullscreen : undefined}
             onOpenSettings={() => setIsSettingsOpen(true)}
             hideBreadcrumb
             onDetachSession={handleDetachSession}
@@ -1580,7 +1521,6 @@ export function TerminalComponent({
               session.id !== TERMINAL_WORKSPACE_TAB_ID
             )}
             canShowContextMenu={(session) => (
-              !extraSessionIdSet.has(session.id) &&
               session.id !== TERMINAL_WORKSPACE_TAB_ID
             )}
             detachedSessionIds={detachedSessionIds}
@@ -1604,87 +1544,88 @@ export function TerminalComponent({
             onDrop={handleWorkspaceNativeDrop}
             onDragLeave={handleWorkspaceNativeDragLeave}
           >
-            {sessions.length === 0 && extraSessions.length === 0 ? (
-              <div className="flex flex-1 items-center justify-center text-muted-foreground">
-                {tTerminal("emptySessionHint")}
+            {/*
+              普通终端页签始终保留各自的组件树，切换时只改变可见性。
+              这样监控 Provider、图表历史和 xterm 实例都不会因页签切换而重建；
+              布局槽位只移动内容容器，会话组件始终由下方的稳定 portal 唯一挂载。
+            */}
+            {persistentTerminalSessions.map((session) => {
+              const isVisible = !!(
+                activeTerminalSession?.id === session.id &&
+                !isMultiSessionGrid
+              )
+
+              return (
+                <div
+                  key={session.id}
+                  aria-hidden={!isVisible}
+                  className={cn(
+                    "absolute inset-0 min-h-0 min-w-0 overflow-hidden",
+                    isVisible
+                      ? "visible z-10"
+                      : "invisible z-0 pointer-events-none"
+                  )}
+                  onMouseDown={isVisible ? () => setActiveSessionFromUser(session.id) : undefined}
+                >
+                  <SessionContentSlot host={getContentHost(session.id)} />
+                </div>
+              )
+            })}
+
+            {isConnectionConfigVisible && (
+              <div className="absolute inset-0 z-20 min-h-0 min-w-0 overflow-hidden">
+                <ServerConnectionConfigs
+                  onConnect={handleConnectFromHome}
+                  serverApi={serverApi}
+                  ready={serverConfigsReady}
+                />
               </div>
-            ) : (
-              <>
-                {/*
-                  普通终端页签始终保留各自的组件树，切换时只改变可见性。
-                  这样监控 Provider、图表历史和 xterm 实例都不会因页签切换而重建；
-                  已进入分屏工作区的会话由 SessionSplitView 唯一挂载，避免重复实例。
-                */}
-                {persistentTerminalSessions.map((session) => {
-                  const isVisible = !!(
-                    activeTerminalSession?.id === session.id &&
-                    !isMultiSessionGrid
-                  )
-
-                  return (
-                    <div
-                      key={session.id}
-                      data-split-session-id={session.id}
-                      aria-hidden={!isVisible}
-                      className={cn(
-                        "absolute inset-0 min-h-0 min-w-0 overflow-hidden",
-                        isVisible
-                          ? "visible z-10"
-                          : "invisible z-0 pointer-events-none"
-                      )}
-                      onMouseDown={isVisible ? () => setActiveSessionFromUser(session.id) : undefined}
-                    >
-                      {isVisible && (
-                        <SessionSplitDropOverlay
-                          side={tabDropTargetId === session.id ? tabDropSide : null}
-                          edgeInset="workspace"
-                          topOffset={40}
-                        />
-                      )}
-                      {renderTerminalSessionContent(session, "full", isVisible)}
-                    </div>
-                  )
-                })}
-
-                {activeConfigSession && (
-                  <div className="absolute inset-0 z-20 min-h-0 min-w-0 overflow-hidden">
-                    <ServerConnectionConfigs
-                      key={`terminal-config-${activeConfigSession.id}`}
-                      onConnect={handleStartConnectionFromActiveConfig}
-                      serverApi={serverApi}
-                      ready={serverConfigsReady}
-                    />
-                  </div>
-                )}
-
-                {isMultiSessionGrid && splitLayout && (
-                  <div className="absolute inset-0 z-20 flex min-h-0 min-w-0 flex-col overflow-hidden">
-                    {workspaceToolbarSession && renderTerminalSessionContent(workspaceToolbarSession, "toolbar", true)}
-                    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-auto p-2">
-                      <SessionSplitView
-                        node={splitLayout}
-                        renderLeaf={renderSplitLeaf}
-                        onResize={handleSplitResize}
-                        hiddenSessionId={hiddenSplitSessionId}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {activeExtraSession && !isMultiSessionGrid && (
-                  <div
-                    data-extra-session-id={activeExtraSession.id}
-                    className="absolute inset-0 z-20 min-h-0 min-w-0 overflow-hidden"
-                    onMouseDown={() => setActiveSessionFromUser(activeExtraSession.id)}
-                  >
-                    {renderExtraSessionContent?.(
-                      activeExtraSession,
-                      getExtraSessionRenderOptions(activeExtraSession, "normal")
-                    )}
-                  </div>
-                )}
-              </>
             )}
+
+            <div aria-hidden={!isMultiSessionGrid} inert={!isMultiSessionGrid} className={cn("absolute inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden", isMultiSessionGrid ? "visible z-20" : "invisible z-0 pointer-events-none")}>
+                <div className="relative flex min-h-0 min-w-0 flex-1 overflow-auto p-2">
+                  <SessionDockview
+                    controller={dockview}
+                    sessions={workspaceSessions.filter(session => splitWorkspaceSessionIdSet.has(session.id))}
+                    renderLeaf={renderSplitLeaf}
+                    renderToolbar={renderWorkspaceToolbar}
+                    dropTargetId={tabDropTargetId}
+                    dropSide={tabDropSide}
+                    canAcceptCrossSessionFileDrop={canAcceptCrossSessionFileDrop}
+                    onCrossSessionFileDrop={(id, data) => { void handleCrossSessionFileDrop(id, data) }}
+                    onDetach={handleRestoreDetachedSession}
+                    onClose={handleCloseSession}
+                  />
+                </div>
+              </div>
+
+            {workspaceSessions.map(session => (
+              <PersistentSessionContent key={session.id} host={getContentHost(session.id)}>
+                {renderPersistentSession(session.id)}
+              </PersistentSessionContent>
+            ))}
+
+            {/* SFTP 页签保留各自的列表和浏览状态，切换时只改变可见性。 */}
+            {visibleExtraSessions.map((session) => {
+              const isVisible = activeExtraSession?.id === session.id && !isMultiSessionGrid
+
+              return (
+                <div
+                  key={session.id}
+                  aria-hidden={!isVisible}
+                  inert={!isVisible}
+                  className={cn(
+                    "absolute inset-0 min-h-0 min-w-0 overflow-hidden",
+                    isVisible
+                      ? "visible z-20"
+                      : "invisible z-0 pointer-events-none"
+                  )}
+                  onMouseDown={isVisible ? () => setActiveSessionFromUser(session.id) : undefined}
+                >
+                  <SessionContentSlot host={getContentHost(session.id)} />
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>

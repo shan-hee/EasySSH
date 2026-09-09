@@ -1,6 +1,7 @@
-export const CROSS_SESSION_FILE_DRAG_MIME = "application/json"
+export const SFTP_FILE_DRAG_TYPE = "easyssh/sftp-file"
 
 export interface CrossSessionFileDragData {
+  type: typeof SFTP_FILE_DRAG_TYPE
   sessionId: string
   fileName: string
   filePath: string
@@ -8,30 +9,9 @@ export interface CrossSessionFileDragData {
   sourceSessionId: string
 }
 
-export const hasCrossSessionFileDragData = (dataTransfer: DataTransfer) => (
-  Array.from(dataTransfer.types).includes(CROSS_SESSION_FILE_DRAG_MIME)
-)
-
-export const parseCrossSessionFileDragData = (
-  dataTransfer: DataTransfer,
-): CrossSessionFileDragData | null => {
-  const jsonData = dataTransfer.getData(CROSS_SESSION_FILE_DRAG_MIME)
-  if (!jsonData) return null
-
-  try {
-    const parsed = JSON.parse(jsonData) as Partial<CrossSessionFileDragData>
-    if (
-      typeof parsed.sourceSessionId === "string" &&
-      typeof parsed.sessionId === "string" &&
-      typeof parsed.fileName === "string" &&
-      typeof parsed.filePath === "string" &&
-      (parsed.fileType === "file" || parsed.fileType === "directory")
-    ) {
-      return parsed as CrossSessionFileDragData
-    }
-  } catch (error) {
-    console.error("解析跨会话拖拽数据失败:", error)
-  }
-
-  return null
+export function isSftpFileDragData(data: Record<string | symbol, unknown>): data is Record<string | symbol, unknown> & CrossSessionFileDragData {
+  return data.type === SFTP_FILE_DRAG_TYPE &&
+    typeof data.sessionId === "string" && typeof data.sourceSessionId === "string" &&
+    typeof data.fileName === "string" && typeof data.filePath === "string" &&
+    (data.fileType === "file" || data.fileType === "directory")
 }

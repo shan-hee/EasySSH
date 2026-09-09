@@ -6,6 +6,7 @@ export interface SftpFileEditorPaneProps {
   filePath: string
   fileContent: string
   isOpen: boolean
+  keyboardShortcutsEnabled: boolean
   onClose: () => void
   onSave: (content: string) => Promise<void> | void
   onDownload: () => void
@@ -16,6 +17,7 @@ export function SftpFileEditorPane({
   filePath,
   fileContent,
   isOpen,
+  keyboardShortcutsEnabled,
   onClose,
   onSave,
   onDownload,
@@ -26,6 +28,7 @@ export function SftpFileEditorPane({
       filePath={filePath}
       fileContent={fileContent}
       isOpen={isOpen}
+      keyboardShortcutsEnabled={keyboardShortcutsEnabled}
       onClose={onClose}
       onSave={onSave}
       onDownload={onDownload}

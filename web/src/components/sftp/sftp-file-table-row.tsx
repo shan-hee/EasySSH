@@ -1,5 +1,7 @@
+import type { RegisterSftpDragItem } from "./use-sftp-drag-drop-controller"
 
-import type { DragEvent, FocusEvent, KeyboardEvent, MouseEvent, Ref, RefObject } from "react"
+import type { FocusEvent, KeyboardEvent, MouseEvent, Ref, RefObject } from "react"
+import { useEffect, useRef } from "react"
 import { ChevronRight } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { TableCell, TableRow } from "@/components/ui/table"
@@ -13,6 +15,7 @@ import type { SftpFileItem } from "@/lib/sftp-file-utils"
 export type SftpFileTableRowItem = Pick<SftpFileItem, "name" | "type" | "size" | "modified" | "permissions">
 
 export interface SftpFileTableRowProps {
+  registerDragItem: RegisterSftpDragItem
   file: SftpFileTableRowItem
   dataIndex?: number
   measureElement?: Ref<HTMLTableRowElement>
@@ -27,11 +30,6 @@ export interface SftpFileTableRowProps {
   onFinishRename: () => void
   onCancelRename: () => void
   onRenameBlur: (event: FocusEvent<HTMLInputElement>) => void
-  onDragStart: (event: DragEvent<HTMLTableRowElement>, fileName: string) => void
-  onDragEnd: () => void
-  onDragOver: (event: DragEvent<HTMLTableRowElement>, fileName: string, fileType: "file" | "directory") => void
-  onDragLeave: () => void
-  onDrop: (event: DragEvent<HTMLTableRowElement>, fileName: string, fileType: "file" | "directory") => void
   onSelect: (fileName: string, event: MouseEvent<HTMLTableRowElement>) => void
   onDoubleClick: (fileName: string, fileType: "file" | "directory") => void
   onOpenContextMenu: (fileName: string, fileType: "file" | "directory") => void
@@ -42,6 +40,7 @@ export interface SftpFileTableRowProps {
 }
 
 export function SftpFileTableRow({
+  registerDragItem,
   file,
   dataIndex,
   measureElement,
@@ -56,11 +55,6 @@ export function SftpFileTableRow({
   onFinishRename,
   onCancelRename,
   onRenameBlur,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDragLeave,
-  onDrop,
   onSelect,
   onDoubleClick,
   onOpenContextMenu,
@@ -69,6 +63,11 @@ export function SftpFileTableRow({
   onAction,
   onContextAction,
 }: SftpFileTableRowProps) {
+  const dragRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (dragRef.current && !isEditing) return registerDragItem(dragRef.current, file.name)
+  }, [registerDragItem, file.name, isEditing])
+
   const handleRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       onFinishRename()
@@ -84,16 +83,11 @@ export function SftpFileTableRow({
       data-sftp-file-item={file.type}
       data-selected={isSelected || (isDraggedOver && file.type === "directory") ? "true" : undefined}
       data-index={dataIndex}
-      ref={measureElement}
-      draggable={!isEditing}
-      onDragStart={(event) => onDragStart(event, file.name)}
-      onDragEnd={onDragEnd}
-      onDragOver={(event) => onDragOver(event, file.name, file.type)}
-      onDragLeave={(event) => {
-        event.preventDefault()
-        onDragLeave()
+      ref={element => {
+        dragRef.current = element
+        if (typeof measureElement === "function") return measureElement(element)
+        if (measureElement) measureElement.current = element
       }}
-      onDrop={(event) => onDrop(event, file.name, file.type)}
       className={cn(
         "cursor-pointer border-b-0 transition-none hover:bg-table-row-hover",
         (isSelected || (isDraggedOver && file.type === "directory")) && "bg-table-row-selected hover:bg-table-row-selected",

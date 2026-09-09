@@ -24,14 +24,17 @@ Command.displayName = CommandPrimitive.displayName
 
 type CommandDialogProps = DialogProps & {
   title?: React.ReactNode
+  dismissOnEscape?: boolean
+  showTitle?: boolean
+  shouldFilter?: boolean
 }
 
-const CommandDialog = ({ children, title = "Command menu", ...props }: CommandDialogProps) => {
+const CommandDialog = ({ children, title = "Command menu", dismissOnEscape = false, showTitle = false, shouldFilter = true, ...props }: CommandDialogProps) => {
   return (
     <Dialog {...props}>
-      <DialogContent className="overflow-hidden bg-popover p-0">
-        <DialogTitle className="sr-only">{title}</DialogTitle>
-        <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
+      <DialogContent dismissOnEscape={dismissOnEscape} className="overflow-hidden bg-popover p-0">
+        <DialogTitle className={showTitle ? "px-4 pt-4 text-sm font-semibold" : "sr-only"}>{title}</DialogTitle>
+        <Command shouldFilter={shouldFilter} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
           {children}
         </Command>
       </DialogContent>

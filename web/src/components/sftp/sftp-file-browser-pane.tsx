@@ -1,5 +1,6 @@
+import type { RegisterSftpDragItem } from "./use-sftp-drag-drop-controller"
 
-import { useRef, type ChangeEvent, type DragEvent, type FocusEvent, type MouseEvent, type RefObject } from "react"
+import { useRef, type ChangeEvent, type FocusEvent, type MouseEvent, type Ref, type RefObject } from "react"
 import { Table, TableBody } from "@/components/ui/table"
 import { useFileListVirtualizer } from "@/hooks/use-file-list-virtualizer"
 import { cn } from "@/lib/utils"
@@ -19,6 +20,7 @@ import type {
 import type { SftpCreateEntryType } from "@/components/sftp/use-sftp-file-action-controller"
 
 export interface SftpFileBrowserPaneProps {
+  registerDragItem: RegisterSftpDragItem
   viewMode: SftpFileViewMode
   filteredFiles: EnhancedSftpFileBrowserItem[]
   selectedFiles: string[]
@@ -32,7 +34,7 @@ export interface SftpFileBrowserPaneProps {
   editingFileName: string
   draggedFileName: string | null
   dragOverFolder: string | null
-  dropZoneRef: RefObject<HTMLDivElement | null>
+  dropZoneRef: Ref<HTMLDivElement>
   fileInputRef: RefObject<HTMLInputElement | null>
   editInputRef: RefObject<HTMLInputElement | null>
   folderLabel: string
@@ -44,10 +46,6 @@ export interface SftpFileBrowserPaneProps {
   onUpload: () => void
   onBackgroundUpload?: () => void
   onRefresh: () => void
-  onDragEnter: (event: DragEvent<HTMLDivElement>) => void
-  onDragLeave: (event: DragEvent<HTMLDivElement>) => void
-  onDragOver: (event: DragEvent<HTMLDivElement>) => void
-  onDrop: (event: DragEvent<HTMLDivElement>) => void
   onEditingFileNameChange: (value: string) => void
   onFinishCreate: () => void | Promise<void>
   onCancelCreate: () => void
@@ -55,11 +53,6 @@ export interface SftpFileBrowserPaneProps {
   onFinishRename: () => void
   onCancelRename: () => void
   onRenameBlur: (event: FocusEvent<HTMLInputElement>) => void
-  onNativeDragStart: (event: DragEvent, fileName: string) => void
-  onNativeDragEnd: () => void
-  onNativeDragOver: (event: DragEvent, fileName: string, fileType: "file" | "directory") => void
-  onNativeDragLeave: () => void
-  onNativeDrop: (event: DragEvent, fileName: string, fileType: "file" | "directory") => void
   onFileSelect: (fileName: string, event: MouseEvent<HTMLElement>) => void
   onFileDoubleClick: (fileName: string, fileType: "file" | "directory") => void
   onOpenFileContextMenu: (fileName: string, fileType: "file" | "directory") => void
@@ -71,6 +64,7 @@ export interface SftpFileBrowserPaneProps {
 }
 
 export function SftpFileBrowserPane({
+  registerDragItem,
   viewMode,
   filteredFiles,
   selectedFiles,
@@ -96,10 +90,6 @@ export function SftpFileBrowserPane({
   onUpload,
   onBackgroundUpload,
   onRefresh,
-  onDragEnter,
-  onDragLeave,
-  onDragOver,
-  onDrop,
   onEditingFileNameChange,
   onFinishCreate,
   onCancelCreate,
@@ -107,11 +97,6 @@ export function SftpFileBrowserPane({
   onFinishRename,
   onCancelRename,
   onRenameBlur,
-  onNativeDragStart,
-  onNativeDragEnd,
-  onNativeDragOver,
-  onNativeDragLeave,
-  onNativeDrop,
   onFileSelect,
   onFileDoubleClick,
   onOpenFileContextMenu,
@@ -142,6 +127,7 @@ export function SftpFileBrowserPane({
 
   const renderGridItem = (file: EnhancedSftpFileBrowserItem) => (
     <SftpFileGridItem
+      registerDragItem={registerDragItem}
       key={file.name}
       file={file}
       isSelected={selectedFiles.includes(file.name)}
@@ -155,11 +141,6 @@ export function SftpFileBrowserPane({
       onFinishRename={onFinishRename}
       onCancelRename={onCancelRename}
       onRenameBlur={onRenameBlur}
-      onDragStart={(event, fileName) => onNativeDragStart(event, fileName)}
-      onDragEnd={onNativeDragEnd}
-      onDragOver={(event, fileName, fileType) => onNativeDragOver(event, fileName, fileType)}
-      onDragLeave={onNativeDragLeave}
-      onDrop={(event, fileName, fileType) => onNativeDrop(event, fileName, fileType)}
       onSelect={(fileName, event) => onFileSelect(fileName, event)}
       onDoubleClick={onFileDoubleClick}
       onOpenContextMenu={onOpenFileContextMenu}
@@ -172,6 +153,7 @@ export function SftpFileBrowserPane({
 
   const renderTableRow = (file: EnhancedSftpFileBrowserItem, dataIndex?: number) => (
     <SftpFileTableRow
+      registerDragItem={registerDragItem}
       key={file.name}
       file={file}
       dataIndex={dataIndex}
@@ -187,11 +169,6 @@ export function SftpFileBrowserPane({
       onFinishRename={onFinishRename}
       onCancelRename={onCancelRename}
       onRenameBlur={onRenameBlur}
-      onDragStart={(event, fileName) => onNativeDragStart(event, fileName)}
-      onDragEnd={onNativeDragEnd}
-      onDragOver={(event, fileName, fileType) => onNativeDragOver(event, fileName, fileType)}
-      onDragLeave={onNativeDragLeave}
-      onDrop={(event, fileName, fileType) => onNativeDrop(event, fileName, fileType)}
       onSelect={(fileName, event) => onFileSelect(fileName, event)}
       onDoubleClick={onFileDoubleClick}
       onOpenContextMenu={onOpenFileContextMenu}
@@ -213,10 +190,6 @@ export function SftpFileBrowserPane({
         viewMode === "grid" ? "overflow-hidden" : "",
         isDragging && "bg-primary/10",
       )}
-      onDragEnter={onDragEnter}
-      onDragLeave={onDragLeave}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
       onMouseDown={(event) => {
         if (event.button === 0) {
           onClearSelectedFiles()

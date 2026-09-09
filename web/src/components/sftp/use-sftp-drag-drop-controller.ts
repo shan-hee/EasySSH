@@ -1,242 +1,88 @@
-
-import { useCallback, useState, type DragEvent, type RefObject } from "react"
-import { setDragSourceSessionId } from "@/lib/drag-state"
-import { hasSplitPaneDragSession } from "@/lib/session/split-pane-drag"
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefCallback } from "react"
+import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine"
+import { draggable, dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter"
+import { dropTargetForExternal } from "@atlaskit/pragmatic-drag-and-drop/external/adapter"
+import { containsFiles, getFiles } from "@atlaskit/pragmatic-drag-and-drop/external/file"
+import { isSftpFileDragData, SFTP_FILE_DRAG_TYPE } from "@/lib/session/cross-session-file-drag"
 import { joinSftpRelativePath, joinSftpRemotePath } from "@/lib/sftp-file-utils"
 
-export interface SftpDragDropFileItem {
-  name: string
-  type: "file" | "directory"
-}
-
+export interface SftpDragDropFileItem { name: string; type: "file" | "directory" }
+export type RegisterSftpDragItem = (element: HTMLElement, fileName: string) => () => void
 export interface UseSftpDragDropControllerOptions {
   sessionId: string
   currentPath: string
   files: SftpDragDropFileItem[]
-  dropZoneRef: RefObject<HTMLDivElement | null>
   onRename: (oldName: string, newName: string) => void
   onUpload: (files: FileList) => void | Promise<void>
 }
 
-export function useSftpDragDropController({
-  sessionId,
-  currentPath,
-  files,
-  dropZoneRef,
-  onRename,
-  onUpload,
-}: UseSftpDragDropControllerOptions) {
+export function useSftpDragDropController({ sessionId, currentPath, files, onRename, onUpload }: UseSftpDragDropControllerOptions) {
   const [isDragging, setIsDragging] = useState(false)
-  const [, setDragCounter] = useState(0)
   const [draggedFileName, setDraggedFileName] = useState<string | null>(null)
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null)
+  const fileTypes = useMemo(() => new Map(files.map(file => [file.name, file.type])), [files])
+  const latest = useRef({ sessionId, currentPath, fileTypes, onRename, onUpload })
+  useLayoutEffect(() => { latest.current = { sessionId, currentPath, fileTypes, onRename, onUpload } }, [sessionId, currentPath, fileTypes, onRename, onUpload])
 
-  const handleFileUpload = useCallback(async (uploadFiles: FileList) => {
-    await onUpload(uploadFiles)
-  }, [onUpload])
-
-  const handleNativeDragStart = useCallback((event: DragEvent, fileName: string) => {
-    setDraggedFileName(fileName)
-    event.dataTransfer.effectAllowed = "move"
-
-    const file = files.find((item) => item.name === fileName)
-    const dragData = {
-      sessionId,
-      fileName,
-      filePath: joinSftpRemotePath(currentPath, fileName),
-      fileType: file?.type || "file",
-      sourceSessionId: sessionId,
-    }
-    event.dataTransfer.setData("application/json", JSON.stringify(dragData))
-    event.dataTransfer.setData("text/plain", fileName)
-    setDragSourceSessionId(sessionId)
-  }, [currentPath, files, sessionId])
-
-  const handleNativeDragEnd = useCallback(() => {
-    setDraggedFileName(null)
-    setDragOverFolder(null)
-    setDragSourceSessionId(null)
-  }, [])
-
-  const handleNativeDragOver = useCallback((
-    event: DragEvent,
-    targetFileName: string,
-    targetType: "file" | "directory",
-  ) => {
-    if (hasSplitPaneDragSession(event.dataTransfer)) {
-      return
-    }
-
-    event.preventDefault()
-
-    const isFileFromOtherSession = event.dataTransfer.types.includes("application/json") && !draggedFileName
-    if (!isFileFromOtherSession) {
-      event.stopPropagation()
-    }
-
-    if (targetFileName === draggedFileName && !isFileFromOtherSession) {
-      setDragOverFolder(null)
-      return
-    }
-
-    if (targetType === "directory") {
-      setDragOverFolder(targetFileName)
-      event.dataTransfer.dropEffect = "move"
-    } else {
-      setDragOverFolder(null)
-      event.dataTransfer.dropEffect = "none"
-    }
-  }, [draggedFileName])
-
-  const handleNativeDrop = useCallback((
-    event: DragEvent,
-    targetFileName: string,
-    targetType: "file" | "directory",
-  ) => {
-    if (hasSplitPaneDragSession(event.dataTransfer)) {
-      return
-    }
-
-    event.preventDefault()
-
-    try {
-      const jsonData = event.dataTransfer.getData("application/json")
-      if (jsonData) {
-        const dragData = JSON.parse(jsonData)
-        if (dragData.sourceSessionId !== sessionId) {
-          setDragOverFolder(null)
-          return
+  // Rows register in their own effect. Read current directory metadata when a gesture occurs.
+  const registerDragItem = useCallback<RegisterSftpDragItem>((element, name) => combine(
+    draggable({
+      element,
+      canDrag: () => !element.closest('[inert], [aria-hidden="true"]'),
+      getInitialData: () => {
+        const { sessionId, currentPath, fileTypes } = latest.current
+        return {
+          type: SFTP_FILE_DRAG_TYPE, sessionId, sourceSessionId: sessionId,
+          fileName: name, filePath: joinSftpRemotePath(currentPath, name),
+          fileType: fileTypes.get(name) ?? "file",
         }
-      }
-    } catch {
-      // 不是 JSON 数据，继续处理本会话拖拽。
-    }
-
-    event.stopPropagation()
-
-    if (!draggedFileName || draggedFileName === targetFileName) {
-      setDragOverFolder(null)
-      return
-    }
-
-    if (targetType === "directory") {
-      const newName = joinSftpRelativePath(targetFileName, draggedFileName)
-      onRename(draggedFileName, newName)
-    }
-
-    setDragOverFolder(null)
-    setDraggedFileName(null)
-  }, [draggedFileName, onRename, sessionId])
-
-  const handleDragEnter = useCallback((event: DragEvent<HTMLDivElement>) => {
-    if (hasSplitPaneDragSession(event.dataTransfer)) {
-      return
-    }
-
-    event.preventDefault()
-    event.stopPropagation()
-
-    if (event.dataTransfer.types.includes("application/json")) {
-      return
-    }
-
-    if (draggedFileName) {
-      return
-    }
-
-    if (event.dataTransfer.types.includes("Files")) {
-      setDragCounter((value) => value + 1)
-      setIsDragging(true)
-    }
-  }, [draggedFileName])
-
-  const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
-    if (hasSplitPaneDragSession(event.dataTransfer)) {
-      return
-    }
-
-    event.preventDefault()
-    event.stopPropagation()
-
-    const relatedTarget = event.relatedTarget as Node | null
-    if (relatedTarget && dropZoneRef.current?.contains(relatedTarget)) {
-      return
-    }
-
-    setIsDragging(false)
-    setDragCounter(0)
-  }, [dropZoneRef])
-
-  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
-    if (hasSplitPaneDragSession(event.dataTransfer)) {
-      return
-    }
-
-    event.preventDefault()
-
-    try {
-      const hasJsonData = event.dataTransfer.types.includes("application/json")
-      const isFileFromOtherSession = hasJsonData && !draggedFileName
-      if (!isFileFromOtherSession) {
-        event.stopPropagation()
-      }
-    } catch {
-      event.stopPropagation()
-    }
-  }, [draggedFileName])
-
-  const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
-    if (hasSplitPaneDragSession(event.dataTransfer)) {
-      return
-    }
-
-    event.preventDefault()
-    setIsDragging(false)
-    setDragCounter(0)
-
-    try {
-      const jsonData = event.dataTransfer.getData("application/json")
-      if (jsonData) {
-        const dragData = JSON.parse(jsonData)
-        if (dragData.sourceSessionId && dragData.sourceSessionId !== sessionId) {
-          return
+      },
+      onDragStart: () => setDraggedFileName(name),
+      onDrop: () => { setDraggedFileName(null); setDragOverFolder(null) },
+    }),
+    dropTargetForElements({
+      element,
+      canDrop: ({ source }) => {
+        const { sessionId, currentPath, fileTypes } = latest.current
+        return !element.closest('[inert], [aria-hidden="true"]') &&
+          isSftpFileDragData(source.data) && source.data.sourceSessionId === sessionId &&
+          source.data.fileName !== name && source.data.filePath === joinSftpRemotePath(currentPath, source.data.fileName) &&
+          fileTypes.get(name) === "directory"
+      },
+      getDropEffect: () => "move",
+      onDragEnter: () => setDragOverFolder(name),
+      onDragLeave: () => setDragOverFolder(current => current === name ? null : current),
+      onDrop: ({ source, location, self }) => {
+        setDragOverFolder(null)
+        if (location.current.dropTargets[0]?.element === self.element && isSftpFileDragData(source.data)) {
+          latest.current.onRename(source.data.fileName, joinSftpRelativePath(name, source.data.fileName))
         }
-      }
-    } catch {
-      // 不是 JSON 数据，继续检查本地文件上传。
-    }
+      },
+    }),
+  ), [])
 
-    event.stopPropagation()
-
-    if (draggedFileName) {
-      setDraggedFileName(null)
-      setDragOverFolder(null)
-      return
-    }
-
-    const uploadFiles = event.dataTransfer.files
-    if (uploadFiles && uploadFiles.length > 0) {
-      void handleFileUpload(uploadFiles)
-    }
-  }, [draggedFileName, handleFileUpload, sessionId])
-
-  const clearDragOverFolder = useCallback(() => {
-    setDragOverFolder(null)
+  // A callback ref tracks browser replacement when opening and closing the editor.
+  const dropZoneRef = useCallback<RefCallback<HTMLDivElement>>((element) => {
+    if (!element) return
+    const cleanup = dropTargetForExternal({
+      element,
+      canDrop: ({ source }) => containsFiles({ source }) && !element.closest('[inert], [aria-hidden="true"]'),
+      getDropEffect: () => "copy",
+      onDragEnter: () => setIsDragging(true),
+      onDragLeave: () => setIsDragging(false),
+      onDrop: ({ source, location, self }) => {
+        setIsDragging(false)
+        if (location.current.dropTargets[0]?.element !== self.element) return
+        const files = getFiles({ source })
+        if (files.length) {
+          const transfer = new DataTransfer()
+          files.forEach(file => transfer.items.add(file))
+          void latest.current.onUpload(transfer.files)
+        }
+      },
+    })
+    return () => { cleanup(); setIsDragging(false) }
   }, [])
-
-  return {
-    isDragging,
-    draggedFileName,
-    dragOverFolder,
-    clearDragOverFolder,
-    handleFileUpload,
-    handleNativeDragStart,
-    handleNativeDragEnd,
-    handleNativeDragOver,
-    handleNativeDrop,
-    handleDragEnter,
-    handleDragLeave,
-    handleDragOver,
-    handleDrop,
-  }
+  const handleFileUpload = useCallback(async (files: FileList) => { await onUpload(files) }, [onUpload])
+  return { dropZoneRef, isDragging, draggedFileName, dragOverFolder, registerDragItem, handleFileUpload }
 }

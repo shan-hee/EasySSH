@@ -1,4 +1,4 @@
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
   DEFAULT_SYSTEM_CONFIG,
@@ -53,24 +53,6 @@ function statusFromConnectionPhase(phase: TerminalConnectionPhase) {
   return "reconnecting" as const
 }
 
-function createConfigSession(connectionConfigName: string, id = "config-initial"): TerminalSession {
-  const now = Date.now()
-
-  return {
-    id,
-    serverName: connectionConfigName,
-    host: "",
-    port: undefined,
-    username: "",
-    shouldConnect: false,
-    connectionPhase: "idle",
-    status: "disconnected",
-    lastActivity: now,
-    type: "config",
-    pinned: false,
-  }
-}
-
 function createTerminalSessionFromServer(
   sessionId: string,
   server: Server,
@@ -99,6 +81,9 @@ type DesktopSftpTab = {
   id: string
   label: string
   server: Server
+  pinned: boolean
+  initialPath: string
+  connectionPhase: TerminalConnectionPhase
   createdAt: number
 }
 
@@ -113,6 +98,7 @@ function getServerDisplayName(server: Server) {
 function createSftpTabSession(tab: DesktopSftpTab): TerminalSession {
   return {
     id: tab.id,
+    currentPath: tab.initialPath,
     serverId: String(tab.server.id),
     authMethod: tab.server.auth_method,
     serverName: tab.label,
@@ -120,12 +106,12 @@ function createSftpTabSession(tab: DesktopSftpTab): TerminalSession {
     port: tab.server.port,
     username: tab.server.username,
     shouldConnect: false,
-    connectionPhase: "ready",
-    status: "connected",
+    connectionPhase: tab.connectionPhase,
+    status: statusFromConnectionPhase(tab.connectionPhase),
     lastActivity: tab.createdAt,
     group: tab.server.group,
     tags: tab.server.tags,
-    pinned: false,
+    pinned: tab.pinned,
     type: "sftp",
   }
 }
@@ -158,7 +144,6 @@ function App() {
   const [activeSftpTabId, setActiveSftpTabId] = useState<string | null>(null)
   const [sftpPickerOpen, setSftpPickerOpen] = useState(false)
   const inactivityNotifiedRef = useRef<Set<string>>(new Set())
-  const initializedRef = useRef(false)
 
   const sessions = useTerminalStore((state) => state.sessions)
   const activeSessionId = useTerminalStore((state) => state.activeSessionId)
@@ -169,7 +154,6 @@ function App() {
   const { t: tCommon } = useTranslation("common")
   const { t: tTerminal } = useTranslation("terminal")
   const { t: tSftp } = useTranslation("sftp")
-  const connectionConfigName = tTerminal("connectionConfigTitle")
 
   const serverApi = useMemo(() => createDesktopServerApi(), [])
   const scriptAdapters = useMemo(() => createDesktopScriptAdapters(serverApi), [serverApi])
@@ -394,51 +378,6 @@ function App() {
     }
   }, [])
 
-  useEffect(() => {
-    if (initializedRef.current) return
-    initializedRef.current = true
-
-    if (sessions.length === 0) {
-      const session = createConfigSession(connectionConfigName)
-      setSessions([session])
-      setActiveSessionId(session.id)
-      updateSessionActivity(session.id, session.lastActivity)
-      return
-    }
-
-    if (!activeSessionId || !sessions.some((session) => session.id === activeSessionId)) {
-      setActiveSessionId(sessions[0]?.id ?? null)
-    }
-  }, [activeSessionId, connectionConfigName, sessions, setActiveSessionId, setSessions, updateSessionActivity])
-
-  useEffect(() => {
-    setSessions((current) => current.map((session) => (
-      session.type === "config" && session.serverName !== connectionConfigName
-        ? { ...session, serverName: connectionConfigName }
-        : session
-    )))
-  }, [connectionConfigName, setSessions])
-
-  const resetToConfigSession = useCallback(() => {
-    const session = createConfigSession(connectionConfigName, `config-${Date.now()}`)
-    setSessions([session])
-    setActiveSessionId(session.id)
-    updateSessionActivity(session.id, session.lastActivity)
-  }, [connectionConfigName, setActiveSessionId, setSessions, updateSessionActivity])
-
-  const handleNewSession = useCallback(() => {
-    if (totalTabCount >= maxTabs) {
-      toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
-      return
-    }
-
-    const session = createConfigSession(connectionConfigName, `config-${Date.now()}`)
-    setSessions((current) => [...current, session])
-    setActiveSessionId(session.id)
-    updateSessionActivity(session.id, session.lastActivity)
-    return session.id
-  }, [connectionConfigName, maxTabs, setActiveSessionId, setSessions, tTerminal, totalTabCount, updateSessionActivity])
-
   const handleOpenSftpPicker = useCallback(() => {
     if (totalTabCount >= maxTabs) {
       toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
@@ -448,7 +387,7 @@ function App() {
     setSftpPickerOpen(true)
   }, [maxTabs, tTerminal, totalTabCount])
 
-  const handleCreateSftpTabFromServer = useCallback((server: Server): boolean => {
+  const handleCreateSftpTabFromServer = useCallback((server: Server, initialPath = "~"): boolean => {
     if (totalTabCount >= maxTabs) {
       toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
       return false
@@ -463,6 +402,9 @@ function App() {
         label: getServerDisplayName(server),
         server,
         createdAt: now,
+        pinned: false,
+        initialPath,
+        connectionPhase: "ssh_connecting",
       },
     ])
     setActiveSftpTabId(id)
@@ -496,35 +438,27 @@ function App() {
     )))
   }, [])
 
-  const handleStartConnectionFromConfig = useCallback((sessionId: string, server: Server) => {
-    const now = Date.now()
+  const handleStartConnection = useCallback((server: Server): string | void => {
+    if (useTerminalStore.getState().sessions.length + sftpTabs.length >= maxTabs) {
+      toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
+      return
+    }
 
-    startTransition(() => {
-      setSessions((current) => current.map((session) => (
-        session.id === sessionId
-          ? createTerminalSessionFromServer(sessionId, server, now)
-          : session
-      )))
-      setActiveSessionId(sessionId)
-      updateSessionActivity(sessionId, now)
-    })
+    const now = Date.now()
+    const sessionId = `session-${now}-${Math.random().toString(36).slice(2, 10)}`
+    setSessions((current) => [...current, createTerminalSessionFromServer(sessionId, server, now)])
+    setActiveSftpTabId(null)
+    setActiveSessionId(sessionId)
+    updateSessionActivity(sessionId, now)
 
     void markDesktopServerConnected(server.id)
       .catch((error) => console.error("Failed to mark desktop server connected:", error))
     void recordDesktopTerminalOpened(server)
       .catch((error) => console.error("Failed to record desktop connection activity:", error))
-  }, [setActiveSessionId, setSessions, updateSessionActivity])
+    return sessionId
+  }, [maxTabs, sftpTabs.length, setActiveSessionId, setSessions, tTerminal, updateSessionActivity])
 
   const handleCloseSession = useCallback((sessionId: string) => {
-    if (sessions.length <= 1) {
-      if (sessions[0]?.type === "config") {
-        setActiveSessionId(sessions[0].id)
-        return
-      }
-      resetToConfigSession()
-      return
-    }
-
     const currentIndex = sessions.findIndex((session) => session.id === sessionId)
     if (activeSessionId === sessionId && currentIndex !== -1) {
       const nextIndex = currentIndex < sessions.length - 1 ? currentIndex + 1 : currentIndex - 1
@@ -532,22 +466,20 @@ function App() {
     }
 
     setSessions((current) => current.filter((session) => session.id !== sessionId))
-  }, [activeSessionId, resetToConfigSession, sessions, setActiveSessionId, setSessions])
+  }, [activeSessionId, sessions, setActiveSessionId, setSessions])
 
   const handleCloseSessions = useCallback((sessionIds: string[]) => {
     const closing = new Set(sessionIds)
     const remaining = sessions.filter((session) => !closing.has(session.id))
-    if (remaining.length === 0) {
-      resetToConfigSession()
-      return
-    }
     if (activeSessionId && closing.has(activeSessionId)) {
       setActiveSessionId(remaining[0]?.id ?? null)
     }
     setSessions(remaining)
-  }, [activeSessionId, resetToConfigSession, sessions, setActiveSessionId, setSessions])
+  }, [activeSessionId, sessions, setActiveSessionId, setSessions])
 
   const handleDuplicateSession = useCallback((sessionId: string) => {
+    const sftpTab = sftpTabs.find(tab => tab.id === sessionId)
+    if (sftpTab) { handleCreateSftpTabFromServer(sftpTab.server, sftpTab.initialPath); return }
     const source = sessions.find((session) => session.id === sessionId)
     if (!source) return
     if (totalTabCount >= maxTabs) {
@@ -568,24 +500,25 @@ function App() {
     setSessions((current) => [...current, duplicate])
     setActiveSessionId(duplicate.id)
     updateSessionActivity(duplicate.id, now)
-  }, [maxTabs, sessions, setActiveSessionId, setSessions, tTerminal, totalTabCount, updateSessionActivity])
+  }, [sftpTabs, handleCreateSftpTabFromServer, maxTabs, sessions, setActiveSessionId, setSessions, tTerminal, totalTabCount, updateSessionActivity])
 
   const handleCloseOthers = useCallback((sessionId: string) => {
+    setSftpTabs(current => current.filter(tab => tab.id === sessionId || tab.pinned))
+    setActiveSftpTabId(sftpTabs.some(tab => tab.id === sessionId) ? sessionId : null)
     setSessions((current) => current.filter((session) => session.id === sessionId || session.pinned))
-    setActiveSessionId(sessionId)
-  }, [setActiveSessionId, setSessions])
+    setActiveSessionId(sessions.some(session => session.id === sessionId) ? sessionId : null)
+  }, [sessions, sftpTabs, setActiveSessionId, setSessions])
 
   const handleCloseAll = useCallback(() => {
+    setSftpTabs(current => current.filter(tab => tab.pinned))
+    setActiveSftpTabId(null)
     const pinned = sessions.filter((session) => session.pinned)
-    if (pinned.length === 0) {
-      resetToConfigSession()
-      return
-    }
     setSessions(pinned)
-    setActiveSessionId(pinned[0].id)
-  }, [resetToConfigSession, sessions, setActiveSessionId, setSessions])
+    setActiveSessionId(pinned[0]?.id ?? null)
+  }, [sessions, setActiveSessionId, setSessions])
 
   const handleTogglePin = useCallback((sessionId: string) => {
+    setSftpTabs(current => current.map(tab => tab.id === sessionId ? { ...tab, pinned: !tab.pinned } : tab))
     setSessions((current) => current.map((session) => (
       session.id === sessionId
         ? { ...session, pinned: !session.pinned }
@@ -630,14 +563,24 @@ function App() {
     return (
       <TerminalSftpTabContent
         sessionId={tab.id}
-        isActive={options?.isVisible ?? true}
+        isActive={options?.isActive ?? true}
+        externalTransferTasks={options?.externalTransferTasks}
+        onClearExternalTransfers={options?.onClearExternalTransfers}
+        onCancelExternalTransfer={options?.onCancelExternalTransfer}
         server={tab.server}
         label={tab.label}
         chrome={options?.chrome}
         surface={options?.surface}
-        onPathChange={options?.onPathChange}
+        onConnectionStateChange={(connected, loading) => {
+          const phase: TerminalConnectionPhase = connected ? "ready" : loading ? "ssh_connecting" : "failed"
+          setSftpTabs(current => current.some(item => item.id === tab.id && item.connectionPhase !== phase) ? current.map(item => item.id === tab.id ? { ...item, connectionPhase: phase } : item) : current)
+        }}
+        onPathChange={(path) => {
+          options?.onPathChange?.(path)
+          setSftpTabs(current => current.some(item => item.id === tab.id && item.initialPath !== path) ? current.map(item => item.id === tab.id ? { ...item, initialPath: path } : item) : current)
+        }}
         refreshRequestVersion={options?.refreshRequestVersion}
-        initialPath={options?.initialPath}
+        initialPath={options?.initialPath ?? tab.initialPath}
         initialPathBackStack={options?.initialPathBackStack}
         initialPathForwardStack={options?.initialPathForwardStack}
         onHistoryChange={options?.onHistoryChange}
@@ -648,15 +591,9 @@ function App() {
   }, [handleCloseSftpTab, handleRenameSftpTab, sftpTabs])
 
   const handleAuthCancelled = useCallback((sessionId: string) => {
-    const now = Date.now()
     useTerminalStore.getState().destroySession(sessionId)
-    setSessions((current) => current.map((session) => (
-      session.id === sessionId
-        ? { ...createConfigSession(connectionConfigName, sessionId), lastActivity: now }
-        : session
-    )))
-    updateSessionActivity(sessionId, now)
-  }, [connectionConfigName, setSessions, updateSessionActivity])
+    handleCloseSession(sessionId)
+  }, [handleCloseSession])
 
   const handleToggleAiAssistant = useCallback(() => {
     setAiAssistantMounted(true)
@@ -765,10 +702,11 @@ function App() {
                 serverApi={serverApi}
                 onOpenChange={setSftpPickerOpen}
                 onSelect={handleCreateSftpTabFromServer}
+          currentServerId={sessions.find(session => session.id === activeSessionId)?.serverId}
+          openedServerIds={sftpTabs.map(tab => String(tab.server.id))}
               />
               <TerminalComponent
                 sessions={visibleTerminalSessions}
-                onNewSession={handleNewSession}
                 extraSessions={sftpTabSessions}
                 extraNewSessionActions={[{
                   id: "new-desktop-sftp-session",
@@ -778,7 +716,12 @@ function App() {
                   onCreate: handleOpenSftpPicker,
                 }]}
                 renderExtraSessionContent={renderSftpTabContent}
-                onCloseExtraSession={handleCloseSftpTab}
+                onOpenSftpSession={async (session, path) => {
+              if (!session.serverId) return
+              try { handleCreateSftpTabFromServer(await serverApi.getById(session.serverId), path ?? "~") }
+              catch { toast.error(tTerminal("sftpPickerFailed")) }
+            }}
+            onCloseExtraSession={handleCloseSftpTab}
                 onReorderExtraSessions={handleReorderSftpTabs}
                 externalActiveExtraSessionId={activeSftpTabId}
                 onActiveExtraSessionChange={setActiveSftpTabId}
@@ -790,7 +733,7 @@ function App() {
                 onCloseAll={handleCloseAll}
                 onTogglePin={handleTogglePin}
                 onReorderSessions={handleReorder}
-                onStartConnectionFromConfig={handleStartConnectionFromConfig}
+                onStartConnection={handleStartConnection}
                 onAuthCancelled={handleAuthCancelled}
                 externalActiveSessionId={activeSessionId}
                 onActiveSessionChange={setActiveSessionId}

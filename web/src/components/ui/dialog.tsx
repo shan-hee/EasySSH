@@ -56,6 +56,7 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  dismissOnEscape = false,
   onEscapeKeyDown,
   onInteractOutside,
   onPointerDownOutside,
@@ -63,6 +64,7 @@ function DialogContent({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  dismissOnEscape?: boolean
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
@@ -77,7 +79,7 @@ function DialogContent({
           onOpenAutoFocus={onOpenAutoFocus}
           onEscapeKeyDown={(event) => {
             onEscapeKeyDown?.(event)
-            event.preventDefault()
+            if (!dismissOnEscape) event.preventDefault()
           }}
           onInteractOutside={(event) => {
             onInteractOutside?.(event)

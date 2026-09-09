@@ -1,3 +1,4 @@
+import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 /**
  * 单个页签的完整内容组件
  * 每个 TabsContent 渲染一个独立的 TabTerminalContent
@@ -11,7 +12,6 @@ import { Button } from '@/components/ui/button'
 import { FolderOpen, Activity, Bot } from 'lucide-react'
 import { NetworkLatencyPopover } from './network-latency-popover'
 import { WebTerminal } from './web-terminal'
-import { ServerConnectionConfigs, type ServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
 import {
   ConnectionLoader,
   type ConnectionLoaderOutcome,
@@ -32,7 +32,6 @@ import {
   buildTerminalCompletionProviderFlags,
   type TerminalSettings,
 } from './terminal-settings'
-import type { Server } from "@/lib/server-types"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
 import type { TerminalInputApi } from "./use-terminal-container-api"
@@ -124,20 +123,16 @@ const getConnectionLoaderOutcome = (
 interface TabTerminalContentProps {
   session: TerminalSession
   isActive: boolean
+  keyboardActive?: boolean
   settings: TerminalSettings
   chrome?: "full" | "toolbar" | "content"
   surface?: "normal" | "transparent"
   effectiveIsLoading: boolean
   loaderState: "entering" | "loading" | "exiting"
   onAnimationComplete: (sessionId: string) => void
-  isFullscreen: boolean
   onCommand: (sessionId: string, command: string) => void
   onConnectionPhaseChange?: (sessionId: string, phase: TerminalConnectionPhase) => void
   onAuthCancelled?: (sessionId: string) => void
-  onToggleFullscreen: () => void
-  onStartConnectionFromConfig: (sessionId: string, server: Server) => void
-  serverApi?: ServerConnectionConfigsApi
-  serverConfigsReady?: boolean
   aiAssistantAdapters?: AIAssistantWorkspaceAdapters
   onInternalBackHandlerChange?: (
     sessionId: string,
@@ -155,20 +150,16 @@ interface TabTerminalContentProps {
 function TabTerminalContentComponent({
   session,
   isActive,
+  keyboardActive = isActive,
   settings,
   chrome = "full",
   surface = "normal",
   effectiveIsLoading,
   loaderState,
   onAnimationComplete,
-  isFullscreen,
   onCommand,
   onConnectionPhaseChange,
   onAuthCancelled,
-  onToggleFullscreen,
-  onStartConnectionFromConfig,
-  serverApi,
-  serverConfigsReady,
   aiAssistantAdapters,
   onInternalBackHandlerChange,
   onInternalBackAvailabilityChange,
@@ -240,9 +231,8 @@ function TabTerminalContentComponent({
   const isTerminalReady = session.connectionPhase === "ready"
   const hasReadyServer = isTerminalSession && isTerminalReady && !!session.serverId
   const canRenderInlinePanels = chrome === "full"
-  const canUseHeavyPanels = canRenderInlinePanels && isActive && hasReadyServer
-  const canMountFileManager = canUseSftpCapability && canUseHeavyPanels
-  const canUseFileManager = canUseSftpCapability && canUseHeavyPanels && isFileManagerOpen
+  const canMountFileManager = chrome !== "toolbar" && canUseSftpCapability && hasReadyServer
+  const canUseFileManager = canMountFileManager && isActive && isFileManagerOpen
   const isFileManagerSessionActive = canMountFileManager && (
     canUseFileManager || hasOpenedFileManager
   )
@@ -366,9 +356,6 @@ function TabTerminalContentComponent({
   const handleSessionAuthCancelled = React.useCallback(() => {
     onAuthCancelled?.(session.id)
   }, [onAuthCancelled, session.id])
-  const handleStartSessionConnectionFromConfig = React.useCallback((server: Server) => {
-    onStartConnectionFromConfig(session.id, server)
-  }, [onStartConnectionFromConfig, session.id])
   const handleInsertTerminalText = React.useCallback((text: string) => {
     terminalInputApiRef.current?.insertText(text)
   }, [])
@@ -384,7 +371,7 @@ function TabTerminalContentComponent({
     )
   }
 
-  // 首次打开时才建立 SFTP 会话；关闭面板后保留到当前终端失活，以保证收起动画内容稳定。
+  // 首次打开才加载；切换页签、收起面板和调整分屏时保留目录与编辑器。
   const sftpSession = useSftpSession(
     isFileManagerSessionActive && session.serverId
       ? session.serverId
@@ -525,7 +512,6 @@ function TabTerminalContentComponent({
   const shouldRenderSurface = surface !== "transparent"
 
   const canHandleInternalBack = isActive && (
-    isFullscreen ||
     canUseFileManager ||
     canUseAi ||
     canUseMobileMonitor
@@ -533,11 +519,6 @@ function TabTerminalContentComponent({
   const handleInternalBack = React.useCallback(async () => {
     if (!isActive) {
       return false
-    }
-
-    if (isFullscreen) {
-      onToggleFullscreen()
-      return true
     }
 
     if (canUseFileManager) {
@@ -568,8 +549,6 @@ function TabTerminalContentComponent({
     canUseFileManager,
     canUseMobileMonitor,
     isActive,
-    isFullscreen,
-    onToggleFullscreen,
     session.id,
     setTabState,
     sftpInternalBackHandler,
@@ -652,6 +631,7 @@ function TabTerminalContentComponent({
         )}>
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {shouldReserveToolbar && (
+            <SessionWorkspaceToolbar kind="terminal">
             <div
               className="flex min-h-10 items-stretch text-sm text-foreground transition-colors"
             >
@@ -716,6 +696,7 @@ function TabTerminalContentComponent({
                 </div>
               )}
             </div>
+            </SessionWorkspaceToolbar>
           )}
 
           {/* 内容区域：监控面板 + 终端 */}
@@ -744,14 +725,7 @@ function TabTerminalContentComponent({
 
             {/* 终端区域 */}
             <div className="flex-1 min-w-0 relative overflow-hidden">
-              {session.type === 'config' ? (
-                <ServerConnectionConfigs
-                  key={`terminal-config-${session.id}`}
-                  onConnect={handleStartSessionConnectionFromConfig}
-                  serverApi={serverApi}
-                  ready={serverConfigsReady}
-                />
-              ) : isTerminalSession ? (
+              {isTerminalSession ? (
                 <WebTerminal
                   key={`web-terminal-${session.id}`}
                   sessionId={session.id}
@@ -781,7 +755,7 @@ function TabTerminalContentComponent({
                   completionFetchOptions={completionFetchOptions}
                   pathCompletionCwd={pathCompletionCwd}
                   enableWebgl={enableTerminalWebgl}
-                  transparentBackground={surface === "transparent" || hasBackgroundImage}
+                  transparentBackground={hasBackgroundImage}
                   fontWeight={hasBackgroundImage && settings.backgroundTextEnhance ? "bold" : "400"}
                   fontWeightBold={hasBackgroundImage && settings.backgroundTextEnhance ? "bold" : "600"}
                 />
@@ -819,8 +793,9 @@ function TabTerminalContentComponent({
           )}
           </div>
 
-          {canMountFileManager && (
+          {isFileManagerSessionActive && (
             <FileManagerPanel
+              keyboardActive={keyboardActive}
               isOpen={canUseFileManager}
               onClose={() => setTabState(session.id, { isFileManagerOpen: false })}
               serverId={session.serverId ?? ''}

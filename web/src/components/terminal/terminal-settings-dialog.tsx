@@ -1,5 +1,5 @@
 
-import { memo, useState, useEffect, useRef } from "react"
+import { memo, useState, useEffect, useMemo, useRef } from "react"
 import {
   Dialog,
   DialogContent,
@@ -61,7 +61,7 @@ export const TerminalSettingsDialog = memo(function TerminalSettingsDialog({
   onSettingsChange,
 }: TerminalSettingsDialogProps) {
   const { t } = useTranslation("terminalSettings")
-  const { mode: effectiveAppTheme } = useEffectiveThemeMode()
+  const { mode: effectiveAppTheme, version: effectiveThemeVersion } = useEffectiveThemeMode()
   const [localSettings, setLocalSettings] = useState(() => normalizeTerminalSettings(settings))
   const deferredApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleRef = useRef<HTMLHeadingElement | null>(null)
@@ -72,7 +72,11 @@ export const TerminalSettingsDialog = memo(function TerminalSettingsDialog({
     onDialogOpenChange(nextOpen)
   }
 
-  const previewTheme = getTerminalTheme(localSettings.theme, effectiveAppTheme)
+  const previewTheme = useMemo(() => {
+    // 隐藏设置弹窗也会随工作空间更新；主题未变时避免重复强制计算页面样式。
+    void effectiveThemeVersion
+    return getTerminalTheme(localSettings.theme, effectiveAppTheme)
+  }, [localSettings.theme, effectiveAppTheme, effectiveThemeVersion])
   const previewBaseBackgroundColor = previewTheme.background
   const previewBackgroundImageLayerOpacity = localSettings.backgroundImageOpacity / 100
 

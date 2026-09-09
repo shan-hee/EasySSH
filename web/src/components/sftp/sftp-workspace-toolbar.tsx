@@ -1,3 +1,5 @@
+import { useContext } from "react"
+import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
 import {
   startTransition,
@@ -85,6 +87,7 @@ export function SftpWorkspaceToolbar({
   onDisconnect,
 }: SftpWorkspaceToolbarProps) {
   const tSftp = useWorkspaceSftpTranslator()
+  const workspaceToolbar = useContext(SessionWorkspaceToolbarContext)
   const workspace = useOptionalSshWorkspace()
   const showActivityLogPane = workspace?.layout !== "desktop"
   const pathScrollRef = useRef<HTMLDivElement | null>(null)
@@ -458,7 +461,7 @@ export function SftpWorkspaceToolbar({
           </Button>
         )}
 
-        <Button
+        {workspaceToolbar?.kind !== "sftp" && <Button
           variant="ghost"
           size="icon"
           className="h-7 w-7 rounded-md transition-all duration-200 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -466,7 +469,7 @@ export function SftpWorkspaceToolbar({
           title={tSftp("close")}
         >
           <X className="h-3.5 w-3.5" />
-        </Button>
+        </Button>}
       </div>
     </div>
   )

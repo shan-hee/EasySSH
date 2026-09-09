@@ -1,5 +1,7 @@
+import type { RegisterSftpDragItem } from "./use-sftp-drag-drop-controller"
 
-import type { DragEvent, FocusEvent, KeyboardEvent, MouseEvent, RefObject } from "react"
+import type { FocusEvent, KeyboardEvent, MouseEvent, RefObject } from "react"
+import { useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import Folder from "@/components/Folder"
@@ -12,6 +14,7 @@ import type { SftpFileItem } from "@/lib/sftp-file-utils"
 export type SftpFileGridItemFile = Pick<SftpFileItem, "name" | "type" | "size" | "modified" | "permissions">
 
 export interface SftpFileGridItemProps {
+  registerDragItem: RegisterSftpDragItem
   file: SftpFileGridItemFile
   isSelected: boolean
   isEditing: boolean
@@ -24,11 +27,6 @@ export interface SftpFileGridItemProps {
   onFinishRename: () => void
   onCancelRename: () => void
   onRenameBlur: (event: FocusEvent<HTMLInputElement>) => void
-  onDragStart: (event: DragEvent<HTMLDivElement>, fileName: string) => void
-  onDragEnd: () => void
-  onDragOver: (event: DragEvent<HTMLDivElement>, fileName: string, fileType: "file" | "directory") => void
-  onDragLeave: () => void
-  onDrop: (event: DragEvent<HTMLDivElement>, fileName: string, fileType: "file" | "directory") => void
   onSelect: (fileName: string, event: MouseEvent<HTMLDivElement>) => void
   onDoubleClick: (fileName: string, fileType: "file" | "directory") => void
   onOpenContextMenu: (fileName: string, fileType: "file" | "directory") => void
@@ -39,6 +37,7 @@ export interface SftpFileGridItemProps {
 }
 
 export function SftpFileGridItem({
+  registerDragItem,
   file,
   isSelected,
   isEditing,
@@ -51,11 +50,6 @@ export function SftpFileGridItem({
   onFinishRename,
   onCancelRename,
   onRenameBlur,
-  onDragStart,
-  onDragEnd,
-  onDragOver,
-  onDragLeave,
-  onDrop,
   onSelect,
   onDoubleClick,
   onOpenContextMenu,
@@ -64,6 +58,11 @@ export function SftpFileGridItem({
   enableBackgroundDownload = false,
   onContextAction,
 }: SftpFileGridItemProps) {
+  const dragRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (dragRef.current && !isEditing) return registerDragItem(dragRef.current, file.name)
+  }, [registerDragItem, file.name, isEditing])
+
   const handleRenameKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
       onFinishRename()
@@ -76,15 +75,6 @@ export function SftpFileGridItem({
 
   const gridItem = (
     <div
-      draggable={!isEditing}
-      onDragStart={(event) => onDragStart(event, file.name)}
-      onDragEnd={onDragEnd}
-      onDragOver={(event) => onDragOver(event, file.name, file.type)}
-      onDragLeave={(event) => {
-        event.preventDefault()
-        onDragLeave()
-      }}
-      onDrop={(event) => onDrop(event, file.name, file.type)}
       onMouseDown={(event) => {
         if (isEditing) {
           event.stopPropagation()
@@ -98,6 +88,7 @@ export function SftpFileGridItem({
           onDoubleClick(file.name, file.type)
         }
       }}
+      ref={dragRef}
       data-sftp-file-item={file.type}
       data-selected={isSelected || (isDraggedOver && file.type === "directory") ? "true" : undefined}
       className={cn(

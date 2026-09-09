@@ -1,3 +1,4 @@
+import { PageLoading } from "@/components/page-loading"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { createPortal } from "react-dom"
@@ -17,7 +18,6 @@ import {
  Search,
  Plus,
  Server as ServerIcon,
- Loader2,
  Edit,
  Copy,
  Trash2,
@@ -75,6 +75,7 @@ interface ServerConnectionConfigsProps {
 }
 
 export interface ServerConnectionConfigsApi {
+ getById: typeof serversApi.getById
  list: typeof serversApi.list
  create: typeof serversApi.create
  update: typeof serversApi.update
@@ -818,12 +819,7 @@ export function ServerConnectionConfigs({
 
  {/* 加载状态 */}
  {loading && (
- <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 py-12">
- <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
- <p className="text-sm text-muted-foreground">
-   {t("loadingList")}
- </p>
- </div>
+ <PageLoading delay={0} className="min-h-0 py-12" label={t("loadingList")} />
  )}
 
  {/* 服务器列表 */}
