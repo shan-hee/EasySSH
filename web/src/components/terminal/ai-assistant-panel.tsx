@@ -30,7 +30,7 @@ import { AgentComposer, AgentComposerInput, AgentComposerSubmit, AgentComposerTo
 import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
 import { modelSelectorTriggerVariants } from "@/components/assistant-ui/elements/model-selector"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useAgentComposerDraft } from "@/hooks/use-agent-composer-draft"
+import { useSetAgentComposerDraft } from "@/hooks/use-agent-composer-draft"
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAISessionHistory } from "@/hooks/use-ai-session-history"
 import {
@@ -201,7 +201,7 @@ export function AiAssistantPanel({
   const renameSession = adapters?.renameAISession ?? renameAISessionAPI
   const deleteSession = adapters?.deleteAISession ?? deleteAISessionAPI
 
-  const [input, setInput] = useAgentComposerDraft(agentSession.runtime)
+  const setInput = useSetAgentComposerDraft(agentSession.runtime)
   const attachmentLimitNotice = useCallback(() => {
     toast.info(tAI("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
   }, [tAI])
@@ -349,7 +349,6 @@ export function AiAssistantPanel({
 
   const resolvedModel = model || "auto"
   const canSend =
-    (!!input.trim() || attachments.length > 0 || contextReferences.length > 0) &&
     isConfigured &&
     !isConfigLoading &&
     !sessionCreating && !attachmentsLoading &&
@@ -726,7 +725,7 @@ export function AiAssistantPanel({
     void addAttachmentFiles(files)
   }, [addAttachmentFiles])
 
-  const handleSubmit = useCallback(async (messageText = input) => {
+  const handleSubmit = useCallback(async (messageText: string) => {
     const normalizedInput = messageText.trim()
     if ((!normalizedInput && attachments.length === 0 && contextReferences.length === 0) || !isConfigured || isConfigLoading || sessionCreatingRef.current) {
       return
@@ -813,7 +812,6 @@ export function AiAssistantPanel({
     detachAttachments,
     discardSessionIfEmpty,
     forgetHistorySession,
-    input,
     isConfigLoading,
     isConfigured,
     isChatRequestActive,
@@ -997,6 +995,7 @@ export function AiAssistantPanel({
             onRemove={(referenceId) => setContextReferences((current) => current.filter((reference) => reference.id !== referenceId))}
           />
             <AgentComposerInput
+              runtime={agentSession.runtime}
               ref={inputRef}
               onPaste={handleAttachmentPaste}
               placeholder={
@@ -1101,7 +1100,7 @@ export function AiAssistantPanel({
 
               <div className="ml-auto flex items-center gap-2">
                 <AgentComposerDictation disabled={isConfigLoading || !isConfigured || isAssistantActive} />
-                <AgentComposerSubmit running={isAssistantActive} disabled={!canSend} onCancel={cancelSession} />
+                <AgentComposerSubmit running={isAssistantActive} disabled={!canSend} hasContent={attachments.length > 0 || contextReferences.length > 0} onCancel={cancelSession} />
               </div>
             </AgentComposerToolbar>
           </AgentComposer>

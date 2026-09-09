@@ -55,15 +55,16 @@ export function AISessionSidebar({
       >
         <Search className="size-4" />
       </TooltipIconButton>
-      <div className="flex shrink-0 items-center gap-1 group-data-[collapsible=icon]:flex-col">
+      <div className="flex w-full shrink-0 items-center gap-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-start">
         <SidebarMenuButton
           tooltip={t("newSession")}
+          aria-label={t("newSession")}
           disabled={createDisabled}
           onClick={() => void onCreate()}
-          className="h-9 flex-1 border border-sidebar-border group-data-[collapsible=icon]:flex-none"
+          className="h-9 flex-1 border border-sidebar-border group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center"
         >
           {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-          <span>{t("newSession")}</span>
+          <span className="group-data-[collapsible=icon]:hidden">{t("newSession")}</span>
         </SidebarMenuButton>
         {configuration}
       </div>

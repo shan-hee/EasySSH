@@ -1,10 +1,10 @@
-import { ComposerPrimitive, useAui } from "@assistant-ui/react"
+import { ComposerPrimitive, useAui, useAuiState, type AssistantRuntime } from "@assistant-ui/react"
 import { type ComponentProps } from "react"
-import { Composer, ComposerInput } from "@/components/assistant-ui/elements/composer.aui"
+import { Composer, ComposerInput, ComposerSubmit } from "@/components/assistant-ui/elements/composer.aui"
+import { useAgentComposerText } from "@/hooks/use-agent-composer-draft"
 export {
   ComposerToolbar as AgentComposerToolbar,
   ComposerActions as AgentComposerTools,
-  ComposerSubmit as AgentComposerSubmit,
   ComposerDictation as AgentComposerDictation,
   ComposerAttachButton as AgentComposerAttachButton
 } from "@/components/assistant-ui/elements/composer.aui"
@@ -37,10 +37,14 @@ export function AgentComposer({
   )
 }
 
-export function AgentComposerInput({ className, ...props }: ComponentProps<typeof ComposerPrimitive.Input>) {
+export function AgentComposerInput({ runtime, className, ...props }: ComponentProps<typeof ComposerPrimitive.Input> & {
+  runtime: AssistantRuntime
+}) {
+  const text = useAgentComposerText(runtime)
   return (
     <ComposerInput
       {...props}
+      value={text}
       name="message"
       className={cn(
         "block w-full resize-none border-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
@@ -50,4 +54,16 @@ export function AgentComposerInput({ className, ...props }: ComponentProps<typeo
       addAttachmentOnPaste={false}
     />
   )
+}
+
+export function AgentComposerSubmit({
+  hasContent = false,
+  disabled = false,
+  ...props
+}: Omit<ComponentProps<typeof ComposerSubmit>, "disabled"> & {
+  hasContent?: boolean
+  disabled?: boolean
+}) {
+  const hasText = useAuiState((s) => Boolean(s.composer.text.trim()))
+  return <ComposerSubmit {...props} disabled={disabled || (!hasText && !hasContent)} />
 }

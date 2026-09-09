@@ -30,7 +30,7 @@ import { ComposerTriggerPopover } from "@/components/assistant-ui/elements/compo
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { AgentSessionAdapter } from "@/hooks/use-agent-session"
 import type { AIConfigAdapter } from "@/hooks/use-ai-config"
-import { useAgentComposerDraft } from "@/hooks/use-agent-composer-draft"
+import { useSetAgentComposerDraft } from "@/hooks/use-agent-composer-draft"
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useAISessionHistory } from "@/hooks/use-ai-session-history"
@@ -195,7 +195,7 @@ export function AIAssistantWorkspaceView({
     discardSessionIfEmpty,
   } = agentSession
 
-  const [draft, setDraft] = useAgentComposerDraft(agentSession.runtime)
+  const setDraft = useSetAgentComposerDraft(agentSession.runtime)
   const [availableServers, setAvailableServers] = useState<ManagedServer[]>([])
   const [serversLoading, setServersLoading] = useState(false)
 
@@ -308,7 +308,6 @@ export function AIAssistantWorkspaceView({
 
   const hasTimeline = uiMessages.length > 0
   const createSessionDisabled = !ready || isLoading || !isConfigured || sessionCreating
-  const canAttemptSubmit = Boolean(draft.trim()) || attachments.length > 0
 
   const buildMessageContext = useCallback(
     (messageText: string) => buildAgentMessageContext({
@@ -330,7 +329,7 @@ export function AIAssistantWorkspaceView({
     syncHistorySession(session, t("newSession"))
   }, [session, syncHistorySession, t])
 
-  const submit = async (messageText = draft) => {
+  const submit = async (messageText: string) => {
     const normalizedDraft = messageText.trim()
     const submittedServers = getMentionedServers(normalizedDraft, availableServers)
     const submittedScope = workspaceScopeFromMentionedServers(submittedServers)
@@ -748,6 +747,7 @@ export function AIAssistantWorkspaceView({
                     t={t}
                   />
                   <AgentComposerInput
+                    runtime={agentSession.runtime}
                     ref={inputRef}
                     onPaste={handleAttachmentPaste}
                     placeholder={hasTimeline ? t("composerPlaceholder") : t("inputPlaceholderWithMention")}
@@ -815,7 +815,7 @@ export function AIAssistantWorkspaceView({
 
                     <div className="ml-auto flex items-center gap-2">
                       <AgentComposerDictation disabled={isConfigChecking || !isConfigured || isAssistantActive} />
-                      <AgentComposerSubmit running={isAssistantActive} disabled={!canAttemptSubmit} onCancel={cancelSession} />
+                      <AgentComposerSubmit running={isAssistantActive} hasContent={attachments.length > 0} onCancel={cancelSession} />
                     </div>
                   </AgentComposerToolbar>
                 </AgentComposer>
