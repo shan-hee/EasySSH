@@ -25,11 +25,11 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSystemConfig } from "@/contexts/system-config-context"
-import { AppLoading } from "@/components/app-loading"
+import { PageLoading } from "@/components/page-loading"
 import { rolesListQueryOptions } from "@/lib/dashboard-query-options"
 
 function SectionLoading() {
-  return <AppLoading className="min-h-24 bg-transparent" />
+  return <PageLoading className="min-h-24 bg-transparent" />
 }
 
 function RegistrationSection() {

@@ -15,7 +15,7 @@ interface AppLoadingProps extends ComponentProps<"div"> {
  *
  * 默认延迟一小段时间再显示，避免快速路由或缓存命中时闪一下加载状态。
  */
-export function AppLoading({
+export function AppLoadingScreen({
   className,
   delay = 160,
   label = "Loading",
@@ -25,7 +25,7 @@ export function AppLoading({
 
   return (
     <div
-      className={cn("flex min-h-[16rem] flex-1 items-center justify-center bg-background", className)}
+      className={cn("flex min-h-svh flex-1 items-center justify-center bg-background", className)}
       role="status"
       aria-busy="true"
       aria-label={label}
@@ -44,8 +44,4 @@ export function AppLoading({
       ) : null}
     </div>
   )
-}
-
-export function AppLoadingScreen({ className, ...props }: AppLoadingProps) {
-  return <AppLoading className={cn("min-h-svh", className)} {...props} />
 }

@@ -1,4 +1,4 @@
-import { Spinner } from "@/components/ui/spinner"
+import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export interface LoadingSpinnerProps {
@@ -34,7 +34,7 @@ const sizeMap = {
 /**
  * LoadingSpinner - 统一的转圈加载指示器
  *
- * 基于 shadcn/ui Spinner 组件封装,提供统一的尺寸和样式
+ * 使用连接配置列表的圆环样式，统一页面和内容区的加载提示
  *
  * @example
  * // 按钮内使用
@@ -57,12 +57,12 @@ export function LoadingSpinner({
   labelClassName,
 }: LoadingSpinnerProps) {
   return (
-    <div className={cn("flex flex-col items-center gap-3", className)}>
-      <Spinner className={cn(sizeMap[size], "text-muted-foreground")} />
+    <div className={cn("flex flex-col items-center gap-4", className)}>
+      <Loader2 aria-hidden="true" className={cn(sizeMap[size], "animate-spin text-muted-foreground")} />
       {label && (
         <p
           className={cn(
-            "text-sm text-muted-foreground animate-pulse",
+            "text-sm text-muted-foreground",
             labelClassName
           )}
         >

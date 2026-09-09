@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ComponentType, type LazyExoticComponent, type ReactNode } from "react"
 import { Navigate, Route, Routes } from "react-router-dom"
-import { AppLoading, AppLoadingScreen } from "@/components/app-loading"
+import { AppLoadingScreen } from "@/components/app-loading"
+import { PageLoading } from "@/components/page-loading"
 import AuthTransition from "@/layouts/auth-transition"
 import DashboardLayout from "@/layouts/dashboard-layout"
 import HomePage from "@/pages/home-page"
@@ -21,7 +22,7 @@ function RouteFallback() {
 }
 
 function DashboardRouteFallback() {
-  return <AppLoading className="min-h-[520px] bg-transparent" />
+  return <PageLoading className="min-h-[520px] bg-transparent" />
 }
 
 function lazyElement(
@@ -47,9 +48,9 @@ export function AppRouter() {
       <Route path="/auth/google/callback" element={lazyElement(GoogleAuthCallbackPage)} />
 
       <Route element={lazyElement(AuthLayout)}>
-        <Route path="/login" element={<AuthTransition>{lazyElement(LoginPage, <AppLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
-        <Route path="/register" element={<AuthTransition>{lazyElement(RegisterPage, <AppLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
-        <Route path="/forgot-password" element={<AuthTransition>{lazyElement(ForgotPasswordPage, <AppLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
+        <Route path="/login" element={<AuthTransition>{lazyElement(LoginPage, <PageLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
+        <Route path="/register" element={<AuthTransition>{lazyElement(RegisterPage, <PageLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
+        <Route path="/forgot-password" element={<AuthTransition>{lazyElement(ForgotPasswordPage, <PageLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
       </Route>
 
       <Route
