@@ -1,5 +1,9 @@
+import { TERMINAL_BACKGROUND_TINT_OPACITY } from "./terminal-settings"
+import { Search } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { TerminalSearch, TerminalPasteConfirmation } from "./terminal-input-overlays"
 
-import { useCallback, useEffect, useMemo, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ConnectionLoader } from "./connection-loader"
 import { TerminalAuthChallengeDialog } from "./terminal-auth-challenge-dialog"
@@ -52,6 +56,13 @@ export interface WebTerminalProps {
   theme?: TerminalThemeName
   fontSize?: number
   fontFamily?: string
+  lineHeight?: number
+  autoReconnect?: boolean
+  multiLinePasteWarning?: boolean
+  findShortcut?: string
+  zoomInShortcut?: string
+  zoomOutShortcut?: string
+  zoomResetShortcut?: string
   cursorStyle?: TerminalCursorStyle
   cursorBlink?: boolean
   scrollback?: number
@@ -110,14 +121,21 @@ export function WebTerminal({
   theme = "default",
   fontSize = 14,
   fontFamily = "JetBrains Mono",
-  cursorStyle = "bar",
+  lineHeight = 1.2,
+  autoReconnect = true,
+  multiLinePasteWarning = true,
+  findShortcut,
+  zoomInShortcut,
+  zoomOutShortcut,
+  zoomResetShortcut,
+  cursorStyle = "block",
   cursorBlink = true,
-  scrollback = 1000,
+  scrollback = 5000,
   rightClickPaste = true,
   copyOnSelect = true,
   copyShortcut = "Ctrl+Shift+C",
   pasteShortcut = "Ctrl+Shift+V",
-  clearShortcut = "Ctrl+L",
+  clearShortcut = "Ctrl+Shift+K",
   completionConfig,
   completionProviderEnabled,
   completionFetchOptions,
@@ -128,6 +146,12 @@ export function WebTerminal({
   fontWeight = "400",
   fontWeightBold = "600",
 }: WebTerminalProps) {
+  const [zoomOffset, setZoomOffset] = useState(0)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const effectiveFontSize = Math.max(8, Math.min(40, fontSize + zoomOffset))
+  useEffect(() => { setZoomOffset(0) }, [fontSize])
+  useEffect(() => { if (!isActive) setSearchOpen(false) }, [isActive])
+  const { t: tSettings } = useTranslation("terminalSettings")
   const { t: tTerminal } = useTranslation("terminal")
   const workspace = useOptionalSshWorkspace()
   const workspaceTerminalApi = workspace?.adapters.apiClient?.terminal
@@ -157,7 +181,8 @@ export function WebTerminal({
     sessionId,
     {
       theme: terminalRendererTheme,
-      fontSize,
+      fontSize: effectiveFontSize,
+      lineHeight,
       fontFamily: terminalFontFamily,
       cursorStyle,
       cursorBlink,
@@ -249,10 +274,11 @@ export function WebTerminal({
     onCommand,
   })
 
-  const { resize } = useTerminalConnectionController({
+  const { resize, isTerminalReady: canSendInput } = useTerminalConnectionController({
     sessionId,
     serverId,
     shouldConnect,
+    autoReconnect,
     isActive,
     terminal,
     tTerminal,
@@ -273,7 +299,8 @@ export function WebTerminal({
     terminalRendererTheme,
     allowTransparency: allowTerminalTransparency,
     themeModeVersion,
-    fontSize,
+    fontSize: effectiveFontSize,
+    lineHeight,
     fontFamily: terminalFontFamily,
     fontWeight,
     fontWeightBold,
@@ -305,7 +332,16 @@ export function WebTerminal({
     onInputApiChange,
   })
 
-  useTerminalInputActions({
+  const inputActions = useTerminalInputActions({
+    canSendInput,
+    isActive,
+    multiLinePasteWarning,
+    findShortcut,
+    zoomInShortcut,
+    zoomOutShortcut,
+    zoomResetShortcut,
+    onFind: () => { terminalCompletion.closeCompletion(); setSearchOpen(true) },
+    onZoom: (direction) => setZoomOffset(current => direction === "reset" ? 0 : Math.max(8 - fontSize, Math.min(40 - fontSize, current + (direction === "in" ? 1 : -1)))),
     terminal,
     terminalReady,
     containerRef,
@@ -332,11 +368,16 @@ export function WebTerminal({
       className="h-full w-full min-w-0 relative overflow-hidden"
       data-terminal-transparent-background={allowTerminalTransparency ? "true" : "false"}
     >
+      {transparentBackground && <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ backgroundColor: terminalTheme.background, opacity: TERMINAL_BACKGROUND_TINT_OPACITY }} />}
       <div
         ref={containerRef}
-        className="h-full w-full min-w-0 terminal-container"
+        className="relative h-full w-full min-w-0 terminal-container"
         style={{ backgroundColor: terminalRendererTheme.background }}
       />
+
+      {isActive && !searchOpen && <Button size="icon" variant="ghost" className="absolute right-2 top-2 z-20 h-7 w-7 bg-background/70" aria-label={tSettings("findShortcut")} title={tSettings("findShortcut")} onClick={() => { terminalCompletion.closeCompletion(); setSearchOpen(true) }}><Search className="h-4 w-4" /></Button>}
+      <TerminalSearch terminal={terminal} open={searchOpen && isActive} onClose={() => setSearchOpen(false)} />
+      <TerminalPasteConfirmation text={inputActions.pendingPaste} onFinish={inputActions.finishPaste} />
 
       {terminalCompletion.completionState.visible && terminal && (
         <TerminalThemeProvider theme={terminalTheme}>

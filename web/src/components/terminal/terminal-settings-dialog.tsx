@@ -1,5 +1,6 @@
-
-import { memo, useState, useEffect, useMemo, useRef } from "react"
+import { memo, useEffect, useRef, useState, type ReactNode } from "react"
+import { useTranslation } from "react-i18next"
+import { Download, Upload, Settings, ChevronDown } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -7,11 +8,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -20,25 +29,17 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
-import {
-  Settings,
-  Terminal,
-  Palette,
-  Keyboard,
-  Clock,
-  Layers,
-  Activity,
-  Command,
-  Download,
-  Upload,
-} from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "@/components/ui/sonner"
 import { KeyboardShortcutInput } from "./keyboard-shortcut-input"
-import { useTranslation } from "react-i18next"
-import { getTerminalTheme } from "./terminal-themes"
-import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
+import { TerminalSettingsPreview } from "./terminal-settings-preview"
+import { TERMINAL_SHORTCUT_KEYS, normalizeShortcut } from "./terminal-shortcuts"
 import {
   DEFAULT_TERMINAL_SETTINGS,
+  MAX_TERMINAL_BACKGROUND_BYTES,
+  TERMINAL_FONT_FAMILIES,
+  isTerminalBackgroundImage,
   normalizeTerminalSettings,
   parseTerminalSettingsImport,
   serializeTerminalSettingsExport,
@@ -47,720 +48,556 @@ import {
 
 export type { TerminalSettings } from "./terminal-settings"
 
+function SettingRow({
+  id,
+  label,
+  help,
+  children,
+}: {
+  id: string
+  label: string
+  help?: string
+  children: ReactNode
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0 space-y-1">
+        <Label htmlFor={id}>{label}</Label>
+        {help && <p className="text-xs text-muted-foreground">{help}</p>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
 interface TerminalSettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   settings: TerminalSettings
+  inactiveReminderLimit?: number
   onSettingsChange: (settings: TerminalSettings) => void
 }
 
 export const TerminalSettingsDialog = memo(function TerminalSettingsDialog({
   open,
-  onOpenChange: onDialogOpenChange,
+  onOpenChange,
   settings,
+  inactiveReminderLimit = 1440,
   onSettingsChange,
 }: TerminalSettingsDialogProps) {
   const { t } = useTranslation("terminalSettings")
-  const { mode: effectiveAppTheme, version: effectiveThemeVersion } = useEffectiveThemeMode()
-  const [localSettings, setLocalSettings] = useState(() => normalizeTerminalSettings(settings))
-  const deferredApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const titleRef = useRef<HTMLHeadingElement | null>(null)
-  const [activeTab, setActiveTab] = useState("terminal")
-  const importInputRef = useRef<HTMLInputElement | null>(null)
-  const onOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) setActiveTab("terminal")
-    onDialogOpenChange(nextOpen)
-  }
-
-  const previewTheme = useMemo(() => {
-    // 隐藏设置弹窗也会随工作空间更新；主题未变时避免重复强制计算页面样式。
-    void effectiveThemeVersion
-    return getTerminalTheme(localSettings.theme, effectiveAppTheme)
-  }, [localSettings.theme, effectiveAppTheme, effectiveThemeVersion])
-  const previewBaseBackgroundColor = previewTheme.background
-  const previewBackgroundImageLayerOpacity = localSettings.backgroundImageOpacity / 100
-
-  // 当传入的 settings 变化时，同步到 localSettings
+  const [local, setLocal] = useState(settings)
+  const [activeTab, setActiveTab] = useState("appearance")
+  const [backgroundUrl, setBackgroundUrl] = useState("")
+  const [pending, setPending] = useState<{ settings: TerminalSettings; imported: boolean } | null>(
+    null,
+  )
+  const importRef = useRef<HTMLInputElement>(null)
+  const imageRef = useRef<HTMLInputElement>(null)
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const imageRequestRef = useRef(0)
   useEffect(() => {
-    const normalized = normalizeTerminalSettings(settings)
-    setLocalSettings(current => (Object.keys(normalized) as (keyof TerminalSettings)[]).every(
-      key => current[key] === normalized[key]
-    ) ? current : normalized)
-  }, [settings])
-
-  // 清理定时器
+    setLocal(settings)
+    setBackgroundUrl(settings.backgroundImage.startsWith("data:") ? "" : settings.backgroundImage)
+  }, [settings, open])
   useEffect(() => {
+    if (!open) {
+      setActiveTab("appearance")
+      imageRequestRef.current++
+      setPending(null)
+    }
+    const requests = imageRequestRef
     return () => {
-      if (deferredApplyTimerRef.current) {
-        clearTimeout(deferredApplyTimerRef.current)
+      requests.current++
+    }
+  }, [open])
+  const save = (next: TerminalSettings) => {
+    try {
+      onSettingsChange(
+        normalizeTerminalSettings({
+          ...next,
+          inactiveMinutes:
+            next.inactiveMinutes === 0 ? 0 : Math.min(next.inactiveMinutes, inactiveReminderLimit),
+        }),
+      )
+      return true
+    } catch {
+      setLocal(settings)
+      toast.error(t("saveFailed"))
+      return false
+    }
+  }
+  const update = <K extends keyof TerminalSettings>(key: K, value: TerminalSettings[K]) =>
+    save({ ...local, [key]: value })
+  const toggle = (
+    key:
+      | "cursorBlink"
+      | "copyOnSelect"
+      | "rightClickPaste"
+      | "multiLinePasteWarning"
+      | "autoReconnect"
+      | "completionUseHistory"
+      | "completionUseScripts"
+      | "completionUseRemotePaths",
+    label: string,
+    help?: string,
+  ) => (
+    <SettingRow id={key} label={t(label)} help={help ? t(help) : undefined}>
+      <Switch id={key} checked={local[key]} onCheckedChange={(value) => update(key, value)} />
+    </SettingRow>
+  )
+  const choice = <K extends keyof TerminalSettings>(
+    key: K,
+    label: string,
+    options: { value: string; label: string }[],
+    help?: string,
+  ) => (
+    <div className="space-y-2">
+      <Label htmlFor={key}>{t(label)}</Label>
+      <Select
+        value={String(local[key])}
+        onValueChange={(value) =>
+          update(
+            key,
+            (typeof local[key] === "number" ? Number(value) : value) as TerminalSettings[K],
+          )
+        }
+      >
+        <SelectTrigger id={key}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {help && <p className="text-xs text-muted-foreground">{t(help)}</p>}
+    </div>
+  )
+  const applyBackground = async (value: string) => {
+    const request = ++imageRequestRef.current
+    if (!isTerminalBackgroundImage(value)) {
+      toast.error(t("backgroundInvalid"))
+      return
+    }
+    if (value) {
+      const loaded = await new Promise<boolean>((resolve) => {
+        const image = new Image()
+        const finish = (ok: boolean) => {
+          clearTimeout(timer)
+          image.onload = null
+          image.onerror = null
+          resolve(ok)
+        }
+        const timer = window.setTimeout(() => finish(false), 10000)
+        image.onload = () => finish(true)
+        image.onerror = () => finish(false)
+        image.src = value
+      })
+      if (request !== imageRequestRef.current) return
+      if (!loaded) {
+        toast.error(t("backgroundInvalid"))
+        return
       }
     }
-  }, [])
-
-  const handleSave = () => {
-    // 清除待提交的延迟更新，确保以当前表单值立即生效
-    if (deferredApplyTimerRef.current) {
-      clearTimeout(deferredApplyTimerRef.current)
-      deferredApplyTimerRef.current = null
-    }
-    onSettingsChange(localSettings)
-    onOpenChange(false)
+    // Use the current settings to avoid overwriting edits made while the image was loading.
+    setBackgroundUrl(value.startsWith("data:") ? "" : value)
+    onBackgroundReadyRef.current(value)
   }
-
-  const handleReset = () => {
-    const resetSettings = DEFAULT_TERMINAL_SETTINGS
-    if (deferredApplyTimerRef.current) {
-      clearTimeout(deferredApplyTimerRef.current)
-      deferredApplyTimerRef.current = null
-    }
-    setLocalSettings(resetSettings)
-    onSettingsChange(resetSettings)
+  const onBackgroundReadyRef = useRef((value: string) => {
+    update("backgroundImage", value)
+  })
+  onBackgroundReadyRef.current = (value) => {
+    update("backgroundImage", value)
   }
-
-  const applyImportedSettings = (nextSettings: TerminalSettings) => {
-    if (deferredApplyTimerRef.current) {
-      clearTimeout(deferredApplyTimerRef.current)
-      deferredApplyTimerRef.current = null
-    }
-    setLocalSettings(nextSettings)
-    onSettingsChange(nextSettings)
-  }
-
-  const handleExport = () => {
-    const normalizedSettings = normalizeTerminalSettings(localSettings)
-    const content = serializeTerminalSettingsExport(normalizedSettings)
-    const blob = new Blob([content], { type: "application/json;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
+  const exportSettings = () => {
+    const url = URL.createObjectURL(
+      new Blob([serializeTerminalSettingsExport(settings)], {
+        type: "application/json;charset=utf-8",
+      }),
+    )
     const anchor = document.createElement("a")
-    const date = new Date().toISOString().slice(0, 10)
     anchor.href = url
-    anchor.download = `easyssh-terminal-settings-${date}.json`
-    document.body.appendChild(anchor)
+    anchor.download = `easyssh-terminal-settings-${new Date().toISOString().slice(0, 10)}.json`
     anchor.click()
-    anchor.remove()
-    URL.revokeObjectURL(url)
-    toast.success(t("exportSuccess"))
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
-
-  const handleImportClick = () => {
-    importInputRef.current?.click()
-  }
-
-  const handleImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ""
-    if (!file) return
-
-    try {
-      const content = await file.text()
-      const importedSettings = parseTerminalSettingsImport(content)
-      applyImportedSettings(importedSettings)
-      toast.success(t("importSuccess"))
-    } catch (error) {
-      console.error("Failed to import terminal settings:", error)
-      toast.error(t("importFailed"))
-    }
-  }
-
-  const updateSetting = <K extends keyof TerminalSettings>(
-    key: K,
-    value: TerminalSettings[K]
-  ) => {
-    if (deferredApplyTimerRef.current) {
-      clearTimeout(deferredApplyTimerRef.current)
-      deferredApplyTimerRef.current = null
-    }
-    const newSettings = { ...localSettings, [key]: value }
-    setLocalSettings(newSettings)
-    onSettingsChange(newSettings)
-  }
-
-  const updateSettingDeferred = <K extends keyof TerminalSettings>(
-    key: K,
-    value: TerminalSettings[K],
-    delay = 150
-  ) => {
-    const newSettings = { ...localSettings, [key]: value }
-    setLocalSettings(newSettings)
-
-    if (deferredApplyTimerRef.current) {
-      clearTimeout(deferredApplyTimerRef.current)
-    }
-
-    deferredApplyTimerRef.current = setTimeout(() => {
-      onSettingsChange(newSettings)
-      deferredApplyTimerRef.current = null
-    }, delay)
-  }
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-3xl h-[680px] flex flex-col p-0"
-        onOpenAutoFocus={(event) => {
-          // 聚焦标题，避免打开时逐个扫描控件并读取样式。Tab 仍进入第一个控件。
-          event.preventDefault()
-          titleRef.current?.focus({ preventScroll: true })
-        }}
-      >
-        <div className="px-6 pt-6">
-          <DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent
+          dismissOnEscape
+          className="flex h-[720px] max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden p-0 sm:max-w-3xl"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            titleRef.current?.focus()
+          }}
+        >
+          <DialogHeader className="shrink-0 px-6 pt-6">
             <DialogTitle ref={titleRef} tabIndex={-1} className="flex items-center gap-2">
               <Settings className="h-5 w-5" />
               {t("dialogTitle")}
             </DialogTitle>
-            <DialogDescription>
-              {t("dialogDescription")}
-            </DialogDescription>
+            <DialogDescription>{t("dialogDescription")}</DialogDescription>
           </DialogHeader>
-        </div>
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col overflow-hidden px-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="terminal" className="flex items-center gap-2">
-              <Terminal className="h-4 w-4" />
-              {t("tabTerminal")}
-            </TabsTrigger>
-            <TabsTrigger value="appearance" className="flex items-center gap-2">
-              <Palette className="h-4 w-4" />
-              {t("tabAppearance")}
-            </TabsTrigger>
-            <TabsTrigger value="behavior" className="flex items-center gap-2">
-              <Layers className="h-4 w-4" />
-              {t("tabBehavior")}
-            </TabsTrigger>
-            <TabsTrigger value="shortcuts" className="flex items-center gap-2">
-              <Keyboard className="h-4 w-4" />
-              {t("tabShortcuts")}
-            </TabsTrigger>
-            <TabsTrigger value="completion" className="flex items-center gap-2">
-              <Command className="h-4 w-4" />
-              {t("tabCompletion")}
-            </TabsTrigger>
-          </TabsList>
-
-          {/* 终端设置 */}
-          <TabsContent value="terminal" className="space-y-4 overflow-y-auto scrollbar-custom pr-2 mt-4">
-            {activeTab === "terminal" && (
-              <>
-            <div className="space-y-2">
-              <Label htmlFor="fontSize">{t("fontSizeLabel")}</Label>
-              <div className="flex items-center gap-4">
-                <Slider
-                  id="fontSize"
-                  min={8}
-                  max={24}
-                  step={1}
-                  value={[localSettings.fontSize]}
-                  onValueChange={(value) => updateSettingDeferred('fontSize', value[0], 80)}
-                  onValueCommit={(value) => updateSetting('fontSize', value[0])}
-                  className="flex-1"
-                />
-                <span className="w-12 text-sm text-muted-foreground">
-                  {t("fontSizeValue", { value: localSettings.fontSize })}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="fontFamily">{t("fontFamilyLabel")}</Label>
-              <Select
-                value={localSettings.fontFamily}
-                onValueChange={(value) => updateSetting('fontFamily', value)}
-              >
-                <SelectTrigger id="fontFamily">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="JetBrains Mono">JetBrains Mono</SelectItem>
-                  <SelectItem value="Fira Code">Fira Code</SelectItem>
-                  <SelectItem value="Cascadia Code">Cascadia Code</SelectItem>
-                  <SelectItem value="Source Code Pro">Source Code Pro</SelectItem>
-                  <SelectItem value="Menlo">Menlo</SelectItem>
-                  <SelectItem value="Monaco">Monaco</SelectItem>
-                  <SelectItem value="Consolas">Consolas</SelectItem>
-                  <SelectItem value="Courier New">Courier New</SelectItem>
-                  <SelectItem value="monospace">System Monospace</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="cursorStyle">{t("cursorStyleLabel")}</Label>
-              <Select
-                value={localSettings.cursorStyle}
-                onValueChange={(value: 'block' | 'underline' | 'bar') =>
-                  updateSetting('cursorStyle', value)
-                }
-              >
-                <SelectTrigger id="cursorStyle">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="block">{t("cursorStyleBlock")}</SelectItem>
-                  <SelectItem value="underline">{t("cursorStyleUnderline")}</SelectItem>
-                  <SelectItem value="bar">{t("cursorStyleBar")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="cursorBlink">{t("cursorBlinkLabel")}</Label>
-              <Switch
-                id="cursorBlink"
-                checked={localSettings.cursorBlink}
-                onCheckedChange={(checked) => updateSetting('cursorBlink', checked)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="rightClickPaste">{t("rightClickPasteLabel")}</Label>
-                <p className="text-sm text-muted-foreground">
-                  {t("rightClickPasteDescription")}
-                </p>
-              </div>
-              <Switch
-                id="rightClickPaste"
-                checked={localSettings.rightClickPaste}
-                onCheckedChange={(checked) => updateSetting('rightClickPaste', checked)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="copyOnSelect">{t("copyOnSelectLabel")}</Label>
-                <p className="text-sm text-muted-foreground">
-                  {t("copyOnSelectDescription")}
-                </p>
-              </div>
-              <Switch
-                id="copyOnSelect"
-                checked={localSettings.copyOnSelect}
-                onCheckedChange={(checked) => updateSetting('copyOnSelect', checked)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="scrollback">{t("scrollbackLabel")}</Label>
-              <div className="flex items-center gap-4">
-                <Slider
-                  id="scrollback"
-                  min={100}
-                  max={10000}
-                  step={100}
-                  value={[localSettings.scrollback]}
-                  onValueChange={(value) => updateSettingDeferred('scrollback', value[0], 80)}
-                  onValueCommit={(value) => updateSetting('scrollback', value[0])}
-                  className="flex-1"
-                />
-                <span className="w-20 text-sm text-muted-foreground">
-                  {t("scrollbackValue", { lines: localSettings.scrollback })}
-                </span>
-              </div>
-            </div>
-                        </>
-            )}
-          </TabsContent>
-
-          {/* 外观设置 */}
-          <TabsContent value="appearance" className="space-y-4 overflow-y-auto scrollbar-custom pr-2 mt-4">
-            {activeTab === "appearance" && (
-              <>
-            <div className="space-y-2">
-              <Label htmlFor="theme">{t("themeLabel")}</Label>
-              <Select
-                value={localSettings.theme}
-                onValueChange={(value: typeof localSettings.theme) =>
-                  updateSetting('theme', value)
-                }
-              >
-                <SelectTrigger id="theme">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="default">{t("themeOptionDefault")}</SelectItem>
-                  <SelectItem value="dark">{t("themeOptionDark")}</SelectItem>
-                  <SelectItem value="light">{t("themeOptionLight")}</SelectItem>
-                  <SelectItem value="solarized">Solarized</SelectItem>
-                  <SelectItem value="dracula">Dracula</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {localSettings.theme === 'default'
-                  ? t("themeHelpFollowApp")
-                  : t("themeHelpFixed")}
-              </p>
-            </div>
-
-            <div className="border-t pt-4 space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="backgroundImage">{t("backgroundImageLabel")}</Label>
-                <Input
-                  id="backgroundImage"
-                  value={localSettings.backgroundImage}
-                  onChange={(e) => updateSettingDeferred('backgroundImage', e.target.value)}
-                  placeholder={t("backgroundImagePlaceholder")}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("backgroundImageHelp")}
-                </p>
-              </div>
-
-              {localSettings.backgroundImage && (
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="flex min-h-0 flex-1 flex-col px-6"
+          >
+            <TabsList className="grid h-auto w-full shrink-0 grid-cols-2 sm:grid-cols-4">
+              {["appearance", "input", "session", "completion"].map((tab) => (
+                <TabsTrigger key={tab} value={tab}>
+                  {t(`tab_${tab}`)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <div className="min-h-0 flex-1 overflow-y-auto py-4 pr-1 scrollbar-custom [scrollbar-gutter:stable]">
+              <TabsContent value="appearance" className="m-0 space-y-5">
                 <div className="space-y-2">
-                  <Label htmlFor="backgroundImageOpacity">{t("backgroundImageOpacityLabel")}</Label>
-                  <div className="flex items-center gap-4">
-                    <Slider
-                      id="backgroundImageOpacity"
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={[localSettings.backgroundImageOpacity]}
-                      onValueChange={(value) => updateSetting('backgroundImageOpacity', value[0])}
-                      className="flex-1"
-                    />
-                    <span className="w-12 text-sm text-muted-foreground">
-                      {localSettings.backgroundImageOpacity}%
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {t("backgroundImageOpacityHelp")}
-                  </p>
-                </div>
-              )}
-
-              {localSettings.backgroundImage && (
-                <div className="flex items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <Label htmlFor="backgroundTextEnhance">{t("backgroundTextEnhanceLabel")}</Label>
-                    <p className="text-xs text-muted-foreground">
-                      {t("backgroundTextEnhanceHelp")}
-                    </p>
-                  </div>
-                  <Switch
-                    id="backgroundTextEnhance"
-                    checked={localSettings.backgroundTextEnhance}
-                    onCheckedChange={(checked) => updateSetting('backgroundTextEnhance', checked)}
+                  <Label htmlFor="fontSize">
+                    {t("fontSizeLabel")} · {local.fontSize}px
+                  </Label>
+                  <Slider
+                    id="fontSize"
+                    min={8}
+                    max={40}
+                    step={1}
+                    value={[local.fontSize]}
+                    onValueChange={([fontSize]) =>
+                      setLocal((current) => ({ ...current, fontSize }))
+                    }
+                    onValueCommit={([value]) => update("fontSize", value)}
                   />
                 </div>
-              )}
-
-              {localSettings.backgroundImage && (
-                <div className="rounded-lg border p-4 space-y-2">
-                  <Label>{t("previewLabel")}</Label>
-                  <div className="relative w-full h-32 rounded-md border overflow-hidden">
-                    <div
-                      aria-hidden="true"
-                      className="absolute inset-0"
-                      style={{ backgroundColor: previewBaseBackgroundColor }}
-                    />
-                    <div
-                      aria-hidden="true"
-                      className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-                      style={{
-                        backgroundImage: `url(${localSettings.backgroundImage})`,
-                        opacity: previewBackgroundImageLayerOpacity,
-                      }}
-                    />
-                    <div
-                      className="absolute inset-0 flex items-center px-4 text-sm font-medium"
-                      style={{
-                        color: previewTheme.foreground,
-                        fontWeight: localSettings.backgroundTextEnhance ? 600 : 400,
-                      }}
-                    >
-                      root@easyssh:~# systemctl status ssh
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-                        </>
-            )}
-          </TabsContent>
-
-          {/* 行为设置 */}
-          <TabsContent value="behavior" className="space-y-4 overflow-y-auto scrollbar-custom pr-2 mt-4">
-            {activeTab === "behavior" && (
-              <>
-            <div className="space-y-2">
-              <Label htmlFor="maxTabs">{t("maxTabsLabel")}</Label>
-              <div className="flex items-center gap-4">
-                <Slider
-                  id="maxTabs"
-                  min={5}
-                  max={100}
-                  step={5}
-                  value={[localSettings.maxTabs]}
-                  onValueChange={(value) => updateSetting('maxTabs', value[0])}
-                  className="flex-1"
-                />
-                <span className="w-12 text-sm text-muted-foreground">
-                  {localSettings.maxTabs}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="inactiveMinutes">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  {t("inactiveMinutesLabel")}
-                </div>
-              </Label>
-              <div className="flex items-center gap-4">
-                <Slider
-                  id="inactiveMinutes"
-                  min={10}
-                  max={180}
-                  step={10}
-                  value={[localSettings.inactiveMinutes]}
-                  onValueChange={(value) => updateSetting('inactiveMinutes', value[0])}
-                  className="flex-1"
-                />
-                <span className="w-16 text-sm text-muted-foreground">
-                  {t("inactiveMinutesValue", { minutes: localSettings.inactiveMinutes })}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="hibernateBackground">{t("hibernateLabel")}</Label>
-                <p className="text-sm text-muted-foreground">
-                  {t("hibernateDescription")}
-                </p>
-              </div>
-              <Switch
-                id="hibernateBackground"
-                checked={localSettings.hibernateBackground}
-                onCheckedChange={(checked) => updateSetting('hibernateBackground', checked)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="autoReconnect">{t("autoReconnectLabel")}</Label>
-                <p className="text-sm text-muted-foreground">
-                  {t("autoReconnectDescription")}
-                </p>
-              </div>
-              <Switch
-                id="autoReconnect"
-                checked={localSettings.autoReconnect}
-                onCheckedChange={(checked) => updateSetting('autoReconnect', checked)}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label htmlFor="confirmBeforeClose">{t("confirmBeforeCloseLabel")}</Label>
-                <p className="text-sm text-muted-foreground">
-                  {t("confirmBeforeCloseDescription")}
-                </p>
-              </div>
-              <Switch
-                id="confirmBeforeClose"
-                checked={localSettings.confirmBeforeClose}
-                onCheckedChange={(checked) => updateSetting('confirmBeforeClose', checked)}
-              />
-            </div>
-
-            <div className="border-t pt-4 space-y-2">
-              <Label htmlFor="monitorInterval">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  {t("monitorIntervalLabel")}
-                </div>
-              </Label>
-              <div className="flex items-center gap-4">
-                <Slider
-                  id="monitorInterval"
-                  min={1}
-                  max={10}
-                  step={1}
-                  value={[localSettings.monitorInterval]}
-                  onValueChange={(value) => updateSetting('monitorInterval', value[0])}
-                  className="flex-1"
-                />
-                <span className="w-14 text-sm text-muted-foreground">
-                  {t("monitorIntervalValue", { seconds: localSettings.monitorInterval })}
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t("monitorIntervalHelp")}
-              </p>
-            </div>
-                        </>
-            )}
-          </TabsContent>
-
-          {/* 快捷键设置 */}
-          <TabsContent value="shortcuts" className="space-y-4 overflow-y-auto scrollbar-custom pr-2 mt-4">
-            {activeTab === "shortcuts" && (
-              <>
-            <div className="space-y-2">
-              <Label htmlFor="copyShortcut">{t("shortcutsCopyLabel")}</Label>
-              <KeyboardShortcutInput
-                id="copyShortcut"
-                value={localSettings.copyShortcut}
-                onChange={(value) => updateSetting('copyShortcut', value)}
-                placeholder={t("shortcutsPlaceholder")}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="pasteShortcut">{t("shortcutsPasteLabel")}</Label>
-              <KeyboardShortcutInput
-                id="pasteShortcut"
-                value={localSettings.pasteShortcut}
-                onChange={(value) => updateSetting('pasteShortcut', value)}
-                placeholder={t("shortcutsPlaceholder")}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="clearShortcut">{t("shortcutsClearLabel")}</Label>
-              <KeyboardShortcutInput
-                id="clearShortcut"
-                value={localSettings.clearShortcut}
-                onChange={(value) => updateSetting('clearShortcut', value)}
-                placeholder={t("shortcutsPlaceholder")}
-              />
-            </div>
-
-            <div className="rounded-lg bg-muted p-4 space-y-2">
-              <p className="text-sm font-medium">{t("shortcutsTipsTitle")}</p>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li>• {t("shortcutsTipClick")}</li>
-                <li>• {t("shortcutsTipModifiers")}</li>
-                <li>• {t("shortcutsTipClear")}</li>
-              </ul>
-            </div>
-                        </>
-            )}
-          </TabsContent>
-
-          {/* 补全设置 */}
-          <TabsContent value="completion" className="space-y-5 overflow-y-auto scrollbar-custom pr-2 mt-4">
-            {activeTab === "completion" && (
-              <>
-            <div className="space-y-2">
-              <Label htmlFor="completionMode">{t("completionModeLabel")}</Label>
-              <Select
-                value={localSettings.completionMode}
-                onValueChange={(value: "auto" | "tab" | "off") => (
-                  updateSetting("completionMode", value)
+                {choice(
+                  "fontFamily",
+                  "fontFamilyLabel",
+                  TERMINAL_FONT_FAMILIES.map((font, index) => ({
+                    value: font,
+                    label:
+                      font === "monospace"
+                        ? t("systemMonospace")
+                        : `${font} · ${t(index < 4 ? "fontBundled" : "fontSystem")}`,
+                  })),
+                  "fontHelp",
                 )}
-              >
-                <SelectTrigger id="completionMode">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">{t("completionModeAuto")}</SelectItem>
-                  <SelectItem value="tab">{t("completionModeTab")}</SelectItem>
-                  <SelectItem value="off">{t("completionModeOff")}</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                {localSettings.completionMode === "auto"
-                  ? t("completionModeAutoHelp")
-                  : localSettings.completionMode === "tab"
-                    ? t("completionModeTabHelp")
-                    : t("completionModeOffHelp")}
-              </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 [&>div]:min-w-0 [&_[data-slot=select-trigger]]:w-full">
+                  {choice(
+                    "lineHeight",
+                    "lineHeightLabel",
+                    [1, 1.2, 1.4].map((value, index) => ({
+                      value: String(value),
+                      label: t(["lineHeightCompact", "lineHeightNormal", "lineHeightLoose"][index]),
+                    })),
+                  )}
+                  {choice(
+                    "theme",
+                    "themeLabel",
+                    ["default", "dark", "light", "solarized", "dracula"].map((value) => ({
+                      value,
+                      label: ["solarized", "dracula"].includes(value)
+                        ? value === "solarized"
+                          ? "Solarized"
+                          : "Dracula"
+                        : t(`themeOption${value[0].toUpperCase()}${value.slice(1)}`),
+                    })),
+                  )}
+                  {choice(
+                    "cursorStyle",
+                    "cursorStyleLabel",
+                    ["block", "underline", "bar"].map((value) => ({
+                      value,
+                      label: t(`cursorStyle${value[0].toUpperCase()}${value.slice(1)}`),
+                    })),
+                  )}
+                </div>
+                {toggle("cursorBlink", "cursorBlinkLabel")}
+                <div className="space-y-2">
+                  <Label>{t("previewLabel")}</Label>
+                  {open && activeTab === "appearance" && (
+                    <TerminalSettingsPreview settings={local} />
+                  )}
+                </div>
+                <details className="rounded-lg border p-4">
+                  <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                    <ChevronDown className="h-4 w-4" />
+                    {t("backgroundImageLabel")}
+                  </summary>
+                  <div className="mt-4 space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" onClick={() => imageRef.current?.click()}>
+                        {t("backgroundChoose")}
+                      </Button>
+                      {local.backgroundImage && (
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            void applyBackground("")
+                          }}
+                        >
+                          {t("backgroundRemove")}
+                        </Button>
+                      )}
+                    </div>
+                    <input
+                      ref={imageRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      hidden
+                      onChange={async (event) => {
+                        const file = event.target.files?.[0]
+                        event.target.value = ""
+                        if (!file) return
+                        if (
+                          file.size > MAX_TERMINAL_BACKGROUND_BYTES ||
+                          !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(
+                            file.type,
+                          )
+                        ) {
+                          toast.error(t("backgroundFileHelp"))
+                          return
+                        }
+                        const reader = new FileReader()
+                        const request = ++imageRequestRef.current
+                        reader.onload = () => {
+                          if (
+                            request === imageRequestRef.current &&
+                            typeof reader.result === "string"
+                          )
+                            void applyBackground(reader.result)
+                        }
+                        reader.onerror = () => toast.error(t("backgroundInvalid"))
+                        reader.readAsDataURL(file)
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">{t("backgroundFileHelp")}</p>
+                    <Label htmlFor="backgroundUrl">{t("backgroundUrlLabel")}</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="backgroundUrl"
+                        value={backgroundUrl}
+                        onChange={(event) => setBackgroundUrl(event.target.value)}
+                        placeholder="https://…"
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          void applyBackground(backgroundUrl.trim())
+                        }}
+                      >
+                        {t("backgroundApply")}
+                      </Button>
+                    </div>
+                    {!!local.backgroundImage && (
+                      <div className="space-y-2">
+                        <Label htmlFor="backgroundImageOpacity">
+                          {t("backgroundImageOpacityLabel")} · {local.backgroundImageOpacity}%
+                        </Label>
+                        <Slider
+                          id="backgroundImageOpacity"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={[local.backgroundImageOpacity]}
+                          onValueChange={([value]) =>
+                            setLocal((current) => ({ ...current, backgroundImageOpacity: value }))
+                          }
+                          onValueCommit={([value]) => update("backgroundImageOpacity", value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {t("backgroundImageOpacityHelp")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </details>
+              </TabsContent>
+              <TabsContent value="input" className="m-0 space-y-5">
+                {toggle("copyOnSelect", "copyOnSelectLabel", "copyOnSelectDescription")}
+                {toggle("rightClickPaste", "rightClickPasteLabel", "rightClickPasteDescription")}
+                {toggle("multiLinePasteWarning", "multiLinePasteLabel", "multiLinePasteHelp")}
+                <div className="space-y-4 border-t pt-4">
+                  <p className="text-sm font-medium">{t("tabShortcuts")}</p>
+                  {TERMINAL_SHORTCUT_KEYS.map((key) => (
+                    <div key={key} className="space-y-2">
+                      <Label htmlFor={key}>{t(key)}</Label>
+                      <KeyboardShortcutInput
+                        id={key}
+                        value={local[key]}
+                        onChange={(value) => {
+                          const normalized = normalizeShortcut(value)
+                          if (normalized === null) {
+                            toast.error(t("shortcutInvalid"))
+                            return
+                          }
+                          if (
+                            normalized &&
+                            TERMINAL_SHORTCUT_KEYS.some(
+                              (other) => other !== key && local[other] === normalized,
+                            )
+                          ) {
+                            toast.error(t("shortcutConflict"))
+                            return
+                          }
+                          update(key, normalized)
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground">{t("shortcutHelp")}</p>
+                  <p className="text-xs text-muted-foreground">{t("zoomHelp")}</p>
+                </div>
+              </TabsContent>
+              <TabsContent value="session" className="m-0 space-y-5">
+                {choice(
+                  "scrollback",
+                  "scrollbackLabel",
+                  [1000, 5000, 10000].map((value) => ({
+                    value: String(value),
+                    label: t("scrollbackValue", { lines: value }),
+                  })),
+                  "scrollbackHelp",
+                )}
+                {choice(
+                  "inactiveMinutes",
+                  "inactiveMinutesLabel",
+                  Array.from(
+                    new Set([
+                      0,
+                      15,
+                      30,
+                      60,
+                      120,
+                      180,
+                      local.inactiveMinutes,
+                      Math.min(180, inactiveReminderLimit),
+                    ]),
+                  )
+                    .filter((value) => value <= inactiveReminderLimit)
+                    .sort((a, b) => a - b)
+                    .map((value) => ({
+                      value: String(value),
+                      label: value ? t("inactiveMinutesValue", { minutes: value }) : t("disabled"),
+                    })),
+                  "inactiveHelp",
+                )}
+                {toggle("autoReconnect", "autoReconnectLabel", "autoReconnectDescription")}
+              </TabsContent>
+              <TabsContent value="completion" className="m-0 space-y-5">
+                {choice(
+                  "completionMode",
+                  "completionModeLabel",
+                  ["auto", "tab", "off"].map((value) => ({
+                    value,
+                    label: t(`completionMode${value[0].toUpperCase()}${value.slice(1)}`),
+                  })),
+                  `completionMode${local.completionMode[0].toUpperCase()}${local.completionMode.slice(1)}Help`,
+                )}
+                {local.completionMode !== "off" && (
+                  <>
+                    {toggle(
+                      "completionUseHistory",
+                      "completionUseHistoryLabel",
+                      "completionUseHistoryDescription",
+                    )}
+                    {toggle(
+                      "completionUseScripts",
+                      "completionUseScriptsLabel",
+                      "completionUseScriptsDescription",
+                    )}
+                    {toggle(
+                      "completionUseRemotePaths",
+                      "completionUseRemotePathsLabel",
+                      "completionUseRemotePathsDescription",
+                    )}
+                  </>
+                )}
+              </TabsContent>
             </div>
-
-            {localSettings.completionMode !== "off" && (
-              <>
-                <div className="flex items-center justify-between gap-4 border-t pt-5">
-                  <div className="min-w-0">
-                    <Label htmlFor="completionUseHistory">{t("completionUseHistoryLabel")}</Label>
-                    <p className="text-sm text-muted-foreground">
-                      {t("completionUseHistoryDescription")}
-                    </p>
-                  </div>
-                  <Switch
-                    id="completionUseHistory"
-                    checked={localSettings.completionUseHistory}
-                    onCheckedChange={(checked) => updateSetting("completionUseHistory", checked)}
-                  />
-                </div>
-
-                <div className="space-y-4 border-t pt-5">
-                  <div>
-                    <p className="text-sm font-medium">{t("completionEnhancedTitle")}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {t("completionEnhancedDescription")}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <Label htmlFor="completionUseScripts">{t("completionUseScriptsLabel")}</Label>
-                      <p className="text-sm text-muted-foreground">
-                        {t("completionUseScriptsDescription")}
-                      </p>
-                    </div>
-                    <Switch
-                      id="completionUseScripts"
-                      checked={localSettings.completionUseScripts}
-                      onCheckedChange={(checked) => updateSetting("completionUseScripts", checked)}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <Label htmlFor="completionUseRemotePaths">{t("completionUseRemotePathsLabel")}</Label>
-                      <p className="text-sm text-muted-foreground">
-                        {t("completionUseRemotePathsDescription")}
-                      </p>
-                    </div>
-                    <Switch
-                      id="completionUseRemotePaths"
-                      checked={localSettings.completionUseRemotePaths}
-                      onCheckedChange={(checked) => updateSetting("completionUseRemotePaths", checked)}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-                        </>
-            )}
-          </TabsContent>
-
-        </Tabs>
-
-        <div className="flex flex-wrap justify-between gap-3 pt-4 pb-6 px-6 shrink-0">
-          <Button variant="outline" onClick={handleReset}>
-            {t("btnReset")}
-          </Button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept="application/json,.json"
-            className="hidden"
-            onChange={handleImportFile}
-          />
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" onClick={handleImportClick}>
-              <Upload className="mr-2 h-4 w-4" />
-              {t("btnImport")}
+          </Tabs>
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-6 py-4">
+            <Button
+              variant="outline"
+              onClick={() => setPending({ settings: DEFAULT_TERMINAL_SETTINGS, imported: false })}
+            >
+              {t("btnReset")}
             </Button>
-            <Button variant="outline" onClick={handleExport}>
-              <Download className="mr-2 h-4 w-4" />
-              {t("btnExport")}
-            </Button>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              {t("btnCancel")}
-            </Button>
-            <Button onClick={handleSave}>
-              {t("btnSave")}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <input
+                ref={importRef}
+                type="file"
+                accept="application/json,.json"
+                hidden
+                onChange={async (event) => {
+                  const file = event.target.files?.[0]
+                  event.target.value = ""
+                  if (!file) return
+                  const request = imageRequestRef.current
+                  try {
+                    if (file.size > MAX_TERMINAL_BACKGROUND_BYTES * 1.5)
+                      throw new Error("file_too_large")
+                    const imported = parseTerminalSettingsImport(await file.text())
+                    if (request === imageRequestRef.current)
+                      setPending({ settings: imported, imported: true })
+                  } catch {
+                    toast.error(t("importFailed"))
+                  }
+                }}
+              />
+              <Button variant="outline" onClick={() => importRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4" />
+                {t("btnImport")}
+              </Button>
+              <Button variant="outline" onClick={exportSettings}>
+                <Download className="mr-2 h-4 w-4" />
+                {t("btnExport")}
+              </Button>
+              <Button onClick={() => onOpenChange(false)}>{t("btnDone")}</Button>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog
+        open={!!pending}
+        onOpenChange={(value) => {
+          if (!value) setPending(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t(pending?.imported ? "importConfirmTitle" : "resetConfirmTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("replaceConfirmHelp", {
+                count: pending
+                  ? Object.keys(settings).filter(
+                      (key) =>
+                        settings[key as keyof TerminalSettings] !==
+                        pending.settings[key as keyof TerminalSettings],
+                    ).length
+                  : 0,
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("btnCancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                imageRequestRef.current++
+                if (pending && save(pending.settings))
+                  toast.success(t(pending.imported ? "importSuccess" : "resetSuccess"))
+              }}
+            >
+              {t("btnConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 })

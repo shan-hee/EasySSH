@@ -1,3 +1,4 @@
+import { TERMINAL_MONITOR_INTERVAL_SECONDS } from "./terminal-settings"
 import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 /**
  * 单个页签的完整内容组件
@@ -469,26 +470,23 @@ function TabTerminalContentComponent({
     workspaceTheme?.mode,
     workspaceTheme?.terminalTheme,
   ])
-  const completionConfig = useMemo(
-    () => buildTerminalCompletionConfig(settings),
-    [settings],
-  )
-  const completionProviderEnabled = useMemo(
-    () => buildTerminalCompletionProviderFlags(settings),
-    [settings],
-  )
-  const completionFetchOptions = useMemo(
-    () => buildTerminalCompletionFetchOptions(settings),
-    [settings],
-  )
+  const completionSettings = useMemo(() => ({
+    completionMode: settings.completionMode,
+    completionUseHistory: settings.completionUseHistory,
+    completionUseScripts: settings.completionUseScripts,
+    completionUseRemotePaths: settings.completionUseRemotePaths,
+  }), [settings.completionMode, settings.completionUseHistory, settings.completionUseScripts, settings.completionUseRemotePaths])
+  const completionConfig = useMemo(() => buildTerminalCompletionConfig(completionSettings), [completionSettings])
+  const completionProviderEnabled = useMemo(() => buildTerminalCompletionProviderFlags(completionSettings), [completionSettings])
+  const completionFetchOptions = useMemo(() => buildTerminalCompletionFetchOptions(completionSettings), [completionSettings])
   const pathCompletionCwd = sftpSession.currentPath || sftpSessionInitialPath || initialSftpPath
   const hasBackgroundImage = isTerminalSession && settings.backgroundImage.trim().length > 0
   const [enableTerminalWebgl, setEnableTerminalWebgl] = useState(
-    () => isActive || !settings.hibernateBackground
+    () => isActive
   )
 
   useEffect(() => {
-    if (isActive || !settings.hibernateBackground) {
+    if (isActive) {
       setEnableTerminalWebgl(true)
       return
     }
@@ -498,7 +496,7 @@ function TabTerminalContentComponent({
     }, BACKGROUND_WEBGL_HIBERNATE_DELAY_MS)
 
     return () => window.clearTimeout(hibernateTimer)
-  }, [isActive, settings.hibernateBackground])
+  }, [isActive])
   const connectionLoaderServerName =
     session.username && session.host
       ? `${session.username}@${session.host}`
@@ -582,7 +580,7 @@ function TabTerminalContentComponent({
     <MonitorWebSocketProvider
       serverId={connectedServerId}
       enabled={monitorEnabled}
-      interval={settings.monitorInterval || 2}
+      interval={TERMINAL_MONITOR_INTERVAL_SECONDS}
       monitorApi={workspaceMonitorApi}
     >
       <div className={cn(
@@ -742,6 +740,13 @@ function TabTerminalContentComponent({
                   theme={settings.theme}
                   fontSize={settings.fontSize}
                   fontFamily={settings.fontFamily}
+                  lineHeight={settings.lineHeight}
+                  autoReconnect={settings.autoReconnect}
+                  multiLinePasteWarning={settings.multiLinePasteWarning}
+                  findShortcut={settings.findShortcut}
+                  zoomInShortcut={settings.zoomInShortcut}
+                  zoomOutShortcut={settings.zoomOutShortcut}
+                  zoomResetShortcut={settings.zoomResetShortcut}
                   cursorStyle={settings.cursorStyle}
                   cursorBlink={settings.cursorBlink}
                   scrollback={settings.scrollback}
@@ -756,8 +761,8 @@ function TabTerminalContentComponent({
                   pathCompletionCwd={pathCompletionCwd}
                   enableWebgl={enableTerminalWebgl}
                   transparentBackground={hasBackgroundImage}
-                  fontWeight={hasBackgroundImage && settings.backgroundTextEnhance ? "bold" : "400"}
-                  fontWeightBold={hasBackgroundImage && settings.backgroundTextEnhance ? "bold" : "600"}
+                  fontWeight="400"
+                  fontWeightBold="600"
                 />
               ) : null}
             </div>

@@ -116,7 +116,7 @@ interface TerminalStoreState {
   // 销毁终端实例（页签关闭时调用）
   destroySession: (sessionId: string) => void
 
-  // 清理所有实例（应用关闭时调用）
+  // 清理所有实例（页面离开时调用）
   destroyAll: () => void
 
   // 退出登录等显式场景：断开连接、销毁实例并清空页签状态
@@ -288,7 +288,7 @@ export const useTerminalStore = create<TerminalStoreState>((set, get) => ({
     })
 
     // 注意：这里不再主动清空 terminals 映射或调用 terminal.dispose()
-    // 场景是浏览器刷新 / 关闭前的 beforeunload：
+    // 场景是浏览器确认离开后的 pagehide：
     // - 调用 wsConnection.disconnect() 可以优雅地通知服务端关闭会话
     // - 终端实例和 DOM 很快会随页面卸载一起被浏览器回收
     // - 避免在刷新前一瞬间调用 dispose() 导致终端 UI 立即被清空，看起来“闪一下”
@@ -327,7 +327,7 @@ export const useTerminalStore = create<TerminalStoreState>((set, get) => ({
  * 应用卸载时清理所有终端实例
  */
 if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
+  window.addEventListener('pagehide', () => {
     useTerminalStore.getState().destroyAll()
   })
 }

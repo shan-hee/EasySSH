@@ -1,3 +1,4 @@
+import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
@@ -45,7 +46,6 @@ import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
 import { useFileTransfer, type FileTransferSftpApi } from "@/hooks/useFileTransfer"
 
 const defaultMaxTabs = 50
-const defaultInactiveMinutes = 60
 
 function statusFromConnectionPhase(phase: TerminalConnectionPhase) {
   if (phase === "ready") return "connected" as const
@@ -137,8 +137,8 @@ function App() {
   const [requestedTaskRunID, setRequestedTaskRunID] = useState<string | null>(null)
   const [activityLogsMounted, setActivityLogsMounted] = useState(false)
   const [backupRestoreMounted, setBackupRestoreMounted] = useState(false)
-  const [maxTabs, setMaxTabs] = useState(defaultMaxTabs)
-  const [inactiveMinutes, setInactiveMinutes] = useState(defaultInactiveMinutes)
+  const maxTabs = defaultMaxTabs
+  const inactiveMinutes = useTerminalSettingsStore(state => state.settings.inactiveMinutes)
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
   const [sftpTabs, setSftpTabs] = useState<DesktopSftpTab[]>([])
   const [activeSftpTabId, setActiveSftpTabId] = useState<string | null>(null)
@@ -627,6 +627,7 @@ function App() {
   }, [])
 
   useEffect(() => {
+    if (inactiveMinutes === 0) return
     const timer = window.setInterval(() => {
       const now = Date.now()
       const threshold = inactiveMinutes * 60 * 1000
@@ -654,6 +655,8 @@ function App() {
 
     return () => window.clearInterval(timer)
   }, [getSessionLastActivity, handleCloseSession, inactiveMinutes, sessions, tTerminal])
+
+  useEffect(() => { inactivityNotifiedRef.current.clear() }, [inactiveMinutes])
 
   const windowActions = (
     <DesktopWindowActions
@@ -738,10 +741,6 @@ function App() {
                 externalActiveSessionId={activeSessionId}
                 onActiveSessionChange={setActiveSessionId}
                 onConnectionPhaseChange={handleConnectionPhaseChange}
-                onBehaviorSettingsChange={({ maxTabs, inactiveMinutes }) => {
-                  setMaxTabs(Math.max(1, Math.min(maxTabs, defaultMaxTabs)))
-                  setInactiveMinutes(Math.max(5, Math.min(inactiveMinutes, defaultInactiveMinutes)))
-                }}
                 serverApi={serverApi}
                 serverConfigsReady
                 aiAssistantAdapters={aiAssistantAdapters}

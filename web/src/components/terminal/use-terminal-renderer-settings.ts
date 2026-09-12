@@ -34,6 +34,7 @@ export interface UseTerminalRendererSettingsOptions {
   allowTransparency: boolean
   themeModeVersion: number
   fontSize: number
+  lineHeight: number
   fontFamily: string
   fontWeight: TerminalFontWeight
   fontWeightBold: TerminalFontWeight
@@ -68,13 +69,14 @@ function scheduleTerminalRefresh(
   fitAddon: FitAddon | null | undefined,
   shouldFit = false,
 ) {
-  requestAnimationFrame(() => {
+  const frame = requestAnimationFrame(() => {
     if (shouldFit) {
       terminal.clearTextureAtlas()
       fitAddon?.fit()
     }
     terminal.refresh(0, Math.max(terminal.rows - 1, 0))
   })
+  return () => cancelAnimationFrame(frame)
 }
 
 async function loadTerminalFontFamily(
@@ -154,6 +156,7 @@ export function useTerminalRendererSettings({
   allowTransparency,
   themeModeVersion,
   fontSize,
+  lineHeight,
   fontFamily,
   fontWeight,
   fontWeightBold,
@@ -167,7 +170,7 @@ export function useTerminalRendererSettings({
     terminal.options.allowTransparency = allowTransparency
     terminal.options.theme = terminalRendererTheme
 
-    scheduleTerminalRefresh(terminal, fitAddon)
+    return scheduleTerminalRefresh(terminal, fitAddon)
   }, [allowTransparency, fitAddon, terminal, terminalRendererTheme, themeModeVersion])
 
   useLayoutEffect(() => {
@@ -179,6 +182,12 @@ export function useTerminalRendererSettings({
 
     if (terminal.options.fontSize !== fontSize) {
       terminal.options.fontSize = fontSize
+      shouldRefresh = true
+      shouldFit = true
+    }
+
+    if (terminal.options.lineHeight !== lineHeight) {
+      terminal.options.lineHeight = lineHeight
       shouldRefresh = true
       shouldFit = true
     }
@@ -218,7 +227,7 @@ export function useTerminalRendererSettings({
     }
 
     if (shouldRefresh) {
-      scheduleTerminalRefresh(terminal, fitAddon, shouldFit)
+      return scheduleTerminalRefresh(terminal, fitAddon, shouldFit)
     }
   }, [
     cursorBlink,
@@ -226,6 +235,7 @@ export function useTerminalRendererSettings({
     fitAddon,
     fontFamily,
     fontSize,
+    lineHeight,
     fontWeight,
     fontWeightBold,
     scrollback,
@@ -237,6 +247,7 @@ export function useTerminalRendererSettings({
     if (!terminal || !terminalReady) return
 
     let cancelled = false
+    let cancelRefresh: (() => void) | undefined
 
     void loadTerminalFontFamily(fontFamily, fontSize, fontWeight, fontWeightBold).then(() => {
       if (
@@ -249,11 +260,12 @@ export function useTerminalRendererSettings({
         return
       }
 
-      scheduleTerminalRefresh(terminal, fitAddon, true)
+      cancelRefresh = scheduleTerminalRefresh(terminal, fitAddon, true)
     })
 
     return () => {
       cancelled = true
+      cancelRefresh?.()
     }
   }, [fitAddon, fontFamily, fontSize, fontWeight, fontWeightBold, terminal, terminalReady])
 

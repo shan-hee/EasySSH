@@ -11,6 +11,7 @@ import type { TerminalFontWeight } from '@/components/terminal/use-terminal-rend
 export interface TerminalConfig {
   theme: TerminalTheme
   fontSize: number
+  lineHeight?: number
   fontFamily: string
   cursorStyle: 'block' | 'underline' | 'bar'
   cursorBlink: boolean
@@ -193,7 +194,7 @@ export function useTerminalInstance(
           scrollback: config.scrollback,
           cols: 80,
           rows: 24,
-          lineHeight: 1.2,
+          lineHeight: config.lineHeight ?? 1.2,
           letterSpacing: 0,
           // 性能优化选项
           allowProposedApi: true,

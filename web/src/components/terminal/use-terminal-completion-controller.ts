@@ -445,11 +445,20 @@ export function useTerminalCompletionController({
     completionEngineRef.current?.clearCache()
   }, [])
 
+  useEffect(() => {
+    completionRequestVersionRef.current++
+    setCompletionState(emptyCompletionState)
+    if (!effectiveCompletionEnabled || !providerSessionEnabled) sessionProviderRef.current?.clear()
+    if (!effectiveCompletionEnabled || !providerRemoteHistoryEnabled) remoteHistoryProviderRef.current?.clear()
+    if (!effectiveCompletionEnabled || !providerScriptEnabled) scriptProviderRef.current?.clear()
+    if (!effectiveCompletionEnabled || !providerPathEnabled) pathProviderRef.current?.clear()
+  }, [effectiveCompletionEnabled, providerSessionEnabled, providerRemoteHistoryEnabled, providerScriptEnabled, providerPathEnabled])
+
   const handleCompletionData = useCallback((data: CompletionDataResponse) => {
-    remoteHistoryProviderRef.current?.loadHistory(data.history, data.timestamp)
-    scriptProviderRef.current?.loadScripts(data.scripts)
+    if (effectiveCompletionEnabled && providerRemoteHistoryEnabled) remoteHistoryProviderRef.current?.loadHistory(data.history, data.timestamp)
+    if (effectiveCompletionEnabled && providerScriptEnabled) scriptProviderRef.current?.loadScripts(data.scripts)
     completionEngineRef.current?.clearCache()
-  }, [])
+  }, [effectiveCompletionEnabled, providerRemoteHistoryEnabled, providerScriptEnabled])
 
   const resetCompletionState = useCallback(() => {
     setCompletionState(emptyCompletionState)
@@ -709,7 +718,7 @@ export function useTerminalCompletionController({
 
         const command = contextBeforeInput?.fullLine.trim() || ""
 
-        if (command && sessionProviderRef.current) {
+        if (effectiveCompletionEnabled && providerSessionEnabled && command && sessionProviderRef.current) {
           sessionProviderRef.current.addCommand(command)
         }
 
@@ -784,6 +793,7 @@ export function useTerminalCompletionController({
   }, [
     applyCompletionItem,
     closeCompletion,
+    providerSessionEnabled,
     completionConfig.autoTriggerDelay,
     completionConfig.trigger,
     effectiveCompletionEnabled,

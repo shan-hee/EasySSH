@@ -1,3 +1,4 @@
+import { resolveTerminalInactiveMinutes } from "@/components/terminal/terminal-settings"
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
@@ -5,7 +6,7 @@ import { toast } from "@/components/ui/sonner"
 import { SshWorkspace } from "@easyssh/ssh-workspace"
 import { TerminalComponent, type TerminalExtraSessionRenderOptions } from "@/components/terminal/terminal-component"
 import { TerminalSftpTabContent } from "@/components/terminal/terminal-sftp-tab-content"
-import type { TerminalSettings } from "@/components/terminal/terminal-settings-dialog"
+import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
 import type {
   TerminalSession,
   TerminalConnectionPhase,
@@ -101,43 +102,6 @@ const shouldCheckTerminalInactivity = (session: TerminalSession) => (
   session.status === "connected"
 )
 
-const readTerminalBehaviorSettings = (defaults: { maxTabs: number; inactiveMinutes: number }) => {
-  if (typeof window === "undefined") {
-    return defaults
-  }
-
-  try {
-    const saved = localStorage.getItem("terminal-settings")
-    if (saved) {
-      const parsed = JSON.parse(saved) as Partial<TerminalSettings>
-      return {
-        maxTabs:
-          typeof parsed.maxTabs === "number" && Number.isFinite(parsed.maxTabs)
-            ? parsed.maxTabs
-            : defaults.maxTabs,
-        inactiveMinutes:
-          typeof parsed.inactiveMinutes === "number" && Number.isFinite(parsed.inactiveMinutes)
-            ? parsed.inactiveMinutes
-            : defaults.inactiveMinutes,
-      }
-    }
-
-    const legacyMaxTabs = Number(localStorage.getItem("tab.maxTabs") || defaults.maxTabs)
-    const legacyInactiveMinutes = Number(
-      localStorage.getItem("tab.inactiveMinutes") || defaults.inactiveMinutes
-    )
-
-    return {
-      maxTabs: Number.isFinite(legacyMaxTabs) ? legacyMaxTabs : defaults.maxTabs,
-      inactiveMinutes: Number.isFinite(legacyInactiveMinutes)
-        ? legacyInactiveMinutes
-        : defaults.inactiveMinutes,
-    }
-  } catch {
-    return defaults
-  }
-}
-
 function TerminalPageContent() {
   const { ready } = useAuthReady()
   const navigate = useNavigate()
@@ -148,8 +112,9 @@ function TerminalPageContent() {
   const { t } = useTranslation("terminal")
   const { t: tServers } = useTranslation("servers")
   const { t: tSftp } = useTranslation("sftp")
-  const [maxTabs, setMaxTabs] = useState(50)
-  const [inactiveMinutes, setInactiveMinutes] = useState(60)
+  const savedInactiveMinutes = useTerminalSettingsStore(state => state.settings.inactiveMinutes)
+  const inactiveReminderLimit = systemConfig?.tab_session?.inactive_minutes ?? 60
+  const inactiveMinutes = resolveTerminalInactiveMinutes(savedInactiveMinutes, inactiveReminderLimit)
   const inactivityNotifiedRef = useRef<Set<string>>(new Set())
   const consumedServerIdRef = useRef<string | null>(null)
   const consumedSftpOpenRef = useRef(false)
@@ -253,39 +218,13 @@ function TerminalPageContent() {
     createWorkspaceCapabilitiesFromRuntime(runtime, WORKSPACE_CAPABILITY_PRESETS.webTerminal)
   ), [runtime])
   const canUseSftpCapability = workspaceCapabilities.sftp !== false
-  const tabPolicyMaxTabs = systemConfig?.tab_session?.max_tabs ?? 50
-  const tabPolicyInactiveMinutes = systemConfig?.tab_session?.inactive_minutes ?? 60
+  const maxTabs = systemConfig?.tab_session?.max_tabs ?? 50
   const totalTabCount = sessions.length + sftpTabs.length
   const sftpTabSessions = useMemo(
     () => sftpTabs.map(createSftpTabSession),
     [sftpTabs]
   )
   combinedSessionsRef.current = [...sessions, ...sftpTabSessions]
-
-  const applyTerminalBehaviorSettings = useCallback(
-    (settings: { maxTabs: number; inactiveMinutes: number }) => {
-      setMaxTabs(Math.max(1, Math.min(settings.maxTabs, tabPolicyMaxTabs)))
-      setInactiveMinutes(Math.max(5, Math.min(settings.inactiveMinutes, tabPolicyInactiveMinutes)))
-    },
-    [tabPolicyMaxTabs, tabPolicyInactiveMinutes]
-  )
-
-  // 读取终端行为设置，和终端设置弹窗使用同一个 localStorage key。
-  useEffect(() => {
-    const loadSettings = () => {
-      const settings = readTerminalBehaviorSettings({
-        maxTabs: tabPolicyMaxTabs,
-        inactiveMinutes: tabPolicyInactiveMinutes,
-      })
-      applyTerminalBehaviorSettings(settings)
-    }
-
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      requestIdleCallback(loadSettings)
-    } else {
-      setTimeout(loadSettings, 0)
-    }
-  }, [applyTerminalBehaviorSettings, tabPolicyInactiveMinutes, tabPolicyMaxTabs])
 
   const handleOpenSftpPicker = useCallback(() => {
     if (!canUseSftpCapability) {
@@ -600,6 +539,8 @@ function TerminalPageContent() {
   }, [sessions])
 
   useEffect(() => {
+    inactivityNotifiedRef.current.clear()
+    if (inactiveMinutes === 0) return
     const timer = setInterval(() => {
       const now = Date.now()
       const threshold = inactiveMinutes * 60 * 1000
@@ -674,7 +615,7 @@ function TerminalPageContent() {
           externalActiveSessionId={activeSessionId}
           onActiveSessionChange={setActiveSessionId}
           onConnectionPhaseChange={handleConnectionPhaseChange}
-          onBehaviorSettingsChange={applyTerminalBehaviorSettings}
+          inactiveReminderLimit={inactiveReminderLimit}
         />
       </div>
     </SshWorkspace>

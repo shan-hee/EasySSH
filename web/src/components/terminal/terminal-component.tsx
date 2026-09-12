@@ -1,3 +1,4 @@
+import { resolveTerminalInactiveMinutes } from "./terminal-settings"
 import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
@@ -27,13 +28,7 @@ import { SessionDockview } from "@/components/tabs/session-dockview"
 import {
   TerminalSettingsDialog,
 } from "./terminal-settings-dialog"
-import {
-  DEFAULT_TERMINAL_SETTINGS,
-  loadTerminalSettingsFromStorage,
-  normalizeTerminalSettings,
-  TERMINAL_SETTINGS_STORAGE_KEY,
-  type TerminalSettings,
-} from "./terminal-settings"
+import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
 import { TabTerminalContent } from "./tab-terminal-content"
 import { useTabUIStore } from "@/stores/tab-ui-store"
 import { useTranslation } from "react-i18next"
@@ -281,6 +276,7 @@ interface TerminalComponentProps {
   onReorderExtraSessions?: (newOrderIds: string[]) => void
   externalActiveExtraSessionId?: string | null
   onActiveExtraSessionChange?: (sessionId: string | null) => void
+  inactiveReminderLimit?: number
   onCloseSession: (sessionId: string) => void
   onCloseSessions?: (sessionIds: string[]) => void
   onSendCommand: (sessionId: string, command: string) => void
@@ -296,7 +292,6 @@ interface TerminalComponentProps {
   externalActiveSessionId?: string | null
   onActiveSessionChange?: (sessionId: string | null) => void
   onConnectionPhaseChange?: (sessionId: string, phase: TerminalConnectionPhase) => void
-  onBehaviorSettingsChange?: (settings: { maxTabs: number; inactiveMinutes: number }) => void
   serverApi?: ServerConnectionConfigsApi
   serverConfigsReady?: boolean
   aiAssistantAdapters?: AIAssistantWorkspaceAdapters
@@ -326,6 +321,7 @@ export function TerminalComponent({
   externalActiveExtraSessionId,
   onActiveExtraSessionChange,
   onCloseSession,
+  inactiveReminderLimit,
   onCloseSessions,
   onSendCommand,
   onDuplicateSession,
@@ -338,7 +334,6 @@ export function TerminalComponent({
   externalActiveSessionId,
   onActiveSessionChange,
   onConnectionPhaseChange,
-  onBehaviorSettingsChange,
   serverApi,
   serverConfigsReady,
   aiAssistantAdapters,
@@ -1018,18 +1013,9 @@ export function TerminalComponent({
 
   // 主题样式全部改为静态类 + dark: 前缀，避免 SSR/CSR 水合不一致
 
-  const [settings, setSettings] = useState<TerminalSettings>(() => {
-    // 从 localStorage 加载设置
-    if (typeof window !== 'undefined') {
-      try {
-        return loadTerminalSettingsFromStorage(localStorage)
-      } catch (error) {
-        console.error('Failed to load terminal settings:', error)
-      }
-    }
-    // 默认设置
-    return DEFAULT_TERMINAL_SETTINGS
-  })
+  const savedSettings = useTerminalSettingsStore(state => state.settings)
+  const settings = useMemo(() => ({ ...savedSettings, inactiveMinutes: resolveTerminalInactiveMinutes(savedSettings.inactiveMinutes, inactiveReminderLimit) }), [savedSettings, inactiveReminderLimit])
+  const handleSettingsChange = useTerminalSettingsStore(state => state.saveSettings)
 
   const splitPaneHeaderBackground = useMemo<SessionSplitPaneHeaderBackground>(() => {
     // Workspace theme adapters may update in place; the version invalidates this memo.
@@ -1091,42 +1077,6 @@ export function TerminalComponent({
       return () => clearTimeout(timer)
     }
   }, [active, activeExtraSession, sessions, extraSessions, activeSession, setActiveSessionWithoutHistory])
-
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // 保存设置到 localStorage（使用防抖优化性能）
-  const handleSettingsChange = (newSettings: TerminalSettings) => {
-    const normalizedSettings = normalizeTerminalSettings(newSettings)
-    setSettings(normalizedSettings)
-    onBehaviorSettingsChange?.({
-      maxTabs: normalizedSettings.maxTabs,
-      inactiveMinutes: normalizedSettings.inactiveMinutes,
-    })
-
-    // 防抖保存到 localStorage，避免频繁写入
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current)
-    }
-
-    saveTimerRef.current = setTimeout(() => {
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem(TERMINAL_SETTINGS_STORAGE_KEY, JSON.stringify(normalizedSettings))
-        } catch (error) {
-          console.error('Failed to save terminal settings:', error)
-        }
-      }
-    }, 500) // 500ms 防抖延迟
-  }
-
-  // 清理定时器
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current)
-      }
-    }
-  }, [])
 
   const handleCommand = useCallback((sessionId: string, command: string) => {
     onSendCommand(sessionId, command)
@@ -1635,6 +1585,7 @@ export function TerminalComponent({
         open={isSettingsOpen}
         onOpenChange={setIsSettingsOpen}
         settings={settings}
+        inactiveReminderLimit={inactiveReminderLimit}
         onSettingsChange={handleSettingsChange}
       />
     </div>

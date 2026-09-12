@@ -1,10 +1,42 @@
+import { normalizeShortcut, TERMINAL_SHORTCUT_KEYS } from "./terminal-shortcuts"
 import type { CompletionConfig } from "@/lib/completion/types"
 import { DEFAULT_COMPLETION_CONFIG } from "@/lib/completion/types"
 import type { CompletionFetchOptions } from "@/lib/websocket-terminal"
 
 export const TERMINAL_SETTINGS_STORAGE_KEY = "terminal-settings"
 export const TERMINAL_SETTINGS_EXPORT_SCHEMA = "easyssh.terminal-settings"
-export const TERMINAL_SETTINGS_EXPORT_VERSION = 2
+export const TERMINAL_SETTINGS_EXPORT_VERSION = 3
+
+export const TERMINAL_MONITOR_INTERVAL_SECONDS = 2
+export const TERMINAL_BACKGROUND_TINT_OPACITY = 0.55
+export const TERMINAL_FONT_FAMILIES = [
+  "JetBrains Mono",
+  "Fira Code",
+  "Cascadia Code",
+  "Source Code Pro",
+  "Menlo",
+  "Monaco",
+  "Consolas",
+  "Courier New",
+  "monospace",
+] as const
+export const MAX_TERMINAL_BACKGROUND_BYTES = 2 * 1024 * 1024
+
+export function isTerminalBackgroundImage(value: unknown): boolean {
+  if (typeof value !== "string") return false
+  if (!value) return true
+  if (value.length > MAX_TERMINAL_BACKGROUND_BYTES * 1.4) return false
+  if (/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) return true
+  try {
+    const url = new URL(value)
+    return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password
+  } catch {
+    return false
+  }
+}
+
+const normalizeNumberChoice = (value: unknown, choices: number[], fallback: number) =>
+  typeof value === "number" && choices.includes(value) ? value : fallback
 
 export type TerminalCompletionMode = "auto" | "tab" | "off"
 
@@ -12,30 +44,31 @@ export interface TerminalSettings {
   // 终端设置
   fontSize: number
   fontFamily: string
+  lineHeight: number
   cursorStyle: "block" | "underline" | "bar"
   cursorBlink: boolean
   scrollback: number
   rightClickPaste: boolean
   copyOnSelect: boolean
+  multiLinePasteWarning: boolean
 
   // 主题设置
   theme: "default" | "dark" | "light" | "solarized" | "dracula"
   backgroundImage: string
   backgroundImageOpacity: number
-  backgroundTextEnhance: boolean
 
   // 行为设置
-  maxTabs: number
   inactiveMinutes: number
-  hibernateBackground: boolean
   autoReconnect: boolean
-  confirmBeforeClose: boolean
-  monitorInterval: number
 
   // 快捷键设置
   copyShortcut: string
   pasteShortcut: string
   clearShortcut: string
+  findShortcut: string
+  zoomInShortcut: string
+  zoomOutShortcut: string
+  zoomResetShortcut: string
 
   // 补全设置
   completionMode: TerminalCompletionMode
@@ -50,6 +83,11 @@ export interface TerminalSettingsExportPayload {
   exported_at: string
   settings: TerminalSettings
 }
+
+type TerminalCompletionSettings = Pick<
+  TerminalSettings,
+  "completionMode" | "completionUseHistory" | "completionUseScripts" | "completionUseRemotePaths"
+>
 
 export interface TerminalCompletionProviderFlags {
   local: boolean
@@ -69,24 +107,25 @@ const TERMINAL_COMPLETION_POLICY = {
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   fontSize: 14,
   fontFamily: "JetBrains Mono",
+  lineHeight: 1.2,
   cursorStyle: "block",
   cursorBlink: true,
-  scrollback: 1000,
+  scrollback: 5000,
   rightClickPaste: true,
   copyOnSelect: true,
+  multiLinePasteWarning: true,
   theme: "default",
   backgroundImage: "",
   backgroundImageOpacity: 100,
-  backgroundTextEnhance: true,
-  maxTabs: 50,
   inactiveMinutes: 60,
-  hibernateBackground: true,
   autoReconnect: true,
-  confirmBeforeClose: true,
-  monitorInterval: 2,
   copyShortcut: "Ctrl+Shift+C",
   pasteShortcut: "Ctrl+Shift+V",
-  clearShortcut: "Ctrl+L",
+  clearShortcut: "Ctrl+Shift+K",
+  findShortcut: "Ctrl+Shift+F",
+  zoomInShortcut: "Ctrl+Shift+Plus",
+  zoomOutShortcut: "Ctrl+-",
+  zoomResetShortcut: "Ctrl+0",
   completionMode: "auto",
   completionUseHistory: true,
   completionUseScripts: true,
@@ -104,64 +143,81 @@ const normalizeChoice = <T extends string>(
   fallback: T,
 ): T => (typeof value === "string" && allowed.includes(value as T) ? (value as T) : fallback)
 
-const normalizeBoolean = (value: unknown, fallback: boolean) => (
+const normalizeBoolean = (value: unknown, fallback: boolean) =>
   typeof value === "boolean" ? value : fallback
-)
 
-const normalizeString = (value: unknown, fallback: string) => (
-  typeof value === "string" ? value : fallback
-)
-
-const isRecord = (value: unknown): value is Record<string, unknown> => (
+const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value)
-)
 
 export function normalizeTerminalSettings(input: unknown): TerminalSettings {
-  const value = input && typeof input === "object"
-    ? input as Partial<TerminalSettings>
-    : {}
+  const value = input && typeof input === "object" ? (input as Partial<TerminalSettings>) : {}
   const defaults = DEFAULT_TERMINAL_SETTINGS
+  const shortcuts = {} as Pick<TerminalSettings, (typeof TERMINAL_SHORTCUT_KEYS)[number]>
+  const usedShortcuts = new Set<string>()
+  for (const key of TERMINAL_SHORTCUT_KEYS) {
+    const candidate = value[key]
+    const shortcut =
+      (typeof candidate === "string" ? normalizeShortcut(candidate) : null) ?? defaults[key]
+    shortcuts[key] = usedShortcuts.has(shortcut) ? "" : shortcut
+    if (shortcuts[key]) usedShortcuts.add(shortcuts[key])
+  }
   return {
-    fontSize: clampNumber(value.fontSize, defaults.fontSize, 8, 24),
-    fontFamily: normalizeString(value.fontFamily, defaults.fontFamily),
-    cursorStyle: normalizeChoice(value.cursorStyle, ["block", "underline", "bar"] as const, defaults.cursorStyle),
+    ...shortcuts,
+    fontSize: Math.round(clampNumber(value.fontSize, defaults.fontSize, 8, 40)),
+    fontFamily: normalizeChoice(value.fontFamily, TERMINAL_FONT_FAMILIES, defaults.fontFamily),
+    lineHeight: normalizeNumberChoice(value.lineHeight, [1, 1.2, 1.4], defaults.lineHeight),
+    cursorStyle: normalizeChoice(
+      value.cursorStyle,
+      ["block", "underline", "bar"] as const,
+      defaults.cursorStyle,
+    ),
     cursorBlink: normalizeBoolean(value.cursorBlink, defaults.cursorBlink),
-    scrollback: clampNumber(value.scrollback, defaults.scrollback, 100, 10000),
+    scrollback: normalizeNumberChoice(value.scrollback, [1000, 5000, 10000], defaults.scrollback),
     rightClickPaste: normalizeBoolean(value.rightClickPaste, defaults.rightClickPaste),
     copyOnSelect: normalizeBoolean(value.copyOnSelect, defaults.copyOnSelect),
-    theme: normalizeChoice(value.theme, ["default", "dark", "light", "solarized", "dracula"] as const, defaults.theme),
-    backgroundImage: normalizeString(value.backgroundImage, defaults.backgroundImage),
-    backgroundImageOpacity: clampNumber(
-      value.backgroundImageOpacity,
-      defaults.backgroundImageOpacity,
-      0,
-      100,
+    multiLinePasteWarning: normalizeBoolean(
+      value.multiLinePasteWarning,
+      defaults.multiLinePasteWarning,
     ),
-    backgroundTextEnhance: normalizeBoolean(
-      value.backgroundTextEnhance,
-      defaults.backgroundTextEnhance,
+    theme: normalizeChoice(
+      value.theme,
+      ["default", "dark", "light", "solarized", "dracula"] as const,
+      defaults.theme,
     ),
-    maxTabs: clampNumber(value.maxTabs, defaults.maxTabs, 5, 100),
-    inactiveMinutes: clampNumber(value.inactiveMinutes, defaults.inactiveMinutes, 10, 180),
-    hibernateBackground: normalizeBoolean(value.hibernateBackground, defaults.hibernateBackground),
+    backgroundImage: isTerminalBackgroundImage(value.backgroundImage)
+      ? (value.backgroundImage as string)
+      : defaults.backgroundImage,
+    backgroundImageOpacity:
+      Math.round(
+        clampNumber(value.backgroundImageOpacity, defaults.backgroundImageOpacity, 0, 100) / 5,
+      ) * 5,
+    inactiveMinutes:
+      value.inactiveMinutes === 0
+        ? 0
+        : Math.round(clampNumber(value.inactiveMinutes, defaults.inactiveMinutes, 5, 1440)),
     autoReconnect: normalizeBoolean(value.autoReconnect, defaults.autoReconnect),
-    confirmBeforeClose: normalizeBoolean(value.confirmBeforeClose, defaults.confirmBeforeClose),
-    monitorInterval: clampNumber(value.monitorInterval, defaults.monitorInterval, 1, 10),
-    copyShortcut: normalizeString(value.copyShortcut, defaults.copyShortcut),
-    pasteShortcut: normalizeString(value.pasteShortcut, defaults.pasteShortcut),
-    clearShortcut: normalizeString(value.clearShortcut, defaults.clearShortcut),
     completionMode: normalizeChoice(
       value.completionMode,
       ["auto", "tab", "off"] as const,
       defaults.completionMode,
     ),
-    completionUseHistory: normalizeBoolean(value.completionUseHistory, defaults.completionUseHistory),
-    completionUseScripts: normalizeBoolean(value.completionUseScripts, defaults.completionUseScripts),
+    completionUseHistory: normalizeBoolean(
+      value.completionUseHistory,
+      defaults.completionUseHistory,
+    ),
+    completionUseScripts: normalizeBoolean(
+      value.completionUseScripts,
+      defaults.completionUseScripts,
+    ),
     completionUseRemotePaths: normalizeBoolean(
       value.completionUseRemotePaths,
       defaults.completionUseRemotePaths,
     ),
   }
+}
+
+export function resolveTerminalInactiveMinutes(minutes: number, limit = 1440): number {
+  return minutes === 0 ? 0 : Math.min(minutes, limit)
 }
 
 export function loadTerminalSettingsFromStorage(storage: Storage): TerminalSettings {
@@ -206,11 +262,20 @@ export function parseTerminalSettingsImport(content: string): TerminalSettings {
     throw new Error("invalid_terminal_settings")
   }
 
-  return normalizeTerminalSettings(parsed.settings)
+  const imported = parsed.settings
+  const normalized = normalizeTerminalSettings(imported)
+  const keys = Object.keys(normalized) as (keyof TerminalSettings)[]
+  if (
+    Object.keys(imported).length !== keys.length ||
+    keys.some((key) => imported[key] !== normalized[key])
+  ) {
+    throw new Error("invalid_terminal_settings_values")
+  }
+  return normalized
 }
 
 export function buildTerminalCompletionProviderFlags(
-  settings: TerminalSettings,
+  settings: TerminalCompletionSettings,
 ): TerminalCompletionProviderFlags {
   return {
     local: true,
@@ -221,7 +286,9 @@ export function buildTerminalCompletionProviderFlags(
   }
 }
 
-export function buildTerminalCompletionConfig(settings: TerminalSettings): CompletionConfig {
+export function buildTerminalCompletionConfig(
+  settings: TerminalCompletionSettings,
+): CompletionConfig {
   const enabled = settings.completionMode !== "off"
   return {
     ...DEFAULT_COMPLETION_CONFIG,
@@ -243,7 +310,9 @@ export function buildTerminalCompletionConfig(settings: TerminalSettings): Compl
   }
 }
 
-export function buildTerminalCompletionFetchOptions(settings: TerminalSettings): CompletionFetchOptions {
+export function buildTerminalCompletionFetchOptions(
+  settings: TerminalCompletionSettings,
+): CompletionFetchOptions {
   const enabled = settings.completionMode !== "off"
 
   return {

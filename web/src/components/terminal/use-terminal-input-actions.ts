@@ -1,180 +1,176 @@
-
-import { useCallback, useEffect, useRef, type RefObject } from "react"
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type { Terminal } from "@xterm/xterm"
-
-type ParsedShortcut = {
-  ctrl: boolean
-  shift: boolean
-  alt: boolean
-  meta: boolean
-  key: string
-}
+import { useTranslation } from "react-i18next"
+import { toast } from "@/components/ui/sonner"
+import { DEFAULT_TERMINAL_SETTINGS } from "./terminal-settings"
+import { matchesTerminalShortcut } from "./terminal-shortcuts"
 
 export interface UseTerminalInputActionsOptions {
   terminal: Terminal | null | undefined
   terminalReady: boolean
+  canSendInput: boolean
+  isActive: boolean
   containerRef: RefObject<HTMLDivElement | null>
   copyOnSelect?: boolean
   rightClickPaste?: boolean
+  multiLinePasteWarning?: boolean
   copyShortcut?: string
   pasteShortcut?: string
   clearShortcut?: string
+  findShortcut?: string
+  zoomInShortcut?: string
+  zoomOutShortcut?: string
+  zoomResetShortcut?: string
+  onFind: () => void
+  onZoom: (direction: "in" | "out" | "reset") => void
 }
 
-function parseShortcut(shortcut: string): ParsedShortcut {
-  const parts = shortcut.split("+").map((s) => s.trim().toLowerCase())
-  return {
-    ctrl: parts.includes("ctrl"),
-    shift: parts.includes("shift"),
-    alt: parts.includes("alt"),
-    meta: parts.includes("meta"),
-    key: parts[parts.length - 1] || "",
-  }
-}
-
-function matchesShortcut(event: KeyboardEvent, shortcut: ParsedShortcut) {
-  if (!shortcut.key) return false
-
-  return (
-    event.ctrlKey === shortcut.ctrl &&
-    event.shiftKey === shortcut.shift &&
-    event.altKey === shortcut.alt &&
-    event.metaKey === shortcut.meta &&
-    event.key.toLowerCase() === shortcut.key.toLowerCase()
-  )
-}
-
-export function useTerminalInputActions({
-  terminal,
-  terminalReady,
-  containerRef,
-  copyOnSelect = true,
-  rightClickPaste = true,
-  copyShortcut = "Ctrl+Shift+C",
-  pasteShortcut = "Ctrl+Shift+V",
-  clearShortcut = "Ctrl+L",
-}: UseTerminalInputActionsOptions) {
+export function useTerminalInputActions(options: UseTerminalInputActionsOptions) {
+  const { terminal, terminalReady, containerRef, canSendInput, isActive } = options
+  const currentOptions = useRef(options)
+  currentOptions.current = options
+  const [pendingPaste, setPendingPaste] = useState<string | null>(null)
+  const pendingRef = useRef<string | null>(null)
+  const selectionByPointer = useRef(false)
   const selectionFrameRef = useRef<number | null>(null)
-  const shortcutsRef = useRef<{
-    copy: ParsedShortcut
-    paste: ParsedShortcut
-    clear: ParsedShortcut
-  } | null>(null)
+  const { t } = useTranslation("terminalSettings")
+
+  const requestPaste = useCallback((text: string) => {
+    const current = currentOptions.current
+    if (!text || !current.terminal || !current.canSendInput || !current.isActive) return
+    if (pendingRef.current !== null) return
+    const needsConfirmation =
+      (/[\r\n]/.test(text) && !current.terminal.modes.bracketedPasteMode) || text.length > 5000
+    if ((current.multiLinePasteWarning ?? true) && needsConfirmation) {
+      pendingRef.current = text
+      setPendingPaste(text)
+    } else current.terminal.paste(text)
+  }, [])
+
+  const finishPaste = useCallback((approved: boolean) => {
+    const text = pendingRef.current
+    pendingRef.current = null
+    setPendingPaste(null)
+    const current = currentOptions.current
+    if (approved && text && current.canSendInput && current.isActive) current.terminal?.paste(text)
+    current.terminal?.focus()
+  }, [])
 
   useEffect(() => {
-    shortcutsRef.current = {
-      copy: parseShortcut(copyShortcut),
-      paste: parseShortcut(pasteShortcut),
-      clear: parseShortcut(clearShortcut),
+    if (!canSendInput || !isActive) {
+      pendingRef.current = null
+      setPendingPaste(null)
     }
-  }, [clearShortcut, copyShortcut, pasteShortcut])
+  }, [canSendInput, isActive])
 
-  useEffect(() => {
-    if (!terminal || !terminalReady || !copyOnSelect) return
-
-    const handleSelection = () => {
-      if (selectionFrameRef.current !== null) return
-
-      selectionFrameRef.current = requestAnimationFrame(() => {
-        selectionFrameRef.current = null
-        const selection = terminal.getSelection()
-
-        if (selection && navigator.clipboard?.writeText) {
-          navigator.clipboard.writeText(selection).catch(() => {
-            // Ignore clipboard permission errors; selection should still behave normally.
-          })
-        }
-      })
+  const readClipboard = useCallback(async () => {
+    try {
+      if (!navigator.clipboard?.readText) throw new Error("clipboard_unavailable")
+      requestPaste(await navigator.clipboard.readText())
+    } catch {
+      toast.error(t("clipboardReadFailed"))
     }
+  }, [requestPaste, t])
 
-    const disposable = terminal.onSelectionChange(handleSelection)
-
-    return () => {
-      disposable.dispose()
-      if (selectionFrameRef.current !== null) {
-        cancelAnimationFrame(selectionFrameRef.current)
-        selectionFrameRef.current = null
-      }
-    }
-  }, [copyOnSelect, terminalReady, terminal])
-
-  useEffect(() => {
-    if (!containerRef.current || !terminalReady || !rightClickPaste) return
-
-    const xtermRoot = containerRef.current.querySelector(".xterm") as HTMLElement | null
-    if (!xtermRoot) return
-
-    const handleContextMenu = async (event: MouseEvent) => {
-      event.preventDefault()
-
-      if (!navigator.clipboard?.readText || !terminal) return
-
+  const copySelection = useCallback(
+    async (automatic = false) => {
+      const selection = currentOptions.current.terminal?.getSelection()
+      if (!selection) return
       try {
-        const text = await navigator.clipboard.readText()
-        if (text) {
-          terminal.paste(text)
-        }
-      } catch (error) {
-        console.error("Failed to read from clipboard:", error)
+        if (!navigator.clipboard?.writeText) throw new Error("clipboard_unavailable")
+        await navigator.clipboard.writeText(selection)
+      } catch {
+        toast.error(t(automatic ? "clipboardAutoCopyFailed" : "clipboardCopyFailed"), {
+          id: "terminal-copy-failed",
+        })
       }
-    }
-
-    xtermRoot.addEventListener("contextmenu", handleContextMenu)
-
-    return () => {
-      xtermRoot.removeEventListener("contextmenu", handleContextMenu)
-    }
-  }, [rightClickPaste, terminalReady, containerRef, terminal])
-
-  const handleKeyEvent = useCallback((event: KeyboardEvent) => {
-    const shortcuts = shortcutsRef.current
-    const term = terminal
-
-    if (!shortcuts || !term) {
-      return true
-    }
-
-    if (!event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey) {
-      return true
-    }
-
-    if (matchesShortcut(event, shortcuts.copy)) {
-      event.preventDefault()
-      const selection = term.getSelection()
-      if (selection && navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(selection).catch(() => {})
-      }
-      return false
-    }
-
-    if (matchesShortcut(event, shortcuts.paste)) {
-      event.preventDefault()
-      if (navigator.clipboard?.readText) {
-        navigator.clipboard.readText().then((text) => {
-          if (text) {
-            term.paste(text)
-          }
-        }).catch(() => {})
-      }
-      return false
-    }
-
-    if (matchesShortcut(event, shortcuts.clear)) {
-      event.preventDefault()
-      term.clear()
-      return false
-    }
-
-    return true
-  }, [terminal])
+    },
+    [t],
+  )
 
   useEffect(() => {
     if (!terminal || !terminalReady) return
+    const selection = terminal.onSelectionChange(() => {
+      if (!currentOptions.current.isActive || !(currentOptions.current.copyOnSelect ?? true)) return
+      // Search selections and keyboard navigation must not overwrite the clipboard.
+      if (!selectionByPointer.current || selectionFrameRef.current !== null) return
+      selectionFrameRef.current = requestAnimationFrame(() => {
+        selectionFrameRef.current = null
+        void copySelection(true)
+      })
+    })
+    return () => {
+      selection.dispose()
+      if (selectionFrameRef.current !== null) cancelAnimationFrame(selectionFrameRef.current)
+      selectionFrameRef.current = null
+    }
+  }, [copySelection, terminal, terminalReady])
 
-    terminal.attachCustomKeyEventHandler(handleKeyEvent)
+  useEffect(() => {
+    const root = containerRef.current?.querySelector<HTMLElement>(".xterm")
+    if (!root || !terminalReady) return
+    const onPointerDown = () => {
+      selectionByPointer.current = true
+    }
+    const onPointerUp = () => {
+      selectionByPointer.current = false
+    }
+    const onContextMenu = (event: MouseEvent) => {
+      if (!(currentOptions.current.rightClickPaste ?? true) || !currentOptions.current.isActive)
+        return
+      event.preventDefault()
+      void readClipboard()
+    }
+    const onPaste = (event: ClipboardEvent) => {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      requestPaste(event.clipboardData?.getData("text/plain") ?? "")
+    }
+    root.addEventListener("pointerdown", onPointerDown)
+    window.addEventListener("pointerup", onPointerUp)
+    window.addEventListener("pointercancel", onPointerUp)
+    root.addEventListener("contextmenu", onContextMenu)
+    root.addEventListener("paste", onPaste, true)
+    return () => {
+      root.removeEventListener("pointerdown", onPointerDown)
+      window.removeEventListener("pointerup", onPointerUp)
+      window.removeEventListener("pointercancel", onPointerUp)
+      root.removeEventListener("contextmenu", onContextMenu)
+      root.removeEventListener("paste", onPaste, true)
+    }
+  }, [containerRef, readClipboard, requestPaste, terminalReady])
 
+  useEffect(() => {
+    if (!terminal || !terminalReady) return
+    terminal.attachCustomKeyEventHandler((event) => {
+      const current = currentOptions.current
+      if (!current.isActive) return true
+      const actions = {
+        copyShortcut: () => {
+          void copySelection()
+        },
+        pasteShortcut: () => {
+          void readClipboard()
+        },
+        clearShortcut: () => terminal.clear(),
+        findShortcut: current.onFind,
+        zoomInShortcut: () => current.onZoom("in"),
+        zoomOutShortcut: () => current.onZoom("out"),
+        zoomResetShortcut: () => current.onZoom("reset"),
+      }
+      for (const key of Object.keys(actions) as (keyof typeof actions)[]) {
+        if (!matchesTerminalShortcut(event, current[key] ?? DEFAULT_TERMINAL_SETTINGS[key]))
+          continue
+        event.preventDefault()
+        if (event.type === "keydown") actions[key]()
+        return false
+      }
+      return true
+    })
     return () => {
       terminal.attachCustomKeyEventHandler(() => true)
     }
-  }, [handleKeyEvent, terminalReady, terminal])
+  }, [copySelection, readClipboard, terminal, terminalReady])
+
+  return { pendingPaste, finishPaste }
 }
