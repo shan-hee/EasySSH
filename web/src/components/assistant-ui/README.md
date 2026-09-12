@@ -44,6 +44,7 @@ Markdown 使用官方 `@assistant-ui/react-streamdown` 的 `StreamdownTextPrimit
 - 消息编辑、删除和发送接入 EasySSH 后端及上下文处理，避免默认前端分支操作绕过后端持久化。
 - ToolFallback 保留官方耗时、错误、参数／结果复制和审批交互，外层使用 Elements ToolCall；分组使用 Elements ToolTimeline。删除未使用的旧 ToolGroup 包装组件。
 - AttachmentTile 为官方附件展示部分增加受控属性，供 EasySSH 文件解析器复用；消息附件仍从官方 Runtime 读取。
+- 附件弹窗复用 ImagePreview 的加载、缓存命中和失败状态，支持 Esc 关闭；本地图片预览使用 Blob URL，服务端默认 CSP 的 img-src 必须允许 blob:。
 - 消息复制使用官方 `useActionBarCopy`，写入剪贴板的函数补充桌面 WebView 支持。
 - Composer 使用官方 Elements 的表面、工具栏、附件、语音和发送/停止按钮，配合官方 ComposerPrimitive；空会话居中，消息出现后停靠底部。
 - Composer.Input 的受控文本直接订阅同一 Runtime 草稿，避免 Provider 状态转换期间回写旧值、打断中文输入法组词；不复制本地文本状态，不另写键盘或补全逻辑。页面只在发送、恢复和模板选择时写草稿，发送按钮自行订阅文本是否为空，避免每次输入重绘工作区和重新发布侧栏。Web、桌面和终端面板共用此实现。

@@ -72,7 +72,7 @@ const DefaultContentSecurityPolicy = "default-src 'self'; " +
 	"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://accounts.google.com https://apis.google.com blob:; " +
 	"worker-src 'self' blob:; " +
 	"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://accounts.google.com; " +
-	"img-src 'self' data: https:; " +
+	"img-src 'self' data: blob: https:; " +
 	"font-src 'self' data: https://fonts.gstatic.com; " +
 	"connect-src 'self' https://cdn.jsdelivr.net https://api.dicebear.com https://accounts.google.com https://oauth2.googleapis.com; " +
 	"frame-src 'self' https://accounts.google.com"

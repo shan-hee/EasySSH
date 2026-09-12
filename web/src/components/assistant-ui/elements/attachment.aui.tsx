@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next"
 
 import {
   type PropsWithChildren,
-  useState,
   type FC,
   type ReactNode,
   type ComponentProps,
@@ -16,30 +15,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Dialog, DialogTitle, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
+import { ImagePreview } from "@/components/assistant-ui/elements/image"
 import { useAttachmentSrc } from "@/hooks/use-attachment-src"
 import { cn } from "@/lib/utils"
-
-type AttachmentPreviewProps = {
-  src: string
-}
-
-const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
-  const { t } = useTranslation("aiAssistant")
-  const [isLoaded, setIsLoaded] = useState(false)
-  return (
-    <img
-      src={src}
-      alt={t("auiAttachmentPreview")}
-      className={cn(
-        "block h-auto max-h-[80vh] w-auto max-w-full rounded-sm object-contain transition-opacity duration-300 motion-reduce:transition-none",
-        isLoaded
-          ? "aui-attachment-preview-image-loaded opacity-100"
-          : "aui-attachment-preview-image-loading opacity-0"
-      )}
-      onLoad={() => setIsLoaded(true)}
-    />
-  )
-}
 
 const AttachmentPreviewDialog: FC<PropsWithChildren<{ src?: string }>> = ({ children, src }) => {
   const { t } = useTranslation("aiAssistant")
@@ -51,10 +29,15 @@ const AttachmentPreviewDialog: FC<PropsWithChildren<{ src?: string }>> = ({ chil
       <DialogTrigger className="aui-attachment-preview-trigger cursor-zoom-in" asChild>
         {isValidElement(children) ? children : <button type="button">{children}</button>}
       </DialogTrigger>
-      <DialogContent className="aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&>button]:hover:bg-foreground/80 [&_svg]:text-background p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!">
+      <DialogContent dismissOnEscape className="aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&>button]:hover:bg-foreground/80 [&>button_svg]:text-background p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!">
         <DialogTitle className="aui-sr-only sr-only">{t("auiAttachmentPreview")}</DialogTitle>
         <div className="aui-attachment-preview bg-background relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden rounded-sm">
-          <AttachmentPreview src={src} />
+          <ImagePreview
+            src={src}
+            alt={t("auiAttachmentPreview")}
+            containerClassName="w-full"
+            className="mx-auto max-h-[80dvh] w-auto max-w-full rounded-sm"
+          />
         </div>
       </DialogContent>
     </Dialog>
