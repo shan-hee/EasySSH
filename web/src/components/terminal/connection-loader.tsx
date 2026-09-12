@@ -98,7 +98,8 @@ export function ConnectionLoader({
     >
       <motion.div
         className="absolute inset-0 flex items-center justify-center bg-background px-5 py-10"
-        initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.985 }}
+        // 首帧完整遮住终端背景，避免加载层淡入、缩放时先露出自定义图片。
+        initial={false}
         animate={isExiting
           ? { opacity: 0, scale: shouldReduceMotion ? 1 : 1.01 }
           : { opacity: 1, scale: 1 }}
