@@ -34,7 +34,6 @@ export {
 
 export {
     DesktopAIConfigStatus,
-    DesktopAIToolApprovalInput,
     DesktopAICreateSessionInput,
     DesktopAICreateSessionResponse,
     DesktopAIImageAttachment,
@@ -53,6 +52,7 @@ export {
     DesktopAISessionView,
     DesktopAITaskStatus,
     DesktopAITaskView,
+    DesktopAIToolApprovalInput,
     DesktopAIToolView,
     DesktopAIUpdateMessageInput,
     DesktopAIUsage,

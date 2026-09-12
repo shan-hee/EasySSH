@@ -19,12 +19,6 @@ export function CloseSession(id: string): $CancellablePromise<void> {
     return $Call.ByID(2012466751, id);
 }
 
-export function RespondToToolApproval(input: $models.DesktopAIToolApprovalInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
-    return $Call.ByID(1110211044, input).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
 export function CreateSession(input: $models.DesktopAICreateSessionInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
     return $Call.ByID(1223357961, input).then(($result: any) => {
         return $$createType1($result);
@@ -86,6 +80,12 @@ export function RegenerateMessage(input: $models.DesktopAIRegenerateMessageInput
 export function RenameSession(id: string, title: string): $CancellablePromise<{ [_ in string]?: boolean }> {
     return $Call.ByID(362709311, id, title).then(($result: any) => {
         return $$createType0($result);
+    });
+}
+
+export function RespondToToolApproval(input: $models.DesktopAIToolApprovalInput): $CancellablePromise<$models.DesktopAICreateSessionResponse> {
+    return $Call.ByID(1110211044, input).then(($result: any) => {
+        return $$createType1($result);
     });
 }
 

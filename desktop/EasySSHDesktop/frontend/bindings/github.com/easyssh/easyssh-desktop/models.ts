@@ -45,36 +45,6 @@ export class DesktopAIConfigStatus {
     }
 }
 
-export class DesktopAIToolApprovalInput {
-    "session_id": string;
-    "id": string;
-    "approved": boolean | null;
-    "reason"?: string;
-
-    /** Creates a new DesktopAIToolApprovalInput instance. */
-    constructor($$source: Partial<DesktopAIToolApprovalInput> = {}) {
-        if (!("session_id" in $$source)) {
-            this["session_id"] = "";
-        }
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("approved" in $$source)) {
-            this["approved"] = null;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopAIToolApprovalInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopAIToolApprovalInput {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopAIToolApprovalInput($$parsedSource as Partial<DesktopAIToolApprovalInput>);
-    }
-}
-
 export class DesktopAICreateSessionInput {
     "model"?: string;
     "permission_mode"?: DesktopAIPermissionMode;
@@ -690,6 +660,36 @@ export class DesktopAITaskView {
             $$parsedSource["arguments"] = $$createField9_0($$parsedSource["arguments"]);
         }
         return new DesktopAITaskView($$parsedSource as Partial<DesktopAITaskView>);
+    }
+}
+
+export class DesktopAIToolApprovalInput {
+    "session_id": string;
+    "id": string;
+    "approved": boolean | null;
+    "reason"?: string;
+
+    /** Creates a new DesktopAIToolApprovalInput instance. */
+    constructor($$source: Partial<DesktopAIToolApprovalInput> = {}) {
+        if (!("session_id" in $$source)) {
+            this["session_id"] = "";
+        }
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("approved" in $$source)) {
+            this["approved"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopAIToolApprovalInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopAIToolApprovalInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopAIToolApprovalInput($$parsedSource as Partial<DesktopAIToolApprovalInput>);
     }
 }
 
