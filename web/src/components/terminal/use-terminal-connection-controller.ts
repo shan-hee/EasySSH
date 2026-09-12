@@ -37,6 +37,7 @@ export interface UseTerminalConnectionControllerOptions {
   sessionId: string
   serverId?: string
   shouldConnect: boolean
+  autoReconnect?: boolean
   isActive: boolean
   terminal: Terminal | null | undefined
   tTerminal: TerminalTranslator
@@ -61,6 +62,7 @@ export function useTerminalConnectionController({
   sessionId,
   serverId,
   shouldConnect,
+  autoReconnect,
   isActive,
   terminal,
   tTerminal,
@@ -96,6 +98,7 @@ export function useTerminalConnectionController({
     sessionId,
     serverId,
     shouldConnect,
+    autoReconnect,
     isActive,
     terminal: terminal ?? undefined,
     cols: terminal?.cols || 80,

@@ -27,6 +27,7 @@ export interface WebSocketConnectionConfig {
   sessionId: string
   serverId?: string
   shouldConnect: boolean
+  autoReconnect?: boolean
   isActive?: boolean
   terminal: Terminal | undefined
   cols: number
@@ -53,6 +54,7 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
     sessionId,
     serverId,
     shouldConnect,
+    autoReconnect,
     isActive = true,
     terminal,
     cols,
@@ -417,6 +419,7 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
         onConnectionPhase: (phase) => {
           reportConnectionPhase(phase)
         },
+        autoReconnect,
         enableCompletionFetch: !!enableCompletionFetch,
         completionFetchOptions,
         createAuthTicket,
@@ -456,6 +459,13 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, serverId, shouldConnect, terminalReady, connectionNonce, queueTerminalOutput, flushTerminalOutput, createAuthTicket, createWebSocketUrl, WebSocketCtor])
 
+  useEffect(() => {
+    getCurrentSessionWs()?.setAutoReconnect(autoReconnect ?? true)
+  }, [autoReconnect, getCurrentSessionWs, sessionId, serverId])
+
+  const includeHistory = completionFetchOptions?.includeHistory ?? true
+  const includeScripts = completionFetchOptions?.includeScripts ?? true
+
   // 动态同步补全拉取开关，避免切换配置时必须重建连接
   useEffect(() => {
     const currentWs = getCurrentSessionWs()
@@ -465,13 +475,14 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
 
     const shouldFetch = !!enableCompletionFetch
     currentWs.setCompletionFetchEnabled(shouldFetch)
-    currentWs.setCompletionFetchOptions(completionFetchOptions)
+    const fetchOptions = { includeHistory, includeScripts }
+    currentWs.setCompletionFetchOptions(fetchOptions)
 
     // 开关从关闭切到开启且连接已建立时，主动拉取一次补全数据
     if (shouldFetch && currentWs.isConnected()) {
-      currentWs.fetchCompletionData(completionFetchOptions)
+      currentWs.fetchCompletionData(fetchOptions)
     }
-  }, [completionFetchOptions, enableCompletionFetch, getCurrentSessionWs, sessionId, serverId])
+  }, [includeHistory, includeScripts, enableCompletionFetch, getCurrentSessionWs, sessionId, serverId])
 
   const sendInput = useCallback((data: string) => {
     const currentWs = getCurrentSessionWs()

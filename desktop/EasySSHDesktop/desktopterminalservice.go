@@ -71,6 +71,7 @@ type DesktopTerminalOutputEvent struct {
 }
 
 type DesktopTerminalClosedEvent struct {
+	Code     int    `json:"code"`
 	ClientID string `json:"clientId"`
 	Reason   string `json:"reason,omitempty"`
 }
@@ -104,7 +105,7 @@ func (s *DesktopTerminalService) ServiceShutdown() error {
 	s.mu.Unlock()
 
 	for _, clientID := range clientIDs {
-		s.closeByID(clientID, "application shutdown")
+		s.closeByID(clientID, "application shutdown", 1000)
 	}
 
 	return nil
@@ -129,7 +130,7 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 		rows = 24
 	}
 
-	s.closeByID(clientID, "session replaced")
+	s.closeByID(clientID, "session replaced", 1000)
 
 	server, err := s.serverService.getByIDRaw(serverID)
 	if err != nil {
@@ -223,7 +224,7 @@ func (s *DesktopTerminalService) Start(input DesktopTerminalStartInput) error {
 	go s.copyOutput(clientID, stderr)
 
 	if err := sshSession.Shell(); err != nil {
-		s.closeByID(clientID, err.Error())
+		s.closeByID(clientID, err.Error(), 1011)
 		return err
 	}
 	go s.serverService.detectAndPersistOSIfEmpty(server, client)
@@ -296,7 +297,7 @@ func (s *DesktopTerminalService) Close(input DesktopTerminalCloseInput) error {
 		return nil
 	}
 
-	s.closeByID(clientID, "client closed")
+	s.closeByID(clientID, "client closed", 1000)
 	return nil
 }
 
@@ -364,7 +365,7 @@ func (s *DesktopTerminalService) getSession(clientID string) *desktopTerminalSes
 	return s.sessions[clientID]
 }
 
-func (s *DesktopTerminalService) closeByID(clientID string, reason string) {
+func (s *DesktopTerminalService) closeByID(clientID string, reason string, code int) {
 	s.mu.Lock()
 	terminalSession := s.sessions[clientID]
 	delete(s.sessions, clientID)
@@ -384,7 +385,7 @@ func (s *DesktopTerminalService) closeByID(clientID string, reason string) {
 		_ = terminalSession.client.Close()
 	}
 
-	s.emitClosed(clientID, reason)
+	s.emitClosed(clientID, reason, code)
 }
 
 func (s *DesktopTerminalService) copyOutput(clientID string, reader io.Reader) {
@@ -396,7 +397,7 @@ func (s *DesktopTerminalService) copyOutput(clientID string, reader io.Reader) {
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				s.closeByID(clientID, err.Error())
+				s.closeByID(clientID, err.Error(), 1011)
 			}
 			return
 		}
@@ -409,7 +410,12 @@ func (s *DesktopTerminalService) waitForSession(clientID string, sshSession *ssh
 	if err != nil {
 		reason = err.Error()
 	}
-	s.closeByID(clientID, reason)
+	code := 1000
+	var exitError *ssh.ExitError
+	if err != nil && !errors.As(err, &exitError) {
+		code = 1011
+	}
+	s.closeByID(clientID, reason, code)
 }
 
 func (s *DesktopTerminalService) emitOutput(clientID string, data []byte) {
@@ -424,13 +430,14 @@ func (s *DesktopTerminalService) emitOutput(clientID string, data []byte) {
 	})
 }
 
-func (s *DesktopTerminalService) emitClosed(clientID string, reason string) {
+func (s *DesktopTerminalService) emitClosed(clientID string, reason string, code int) {
 	app := application.Get()
 	if app == nil || app.Event == nil {
 		return
 	}
 
 	app.Event.Emit(desktopTerminalClosedEvent, DesktopTerminalClosedEvent{
+		Code:     code,
 		ClientID: clientID,
 		Reason:   reason,
 	})

@@ -63,6 +63,7 @@ export interface TerminalWebSocketOptions {
   onAuthPrompt?: (prompt: TerminalAuthPrompt, respond: TerminalAuthPromptResponder) => void // SSH交互式认证回调
   onHostKeyPrompt?: (prompt: TerminalHostKeyPrompt, respond: TerminalHostKeyResponder) => void // SSH主机密钥变更确认回调
   onConnectionPhase?: (phase: TerminalConnectionPhase) => void
+  autoReconnect?: boolean
   enableCompletionFetch?: boolean // 是否在连接成功后自动拉取补全数据
   completionFetchOptions?: CompletionFetchOptions
   createAuthTicket?: TerminalWebSocketAuthTicketProvider
@@ -234,6 +235,8 @@ export class TerminalWebSocket {
   private createTerminalAuthTicket: TerminalWebSocketAuthTicketProvider
   private createTerminalWebSocketUrl: TerminalWebSocketUrlResolver
   private WebSocketCtor?: TerminalWebSocketConstructor
+  private autoReconnect: boolean
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempts = 0
   private maxReconnectAttempts = 3
   private reconnectDelay = 2000
@@ -252,6 +255,7 @@ export class TerminalWebSocket {
   private decoder = new TextDecoder("utf-8")
   private encoder = new TextEncoder()
   constructor(options: TerminalWebSocketOptions) {
+    this.autoReconnect = options.autoReconnect ?? true
     this.serverId = options.serverId
     this.cols = options.cols
     this.rows = options.rows
@@ -290,6 +294,7 @@ export class TerminalWebSocket {
 
   private shouldReconnect(event: CloseEvent): boolean {
     if (
+      !this.autoReconnect ||
       this.isManualClose ||
       this.isDestroyed ||
       this.authCancelled ||
@@ -358,7 +363,6 @@ export class TerminalWebSocket {
       this.ws.binaryType = "arraybuffer" // 设置为二进制模式
 
       this.ws.onopen = () => {
-        this.reconnectAttempts = 0
         this.lastError = null
         this.errorNotified = false
         this.setPhase("ssh_connecting")
@@ -410,7 +414,10 @@ export class TerminalWebSocket {
           // 自动重连
           this.reconnectAttempts++
           this.setPhase("reconnecting")
-          setTimeout(() => this.connect(), this.reconnectDelay)
+          this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null
+            if (this.autoReconnect && !this.isDestroyed && !this.isManualClose) this.connect()
+          }, this.reconnectDelay)
         } else {
           if (this.lastError && !this.errorNotified) {
             this.setPhase("failed")
@@ -610,7 +617,19 @@ export class TerminalWebSocket {
   /**
    * 断开连接
    */
+  setAutoReconnect(enabled: boolean): void {
+    this.autoReconnect = enabled
+    if (!enabled && this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+      this.setPhase("closed")
+      this.onDisconnected?.()
+    }
+  }
+
   disconnect(): void {
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
     this.isManualClose = true
     this.isDestroyed = true // 标记为已销毁
     this.stopPing()
@@ -669,6 +688,7 @@ export class TerminalWebSocket {
         performance.measure('ws-terminal-total', 'ws-terminal-connect-start', 'ws-terminal-connected')
         performance.measure('ws-terminal-ssh-init', 'ws-terminal-handshake-complete', 'ws-terminal-connected')
 
+        this.reconnectAttempts = 0
         this.setPhase("ready")
         this.lastError = null
         this.errorNotified = false

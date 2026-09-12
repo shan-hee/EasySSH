@@ -23,6 +23,7 @@ interface DesktopTerminalOutputPayload {
 }
 
 interface DesktopTerminalClosedPayload {
+  code: number
   clientId?: string
   reason?: string
 }
@@ -184,7 +185,7 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
           return
         }
 
-        this.close(1000, data.reason || "remote closed")
+        this.close(data.code, data.reason || "remote closed")
       })
 
       window.setTimeout(() => {
