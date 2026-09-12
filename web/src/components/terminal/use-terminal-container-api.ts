@@ -13,6 +13,7 @@ export interface TerminalInputApi {
   insertText: (text: string) => void
   executeCommand: (command: string) => void
   focus: () => void
+  toggleSearch: () => void
 }
 
 export interface UseTerminalContainerApiOptions {
@@ -20,6 +21,7 @@ export interface UseTerminalContainerApiOptions {
   fitAddon: FitAddon | null | undefined
   containerRef: RefObject<HTMLDivElement | null>
   writePrompt: (terminal: Terminal) => void
+  onToggleSearch: () => void
   onInputApiChange?: (api: TerminalInputApi | null) => void
 }
 
@@ -28,6 +30,7 @@ export function useTerminalContainerApi({
   fitAddon,
   containerRef,
   writePrompt,
+  onToggleSearch,
   onInputApiChange,
 }: UseTerminalContainerApiOptions) {
   const writeToTerminal = useCallback((text: string) => {
@@ -55,7 +58,8 @@ export function useTerminalContainerApi({
       terminal?.focus()
     },
     focus: () => terminal?.focus(),
-  }), [terminal])
+    toggleSearch: onToggleSearch,
+  }), [onToggleSearch, terminal])
 
   useEffect(() => {
     const container = containerRef.current as TerminalContainerApiElement | null
@@ -67,9 +71,9 @@ export function useTerminalContainerApi({
   }, [containerRef, writeToTerminal, clearTerminal, fitTerminal])
 
   useEffect(() => {
-    onInputApiChange?.(inputApi)
+    onInputApiChange?.(terminal ? inputApi : null)
     return () => onInputApiChange?.(null)
-  }, [inputApi, onInputApiChange])
+  }, [inputApi, onInputApiChange, terminal])
 
   return {
     writeToTerminal,

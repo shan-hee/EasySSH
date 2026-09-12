@@ -1344,6 +1344,7 @@ const messages = {
     "searchPrevious": "上一个匹配",
     "searchNext": "下一个匹配",
     "searchClose": "关闭查找",
+    "searchMove": "拖动移动搜索框，也可聚焦后使用方向键移动",
     "searchNoResults": "未找到匹配内容",
     "pasteConfirmTitle": "确认粘贴到终端？",
     "pasteConfirmHelp": "共 {lines} 行、{chars} 个字符。粘贴后可能立即执行命令，请先检查内容。长文本仅预览前 3000 个字符。",

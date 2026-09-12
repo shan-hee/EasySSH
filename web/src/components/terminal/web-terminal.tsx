@@ -1,6 +1,4 @@
 import { TERMINAL_BACKGROUND_TINT_OPACITY } from "./terminal-settings"
-import { Search } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { TerminalSearch, TerminalPasteConfirmation } from "./terminal-input-overlays"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -148,10 +146,10 @@ export function WebTerminal({
 }: WebTerminalProps) {
   const [zoomOffset, setZoomOffset] = useState(0)
   const [searchOpen, setSearchOpen] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const effectiveFontSize = Math.max(8, Math.min(40, fontSize + zoomOffset))
   useEffect(() => { setZoomOffset(0) }, [fontSize])
   useEffect(() => { if (!isActive) setSearchOpen(false) }, [isActive])
-  const { t: tSettings } = useTranslation("terminalSettings")
   const { t: tTerminal } = useTranslation("terminal")
   const workspace = useOptionalSshWorkspace()
   const workspaceTerminalApi = workspace?.adapters.apiClient?.terminal
@@ -324,11 +322,28 @@ export function WebTerminal({
     onResize,
   })
 
+  const closeCompletion = terminalCompletion.closeCompletion
+  const openSearch = useCallback(() => {
+    closeCompletion()
+    setSearchOpen(true)
+    searchInputRef.current?.focus()
+  }, [closeCompletion])
+
+  const toggleSearch = useCallback(() => {
+    if (searchOpen) {
+      setSearchOpen(false)
+      terminal?.focus()
+    } else {
+      openSearch()
+    }
+  }, [openSearch, searchOpen, terminal])
+
   useTerminalContainerApi({
     terminal,
     fitAddon,
     containerRef,
     writePrompt,
+    onToggleSearch: toggleSearch,
     onInputApiChange,
   })
 
@@ -340,7 +355,7 @@ export function WebTerminal({
     zoomInShortcut,
     zoomOutShortcut,
     zoomResetShortcut,
-    onFind: () => { terminalCompletion.closeCompletion(); setSearchOpen(true) },
+    onFind: openSearch,
     onZoom: (direction) => setZoomOffset(current => direction === "reset" ? 0 : Math.max(8 - fontSize, Math.min(40 - fontSize, current + (direction === "in" ? 1 : -1)))),
     terminal,
     terminalReady,
@@ -375,8 +390,7 @@ export function WebTerminal({
         style={{ backgroundColor: terminalRendererTheme.background }}
       />
 
-      {isActive && !searchOpen && <Button size="icon" variant="ghost" className="absolute right-2 top-2 z-20 h-7 w-7 bg-background/70" aria-label={tSettings("findShortcut")} title={tSettings("findShortcut")} onClick={() => { terminalCompletion.closeCompletion(); setSearchOpen(true) }}><Search className="h-4 w-4" /></Button>}
-      <TerminalSearch terminal={terminal} open={searchOpen && isActive} onClose={() => setSearchOpen(false)} />
+      <TerminalSearch terminal={terminal} inputRef={searchInputRef} open={searchOpen && isActive} onClose={() => setSearchOpen(false)} />
       <TerminalPasteConfirmation text={inputActions.pendingPaste} onFinish={inputActions.finishPaste} />
 
       {terminalCompletion.completionState.visible && terminal && (

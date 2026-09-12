@@ -1394,6 +1394,7 @@ const messages = {
     "searchPrevious": "Previous match",
     "searchNext": "Next match",
     "searchClose": "Close search",
+    "searchMove": "Drag to move search, or focus and use the arrow keys",
     "searchNoResults": "No matches found",
     "pasteConfirmTitle": "Paste into terminal?",
     "pasteConfirmHelp": "{lines} lines, {chars} characters. Pasting may execute commands immediately. Only the first 3000 characters are previewed.",

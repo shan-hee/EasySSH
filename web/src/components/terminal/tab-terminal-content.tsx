@@ -10,7 +10,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { MonitorWebSocketProvider } from './monitor/contexts/MonitorWebSocketContext'
 import { MonitorSkeleton } from './monitor/components/MonitorSkeleton'
 import { Button } from '@/components/ui/button'
-import { FolderOpen, Activity, Bot } from 'lucide-react'
+import { FolderOpen, Activity, Bot, Search } from 'lucide-react'
 import { NetworkLatencyPopover } from './network-latency-popover'
 import { WebTerminal } from './web-terminal'
 import {
@@ -178,6 +178,7 @@ function TabTerminalContentComponent({
   const [hasOpenedMonitor, setHasOpenedMonitor] = useState(false)
   const [sftpSessionInitialPath, setSftpSessionInitialPath] = useState(initialSftpPath)
   const terminalInputApiRef = React.useRef<TerminalInputApi | null>(null)
+  const [hasTerminalInputApi, setHasTerminalInputApi] = useState(false)
   const lastSftpRefreshRequestVersionRef = React.useRef(sftpRefreshRequestVersion)
   const [isDesktopLayout, setIsDesktopLayout] = useState(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -347,6 +348,7 @@ function TabTerminalContentComponent({
 
   const handleTerminalInputApiChange = React.useCallback((api: TerminalInputApi | null) => {
     terminalInputApiRef.current = api
+    setHasTerminalInputApi(api !== null)
   }, [])
   const handleSessionCommand = React.useCallback((command: string) => {
     onCommand(session.id, command)
@@ -449,6 +451,7 @@ function TabTerminalContentComponent({
       : ''
   const monitorEnabled = canRenderInlinePanels && canUseMonitorCapability && hasReadyServer
   const { t: tTerminal } = useTranslation("terminal")
+  const { t: tSettings } = useTranslation("terminalSettings")
   const pageBackgroundImageLayerOpacity = settings.backgroundImageOpacity / 100
   const terminalSurfaceBackground = useMemo(() => {
     // Workspace theme adapters may update in place; the version invalidates this memo.
@@ -648,6 +651,18 @@ function TabTerminalContentComponent({
                     <FolderOpen className="h-3.5 w-3.5" />
                   </Button>
                 )}
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
+                  aria-label={tSettings("findShortcut")}
+                  title={settings.findShortcut ? `${tSettings("findShortcut")} (${settings.findShortcut})` : tSettings("findShortcut")}
+                  disabled={!hasTerminalInputApi}
+                  onClick={() => terminalInputApiRef.current?.toggleSearch()}
+                >
+                  <Search className="h-3.5 w-3.5" />
+                </Button>
 
                 {canShowLatency && <NetworkLatencyPopover sessionId={session.id} />}
 
