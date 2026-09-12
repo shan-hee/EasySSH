@@ -1,4 +1,3 @@
-import { TERMINAL_BACKGROUND_TINT_OPACITY } from "./terminal-settings"
 import { TerminalSearch, TerminalPasteConfirmation } from "./terminal-input-overlays"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -383,7 +382,6 @@ export function WebTerminal({
       className="h-full w-full min-w-0 relative overflow-hidden"
       data-terminal-transparent-background={allowTerminalTransparency ? "true" : "false"}
     >
-      {transparentBackground && <div aria-hidden="true" className="pointer-events-none absolute inset-0" style={{ backgroundColor: terminalTheme.background, opacity: TERMINAL_BACKGROUND_TINT_OPACITY }} />}
       <div
         ref={containerRef}
         className="relative h-full w-full min-w-0 terminal-container"

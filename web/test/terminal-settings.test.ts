@@ -22,7 +22,10 @@ describe("terminal settings", () => {
       backgroundImage: "https://example.com/wallpaper.png",
       backgroundImageOpacity: 35,
     }
-    assert.deepEqual(parseTerminalSettingsImport(serializeTerminalSettingsExport(settings)), settings)
+    for (const fontWeight of ["100", "200", "300", "400", "500", "600", "700", "800", "900"] as const) {
+      const customized = { ...settings, fontWeight }
+      assert.deepEqual(parseTerminalSettingsImport(serializeTerminalSettingsExport(customized)), customized)
+    }
   })
 
   it("rejects incomplete, obsolete and invalid imports rather than silently changing them", () => {
@@ -33,6 +36,8 @@ describe("terminal settings", () => {
       { ...payload, version: payload.version - 1 },
       { ...payload, settings: incomplete },
       { ...payload, settings: { ...payload.settings, fontSize: 500 } },
+      { ...payload, settings: { ...payload.settings, fontWeight: "950" } },
+      { ...payload, settings: { ...payload.settings, fontWeight: 500 } },
       { ...payload, settings: { ...payload.settings, confirmBeforeClose: true } },
       { ...payload, settings: { ...payload.settings, pasteShortcut: payload.settings.copyShortcut } },
     ]
@@ -49,6 +54,7 @@ describe("terminal settings", () => {
       scrollback: 1_000_000,
       backgroundImageOpacity: 37,
       fontFamily: "missing-font",
+      fontWeight: "invalid",
       monitorInterval: 30,
       confirmBeforeClose: true,
       maxTabs: 10,
@@ -58,6 +64,7 @@ describe("terminal settings", () => {
     assert.equal(settings.scrollback, DEFAULT_TERMINAL_SETTINGS.scrollback)
     assert.equal(settings.backgroundImageOpacity, 35)
     assert.equal(settings.fontFamily, DEFAULT_TERMINAL_SETTINGS.fontFamily)
+    assert.equal(settings.fontWeight, DEFAULT_TERMINAL_SETTINGS.fontWeight)
     assert.ok(!("monitorInterval" in settings))
     assert.ok(!("confirmBeforeClose" in settings))
     assert.ok(!("maxTabs" in settings))

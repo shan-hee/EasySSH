@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import type { Terminal, ITerminalOptions } from "@xterm/xterm"
 import type { FitAddon } from "@xterm/addon-fit"
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
-import { TERMINAL_BACKGROUND_TINT_OPACITY, type TerminalSettings } from "./terminal-settings"
+import { resolveTerminalBoldFontWeight, type TerminalSettings } from "./terminal-settings"
 import {
   formatTerminalFontFamily,
   resolveTerminalRendererTheme,
@@ -42,8 +42,8 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
     allowTransparency: transparentBackground,
     fontFamily,
     fontSize: settings.fontSize,
-    fontWeight: "400",
-    fontWeightBold: "600",
+    fontWeight: settings.fontWeight,
+    fontWeightBold: resolveTerminalBoldFontWeight(settings.fontWeight),
     lineHeight: settings.lineHeight,
     letterSpacing: 0,
     cursorStyle: settings.cursorStyle,
@@ -67,8 +67,8 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
     fontSize: settings.fontSize,
     lineHeight: settings.lineHeight,
     fontFamily,
-    fontWeight: "400",
-    fontWeightBold: "600",
+    fontWeight: settings.fontWeight,
+    fontWeightBold: resolveTerminalBoldFontWeight(settings.fontWeight),
     cursorStyle: settings.cursorStyle,
     cursorBlink: settings.cursorBlink,
     scrollback: 100,
@@ -85,7 +85,6 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
     let terminal: Terminal | undefined
     let observer: ResizeObserver | undefined
     let frame = 0
-    let contextLoss: { dispose(): void } | undefined
 
     async function initialize() {
       try {
@@ -111,20 +110,8 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
         observer.observe(container!)
         setInstance({ terminal: preview, fit })
 
-        // Match the live terminal renderer when WebGL is available.
-        try {
-          const { WebglAddon } = await import("@xterm/addon-webgl")
-          if (cancelled) return
-          const webgl = new WebglAddon()
-          try {
-            preview.loadAddon(webgl)
-            contextLoss = webgl.onContextLoss(() => webgl.dispose())
-          } catch {
-            webgl.dispose()
-          }
-        } catch {
-          // The built-in renderer remains available without WebGL.
-        }
+        // Keep the preview on xterm's DOM renderer. WebGL terminals with matching
+        // options share an atlas; preview refreshes must not clear live glyphs.
       } catch {
         if (!cancelled) {
           observer?.disconnect()
@@ -142,7 +129,6 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
       cancelled = true
       observer?.disconnect()
       cancelAnimationFrame(frame)
-      contextLoss?.dispose()
       terminal?.dispose()
     }
   }, [initialOptions])
@@ -158,25 +144,15 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
         style={{ backgroundColor: terminalTheme.background }}
       >
         {transparentBackground && (
-          <>
-            <img
-              key={settings.backgroundImage}
-              alt=""
-              src={settings.backgroundImage}
-              onLoad={() => setFailedBackground(null)}
-              onError={() => setFailedBackground(settings.backgroundImage)}
-              className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-              style={{ opacity: settings.backgroundImageOpacity / 100 }}
-            />
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0"
-              style={{
-                backgroundColor: terminalTheme.background,
-                opacity: TERMINAL_BACKGROUND_TINT_OPACITY,
-              }}
-            />
-          </>
+          <img
+            key={settings.backgroundImage}
+            alt=""
+            src={settings.backgroundImage}
+            onLoad={() => setFailedBackground(null)}
+            onError={() => setFailedBackground(settings.backgroundImage)}
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            style={{ opacity: settings.backgroundImageOpacity / 100 }}
+          />
         )}
         <div
           ref={containerRef}

@@ -1,7 +1,7 @@
 
 import { useEffect, useLayoutEffect } from "react"
 import type { FitAddon } from "@xterm/addon-fit"
-import type { Terminal } from "@xterm/xterm"
+import type { FontWeight, Terminal } from "@xterm/xterm"
 import {
   getTerminalTheme,
   withTerminalBackgroundOpacity,
@@ -11,7 +11,7 @@ import {
 export type TerminalThemeName = "default" | "dark" | "light" | "solarized" | "dracula"
 export type TerminalCursorStyle = "block" | "underline" | "bar"
 export type TerminalAppThemeMode = "light" | "dark"
-export type TerminalFontWeight = "normal" | "bold" | "400" | "500" | "600" | "700"
+export type TerminalFontWeight = Exclude<FontWeight, number>
 
 export interface TerminalRendererThemeResult {
   terminalTheme: TerminalTheme

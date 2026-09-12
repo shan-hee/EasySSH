@@ -39,6 +39,7 @@ import {
   DEFAULT_TERMINAL_SETTINGS,
   MAX_TERMINAL_BACKGROUND_BYTES,
   TERMINAL_FONT_FAMILIES,
+  TERMINAL_FONT_WEIGHTS,
   isTerminalBackgroundImage,
   normalizeTerminalSettings,
   parseTerminalSettingsImport,
@@ -273,18 +274,26 @@ export const TerminalSettingsDialog = memo(function TerminalSettingsDialog({
                     onValueCommit={([value]) => update("fontSize", value)}
                   />
                 </div>
-                {choice(
-                  "fontFamily",
-                  "fontFamilyLabel",
-                  TERMINAL_FONT_FAMILIES.map((font, index) => ({
-                    value: font,
-                    label:
-                      font === "monospace"
-                        ? t("systemMonospace")
-                        : `${font} · ${t(index < 4 ? "fontBundled" : "fontSystem")}`,
-                  })),
-                  "fontHelp",
-                )}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] [&>div]:min-w-0 [&_[data-slot=select-trigger]]:w-full">
+                  {choice(
+                    "fontFamily",
+                    "fontFamilyLabel",
+                    TERMINAL_FONT_FAMILIES.map((font, index) => ({
+                      value: font,
+                      label:
+                        font === "monospace"
+                          ? t("systemMonospace")
+                          : `${font} · ${t(index < 4 ? "fontBundled" : "fontSystem")}`,
+                    })),
+                    "fontHelp",
+                  )}
+                  {choice(
+                    "fontWeight",
+                    "fontWeightLabel",
+                    TERMINAL_FONT_WEIGHTS.map(value => ({ value, label: t(`fontWeight${value}`) })),
+                    "fontWeightHelp",
+                  )}
+                </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 [&>div]:min-w-0 [&_[data-slot=select-trigger]]:w-full">
                   {choice(
                     "lineHeight",

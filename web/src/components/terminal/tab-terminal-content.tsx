@@ -30,6 +30,7 @@ import type { TerminalConnectionPhase, TerminalSession } from './types'
 import {
   buildTerminalCompletionConfig,
   buildTerminalCompletionFetchOptions,
+  resolveTerminalBoldFontWeight,
   buildTerminalCompletionProviderFlags,
   type TerminalSettings,
 } from './terminal-settings'
@@ -776,8 +777,8 @@ function TabTerminalContentComponent({
                   pathCompletionCwd={pathCompletionCwd}
                   enableWebgl={enableTerminalWebgl}
                   transparentBackground={hasBackgroundImage}
-                  fontWeight="400"
-                  fontWeightBold="600"
+                  fontWeight={settings.fontWeight}
+                  fontWeightBold={resolveTerminalBoldFontWeight(settings.fontWeight)}
                 />
               ) : null}
             </div>

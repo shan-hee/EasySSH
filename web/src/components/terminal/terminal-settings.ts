@@ -5,10 +5,21 @@ import type { CompletionFetchOptions } from "@/lib/websocket-terminal"
 
 export const TERMINAL_SETTINGS_STORAGE_KEY = "terminal-settings"
 export const TERMINAL_SETTINGS_EXPORT_SCHEMA = "easyssh.terminal-settings"
-export const TERMINAL_SETTINGS_EXPORT_VERSION = 3
+export const TERMINAL_SETTINGS_EXPORT_VERSION = 4
 
 export const TERMINAL_MONITOR_INTERVAL_SECONDS = 2
-export const TERMINAL_BACKGROUND_TINT_OPACITY = 0.55
+export const TERMINAL_FONT_WEIGHTS = ["100", "200", "300", "400", "500", "600", "700", "800", "900"] as const
+
+export function resolveTerminalBoldFontWeight(weight: (typeof TERMINAL_FONT_WEIGHTS)[number]) {
+  switch (weight) {
+    case "600": return "700"
+    case "700": return "800"
+    case "800":
+    case "900": return "900"
+    default: return "600"
+  }
+}
+
 export const TERMINAL_FONT_FAMILIES = [
   "JetBrains Mono",
   "Fira Code",
@@ -44,6 +55,7 @@ export interface TerminalSettings {
   // 终端设置
   fontSize: number
   fontFamily: string
+  fontWeight: (typeof TERMINAL_FONT_WEIGHTS)[number]
   lineHeight: number
   cursorStyle: "block" | "underline" | "bar"
   cursorBlink: boolean
@@ -107,6 +119,7 @@ const TERMINAL_COMPLETION_POLICY = {
 export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   fontSize: 14,
   fontFamily: "JetBrains Mono",
+  fontWeight: "400",
   lineHeight: 1.2,
   cursorStyle: "block",
   cursorBlink: true,
@@ -165,6 +178,7 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
     ...shortcuts,
     fontSize: Math.round(clampNumber(value.fontSize, defaults.fontSize, 8, 40)),
     fontFamily: normalizeChoice(value.fontFamily, TERMINAL_FONT_FAMILIES, defaults.fontFamily),
+    fontWeight: normalizeChoice(value.fontWeight, TERMINAL_FONT_WEIGHTS, defaults.fontWeight),
     lineHeight: normalizeNumberChoice(value.lineHeight, [1, 1.2, 1.4], defaults.lineHeight),
     cursorStyle: normalizeChoice(
       value.cursorStyle,
