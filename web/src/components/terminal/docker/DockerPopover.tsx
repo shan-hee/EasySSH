@@ -297,7 +297,7 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-auto min-w-[400px] p-4"
+        className="w-[480px] min-w-0 max-w-[calc(100vw-2rem)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-4 [overflow-wrap:anywhere]"
         align="center"
         sideOffset={8}
       >
@@ -322,6 +322,37 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
         />
       </PopoverContent>
     </Popover>
+  )
+}
+
+function DockerErrorState({ error, onRetry, isLoading = false }: {
+  error?: string
+  onRetry: () => Promise<void>
+  isLoading?: boolean
+}) {
+  const { t } = useTranslation('terminal')
+  const message = /permission denied|access denied|unauthorized|forbidden/i.test(error ?? '')
+    ? 'dockerAccessDeniedHelp'
+    : !error || /docker\.sock|docker daemon|not installed|not found|connect failed|connection refused/i.test(error)
+      ? 'dockerUnavailableHelp'
+      : 'dockerLoadFailedHelp'
+
+  return (
+    <div className="flex min-w-0 flex-col items-center justify-center gap-3 py-6 text-center">
+      <AlertCircle className="h-8 w-8 shrink-0 text-muted-foreground" />
+      <p role="status" className="max-w-full text-sm text-muted-foreground">{t(message)}</p>
+      <Button variant="outline" size="sm" disabled={isLoading} onClick={() => { void onRetry() }}>
+        {t('retry')}
+      </Button>
+      {error && (
+        <details className="w-full min-w-0 text-left text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none">{t('dockerErrorDetails')}</summary>
+          <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 font-mono">
+            {error}
+          </pre>
+        </details>
+      )}
+    </div>
   )
 }
 
@@ -366,20 +397,19 @@ function DockerPopoverContent({
   const { t } = useTranslation('terminal')
 
   // 检查 Docker 是否安装
-  const anyData = containersData || imagesData || resourcesData
-  if (anyData && !anyData.dockerInstalled) {
+  const activeData = activeTab === 'containers' ? containersData : activeTab === 'images' ? imagesData : resourcesData
+  if (activeData && !activeData.dockerInstalled) {
     return (
-      <div className="flex flex-col items-center justify-center py-6 text-center">
-        <AlertCircle className="h-8 w-8 text-muted-foreground mb-3" />
-        <p className="text-sm text-muted-foreground">
-          {t('dockerNotInstalled')}
-        </p>
-      </div>
+      <DockerErrorState
+        error={activeData.error}
+        onRetry={activeTab === 'containers' ? fetchContainersData : activeTab === 'images' ? fetchImagesData : fetchResourcesData}
+        isLoading={activeTab === 'containers' ? containersLoading : activeTab === 'images' ? imagesLoading : resourcesLoading}
+      />
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {/* 标题 */}
       <div className="flex items-center">
         <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
@@ -416,13 +446,7 @@ function DockerPopoverContent({
           {containersLoading && !containersData ? (
             <DockerSkeleton />
           ) : containersError && !containersData ? (
-            <div className="flex flex-col items-center justify-center py-6 text-center">
-              <AlertCircle className="h-8 w-8 text-destructive mb-3" />
-              <p className="text-sm text-muted-foreground mb-3">{containersError}</p>
-              <Button variant="outline" size="sm" onClick={fetchContainersData}>
-                {t('retry')}
-              </Button>
-            </div>
+            <DockerErrorState error={containersError} onRetry={fetchContainersData} isLoading={containersLoading} />
           ) : (
             <ContainerList
               containers={containersData?.containers ?? []}
@@ -440,13 +464,7 @@ function DockerPopoverContent({
           {imagesLoading && !imagesData ? (
             <DockerSkeleton />
           ) : imagesError && !imagesData ? (
-            <div className="flex flex-col items-center justify-center py-6 text-center">
-              <AlertCircle className="h-8 w-8 text-destructive mb-3" />
-              <p className="text-sm text-muted-foreground mb-3">{imagesError}</p>
-              <Button variant="outline" size="sm" onClick={fetchImagesData}>
-                {t('retry')}
-              </Button>
-            </div>
+            <DockerErrorState error={imagesError} onRetry={fetchImagesData} isLoading={imagesLoading} />
           ) : (
             <ImageList
               images={imagesData?.images ?? []}
@@ -462,13 +480,7 @@ function DockerPopoverContent({
           {resourcesLoading && !resourcesData ? (
             <DockerSkeleton />
           ) : resourcesError && !resourcesData ? (
-            <div className="flex flex-col items-center justify-center py-6 text-center">
-              <AlertCircle className="h-8 w-8 text-destructive mb-3" />
-              <p className="text-sm text-muted-foreground mb-3">{resourcesError}</p>
-              <Button variant="outline" size="sm" onClick={fetchResourcesData}>
-                {t('retry')}
-              </Button>
-            </div>
+            <DockerErrorState error={resourcesError} onRetry={fetchResourcesData} isLoading={resourcesLoading} />
           ) : (
             <DockerOverview
               systemInfo={resourcesData?.systemInfo ?? null}
