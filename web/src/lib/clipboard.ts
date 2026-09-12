@@ -1,6 +1,6 @@
-// Desktop WebViews can reject Clipboard API writes. Keep the platform-specific
-// writer separate from assistant-ui's copy state and controls.
-export async function writeAgentClipboard(text: string) {
+// Shared by terminal selection, copy actions and assistant messages.
+// Desktop WebViews can reject Clipboard API writes.
+export async function writeClipboardText(text: string) {
   try {
     await navigator.clipboard.writeText(text)
   } catch {

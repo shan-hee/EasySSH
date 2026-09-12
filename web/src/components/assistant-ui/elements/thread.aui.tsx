@@ -2,7 +2,7 @@
 
 import { Slot } from "@radix-ui/react-slot"
 import { useActionBarCopy } from "@assistant-ui/core/react"
-import { writeAgentClipboard } from "@/lib/ai-agent/clipboard"
+import { writeClipboardText } from "@/lib/clipboard"
 
 import { UserMessageAttachments } from "@/components/assistant-ui/elements/attachment.aui"
 import { File } from "@/components/assistant-ui/elements/file"
@@ -421,7 +421,7 @@ function CurrentMessageTimestamp() {
 }
 
 function MessageCopyButton({ children }: { children: React.ReactElement }) {
-  const { copy, disabled } = useActionBarCopy({ copyToClipboard: writeAgentClipboard })
+  const { copy, disabled } = useActionBarCopy({ copyToClipboard: writeClipboardText })
   return (
     <Slot onClick={disabled ? undefined : copy} aria-disabled={disabled}>
       {children}

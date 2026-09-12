@@ -1,7 +1,7 @@
 // Based on assistant-ui's use-copy-to-clipboard registry entry. The writer also
 // supports desktop WebViews; the reset timer is released when unmounted.
 import { useEffect, useRef, useState } from "react"
-import { writeAgentClipboard } from "@/lib/ai-agent/clipboard"
+import { writeClipboardText } from "@/lib/clipboard"
 
 export function useCopyToClipboard({ copiedDuration = 3000 }: { copiedDuration?: number } = {}) {
   const [isCopied, setIsCopied] = useState(false)
@@ -9,7 +9,7 @@ export function useCopyToClipboard({ copiedDuration = 3000 }: { copiedDuration?:
   useEffect(() => () => clearTimeout(timer.current), [])
   const copyToClipboard = async (value: string) => {
     if (!value) return
-    await writeAgentClipboard(value)
+    await writeClipboardText(value)
     setIsCopied(true)
     clearTimeout(timer.current)
     timer.current = setTimeout(() => setIsCopied(false), copiedDuration)

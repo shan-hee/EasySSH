@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type { Terminal } from "@xterm/xterm"
 import { useTranslation } from "react-i18next"
 import { toast } from "@/components/ui/sonner"
+import { writeClipboardText } from "@/lib/clipboard"
 import { DEFAULT_TERMINAL_SETTINGS } from "./terminal-settings"
 import { matchesTerminalShortcut } from "./terminal-shortcuts"
 
@@ -32,7 +33,6 @@ export function useTerminalInputActions(options: UseTerminalInputActionsOptions)
   const [pendingPaste, setPendingPaste] = useState<string | null>(null)
   const pendingRef = useRef<string | null>(null)
   const selectionByPointer = useRef(false)
-  const selectionFrameRef = useRef<number | null>(null)
   const { t } = useTranslation("terminalSettings")
 
   const requestPaste = useCallback((text: string) => {
@@ -77,8 +77,7 @@ export function useTerminalInputActions(options: UseTerminalInputActionsOptions)
       const selection = currentOptions.current.terminal?.getSelection()
       if (!selection) return
       try {
-        if (!navigator.clipboard?.writeText) throw new Error("clipboard_unavailable")
-        await navigator.clipboard.writeText(selection)
+        await writeClipboardText(selection)
       } catch {
         toast.error(t(automatic ? "clipboardAutoCopyFailed" : "clipboardCopyFailed"), {
           id: "terminal-copy-failed",
@@ -93,27 +92,26 @@ export function useTerminalInputActions(options: UseTerminalInputActionsOptions)
     const selection = terminal.onSelectionChange(() => {
       if (!currentOptions.current.isActive || !(currentOptions.current.copyOnSelect ?? true)) return
       // Search selections and keyboard navigation must not overwrite the clipboard.
-      if (!selectionByPointer.current || selectionFrameRef.current !== null) return
-      selectionFrameRef.current = requestAnimationFrame(() => {
-        selectionFrameRef.current = null
-        void copySelection(true)
-      })
+      if (!selectionByPointer.current) return
+      // Copy within xterm's mouseup notification to retain browser user activation.
+      void copySelection(true)
     })
     return () => {
       selection.dispose()
-      if (selectionFrameRef.current !== null) cancelAnimationFrame(selectionFrameRef.current)
-      selectionFrameRef.current = null
     }
   }, [copySelection, terminal, terminalReady])
 
   useEffect(() => {
     const root = containerRef.current?.querySelector<HTMLElement>(".xterm")
     if (!root || !terminalReady) return
-    const onPointerDown = () => {
-      selectionByPointer.current = true
+    const onMouseDown = (event: MouseEvent) => {
+      selectionByPointer.current = event.button === 0
     }
-    const onPointerUp = () => {
+    const resetSelectionGesture = () => {
       selectionByPointer.current = false
+    }
+    const onMouseUp = (event: MouseEvent) => {
+      if (event.button === 0) resetSelectionGesture()
     }
     const onContextMenu = (event: MouseEvent) => {
       if (!(currentOptions.current.rightClickPaste ?? true) || !currentOptions.current.isActive)
@@ -126,19 +124,24 @@ export function useTerminalInputActions(options: UseTerminalInputActionsOptions)
       event.stopImmediatePropagation()
       requestPaste(event.clipboardData?.getData("text/plain") ?? "")
     }
-    root.addEventListener("pointerdown", onPointerDown)
-    window.addEventListener("pointerup", onPointerUp)
-    window.addEventListener("pointercancel", onPointerUp)
+    // xterm finishes selection on document mouseup. Clear the gesture only
+    // after that event bubbles to window; pointerup happens too early.
+    root.addEventListener("mousedown", onMouseDown, true)
+    window.addEventListener("mouseup", onMouseUp)
+    window.addEventListener("pointercancel", resetSelectionGesture)
+    window.addEventListener("blur", resetSelectionGesture)
     root.addEventListener("contextmenu", onContextMenu)
     root.addEventListener("paste", onPaste, true)
     return () => {
-      root.removeEventListener("pointerdown", onPointerDown)
-      window.removeEventListener("pointerup", onPointerUp)
-      window.removeEventListener("pointercancel", onPointerUp)
+      resetSelectionGesture()
+      root.removeEventListener("mousedown", onMouseDown, true)
+      window.removeEventListener("mouseup", onMouseUp)
+      window.removeEventListener("pointercancel", resetSelectionGesture)
+      window.removeEventListener("blur", resetSelectionGesture)
       root.removeEventListener("contextmenu", onContextMenu)
       root.removeEventListener("paste", onPaste, true)
     }
-  }, [containerRef, readClipboard, requestPaste, terminalReady])
+  }, [containerRef, readClipboard, requestPaste, terminal, terminalReady])
 
   useEffect(() => {
     if (!terminal || !terminalReady) return
