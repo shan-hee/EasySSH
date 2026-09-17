@@ -5,7 +5,7 @@ import type { CompletionFetchOptions } from "@/lib/websocket-terminal"
 
 export const TERMINAL_SETTINGS_STORAGE_KEY = "terminal-settings"
 export const TERMINAL_SETTINGS_EXPORT_SCHEMA = "easyssh.terminal-settings"
-export const TERMINAL_SETTINGS_EXPORT_VERSION = 4
+export const TERMINAL_SETTINGS_EXPORT_VERSION = 5
 
 export const TERMINAL_MONITOR_INTERVAL_SECONDS = 2
 export const TERMINAL_FONT_WEIGHTS = ["100", "200", "300", "400", "500", "600", "700", "800", "900"] as const
@@ -66,6 +66,7 @@ export interface TerminalSettings {
 
   // 主题设置
   theme: "default" | "dark" | "light" | "solarized" | "dracula"
+  material: "solid" | "glass"
   backgroundImage: string
   backgroundImageOpacity: number
 
@@ -128,6 +129,7 @@ export const DEFAULT_TERMINAL_SETTINGS: TerminalSettings = {
   copyOnSelect: true,
   multiLinePasteWarning: true,
   theme: "default",
+  material: "solid",
   backgroundImage: "",
   backgroundImageOpacity: 100,
   inactiveMinutes: 60,
@@ -198,6 +200,7 @@ export function normalizeTerminalSettings(input: unknown): TerminalSettings {
       ["default", "dark", "light", "solarized", "dracula"] as const,
       defaults.theme,
     ),
+    material: normalizeChoice(value.material, ["solid", "glass"] as const, defaults.material),
     backgroundImage: isTerminalBackgroundImage(value.backgroundImage)
       ? (value.backgroundImage as string)
       : defaults.backgroundImage,

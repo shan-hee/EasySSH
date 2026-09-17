@@ -60,11 +60,7 @@ interface AiAssistantPanelProps {
   onClose: () => void
   terminalSession: TerminalSession
   adapters?: AIAssistantWorkspaceAdapters
-  background: {
-    color: string
-    image?: string
-    imageOpacity: number
-  }
+  backgroundColor?: string
 }
 
 const TERMINAL_AI_SESSION_STORAGE_KEY = "easyssh:terminal-ai-assistant:sessions"
@@ -149,7 +145,7 @@ export function AiAssistantPanel({
   onClose,
   terminalSession,
   adapters,
-  background,
+  backgroundColor,
 }: AiAssistantPanelProps) {
   const { t: tAI } = useTranslation("aiAssistant")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
@@ -899,19 +895,11 @@ export function AiAssistantPanel({
     >
       <div className="relative flex h-full min-h-0 w-full shrink-0 flex-col md:w-[min(var(--terminal-ai-panel-width),55vw)]">
       {confirmDialog}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 md:hidden"
-        style={{ backgroundColor: background.color }}
-      />
-      {background.image && (
+      {backgroundColor && (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat md:hidden"
-          style={{
-            backgroundImage: `url(${background.image})`,
-            opacity: background.imageOpacity,
-          }}
+          className="pointer-events-none absolute inset-0 z-0 md:hidden"
+          style={{ backgroundColor }}
         />
       )}
       <div

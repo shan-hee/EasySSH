@@ -368,8 +368,12 @@ export function WebTerminal({
 
   if (!isClient) {
     return (
-      <div className="h-full w-full bg-background flex items-center justify-center">
+      <div
+        className="h-full w-full flex items-center justify-center"
+        style={{ backgroundColor: terminalRendererTheme.background }}
+      >
         <ConnectionLoader
+          transparentBackground={allowTerminalTransparency}
           serverName={serverName}
           message={tTerminal("connectionLoaderInitializing")}
         />

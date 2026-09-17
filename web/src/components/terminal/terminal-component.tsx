@@ -19,10 +19,7 @@ import { ActivityLogPane } from "@/components/ssh-workspace/activity-log-pane"
 import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
 import { ServerConnectionConfigs, type ServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
 import { SessionSplitDropOverlay } from "@/components/tabs/session-split-drop-overlay"
-import {
-  SessionSplitPane,
-  type SessionSplitPaneHeaderBackground,
-} from "@/components/tabs/session-split-pane"
+import { SessionSplitPane } from "@/components/tabs/session-split-pane"
 import { PersistentSessionContent, SessionContentSlot, useSessionContentHosts } from "@/components/tabs/session-content-host"
 import { SessionDockview } from "@/components/tabs/session-dockview"
 import {
@@ -45,6 +42,7 @@ import {
 } from "@/components/terminal/terminal-themes"
 import {
   resolveTerminalAppThemeMode,
+  resolveTerminalSurfaceMode,
   resolveTerminalThemeName,
 } from "@/components/terminal/use-terminal-renderer-settings"
 
@@ -1017,34 +1015,15 @@ export function TerminalComponent({
   const settings = useMemo(() => ({ ...savedSettings, inactiveMinutes: resolveTerminalInactiveMinutes(savedSettings.inactiveMinutes, inactiveReminderLimit) }), [savedSettings, inactiveReminderLimit])
   const handleSettingsChange = useTerminalSettingsStore(state => state.saveSettings)
 
-  const splitPaneHeaderBackground = useMemo<SessionSplitPaneHeaderBackground>(() => {
+  const effectiveTerminalTheme = resolveTerminalThemeName(workspaceTheme?.terminalTheme, settings.theme)
+  const effectiveTerminalAppTheme = resolveTerminalAppThemeMode(workspaceTheme?.mode, effectiveAppTheme)
+  const isGlassMaterial = settings.material === "glass"
+  const hasWorkspaceBackground = isGlassMaterial || !!settings.backgroundImage
+  const terminalTheme = useMemo(() => {
     // Workspace theme adapters may update in place; the version invalidates this memo.
     void effectiveThemeVersion
-    const effectiveTerminalTheme = resolveTerminalThemeName(
-      workspaceTheme?.terminalTheme,
-      settings.theme,
-    )
-    const effectiveTerminalAppTheme = resolveTerminalAppThemeMode(
-      workspaceTheme?.mode,
-      effectiveAppTheme,
-    )
-    const terminalTheme = getTerminalTheme(effectiveTerminalTheme, effectiveTerminalAppTheme)
-    const image = settings.backgroundImage.trim()
-
-    return {
-      color: terminalTheme.background,
-      image: image || undefined,
-      imageOpacity: settings.backgroundImageOpacity / 100,
-    }
-  }, [
-    effectiveAppTheme,
-    effectiveThemeVersion,
-    settings.backgroundImage,
-    settings.backgroundImageOpacity,
-    settings.theme,
-    workspaceTheme?.mode,
-    workspaceTheme?.terminalTheme,
-  ])
+    return getTerminalTheme(effectiveTerminalTheme, effectiveTerminalAppTheme)
+  }, [effectiveThemeVersion, effectiveTerminalTheme, effectiveTerminalAppTheme])
 
   // 如果当前激活的会话不存在（被删除），自动切换到合适的会话
   // 使用 ref 跟踪上一次的 sessions 数组，用于找到被删除页签的位置
@@ -1406,7 +1385,8 @@ export function TerminalComponent({
         isSplit={inSplit}
         isSftp={isSftpSession}
         isActive={activeSession === session.id}
-        background={isSftpSession ? undefined : splitPaneHeaderBackground}
+        backgroundColor={isSftpSession ? undefined : terminalTheme.background}
+        surface={hasWorkspaceBackground ? "transparent" : "normal"}
         onFocus={isVisible ? () => setActiveSessionFromUser(session.id) : undefined}
         dropOverlay={!inSplit && <SessionSplitDropOverlay side={tabDropTargetId === session.id ? tabDropSide : null} />}
         canAcceptCrossSessionFileDrop={canAcceptCrossSessionFileDrop(session)}
@@ -1415,8 +1395,8 @@ export function TerminalComponent({
         }}
       >
         {isSftpSession
-          ? renderExtraSessionContent?.(session, getExtraSessionRenderOptions(session, inSplit ? "transparent" : "normal", isVisible))
-          : renderTerminalSessionContent(session, "full", isVisible, inSplit ? "transparent" : "normal")}
+          ? renderExtraSessionContent?.(session, getExtraSessionRenderOptions(session, inSplit || hasWorkspaceBackground ? "transparent" : "normal", isVisible))
+          : renderTerminalSessionContent(session, "full", isVisible, inSplit || hasWorkspaceBackground ? "transparent" : "normal")}
       </SessionSplitPane>
       </SessionWorkspaceToolbarContext>
     )
@@ -1443,12 +1423,36 @@ export function TerminalComponent({
         "flex min-h-0 min-w-0 flex-1 flex-col",
         unframed ? "p-0" : "p-3 pt-0 sm:p-4 sm:pt-0"
       )}>
-        <div className={cn(
-          "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-colors",
-          unframed
-            ? "bg-background text-foreground"
-            : "rounded-xl border border-border/60 bg-background/70 text-foreground shadow-2xl"
-        )}>
+        <div
+          data-terminal-workspace
+          data-terminal-background-enabled={hasWorkspaceBackground}
+          data-terminal-theme-mode={resolveTerminalSurfaceMode(effectiveTerminalTheme, effectiveTerminalAppTheme)}
+          className={cn(
+            "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-colors",
+            isGlassMaterial && "terminal-workspace-glass",
+            unframed
+              ? "bg-background text-foreground"
+              : "rounded-xl border border-border/60 bg-background/70 text-foreground shadow-2xl"
+          )}
+        >
+          {hasWorkspaceBackground && (
+            <div
+              aria-hidden="true"
+              data-terminal-background
+              className="pointer-events-none absolute inset-0 -z-10"
+              style={{ backgroundColor: terminalTheme.background }}
+            >
+              {settings.backgroundImage && (
+                <img
+                  key={settings.backgroundImage}
+                  src={settings.backgroundImage}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  style={{ opacity: settings.backgroundImageOpacity / 100 }}
+                />
+              )}
+            </div>
+          )}
           {/* 页签栏（仅保留标签，不显示面包屑） */}
           <SessionTabBar
             sessions={combinedTabSessions}

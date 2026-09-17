@@ -210,12 +210,171 @@
 
   body {
     @apply bg-transparent text-foreground;
-    /* Includes portal-based menus/dialogs; desktop composites with the OS, Web with the browser canvas. */
+    /* Desktop opts in to window opacity; Web always uses full opacity. */
     opacity: var(--window-opacity);
   }
 
   #root {
     @apply bg-background;
+  }
+}
+
+/* The terminal owns one background beneath its home, tabs and session panes. */
+[data-terminal-background-enabled="true"] [data-server-connection-configs] {
+  background-color: transparent;
+}
+
+[data-terminal-background-enabled="true"] [data-terminal-tab-bar] {
+  background-color: color-mix(in oklab, var(--background) 28%, transparent);
+}
+
+[data-terminal-background-enabled="true"] .easyssh-dockview {
+  --dv-group-view-background-color: transparent;
+}
+
+[data-terminal-background-enabled="true"] .terminal-mobile-monitor-surface {
+  background-color: color-mix(in oklab, var(--background) 65%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+/* Glass changes surface treatment, never the terminal's color palette. */
+.terminal-workspace-glass {
+  --terminal-glass-panel: rgb(255 255 255 / 16%);
+  --terminal-glass-raised: rgb(255 255 255 / 28%);
+  --terminal-glass-hover: rgb(255 255 255 / 40%);
+  --terminal-glass-selected: rgb(255 255 255 / 52%);
+  --terminal-glass-border: rgb(255 255 255 / 36%);
+  --terminal-glass-hover-border: rgb(255 255 255 / 62%);
+  --terminal-glass-highlight: rgb(255 255 255 / 64%);
+  --terminal-glass-sheen: linear-gradient(135deg, rgb(255 255 255 / 16%), transparent 45%, rgb(255 255 255 / 3%));
+  --terminal-glass-edge-shadow: 0 0 0 1px rgb(0 0 0 / 4%);
+  --terminal-glass-shadow: 0 3px 8px rgb(0 0 0 / 3%), 0 12px 28px rgb(0 0 0 / 5%);
+  --terminal-glass-text-shadow: 0 1px 1px rgb(255 255 255 / 30%);
+  --foreground: rgb(24 24 24);
+  --muted-foreground: rgb(78 78 78);
+  --accent: var(--terminal-glass-hover);
+  --accent-foreground: var(--foreground);
+  --secondary: var(--terminal-glass-selected);
+  --secondary-foreground: var(--foreground);
+  --card: var(--terminal-glass-raised);
+  --card-foreground: var(--foreground);
+  --muted: var(--terminal-glass-panel);
+  --border: var(--terminal-glass-border);
+  --input: var(--terminal-glass-border);
+  --ring: color-mix(in srgb, var(--foreground) 45%, transparent);
+  --table: var(--card);
+  --table-header: var(--terminal-glass-selected);
+  --table-row-hover: var(--terminal-glass-hover);
+  --table-row-selected: var(--terminal-glass-selected);
+}
+
+.terminal-workspace-glass[data-terminal-theme-mode="dark"] {
+  --terminal-glass-panel: rgb(24 24 24 / 28%);
+  --terminal-glass-raised: rgb(32 32 32 / 40%);
+  --terminal-glass-hover: rgb(54 54 54 / 48%);
+  --terminal-glass-selected: rgb(72 72 72 / 56%);
+  --terminal-glass-border: rgb(255 255 255 / 12%);
+  --terminal-glass-hover-border: rgb(255 255 255 / 24%);
+  --terminal-glass-highlight: rgb(255 255 255 / 16%);
+  --terminal-glass-sheen: linear-gradient(135deg, rgb(255 255 255 / 7%), transparent 45%, rgb(255 255 255 / 1%));
+  --terminal-glass-edge-shadow: 0 0 0 1px rgb(0 0 0 / 10%);
+  --terminal-glass-shadow: 0 3px 8px rgb(0 0 0 / 10%), 0 12px 28px rgb(0 0 0 / 16%);
+  --terminal-glass-text-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+  --foreground: rgb(245 245 245);
+  --muted-foreground: rgb(190 190 190);
+}
+
+/* Panels reuse the workspace material instead of defining another tinted glass. */
+.terminal-workspace-glass :is(.terminal-ai-glass, .terminal-sftp-glass) {
+  --terminal-glass-panel: inherit;
+  --terminal-glass-raised: inherit;
+  --terminal-glass-border: inherit;
+  --terminal-glass-highlight: inherit;
+  --terminal-glass-sheen: inherit;
+  --terminal-glass-edge-shadow: inherit;
+  --terminal-glass-shadow: inherit;
+  --terminal-glass-text-shadow: inherit;
+}
+
+/* Navigation has a stronger optical edge than the quieter content surfaces. */
+.terminal-workspace-glass [data-terminal-tab-bar] {
+  background-color: var(--terminal-glass-panel);
+  background-image: var(--terminal-glass-sheen);
+  border-color: var(--terminal-glass-border);
+  box-shadow: inset 0 1px var(--terminal-glass-highlight), 0 4px 16px rgb(0 0 0 / 4%);
+  -webkit-backdrop-filter: blur(28px) saturate(1.1);
+  backdrop-filter: blur(28px) saturate(1.1);
+}
+
+.terminal-workspace-glass :is([data-slot="card"], .bg-card, .bg-table) {
+  background-color: var(--terminal-glass-raised);
+  background-image: var(--terminal-glass-sheen);
+  -webkit-backdrop-filter: blur(20px) saturate(1.05);
+  backdrop-filter: blur(20px) saturate(1.05);
+}
+
+.terminal-workspace-glass .server-connection-item {
+  border-color: var(--terminal-glass-border);
+  border-radius: 14px;
+  box-shadow: inset 0 1px var(--terminal-glass-highlight), var(--terminal-glass-edge-shadow), var(--terminal-glass-shadow);
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .terminal-workspace-glass .server-connection-item:hover {
+    background-color: var(--terminal-glass-hover);
+    border-color: var(--terminal-glass-hover-border);
+  }
+}
+
+.terminal-workspace-glass .server-connection-item:active {
+  background-color: var(--terminal-glass-selected);
+}
+
+.terminal-workspace-glass .server-connection-item:focus-visible {
+  background-color: var(--terminal-glass-hover);
+  border-color: var(--terminal-glass-hover-border);
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.terminal-workspace-glass :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
+  background-color: var(--terminal-glass-panel);
+  border-color: var(--terminal-glass-border);
+  -webkit-backdrop-filter: blur(16px) saturate(1.05);
+  backdrop-filter: blur(16px) saturate(1.05);
+}
+
+.terminal-workspace-glass .terminal-mobile-monitor-surface {
+  background-color: var(--terminal-glass-raised);
+}
+
+.terminal-workspace-glass .terminal-sftp-glass :is(.bg-table-row-selected, [data-selected="true"], [data-sftp-create-entry]),
+.terminal-workspace-glass [data-sftp-toolbar] button.bg-accent {
+  background-color: var(--terminal-glass-selected);
+}
+
+.terminal-workspace-glass [data-server-group-selected] {
+  background-color: var(--terminal-glass-panel);
+  color: var(--foreground);
+  border-color: var(--terminal-glass-border);
+}
+
+.terminal-workspace-glass [data-server-group-selected]:hover {
+  background-color: var(--terminal-glass-hover);
+}
+
+.terminal-workspace-glass [data-server-group-selected="true"],
+.terminal-workspace-glass [data-server-group-selected="true"]:hover {
+  background-color: var(--terminal-glass-selected);
+  border-color: var(--terminal-glass-hover-border);
+  box-shadow: inset 0 1px var(--terminal-glass-highlight), var(--terminal-glass-edge-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-workspace-glass .server-connection-item {
+    transition: none;
   }
 }
 
@@ -244,8 +403,7 @@
     --terminal-glass-text-shadow: 0 1px 2px rgb(0 0 0 / 55%);
   }
 
-  .terminal-ai-glass,
-  .dark .terminal-ai-glass {
+  .terminal-ai-glass:not(.terminal-workspace-glass *) {
     --terminal-glass-panel: var(--background);
     --terminal-glass-raised: var(--muted);
     --terminal-glass-border: var(--border);
@@ -260,8 +418,8 @@
   .terminal-sftp-glass-surface {
     background-color: var(--terminal-glass-panel);
     background-image: var(--terminal-glass-sheen);
-    backdrop-filter: blur(7px) saturate(1.14);
     -webkit-backdrop-filter: blur(7px) saturate(1.14);
+    backdrop-filter: blur(7px) saturate(1.14);
   }
 
   .terminal-ai-glass-toolbar {
@@ -287,8 +445,8 @@
       inset 0 1px var(--terminal-glass-highlight),
       var(--terminal-glass-edge-shadow),
       var(--terminal-glass-shadow);
-    backdrop-filter: blur(18px) saturate(1.2);
     -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    backdrop-filter: blur(18px) saturate(1.2);
   }
 
   .terminal-ai-glass [data-role="assistant"] > .agent-message-content {
@@ -568,8 +726,8 @@
     box-shadow:
       inset 0 1px var(--terminal-glass-highlight),
       var(--terminal-glass-edge-shadow);
-    backdrop-filter: blur(14px) saturate(1.16);
     -webkit-backdrop-filter: blur(14px) saturate(1.16);
+    backdrop-filter: blur(14px) saturate(1.16);
   }
 
   .terminal-sftp-glass [data-sftp-browser="files"] {
@@ -585,15 +743,15 @@
     background-color: color-mix(in oklab, var(--terminal-glass-raised) 82%, transparent);
     background-image: var(--terminal-glass-sheen);
     box-shadow: inset 0 -1px color-mix(in oklab, var(--terminal-glass-border) 62%, transparent);
-    backdrop-filter: blur(16px) saturate(1.16);
     -webkit-backdrop-filter: blur(16px) saturate(1.16);
+    backdrop-filter: blur(16px) saturate(1.16);
   }
 
   .terminal-sftp-glass .sftp-table th {
     background: transparent;
     box-shadow: none;
-    backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 
   .terminal-sftp-glass .sftp-table tbody tr:hover,

@@ -294,15 +294,7 @@ export const TerminalSettingsDialog = memo(function TerminalSettingsDialog({
                     "fontWeightHelp",
                   )}
                 </div>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 [&>div]:min-w-0 [&_[data-slot=select-trigger]]:w-full">
-                  {choice(
-                    "lineHeight",
-                    "lineHeightLabel",
-                    [1, 1.2, 1.4].map((value, index) => ({
-                      value: String(value),
-                      label: t(["lineHeightCompact", "lineHeightNormal", "lineHeightLoose"][index]),
-                    })),
-                  )}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>div]:min-w-0 [&_[data-slot=select-trigger]]:w-full">
                   {choice(
                     "theme",
                     "themeLabel",
@@ -313,6 +305,23 @@ export const TerminalSettingsDialog = memo(function TerminalSettingsDialog({
                           ? "Solarized"
                           : "Dracula"
                         : t(`themeOption${value[0].toUpperCase()}${value.slice(1)}`),
+                    })),
+                  )}
+                  {choice(
+                    "material",
+                    "materialLabel",
+                    [
+                      { value: "solid", label: t("materialSolid") },
+                      { value: "glass", label: t("materialGlass") },
+                    ],
+                    "materialHelp",
+                  )}
+                  {choice(
+                    "lineHeight",
+                    "lineHeightLabel",
+                    [1, 1.2, 1.4].map((value, index) => ({
+                      value: String(value),
+                      label: t(["lineHeightCompact", "lineHeightNormal", "lineHeightLoose"][index]),
                     })),
                   )}
                   {choice(

@@ -3,10 +3,12 @@ import { useTranslation } from "react-i18next"
 import type { Terminal, ITerminalOptions } from "@xterm/xterm"
 import type { FitAddon } from "@xterm/addon-fit"
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
+import { cn } from "@/lib/utils"
 import { resolveTerminalBoldFontWeight, type TerminalSettings } from "./terminal-settings"
 import {
   formatTerminalFontFamily,
   resolveTerminalRendererTheme,
+  resolveTerminalSurfaceMode,
   useTerminalRendererSettings,
 } from "./use-terminal-renderer-settings"
 
@@ -26,7 +28,7 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
   const [instance, setInstance] = useState<{ terminal: Terminal; fit: FitAddon } | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [failedBackground, setFailedBackground] = useState<string | null>(null)
-  const transparentBackground = !!settings.backgroundImage
+  const transparentBackground = !!settings.backgroundImage || settings.material === "glass"
   const { terminalTheme, terminalRendererTheme } = useMemo(() => {
     void version
     return resolveTerminalRendererTheme({
@@ -140,10 +142,15 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
   return (
     <div className="space-y-2">
       <div
-        className="relative h-[160px] overflow-hidden rounded-lg border p-3 sm:p-4"
+        data-terminal-background
+        data-terminal-theme-mode={resolveTerminalSurfaceMode(settings.theme, mode)}
+        className={cn(
+          "relative h-[160px] overflow-hidden rounded-lg border p-3 sm:p-4",
+          settings.material === "glass" && "terminal-workspace-glass",
+        )}
         style={{ backgroundColor: terminalTheme.background }}
       >
-        {transparentBackground && (
+        {settings.backgroundImage && (
           <img
             key={settings.backgroundImage}
             alt=""

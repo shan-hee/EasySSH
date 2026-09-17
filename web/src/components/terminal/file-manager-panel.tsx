@@ -74,11 +74,7 @@ export interface FileManagerPanelProps {
   transferTasks?: WorkspaceTransferTask[]
   onClearCompletedTransfers?: () => void
   onCancelTransfer?: (taskId: string) => void
-  background: {
-    color: string
-    image?: string
-    imageOpacity: number
-  }
+  backgroundColor?: string
   widthPreferenceKey?: string
   defaultWidth?: number
 }
@@ -90,7 +86,7 @@ export function FileManagerPanel({
   transferTasks,
   onClearCompletedTransfers,
   onCancelTransfer,
-  background,
+  backgroundColor,
   onInsertTerminalText,
   onExecuteTerminalCommand,
   widthPreferenceKey = FILE_MANAGER_PANEL_WIDTH_PREFERENCE_KEY,
@@ -227,19 +223,11 @@ export function FileManagerPanel({
       </div>
 
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden text-foreground shadow-2xl md:w-[min(var(--terminal-sftp-panel-width),70vw)] md:flex-none md:shrink-0 md:shadow-none">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-0 md:hidden"
-          style={{ backgroundColor: background.color }}
-        />
-        {background.image && (
+        {backgroundColor && (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center bg-no-repeat md:hidden"
-            style={{
-              backgroundImage: `url(${background.image})`,
-              opacity: background.imageOpacity,
-            }}
+            className="pointer-events-none absolute inset-0 z-0 md:hidden"
+            style={{ backgroundColor }}
           />
         )}
         <div

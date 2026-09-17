@@ -128,6 +128,14 @@ export function resolveTerminalAppThemeMode(
   return fallback
 }
 
+export function resolveTerminalSurfaceMode(
+  theme: TerminalThemeName,
+  appTheme: TerminalAppThemeMode,
+): TerminalAppThemeMode {
+  if (theme === "default") return appTheme
+  return theme === "light" ? "light" : "dark"
+}
+
 export function resolveTerminalRendererTheme({
   theme,
   appTheme,

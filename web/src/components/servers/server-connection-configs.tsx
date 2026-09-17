@@ -85,7 +85,7 @@ export interface ServerConnectionConfigsApi {
 
 function getServerItemClassName(viewMode: ViewMode, sortable = true) {
   return cn(
-    "relative rounded-lg border border-border bg-card text-card-foreground outline-none transition-[background-color,border-color,box-shadow] duration-200 focus-visible:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-primary/20",
+    "server-connection-item relative rounded-lg border border-border bg-card text-card-foreground outline-none transition-[background-color,border-color,box-shadow] duration-200 focus-visible:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-primary/20",
     sortable && "cursor-grab active:cursor-grabbing",
     viewMode === "grid"
       ? "grid min-h-[72px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-3 hover:bg-accent/60 hover:border-primary/40"
@@ -728,7 +728,7 @@ export function ServerConnectionConfigs({
 
  return (
  <>
- <div className={"h-full flex flex-col overflow-hidden relative transition-colors bg-background text-foreground"}>
+ <div data-server-connection-configs className={"h-full flex flex-col overflow-hidden relative transition-colors bg-background text-foreground"}>
  <div className={"absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-border to-transparent"} />
 
  <div className="flex min-h-0 flex-1 flex-col items-center px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -739,7 +739,7 @@ export function ServerConnectionConfigs({
  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
  {/* 左侧：搜索框 */}
  <div className="relative w-full sm:max-w-md sm:flex-1">
- <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+ <Search className="pointer-events-none absolute left-3 top-1/2 z-10 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
  <Input
  placeholder={t("searchPlaceholder")}
  className={"pl-10 bg-card border-border text-foreground placeholder:text-muted-foreground"}
@@ -796,6 +796,8 @@ export function ServerConnectionConfigs({
  <div className="flex flex-wrap items-center gap-x-2 gap-y-2 py-1">
  <Button
  variant={activeGroup === 'all' ? 'default' : 'outline'}
+ data-server-group-selected={activeGroup === 'all'}
+ aria-pressed={activeGroup === 'all'}
  size="sm"
  onClick={() => setActiveGroup('all')}
  className="h-8"
@@ -806,6 +808,8 @@ export function ServerConnectionConfigs({
  <Button
  key={group}
  variant={activeGroup === group ? 'default' : 'outline'}
+ data-server-group-selected={activeGroup === group}
+ aria-pressed={activeGroup === group}
  size="sm"
  onClick={() => setActiveGroup(group)}
  className="h-8"
@@ -895,7 +899,7 @@ export function ServerConnectionConfigs({
  <div className="flex items-center justify-between gap-4">
  {/* 左侧：搜索框（禁用状态） */}
  <div className="relative flex-1 max-w-md opacity-50 pointer-events-none">
- <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+ <Search className="pointer-events-none absolute left-3 top-1/2 z-10 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
  <Input
  placeholder={t("searchPlaceholder")}
  className={"pl-10 bg-card border-border text-foreground placeholder:text-muted-foreground"}

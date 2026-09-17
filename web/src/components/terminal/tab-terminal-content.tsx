@@ -453,7 +453,6 @@ function TabTerminalContentComponent({
   const monitorEnabled = canRenderInlinePanels && canUseMonitorCapability && hasReadyServer
   const { t: tTerminal } = useTranslation("terminal")
   const { t: tSettings } = useTranslation("terminalSettings")
-  const pageBackgroundImageLayerOpacity = settings.backgroundImageOpacity / 100
   const terminalSurfaceBackground = useMemo(() => {
     // Workspace theme adapters may update in place; the version invalidates this memo.
     void effectiveThemeVersion
@@ -484,7 +483,9 @@ function TabTerminalContentComponent({
   const completionProviderEnabled = useMemo(() => buildTerminalCompletionProviderFlags(completionSettings), [completionSettings])
   const completionFetchOptions = useMemo(() => buildTerminalCompletionFetchOptions(completionSettings), [completionSettings])
   const pathCompletionCwd = sftpSession.currentPath || sftpSessionInitialPath || initialSftpPath
-  const hasBackgroundImage = isTerminalSession && settings.backgroundImage.trim().length > 0
+  const hasWorkspaceBackground = isTerminalSession && (
+    !!settings.backgroundImage || settings.material === "glass"
+  )
   const [enableTerminalWebgl, setEnableTerminalWebgl] = useState(
     () => isActive
   )
@@ -602,21 +603,11 @@ function TabTerminalContentComponent({
           />
         )}
 
-        {shouldRenderSurface && hasBackgroundImage && (
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 pointer-events-none bg-cover bg-center bg-no-repeat"
-            style={{
-              backgroundImage: `url(${settings.backgroundImage})`,
-              opacity: pageBackgroundImageLayerOpacity,
-            }}
-          />
-        )}
-
         {/* 加载动画覆盖层 - 覆盖整个页签内容 */}
         {shouldRenderBody && effectiveIsLoading && isTerminalSession && (
           <div className="absolute inset-0 z-[60]">
             <ConnectionLoader
+              transparentBackground={hasWorkspaceBackground}
               serverName={connectionLoaderServerName}
               message={tTerminal(getConnectionLoaderMessageKey(session.connectionPhase))}
               exitMessage={tTerminal(getConnectionLoaderExitMessageKey(session.connectionPhase))}
@@ -776,7 +767,7 @@ function TabTerminalContentComponent({
                   completionFetchOptions={completionFetchOptions}
                   pathCompletionCwd={pathCompletionCwd}
                   enableWebgl={enableTerminalWebgl}
-                  transparentBackground={hasBackgroundImage}
+                  transparentBackground={hasWorkspaceBackground}
                   fontWeight={settings.fontWeight}
                   fontWeightBold={resolveTerminalBoldFontWeight(settings.fontWeight)}
                 />
@@ -786,23 +777,15 @@ function TabTerminalContentComponent({
             {shouldReserveMobileMonitor && (
               <div
                 className={cn(
-                  'absolute inset-0 z-30 overflow-hidden border-t md:hidden',
+                  'terminal-mobile-monitor-surface absolute inset-0 z-30 overflow-hidden border-t md:hidden',
                   'border-border/60 text-foreground shadow-2xl'
                 )}
               >
-                <div
-                  aria-hidden="true"
-                  className="absolute inset-0 pointer-events-none"
-                  style={{ backgroundColor: terminalSurfaceBackground }}
-                />
-                {hasBackgroundImage && (
+                {!hasWorkspaceBackground && (
                   <div
                     aria-hidden="true"
-                    className="absolute inset-0 pointer-events-none bg-cover bg-center bg-no-repeat"
-                    style={{
-                      backgroundImage: `url(${settings.backgroundImage})`,
-                      opacity: pageBackgroundImageLayerOpacity,
-                    }}
+                    className="absolute inset-0 pointer-events-none"
+                    style={{ backgroundColor: terminalSurfaceBackground }}
                   />
                 )}
                 <React.Suspense fallback={monitorFallback}>
@@ -852,11 +835,7 @@ function TabTerminalContentComponent({
               transferTasks={combinedTransferTasks}
               onClearCompletedTransfers={handleClearCompletedTransfers}
               onCancelTransfer={handleCancelTransfer}
-              background={{
-                color: terminalSurfaceBackground,
-                image: hasBackgroundImage ? settings.backgroundImage : undefined,
-                imageOpacity: pageBackgroundImageLayerOpacity,
-              }}
+              backgroundColor={hasWorkspaceBackground ? undefined : terminalSurfaceBackground}
             />
           )}
 
@@ -867,11 +846,7 @@ function TabTerminalContentComponent({
                 onClose={() => setTabState(session.id, { isAiInputOpen: false })}
                 terminalSession={session}
                 adapters={aiAssistantAdapters}
-                background={{
-                  color: terminalSurfaceBackground,
-                  image: hasBackgroundImage ? settings.backgroundImage : undefined,
-                  imageOpacity: pageBackgroundImageLayerOpacity,
-                }}
+                backgroundColor={hasWorkspaceBackground ? undefined : terminalSurfaceBackground}
               />
             </React.Suspense>
           )}

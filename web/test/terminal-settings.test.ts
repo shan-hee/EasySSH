@@ -11,6 +11,25 @@ import {
 } from "../src/components/terminal/terminal-settings"
 
 describe("terminal settings", () => {
+  it("preserves the color theme when switching and exporting surface materials", () => {
+    for (const theme of ["default", "light", "dark", "solarized", "dracula"] as const) {
+      const glass = normalizeTerminalSettings({
+        ...DEFAULT_TERMINAL_SETTINGS,
+        theme,
+        material: "glass",
+        backgroundImage: "https://example.com/wallpaper.png",
+        backgroundImageOpacity: 45,
+      })
+      assert.equal(glass.theme, theme)
+      assert.equal(glass.material, "glass")
+      assert.deepEqual(parseTerminalSettingsImport(serializeTerminalSettingsExport(glass)), glass)
+
+      const standard = normalizeTerminalSettings({ ...glass, material: "solid" })
+      assert.deepEqual(standard, { ...glass, material: "solid" })
+      assert.deepEqual(parseTerminalSettingsImport(serializeTerminalSettingsExport(standard)), standard)
+    }
+  })
+
   it("round-trips customized preferences without losing disabled shortcuts or reminders", () => {
     const settings = {
       ...DEFAULT_TERMINAL_SETTINGS,

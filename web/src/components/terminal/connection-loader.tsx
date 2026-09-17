@@ -10,6 +10,7 @@ import {
 import { useTranslation } from "react-i18next"
 
 import { motionDurations, motionEase } from "@/lib/motion"
+import { cn } from "@/lib/utils"
 
 type LoaderState = "entering" | "loading" | "exiting"
 
@@ -21,6 +22,7 @@ interface ConnectionLoaderProps {
   exitMessage?: string
   state?: LoaderState
   outcome?: ConnectionLoaderOutcome
+  transparentBackground?: boolean
   onAnimationComplete?: () => void
 }
 
@@ -56,6 +58,7 @@ export function ConnectionLoader({
   exitMessage,
   state = "loading",
   outcome = "success",
+  transparentBackground = false,
   onAnimationComplete,
 }: ConnectionLoaderProps) {
   const { t } = useTranslation("terminal")
@@ -97,8 +100,10 @@ export function ConnectionLoader({
       aria-label={`${displayMessage}: ${serverName ?? t("connectionLoaderServerFallback")}`}
     >
       <motion.div
-        className="absolute inset-0 flex items-center justify-center bg-background px-5 py-10"
-        // 首帧完整遮住终端背景，避免加载层淡入、缩放时先露出自定义图片。
+        className={cn(
+          "absolute inset-0 flex items-center justify-center px-5 py-10",
+          transparentBackground ? "bg-background/25 backdrop-blur-sm" : "bg-background",
+        )}
         initial={false}
         animate={isExiting
           ? { opacity: 0, scale: shouldReduceMotion ? 1 : 1.01 }
