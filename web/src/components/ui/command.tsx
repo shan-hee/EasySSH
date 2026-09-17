@@ -2,10 +2,11 @@
 import * as React from "react"
 import { type DialogProps } from "@radix-ui/react-dialog"
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons"
-import { Command as CommandPrimitive } from "cmdk"
+import { Command as CommandPrimitive, useCommandState } from "cmdk"
 
 import { cn } from "@/lib/utils"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
 
 const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,
@@ -64,13 +65,25 @@ CommandInput.displayName = CommandPrimitive.Input.displayName
 const CommandList = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.List
-    ref={ref}
-    className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden scroll-auto [overflow-anchor:none] bg-popover scrollbar-custom", className)}
-    {...props}
-  />
-))
+>(({ className, ...props }, ref) => {
+  const listRef = React.useRef<HTMLDivElement>(null)
+  const selectedValue = useCommandState((state) => state.value)
+  const setListRef = React.useCallback((element: HTMLDivElement | null) => {
+    listRef.current = element
+    if (typeof ref === "function") return ref(element)
+    if (ref) ref.current = element
+  }, [ref])
+
+  useSynchronousSelectedItemScroll({ listRef, selectedKey: selectedValue })
+
+  return (
+    <CommandPrimitive.List
+      ref={setListRef}
+      className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden overscroll-contain scroll-auto [overflow-anchor:none] bg-popover scrollbar-custom", className)}
+      {...props}
+    />
+  )
+})
 
 CommandList.displayName = CommandPrimitive.List.displayName
 

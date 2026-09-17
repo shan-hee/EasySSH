@@ -6,7 +6,7 @@ export function scrollSelectedItemIntoNearestView(
 ) {
   const containerRect = containerElement.getBoundingClientRect()
   const selectedRect = selectedElement.getBoundingClientRect()
-  const selectedTop = selectedRect.top - containerRect.top + containerElement.scrollTop
+  const selectedTop = selectedRect.top - containerRect.top - containerElement.clientTop + containerElement.scrollTop
   const selectedBottom = selectedTop + selectedRect.height
   const visibleTop = containerElement.scrollTop
   const visibleBottom = visibleTop + containerElement.clientHeight
@@ -23,12 +23,10 @@ export function scrollSelectedItemIntoNearestView(
 
 export function useSynchronousSelectedItemScroll<TListElement extends HTMLElement>({
   enabled = true,
-  getSelectedElement,
   listRef,
   selectedKey,
 }: {
   enabled?: boolean
-  getSelectedElement: () => HTMLElement | null | undefined
   listRef: RefObject<TListElement | null>
   selectedKey: unknown
 }) {
@@ -38,12 +36,16 @@ export function useSynchronousSelectedItemScroll<TListElement extends HTMLElemen
     }
 
     const listElement = listRef.current
-    const selectedElement = getSelectedElement()
-
-    if (!listElement || !selectedElement) {
+    if (!listElement) {
       return
     }
 
+    const selectedElement = listElement.querySelector<HTMLElement>('[role="option"][aria-selected="true"]')
+    if (!selectedElement) return
+
+    // Sync before paint: once selection reaches an edge, move the contents by
+    // the overflow distance, keeping the highlight at that edge. Only touch
+    // this viewport; never scroll the page or update the selection on scroll.
     scrollSelectedItemIntoNearestView(listElement, selectedElement)
-  }, [enabled, getSelectedElement, listRef, selectedKey])
+  }, [enabled, listRef, selectedKey])
 }

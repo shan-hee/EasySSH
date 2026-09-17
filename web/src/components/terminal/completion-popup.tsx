@@ -19,7 +19,6 @@ import type { CompletionItem } from "@/lib/completion/types"
 import { useTerminalTheme } from "@/contexts/terminal-theme-context"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
-import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
 
 type Placement = "top" | "bottom"
 
@@ -115,23 +114,10 @@ export function CompletionPopup({
   const theme = useTerminalTheme()
   const { t } = useTranslation("terminal")
   const popupRef = useRef<HTMLDivElement>(null)
-  const listRef = useRef<HTMLDivElement>(null)
-  const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const [placement, setPlacement] = useState<Placement>("bottom")
   const [popupPosition, setPopupPosition] = useState({
     left: position.x,
     top: position.y + POPUP_OFFSET,
-  })
-
-  const getSelectedElement = useCallback(
-    () => itemRefs.current.get(selectedIndex),
-    [selectedIndex],
-  )
-
-  useSynchronousSelectedItemScroll({
-    getSelectedElement,
-    listRef,
-    selectedKey: selectedIndex,
   })
 
   const handleMouseMove = useCallback(
@@ -238,7 +224,6 @@ export function CompletionPopup({
         value={selectedCommandValue}
       >
         <CommandList
-          ref={listRef}
           className="max-h-[240px] overflow-y-auto scrollbar-custom"
         >
           <CommandGroup className="p-0">
@@ -255,13 +240,6 @@ export function CompletionPopup({
                   key={`${item.text}-${originalIndex}`}
                   value={`${item.text}-${originalIndex}`}
                   data-selected={isSelected}
-                  ref={(el) => {
-                    if (el) {
-                      itemRefs.current.set(originalIndex, el)
-                    } else {
-                      itemRefs.current.delete(originalIndex)
-                    }
-                  }}
                   onSelect={() => onSelect(item, originalIndex)}
                   onMouseMove={() => handleMouseMove(originalIndex)}
                   className={cn(

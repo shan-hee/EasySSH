@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useLayoutEffect, useRef, type ComponentPropsWithoutRef, type FC } from "react"
+import { memo, useRef, type ComponentPropsWithoutRef, type FC } from "react"
 import {
   ComposerPrimitive,
   unstable_defaultDirectiveFormatter,
@@ -10,6 +10,7 @@ import {
 } from "@assistant-ui/react"
 import { ChevronLeftIcon, ChevronRightIcon, CornerDownLeftIcon, SparklesIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
 
 type IconComponent = FC<{ className?: string }>
 
@@ -82,33 +83,43 @@ type CategoriesProps = {
   emptyLabel: string
 }
 
-const Categories: FC<CategoriesProps> = ({ iconMap, fallbackIcon, emptyLabel }) => (
-  <ComposerPrimitive.Unstable_TriggerPopoverCategories>
-    {(categories) => (
-      <div data-slot="composer-trigger-popover-categories" className="scrollbar-custom flex max-h-[min(18rem,40dvh)] flex-col overflow-y-auto overscroll-contain p-1">
-        {categories.map((cat) => {
-          const Icon = resolveIcon(cat.id, iconMap, fallbackIcon)
-          return (
-            <ComposerPrimitive.Unstable_TriggerPopoverCategoryItem
-              key={cat.id}
-              categoryId={cat.id}
-              className="hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm transition-colors outline-none"
-            >
-              <span className="flex items-center gap-2">
-                <Icon className="text-muted-foreground size-4" />
-                {cat.label}
-              </span>
-              <ChevronRightIcon className="text-muted-foreground size-4" />
-            </ComposerPrimitive.Unstable_TriggerPopoverCategoryItem>
-          )
-        })}
-        {categories.length === 0 && (
-          <div className="text-muted-foreground px-3 py-2 text-sm">{emptyLabel}</div>
-        )}
-      </div>
-    )}
-  </ComposerPrimitive.Unstable_TriggerPopoverCategories>
-)
+const Categories: FC<CategoriesProps> = ({ iconMap, fallbackIcon, emptyLabel }) => {
+  const { open, activeCategoryId, isSearchMode, highlightedItemId } = unstable_useTriggerPopoverScopeContext()
+  const listRef = useRef<HTMLDivElement>(null)
+  useSynchronousSelectedItemScroll({
+    enabled: open && !activeCategoryId && !isSearchMode,
+    listRef,
+    selectedKey: highlightedItemId,
+  })
+
+  return (
+    <ComposerPrimitive.Unstable_TriggerPopoverCategories>
+      {(categories) => (
+        <div ref={listRef} data-slot="composer-trigger-popover-categories" className="scrollbar-custom flex max-h-[min(18rem,40dvh)] flex-col overflow-y-auto overscroll-contain scroll-auto [overflow-anchor:none] p-1">
+          {categories.map((cat) => {
+            const Icon = resolveIcon(cat.id, iconMap, fallbackIcon)
+            return (
+              <ComposerPrimitive.Unstable_TriggerPopoverCategoryItem
+                key={cat.id}
+                categoryId={cat.id}
+                className="data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring flex shrink-0 cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-2 text-sm outline-none"
+              >
+                <span className="flex items-center gap-2">
+                  <Icon className="text-muted-foreground size-4" />
+                  {cat.label}
+                </span>
+                <ChevronRightIcon className="text-muted-foreground size-4" />
+              </ComposerPrimitive.Unstable_TriggerPopoverCategoryItem>
+            )
+          })}
+          {categories.length === 0 && (
+            <div className="text-muted-foreground px-3 py-2 text-sm">{emptyLabel}</div>
+          )}
+        </div>
+      )}
+    </ComposerPrimitive.Unstable_TriggerPopoverCategories>
+  )
+}
 
 type ItemsProps = {
   iconMap: Record<string, IconComponent> | undefined
@@ -121,19 +132,14 @@ type ItemsProps = {
 }
 
 const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, loadingLabel, label, navigationHint }) => {
-  const { isLoading, highlightedIndex, items, open } = unstable_useTriggerPopoverScopeContext()
+  const { isLoading, highlightedItemId, open, activeCategoryId, isSearchMode } = unstable_useTriggerPopoverScopeContext()
   const listRef = useRef<HTMLDivElement>(null)
 
-  useLayoutEffect(() => {
-    const list = listRef.current
-    const highlighted = list?.querySelector<HTMLElement>("[data-highlighted]")
-    if (!list || !highlighted) return
-    // Scroll only the results, preserving the composer and page position.
-    const viewport = list.getBoundingClientRect()
-    const option = highlighted.getBoundingClientRect()
-    if (option.top < viewport.top) list.scrollTop -= viewport.top - option.top
-    else if (option.bottom > viewport.bottom) list.scrollTop += option.bottom - viewport.bottom
-  }, [highlightedIndex, items, open])
+  useSynchronousSelectedItemScroll({
+    enabled: open && (isSearchMode || activeCategoryId !== null),
+    listRef,
+    selectedKey: highlightedItemId,
+  })
 
   return (
     <ComposerPrimitive.Unstable_TriggerPopoverItems aria-label={label}>
@@ -150,7 +156,7 @@ const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, l
             {backLabel}
           </ComposerPrimitive.Unstable_TriggerPopoverBack>
 
-          <div ref={listRef} className="scrollbar-custom max-h-[min(15rem,32dvh)] overflow-y-auto overscroll-contain p-1">
+          <div ref={listRef} className="scrollbar-custom max-h-[min(15rem,32dvh)] overflow-y-auto overscroll-contain scroll-auto [overflow-anchor:none] p-1">
             {items.map((item, index) => {
               const iconKey = typeof item.metadata?.icon === "string" ? item.metadata.icon : undefined
               const Icon = resolveIcon(iconKey, iconMap, fallbackIcon)
@@ -159,7 +165,7 @@ const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, l
                   key={item.id}
                   item={item}
                   index={index}
-                  className="group/trigger-item hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-start transition-colors outline-none"
+                  className="group/trigger-item data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-start outline-none"
                 >
                   <Icon className="size-4 shrink-0 text-muted-foreground group-data-[highlighted]/trigger-item:text-accent-foreground" />
                   <span className="min-w-0 flex-1">
