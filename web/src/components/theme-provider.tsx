@@ -14,12 +14,14 @@ interface ThemeProviderProps {
   defaultTheme?: ThemePreference
   enableSystem?: boolean
   disableTransitionOnChange?: boolean
+  supportsWindowOpacity?: boolean
 }
 
 interface ThemeContextValue {
   theme: ThemePreference
   resolvedTheme: ResolvedTheme
   windowOpacity: number
+  supportsWindowOpacity: boolean
   setTheme: (theme: ThemePreference) => void
   setWindowOpacity: (opacity: number) => void
 }
@@ -84,10 +86,13 @@ export function ThemeProvider({
   defaultTheme = "light",
   enableSystem = true,
   disableTransitionOnChange = false,
+  supportsWindowOpacity = false,
 }: ThemeProviderProps) {
   const [theme, setThemeState] = React.useState<ThemePreference>(() => getStoredTheme(defaultTheme))
   const [resolvedTheme, setResolvedTheme] = React.useState<ResolvedTheme>(() => resolveTheme(theme, enableSystem))
-  const [windowOpacity, setWindowOpacityState] = React.useState(getStoredWindowOpacity)
+  const [windowOpacity, setWindowOpacityState] = React.useState(() =>
+    supportsWindowOpacity ? getStoredWindowOpacity() : maximumWindowOpacity,
+  )
 
   const applyResolvedTheme = React.useCallback(
     (nextResolvedTheme: ResolvedTheme) => {
@@ -106,9 +111,11 @@ export function ThemeProvider({
   }, [applyResolvedTheme, enableSystem, theme])
 
   useIsomorphicLayoutEffect(() => {
-    applyWindowOpacity(windowOpacity)
-    window.localStorage.setItem(windowOpacityStorageKey, String(windowOpacity))
-  }, [windowOpacity])
+    applyWindowOpacity(supportsWindowOpacity ? windowOpacity : maximumWindowOpacity)
+    if (supportsWindowOpacity) {
+      window.localStorage.setItem(windowOpacityStorageKey, String(windowOpacity))
+    }
+  }, [supportsWindowOpacity, windowOpacity])
 
   useIsomorphicLayoutEffect(() => {
     if (!enableSystem || theme !== "system") {
@@ -142,10 +149,11 @@ export function ThemeProvider({
       theme,
       resolvedTheme,
       windowOpacity,
+      supportsWindowOpacity,
       setTheme,
       setWindowOpacity,
     }),
-    [resolvedTheme, setTheme, setWindowOpacity, theme, windowOpacity],
+    [resolvedTheme, setTheme, setWindowOpacity, supportsWindowOpacity, theme, windowOpacity],
   )
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>

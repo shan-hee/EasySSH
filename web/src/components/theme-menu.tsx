@@ -84,7 +84,7 @@ function resolveThemeGeneratorMode(mode: ThemePreference, fallback: "light" | "d
 
 export function ThemeMenu() {
   const { t } = useTranslation("headerActions")
-  const { theme, resolvedTheme, windowOpacity, setTheme, setWindowOpacity } = useTheme()
+  const { theme, resolvedTheme, windowOpacity, supportsWindowOpacity, setTheme, setWindowOpacity } = useTheme()
   const themeGeneratorVersion = useThemeGeneratorVersion()
   const [selectedPreset, setSelectedPreset] = React.useState<string | null>(() => getCurrentPresetId())
   const selectedMode = getThemePreference(theme)
@@ -144,30 +144,34 @@ export function ThemeMenu() {
 
         <DropdownMenuSeparator />
 
-        <div
-          className="space-y-2 px-2 py-2"
-          onKeyDown={(event) => {
-            if (windowOpacitySliderKeys.has(event.key)) {
-              event.stopPropagation()
-            }
-          }}
-        >
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span>{t("windowOpacity")}</span>
-            <span className="tabular-nums text-muted-foreground">{windowOpacity}%</span>
-          </div>
-          <Slider
-            min={minimumWindowOpacity}
-            max={maximumWindowOpacity}
-            step={1}
-            value={[windowOpacity]}
-            onValueChange={(value) => setWindowOpacity(value[0])}
-            aria-label={t("windowOpacity")}
-            aria-valuetext={`${windowOpacity}%`}
-          />
-        </div>
+        {supportsWindowOpacity && (
+          <>
+            <div
+              className="space-y-2 px-2 py-2"
+              onKeyDown={(event) => {
+                if (windowOpacitySliderKeys.has(event.key)) {
+                  event.stopPropagation()
+                }
+              }}
+            >
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span>{t("windowOpacity")}</span>
+                <span className="tabular-nums text-muted-foreground">{windowOpacity}%</span>
+              </div>
+              <Slider
+                min={minimumWindowOpacity}
+                max={maximumWindowOpacity}
+                step={1}
+                value={[windowOpacity]}
+                onValueChange={(value) => setWindowOpacity(value[0])}
+                aria-label={t("windowOpacity")}
+                aria-valuetext={`${windowOpacity}%`}
+              />
+            </div>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
+          </>
+        )}
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger>

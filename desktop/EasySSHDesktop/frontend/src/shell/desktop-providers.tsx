@@ -18,7 +18,7 @@ export function DesktopProviders({
 }) {
   return (
     <BrowserRouter>
-      <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange>
+      <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange supportsWindowOpacity>
         <QueryProvider>
           <StaticSystemConfigProvider
             config={{
