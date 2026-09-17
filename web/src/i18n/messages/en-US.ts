@@ -2345,6 +2345,7 @@ const messages = {
     auiDecisionNote: "Add a note to your decision",
     auiBack: "Back",
     auiThinking: "thinking",
+    auiReconnecting: "Connection interrupted. Reconnecting…",
     auiToolsRunning: "Calling {count} tools",
     auiToolRunning: "Calling",
     auiToolApproval: "Awaiting approval",

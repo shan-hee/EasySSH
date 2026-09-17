@@ -3,7 +3,7 @@ import { isToolUIPart, type UIMessage } from "ai"
 type TimelineTranslateValues = Record<string, string | number | Date>
 
 export type TimelineTranslate = (key: string, values?: TimelineTranslateValues) => string
-export type AssistantLoadingState = false | "waiting" | "thinking" | "generating"
+export type AssistantLoadingState = false | "waiting" | "thinking" | "generating" | "reconnecting"
 
 export function getAgentToolActivity(messages: UIMessage[]) {
   let hasToolParts = false

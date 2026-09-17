@@ -483,7 +483,6 @@ func (m *Manager) Subscribe(userID uuid.UUID, sessionID string) (<-chan Event, f
 	}
 	s.subscribers[subID] = ch
 	snapshot := m.snapshotSessionLocked(s)
-	m.mu.Unlock()
 
 	ch <- Event{
 		ID:        uuid.NewString(),
@@ -492,6 +491,7 @@ func (m *Manager) Subscribe(userID uuid.UUID, sessionID string) (<-chan Event, f
 		CreatedAt: time.Now(),
 		Session:   &snapshot,
 	}
+	m.mu.Unlock()
 
 	unsubscribe := func() {
 		m.mu.Lock()
@@ -1593,9 +1593,10 @@ func (m *Manager) uiMessageForAssistantMessage(s *session, messageID string) *UI
 
 func (m *Manager) emitEvent(s *session, event Event) {
 	m.mu.RLock()
-	subs := cloneSubscribersLocked(s)
-	m.mu.RUnlock()
-	m.emitToSubscribers(subs, event)
+	defer m.mu.RUnlock()
+	// Keep delivery under the lock so unsubscribe cannot close a channel
+	// between copying the subscribers and sending to it.
+	m.emitToSubscribers(cloneSubscribersLocked(s), event)
 }
 
 func (m *Manager) emitToSubscribers(subs []chan Event, event Event) {

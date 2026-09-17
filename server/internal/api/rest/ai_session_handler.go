@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/easyssh/server/internal/domain/aichat/runtime"
 	"github.com/easyssh/shared/aichatui"
@@ -253,19 +254,20 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Vercel-AI-UI-Message-Stream", "v1")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-	c.Writer.Flush()
+	startAIChatStream(c)
 
 	streamer := newAISDKUIMessageStreamer(c.Writer, action.kind == "approval")
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
 	for {
 		select {
 		case <-c.Request.Context().Done():
 			return
+		case <-heartbeat.C:
+			if _, err := fmt.Fprint(c.Writer, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			c.Writer.Flush()
 		case event, ok := <-events:
 			if !ok {
 				_ = streamer.finish("stop")
@@ -280,6 +282,123 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			if done {
 				return
 			}
+		}
+	}
+}
+
+func startAIChatStream(c *gin.Context) {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache, no-transform")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Vercel-AI-UI-Message-Stream", "v1")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	c.Writer.Flush()
+}
+
+// ResumeChat observes an existing run; it never submits messages or executes tools.
+// Authoritative snapshots replace the client view, so reconnects need no delta
+// cursor and cannot duplicate text or miss events between catch-up and live output.
+func (h *AISessionHandler) ResumeChat(c *gin.Context) {
+	userID, err := getUserIDFromContext(c)
+	if err != nil {
+		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+		return
+	}
+	sessionID := strings.TrimSpace(c.Param("session_id"))
+	view, err := h.manager.GetSession(userID, sessionID)
+	if err != nil {
+		h.respondRuntimeError(c, err)
+		return
+	}
+
+	var events <-chan runtime.Event
+	if view.Status != runtime.SessionStatusClosed {
+		var unsubscribe func()
+		events, unsubscribe, err = h.manager.Subscribe(userID, sessionID)
+		if err != nil {
+			h.respondRuntimeError(c, err)
+			return
+		}
+		defer unsubscribe()
+	}
+
+	startAIChatStream(c)
+	streamer := newAISDKUIMessageStreamer(c.Writer, false)
+	var lastUpdated time.Time
+	var lastStatus runtime.SessionStatus
+	writeSnapshot := func() (bool, error) {
+		// Read current state instead of replaying queued, possibly stale events.
+		latest, err := h.manager.GetSession(userID, sessionID)
+		if err != nil {
+			return true, err
+		}
+		if !latest.UpdatedAt.Equal(lastUpdated) || latest.Status != lastStatus {
+			if err := streamer.writeChunk(map[string]interface{}{
+				"type": "data-session-snapshot", "data": latest, "transient": true,
+			}); err != nil {
+				return true, err
+			}
+			lastUpdated, lastStatus = latest.UpdatedAt, latest.Status
+		}
+		done := latest.Status != runtime.SessionStatusRunning
+		if done {
+			if err := streamer.writeDone(); err != nil {
+				return true, err
+			}
+		}
+		c.Writer.Flush()
+		return done, nil
+	}
+	if done, err := writeSnapshot(); done || err != nil {
+		return
+	}
+
+	// Coalesce token bursts while retaining prompt updates for tools and completion.
+	updates := time.NewTicker(250 * time.Millisecond)
+	defer updates.Stop()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
+	dirty := false
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case event, ok := <-events:
+			if !ok {
+				_, _ = writeSnapshot()
+				return
+			}
+			dirty = true
+			if event.Type == runtime.EventError && event.Error != nil {
+				if err := streamer.writeChunk(map[string]interface{}{
+					"type": "error", "errorText": event.Error.Message,
+				}); err != nil {
+					return
+				}
+				c.Writer.Flush()
+			}
+			if event.Type == runtime.EventSessionCompleted {
+				if done, err := writeSnapshot(); done || err != nil {
+					return
+				}
+			}
+		case <-updates.C:
+			if dirty {
+				dirty = false
+				if done, err := writeSnapshot(); done || err != nil {
+					return
+				}
+			}
+		case <-heartbeat.C:
+			// Reconcile even if a slow subscriber's event buffer overflowed.
+			if done, err := writeSnapshot(); done || err != nil {
+				return
+			}
+			if _, err := fmt.Fprint(c.Writer, ": heartbeat\n\n"); err != nil {
+				return
+			}
+			c.Writer.Flush()
 		}
 	}
 }

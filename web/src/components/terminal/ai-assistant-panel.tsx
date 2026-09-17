@@ -963,6 +963,12 @@ export function AiAssistantPanel({
         </Suspense>
 
         <div className="relative z-[1] shrink-0 p-3">
+          {agentSession.reconnecting && (
+            <div role="status" className="mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground">
+              <Loader2 className="size-3 shrink-0 animate-spin" />
+              {tAI("auiReconnecting")}
+            </div>
+          )}
           {error && (
             <ErrorState detail={error} className="mb-2 px-3 py-2" action={
               <TooltipIconButton type="button" className="-my-1 size-6 shrink-0" onClick={clearError} tooltip={tAI("cancel")}>

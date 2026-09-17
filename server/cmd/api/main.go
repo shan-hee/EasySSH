@@ -1068,6 +1068,7 @@ func main() {
 			aiChatRoutes.GET("/sessions/:session_id", aiSessionHandler.GetSession)
 			aiChatRoutes.PATCH("/sessions/:session_id", aiSessionHandler.RenameSession)
 			aiChatRoutes.POST("/sessions/:session_id/chat", aiSessionHandler.Chat)
+			aiChatRoutes.GET("/sessions/:session_id/chat/stream", aiSessionHandler.ResumeChat)
 			aiChatRoutes.POST("/sessions/:session_id/cancel", aiSessionHandler.CancelSession)
 			aiChatRoutes.PATCH("/sessions/:session_id/messages/:message_id", aiSessionHandler.UpdateMessage)
 			aiChatRoutes.DELETE("/sessions/:session_id/messages/:message_id", aiSessionHandler.DeleteMessage)

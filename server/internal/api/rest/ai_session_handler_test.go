@@ -85,6 +85,7 @@ func newTestAISessionRouter(userID uuid.UUID, handler *AISessionHandler) *gin.En
 	router.GET("/sessions/:session_id", handler.GetSession)
 	router.PATCH("/sessions/:session_id", handler.RenameSession)
 	router.POST("/sessions/:session_id/chat", handler.Chat)
+	router.GET("/sessions/:session_id/chat/stream", handler.ResumeChat)
 	router.POST("/sessions/:session_id/cancel", handler.CancelSession)
 	router.PATCH("/sessions/:session_id/messages/:message_id", handler.UpdateMessage)
 	router.DELETE("/sessions/:session_id/messages/:message_id", handler.DeleteMessage)

@@ -49,13 +49,15 @@ export function useAIAssistantController({
 
   const isSessionRunning = agentSession.session?.status === "running"
   const isChatRequestActive = agentSession.chatStatus === "submitted" || agentSession.chatStatus === "streaming"
-  const isAssistantActive = isSessionRunning || isChatRequestActive
+  const isAssistantActive = isSessionRunning || isChatRequestActive || agentSession.reconnecting
   const toolActivity = useMemo(
     () => getAgentToolActivity(agentSession.uiMessages),
     [agentSession.uiMessages]
   )
-  const shouldShowLoadingIndicator = isAssistantActive && !toolActivity.hasActiveTools
-  const assistantLoadingState = shouldShowLoadingIndicator
+  const shouldShowLoadingIndicator = isAssistantActive && !agentSession.error && !toolActivity.hasActiveTools
+  const assistantLoadingState = agentSession.reconnecting
+    ? "reconnecting"
+    : shouldShowLoadingIndicator
     ? agentSession.chatStatus === "streaming"
       ? "generating"
       : agentSession.chatStatus === "submitted"

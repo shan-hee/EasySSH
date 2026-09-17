@@ -2191,6 +2191,7 @@ const messages = {
     auiDecisionNote: "为本次决定添加备注",
     auiBack: "返回",
     auiThinking: "思考中",
+    auiReconnecting: "连接中断，正在重连…",
     auiToolsRunning: "正在调用{count}个工具",
     auiToolRunning: "正在调用",
     auiToolApproval: "等待审批",

@@ -273,6 +273,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/sessions/{session_id}/chat/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 恢复现有 AI 会话的输出流
+         * @description 只订阅现有会话，不提交用户消息、不启动生成或执行工具。
+         *     首帧为 transient data-session-snapshot，data 为完整 AISessionView；客户端替换消息列表。
+         *     运行期间合并更新、持续发送最新快照，每 15 秒发送 SSE 注释心跳。
+         *     会话完成或等待审批时发送最终快照及 [DONE]，客户端无需重放历史增量。
+         */
+        get: operations["getAiSessionsSessionIdChatStream"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ai/sessions/{session_id}/chat": {
         parameters: {
             query?: never;
@@ -4751,6 +4774,38 @@ export interface operations {
                 };
             };
             /** @description 会话不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAiSessionsSessionIdChatStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话快照 SSE 流 */
+            200: {
+                headers: {
+                    "X-Vercel-AI-UI-Message-Stream"?: "v1";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["AIUIMessageChunk"];
+                };
+            };
+            /** @description 会话不存在或不属于当前用户 */
             404: {
                 headers: {
                     [name: string]: unknown;

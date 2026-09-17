@@ -122,7 +122,9 @@ export const AgentThread = memo(function AgentThread({
   contentClassName?: string
 }) {
   const context = useMemo(() => ({ tText, scope }), [tText, scope])
-  const loadingText = assistantLoadingState ? tText("auiThinking") : undefined
+  const loadingText = assistantLoadingState
+    ? tText(assistantLoadingState === "reconnecting" ? "auiReconnecting" : "auiThinking")
+    : undefined
   return (
     <Context.Provider value={context}>
       <Thread {...props} components={components} loadingText={loadingText} />

@@ -40,6 +40,7 @@ import { deleteAISession, listAISessions, renameAISession, type AgentSessionScop
 import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
 import type { ServerListResponse } from "@/lib/api/servers"
 import { getServerDisplayName } from "@/lib/server-utils"
+import { hasServerMention, matchServerMentionTrigger } from "@/lib/ai-agent/server-mentions"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 
@@ -91,21 +92,8 @@ function workspaceScopeFromMentionedServers(mentionedServers: ManagedServer[]): 
   return workspaceScopeFromServers(mentionedServers) ?? { kind: "global" }
 }
 
-function getServerMentionText(server: ManagedServer) {
-  return `@${getServerDisplayName(server)}`
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
-
-function isServerMentioned(value: string, server: ManagedServer) {
-  const mentionText = getServerMentionText(server)
-  return new RegExp(`${escapeRegExp(mentionText)}(?=$|[\\s,，。.!?;；:：、)\\]）】])`, "u").test(value)
-}
-
 function getMentionedServers(value: string, servers: ManagedServer[]) {
-  return servers.filter((server) => isServerMentioned(value, server))
+  return servers.filter((server) => hasServerMention(value, getServerDisplayName(server)))
 }
 
 function getServerMentionSearchText(server: ManagedServer) {
@@ -719,6 +707,12 @@ export function AIAssistantWorkspaceView({
             </div>
 
             <div className={cn("w-full shrink-0 px-4 md:px-6", hasTimeline ? "pt-4" : "my-auto")}>
+              {agentSession.reconnecting && (
+                <div role="status" className="mx-auto mb-3 flex max-w-5xl items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 shrink-0 animate-spin" />
+                  {t("auiReconnecting")}
+                </div>
+              )}
               {error && (
                 <ErrorState detail={error} className="mx-auto mb-3 max-w-5xl" action={
                   <TooltipIconButton type="button" className="-my-1 size-7 shrink-0" onClick={clearError} tooltip={t("cancel")}>
@@ -754,6 +748,7 @@ export function AIAssistantWorkspaceView({
                   />
                   {!serverReferenceDisabled && <ComposerTriggerPopover
                     char="@"
+                    matcher={matchServerMentionTrigger}
                     adapter={serverMentionAdapter}
                     isLoading={serversLoading}
                     directive={{ formatter: serverMentionFormatter }}
