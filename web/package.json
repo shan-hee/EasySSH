@@ -1,6 +1,6 @@
 {
   "name": "easyssh-web",
-  "version": "1.0.43",
+  "version": "1.0.44",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.1.3",
