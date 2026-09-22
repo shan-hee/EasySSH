@@ -192,6 +192,7 @@ export class DesktopAIListSessionsResult {
 }
 
 export class DesktopAIMessageView {
+    "server_references"?: aichatui$0.ServerReference[];
     "id": string;
     "role": string;
     "content": string;
@@ -372,6 +373,7 @@ export class DesktopAIRegenerateMessageInput {
 }
 
 export class DesktopAISendMessageInput {
+    "server_references"?: aichatui$0.ServerReference[];
     "session_id": string;
     "content": string;
     "context"?: string;
@@ -724,6 +726,7 @@ export class DesktopAIToolView {
 }
 
 export class DesktopAIUpdateMessageInput {
+    "server_references"?: aichatui$0.ServerReference[];
     "session_id": string;
     "message_id": string;
     "content": string;

@@ -159,17 +159,19 @@ type CreateSessionInput struct {
 }
 
 type SendUserMessageInput struct {
-	MessageID      string
-	Content        string
-	Attachments    []provider.Attachment
-	Context        string
-	Model          string
-	PermissionMode string
-	Scope          SessionScope
+	ServerReferences []aichatui.ServerReference
+	MessageID        string
+	Content          string
+	Attachments      []provider.Attachment
+	Context          string
+	Model            string
+	PermissionMode   string
+	Scope            SessionScope
 }
 
 type UpdateMessageInput struct {
-	Content string
+	ServerReferences []aichatui.ServerReference
+	Content          string
 }
 
 type ConfirmTaskInput struct {

@@ -20,10 +20,14 @@ func NewRuntimeManager(
 		toolRegistry = toolExecutor.BuildToolRegistry()
 	}
 
-	return runtime.NewManager(
+	manager := runtime.NewManager(
 		NewConfigResolver(aiConfigService, userAIConfigService),
 		provider.NewFactory(),
 		toolRegistry,
 		30*time.Minute,
 	)
+	if toolExecutor != nil {
+		manager.SetServerReferenceResolver(toolExecutor.ResolveServerReferences)
+	}
+	return manager
 }

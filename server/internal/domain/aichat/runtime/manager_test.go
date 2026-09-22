@@ -10,6 +10,7 @@ import (
 
 	"github.com/easyssh/server/internal/domain/aichat/provider"
 	"github.com/easyssh/server/internal/domain/aichat/registry"
+	"github.com/easyssh/shared/aichatui"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -370,4 +371,44 @@ func TestManagerMarksTaskFailedWhenToolExecutionFails(t *testing.T) {
 	require.Equal(t, TaskStatusFailed, completed.Session.Tasks[0].Status)
 	require.Equal(t, "文件不存在", completed.Session.Tasks[0].Error)
 	require.Equal(t, "读取失败，文件不存在。", completed.Session.Messages[len(completed.Session.Messages)-1].Content)
+}
+
+func TestReferencedServersRejectToolTargetOutsideMessage(t *testing.T) {
+	userID := uuid.New()
+	runner := &fakeTurnRunner{scripts: []fakeTurnScript{
+		{result: provider.TurnResult{ToolCalls: []registry.ToolCall{
+			{ID: "outside", Name: "get_server_info", Arguments: json.RawMessage(`{"server_id":"c"}`)},
+			{ID: "inside", Name: "get_server_info", Arguments: json.RawMessage(`{"server_id":"b"}`)},
+		}}},
+		{result: provider.TurnResult{Content: "完成"}},
+	}}
+	executed := []string{}
+	manager := NewManager(fakeResolver{config: provider.Config{Model: "fake-model"}}, runner,
+		registry.NewToolRegistry([]registry.ToolSpec{{
+			Name: "get_server_info", ConfirmStrategy: registry.ConfirmNone,
+			Parameters: map[string]interface{}{"properties": map[string]interface{}{"server_id": map[string]interface{}{"type": "string"}}},
+			Executor: func(ctx context.Context, _ uuid.UUID, args json.RawMessage) (registry.ExecutionResult, error) {
+				executed = append(executed, string(args))
+				return registry.ExecutionResult{Content: "ok"}, nil
+			},
+		}}), time.Minute)
+	manager.SetServerReferenceResolver(func(_ context.Context, _ uuid.UUID, refs []aichatui.ServerReference) ([]aichatui.ServerReference, error) {
+		return refs, nil
+	})
+	s, err := manager.CreateSession(context.Background(), userID, CreateSessionInput{PermissionMode: "balanced"})
+	require.NoError(t, err)
+	events, unsubscribe, err := manager.Subscribe(userID, s.ID)
+	require.NoError(t, err)
+	defer unsubscribe()
+	require.NoError(t, manager.SendUserMessageWithOptions(context.Background(), userID, s.ID, SendUserMessageInput{
+		Content: "检查 @A 和 @B", ServerReferences: []aichatui.ServerReference{{ServerID: "a", Label: "A", Offset: 3}, {ServerID: "b", Label: "B", Offset: 8}},
+	}))
+	completed := waitForEvent(t, events, func(evt Event) bool {
+		return evt.Type == EventSessionCompleted && evt.Session != nil && len(evt.Session.Tasks) == 2
+	})
+	require.Len(t, executed, 1)
+	require.Contains(t, executed[0], `"server_id":"b"`)
+	require.Equal(t, TaskStatusFailed, completed.Session.Tasks[0].Status)
+	require.Contains(t, completed.Session.Tasks[0].Error, "不在本条消息引用")
+	require.Equal(t, TaskStatusSucceeded, completed.Session.Tasks[1].Status)
 }

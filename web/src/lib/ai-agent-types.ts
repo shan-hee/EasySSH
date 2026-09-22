@@ -51,7 +51,18 @@ export interface ToolView {
   dangerous: boolean
 }
 
+export interface AgentServerReference {
+  server_id: string
+  name: string
+  host: string
+  port: number
+  username: string
+  label?: string
+  offset?: number
+}
+
 export interface MessageView {
+  server_references?: AgentServerReference[]
   id: string
   role: "user" | "assistant" | "system" | "tool"
   content: string
@@ -133,6 +144,7 @@ export interface CreateSessionResponse {
 }
 
 export interface UpdateMessageInput {
+  server_references: AgentServerReference[]
   content: string
 }
 

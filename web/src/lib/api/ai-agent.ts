@@ -3,6 +3,7 @@ import type { AgentSessionScope, CreateSessionInput, CreateSessionResponse, List
 
 export type {
   AgentSessionScope,
+  AgentServerReference,
   AgentSessionStatus,
   AgentImageAttachment,
   AgentProviderMetadata,

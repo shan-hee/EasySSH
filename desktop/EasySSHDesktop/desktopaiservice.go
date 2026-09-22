@@ -146,6 +146,7 @@ type DesktopAIProviderMetadata struct {
 }
 
 type DesktopAIMessageView struct {
+	ServerReferences []aichatui.ServerReference `json:"server_references,omitempty"`
 	ID               string                     `json:"id"`
 	Role             string                     `json:"role"`
 	Content          string                     `json:"content"`
@@ -231,19 +232,21 @@ type DesktopAICreateSessionResponse struct {
 }
 
 type DesktopAISendMessageInput struct {
-	SessionID      string                     `json:"session_id"`
-	Content        string                     `json:"content"`
-	Context        string                     `json:"context,omitempty"`
-	Model          string                     `json:"model,omitempty"`
-	PermissionMode DesktopAIPermissionMode    `json:"permission_mode,omitempty"`
-	Scope          *DesktopAISessionScope     `json:"scope,omitempty"`
-	Attachments    []DesktopAIImageAttachment `json:"attachments,omitempty"`
+	ServerReferences []aichatui.ServerReference `json:"server_references,omitempty"`
+	SessionID        string                     `json:"session_id"`
+	Content          string                     `json:"content"`
+	Context          string                     `json:"context,omitempty"`
+	Model            string                     `json:"model,omitempty"`
+	PermissionMode   DesktopAIPermissionMode    `json:"permission_mode,omitempty"`
+	Scope            *DesktopAISessionScope     `json:"scope,omitempty"`
+	Attachments      []DesktopAIImageAttachment `json:"attachments,omitempty"`
 }
 
 type DesktopAIUpdateMessageInput struct {
-	SessionID string `json:"session_id"`
-	MessageID string `json:"message_id"`
-	Content   string `json:"content"`
+	ServerReferences []aichatui.ServerReference `json:"server_references,omitempty"`
+	SessionID        string                     `json:"session_id"`
+	MessageID        string                     `json:"message_id"`
+	Content          string                     `json:"content"`
 }
 
 type DesktopAIRegenerateMessageInput struct {
@@ -665,6 +668,11 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 		return DesktopAICreateSessionResponse{}, err
 	}
 
+	refs, err := s.resolveServerReferences(ctx, input.ServerReferences)
+	if err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
+
 	record, err := s.loadSession(sessionID)
 	if err != nil {
 		return DesktopAICreateSessionResponse{}, err
@@ -707,7 +715,7 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	record.Status = DesktopAISessionRunning
 	record.UpdatedAt = now
 	userMessage := DesktopAIMessageView{
-		ID: newDesktopAIID("msg"), Role: "user", Content: content,
+		ID: newDesktopAIID("msg"), Role: "user", Content: content, ServerReferences: refs,
 		Attachments: append([]DesktopAIImageAttachment(nil), input.Attachments...), CreatedAt: now,
 	}
 	record.Messages = append(record.Messages, userMessage)
@@ -725,6 +733,9 @@ func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record des
 }
 
 func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext context.Context, record desktopAISessionRecord, config desktopAIConfigRecord, contextText string, model string) (DesktopAICreateSessionResponse, error) {
+	if err := s.refreshRunServerReferences(requestContext, &record); err != nil {
+		return s.failDesktopAITurn(record, err)
+	}
 	sessionID := record.ID
 
 	if err := s.saveSession(record); err != nil {
@@ -888,6 +899,15 @@ func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input Desk
 	if record.Tasks[taskIndex].Status != DesktopAITaskWaitingConfirm {
 		s.sessionMu.Unlock()
 		return DesktopAICreateSessionResponse{}, errors.New("AI task is not awaiting confirmation")
+	}
+	if approved {
+		task := record.Tasks[taskIndex]
+		if spec, ok := desktopAIToolSpecByName(record.PermissionMode, record.Scope, task.ToolName); ok {
+			if message := desktopAIValidateServerReference(record, spec, task.Arguments); message != "" {
+				s.sessionMu.Unlock()
+				return DesktopAICreateSessionResponse{}, errors.New(message)
+			}
+		}
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -1118,6 +1138,11 @@ func (s *DesktopAIService) UpdateMessage(input DesktopAIUpdateMessageInput) (Des
 		return DesktopAICreateSessionResponse{}, errors.New("AI message content is required")
 	}
 
+	refs, err := s.resolveServerReferences(context.Background(), input.ServerReferences)
+	if err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
+
 	record, err := s.loadSession(sessionID)
 	if err != nil {
 		return DesktopAICreateSessionResponse{}, err
@@ -1144,6 +1169,7 @@ func (s *DesktopAIService) UpdateMessage(input DesktopAIUpdateMessageInput) (Des
 	}
 
 	record.Messages[messageIndex].Content = content
+	record.Messages[messageIndex].ServerReferences = refs
 	record.Messages = truncateDesktopAIMessages(record.Messages, messageIndex+1)
 	record.Tasks = truncateDesktopAITasks(record.Tasks, record.Messages)
 	record.Status = DesktopAISessionIdle
@@ -1596,7 +1622,7 @@ func desktopAIProviderMessages(record desktopAISessionRecord, contextText string
 		if message.Role != "user" && message.Role != "assistant" {
 			continue
 		}
-		content := message.Content
+		content := aichatui.ContentWithServerReferences(message.Content, message.ServerReferences)
 		if message.ID == lastMessageID && message.Role == "user" && contextText != "" {
 			content = content + "\n\n" + contextText
 		}
@@ -1733,6 +1759,13 @@ func (s *DesktopAIService) materializeDesktopAITasks(record desktopAISessionReco
 			tasks = append(tasks, task)
 			continue
 		}
+		if message := desktopAIValidateServerReference(record, spec, args); message != "" {
+			task.Status = DesktopAITaskFailed
+			task.Error = message
+			task.Result = message
+			tasks = append(tasks, task)
+			continue
+		}
 		if task.RequiresConfirmation {
 			task.Status = DesktopAITaskWaitingConfirm
 			pendingConfirm = true
@@ -1767,6 +1800,18 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 		record.Tasks[taskIndex].Status = DesktopAITaskFailed
 		record.Tasks[taskIndex].Error = fmt.Sprintf("当前权限不允许执行工具: %s", record.Tasks[taskIndex].ToolName)
 		record.Tasks[taskIndex].Result = record.Tasks[taskIndex].Error
+		record.Tasks[taskIndex].UpdatedAt = now
+		record.UpdatedAt = now
+		if err := s.saveSession(record); err != nil {
+			return record, err
+		}
+		s.emitAISessionSnapshot(record)
+		return record, nil
+	}
+	if message := desktopAIValidateServerReference(record, spec, record.Tasks[taskIndex].Arguments); message != "" {
+		record.Tasks[taskIndex].Status = DesktopAITaskFailed
+		record.Tasks[taskIndex].Error = message
+		record.Tasks[taskIndex].Result = message
 		record.Tasks[taskIndex].UpdatedAt = now
 		record.UpdatedAt = now
 		if err := s.saveSession(record); err != nil {
@@ -1874,6 +1919,7 @@ func (s *DesktopAIService) executeDesktopAIGetServerInfo(ctx context.Context, ar
 		return desktopAIToolError("服务器服务不可用"), nil
 	}
 	serverID := desktopAIStringArg(args, "server_id")
+	serverID = strings.TrimSpace(serverID)
 	if serverID == "" {
 		return desktopAIToolError("server_id is required"), nil
 	}
@@ -2506,7 +2552,7 @@ func toAichatUIMessages(messages []DesktopAIMessageView) []aichatui.MessageView 
 			})
 		}
 		result = append(result, aichatui.MessageView{
-			ID: message.ID, Role: message.Role, Content: message.Content, Reasoning: message.Reasoning,
+			ID: message.ID, Role: message.Role, Content: message.Content, Reasoning: message.Reasoning, ServerReferences: message.ServerReferences,
 			Attachments: attachments, Usage: desktopAIUsageView(message.Usage),
 			ProviderMetadata: desktopAIProviderMetadataView(message.ProviderMetadata), CreatedAt: parseDesktopAITime(message.CreatedAt),
 			StoppedAt: parseDesktopAIStoppedAt(message.StoppedAt),
@@ -2517,7 +2563,7 @@ func toAichatUIMessages(messages []DesktopAIMessageView) []aichatui.MessageView 
 
 func desktopAIUIMessagePtr(message DesktopAIMessageView, streaming bool) *aichatui.UIMessage {
 	uiMessage, ok := aichatui.Message(aichatui.MessageView{
-		ID: message.ID, Role: message.Role, Content: message.Content, Reasoning: message.Reasoning,
+		ID: message.ID, Role: message.Role, Content: message.Content, Reasoning: message.Reasoning, ServerReferences: message.ServerReferences,
 		Attachments: desktopAIAttachmentViews(message.Attachments), Usage: desktopAIUsageView(message.Usage),
 		ProviderMetadata: desktopAIProviderMetadataView(message.ProviderMetadata), CreatedAt: parseDesktopAITime(message.CreatedAt),
 		StoppedAt: parseDesktopAIStoppedAt(message.StoppedAt),
@@ -2756,6 +2802,34 @@ func desktopAIEnforceScopedArguments(scope *DesktopAISessionScope, spec desktopA
 	}
 	next["server_id"] = normalizedScope.ServerID
 	return next
+}
+
+func desktopAIValidateServerReference(record desktopAISessionRecord, spec desktopAIToolSpec, args map[string]any) string {
+	if !desktopAIToolHasServerIDParameter(spec) {
+		return ""
+	}
+	var refs []aichatui.ServerReference
+	for index := len(record.Messages) - 1; index >= 0; index-- {
+		if record.Messages[index].Role == "user" {
+			refs = record.Messages[index].ServerReferences
+			break
+		}
+	}
+	if len(refs) <= 1 {
+		return ""
+	}
+	allowed := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		allowed[ref.ServerID] = struct{}{}
+	}
+	serverID := desktopAIStringArg(args, "server_id")
+	if serverID == "" {
+		return "多服务器引用时，工具必须明确提供正文中引用的 server_id。"
+	}
+	if _, ok := allowed[serverID]; !ok {
+		return fmt.Sprintf("工具目标 server_id=%s 不在本条消息引用的服务器范围内。请按正文中的 @服务器重新绑定目标。", serverID)
+	}
+	return ""
 }
 
 func desktopAIRequiresConfirmation(permission DesktopAIPermissionMode, spec desktopAIToolSpec) bool {

@@ -14,6 +14,7 @@ import {
   updateAIMessage,
   type AgentSessionScope,
   type AgentImageAttachment,
+  type AgentServerReference,
   type CreateSessionResponse,
   type MessageView,
   type PermissionMode,
@@ -41,6 +42,7 @@ export interface AgentSessionAdapter {
   sendMessage: (input: {
     session_id: string
     content: string
+    server_references: AgentServerReference[]
     context?: string
     model?: string
     permission_mode?: PermissionMode
@@ -51,6 +53,7 @@ export interface AgentSessionAdapter {
     session_id: string
     message_id: string
     content: string
+    server_references: AgentServerReference[]
   }) => Promise<CreateSessionResponse>
   regenerateMessage: (input: {
     session_id: string
@@ -173,11 +176,12 @@ function createOptimisticUserUIMessage(
   id: string,
   content: string,
   attachments: AgentImageAttachment[],
+  serverReferences: AgentServerReference[],
 ): UIMessage {
   return {
     id,
     role: "user",
-    metadata: { createdAt: new Date().toISOString() },
+    metadata: { createdAt: new Date().toISOString(), serverReferences },
     parts: [
       ...attachments.map((attachment) => ({
         type: "file" as const,
@@ -194,12 +198,14 @@ function createOptimisticUserMessage(
   id: string,
   content: string,
   createdAt: string,
+  serverReferences: AgentServerReference[],
 ): MessageView {
   return {
     id,
     role: "user",
     content,
     created_at: createdAt,
+    server_references: serverReferences,
   }
 }
 
@@ -570,7 +576,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     model?: string,
     permissionMode?: PermissionMode,
     scope?: AgentSessionScope,
-    attachments: AgentImageAttachment[] = []
+    attachments: AgentImageAttachment[] = [],
+    serverReferences: AgentServerReference[] = [],
   ) => {
     const activeSessionId = sessionRef.current?.id
     const normalizedContent = content.trim()
@@ -586,6 +593,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       outgoingMessageId,
       normalizedContent,
       attachments,
+      serverReferences,
     )
     const activeSession = sessionRef.current
     if (!activeSession) {
@@ -601,7 +609,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       updated_at: createdAt,
       messages: [
         ...activeSession.messages.filter((message) => message.id !== outgoingMessageId),
-        createOptimisticUserMessage(outgoingMessageId, normalizedContent, createdAt),
+        createOptimisticUserMessage(outgoingMessageId, normalizedContent, createdAt, serverReferences),
       ],
       ui_messages: adapter
         ? mergeUIMessage(activeSession.ui_messages, optimisticUIMessage)
@@ -619,6 +627,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         const response = await adapter.sendMessage({
           session_id: activeSessionId,
           content: normalizedContent,
+          server_references: serverReferences,
           context: contextText,
           model,
           permission_mode: permissionMode,
@@ -637,6 +646,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           permission_mode: permissionMode,
           scope,
           attachments,
+          server_references: serverReferences,
         },
       })
       if (chatErrorRef.current) {
@@ -721,7 +731,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     if (!current || index < 0 || current.status !== "idle" || continuationRef.current || chat.status === "submitted" || chat.status === "streaming" || current.messages.slice(index + 1).some(message => message.role === "user")) return false
     continuationRef.current = true
     try {
-      return await sendMessage(prompt, input.contextText, input.model, input.permissionMode, current.scope) !== "failed"
+      const references = current.messages.slice(0, index + 1).reverse().find((message) => message.role === "user")?.server_references ?? []
+      return await sendMessage(prompt, input.contextText, input.model, input.permissionMode, current.scope, [], references) !== "failed"
     } finally { continuationRef.current = false }
   }, [chat.status, sendMessage])
 
@@ -745,6 +756,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     messageId: string,
     content: string,
     input: {
+      serverReferences?: AgentServerReference[]
       regenerate?: boolean
       contextText?: string
       model?: string
@@ -758,6 +770,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return false
     }
 
+    const serverReferences = input.serverReferences ?? sessionRef.current?.messages.find((message) => message.id === messageId)?.server_references ?? []
     sessionRevisionRef.current++
     setError(null)
     setTransport("ai_sdk_ui")
@@ -767,8 +780,9 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           session_id: activeSessionId,
           message_id: messageId,
           content: normalizedContent,
+          server_references: serverReferences,
         })
-        : await updateAIMessage(activeSessionId, messageId, { content: normalizedContent })
+        : await updateAIMessage(activeSessionId, messageId, { content: normalizedContent, server_references: serverReferences })
       applySessionResponse(response)
       setChatMessages(response.session.ui_messages || [])
       if (input.regenerate !== false) {

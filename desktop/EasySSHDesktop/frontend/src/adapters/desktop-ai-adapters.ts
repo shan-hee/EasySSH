@@ -17,6 +17,7 @@ import type {
 } from "@/lib/ai-agent-types"
 import type { ServerConnectionConfigsApi } from "@easyssh/ssh-workspace/desktop"
 import * as DesktopAIService from "../../bindings/github.com/easyssh/easyssh-desktop/desktopaiservice"
+import { ServerReference } from "../../bindings/github.com/easyssh/shared/aichatui/models"
 import {
   DesktopAIToolApprovalInput,
   DesktopAICreateSessionInput,
@@ -85,6 +86,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
         await DesktopAIService.SendMessage(new DesktopAISendMessageInput({
           session_id: input.session_id,
           content: input.content,
+          server_references: input.server_references?.map((ref) => new ServerReference(ref)),
           context: input.context,
           model: input.model,
           permission_mode: toDesktopPermissionMode(input.permission_mode),
@@ -97,6 +99,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           session_id: input.session_id,
           message_id: input.message_id,
           content: input.content,
+          server_references: input.server_references?.map((ref) => new ServerReference(ref)),
         }))
       ),
       regenerateMessage: async (input) => fromDesktopSessionResponse(
@@ -285,6 +288,7 @@ function fromDesktopMessage(message: DesktopAIMessageView): MessageView {
     id: message.id,
     role: fromDesktopMessageRole(message.role),
     content: message.content,
+    server_references: message.server_references,
     reasoning: message.reasoning,
     attachments: message.attachments,
     usage: message.usage ?? undefined,

@@ -44,12 +44,13 @@ type TurnRunner interface {
 }
 
 type Manager struct {
-	resolver   ConfigResolver
-	factory    TurnRunner
-	registry   *registry.ToolRegistry
-	store      SessionStore
-	ttl        time.Duration
-	cleanupGap time.Duration
+	serverReferenceResolver func(context.Context, uuid.UUID, []aichatui.ServerReference) ([]aichatui.ServerReference, error)
+	resolver                ConfigResolver
+	factory                 TurnRunner
+	registry                *registry.ToolRegistry
+	store                   SessionStore
+	ttl                     time.Duration
+	cleanupGap              time.Duration
 
 	mu       sync.RWMutex
 	sessions map[string]*session
@@ -340,6 +341,11 @@ func (m *Manager) UpdateUserMessage(ctx context.Context, userID uuid.UUID, sessi
 		return nil, ErrEmptyMessageContent
 	}
 
+	refs, err := m.resolveServerReferences(ctx, userID, input.ServerReferences)
+	if err != nil {
+		return nil, err
+	}
+
 	s, err := m.getOrRestoreSession(ctx, userID, sessionID)
 	if err != nil {
 		return nil, err
@@ -372,7 +378,8 @@ func (m *Manager) UpdateUserMessage(ctx context.Context, userID uuid.UUID, sessi
 	}
 
 	s.messageViews[messageIndex].Content = content
-	s.updateProviderMessageContentForVisibleMessage(messageIndex+1, content)
+	s.messageViews[messageIndex].ServerReferences = refs
+	s.updateProviderMessageContentForVisibleMessage(messageIndex+1, aichatui.ContentWithServerReferences(content, refs))
 	s.truncateAfterMessageIndex(messageIndex + 1)
 	s.status = SessionStatusIdle
 	s.pendingContext = ""
@@ -523,6 +530,11 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 	permissionMode := strings.TrimSpace(input.PermissionMode)
 	scope := normalizeSessionScope(input.Scope)
 
+	refs, err := m.resolveServerReferences(ctx, userID, input.ServerReferences)
+	if err != nil {
+		return err
+	}
+
 	s, err := m.getOrRestoreSession(ctx, userID, sessionID)
 	if err != nil {
 		return err
@@ -561,15 +573,16 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 	}
 	s.messages = append(s.messages, provider.Message{
 		Role:        "user",
-		Content:     content,
+		Content:     aichatui.ContentWithServerReferences(content, refs),
 		Attachments: append([]provider.Attachment(nil), input.Attachments...),
 	})
 	s.messageViews = append(s.messageViews, MessageView{
-		ID:          messageID,
-		Role:        "user",
-		Content:     content,
-		Attachments: attachmentViews(input.Attachments),
-		CreatedAt:   now,
+		ID:               messageID,
+		Role:             "user",
+		Content:          content,
+		Attachments:      attachmentViews(input.Attachments),
+		ServerReferences: refs,
+		CreatedAt:        now,
 	})
 	s.pendingContext = contextText
 	s.status = SessionStatusRunning
@@ -837,6 +850,11 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 	m.mu.Unlock()
 	defer cancel()
 
+	if err := m.refreshRunServerReferences(ctx, s, runID); err != nil {
+		m.failSessionTurn(s, "server_reference_unavailable", err.Error(), runID)
+		return
+	}
+
 	config, err := m.resolver.Resolve(ctx, s.userID)
 	if err != nil {
 		m.failSessionTurn(s, "config_error", err.Error(), runID)
@@ -1066,6 +1084,21 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 		m.emitTaskEvent(s, EventTaskUpdated, view)
 		return
 	}
+	if message := validateTaskServerReference(s, task.spec, task.toolCall.Arguments); message != "" {
+		task.view.Status = TaskStatusFailed
+		task.view.Error = message
+		task.view.Result = message
+		task.view.UpdatedAt = time.Now()
+		s.updatedAt = task.view.UpdatedAt
+		s.messages = append(s.messages, provider.Message{Role: "tool", Content: message, ToolCallID: task.toolCall.ID})
+		view := task.view
+		snapshot := m.snapshotForPersistenceLocked(s)
+		m.mu.Unlock()
+
+		m.saveSnapshot(context.Background(), snapshot)
+		m.emitTaskEvent(s, EventTaskUpdated, view)
+		return
+	}
 	task.view.Status = TaskStatusRunning
 	task.view.UpdatedAt = time.Now()
 	s.updatedAt = task.view.UpdatedAt
@@ -1132,6 +1165,36 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 
 	m.saveSnapshot(context.Background(), snapshot)
 	m.emitTaskEvent(s, EventTaskUpdated, view)
+}
+
+func validateTaskServerReference(s *session, spec registry.ToolSpec, raw json.RawMessage) string {
+	if !hasServerIDParameter(spec) {
+		return ""
+	}
+	var refs []aichatui.ServerReference
+	for index := len(s.messageViews) - 1; index >= 0; index-- {
+		if s.messageViews[index].Role == "user" {
+			refs = s.messageViews[index].ServerReferences
+			break
+		}
+	}
+	if len(refs) <= 1 {
+		return ""
+	}
+	allowed := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		allowed[ref.ServerID] = struct{}{}
+	}
+	args := decodeArguments(raw)
+	serverID, ok := args["server_id"].(string)
+	serverID = strings.TrimSpace(serverID)
+	if !ok || strings.TrimSpace(serverID) == "" {
+		return "多服务器引用时，工具必须明确提供正文中引用的 server_id。"
+	}
+	if _, ok := allowed[serverID]; !ok {
+		return fmt.Sprintf("工具目标 server_id=%s 不在本条消息引用的服务器范围内。请按正文中的 @服务器重新绑定目标。", serverID)
+	}
+	return ""
 }
 
 func (m *Manager) rejectTask(s *session, taskID string, reason string) {

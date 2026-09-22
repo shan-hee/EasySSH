@@ -18,6 +18,7 @@ const (
 )
 
 type MessageView struct {
+	ServerReferences []ServerReference `json:"server_references,omitempty"`
 	ID               string            `json:"id"`
 	Role             string            `json:"role"`
 	Content          string            `json:"content"`
@@ -206,9 +207,10 @@ func Message(message MessageView, streaming bool) (UIMessage, bool) {
 			ID:   message.ID,
 			Role: message.Role,
 			Metadata: map[string]interface{}{
-				"source":       "message",
-				"createdAt":    message.CreatedAt,
-				"originalRole": message.Role,
+				"source":           "message",
+				"createdAt":        message.CreatedAt,
+				"originalRole":     message.Role,
+				"serverReferences": message.ServerReferences,
 			},
 			Parts: parts,
 		}, true

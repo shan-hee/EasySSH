@@ -46,3 +46,22 @@ export class UIMessage {
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
 const $$createType1 = $Create.Array($$createType0);
+
+export class ServerReference {
+    "server_id": string = "";
+    "name": string = "";
+    "host": string = "";
+    "port": number = 0;
+    "username": string = "";
+    "label"?: string;
+    "offset": number = 0;
+
+    constructor($$source: Partial<ServerReference> = {}) {
+        Object.assign(this, $$source);
+    }
+
+    static createFrom($$source: any = {}): ServerReference {
+        const $$parsedSource = typeof $$source === "string" ? JSON.parse($$source) : $$source;
+        return new ServerReference($$parsedSource as Partial<ServerReference>);
+    }
+}

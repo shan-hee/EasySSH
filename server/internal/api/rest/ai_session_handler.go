@@ -41,16 +41,17 @@ type ListAISessionsResponse struct {
 }
 
 type AISDKChatRequest struct {
-	ID             string               `json:"id,omitempty"`
-	Messages       []runtime.UIMessage  `json:"messages,omitempty"`
-	Trigger        string               `json:"trigger,omitempty"`
-	MessageID      string               `json:"messageId,omitempty"`
-	Context        string               `json:"context,omitempty"`
-	Model          string               `json:"model,omitempty"`
-	Mode           string               `json:"mode,omitempty"`
-	PermissionMode string               `json:"permission_mode,omitempty" binding:"omitempty,oneof=readonly balanced privileged"`
-	Scope          runtime.SessionScope `json:"scope,omitempty"`
-	Attachments    []runtime.Attachment `json:"attachments,omitempty"`
+	ServerReferences []aichatui.ServerReference `json:"server_references,omitempty"`
+	ID               string                     `json:"id,omitempty"`
+	Messages         []runtime.UIMessage        `json:"messages,omitempty"`
+	Trigger          string                     `json:"trigger,omitempty"`
+	MessageID        string                     `json:"messageId,omitempty"`
+	Context          string                     `json:"context,omitempty"`
+	Model            string                     `json:"model,omitempty"`
+	Mode             string                     `json:"mode,omitempty"`
+	PermissionMode   string                     `json:"permission_mode,omitempty" binding:"omitempty,oneof=readonly balanced privileged"`
+	Scope            runtime.SessionScope       `json:"scope,omitempty"`
+	Attachments      []runtime.Attachment       `json:"attachments,omitempty"`
 }
 
 type RenameAISessionRequest struct {
@@ -58,7 +59,8 @@ type RenameAISessionRequest struct {
 }
 
 type UpdateAIMessageRequest struct {
-	Content string `json:"content" binding:"required"`
+	ServerReferences []aichatui.ServerReference `json:"server_references,omitempty"`
+	Content          string                     `json:"content" binding:"required"`
 }
 
 func (h *AISessionHandler) ListSessions(c *gin.Context) {
@@ -221,13 +223,14 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			userID,
 			sessionID,
 			runtime.SendUserMessageInput{
-				MessageID:      req.MessageID,
-				Content:        action.content,
-				Attachments:    action.attachments,
-				Context:        req.Context,
-				Model:          req.Model,
-				PermissionMode: req.PermissionMode,
-				Scope:          req.Scope,
+				MessageID:        req.MessageID,
+				Content:          action.content,
+				Attachments:      action.attachments,
+				ServerReferences: req.ServerReferences,
+				Context:          req.Context,
+				Model:            req.Model,
+				PermissionMode:   req.PermissionMode,
+				Scope:            req.Scope,
 			},
 		); err != nil {
 			h.respondRuntimeError(c, err)
@@ -493,7 +496,8 @@ func (h *AISessionHandler) UpdateMessage(c *gin.Context) {
 	}
 
 	view, err := h.manager.UpdateUserMessage(c.Request.Context(), userID, sessionID, messageID, runtime.UpdateMessageInput{
-		Content: req.Content,
+		Content:          req.Content,
+		ServerReferences: req.ServerReferences,
 	})
 	if err != nil {
 		h.respondRuntimeError(c, err)
@@ -1082,6 +1086,8 @@ func coalesceString(values ...string) string {
 
 func (h *AISessionHandler) respondRuntimeError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, aichatui.ErrServerReferenceUnavailable):
+		RespondError(c, http.StatusBadRequest, "server_reference_unavailable", err.Error())
 	case errors.Is(err, runtime.ErrSessionNotFound):
 		RespondError(c, http.StatusNotFound, "session_not_found", err.Error())
 	case errors.Is(err, runtime.ErrMessageNotFound):
