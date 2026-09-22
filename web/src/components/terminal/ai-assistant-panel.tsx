@@ -1,3 +1,4 @@
+import type { AgentServerReference } from "@/lib/ai-agent-types"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
 import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent, type PointerEvent } from "react"
 import { Link } from "react-router-dom"
@@ -227,7 +228,7 @@ export function AiAssistantPanel({
   const [isOpenSettled, setIsOpenSettled] = useState(false)
   const [hasMountedThread, setHasMountedThread] = useState(false)
 
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLElement>(null)
   const sessionCreatingRef = useRef(false)
@@ -665,9 +666,10 @@ export function AiAssistantPanel({
     terminalSession.id,
   ])
 
-  const handleUpdateUserMessage = useCallback(async (messageId: string, content: string) => {
+  const handleUpdateUserMessage = useCallback(async (messageId: string, content: string, serverReferences?: AgentServerReference[]) => {
     return updateUserMessage(messageId, content, {
       regenerate: true,
+      serverReferences,
       contextText: terminalContextText,
       model: activeModel,
       permissionMode,
@@ -709,7 +711,7 @@ export function AiAssistantPanel({
     void addAttachmentFiles(files)
   }, [addAttachmentFiles])
 
-  const handleAttachmentPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handleAttachmentPaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
     const files = Array.from(event.clipboardData.items)
       .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
@@ -989,7 +991,6 @@ export function AiAssistantPanel({
             onRemove={(referenceId) => setContextReferences((current) => current.filter((reference) => reference.id !== referenceId))}
           />
             <AgentComposerInput
-              runtime={agentSession.runtime}
               ref={inputRef}
               onPaste={handleAttachmentPaste}
               placeholder={

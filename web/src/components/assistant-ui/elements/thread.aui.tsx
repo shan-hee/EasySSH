@@ -40,6 +40,7 @@ import {
   type FileMessagePartComponent,
   type ImageMessagePartComponent,
   type ToolCallMessagePartComponent,
+  type TextMessagePartComponent,
   useAuiState,
   useAui
 } from "@assistant-ui/react"
@@ -67,6 +68,7 @@ import {
   useMemo,
   type ComponentType,
   type FC,
+  type ReactNode,
   type PropsWithChildren
 } from "react"
 
@@ -80,6 +82,8 @@ export type ThreadGroupPart = MessagePrimitive.GroupedParts.GroupPart
  * `ToolFallback`.
  */
 export type ThreadComponents = {
+  UserText?: TextMessagePartComponent | undefined
+  EditComposer?: ComponentType | undefined
   AssistantMessage?: ComponentType | undefined
   Welcome?: ComponentType | undefined
   ToolFallback?: ToolCallMessagePartComponent | undefined
@@ -202,8 +206,9 @@ const ThreadMessage: FC = () => {
   const role = useAuiState((s) => s.message.role)
   const isEditing = useAuiState((s) => s.message.composer.isEditing)
 
+  const { EditComposer: EditComposerComponent = MessageEditComposer } = useContext(ThreadComponentsContext)
   if (role === "system") return null
-  if (isEditing) return <EditComposer />
+  if (isEditing) return <EditComposerComponent />
   if (role === "user") return <UserMessage />
   return <AssistantMessageComponent />
 }
@@ -561,6 +566,7 @@ const UserImagePart: ImageMessagePartComponent = (part) => (
 )
 
 const UserMessage: FC = () => {
+  const { UserText } = useContext(ThreadComponentsContext)
   return (
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
@@ -571,7 +577,7 @@ const UserMessage: FC = () => {
 
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
         <div className="agent-message-content aui-user-message-content peer ms-auto w-fit max-w-full border border-border/60 bg-background text-foreground dark:bg-popover rounded-2xl px-3.5 py-2 wrap-break-word empty:hidden">
-          <MessagePrimitive.Parts components={{ File: UserFilePart, Image: UserImagePart }} />
+          <MessagePrimitive.Parts components={{ File: UserFilePart, Image: UserImagePart, ...(UserText ? { Text: UserText } : {}) }} />
         </div>
         <div className="aui-user-action-bar-wrapper mt-1 flex min-h-6 justify-end peer-empty:hidden">
           <UserActionBar />
@@ -640,9 +646,10 @@ const UserActionBar: FC = () => {
   )
 }
 
-const EditComposer: FC = () => {
+export const MessageEditComposer: FC<{ onSave?: (id: string, text: string) => boolean | Promise<boolean>; children?: ReactNode | ((disabled: boolean) => ReactNode); renderInput?: (disabled: boolean) => ReactNode }> = ({ onSave, children, renderInput }) => {
   const { t } = useTranslation("aiAssistant")
   const { onUpdateUserMessage } = useContext(ThreadOptionsContext)
+  const save = onSave ?? onUpdateUserMessage
   const aui = useAui()
   const id = useAuiState((s) => s.message.id)
   const running = useAuiState((s) => s.thread.isRunning)
@@ -651,53 +658,56 @@ const EditComposer: FC = () => {
   return (
     <MessagePrimitive.Root
       data-slot="aui_edit-composer-wrapper"
-      className="flex flex-col px-2 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
+      className="flex flex-col px-2"
     >
-      <ComposerPrimitive.Root
-        onSubmit={(event) => {
-          event.preventDefault()
-          const text = aui.composer.getState().text.trim()
-          if (!text || busy || running || !onUpdateUserMessage) return
-          setBusy(true)
-          setError("")
-          void (async () => {
-            try {
-              if (await onUpdateUserMessage(id, text)) aui.composer.cancel()
-            } catch (cause) {
-              setError(String(cause))
-            } finally {
-              setBusy(false)
-            }
-          })()
-        }}
-        className="terminal-ai-glass-editor aui-edit-composer-root border-border/60 dark:border-muted-foreground/15 ms-auto flex w-full max-w-[85%] cursor-text flex-col rounded-(--composer-radius) border bg-(--composer-bg)"
-      >
-        <ComposerPrimitive.Input
-          className="aui-edit-composer-input text-foreground min-h-14 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-base outline-none"
-          autoFocus
-          disabled={busy || running}
-        />
-        <div className="aui-edit-composer-footer mx-2.5 mb-2.5 flex items-center gap-1.5 self-end">
-          <ComposerPrimitive.Cancel disabled={busy} asChild>
-            <Button variant="ghost" size="sm" className="h-8 rounded-full px-3.5">
-              {t("cancel")}
-            </Button>
-          </ComposerPrimitive.Cancel>
-          <Button
-            type="submit"
+      <ComposerPrimitive.Unstable_TriggerPopoverRoot>
+        <ComposerPrimitive.Root
+          onSubmit={(event) => {
+            event.preventDefault()
+            const text = aui.composer.getState().text.trim()
+            if (!text || busy || running || !save) return
+            setBusy(true)
+            setError("")
+            void (async () => {
+              try {
+                if (await save(id, text)) aui.composer.cancel()
+              } catch (cause) {
+                setError(String(cause))
+              } finally {
+                setBusy(false)
+              }
+            })()
+          }}
+          className="relative terminal-ai-glass-editor aui-edit-composer-root border-border/60 dark:border-muted-foreground/15 ms-auto flex w-full max-w-[85%] cursor-text flex-col rounded-(--composer-radius) border bg-(--composer-bg)"
+        >
+          {typeof children === "function" ? children(busy || running) : children}
+          {renderInput ? renderInput(busy || running) : <ComposerPrimitive.Input
+            className="aui-edit-composer-input text-foreground min-h-14 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-base outline-none"
+            autoFocus
             disabled={busy || running}
-            size="sm"
-            className="h-8 rounded-full px-3.5"
-          >
-            {t("save")}
-          </Button>
-        </div>
-        {error && (
-          <p role="alert" className="px-4 pb-2 text-xs text-destructive">
-            {error}
-          </p>
-        )}
-      </ComposerPrimitive.Root>
+          />}
+          <div className="aui-edit-composer-footer mx-2.5 mb-2.5 flex items-center gap-1.5 self-end">
+            <ComposerPrimitive.Cancel disabled={busy} asChild>
+              <Button variant="ghost" size="sm" className="h-8 rounded-full px-3.5">
+                {t("cancel")}
+              </Button>
+            </ComposerPrimitive.Cancel>
+            <Button
+              type="submit"
+              disabled={busy || running}
+              size="sm"
+              className="h-8 rounded-full px-3.5"
+            >
+              {t("save")}
+            </Button>
+          </div>
+          {error && (
+            <p role="alert" className="px-4 pb-2 text-xs text-destructive">
+              {error}
+            </p>
+          )}
+        </ComposerPrimitive.Root>
+      </ComposerPrimitive.Unstable_TriggerPopoverRoot>
     </MessagePrimitive.Root>
   )
 }

@@ -1,9 +1,8 @@
 import { AISessionSidebar } from "./ai-session-sidebar"
 import { AISidebarContent, useAISidebarHost } from "./ai-sidebar-host"
-import type { Unstable_TriggerAdapter } from "@assistant-ui/core"
-import { AssistantRuntimeProvider, type Unstable_DirectiveFormatter } from "@assistant-ui/react"
+import { AssistantRuntimeProvider } from "@assistant-ui/react"
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent } from "react"
-import { ArrowLeft, Loader2, Server as ServerIcon, Settings2, SquarePen, X } from "lucide-react"
+import { ArrowLeft, Loader2, Settings2, SquarePen, X } from "lucide-react"
 
 import { AgentThread } from "@/components/ai-agent/agent-thread"
 import { AISessionHistoryPopover } from "@/components/ai-agent/ai-session-history-popover"
@@ -26,7 +25,8 @@ import { AgentComposer, AgentComposerInput, AgentComposerSubmit, AgentComposerTo
 import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
 import { modelSelectorTriggerVariants } from "@/components/assistant-ui/elements/model-selector"
 import { EmptyState, EmptyStateGreeting } from "@/components/assistant-ui/elements/empty-state"
-import { ComposerTriggerPopover } from "@/components/assistant-ui/elements/composer-trigger-popover.aui"
+import { ServerReferencePicker } from "./server-reference-picker"
+import type { AgentServerReference } from "@/lib/ai-agent-types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { AgentSessionAdapter } from "@/hooks/use-agent-session"
 import type { AIConfigAdapter } from "@/hooks/use-ai-config"
@@ -39,8 +39,8 @@ import { serversApi, type Server as ManagedServer } from "@/lib/api"
 import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type CreateSessionResponse, type PermissionMode } from "@/lib/api/ai-agent"
 import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
 import type { ServerListResponse } from "@/lib/api/servers"
+import { mergeServerReferences, parseServerReferenceText } from "@/lib/ai-agent/server-mentions"
 import { getServerDisplayName } from "@/lib/server-utils"
-import { hasServerMention, matchServerMentionTrigger } from "@/lib/ai-agent/server-mentions"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 
@@ -67,54 +67,6 @@ export interface AIAssistantWorkspaceViewProps {
   customConfigOnly?: boolean
   onReturnToTerminal?: () => void
   adapters?: AIAssistantWorkspaceAdapters
-}
-
-function createWorkspaceScopeFromServer(server: ManagedServer): AgentSessionScope {
-  return {
-    kind: "terminal",
-    server_id: server.id,
-    server_name: getServerDisplayName(server),
-    host: server.host,
-    port: server.port,
-    username: server.username,
-  }
-}
-
-function workspaceScopeFromServers(selectedServers: ManagedServer[]) {
-  if (selectedServers.length !== 1) {
-    return undefined
-  }
-
-  return createWorkspaceScopeFromServer(selectedServers[0])
-}
-
-function workspaceScopeFromMentionedServers(mentionedServers: ManagedServer[]): AgentSessionScope {
-  return workspaceScopeFromServers(mentionedServers) ?? { kind: "global" }
-}
-
-function getMentionedServers(value: string, servers: ManagedServer[]) {
-  return servers.filter((server) => hasServerMention(value, getServerDisplayName(server)))
-}
-
-function getServerMentionSearchText(server: ManagedServer) {
-  return [
-    getServerDisplayName(server),
-    server.name,
-    server.host,
-    server.username,
-    server.group,
-    `${server.username}@${server.host}:${server.port}`,
-    ...(server.tags ?? []),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase()
-}
-
-const serverMentionFormatter: Unstable_DirectiveFormatter = {
-  serialize: (item) => `@${item.label}`,
-  // Server references remain ordinary message text; EasySSH resolves them into execution context.
-  parse: (text) => [{ kind: "text", text }],
 }
 
 function assertCustomConfigAdapters(customConfigOnly: boolean, adapters?: AIAssistantWorkspaceAdapters) {
@@ -184,8 +136,20 @@ export function AIAssistantWorkspaceView({
   } = agentSession
 
   const setDraft = useSetAgentComposerDraft(agentSession.runtime)
+  const [serverReferences, setServerReferences] = useState<AgentServerReference[]>([])
   const [availableServers, setAvailableServers] = useState<ManagedServer[]>([])
   const [serversLoading, setServersLoading] = useState(false)
+  const handleServerReferenceSelected = useCallback((item: { id: string }) => {
+    const server = availableServers.find((entry) => entry.id === item.id)
+    if (!server) return
+    setServerReferences((current) => mergeServerReferences(current, [{
+      server_id: server.id,
+      name: getServerDisplayName(server),
+      host: server.host,
+      port: server.port,
+      username: server.username,
+    }]))
+  }, [availableServers])
 
   const attachmentLimitNotice = useCallback(() => {
     toast.info(t("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
@@ -210,7 +174,7 @@ export function AIAssistantWorkspaceView({
   })
   const [configOpen, setConfigOpen] = useState(false)
   const [sessionCreating, setSessionCreating] = useState(false)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const sessionCreatingRef = useRef(false)
   const history = useAISessionHistory({
@@ -298,12 +262,12 @@ export function AIAssistantWorkspaceView({
   const createSessionDisabled = !ready || isLoading || !isConfigured || sessionCreating
 
   const buildMessageContext = useCallback(
-    (messageText: string) => buildAgentMessageContext({
+    () => buildAgentMessageContext({
       attachments,
-      selectedServers: getMentionedServers(messageText, availableServers),
+      selectedServers: [],
       t,
     }),
-    [attachments, availableServers, t]
+    [attachments, t]
   )
 
   const prependSessionListItem = useCallback((response: CreateSessionResponse) => {
@@ -318,13 +282,14 @@ export function AIAssistantWorkspaceView({
   }, [session, syncHistorySession, t])
 
   const submit = async (messageText: string) => {
-    const normalizedDraft = messageText.trim()
-    const submittedServers = getMentionedServers(normalizedDraft, availableServers)
-    const submittedScope = workspaceScopeFromMentionedServers(submittedServers)
-    const contextText = buildMessageContext(normalizedDraft)
+    const parsedDraft = parseServerReferenceText(messageText.trim(), serverReferences)
+    const normalizedDraft = parsedDraft.content.trim()
+    const submittedReferences = parsedDraft.references
+    const submittedScope: AgentSessionScope = { kind: "global" }
+    const contextText = buildMessageContext()
     const blockReasons: string[] = []
 
-    if (!normalizedDraft && attachments.length === 0) {
+    if (!normalizedDraft && attachments.length === 0 && submittedReferences.length === 0) {
       blockReasons.push("empty_message")
     }
     if (!ready) {
@@ -350,7 +315,7 @@ export function AIAssistantWorkspaceView({
     }
 
     if (blockReasons.length > 0) {
-      if (normalizedDraft || attachments.length > 0) {
+      if (normalizedDraft || attachments.length > 0 || submittedReferences.length > 0) {
         if (!ready || isLoading) {
           toast.info(t("checkingConfig"))
         } else if (!isConfigured) {
@@ -369,6 +334,7 @@ export function AIAssistantWorkspaceView({
     }
 
     const submittedAttachments = detachAttachments()
+    setServerReferences([])
     setDraft("")
     let createdSessionId: string | null = null
 
@@ -392,6 +358,7 @@ export function AIAssistantWorkspaceView({
       if (!response) {
         setDraft((current) => current || messageText)
         restoreAttachments(submittedAttachments)
+        setServerReferences((current) => mergeServerReferences(submittedReferences, current))
         return
       }
       createdSessionId = response.session_id
@@ -407,6 +374,7 @@ export function AIAssistantWorkspaceView({
       }
       setDraft((current) => current || messageText)
       restoreAttachments(submittedAttachments)
+      setServerReferences((current) => mergeServerReferences(submittedReferences, current))
       toast.error(t("attachmentReadFailed"))
       return
     }
@@ -417,7 +385,8 @@ export function AIAssistantWorkspaceView({
       selectedModel || undefined,
       permissionMode,
       submittedScope,
-      imageAttachments
+      imageAttachments,
+      submittedReferences,
     )
     if (sendResult === "failed") {
       if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
@@ -425,37 +394,37 @@ export function AIAssistantWorkspaceView({
       }
       setDraft((current) => current || messageText)
       restoreAttachments(submittedAttachments)
+      setServerReferences((current) => mergeServerReferences(submittedReferences, current))
     } else {
       releaseAttachments(submittedAttachments)
     }
   }
 
-  const handleUpdateUserMessage = useCallback(async (messageId: string, content: string) => {
-    const mentionedServers = getMentionedServers(content, availableServers)
+  const handleUpdateUserMessage = useCallback(async (messageId: string, content: string, references: AgentServerReference[] = []) => {
     return updateUserMessage(messageId, content, {
       regenerate: true,
-      contextText: buildMessageContext(content),
+      serverReferences: references,
+      contextText: buildMessageContext(),
       model: selectedModel || undefined,
       permissionMode,
-      scope: workspaceScopeFromMentionedServers(mentionedServers),
+      scope: { kind: "global" },
     })
-  }, [availableServers, buildMessageContext, permissionMode, selectedModel, updateUserMessage])
+  }, [buildMessageContext, permissionMode, selectedModel, updateUserMessage])
 
-  const handleRegenerateUserMessage = useCallback(async (messageId: string, content: string) => {
+  const handleRegenerateUserMessage = useCallback(async (messageId: string) => {
     const messages = session?.messages ?? []
     const index = messages.findIndex((message) => message.id === messageId)
     if (index >= 0 && messages.slice(index + 1).some((message) => message.role === "user")) {
       const confirmed = await requestConfirm({ description: t("regenerateMessageConfirm"), variant: "destructive" })
       if (!confirmed) return false
     }
-    const mentionedServers = getMentionedServers(content, availableServers)
     return regenerateMessage(messageId, {
-      contextText: buildMessageContext(content),
+      contextText: buildMessageContext(),
       model: selectedModel || undefined,
       permissionMode,
-      scope: workspaceScopeFromMentionedServers(mentionedServers),
+      scope: { kind: "global" },
     })
-  }, [availableServers, buildMessageContext, permissionMode, selectedModel, regenerateMessage, requestConfirm, session?.messages, t])
+  }, [buildMessageContext, permissionMode, selectedModel, regenerateMessage, requestConfirm, session?.messages, t])
 
   const handleDeleteUserMessage = useCallback(async (messageId: string) => {
     const stopped = session?.messages.some((message) => message.id === messageId && !!message.stopped_at)
@@ -499,6 +468,7 @@ export function AIAssistantWorkspaceView({
 
       if (response) {
         setDraft("")
+        setServerReferences([])
         clearAttachments()
         history.setOpen(false)
         history.setSearch("")
@@ -527,6 +497,7 @@ export function AIAssistantWorkspaceView({
 
     const restored = await restoreSession(targetSessionId)
     if (restored) {
+      setServerReferences([])
       history.setOpen(false)
       sidebar?.closeMobile()
       requestAnimationFrame(() => {
@@ -559,26 +530,13 @@ export function AIAssistantWorkspaceView({
     }
   }
 
-  const serverMentionAdapter = useMemo<Unstable_TriggerAdapter>(() => ({
-    categories: () => [],
-    categoryItems: () => [],
-    search: (query) => availableServers
-      .filter((server) => getServerMentionSearchText(server).includes(query.trim().toLowerCase()))
-      .map((server) => ({
-        id: server.id,
-        type: "server",
-        label: getServerDisplayName(server),
-        description: `${server.username}@${server.host}:${server.port} · ${t(server.status === "online" ? "statusOnline" : "statusOffline")}`,
-      })),
-  }), [availableServers, t])
-
   const handleAttachmentSelection = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     event.target.value = ""
     await addAttachmentFiles(files)
   }, [addAttachmentFiles])
 
-  const handleAttachmentPaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handleAttachmentPaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
     const files = Array.from(event.clipboardData.items)
       .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
@@ -695,6 +653,8 @@ export function AIAssistantWorkspaceView({
                   key={sessionId ?? "new"}
                   tText={t}
                   scope={session?.scope}
+                  referenceServers={availableServers}
+                  referenceServersLoading={serversLoading}
                   onUpdateUserMessage={handleUpdateUserMessage}
                   onRegenerateUserMessage={handleRegenerateUserMessage}
                   onContinueStoppedRun={(id) => agentSession.continueRun(id, t("auiContinuePrompt"), { model: selectedModel || undefined, permissionMode })}
@@ -741,26 +701,12 @@ export function AIAssistantWorkspaceView({
                     t={t}
                   />
                   <AgentComposerInput
-                    runtime={agentSession.runtime}
                     ref={inputRef}
+                    directivePluginProps={{ onDirectiveSelect: handleServerReferenceSelected }}
                     onPaste={handleAttachmentPaste}
                     placeholder={hasTimeline ? t("composerPlaceholder") : t("inputPlaceholderWithMention")}
                   />
-                  {!serverReferenceDisabled && <ComposerTriggerPopover
-                    char="@"
-                    matcher={matchServerMentionTrigger}
-                    adapter={serverMentionAdapter}
-                    isLoading={serversLoading}
-                    directive={{ formatter: serverMentionFormatter }}
-                    fallbackIcon={ServerIcon}
-                    aria-label={t("referenceServer")}
-                    label={t("referenceServer")}
-                    navigationHint={t("referenceServerNavigationHint")}
-                    emptyItemsLabel={t("referenceServerNoMatch")}
-                    emptyCategoriesLabel={t("referenceServerEmpty")}
-                    loadingLabel={t("referenceServerLoading")}
-                    backLabel={t("auiBack")}
-                  />}
+                  <ServerReferencePicker servers={availableServers} references={serverReferences} onChange={setServerReferences} loading={serversLoading} disabled={serverReferenceDisabled} />
 
                   <AgentComposerToolbar className="gap-2">
                     <AgentComposerTools className="min-w-0 flex-wrap">
