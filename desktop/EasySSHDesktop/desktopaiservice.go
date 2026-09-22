@@ -791,10 +791,6 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 			}
 			return s.failDesktopAITurn(record, err)
 		}
-		if strings.TrimSpace(turnResult.Content) == "" && len(turnResult.ToolCalls) == 0 {
-			return s.failDesktopAITurn(record, errors.New("AI provider returned no text"))
-		}
-
 		assistantMessage := DesktopAIMessageView{
 			ID: assistantMessageID, Role: "assistant", Content: strings.TrimSpace(turnResult.Content),
 			Reasoning: strings.TrimSpace(turnResult.Reasoning), Usage: desktopAIUsage(&turnResult.Usage),
@@ -802,6 +798,9 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		}
 		record.Messages = append(record.Messages, assistantMessage)
 		record.UpdatedAt = completedAt
+		if strings.TrimSpace(turnResult.Content) == "" && len(turnResult.ToolCalls) == 0 {
+			return s.failDesktopAITurn(record, errors.New("AI provider returned no text"))
+		}
 
 		if len(turnResult.ToolCalls) == 0 {
 			record.Status = DesktopAISessionIdle

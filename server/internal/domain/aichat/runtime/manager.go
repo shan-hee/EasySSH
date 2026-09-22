@@ -1375,9 +1375,9 @@ func (m *Manager) finalizeAssistantTurn(s *session, messageID string, result pro
 		return false
 	}
 	s.streamingMessageID = ""
-	if result.Content != "" || result.Reasoning != "" {
-		s.upsertAssistantMessage(messageID, result.Content, result.Reasoning, result.Usage, result.Metadata)
-	}
+	// Tool-only responses still consume tokens and have their own request IDs.
+	// Keep one record per response; UI rendering already skips empty text parts.
+	s.upsertAssistantMessage(messageID, result.Content, result.Reasoning, result.Usage, result.Metadata)
 	s.messages = append(s.messages, provider.Message{
 		Role:      "assistant",
 		Content:   result.Content,
@@ -1612,6 +1612,9 @@ func (m *Manager) uiMessageForAssistantMessage(s *session, messageID string) *UI
 	for _, message := range s.messageViews {
 		if message.ID == messageID {
 			uiMessage := aichatui.AssistantMessage(message, false)
+			if len(uiMessage.Parts) == 0 {
+				return nil
+			}
 			return &uiMessage
 		}
 	}
@@ -1897,16 +1900,17 @@ func (s *session) appendAssistantReasoningDelta(messageID, delta string) {
 func (s *session) upsertAssistantMessage(messageID, content, reasoning string, usage provider.Usage, metadata provider.ProviderMetadata) {
 	for i := range s.messageViews {
 		if s.messageViews[i].ID == messageID {
-			s.messageViews[i].Content = content
-			s.messageViews[i].Reasoning = reasoning
+			// A metadata-only completion must not erase text already streamed.
+			if content != "" {
+				s.messageViews[i].Content = content
+			}
+			if reasoning != "" {
+				s.messageViews[i].Reasoning = reasoning
+			}
 			s.messageViews[i].Usage = usageView(usage)
 			s.messageViews[i].ProviderMetadata = providerMetadataView(metadata)
 			return
 		}
-	}
-
-	if content == "" && reasoning == "" {
-		return
 	}
 
 	s.messageViews = append(s.messageViews, MessageView{
