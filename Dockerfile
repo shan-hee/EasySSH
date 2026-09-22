@@ -16,8 +16,9 @@ ENV PNPM_HOME=/pnpm \
 # 使用固定 pnpm 版本，保证构建一致性
 RUN corepack enable && corepack prepare pnpm@11.1.3 --activate
 
-# 先安装依赖（利用 Docker 层与 BuildKit store 缓存）
-COPY web/package.json web/pnpm-lock.yaml ./
+# 先复制完整依赖配置（包含 overrides 和工作区包清单），再利用缓存安装
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
+COPY web/packages/ssh-workspace/package.json ./packages/ssh-workspace/package.json
 RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store
 
