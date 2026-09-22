@@ -15,11 +15,6 @@ type Attachment = aiprovider.Attachment
 type Usage = aiprovider.Usage
 type ProviderMetadata = aiprovider.ProviderMetadata
 type ProviderError = aiprovider.ProviderError
-type Limits = aiprovider.Limits
-
-func DefaultLimits() Limits { return aiprovider.DefaultLimits() }
-
-func NormalizeLimits(limits Limits) Limits { return aiprovider.NormalizeLimits(limits) }
 
 func ValidateAttachments(attachments []Attachment) error {
 	return aiprovider.ValidateAttachments(attachments)

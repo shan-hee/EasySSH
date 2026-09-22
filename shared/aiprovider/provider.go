@@ -2,8 +2,8 @@ package aiprovider
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"sort"
 	"strings"
@@ -78,10 +78,6 @@ func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest
 
 	provider := aiconfig.NormalizeProvider(config.Provider)
 	config.Provider = provider
-	config.Limits = NormalizeLimits(config.Limits)
-
-	requestCtx, cancel := context.WithTimeout(ctx, config.Limits.RequestTimeout)
-	defer cancel()
 	eventHandler := func(event Event) error {
 		if event.Type == EventResponseCompleted && event.Metadata != nil && event.Usage != nil {
 			metadata := metadataWithCostEstimate(*event.Metadata, *event.Usage, config.Pricing)
@@ -94,20 +90,17 @@ func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest
 	var err error
 	switch provider {
 	case "openai":
-		result, err = streamOpenAIChat(requestCtx, config, req, eventHandler)
+		result, err = streamOpenAIChat(ctx, config, req, eventHandler)
 	case "openai-response":
-		result, err = streamOpenAIResponses(requestCtx, config, req, eventHandler)
+		result, err = streamOpenAIResponses(ctx, config, req, eventHandler)
 	case "gemini":
-		result, err = streamOpenAIChat(requestCtx, config, req, eventHandler)
+		result, err = streamOpenAIChat(ctx, config, req, eventHandler)
 	case "anthropic":
-		result, err = streamAnthropic(requestCtx, config, req, eventHandler)
+		result, err = streamAnthropic(ctx, config, req, eventHandler)
 	default:
 		err = NewLimitError("invalid_provider", "invalid AI provider")
 	}
 	if err != nil {
-		if errors.Is(requestCtx.Err(), context.DeadlineExceeded) {
-			return TurnResult{}, &ProviderError{Code: "request_timeout", Message: "AI 单次请求超时", Provider: provider, Retryable: true, Cause: requestCtx.Err()}
-		}
 		return TurnResult{}, err
 	}
 
@@ -147,7 +140,9 @@ func newOpenAIClient(config Config) openai.Client {
 	options := []openaioption.RequestOption{
 		openaioption.WithAPIKey(strings.TrimSpace(config.APIKey)),
 		openaioption.WithMaxRetries(0),
-		openaioption.WithRequestTimeout(NormalizeLimits(config.Limits).RequestTimeout),
+		openaioption.WithRequestTimeout(0),
+		// Bypass the SDK's response-header deadline; cancellation comes from ctx.
+		openaioption.WithHTTPClient(&http.Client{}),
 	}
 	baseURL := aiconfig.NormalizeOpenAIBaseURL(config.Provider, config.Endpoint)
 	if baseURL == "" && aiconfig.NormalizeProvider(config.Provider) == "gemini" {
@@ -174,7 +169,9 @@ func newAnthropicClient(config Config) anthropic.Client {
 	options := []anthropicoption.RequestOption{
 		anthropicoption.WithAPIKey(strings.TrimSpace(config.APIKey)),
 		anthropicoption.WithMaxRetries(0),
-		anthropicoption.WithRequestTimeout(NormalizeLimits(config.Limits).RequestTimeout),
+		anthropicoption.WithRequestTimeout(0),
+		// Bypass the SDK's response-header deadline; cancellation comes from ctx.
+		anthropicoption.WithHTTPClient(&http.Client{}),
 	}
 	if baseURL := aiconfig.NormalizeAnthropicBaseURL(config.Endpoint); baseURL != "" {
 		options = append(options, anthropicoption.WithBaseURL(baseURL+"/"))

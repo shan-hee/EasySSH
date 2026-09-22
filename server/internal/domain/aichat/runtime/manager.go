@@ -699,10 +699,7 @@ func (m *Manager) ConfirmTasks(ctx context.Context, userID uuid.UUID, sessionID 
 		status   string
 	}, 0, len(inputs))
 	if s.toolRunCtx == nil {
-		s.toolRunCtx, s.toolRunCancel = context.WithTimeout(
-			context.Background(),
-			provider.DefaultLimits().TurnTimeout,
-		)
+		s.toolRunCtx, s.toolRunCancel = context.WithCancel(context.Background())
 		s.toolRunID = uuid.NewString()
 	}
 	runCtx := s.toolRunCtx
@@ -845,9 +842,6 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		m.failSessionTurn(s, "config_error", err.Error(), runID)
 		return
 	}
-	config.Limits = provider.NormalizeLimits(config.Limits)
-	turnCtx, turnCancel := context.WithTimeout(ctx, config.Limits.TurnTimeout)
-	defer turnCancel()
 
 	model := strings.TrimSpace(s.model)
 	if model == "" {
@@ -888,7 +882,7 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		}
 		s.streamingMessageID = assistantMessageID
 		m.mu.Unlock()
-		result, err := m.factory.StreamTurn(turnCtx, config, provider.TurnRequest{
+		result, err := m.factory.StreamTurn(ctx, config, provider.TurnRequest{
 			Model:    model,
 			Messages: reqMessages,
 			Tools:    tools,
@@ -933,12 +927,8 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 			return nil
 		})
 		if err != nil {
-			if errors.Is(turnCtx.Err(), context.Canceled) {
+			if errors.Is(ctx.Err(), context.Canceled) {
 				m.completeTurn(s, false, runID)
-				return
-			}
-			if errors.Is(turnCtx.Err(), context.DeadlineExceeded) {
-				m.failSessionTurn(s, "turn_timeout", "AI 对话总执行时间超出限制", runID)
 				return
 			}
 			m.failSessionTurnWithError(s, err, runID)
@@ -955,12 +945,8 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 
 		autoTasks, pendingConfirm := m.materializeTasks(s, assistantMessageID, result.ToolCalls, runID)
 		for _, taskID := range autoTasks {
-			m.executeTask(turnCtx, s, taskID)
-			if errors.Is(turnCtx.Err(), context.DeadlineExceeded) {
-				m.failSessionTurn(s, "turn_timeout", "AI 对话总执行时间超出限制", runID)
-				return
-			}
-			if errors.Is(turnCtx.Err(), context.Canceled) {
+			m.executeTask(ctx, s, taskID)
+			if errors.Is(ctx.Err(), context.Canceled) {
 				m.completeTurn(s, false, runID)
 				return
 			}
@@ -1027,27 +1013,6 @@ func (m *Manager) resolvePendingTask(ctx context.Context, runID string, sessionI
 	s.toolRunCancel = nil
 	s.toolRunID = ""
 	s.activeToolRuns = 0
-
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		s.status = SessionStatusIdle
-		s.processing = false
-		s.updatedAt = time.Now()
-		view := m.snapshotSessionLocked(s)
-		snapshot := m.snapshotForPersistenceLocked(s)
-		m.mu.Unlock()
-		if cancel != nil {
-			cancel()
-		}
-		m.saveSnapshot(context.Background(), snapshot)
-		m.emitEvent(s, Event{
-			ID: uuid.NewString(), Type: EventError, SessionID: s.id, CreatedAt: time.Now(),
-			Error: &ErrorView{Code: "turn_timeout", Message: "AI 对话总执行时间超出限制"},
-		})
-		m.emitEvent(s, Event{
-			ID: uuid.NewString(), Type: EventSessionCompleted, SessionID: s.id, CreatedAt: time.Now(), Session: &view,
-		})
-		return
-	}
 
 	if s.hasPendingConfirmation() {
 		s.status = SessionStatusWaitingConfirmation
@@ -1639,7 +1604,8 @@ func (m *Manager) cleanupLoop() {
 		m.mu.Lock()
 		now := time.Now()
 		for id, s := range m.sessions {
-			if s.closed || now.Sub(s.updatedAt) > m.ttl {
+			// Expire idle sessions only; active runs may wait indefinitely for model output.
+			if s.closed || (!s.processing && now.Sub(s.updatedAt) > m.ttl) {
 				s.closed = true
 				s.status = SessionStatusClosed
 				s.processing = false

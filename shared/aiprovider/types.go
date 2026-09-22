@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 )
 
 const (
@@ -14,29 +13,6 @@ const (
 	MaxImageBytes       = 8 * 1024 * 1024
 	MaxImageTotalBytes  = 20 * 1024 * 1024
 )
-
-type Limits struct {
-	RequestTimeout time.Duration
-	TurnTimeout    time.Duration
-}
-
-func DefaultLimits() Limits {
-	return Limits{
-		RequestTimeout: 2 * time.Minute,
-		TurnTimeout:    10 * time.Minute,
-	}
-}
-
-func NormalizeLimits(limits Limits) Limits {
-	defaults := DefaultLimits()
-	if limits.RequestTimeout <= 0 {
-		limits.RequestTimeout = defaults.RequestTimeout
-	}
-	if limits.TurnTimeout <= 0 {
-		limits.TurnTimeout = defaults.TurnTimeout
-	}
-	return limits
-}
 
 type Pricing struct {
 	InputMicrosPerMillion       int64
@@ -60,7 +36,6 @@ type Config struct {
 	Endpoint string
 	Model    string
 	Models   []string
-	Limits   Limits
 	Pricing  Pricing
 }
 

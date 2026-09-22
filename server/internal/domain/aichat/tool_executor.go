@@ -199,7 +199,7 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 	}
 
 	if args.Timeout <= 0 {
-		args.Timeout = 30
+		args.Timeout = 60
 	}
 	if args.Timeout > 300 {
 		args.Timeout = 300

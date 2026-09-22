@@ -75,8 +75,8 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 					},
 					"timeout": map[string]interface{}{
 						"type":        "integer",
-						"description": "命令执行超时时间（秒），默认30秒，最大300秒",
-						"default":     30,
+						"description": "命令执行超时时间（秒），默认60秒，最大300秒",
+						"default":     60,
 					},
 				},
 				"required": []string{"server_id", "command"},

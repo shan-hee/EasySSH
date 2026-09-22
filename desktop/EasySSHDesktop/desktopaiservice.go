@@ -726,9 +726,6 @@ func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record des
 
 func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext context.Context, record desktopAISessionRecord, config desktopAIConfigRecord, contextText string, model string) (DesktopAICreateSessionResponse, error) {
 	sessionID := record.ID
-	limits := aiprovider.DefaultLimits()
-	turnContext, cancelTurn := context.WithTimeout(requestContext, limits.TurnTimeout)
-	defer cancelTurn()
 
 	if err := s.saveSession(record); err != nil {
 		return DesktopAICreateSessionResponse{}, err
@@ -740,7 +737,7 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		assistantStartedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		var assistantContentBuilder strings.Builder
 		var assistantReasoningBuilder strings.Builder
-		turnResult, err := s.completeChat(turnContext, config, record, contextText, model, func(event aiprovider.Event) error {
+		turnResult, err := s.completeChat(requestContext, config, record, contextText, model, func(event aiprovider.Event) error {
 			switch event.Type {
 			case aiprovider.EventTextDelta:
 				assistantContentBuilder.WriteString(event.Delta)
@@ -762,7 +759,7 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		})
 		completedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(turnContext.Err(), context.Canceled) {
+			if errors.Is(err, context.Canceled) || errors.Is(requestContext.Err(), context.Canceled) {
 				record.Messages = append(record.Messages, DesktopAIMessageView{
 					ID: assistantMessageID, Role: "assistant", Content: assistantContentBuilder.String(),
 					Reasoning: assistantReasoningBuilder.String(), CreatedAt: assistantStartedAt, StoppedAt: completedAt,
@@ -780,9 +777,6 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 					Session:          view,
 					DefaultTransport: view.DefaultTransport,
 				}, nil
-			}
-			if errors.Is(turnContext.Err(), context.DeadlineExceeded) {
-				return s.failDesktopAITurn(record, errors.New("AI 对话总执行时间超出限制"))
 			}
 			return s.failDesktopAITurn(record, err)
 		}
@@ -823,14 +817,11 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 
 		for _, taskID := range autoTaskIDs {
 			var executeErr error
-			record, executeErr = s.executeDesktopAITask(turnContext, record, taskID)
+			record, executeErr = s.executeDesktopAITask(requestContext, record, taskID)
 			if executeErr != nil {
 				return DesktopAICreateSessionResponse{}, executeErr
 			}
-			if errors.Is(turnContext.Err(), context.DeadlineExceeded) {
-				return s.failDesktopAITurn(record, errors.New("AI 对话总执行时间超出限制"))
-			}
-			if errors.Is(turnContext.Err(), context.Canceled) {
+			if errors.Is(requestContext.Err(), context.Canceled) {
 				view := record.toView()
 				return DesktopAICreateSessionResponse{
 					SessionID:        view.ID,
@@ -902,7 +893,7 @@ func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input Desk
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	run := s.confirmedRuns[sessionID]
 	if run == nil {
-		turnContext, cancelTurn := context.WithTimeout(context.Background(), aiprovider.DefaultLimits().TurnTimeout)
+		turnContext, cancelTurn := context.WithCancel(context.Background())
 		requestContext, request := s.beginAIRequest(turnContext, sessionID)
 		run = &desktopAIConfirmedToolRun{
 			Context: requestContext,
@@ -1573,7 +1564,6 @@ func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAICon
 		APIKey:   strings.TrimSpace(config.CustomAPIKey),
 		Endpoint: strings.TrimSpace(config.CustomEndpoint),
 		Model:    model,
-		Limits:   aiprovider.DefaultLimits(),
 	}, aiprovider.TurnRequest{
 		Model:    model,
 		Messages: desktopAIProviderMessages(record, contextText),
@@ -1922,9 +1912,9 @@ func (s *DesktopAIService) executeDesktopAICommand(ctx context.Context, args map
 	if serverID == "" || command == "" {
 		return desktopAIToolError("server_id and command are required"), nil
 	}
-	timeoutSeconds := desktopAIIntArg(args, "timeout", 30)
+	timeoutSeconds := desktopAIIntArg(args, "timeout", 60)
 	if timeoutSeconds <= 0 {
-		timeoutSeconds = 30
+		timeoutSeconds = 60
 	}
 	if timeoutSeconds > 300 {
 		timeoutSeconds = 300
@@ -2288,7 +2278,7 @@ func desktopAIAllToolSpecs() []desktopAIToolSpec {
 				"properties": map[string]interface{}{
 					"server_id": map[string]interface{}{"type": "string", "description": "要执行命令的服务器 ID"},
 					"command":   map[string]interface{}{"type": "string", "description": "要执行的 Shell 命令"},
-					"timeout":   map[string]interface{}{"type": "integer", "description": "命令执行超时时间（秒），默认 30，最大 300", "default": 30},
+					"timeout":   map[string]interface{}{"type": "integer", "description": "命令执行超时时间（秒），默认 60，最大 300", "default": 60},
 				},
 				"required": []string{"server_id", "command"},
 			},
