@@ -75,6 +75,7 @@ func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest
 	if err := validateTurnRequest(config, req); err != nil {
 		return TurnResult{}, err
 	}
+	req.Messages = prepareToolContext(req.Messages)
 
 	provider := aiconfig.NormalizeProvider(config.Provider)
 	config.Provider = provider

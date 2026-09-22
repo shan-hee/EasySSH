@@ -18,6 +18,7 @@ import (
 	sharedaiconfig "github.com/easyssh/shared/aiconfig"
 	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/aiprovider"
+	"github.com/easyssh/shared/aitooloutput"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	_ "modernc.org/sqlite"
 )
@@ -1830,7 +1831,13 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 	}
 	s.emitAISessionSnapshot(record)
 
-	result, err := s.executeDesktopAITool(ctx, record.Tasks[taskIndex].ToolName, record.Tasks[taskIndex].Arguments)
+	var result desktopAIToolResult
+	var err error
+	if record.Tasks[taskIndex].ToolName == aitooloutput.ReadResultTool {
+		result = desktopAIReadToolResult(record, record.Tasks[taskIndex].Arguments)
+	} else {
+		result, err = s.executeDesktopAITool(ctx, record.Tasks[taskIndex].ToolName, record.Tasks[taskIndex].Arguments)
+	}
 	now = time.Now().UTC().Format(time.RFC3339Nano)
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		cancelDesktopAIActiveTasks(&record, now)
@@ -1977,11 +1984,7 @@ func (s *DesktopAIService) executeDesktopAICommand(ctx context.Context, args map
 	if err != nil {
 		return desktopAIToolError("执行命令失败: " + err.Error()), nil
 	}
-	output := result.Output
-	if len([]rune(output)) > 12000 {
-		runes := []rune(output)
-		output = string(runes[:12000]) + "\n... (输出已截断)"
-	}
+	output := aitooloutput.Truncate(aitooloutput.Sanitize(result.Output), aitooloutput.StoredTextBytes)
 	payload := map[string]any{
 		"server_id":    result.ServerID,
 		"command":      result.Command,
@@ -2058,7 +2061,7 @@ func (s *DesktopAIService) executeDesktopAIReadFile(ctx context.Context, args ma
 	if err != nil {
 		return desktopAIToolError("读取文件失败: " + err.Error()), nil
 	}
-	lines := strings.Split(content, "\n")
+	lines := strings.Split(aitooloutput.Sanitize(content), "\n")
 	truncated := false
 	if len(lines) > maxLines {
 		lines = lines[:maxLines]
@@ -2068,6 +2071,7 @@ func (s *DesktopAIService) executeDesktopAIReadFile(ctx context.Context, args ma
 	if truncated {
 		output += fmt.Sprintf("\n\n... (文件已截断，仅显示前 %d 行)", maxLines)
 	}
+	output = aitooloutput.Truncate(output, aitooloutput.StoredTextBytes)
 	return desktopAIToolResult{Content: fmt.Sprintf("文件内容 (%s):\n```\n%s\n```", remotePath, output)}, nil
 }
 
@@ -2292,6 +2296,11 @@ func (record desktopAISessionRecord) toView() DesktopAISessionView {
 
 func desktopAIAllToolSpecs() []desktopAIToolSpec {
 	return []desktopAIToolSpec{
+		{
+			Name: aitooloutput.ReadResultTool, DisplayName: "查看执行结果", Description: aitooloutput.ReadResultDescription,
+			Parameters: aitooloutput.ReadResultParameters(), ConfirmStrategy: desktopAIConfirmNone,
+			SupportedModes: []DesktopAIPermissionMode{DesktopAIPermissionReadonly, DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
+		},
 		{
 			Name:            "list_servers",
 			DisplayName:     "列出服务器",

@@ -14,6 +14,7 @@ import (
 	"github.com/easyssh/server/internal/domain/aichat/registry"
 	"github.com/easyssh/shared/aichatui"
 	"github.com/easyssh/shared/aipermission"
+	"github.com/easyssh/shared/aitooloutput"
 	"github.com/google/uuid"
 )
 
@@ -1261,7 +1262,7 @@ func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCa
 
 	for _, tc := range toolCalls {
 		tc = scopeToolCall(s.scope, tc)
-		spec, ok := m.registry.Get(tc.Name)
+		spec, ok := m.sessionToolSpec(s, tc.Name)
 		taskID := uuid.NewString()
 		args := decodeArguments(tc.Arguments)
 		now := time.Now()
@@ -1764,7 +1765,7 @@ func (m *Manager) restoreSnapshot(snapshot *SessionSnapshot) (*session, error) {
 	}
 
 	for _, persistedTask := range snapshot.Tasks {
-		spec, _ := m.registry.Get(persistedTask.View.ToolName)
+		spec, _ := m.sessionToolSpec(s, persistedTask.View.ToolName)
 		s.tasks[persistedTask.View.ID] = &taskState{
 			spec:     spec,
 			toolCall: persistedTask.ToolCall,
@@ -2116,6 +2117,8 @@ func (m *Manager) visibleToolsForSession(s *session) []registry.ToolSpec {
 
 func (m *Manager) visibleToolsForSessionLocked(s *session) []registry.ToolSpec {
 	tools := m.registry.VisibleForMode(s.permissionMode)
+	resultReader, _ := m.sessionToolSpec(s, aitooloutput.ReadResultTool)
+	tools = append(tools, resultReader)
 	scope := normalizeSessionScope(s.scope)
 	if scope.Kind != "terminal" || scope.ServerID == "" {
 		return tools

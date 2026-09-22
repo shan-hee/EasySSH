@@ -12,6 +12,7 @@ import (
 	"github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/aitooloutput"
 	sharedmonitoring "github.com/easyssh/shared/monitoring"
 	"github.com/easyssh/shared/sftputil"
 	"github.com/google/uuid"
@@ -247,11 +248,7 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 		return result, nil
 	}
 
-	output := commandResult.Output
-	if len([]rune(output)) > 12000 {
-		runes := []rune(output)
-		output = string(runes[:12000]) + "\n... (输出已截断)"
-	}
+	output := aitooloutput.Truncate(aitooloutput.Sanitize(commandResult.Output), aitooloutput.StoredTextBytes)
 
 	payload := map[string]interface{}{
 		"server_id":    serverID.String(),
@@ -402,7 +399,7 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, userID uuid.U
 	}
 
 	// 限制行数
-	lines := strings.Split(string(content), "\n")
+	lines := strings.Split(aitooloutput.Sanitize(string(content)), "\n")
 	truncated := false
 	if len(lines) > args.MaxLines {
 		lines = lines[:args.MaxLines]
@@ -413,6 +410,7 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, userID uuid.U
 	if truncated {
 		output += fmt.Sprintf("\n\n... (文件已截断，仅显示前 %d 行)", args.MaxLines)
 	}
+	output = aitooloutput.Truncate(output, aitooloutput.StoredTextBytes)
 
 	result.Content = fmt.Sprintf("文件内容 (%s):\n```\n%s\n```", args.Path, output)
 	return result, nil
