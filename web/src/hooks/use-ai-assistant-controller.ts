@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import type { AIConfigAdapter } from "@/hooks/use-ai-config"
 import { useAIConfig } from "@/hooks/use-ai-config"
@@ -19,6 +19,7 @@ export function useAIAssistantController({
   const config = useAIConfig(aiConfigAdapter)
   const agentSession = useAgentSession(aiSessionAdapter)
   const [model, setModel] = useState(includeAutoModel ? "auto" : "")
+  const syncedSessionModelRef = useRef<{ sessionId: string; model: string } | null>(null)
   const [permissionMode, setPermissionMode] = useState<PermissionMode>("balanced")
   const modelOptions = useMemo(
     () => includeAutoModel && config.models.length === 0 ? ["auto"] : config.models,
@@ -26,8 +27,18 @@ export function useAIAssistantController({
   )
 
   useEffect(() => {
+    const sessionId = agentSession.session?.id
     const sessionModel = agentSession.session?.model
-    if (sessionModel && (config.models.includes(sessionModel) || (includeAutoModel && sessionModel === "auto"))) {
+    if (syncedSessionModelRef.current?.sessionId !== sessionId) {
+      syncedSessionModelRef.current = null
+    }
+    // 会话切换或会话模型变化时才同步，避免覆盖用户为下一条消息选择的模型。
+    if (
+      sessionId && sessionModel
+      && syncedSessionModelRef.current?.model !== sessionModel
+      && (config.models.includes(sessionModel) || (includeAutoModel && sessionModel === "auto"))
+    ) {
+      syncedSessionModelRef.current = { sessionId, model: sessionModel }
       setModel(sessionModel)
       return
     }
@@ -39,7 +50,7 @@ export function useAIAssistantController({
       const configuredDefault = config.model && modelOptions.includes(config.model) ? config.model : undefined
       setModel(configuredDefault ?? modelOptions[0])
     }
-  }, [agentSession.session?.model, config.model, config.models, includeAutoModel, model, modelOptions])
+  }, [agentSession.session?.id, agentSession.session?.model, config.model, config.models, includeAutoModel, model, modelOptions])
 
   useEffect(() => {
     if (agentSession.session?.permission_mode) {
