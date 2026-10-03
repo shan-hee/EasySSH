@@ -15,6 +15,7 @@ import {
   type DesktopServerInput,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import { DESKTOP_LOCAL_DATA_USER_ID } from "./desktop-local-identity"
+import { Call } from "@wailsio/runtime"
 
 const desktopAuthMethodMap: Record<AuthMethod, DesktopServerAuthMethod> = {
   password: DesktopServerAuthMethod.DesktopServerAuthPassword,
@@ -95,6 +96,7 @@ export function mapServerInput(input: Parameters<ServerConnectionConfigsApi["cre
 
 export function createDesktopServerApi(): ServerConnectionConfigsApi {
   return {
+    getStatistics: () => Call.ByName("main.DesktopServerService.GetStatistics"),
     async getById(id) { return mapDesktopServer(await DesktopServerService.GetById(id)) },
     async list(params) {
       const result = await DesktopServerService.List({

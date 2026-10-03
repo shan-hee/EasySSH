@@ -1427,6 +1427,7 @@ const messages = {
     viewListTooltip: "List view",
     tabAll: "All",
     loadingList: "Loading server list...",
+    retryLoad: "Retry loading",
     emptyFilteredTitle: "No matching servers found",
     emptyFilteredDescription: "Try adjusting the search text or group filter",
     emptyAllTitle: "No server configs",

@@ -4,9 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/easyssh/server/internal/domain/server"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/easyssh/server/internal/domain/server"
 )
 
 // ServerHandler 服务器处理器
@@ -69,7 +69,7 @@ func (h *ServerHandler) List(c *gin.Context) {
 
 	if query != "" {
 		// 搜索模式
-		servers, total, err = h.serverService.Search(c.Request.Context(), userID, query, limit, offset)
+		servers, total, err = h.serverService.Search(c.Request.Context(), userID, query, group, limit, offset)
 	} else if group != "" {
 		// 按分组筛选
 		servers, total, err = h.serverService.FindByGroup(c.Request.Context(), userID, group, limit, offset)
@@ -192,7 +192,6 @@ func (h *ServerHandler) Delete(c *gin.Context) {
 
 	RespondNoContent(c)
 }
-
 
 // GetStatistics 获取服务器统计
 // GET /api/v1/servers/statistics

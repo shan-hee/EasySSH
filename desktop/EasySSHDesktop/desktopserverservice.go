@@ -257,6 +257,44 @@ func (s *DesktopServerService) List(params DesktopServerListParams) (DesktopServ
 	}, nil
 }
 
+// GetStatistics returns filter metadata without loading connection credentials.
+func (s *DesktopServerService) GetStatistics() (map[string]any, error) {
+	database, err := s.database()
+	if err != nil {
+		return nil, err
+	}
+	var total, online int
+	if err := database.QueryRow(`SELECT COUNT(*), COUNT(CASE WHEN status = 'online' THEN 1 END) FROM desktop_servers`).Scan(&total, &online); err != nil {
+		return nil, err
+	}
+	readCounts := func(query string) (map[string]int, error) {
+		rows, err := database.Query(query)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		counts := make(map[string]int)
+		for rows.Next() {
+			var name string
+			var count int
+			if err := rows.Scan(&name, &count); err != nil {
+				return nil, err
+			}
+			counts[name] = count
+		}
+		return counts, rows.Err()
+	}
+	groups, err := readCounts(`SELECT server_group, COUNT(*) FROM desktop_servers WHERE server_group <> '' GROUP BY server_group`)
+	if err != nil {
+		return nil, err
+	}
+	tags, err := readCounts(`SELECT tag.value, COUNT(*) FROM desktop_servers, json_each(tags_json) AS tag WHERE tag.type = 'text' AND tag.value <> '' GROUP BY tag.value`)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"total": total, "online": online, "offline": total - online, "by_group": groups, "by_tag": tags}, nil
+}
+
 func (s *DesktopServerService) GetById(id string) (DesktopServer, error) {
 	database, err := s.database()
 	if err != nil {
@@ -392,6 +430,9 @@ func (s *DesktopServerService) Delete(id string) error {
 }
 
 func (s *DesktopServerService) Reorder(serverIds []string) error {
+	if len(serverIds) == 0 {
+		return errors.New("server IDs cannot be empty")
+	}
 	database, err := s.database()
 	if err != nil {
 		return err
@@ -403,14 +444,44 @@ func (s *DesktopServerService) Reorder(serverIds []string) error {
 	}
 	defer tx.Rollback()
 
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	for index, id := range serverIds {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
+	selected := make(map[string]bool, len(serverIds))
+	for _, id := range serverIds {
+		if id == "" || selected[id] {
+			return errors.New("server IDs must be non-empty and unique")
 		}
-
-		if _, err := tx.Exec("UPDATE desktop_servers SET sort_order = ?, updated_at = ? WHERE id = ?", index, now, id); err != nil {
+		selected[id] = true
+	}
+	rows, err := tx.Query("SELECT id FROM desktop_servers ORDER BY sort_order ASC, created_at ASC, id ASC")
+	if err != nil {
+		return err
+	}
+	var orderedIDs []string
+	var slots []int
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		if selected[id] {
+			slots = append(slots, len(orderedIDs))
+		}
+		orderedIDs = append(orderedIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if len(slots) != len(serverIds) {
+		return errors.New("server not found")
+	}
+	// Reorder only the supplied slots, preserving unloaded and filtered-out rows.
+	for index, slot := range slots {
+		orderedIDs[slot] = serverIds[index]
+	}
+	for index, id := range orderedIDs {
+		if _, err := tx.Exec("UPDATE desktop_servers SET sort_order = ? WHERE id = ?", index, id); err != nil {
 			return err
 		}
 	}

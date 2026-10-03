@@ -34,7 +34,7 @@ export const serversApi = {
     if (params?.page) queryParams.set("page", params.page.toString())
     if (params?.limit) queryParams.set("limit", params.limit.toString())
     if (params?.group) queryParams.set("group", params.group)
-    if (params?.search) queryParams.set("search", params.search)
+    if (params?.search) queryParams.set("q", params.search)
 
     const url = `/servers${queryParams.toString() ? `?${queryParams}` : ""}`
     return apiFetch<ServerListResponse>(url)

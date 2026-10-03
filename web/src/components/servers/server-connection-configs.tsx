@@ -1,6 +1,6 @@
 import { PageLoading } from "@/components/page-loading"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,6 +23,7 @@ import {
  Trash2,
  LayoutGrid,
  List,
+ Loader2,
 } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -47,6 +48,7 @@ import { CSS } from "@dnd-kit/utilities"
 import { AnimatedList } from "@/components/motion/animated-list"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
+import { useServerConnectionList } from "@/hooks/use-server-connection-list"
 
 type ViewMode = "grid" | "list"
 type DragOverlaySize = { width: number; height: number } | null
@@ -81,6 +83,7 @@ export interface ServerConnectionConfigsApi {
  update: typeof serversApi.update
  delete: typeof serversApi.delete
  reorder: typeof serversApi.reorder
+ getStatistics: typeof serversApi.getStatistics
 }
 
 function getServerItemClassName(viewMode: ViewMode, sortable = true) {
@@ -310,6 +313,7 @@ function SortableServerItem({
   onEdit,
   onDuplicate,
   onDelete,
+  disabled,
 }: {
   server: Server
   viewMode: ViewMode
@@ -317,6 +321,7 @@ function SortableServerItem({
   onEdit: (server: Server) => void
   onDuplicate: (server: Server) => void
   onDelete: (id: string) => void
+  disabled: boolean
 }) {
   const {
     attributes,
@@ -325,7 +330,7 @@ function SortableServerItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: server.id })
+  } = useSortable({ id: server.id, disabled })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -367,31 +372,42 @@ export function ServerConnectionConfigs({
  const authReady = useAuthReady()
  const ready = externalReady ?? authReady.ready
  const { t } = useTranslation("servers")
- const [servers, setServers] = useState<Server[]>([])
- const [filteredServers, setFilteredServers] = useState<Server[]>([])
  const [searchTerm, setSearchTerm] = useState("")
  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
  const [duplicatingServer, setDuplicatingServer] = useState<Server | null>(null)
  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
  const [editingServer, setEditingServer] = useState<Server | null>(null)
  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
- const [loading, setLoading] = useState(true)
  const [activeGroup, setActiveGroup] = useState<string>('all')
  const [viewMode, setViewMode] = useState<ViewMode>(() => readStoredViewMode(defaultViewMode))
  const [draggedServer, setDraggedServer] = useState<Server | null>(null)
  const [dragOverlaySize, setDragOverlaySize] = useState<DragOverlaySize>(null)
  const [isMounted, setIsMounted] = useState(false)
+ const [saving, setSaving] = useState(false)
+ const scrollRef = useRef<HTMLDivElement>(null)
+ const loadMoreRef = useRef<HTMLDivElement>(null)
+ const history = useServerConnectionList({
+   api: serverApi, ready, search: searchTerm, group: activeGroup,
+   busy: saving || draggedServer !== null || isAddDialogOpen || isEditDialogOpen || deleteTargetId !== null,
+ })
+ const { servers, setServers, statistics, loading, loadingMore, hasMore, error, loadMore, reload: loadServers } = history
+ const requestBusy = saving || draggedServer !== null || isAddDialogOpen || isEditDialogOpen || deleteTargetId !== null
+
+ useEffect(() => {
+   const root = scrollRef.current
+   const target = loadMoreRef.current
+   if (!root || !target || loading || loadingMore || error || !hasMore || requestBusy || history.searchPending) return
+   let active = true
+   const observer = new IntersectionObserver(([entry]) => {
+     if (active && entry?.isIntersecting) void loadMore()
+   }, { root, rootMargin: "0px 0px 160px 0px" })
+   observer.observe(target)
+   return () => { active = false; observer.disconnect() }
+ }, [error, hasMore, history.searchPending, loadMore, loading, loadingMore, requestBusy])
 
  const groupFilters = useMemo(() => {
- const counts = new Map<string, number>()
- for (const server of servers) {
- const group = server.group?.trim()
- if (!group) continue
- counts.set(group, (counts.get(group) || 0) + 1)
- }
-
- return Array.from(counts.entries()).sort(([a], [b]) => a.localeCompare(b, "zh-CN"))
- }, [servers])
+ return Object.entries(statistics?.by_group ?? {}).sort(([a], [b]) => a.localeCompare(b, "zh-CN"))
+ }, [statistics])
 
  const availableGroups = useMemo(
  () => groupFilters.map(([group]) => group),
@@ -399,15 +415,8 @@ export function ServerConnectionConfigs({
  )
 
  const availableTags = useMemo(() => {
- const tags = new Set<string>()
- for (const server of servers) {
- for (const tag of server.tags || []) {
- const normalizedTag = tag.trim()
- if (normalizedTag) tags.add(normalizedTag)
- }
- }
- return Array.from(tags).sort((a, b) => a.localeCompare(b, "zh-CN"))
- }, [servers])
+ return Object.keys(statistics?.by_tag ?? {}).sort((a, b) => a.localeCompare(b, "zh-CN"))
+ }, [statistics])
 
  const deleteTargetServer = useMemo(
  () => servers.find(server => server.id === deleteTargetId) || null,
@@ -444,32 +453,11 @@ export function ServerConnectionConfigs({
    })
  )
 
- // 根据搜索词和当前分组过滤服务器
  useEffect(() => {
- let filtered = [...servers]
-
- // 按分组过滤
- if (activeGroup !== 'all') {
- filtered = filtered.filter(s => s.group?.trim() === activeGroup)
- }
-
- // 按搜索词过滤
- if (searchTerm) {
- filtered = filtered.filter(server =>
- (server.name?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
- server.host.toLowerCase().includes(searchTerm.toLowerCase()) ||
- server.username.toLowerCase().includes(searchTerm.toLowerCase())
- )
- }
-
- setFilteredServers(filtered)
- }, [servers, searchTerm, activeGroup])
-
- useEffect(() => {
- if (activeGroup !== 'all' && !groupFilters.some(([group]) => group === activeGroup)) {
+ if (statistics && activeGroup !== 'all' && !groupFilters.some(([group]) => group === activeGroup)) {
  setActiveGroup('all')
  }
- }, [activeGroup, groupFilters])
+ }, [activeGroup, groupFilters, statistics])
 
  // 客户端挂载检测
  useEffect(() => {
@@ -485,36 +473,6 @@ export function ServerConnectionConfigs({
      // 忽略无可用本地存储的环境。
    }
  }, [viewMode])
-
- const loadServers = useCallback(async () => {
- try {
- setLoading(true)
- // 认证基于 HttpOnly Cookie，无需本地令牌
-
- const response = await serverApi.list({
- page: 1,
- limit: 100
- })
-
- const serverList = Array.isArray(response)
- ? response
- : (response?.data || [])
-
- setServers(serverList)
- setFilteredServers(serverList)
- } catch (error: unknown) {
- console.error("Failed to load servers:", error)
- toast.error(getErrorMessage(error, t("toastLoadFailed")))
- } finally {
- setLoading(false)
- }
- }, [serverApi, t])
-
- // 加载服务器列表
- useEffect(() => {
-   if (!ready) return
-   loadServers()
- }, [ready, loadServers])
 
  const handleConnect = (serverId: string) => {
  const server = servers.find(s => s.id === serverId)
@@ -545,6 +503,9 @@ export function ServerConnectionConfigs({
  }
 
  const handleDelete = async (serverId: string) => {
+ if (saving) return
+ setSaving(true)
+ history.cancelPendingPage()
  try {
  // 认证基于 HttpOnly Cookie
 
@@ -552,16 +513,20 @@ export function ServerConnectionConfigs({
  toast.success(t("toastDeleteSuccess"))
 
  // 乐观更新：直接从本地列表移除，避免整个页面刷新
- setServers(prev => prev.filter(s => s.id !== serverId))
+ history.remove(serverId)
  setDeleteTargetId(null)
+ void history.refreshStatistics()
  } catch (error: unknown) {
  console.error("Failed to delete server:", error)
  toast.error(getErrorMessage(error, t("toastDeleteFailed")))
+ } finally {
+ setSaving(false)
  }
  }
 
  // 拖拽开始
  const handleDragStart = (event: DragStartEvent) => {
+ history.cancelPendingPage()
  const server = servers.find(s => s.id === String(event.active.id))
  setDraggedServer(server || null)
  const initialRect = event.active.rect.current.initial
@@ -578,6 +543,7 @@ export function ServerConnectionConfigs({
  setDragOverlaySize(null)
 
  if (!over || active.id === over.id) return
+ if (saving) return
 
  const oldIndex = servers.findIndex(s => s.id === String(active.id))
  const newIndex = servers.findIndex(s => s.id === String(over.id))
@@ -586,6 +552,8 @@ export function ServerConnectionConfigs({
  const newOrder = arrayMove(servers, oldIndex, newIndex)
 
  // 乐观更新：立即更新 UI
+ setSaving(true)
+ history.cancelPendingPage()
  setServers(newOrder)
 
  // 调用后端 API 保存新顺序
@@ -598,8 +566,10 @@ export function ServerConnectionConfigs({
  } catch (error: unknown) {
  console.error("Failed to save server order:", error)
  toast.error(getErrorMessage(error, t("toastSortSaveFailed")))
- // 错误时重新加载服务器列表
- await loadServers()
+ // 保存失败时恢复本地顺序，保留已加载的页面。
+ setServers(servers)
+ } finally {
+ setSaving(false)
  }
  }
  }
@@ -610,6 +580,9 @@ export function ServerConnectionConfigs({
  }
 
  const handleAddServer = async (data: ServerFormData) => {
+ if (saving) return
+ setSaving(true)
+ history.cancelPendingPage()
  try {
  // 认证基于 HttpOnly Cookie
 
@@ -644,20 +617,24 @@ export function ServerConnectionConfigs({
 	 }
 	 }
 
- const newServer = await serverApi.create(serverData)
+ await serverApi.create(serverData)
 
  toast.success(t("toastCreateSuccess"))
  handleAddDialogOpenChange(false)
 
- // 乐观更新：直接添加到本地列表，避免整个页面刷新
- setServers(prev => [...prev, newServer])
+ await Promise.all([loadServers(), history.refreshStatistics()])
  } catch (error: unknown) {
  console.error("Failed to add server:", error)
  toast.error(getErrorMessage(error, t("toastCreateFailed")))
+ } finally {
+ setSaving(false)
  }
  }
 
  const handleEditServer = async (data: ServerFormData) => {
+ if (saving) return
+ setSaving(true)
+ history.cancelPendingPage()
  try {
  // 认证基于 HttpOnly Cookie
 
@@ -720,9 +697,13 @@ export function ServerConnectionConfigs({
  setServers(prev => prev.map(s =>
  s.id === editingServer.id ? updatedServer : s
  ))
+ if (searchTerm.trim() || activeGroup !== "all") await loadServers()
+ void history.refreshStatistics()
  } catch (error: unknown) {
  console.error("Failed to update server:", error)
  toast.error(getErrorMessage(error, t("toastUpdateFailed")))
+ } finally {
+ setSaving(false)
  }
  }
 
@@ -734,7 +715,7 @@ export function ServerConnectionConfigs({
  <div className="flex min-h-0 flex-1 flex-col items-center px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
  <div className={cn("flex min-h-0 w-full flex-1 flex-col gap-3 transition-[max-width] duration-200", viewMode === "grid" ? "max-w-6xl" : "max-w-3xl")}>
  {/* 搜索栏和添加按钮 - 始终显示（有服务器时） */}
- {(loading || servers.length > 0) && (
+ {(loading || (statistics?.total ?? servers.length) > 0 || searchTerm || activeGroup !== "all") && (
  <div className="space-y-3">
  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
  {/* 左侧：搜索框 */}
@@ -745,6 +726,7 @@ export function ServerConnectionConfigs({
  className={"pl-10 bg-card border-border text-foreground placeholder:text-muted-foreground"}
  value={searchTerm}
  onChange={(e) => setSearchTerm(e.target.value)}
+ disabled={saving || draggedServer !== null}
  />
  </div>
 
@@ -800,9 +782,10 @@ export function ServerConnectionConfigs({
  aria-pressed={activeGroup === 'all'}
  size="sm"
  onClick={() => setActiveGroup('all')}
+ disabled={saving || draggedServer !== null}
  className="h-8"
  >
- {t("tabAll")} ({servers.length})
+ {t("tabAll")} ({statistics?.total ?? servers.length})
  </Button>
  {groupFilters.map(([group, count]) => (
  <Button
@@ -812,6 +795,7 @@ export function ServerConnectionConfigs({
  aria-pressed={activeGroup === group}
  size="sm"
  onClick={() => setActiveGroup(group)}
+ disabled={saving || draggedServer !== null}
  className="h-8"
  >
  {group} ({count})
@@ -827,8 +811,8 @@ export function ServerConnectionConfigs({
  )}
 
  {/* 服务器列表 */}
- {!loading && filteredServers.length > 0 && (
- <div className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-custom">
+ {!loading && (servers.length > 0 || hasMore) && (
+ <div ref={scrollRef} aria-busy={loadingMore} className="min-h-0 flex-1 overflow-y-auto pr-1 scrollbar-custom">
  {isMounted ? (
  <DndContext
  sensors={sensors}
@@ -838,11 +822,11 @@ export function ServerConnectionConfigs({
  onDragCancel={handleDragCancel}
  >
  <SortableContext
- items={filteredServers.map(s => s.id)}
+ items={servers.map(s => s.id)}
  strategy={viewMode === "grid" ? rectSortingStrategy : verticalListSortingStrategy}
  >
- <AnimatedList className={viewMode === "grid" ? SERVER_GRID_CLASSNAME : "space-y-2"}>
- {filteredServers.map((server) => (
+ <AnimatedList maxStaggerDelay={0.18} className={viewMode === "grid" ? SERVER_GRID_CLASSNAME : "space-y-2"}>
+ {servers.map((server) => (
  <SortableServerItem
  key={server.id}
  server={server}
@@ -851,6 +835,7 @@ export function ServerConnectionConfigs({
  onEdit={handleEdit}
  onDuplicate={handleDuplicate}
  onDelete={handleRequestDelete}
+ disabled={saving || loadingMore || history.searchPending}
  />
  ))}
  </AnimatedList>
@@ -867,17 +852,29 @@ export function ServerConnectionConfigs({
  </DndContext>
  ) : (
  // 服务端渲染时的静态列表
- <AnimatedList className={viewMode === "grid" ? SERVER_GRID_CLASSNAME : "space-y-2"}>
- {filteredServers.map((server) => (
+ <AnimatedList maxStaggerDelay={0.18} className={viewMode === "grid" ? SERVER_GRID_CLASSNAME : "space-y-2"}>
+ {servers.map((server) => (
  <ServerStaticItem key={server.id} server={server} viewMode={viewMode} onConnect={handleConnect} />
  ))}
  </AnimatedList>
  )}
+ {hasMore && !error && (
+ <div ref={loadMoreRef} className="flex min-h-12 items-center justify-center text-sm text-muted-foreground">
+ {loadingMore && <span role="status" className="flex items-center gap-2"><Loader2 aria-hidden="true" className="size-4 animate-spin" />{t("loadingList")}</span>}
+ </div>
+ )}
+ </div>
+ )}
+
+ {Boolean(error) && (
+ <div role="alert" className="flex shrink-0 items-center justify-center gap-3 py-3 text-sm text-destructive">
+ <span>{getErrorMessage(error, t("toastLoadFailed"))}</span>
+ <Button variant="outline" size="sm" disabled={loading || loadingMore || requestBusy} onClick={() => void history.retry()}>{t("retryLoad")}</Button>
  </div>
  )}
 
  {/* 空状态 - 筛选后无结果 */}
- {!loading && filteredServers.length === 0 && servers.length > 0 && (
+ {!loading && !error && servers.length === 0 && (searchTerm.trim() !== "" || activeGroup !== "all") && (
  <div className="text-center space-y-3 py-8">
  <div className={"inline-flex items-center justify-center w-12 h-12 rounded-lg border bg-card border-border"}>
  <Search className={"h-6 w-6 text-muted-foreground"} />
@@ -894,7 +891,7 @@ export function ServerConnectionConfigs({
  )}
 
  {/* 空状态 - 完全没有服务器 */}
- {!loading && servers.length === 0 && (
+ {!loading && !error && servers.length === 0 && !hasMore && !searchTerm.trim() && activeGroup === "all" && (
  <>
  <div className="flex items-center justify-between gap-4">
  {/* 左侧：搜索框（禁用状态） */}

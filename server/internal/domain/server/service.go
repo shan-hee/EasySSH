@@ -32,7 +32,7 @@ type Service interface {
 	Delete(ctx context.Context, userID, serverID uuid.UUID) error
 
 	// Search 搜索服务器
-	Search(ctx context.Context, userID uuid.UUID, query string, limit, offset int) ([]*Server, int64, error)
+	Search(ctx context.Context, userID uuid.UUID, query, group string, limit, offset int) ([]*Server, int64, error)
 
 	// FindByGroup 根据分组查找服务器
 	FindByGroup(ctx context.Context, userID uuid.UUID, group string, limit, offset int) ([]*Server, int64, error)
@@ -271,8 +271,8 @@ func (s *serverService) Delete(ctx context.Context, userID, serverID uuid.UUID) 
 	return s.repo.Delete(ctx, serverID)
 }
 
-func (s *serverService) Search(ctx context.Context, userID uuid.UUID, query string, limit, offset int) ([]*Server, int64, error) {
-	return s.repo.Search(ctx, userID, query, limit, offset)
+func (s *serverService) Search(ctx context.Context, userID uuid.UUID, query, group string, limit, offset int) ([]*Server, int64, error) {
+	return s.repo.Search(ctx, userID, query, group, limit, offset)
 }
 
 func (s *serverService) FindByGroup(ctx context.Context, userID uuid.UUID, group string, limit, offset int) ([]*Server, int64, error) {
@@ -280,41 +280,7 @@ func (s *serverService) FindByGroup(ctx context.Context, userID uuid.UUID, group
 }
 
 func (s *serverService) GetStatistics(ctx context.Context, userID uuid.UUID) (*ServerStatistics, error) {
-	servers, _, err := s.repo.FindByUserID(ctx, userID, 1000, 0) // 获取所有服务器
-	if err != nil {
-		return nil, err
-	}
-
-	stats := &ServerStatistics{
-		Total:   int64(len(servers)),
-		ByGroup: make(map[string]int64),
-		ByTag:   make(map[string]int64),
-	}
-
-	for _, server := range servers {
-		// 统计状态：只有 online 和 offline 两种
-		switch server.Status {
-		case StatusOnline:
-			stats.Online++
-		default:
-			// 包括 offline 以及任何其他未知状态都算作离线
-			stats.Offline++
-		}
-
-		// 统计分组
-		if server.Group != "" {
-			stats.ByGroup[server.Group]++
-		}
-
-		// 统计标签
-		if len(server.Tags) > 0 {
-			for _, tag := range server.Tags {
-				stats.ByTag[tag]++
-			}
-		}
-	}
-
-	return stats, nil
+	return s.repo.GetStatistics(ctx, userID)
 }
 
 // ReorderServers 批量更新服务器排序顺序
@@ -324,15 +290,7 @@ func (s *serverService) ReorderServers(ctx context.Context, userID uuid.UUID, se
 		return errors.New("server IDs cannot be empty")
 	}
 
-	// 构建 serverID -> sortOrder 的映射
-	// sortOrder 从 1 开始，方便后续扩展（0 保留给未排序的服务器）
-	orders := make(map[uuid.UUID]int)
-	for i, serverID := range serverIDs {
-		orders[serverID] = i + 1
-	}
-
-	// 调用 repository 层批量更新
-	return s.repo.UpdateSortOrders(ctx, userID, orders)
+	return s.repo.Reorder(ctx, userID, serverIDs)
 }
 
 // Helper function to check TCP connectivity

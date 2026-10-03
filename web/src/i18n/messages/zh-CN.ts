@@ -1377,6 +1377,7 @@ const messages = {
     viewListTooltip: "列表视图",
     tabAll: "全部",
     loadingList: "加载服务器列表...",
+    retryLoad: "重试加载",
     emptyFilteredTitle: "未找到匹配的服务器",
     emptyFilteredDescription: "请尝试调整搜索条件或分组筛选",
     emptyAllTitle: "暂无服务器配置",

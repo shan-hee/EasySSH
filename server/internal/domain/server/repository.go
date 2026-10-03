@@ -46,7 +46,7 @@ type Repository interface {
 	List(ctx context.Context, limit, offset int) ([]*Server, int64, error)
 
 	// Search 搜索服务器（按名称、主机、分组）
-	Search(ctx context.Context, userID uuid.UUID, query string, limit, offset int) ([]*Server, int64, error)
+	Search(ctx context.Context, userID uuid.UUID, query, group string, limit, offset int) ([]*Server, int64, error)
 
 	// FindByGroup 根据分组查找服务器
 	FindByGroup(ctx context.Context, userID uuid.UUID, group string, limit, offset int) ([]*Server, int64, error)
@@ -54,8 +54,9 @@ type Repository interface {
 	// CountByUserID 统计用户的服务器数量
 	CountByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
 
-	// UpdateSortOrders 批量更新服务器排序顺序
-	UpdateSortOrders(ctx context.Context, userID uuid.UUID, orders map[uuid.UUID]int) error
+	// Reorder 调整给定服务器在完整列表中的相对顺序。
+	Reorder(ctx context.Context, userID uuid.UUID, serverIDs []uuid.UUID) error
+	GetStatistics(ctx context.Context, userID uuid.UUID) (*ServerStatistics, error)
 }
 
 // gormRepository GORM 实现
@@ -99,7 +100,7 @@ func (r *gormRepository) FindByUserID(ctx context.Context, userID uuid.UUID, lim
 		Where("user_id = ?", userID).
 		Limit(limit).
 		Offset(offset).
-		Order("sort_order ASC, created_at DESC").
+		Order("sort_order ASC, created_at DESC, id ASC").
 		Find(&servers).Error; err != nil {
 		return nil, 0, err
 	}
@@ -210,7 +211,7 @@ func (r *gormRepository) List(ctx context.Context, limit, offset int) ([]*Server
 	if err := r.db.WithContext(ctx).
 		Limit(limit).
 		Offset(offset).
-		Order("sort_order ASC, created_at DESC").
+		Order("sort_order ASC, created_at DESC, id ASC").
 		Find(&servers).Error; err != nil {
 		return nil, 0, err
 	}
@@ -218,14 +219,17 @@ func (r *gormRepository) List(ctx context.Context, limit, offset int) ([]*Server
 	return servers, total, nil
 }
 
-func (r *gormRepository) Search(ctx context.Context, userID uuid.UUID, query string, limit, offset int) ([]*Server, int64, error) {
+func (r *gormRepository) Search(ctx context.Context, userID uuid.UUID, query, group string, limit, offset int) ([]*Server, int64, error) {
 	var servers []*Server
 	var total int64
 
 	normalizedPattern := "%" + strings.ToLower(query) + "%"
 	queryBuilder := r.db.WithContext(ctx).Model(&Server{}).
 		Where("user_id = ?", userID).
-		Where("LOWER(name) LIKE ? OR LOWER(host) LIKE ? OR LOWER(server_group) LIKE ?", normalizedPattern, normalizedPattern, normalizedPattern)
+		Where("LOWER(name) LIKE ? OR LOWER(host) LIKE ? OR LOWER(username) LIKE ? OR LOWER(server_group) LIKE ? OR LOWER(description) LIKE ? OR LOWER(tags) LIKE ?", normalizedPattern, normalizedPattern, normalizedPattern, normalizedPattern, normalizedPattern, normalizedPattern)
+	if group != "" {
+		queryBuilder = queryBuilder.Where("server_group = ?", group)
+	}
 
 	// 获取总数
 	if err := queryBuilder.Count(&total).Error; err != nil {
@@ -236,7 +240,7 @@ func (r *gormRepository) Search(ctx context.Context, userID uuid.UUID, query str
 	if err := queryBuilder.
 		Limit(limit).
 		Offset(offset).
-		Order("sort_order ASC, created_at DESC").
+		Order("sort_order ASC, created_at DESC, id ASC").
 		Find(&servers).Error; err != nil {
 		return nil, 0, err
 	}
@@ -260,7 +264,7 @@ func (r *gormRepository) FindByGroup(ctx context.Context, userID uuid.UUID, grou
 	if err := queryBuilder.
 		Limit(limit).
 		Offset(offset).
-		Order("sort_order ASC, created_at DESC").
+		Order("sort_order ASC, created_at DESC, id ASC").
 		Find(&servers).Error; err != nil {
 		return nil, 0, err
 	}
@@ -278,22 +282,63 @@ func (r *gormRepository) CountByUserID(ctx context.Context, userID uuid.UUID) (i
 	return count, nil
 }
 
-// UpdateSortOrders 批量更新服务器排序顺序
+// Reorder 保留未提交服务器的位置，适用于分页和筛选后的拖拽。
 // 使用事务确保原子性，避免部分更新失败
-func (r *gormRepository) UpdateSortOrders(ctx context.Context, userID uuid.UUID, orders map[uuid.UUID]int) error {
+func (r *gormRepository) Reorder(ctx context.Context, userID uuid.UUID, serverIDs []uuid.UUID) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for serverID, sortOrder := range orders {
-			// 验证服务器归属权，防止越权操作
-			result := tx.Model(&Server{}).
-				Where("id = ? AND user_id = ?", serverID, userID).
-				Update("sort_order", sortOrder)
-
-			if result.Error != nil {
-				return result.Error
+		selected := make(map[uuid.UUID]bool, len(serverIDs))
+		for _, id := range serverIDs {
+			if id == uuid.Nil || selected[id] {
+				return errors.New("server IDs must be non-empty and unique")
 			}
-			// 如果没有找到匹配的记录（可能是越权或不存在），跳过
-			// 不返回错误，因为前端可能有过期数据
+			selected[id] = true
+		}
+		var orderedIDs []uuid.UUID
+		if err := tx.Model(&Server{}).Where("user_id = ?", userID).
+			Order("sort_order ASC, created_at DESC, id ASC").Pluck("id", &orderedIDs).Error; err != nil {
+			return err
+		}
+		var slots []int
+		for index, id := range orderedIDs {
+			if selected[id] {
+				slots = append(slots, index)
+			}
+		}
+		if len(slots) != len(serverIDs) {
+			return ErrServerNotFound
+		}
+		for index, slot := range slots {
+			orderedIDs[slot] = serverIDs[index]
+		}
+		for index, id := range orderedIDs {
+			if err := tx.Model(&Server{}).Where("id = ? AND user_id = ?", id, userID).
+				UpdateColumn("sort_order", index).Error; err != nil {
+				return err
+			}
 		}
 		return nil
 	})
+}
+
+func (r *gormRepository) GetStatistics(ctx context.Context, userID uuid.UUID) (*ServerStatistics, error) {
+	var servers []Server
+	if err := r.db.WithContext(ctx).Model(&Server{}).Select("status", "server_group", "tags").
+		Where("user_id = ?", userID).Find(&servers).Error; err != nil {
+		return nil, err
+	}
+	stats := &ServerStatistics{Total: int64(len(servers)), ByGroup: make(map[string]int64), ByTag: make(map[string]int64)}
+	for _, server := range servers {
+		if server.Status == StatusOnline {
+			stats.Online++
+		} else {
+			stats.Offline++
+		}
+		if server.Group != "" {
+			stats.ByGroup[server.Group]++
+		}
+		for _, tag := range server.Tags {
+			stats.ByTag[tag]++
+		}
+	}
+	return stats, nil
 }
