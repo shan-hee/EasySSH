@@ -2495,7 +2495,6 @@ const messages = {
     sessionListLoadFailed: "Failed to load sessions",
     backToMainMenu: "Back to main menu",
     sessionSearchEmpty: "No matching conversations",
-    loadMoreSessions: "Load more conversations",
     sessionListEmpty: "No sessions yet",
     resizePanel: "Drag to resize AI assistant",
     saveSessionTitle: "Save session title",

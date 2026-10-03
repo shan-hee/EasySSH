@@ -102,13 +102,17 @@ export function useAISessionHistory({
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
-  const nextPageRef = useRef(2)
+  const loadedOffsetRef = useRef(0)
+  const loadedIdsRef = useRef(new Set<string>())
+  const removedIdsRef = useRef(new Set<string>())
   const loadingMoreRef = useRef(false)
   const [error, setError] = useState("")
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameDraft, setRenameDraft] = useState("")
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
   const requestSequenceRef = useRef(0)
+  const failedRequestRef = useRef<"reload" | "loadMore">("reload")
+  const historyVisible = open || visible
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS)
@@ -125,7 +129,6 @@ export function useAISessionHistory({
 
     const sequence = ++requestSequenceRef.current
     setLoading(true)
-    setHasMore(false)
     setLoadingMore(false)
     loadingMoreRef.current = false
     setError("")
@@ -136,12 +139,15 @@ export function useAISessionHistory({
         scope,
       })
       if (requestSequenceRef.current === sequence) {
-        setItems(response.items)
-        nextPageRef.current = 2
+        const remaining = response.items.filter((item) => !removedIdsRef.current.has(item.id))
+        setItems(remaining)
+        loadedOffsetRef.current = SESSION_LIST_LIMIT - (response.items.length - remaining.length)
+        loadedIdsRef.current = new Set(remaining.map((item) => item.id))
         setHasMore(response.items.length > 0 && SESSION_LIST_LIMIT < response.total)
       }
     } catch {
       if (requestSequenceRef.current === sequence) {
+        failedRequestRef.current = "reload"
         setError(loadErrorMessage)
       }
     } finally {
@@ -152,7 +158,7 @@ export function useAISessionHistory({
   }, [debouncedSearch, enabled, listSessions, loadErrorMessage, scope])
 
   useEffect(() => {
-    if (open || visible) {
+    if (historyVisible) {
       void reload()
       return () => {
         requestSequenceRef.current += 1
@@ -163,19 +169,24 @@ export function useAISessionHistory({
     setLoading(false)
     setLoadingMore(false)
     loadingMoreRef.current = false
-  }, [open, visible, reload])
+  }, [historyVisible, reload])
 
   const loadMore = useCallback(async () => {
     if (
       !enabled ||
+      !historyVisible ||
       loading ||
       loadingMoreRef.current ||
+      actionLoadingId ||
+      renamingId ||
       !hasMore ||
       search.trim() !== debouncedSearch
     )
       return
     const sequence = requestSequenceRef.current
-    const page = nextPageRef.current
+    // Deletions shift offset pagination. Re-read the boundary page and deduplicate
+    // instead of skipping records or replacing all previously loaded pages.
+    const page = Math.floor(loadedOffsetRef.current / SESSION_LIST_LIMIT) + 1
     loadingMoreRef.current = true
     setLoadingMore(true)
     setError("")
@@ -187,21 +198,31 @@ export function useAISessionHistory({
         scope,
       })
       if (sequence !== requestSequenceRef.current) return
+      const remaining = response.items.filter((item) => !removedIdsRef.current.has(item.id))
       setItems((current) => {
         const ids = new Set(current.map((item) => item.id))
-        return [...current, ...response.items.filter((item) => !ids.has(item.id))]
+        return [...current, ...remaining.filter((item) => !ids.has(item.id))]
       })
-      nextPageRef.current = page + 1
+      loadedOffsetRef.current = page * SESSION_LIST_LIMIT - (response.items.length - remaining.length)
+      remaining.forEach((item) => loadedIdsRef.current.add(item.id))
       setHasMore(response.items.length > 0 && page * SESSION_LIST_LIMIT < response.total)
     } catch {
-      if (sequence === requestSequenceRef.current) setError(loadErrorMessage)
+      if (sequence === requestSequenceRef.current) {
+        failedRequestRef.current = "loadMore"
+        setError(loadErrorMessage)
+      }
     } finally {
       if (sequence === requestSequenceRef.current) {
         loadingMoreRef.current = false
         setLoadingMore(false)
       }
     }
-  }, [debouncedSearch, enabled, hasMore, listSessions, loadErrorMessage, loading, scope, search])
+  }, [actionLoadingId, debouncedSearch, enabled, hasMore, historyVisible, listSessions, loadErrorMessage, loading, renamingId, scope, search])
+
+  const retry = useCallback(
+    () => failedRequestRef.current === "loadMore" ? loadMore() : reload(),
+    [loadMore, reload],
+  )
 
   const prepend = useCallback(
     (response: CreateSessionResponse, title: string) => {
@@ -233,6 +254,7 @@ export function useAISessionHistory({
 
   const syncSession = useCallback(
     (session: SessionView, fallbackTitle: string) => {
+      if (removedIdsRef.current.has(session.id)) return
       setItems((current) => syncAISessionHistoryItems(current, session, fallbackTitle, search))
     },
     [search],
@@ -257,8 +279,16 @@ export function useAISessionHistory({
 
       setActionLoadingId(sessionId)
       setError("")
+      const sequence = requestSequenceRef.current
       try {
         await renameSession(sessionId, title)
+        const isCurrentRequest = sequence === requestSequenceRef.current
+        if (isCurrentRequest) {
+          requestSequenceRef.current += 1
+          setLoading(false)
+          setLoadingMore(false)
+          loadingMoreRef.current = false
+        }
         setItems((current) =>
           current.map((item) =>
             item.id === sessionId
@@ -267,9 +297,12 @@ export function useAISessionHistory({
           ),
         )
         cancelRename()
-        if (visible) void reload()
+        // Search includes message content, so only the server can determine
+        // whether a renamed session still matches the current query.
+        if (isCurrentRequest && (loading || debouncedSearch)) void reload()
         return true
       } catch {
+        failedRequestRef.current = "reload"
         setError(renameErrorMessage)
         return false
       } finally {
@@ -279,11 +312,12 @@ export function useAISessionHistory({
     [
       actionLoadingId,
       cancelRename,
+      debouncedSearch,
+      loading,
       reload,
       renameDraft,
       renameErrorMessage,
       renameSession,
-      visible,
     ],
   )
 
@@ -295,26 +329,43 @@ export function useAISessionHistory({
 
       setActionLoadingId(sessionId)
       setError("")
+      const sequence = requestSequenceRef.current
       try {
         await deleteSession(sessionId)
+        removedIdsRef.current.add(sessionId)
+        // A list request started before deletion must not restore the removed row.
+        if (sequence === requestSequenceRef.current) {
+          requestSequenceRef.current += 1
+          setLoading(false)
+          setLoadingMore(false)
+          loadingMoreRef.current = false
+          if (loading) void reload()
+        }
+        if (loadedIdsRef.current.delete(sessionId)) {
+          loadedOffsetRef.current = Math.max(0, loadedOffsetRef.current - 1)
+        }
         setItems((current) => current.filter((item) => item.id !== sessionId))
         if (renamingId === sessionId) {
           cancelRename()
         }
-        if (visible) void reload()
         return true
       } catch {
+        failedRequestRef.current = "reload"
         setError(deleteErrorMessage)
         return false
       } finally {
         setActionLoadingId(null)
       }
     },
-    [actionLoadingId, cancelRename, deleteErrorMessage, deleteSession, reload, renamingId, visible],
+    [actionLoadingId, cancelRename, deleteErrorMessage, deleteSession, loading, reload, renamingId],
   )
 
   const forget = useCallback(
     (sessionId: string) => {
+      removedIdsRef.current.add(sessionId)
+      if (loadedIdsRef.current.delete(sessionId)) {
+        loadedOffsetRef.current = Math.max(0, loadedOffsetRef.current - 1)
+      }
       setItems((current) => current.filter((item) => item.id !== sessionId))
       if (renamingId === sessionId) {
         cancelRename()
@@ -348,6 +399,7 @@ export function useAISessionHistory({
     findEmptySession,
     syncSession,
     reload,
+    retry,
   }
 }
 

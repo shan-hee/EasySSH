@@ -2332,7 +2332,6 @@ const messages = {
     sessionListLoadFailed: "加载会话列表失败",
     backToMainMenu: "返回主菜单",
     sessionSearchEmpty: "未找到匹配的会话",
-    loadMoreSessions: "加载更多会话",
     sessionListEmpty: "暂无会话",
     resizePanel: "拖动调整 AI 助手宽度",
     saveSessionTitle: "保存会话名称",

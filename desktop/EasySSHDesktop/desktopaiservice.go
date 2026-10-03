@@ -520,51 +520,45 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 
 	params = normalizeDesktopAIListParams(params)
 	where, args := buildDesktopAIWhere(params)
+	var total int
+	if err := database.QueryRow("SELECT COUNT(*) FROM desktop_ai_sessions WHERE "+where, args...).Scan(&total); err != nil {
+		return DesktopAIListSessionsResult{}, err
+	}
 	querySQL := fmt.Sprintf(`
-		SELECT id, title, custom_title, model, permission_mode, scope_json, status, messages_json, tasks_json, created_at, updated_at
+		SELECT id, title, custom_title, model, permission_mode, scope_json, status,
+			json_array_length(messages_json), json_array_length(tasks_json), created_at, updated_at
 		FROM desktop_ai_sessions
 		WHERE %s
-		ORDER BY updated_at DESC, created_at DESC, id DESC`, where)
+		ORDER BY updated_at DESC, created_at DESC, id DESC
+		LIMIT ? OFFSET ?`, where)
 
-	rows, err := database.Query(querySQL, args...)
+	rows, err := database.Query(querySQL, append(args, params.Limit, (params.Page-1)*params.Limit)...)
 	if err != nil {
 		return DesktopAIListSessionsResult{}, err
 	}
 	defer rows.Close()
 
 	items := make([]DesktopAISessionListItem, 0)
-	total := 0
-	offset := (params.Page - 1) * params.Limit
 	for rows.Next() {
-		var id, title, model, permissionMode, scopeJSON, status, messagesJSON, tasksJSON, createdAt, updatedAt string
-		var customTitle int
-		if err := rows.Scan(&id, &title, &customTitle, &model, &permissionMode, &scopeJSON, &status, &messagesJSON, &tasksJSON, &createdAt, &updatedAt); err != nil {
+		var id, title, model, permissionMode, scopeJSON, status, createdAt, updatedAt string
+		var customTitle, messageCount, taskCount int
+		if err := rows.Scan(&id, &title, &customTitle, &model, &permissionMode, &scopeJSON, &status, &messageCount, &taskCount, &createdAt, &updatedAt); err != nil {
 			return DesktopAIListSessionsResult{}, err
 		}
-		scope := decodeDesktopAIScope(scopeJSON)
-		if !desktopAIScopeMatches(scope, params) {
-			continue
+		title = strings.TrimSpace(title)
+		if title == "" {
+			title = "New session"
 		}
-		sessionStatus := s.activeDesktopAISessionStatus(id, DesktopAISessionStatus(status))
-		total++
-		if total <= offset {
-			continue
-		}
-		if len(items) >= params.Limit {
-			continue
-		}
-		messages := decodeDesktopAIMessages(messagesJSON)
-		tasks := decodeDesktopAITasks(tasksJSON)
 		items = append(items, DesktopAISessionListItem{
 			ID:             id,
 			Model:          model,
 			PermissionMode: DesktopAIPermissionMode(permissionMode),
-			Status:         sessionStatus,
-			Scope:          scope,
-			Title:          desktopAISessionTitle(title, customTitle == 1, messages),
+			Status:         s.activeDesktopAISessionStatus(id, DesktopAISessionStatus(status)),
+			Scope:          decodeDesktopAIScope(scopeJSON),
+			Title:          title,
 			CustomTitle:    customTitle == 1,
-			MessageCount:   len(messages),
-			TaskCount:      len(tasks),
+			MessageCount:   messageCount,
+			TaskCount:      taskCount,
 			CreatedAt:      createdAt,
 			UpdatedAt:      updatedAt,
 		})
@@ -2201,7 +2195,7 @@ func normalizeDesktopAIListParams(params DesktopAIListSessionsParams) DesktopAIL
 		params.Limit = 100
 	}
 	params.Q = strings.TrimSpace(params.Q)
-	params.ScopeKind = strings.TrimSpace(params.ScopeKind)
+	params.ScopeKind = strings.ToLower(strings.TrimSpace(params.ScopeKind))
 	params.TerminalSessionID = strings.TrimSpace(params.TerminalSessionID)
 	params.ServerID = strings.TrimSpace(params.ServerID)
 	if params.ScopeKind == "" && (params.TerminalSessionID != "" || params.ServerID != "") {
@@ -2220,33 +2214,25 @@ func buildDesktopAIWhere(params DesktopAIListSessionsParams) (string, []any) {
 	clauses := []string{"1 = 1"}
 	args := make([]any, 0)
 
+	if params.ScopeKind != "" {
+		clauses = append(clauses, "json_extract(scope_json, '$.kind') = ?")
+		args = append(args, params.ScopeKind)
+	}
+	if params.TerminalSessionID != "" {
+		clauses = append(clauses, "json_extract(scope_json, '$.terminal_session_id') = ?")
+		args = append(args, params.TerminalSessionID)
+	}
+	if params.ServerID != "" {
+		clauses = append(clauses, "json_extract(scope_json, '$.server_id') = ?")
+		args = append(args, params.ServerID)
+	}
+
 	if params.Q != "" {
 		like := "%" + strings.ToLower(params.Q) + "%"
 		clauses = append(clauses, "(LOWER(title) LIKE ? OR LOWER(messages_json) LIKE ?)")
 		args = append(args, like, like)
 	}
 	return strings.Join(clauses, " AND "), args
-}
-
-func desktopAIScopeMatches(scope *DesktopAISessionScope, params DesktopAIListSessionsParams) bool {
-	params = normalizeDesktopAIListParams(params)
-	if params.ScopeKind == "" && params.TerminalSessionID == "" && params.ServerID == "" {
-		return true
-	}
-	scope = normalizeDesktopAISessionScope(scope)
-	if scope == nil {
-		return false
-	}
-	if params.ScopeKind != "" && scope.Kind != params.ScopeKind {
-		return false
-	}
-	if params.TerminalSessionID != "" && scope.TerminalSessionID != params.TerminalSessionID {
-		return false
-	}
-	if params.ServerID != "" && scope.ServerID != params.ServerID {
-		return false
-	}
-	return true
 }
 
 func normalizeDesktopAISessionScope(scope *DesktopAISessionScope) *DesktopAISessionScope {
@@ -2681,21 +2667,6 @@ func parseDesktopAITime(value string) time.Time {
 
 func desktopAISystemPrompt(permission DesktopAIPermissionMode) string {
 	return "You are EasySSH Desktop AI assistant. Help the user manage SSH servers, write scripts, analyze logs, and reason about terminal workflows. Be concise, practical, and ask for confirmation before suggesting destructive commands. Current permission rule: " + aipermission.Rule(string(permission))
-}
-
-func desktopAISessionTitle(title string, custom bool, messages []DesktopAIMessageView) string {
-	if strings.TrimSpace(title) != "" {
-		return strings.TrimSpace(title)
-	}
-	if custom {
-		return "AI session"
-	}
-	for _, message := range messages {
-		if message.Role == "user" && strings.TrimSpace(message.Content) != "" {
-			return makeDesktopAITitle(message.Content)
-		}
-	}
-	return "New session"
 }
 
 func defaultDesktopAISessionTitle(messages []DesktopAIMessageView) string {
