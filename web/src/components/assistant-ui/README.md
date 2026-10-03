@@ -76,6 +76,13 @@ Markdown 使用官方 `@assistant-ui/react-streamdown` 的 `StreamdownTextPrimit
 
 - 回到最新消息按钮移至消息滚动区外，以 Thread 根容器为基准定位在底部中央、外置 Composer 上方；使用官方 `ViewportProvider` 联动滚动命令和是否到达底部的状态。消息内容禁止 flex 收缩，按钮的显示和隐藏不再占用滚动内容高度。工作区、桌面与终端侧栏共用此实现。
 
+## 2026-10-03 依赖更新与验证
+
+- 按 npm `latest` 已发布版本更新：`@assistant-ui/ai-sdk` 0.0.9、`@assistant-ui/core` 0.3.22、`@assistant-ui/react` 0.15.23、`@assistant-ui/react-lexical` 0.2.15、`@assistant-ui/react-streamdown` 0.3.18。
+- 同步 workspace overrides：core 0.3.22、store 0.3.16、tap 0.9.20，保证运行时共享同一套核心依赖；按新版依赖要求更新 AI SDK、Lexical 与 Streamdown，Lexical 及其 React 集成统一为 0.52.0。
+- 保留现有 registry 组件的业务接入点；依赖安装禁用生命周期脚本。
+- 依赖升级与按钮定位修复完成后，Web 的 64 项测试、Web 与桌面前端的生产构建、Thread 文件 ESLint 检查及工作区边界检查均通过。两端构建均提示部分压缩产物超过 500 kB，无编译错误；本次未做浏览器交互验收。
+
 ## 2026-09-07 组件复查
 
 检查范围：完整 AI 工作区、终端 AI 侧栏、消息与工具渲染、输入区、会话历史、AI 配置及上下文组件。官方 Elements 是可复制并修改的源码；本目录记录来源和实际业务调整，不代表所有文件均为上游原样源码。
