@@ -1,7 +1,7 @@
 import fs from "node:fs"
 
-const main = fs.readFileSync("server/cmd/api/main.go", "utf8")
-const spec = fs.readFileSync("shared/openapi.yaml", "utf8")
+const main = fs.readFileSync(new URL("../server/cmd/api/main.go", import.meta.url), "utf8")
+const spec = fs.readFileSync(new URL("../shared/openapi.yaml", import.meta.url), "utf8")
 
 const prefixes = new Map([["v1", ""]])
 const groups = [...main.matchAll(/\b(\w+)\s*:=\s*(\w+)\.Group\("([^"]*)"\)/g)]
@@ -27,7 +27,7 @@ const contractOperations = new Set()
 const operationIds = new Set()
 const duplicateOperationIds = new Set()
 let currentPath
-for (const line of spec.split("\n")) {
+for (const line of spec.split(/\r?\n/)) {
   const pathMatch = line.match(/^  (\/.*):$/)
   if (pathMatch) {
     currentPath = pathMatch[1]
