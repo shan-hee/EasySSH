@@ -121,3 +121,65 @@ func TestServerSearchAndStatisticsIncludeAllPages(t *testing.T) {
 		}
 	}
 }
+
+func TestCreatedServersAppendAfterExistingAndManualOrder(t *testing.T) {
+	repo, db := newServerTestRepository(t)
+	ctx := context.Background()
+	userID := uuid.New()
+	stamp := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	// Existing records can share the default sort order; creation time breaks ties.
+	older := Server{ID: uuid.New(), UserID: userID, Host: "host", Username: "operator", Group: "group", AuthMethod: AuthMethodPassword, CreatedAt: stamp}
+	newer := older
+	newer.ID, newer.CreatedAt = uuid.New(), stamp.Add(time.Hour)
+	for _, row := range []*Server{&newer, &older} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	foreign := Server{UserID: uuid.New(), Host: "foreign", Username: "operator", AuthMethod: AuthMethodPassword, SortOrder: 100}
+	if err := db.Create(&foreign).Error; err != nil {
+		t.Fatal(err)
+	}
+	want := []uuid.UUID{older.ID, newer.ID}
+	assertOrder := func() {
+		t.Helper()
+		queries := map[string]func(int) ([]*Server, int64, error){
+			"list":  func(offset int) ([]*Server, int64, error) { return repo.FindByUserID(ctx, userID, 1, offset) },
+			"group": func(offset int) ([]*Server, int64, error) { return repo.FindByGroup(ctx, userID, "group", 1, offset) },
+			"search": func(offset int) ([]*Server, int64, error) {
+				return repo.Search(ctx, userID, "operator", "group", 1, offset)
+			},
+		}
+		for name, query := range queries {
+			for index, id := range want {
+				rows, total, err := query(index)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if total != int64(len(want)) || len(rows) != 1 || rows[0].ID != id {
+					t.Fatalf("%s page %d: unexpected order or total: %v, %d", name, index, rows, total)
+				}
+			}
+		}
+	}
+	assertOrder()
+	appendServer := func(wantSortOrder int) {
+		t.Helper()
+		row := &Server{UserID: userID, Host: "host", Username: "operator", Group: "group", AuthMethod: AuthMethodPassword}
+		if err := repo.Create(ctx, row); err != nil {
+			t.Fatal(err)
+		}
+		if row.SortOrder != wantSortOrder {
+			t.Fatalf("sort_order=%d, want %d", row.SortOrder, wantSortOrder)
+		}
+		want = append(want, row.ID)
+		assertOrder()
+	}
+	appendServer(1)
+	if err := repo.Reorder(ctx, userID, []uuid.UUID{newer.ID, older.ID}); err != nil {
+		t.Fatal(err)
+	}
+	want[0], want[1] = want[1], want[0]
+	assertOrder()
+	appendServer(3)
+}

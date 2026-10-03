@@ -70,7 +70,13 @@ func NewRepository(db *gorm.DB) Repository {
 }
 
 func (r *gormRepository) Create(ctx context.Context, server *Server) error {
-	return r.db.WithContext(ctx).Create(server).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&Server{}).Where("user_id = ?", server.UserID).
+			Select("COALESCE(MAX(sort_order), -1) + 1").Scan(&server.SortOrder).Error; err != nil {
+			return err
+		}
+		return tx.Create(server).Error
+	})
 }
 
 func (r *gormRepository) FindByID(ctx context.Context, id uuid.UUID) (*Server, error) {
@@ -100,7 +106,7 @@ func (r *gormRepository) FindByUserID(ctx context.Context, userID uuid.UUID, lim
 		Where("user_id = ?", userID).
 		Limit(limit).
 		Offset(offset).
-		Order("sort_order ASC, created_at DESC, id ASC").
+		Order("sort_order ASC, created_at ASC, id ASC").
 		Find(&servers).Error; err != nil {
 		return nil, 0, err
 	}
@@ -211,7 +217,7 @@ func (r *gormRepository) List(ctx context.Context, limit, offset int) ([]*Server
 	if err := r.db.WithContext(ctx).
 		Limit(limit).
 		Offset(offset).
-		Order("sort_order ASC, created_at DESC, id ASC").
+		Order("sort_order ASC, created_at ASC, id ASC").
 		Find(&servers).Error; err != nil {
 		return nil, 0, err
 	}
@@ -240,7 +246,7 @@ func (r *gormRepository) Search(ctx context.Context, userID uuid.UUID, query, gr
 	if err := queryBuilder.
 		Limit(limit).
 		Offset(offset).
-		Order("sort_order ASC, created_at DESC, id ASC").
+		Order("sort_order ASC, created_at ASC, id ASC").
 		Find(&servers).Error; err != nil {
 		return nil, 0, err
 	}
@@ -264,7 +270,7 @@ func (r *gormRepository) FindByGroup(ctx context.Context, userID uuid.UUID, grou
 	if err := queryBuilder.
 		Limit(limit).
 		Offset(offset).
-		Order("sort_order ASC, created_at DESC, id ASC").
+		Order("sort_order ASC, created_at ASC, id ASC").
 		Find(&servers).Error; err != nil {
 		return nil, 0, err
 	}
@@ -295,7 +301,7 @@ func (r *gormRepository) Reorder(ctx context.Context, userID uuid.UUID, serverID
 		}
 		var orderedIDs []uuid.UUID
 		if err := tx.Model(&Server{}).Where("user_id = ?", userID).
-			Order("sort_order ASC, created_at DESC, id ASC").Pluck("id", &orderedIDs).Error; err != nil {
+			Order("sort_order ASC, created_at ASC, id ASC").Pluck("id", &orderedIDs).Error; err != nil {
 			return err
 		}
 		var slots []int
