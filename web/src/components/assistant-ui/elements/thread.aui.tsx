@@ -136,65 +136,67 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
   return (
     <ThreadOptionsContext.Provider value={options}>
       <ThreadComponentsContext.Provider value={components}>
-        <ThreadPrimitive.Root
-          className={cn(
-            "aui-root aui-thread-root relative flex min-h-0 min-w-0 flex-1 flex-col",
-            compact && "text-xs",
-            className
-          )}
-          style={
-            {
-              "--composer-bg": "var(--color-card)",
-              "--composer-radius": "calc(var(--radius) + 12px)",
-              "--composer-padding": "8px"
-            } as React.CSSProperties
-          }
-        >
-          <ThreadPrimitive.Viewport
-            autoScroll
-            className="scrollbar-custom relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
+        <ThreadPrimitive.ViewportProvider>
+          <ThreadPrimitive.Root
+            className={cn(
+              "aui-root aui-thread-root relative flex min-h-0 min-w-0 flex-1 flex-col",
+              compact && "text-xs",
+              className
+            )}
+            style={
+              {
+                "--composer-bg": "var(--color-card)",
+                "--composer-radius": "calc(var(--radius) + 12px)",
+                "--composer-padding": "8px"
+              } as React.CSSProperties
+            }
           >
-            <div
-              role="log"
-              aria-label={t("panelAriaHistoryLabel")}
-              className={cn(
-                "mx-auto flex min-h-full w-full flex-col gap-6 px-4 py-4",
-                contentClassName
-              )}
+            <ThreadPrimitive.Viewport
+              autoScroll
+              className="scrollbar-custom relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
             >
-              {hidden > 0 && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="mx-auto"
-                  onClick={() => setVisibleCount((n) => n + MESSAGE_BATCH)}
-                >
-                  {t("loadEarlierMessages", { count: hidden })}
-                </Button>
-              )}
-              {count === 0 && !loadingText && <Welcome />}
-              {pairs.map((pair, index) => (
-                <MessagePair key={pair.id}>
-                  {pair.indices.map((messageIndex) => (
-                    <ThreadPrimitive.MessageByIndex
-                      key={messages[messageIndex]!.id}
-                      index={messageIndex}
-                      components={{ Message: ThreadMessage, EditComposer: ThreadMessage }}
-                    />
-                  ))}
-                  {index === pairs.length - 1 && loadingText && !hasRunningAssistant && (
-                    <ThinkingIndicator label={loadingText} className="px-2 py-1" />
-                  )}
-                </MessagePair>
-              ))}
-              {pairs.length === 0 && loadingText && (
-                <ThinkingIndicator label={loadingText} className="px-2 py-1" />
-              )}
-            </div>
+              <div
+                role="log"
+                aria-label={t("panelAriaHistoryLabel")}
+                className={cn(
+                  "mx-auto flex min-h-full w-full shrink-0 flex-col gap-6 px-4 py-4",
+                  contentClassName
+                )}
+              >
+                {hidden > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="mx-auto"
+                    onClick={() => setVisibleCount((n) => n + MESSAGE_BATCH)}
+                  >
+                    {t("loadEarlierMessages", { count: hidden })}
+                  </Button>
+                )}
+                {count === 0 && !loadingText && <Welcome />}
+                {pairs.map((pair, index) => (
+                  <MessagePair key={pair.id}>
+                    {pair.indices.map((messageIndex) => (
+                      <ThreadPrimitive.MessageByIndex
+                        key={messages[messageIndex]!.id}
+                        index={messageIndex}
+                        components={{ Message: ThreadMessage, EditComposer: ThreadMessage }}
+                      />
+                    ))}
+                    {index === pairs.length - 1 && loadingText && !hasRunningAssistant && (
+                      <ThinkingIndicator label={loadingText} className="px-2 py-1" />
+                    )}
+                  </MessagePair>
+                ))}
+                {pairs.length === 0 && loadingText && (
+                  <ThinkingIndicator label={loadingText} className="px-2 py-1" />
+                )}
+              </div>
+            </ThreadPrimitive.Viewport>
             <ThreadScrollToBottom />
-          </ThreadPrimitive.Viewport>
-        </ThreadPrimitive.Root>
+          </ThreadPrimitive.Root>
+        </ThreadPrimitive.ViewportProvider>
       </ThreadComponentsContext.Provider>
     </ThreadOptionsContext.Provider>
   )
@@ -220,7 +222,7 @@ const ThreadScrollToBottom: FC = () => {
       <TooltipIconButton
         tooltip={t("scrollToBottom")}
         variant="outline"
-        className="aui-thread-scroll-to-bottom dark:border-border dark:bg-background dark:hover:bg-accent terminal-ai-glass-control sticky bottom-3 z-10 self-center rounded-full p-4 disabled:hidden"
+        className="aui-thread-scroll-to-bottom dark:border-border dark:bg-background dark:hover:bg-accent terminal-ai-glass-control absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full p-4 disabled:hidden"
       >
         <ArrowDownIcon />
       </TooltipIconButton>
