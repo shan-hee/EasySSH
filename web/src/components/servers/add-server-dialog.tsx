@@ -23,7 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { X } from "lucide-react"
-import { PrivateKeyInput } from "@/components/servers/private-key-input"
+import { SSHKeySelector } from "@/components/servers/ssh-key-selector"
+import type { SSHKeyApi } from "@/lib/api/ssh-keys"
 import { useTranslation } from "react-i18next"
 import { toast } from "@/components/ui/sonner"
 import { ServerTagCombobox } from "@/components/servers/server-tag-combobox"
@@ -41,6 +42,7 @@ interface AddServerDialogProps {
   initialData?: Partial<ServerFormData>
   title?: string
   description?: string
+  keyApi: SSHKeyApi
   availableGroups?: string[]
   availableTags?: string[]
 }
@@ -52,7 +54,7 @@ export interface ServerFormData {
   username: string
   authMethod: AuthMethod
   password: string
-  privateKey: string
+  sshKeyId: number
   rememberPassword: boolean
   tags: string[]
   description: string
@@ -69,7 +71,7 @@ const getEmptyFormData = (): ServerFormData => ({
   username: "",
   authMethod: "password",
   password: "",
-  privateKey: "",
+  sshKeyId: 0,
   rememberPassword: false,
   tags: [],
   description: "",
@@ -92,12 +94,14 @@ export function AddServerDialog({
   initialData,
   title,
   description,
+  keyApi,
   availableGroups = [],
   availableTags = [],
 }: AddServerDialogProps) {
   // 认证方式切换改为使用 shadcn Tabs，统一以 formData.authMethod 为单一数据源
   const [formData, setFormData] = useState<ServerFormData>(() => getInitialFormData(initialData))
 
+  const [keyImportPending, setKeyImportPending] = useState(false)
   const [newTag, setNewTag] = useState("")
   const { t: tServers } = useTranslation("servers")
 
@@ -107,7 +111,7 @@ export function AddServerDialog({
     setNewTag("")
   }, [initialData, open])
 
-  const handleInputChange = (field: keyof ServerFormData, value: string | boolean) => {
+  const handleInputChange = (field: keyof ServerFormData, value: string | boolean | number) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -159,6 +163,7 @@ export function AddServerDialog({
       ...formData,
       jumpServer: formData.jumpServer === "none" ? "" : formData.jumpServer,
     }
+    if (keyImportPending) return
     onSubmit?.(normalized)
     resetForm()
     onOpenChange(false)
@@ -337,6 +342,7 @@ export function AddServerDialog({
                       </SelectContent>
                     </Select>
 
+                    {requiresPassword(formData.authMethod) && (
                     <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5">
                       <Checkbox
                         id="remember"
@@ -358,6 +364,7 @@ export function AddServerDialog({
                         </p>
                       </div>
                     </div>
+                    )}
 
                     {requiresPassword(formData.authMethod) && (
                       <div className="space-y-1.5">
@@ -375,13 +382,7 @@ export function AddServerDialog({
                     )}
 
                     {requiresPrivateKey(formData.authMethod) && (
-                      <PrivateKeyInput
-                        id="privateKey"
-                        label={tServers("quickFormPrivateKeyLabel")}
-                        value={formData.privateKey}
-                        onChange={(v) => handleInputChange("privateKey", v)}
-                        placeholder={tServers("quickFormPrivateKeyPlaceholder")}
-                      />
+                      <SSHKeySelector onPendingChange={setKeyImportPending} api={keyApi} value={formData.sshKeyId} onChange={id => handleInputChange("sshKeyId", id)} />
                     )}
                   </div>
               </div>
@@ -457,7 +458,7 @@ export function AddServerDialog({
             <Button type="button" variant="outline" onClick={handleCancel}>
               {tServers("quickFormCancelButton")}
             </Button>
-            <Button type="submit">
+            <Button type="submit" disabled={keyImportPending}>
               {tServers("quickFormSaveButton")}
             </Button>
           </div>

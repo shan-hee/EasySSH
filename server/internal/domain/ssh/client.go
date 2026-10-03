@@ -146,9 +146,12 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 			authMethods = append(authMethods, ssh.Password(password))
 		case server.AuthFactorKey:
 			privateKey := options.privateKey
-			if privateKey == "" {
+			if privateKey == "" && srv.SSHKeyID != nil {
+				if srv.SSHKey == nil || srv.SSHKey.ID != *srv.SSHKeyID || srv.SSHKey.UserID != srv.UserID {
+					return nil, errors.New("saved SSH key is unavailable")
+				}
 				var err error
-				privateKey, err = encryptor.DecryptWithAAD(srv.PrivateKey, srv.CredentialAAD("private_key"))
+				privateKey, err = encryptor.DecryptWithAAD(srv.SSHKey.PrivateKey, srv.SSHKey.PrivateKeyAAD())
 				if err != nil {
 					return nil, fmt.Errorf("failed to decrypt private key: %w", err)
 				}

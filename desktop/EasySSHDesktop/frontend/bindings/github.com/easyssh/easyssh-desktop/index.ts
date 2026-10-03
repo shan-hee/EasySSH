@@ -117,6 +117,8 @@ export {
     DesktopSFTPUploadTaskStatus,
     DesktopSFTPWriteFileInput,
     DesktopSSHCredential,
+    DesktopSSHKey,
+    DesktopSSHKeyImport,
     DesktopSaveUserAIConfigRequest,
     DesktopScript,
     DesktopScriptInput,

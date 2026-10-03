@@ -225,18 +225,22 @@ export class DesktopAIMessageView {
      * Creates a new DesktopAIMessageView instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopAIMessageView {
-        const $$createField4_0 = $$createType7;
+        const $$createField0_0 = $$createType7;
         const $$createField5_0 = $$createType9;
         const $$createField6_0 = $$createType11;
+        const $$createField7_0 = $$createType13;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("server_references" in $$parsedSource) {
+            $$parsedSource["server_references"] = $$createField0_0($$parsedSource["server_references"]);
+        }
         if ("attachments" in $$parsedSource) {
-            $$parsedSource["attachments"] = $$createField4_0($$parsedSource["attachments"]);
+            $$parsedSource["attachments"] = $$createField5_0($$parsedSource["attachments"]);
         }
         if ("usage" in $$parsedSource) {
-            $$parsedSource["usage"] = $$createField5_0($$parsedSource["usage"]);
+            $$parsedSource["usage"] = $$createField6_0($$parsedSource["usage"]);
         }
         if ("provider_metadata" in $$parsedSource) {
-            $$parsedSource["provider_metadata"] = $$createField6_0($$parsedSource["provider_metadata"]);
+            $$parsedSource["provider_metadata"] = $$createField7_0($$parsedSource["provider_metadata"]);
         }
         return new DesktopAIMessageView($$parsedSource as Partial<DesktopAIMessageView>);
     }
@@ -398,14 +402,18 @@ export class DesktopAISendMessageInput {
      * Creates a new DesktopAISendMessageInput instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopAISendMessageInput {
-        const $$createField5_0 = $$createType2;
-        const $$createField6_0 = $$createType7;
+        const $$createField0_0 = $$createType7;
+        const $$createField6_0 = $$createType2;
+        const $$createField7_0 = $$createType9;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("server_references" in $$parsedSource) {
+            $$parsedSource["server_references"] = $$createField0_0($$parsedSource["server_references"]);
+        }
         if ("scope" in $$parsedSource) {
-            $$parsedSource["scope"] = $$createField5_0($$parsedSource["scope"]);
+            $$parsedSource["scope"] = $$createField6_0($$parsedSource["scope"]);
         }
         if ("attachments" in $$parsedSource) {
-            $$parsedSource["attachments"] = $$createField6_0($$parsedSource["attachments"]);
+            $$parsedSource["attachments"] = $$createField7_0($$parsedSource["attachments"]);
         }
         return new DesktopAISendMessageInput($$parsedSource as Partial<DesktopAISendMessageInput>);
     }
@@ -567,10 +575,10 @@ export class DesktopAISessionView {
      */
     static createFrom($$source: any = {}): DesktopAISessionView {
         const $$createField3_0 = $$createType2;
-        const $$createField7_0 = $$createType13;
-        const $$createField8_0 = $$createType15;
-        const $$createField9_0 = $$createType17;
-        const $$createField10_0 = $$createType19;
+        const $$createField7_0 = $$createType15;
+        const $$createField8_0 = $$createType17;
+        const $$createField9_0 = $$createType19;
+        const $$createField10_0 = $$createType21;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("scope" in $$parsedSource) {
             $$parsedSource["scope"] = $$createField3_0($$parsedSource["scope"]);
@@ -656,7 +664,7 @@ export class DesktopAITaskView {
      * Creates a new DesktopAITaskView instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopAITaskView {
-        const $$createField9_0 = $$createType20;
+        const $$createField9_0 = $$createType22;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("arguments" in $$parsedSource) {
             $$parsedSource["arguments"] = $$createField9_0($$parsedSource["arguments"]);
@@ -750,7 +758,11 @@ export class DesktopAIUpdateMessageInput {
      * Creates a new DesktopAIUpdateMessageInput instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopAIUpdateMessageInput {
+        const $$createField0_0 = $$createType7;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("server_references" in $$parsedSource) {
+            $$parsedSource["server_references"] = $$createField0_0($$parsedSource["server_references"]);
+        }
         return new DesktopAIUpdateMessageInput($$parsedSource as Partial<DesktopAIUpdateMessageInput>);
     }
 }
@@ -883,7 +895,7 @@ export class DesktopActivityLogListResult {
      * Creates a new DesktopActivityLogListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopActivityLogListResult {
-        const $$createField0_0 = $$createType22;
+        const $$createField0_0 = $$createType24;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("items" in $$parsedSource) {
             $$parsedSource["items"] = $$createField0_0($$parsedSource["items"]);
@@ -952,7 +964,7 @@ export class DesktopActivityLogStatistics {
      * Creates a new DesktopActivityLogStatistics instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopActivityLogStatistics {
-        const $$createField3_0 = $$createType23;
+        const $$createField3_0 = $$createType25;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("byAction" in $$parsedSource) {
             $$parsedSource["byAction"] = $$createField3_0($$parsedSource["byAction"]);
@@ -1274,7 +1286,7 @@ export class DesktopBatchTaskListResult {
      * Creates a new DesktopBatchTaskListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopBatchTaskListResult {
-        const $$createField0_0 = $$createType25;
+        const $$createField0_0 = $$createType27;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -1417,7 +1429,7 @@ export class DesktopDockerContainersResult {
      * Creates a new DesktopDockerContainersResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopDockerContainersResult {
-        const $$createField0_0 = $$createType27;
+        const $$createField0_0 = $$createType29;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -1483,7 +1495,7 @@ export class DesktopDockerImagesResult {
      * Creates a new DesktopDockerImagesResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopDockerImagesResult {
-        const $$createField0_0 = $$createType29;
+        const $$createField0_0 = $$createType31;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -1577,8 +1589,8 @@ export class DesktopDockerResourcesResult {
      * Creates a new DesktopDockerResourcesResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopDockerResourcesResult {
-        const $$createField0_0 = $$createType31;
-        const $$createField1_0 = $$createType33;
+        const $$createField0_0 = $$createType33;
+        const $$createField1_0 = $$createType35;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("stats" in $$parsedSource) {
             $$parsedSource["stats"] = $$createField0_0($$parsedSource["stats"]);
@@ -1862,12 +1874,12 @@ export class DesktopMonitorSnapshot {
      * Creates a new DesktopMonitorSnapshot instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopMonitorSnapshot {
-        const $$createField0_0 = $$createType34;
-        const $$createField1_0 = $$createType35;
-        const $$createField2_0 = $$createType36;
-        const $$createField3_0 = $$createType37;
-        const $$createField4_0 = $$createType39;
-        const $$createField5_0 = $$createType40;
+        const $$createField0_0 = $$createType36;
+        const $$createField1_0 = $$createType37;
+        const $$createField2_0 = $$createType38;
+        const $$createField3_0 = $$createType39;
+        const $$createField4_0 = $$createType41;
+        const $$createField5_0 = $$createType42;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("systemInfo" in $$parsedSource) {
             $$parsedSource["systemInfo"] = $$createField0_0($$parsedSource["systemInfo"]);
@@ -2001,7 +2013,7 @@ export class DesktopNotificationList {
      * Creates a new DesktopNotificationList instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopNotificationList {
-        const $$createField0_0 = $$createType42;
+        const $$createField0_0 = $$createType44;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("notifications" in $$parsedSource) {
             $$parsedSource["notifications"] = $$createField0_0($$parsedSource["notifications"]);
@@ -2052,8 +2064,8 @@ export class DesktopRuntimeInfo {
      * Creates a new DesktopRuntimeInfo instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopRuntimeInfo {
-        const $$createField5_0 = $$createType43;
-        const $$createField6_0 = $$createType44;
+        const $$createField5_0 = $$createType45;
+        const $$createField6_0 = $$createType46;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("gateway" in $$parsedSource) {
             $$parsedSource["gateway"] = $$createField5_0($$parsedSource["gateway"]);
@@ -2151,7 +2163,7 @@ export class DesktopSFTPBatchDeleteResult {
      */
     static createFrom($$source: any = {}): DesktopSFTPBatchDeleteResult {
         const $$createField0_0 = $$createType0;
-        const $$createField1_0 = $$createType46;
+        const $$createField1_0 = $$createType48;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("success" in $$parsedSource) {
             $$parsedSource["success"] = $$createField0_0($$parsedSource["success"]);
@@ -2322,8 +2334,8 @@ export class DesktopSFTPDirectTransferInput {
      * Creates a new DesktopSFTPDirectTransferInput instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPDirectTransferInput {
-        const $$createField5_0 = $$createType48;
-        const $$createField6_0 = $$createType48;
+        const $$createField5_0 = $$createType50;
+        const $$createField6_0 = $$createType50;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("sourceCredential" in $$parsedSource) {
             $$parsedSource["sourceCredential"] = $$createField5_0($$parsedSource["sourceCredential"]);
@@ -2389,7 +2401,7 @@ export class DesktopSFTPDirectoryListResult {
      * Creates a new DesktopSFTPDirectoryListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPDirectoryListResult {
-        const $$createField1_0 = $$createType50;
+        const $$createField1_0 = $$createType52;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("files" in $$parsedSource) {
             $$parsedSource["files"] = $$createField1_0($$parsedSource["files"]);
@@ -2616,7 +2628,7 @@ export class DesktopSFTPUploadTaskListResult {
      * Creates a new DesktopSFTPUploadTaskListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopSFTPUploadTaskListResult {
-        const $$createField0_0 = $$createType52;
+        const $$createField0_0 = $$createType54;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tasks" in $$parsedSource) {
             $$parsedSource["tasks"] = $$createField0_0($$parsedSource["tasks"]);
@@ -2744,6 +2756,88 @@ export class DesktopSSHCredential {
     static createFrom($$source: any = {}): DesktopSSHCredential {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new DesktopSSHCredential($$parsedSource as Partial<DesktopSSHCredential>);
+    }
+}
+
+export class DesktopSSHKey {
+    "id": number;
+    "user_id": string;
+    "name": string;
+    "public_key": string;
+    "fingerprint": string;
+    "algorithm": string;
+    "key_size": number;
+    "passphrase_required": boolean;
+    "created_at": string;
+
+    /** Creates a new DesktopSSHKey instance. */
+    constructor($$source: Partial<DesktopSSHKey> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = 0;
+        }
+        if (!("user_id" in $$source)) {
+            this["user_id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("public_key" in $$source)) {
+            this["public_key"] = "";
+        }
+        if (!("fingerprint" in $$source)) {
+            this["fingerprint"] = "";
+        }
+        if (!("algorithm" in $$source)) {
+            this["algorithm"] = "";
+        }
+        if (!("key_size" in $$source)) {
+            this["key_size"] = 0;
+        }
+        if (!("passphrase_required" in $$source)) {
+            this["passphrase_required"] = false;
+        }
+        if (!("created_at" in $$source)) {
+            this["created_at"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSSHKey instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSSHKey {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSSHKey($$parsedSource as Partial<DesktopSSHKey>);
+    }
+}
+
+export class DesktopSSHKeyImport {
+    "name": string;
+    "private_key": string;
+    "passphrase": string;
+
+    /** Creates a new DesktopSSHKeyImport instance. */
+    constructor($$source: Partial<DesktopSSHKeyImport> = {}) {
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("private_key" in $$source)) {
+            this["private_key"] = "";
+        }
+        if (!("passphrase" in $$source)) {
+            this["passphrase"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSSHKeyImport instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSSHKeyImport {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSSHKeyImport($$parsedSource as Partial<DesktopSSHKeyImport>);
     }
 }
 
@@ -2943,7 +3037,7 @@ export class DesktopScriptListResult {
      * Creates a new DesktopScriptListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopScriptListResult {
-        const $$createField0_0 = $$createType54;
+        const $$createField0_0 = $$createType56;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -2960,8 +3054,7 @@ export class DesktopServer {
     "port": number;
     "username": string;
     "auth_method": DesktopServerAuthMethod;
-    "password"?: string;
-    "private_key"?: string;
+    "ssh_key_id": number | null;
     "has_password": boolean;
     "has_private_key": boolean;
     "group"?: string;
@@ -2993,6 +3086,9 @@ export class DesktopServer {
         if (!("auth_method" in $$source)) {
             this["auth_method"] = DesktopServerAuthMethod.$zero;
         }
+        if (!("ssh_key_id" in $$source)) {
+            this["ssh_key_id"] = null;
+        }
         if (!("has_password" in $$source)) {
             this["has_password"] = false;
         }
@@ -3016,10 +3112,10 @@ export class DesktopServer {
      * Creates a new DesktopServer instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopServer {
-        const $$createField12_0 = $$createType0;
+        const $$createField11_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField12_0($$parsedSource["tags"]);
+            $$parsedSource["tags"] = $$createField11_0($$parsedSource["tags"]);
         }
         return new DesktopServer($$parsedSource as Partial<DesktopServer>);
     }
@@ -3124,6 +3220,8 @@ export class DesktopServerInput {
     "private_key"?: string;
     "password_set"?: boolean;
     "private_key_set"?: boolean;
+    "ssh_key_id": number | null;
+    "private_key_passphrase"?: string;
     "group"?: string;
     "tags"?: string[];
     "description"?: string;
@@ -3142,6 +3240,9 @@ export class DesktopServerInput {
         if (!("auth_method" in $$source)) {
             this["auth_method"] = DesktopServerAuthMethod.$zero;
         }
+        if (!("ssh_key_id" in $$source)) {
+            this["ssh_key_id"] = null;
+        }
 
         Object.assign(this, $$source);
     }
@@ -3150,10 +3251,10 @@ export class DesktopServerInput {
      * Creates a new DesktopServerInput instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopServerInput {
-        const $$createField10_0 = $$createType0;
+        const $$createField12_0 = $$createType0;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("tags" in $$parsedSource) {
-            $$parsedSource["tags"] = $$createField10_0($$parsedSource["tags"]);
+            $$parsedSource["tags"] = $$createField12_0($$parsedSource["tags"]);
         }
         return new DesktopServerInput($$parsedSource as Partial<DesktopServerInput>);
     }
@@ -3208,7 +3309,7 @@ export class DesktopServerListResult {
      * Creates a new DesktopServerListResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopServerListResult {
-        const $$createField0_0 = $$createType56;
+        const $$createField0_0 = $$createType58;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("data" in $$parsedSource) {
             $$parsedSource["data"] = $$createField0_0($$parsedSource["data"]);
@@ -3280,8 +3381,8 @@ export class DesktopTaskDetails {
      * Creates a new DesktopTaskDetails instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopTaskDetails {
-        const $$createField0_0 = $$createType57;
-        const $$createField1_0 = $$createType59;
+        const $$createField0_0 = $$createType59;
+        const $$createField1_0 = $$createType61;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("run" in $$parsedSource) {
             $$parsedSource["run"] = $$createField0_0($$parsedSource["run"]);
@@ -3518,7 +3619,7 @@ export class DesktopTaskRunList {
      * Creates a new DesktopTaskRunList instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopTaskRunList {
-        const $$createField0_0 = $$createType60;
+        const $$createField0_0 = $$createType62;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("runs" in $$parsedSource) {
             $$parsedSource["runs"] = $$createField0_0($$parsedSource["runs"]);
@@ -3853,7 +3954,7 @@ export class DesktopUpdateCheckResult {
      * Creates a new DesktopUpdateCheckResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopUpdateCheckResult {
-        const $$createField7_0 = $$createType62;
+        const $$createField7_0 = $$createType64;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("artifact" in $$parsedSource) {
             $$parsedSource["artifact"] = $$createField7_0($$parsedSource["artifact"]);
@@ -3968,60 +4069,62 @@ const $$createType2 = $Create.Nullable($$createType1);
 const $$createType3 = DesktopAISessionView.createFrom;
 const $$createType4 = DesktopAISessionListItem.createFrom;
 const $$createType5 = $Create.Array($$createType4);
-const $$createType6 = DesktopAIImageAttachment.createFrom;
+const $$createType6 = aichatui$0.ServerReference.createFrom;
 const $$createType7 = $Create.Array($$createType6);
-const $$createType8 = DesktopAIUsage.createFrom;
-const $$createType9 = $Create.Nullable($$createType8);
-const $$createType10 = DesktopAIProviderMetadata.createFrom;
+const $$createType8 = DesktopAIImageAttachment.createFrom;
+const $$createType9 = $Create.Array($$createType8);
+const $$createType10 = DesktopAIUsage.createFrom;
 const $$createType11 = $Create.Nullable($$createType10);
-const $$createType12 = DesktopAIMessageView.createFrom;
-const $$createType13 = $Create.Array($$createType12);
-const $$createType14 = DesktopAITaskView.createFrom;
+const $$createType12 = DesktopAIProviderMetadata.createFrom;
+const $$createType13 = $Create.Nullable($$createType12);
+const $$createType14 = DesktopAIMessageView.createFrom;
 const $$createType15 = $Create.Array($$createType14);
-const $$createType16 = aichatui$0.UIMessage.createFrom;
+const $$createType16 = DesktopAITaskView.createFrom;
 const $$createType17 = $Create.Array($$createType16);
-const $$createType18 = DesktopAIToolView.createFrom;
+const $$createType18 = aichatui$0.UIMessage.createFrom;
 const $$createType19 = $Create.Array($$createType18);
-const $$createType20 = $Create.Map($Create.Any, $Create.Any);
-const $$createType21 = DesktopActivityLogItem.createFrom;
-const $$createType22 = $Create.Array($$createType21);
-const $$createType23 = $Create.Map($Create.Any, $Create.Any);
-const $$createType24 = DesktopBatchTask.createFrom;
-const $$createType25 = $Create.Array($$createType24);
-const $$createType26 = dockerutil$0.Container.createFrom;
+const $$createType20 = DesktopAIToolView.createFrom;
+const $$createType21 = $Create.Array($$createType20);
+const $$createType22 = $Create.Map($Create.Any, $Create.Any);
+const $$createType23 = DesktopActivityLogItem.createFrom;
+const $$createType24 = $Create.Array($$createType23);
+const $$createType25 = $Create.Map($Create.Any, $Create.Any);
+const $$createType26 = DesktopBatchTask.createFrom;
 const $$createType27 = $Create.Array($$createType26);
-const $$createType28 = dockerutil$0.Image.createFrom;
+const $$createType28 = dockerutil$0.Container.createFrom;
 const $$createType29 = $Create.Array($$createType28);
-const $$createType30 = dockerutil$0.ContainerStats.createFrom;
+const $$createType30 = dockerutil$0.Image.createFrom;
 const $$createType31 = $Create.Array($$createType30);
-const $$createType32 = dockerutil$0.SystemInfo.createFrom;
-const $$createType33 = $Create.Nullable($$createType32);
-const $$createType34 = DesktopMonitorSystemInfo.createFrom;
-const $$createType35 = DesktopMonitorCPUInfo.createFrom;
-const $$createType36 = DesktopMonitorMemoryInfo.createFrom;
-const $$createType37 = DesktopMonitorNetworkInfo.createFrom;
-const $$createType38 = DesktopMonitorDiskInfo.createFrom;
-const $$createType39 = $Create.Array($$createType38);
-const $$createType40 = DesktopMonitorDockerInfo.createFrom;
-const $$createType41 = DesktopNotification.createFrom;
-const $$createType42 = $Create.Array($$createType41);
-const $$createType43 = DesktopGatewayInfo.createFrom;
-const $$createType44 = $Create.Map($Create.Any, $Create.Any);
-const $$createType45 = DesktopSFTPBatchOperationError.createFrom;
-const $$createType46 = $Create.Array($$createType45);
-const $$createType47 = DesktopSSHCredential.createFrom;
-const $$createType48 = $Create.Nullable($$createType47);
-const $$createType49 = DesktopSFTPFileInfo.createFrom;
-const $$createType50 = $Create.Array($$createType49);
-const $$createType51 = DesktopSFTPUploadTaskStatus.createFrom;
+const $$createType32 = dockerutil$0.ContainerStats.createFrom;
+const $$createType33 = $Create.Array($$createType32);
+const $$createType34 = dockerutil$0.SystemInfo.createFrom;
+const $$createType35 = $Create.Nullable($$createType34);
+const $$createType36 = DesktopMonitorSystemInfo.createFrom;
+const $$createType37 = DesktopMonitorCPUInfo.createFrom;
+const $$createType38 = DesktopMonitorMemoryInfo.createFrom;
+const $$createType39 = DesktopMonitorNetworkInfo.createFrom;
+const $$createType40 = DesktopMonitorDiskInfo.createFrom;
+const $$createType41 = $Create.Array($$createType40);
+const $$createType42 = DesktopMonitorDockerInfo.createFrom;
+const $$createType43 = DesktopNotification.createFrom;
+const $$createType44 = $Create.Array($$createType43);
+const $$createType45 = DesktopGatewayInfo.createFrom;
+const $$createType46 = $Create.Map($Create.Any, $Create.Any);
+const $$createType47 = DesktopSFTPBatchOperationError.createFrom;
+const $$createType48 = $Create.Array($$createType47);
+const $$createType49 = DesktopSSHCredential.createFrom;
+const $$createType50 = $Create.Nullable($$createType49);
+const $$createType51 = DesktopSFTPFileInfo.createFrom;
 const $$createType52 = $Create.Array($$createType51);
-const $$createType53 = DesktopScript.createFrom;
+const $$createType53 = DesktopSFTPUploadTaskStatus.createFrom;
 const $$createType54 = $Create.Array($$createType53);
-const $$createType55 = DesktopServer.createFrom;
+const $$createType55 = DesktopScript.createFrom;
 const $$createType56 = $Create.Array($$createType55);
-const $$createType57 = DesktopTaskRun.createFrom;
-const $$createType58 = DesktopTaskEvent.createFrom;
-const $$createType59 = $Create.Array($$createType58);
-const $$createType60 = $Create.Array($$createType57);
-const $$createType61 = DesktopUpdateAsset.createFrom;
-const $$createType62 = $Create.Nullable($$createType61);
+const $$createType57 = DesktopServer.createFrom;
+const $$createType58 = $Create.Array($$createType57);
+const $$createType59 = DesktopTaskRun.createFrom;
+const $$createType60 = DesktopTaskEvent.createFrom;
+const $$createType61 = $Create.Array($$createType60);
+const $$createType62 = $Create.Array($$createType59);
+const $$createType63 = DesktopUpdateAsset.createFrom;
+const $$createType64 = $Create.Nullable($$createType63);

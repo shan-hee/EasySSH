@@ -19,6 +19,10 @@ export function Delete(id: string): $CancellablePromise<void> {
     return $Call.ByID(203420633, id);
 }
 
+export function DeleteSSHKey(id: number): $CancellablePromise<void> {
+    return $Call.ByID(4022397028, id);
+}
+
 export function ExecuteCommand(input: $models.DesktopServerCommandInput): $CancellablePromise<$models.DesktopServerCommandResult> {
     return $Call.ByID(3329992570, input).then(($result: any) => {
         return $$createType1($result);
@@ -37,9 +41,30 @@ export function GetById(id: string): $CancellablePromise<$models.DesktopServer> 
     });
 }
 
+/**
+ * GetStatistics returns filter metadata without loading connection credentials.
+ */
+export function GetStatistics(): $CancellablePromise<{ [_ in string]?: any }> {
+    return $Call.ByID(4179477533).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+export function ImportSSHKey(input: $models.DesktopSSHKeyImport): $CancellablePromise<$models.DesktopSSHKey> {
+    return $Call.ByID(2541512058, input).then(($result: any) => {
+        return $$createType3($result);
+    });
+}
+
 export function List(params: $models.DesktopServerListParams): $CancellablePromise<$models.DesktopServerListResult> {
     return $Call.ByID(2124418906, params).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType4($result);
+    });
+}
+
+export function ListSSHKeys(): $CancellablePromise<$models.DesktopSSHKey[]> {
+    return $Call.ByID(681221252).then(($result: any) => {
+        return $$createType5($result);
     });
 }
 
@@ -62,4 +87,7 @@ export function Update(id: string, input: $models.DesktopServerInput): $Cancella
 // Private type creation functions
 const $$createType0 = $models.DesktopServer.createFrom;
 const $$createType1 = $models.DesktopServerCommandResult.createFrom;
-const $$createType2 = $models.DesktopServerListResult.createFrom;
+const $$createType2 = $Create.Map($Create.Any, $Create.Any);
+const $$createType3 = $models.DesktopSSHKey.createFrom;
+const $$createType4 = $models.DesktopServerListResult.createFrom;
+const $$createType5 = $Create.Array($$createType3);

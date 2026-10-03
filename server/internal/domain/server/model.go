@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/easyssh/server/internal/domain/sshkey"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -44,22 +45,23 @@ const (
 
 // Server 服务器模型
 type Server struct {
-	ID            uuid.UUID    `gorm:"type:char(36);primary_key" json:"id"`
-	UserID        uuid.UUID    `gorm:"type:char(36);not null;index" json:"user_id"`
-	Name          string       `gorm:"size:100" json:"name"`
-	Host          string       `gorm:"not null;size:255" json:"host"`
-	Port          int          `gorm:"default:22" json:"port"`
-	Username      string       `gorm:"not null;size:50" json:"username"`
-	AuthMethod    AuthMethod   `gorm:"type:varchar(64);not null" json:"auth_method"`
-	Password      string       `gorm:"type:text" json:"-"` // 加密存储，不在 JSON 中返回
-	PrivateKey    string       `gorm:"type:text" json:"-"` // 加密存储，不在 JSON 中返回
-	Group         string       `gorm:"column:server_group;size:50" json:"group"`
-	Tags          []string     `gorm:"type:text;serializer:json" json:"tags"`
-	Status        ServerStatus `gorm:"type:varchar(20);default:'offline'" json:"status"`
-	LastConnected *time.Time   `json:"last_connected,omitempty"`
-	Description   string       `gorm:"type:text" json:"description"`
-	OS            string       `gorm:"size:100" json:"os,omitempty"`
-	SortOrder     int          `gorm:"default:0;index" json:"sort_order"` // 用户自定义排序顺序
+	ID            uuid.UUID      `gorm:"type:char(36);primary_key" json:"id"`
+	UserID        uuid.UUID      `gorm:"type:char(36);not null;index" json:"user_id"`
+	Name          string         `gorm:"size:100" json:"name"`
+	Host          string         `gorm:"not null;size:255" json:"host"`
+	Port          int            `gorm:"default:22" json:"port"`
+	Username      string         `gorm:"not null;size:50" json:"username"`
+	AuthMethod    AuthMethod     `gorm:"type:varchar(64);not null" json:"auth_method"`
+	Password      string         `gorm:"type:text" json:"-"` // 加密存储，不在 JSON 中返回
+	SSHKeyID      *uint          `gorm:"index" json:"ssh_key_id"`
+	SSHKey        *sshkey.SSHKey `gorm:"foreignKey:SSHKeyID;constraint:OnDelete:RESTRICT" json:"-"`
+	Group         string         `gorm:"column:server_group;size:50" json:"group"`
+	Tags          []string       `gorm:"type:text;serializer:json" json:"tags"`
+	Status        ServerStatus   `gorm:"type:varchar(20);default:'offline'" json:"status"`
+	LastConnected *time.Time     `json:"last_connected,omitempty"`
+	Description   string         `gorm:"type:text" json:"description"`
+	OS            string         `gorm:"size:100" json:"os,omitempty"`
+	SortOrder     int            `gorm:"default:0;index" json:"sort_order"` // 用户自定义排序顺序
 	// 地理位置信息（通过 IP 自动查询）
 	Country     string         `gorm:"size:100" json:"country,omitempty"`
 	CountryCode string         `gorm:"size:10" json:"country_code,omitempty"`
@@ -173,7 +175,8 @@ func (s *Server) ToPublic() map[string]interface{} {
 		"username":        s.Username,
 		"auth_method":     s.AuthMethod,
 		"has_password":    s.Password != "",
-		"has_private_key": s.PrivateKey != "",
+		"has_private_key": s.SSHKeyID != nil,
+		"ssh_key_id":      s.SSHKeyID,
 		"group":           s.Group,
 		"tags":            s.Tags,
 		"status":          s.Status,

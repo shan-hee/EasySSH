@@ -20,8 +20,7 @@ export interface Server {
   port: number
   username: string
   auth_method: AuthMethod
-  password?: string
-  private_key?: string
+  ssh_key_id?: number | null
   has_password?: boolean
   has_private_key?: boolean
   group?: string
@@ -46,6 +45,8 @@ export interface CreateServerRequest {
   auth_method: AuthMethod
   password?: string
   private_key?: string
+  private_key_passphrase?: string
+  ssh_key_id?: number
   group?: string
   tags?: string[]
   description?: string
@@ -59,6 +60,8 @@ export interface UpdateServerRequest {
   auth_method?: AuthMethod
   password?: string
   private_key?: string
+  private_key_passphrase?: string
+  ssh_key_id?: number
   group?: string
   tags?: string[]
   description?: string

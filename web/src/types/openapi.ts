@@ -3340,6 +3340,8 @@ export interface components {
             port: number;
             /** @example root */
             username: string;
+            /** @description 连接引用的密钥条目 ID。 */
+            ssh_key_id?: number | null;
             /**
              * @example key
              * @enum {string}
@@ -3875,10 +3877,17 @@ export interface components {
             auth_method: "password" | "key";
             /**
              * Format: password
-             * @description 当 auth_method 为 password 时必填
+             * @description 可选；未保存时在连接时输入。
              */
             password?: string;
-            /** @description 当 auth_method 为 key 时必填 */
+            /** @description 已保存的密钥条目 ID；0 表示连接时临时提供私钥。与非空 private_key 互斥。 */
+            ssh_key_id?: number;
+            /**
+             * Format: password
+             * @description 仅用于导入私钥时校验口令，不持久化。
+             */
+            private_key_passphrase?: string;
+            /** @description 导入私钥为独立条目并建立引用；不在连接记录中保存私钥。 */
             private_key?: string;
             /** @example production */
             group?: string;
@@ -3891,6 +3900,14 @@ export interface components {
             username?: string;
             /** Format: password */
             password?: string;
+            /** @description 已保存的密钥条目 ID；0 表示连接时临时提供私钥。与非空 private_key 互斥。 */
+            ssh_key_id?: number;
+            /**
+             * Format: password
+             * @description 仅用于导入私钥时校验口令，不持久化。
+             */
+            private_key_passphrase?: string;
+            /** @description 导入私钥为独立条目并建立引用；不在连接记录中保存私钥。 */
             private_key?: string;
             group?: string;
             tags?: string[];

@@ -9,10 +9,11 @@ export interface SSHKey {
   fingerprint: string
   algorithm: string
   key_size?: number
+  passphrase_required: boolean
 }
 
 export interface SSHKeyWithPrivateKey extends SSHKey {
-  private_key: string // 仅在生成/导入时返回
+  private_key: string // 仅在生成时返回
 }
 
 export interface GenerateSSHKeyRequest {
@@ -24,6 +25,7 @@ export interface GenerateSSHKeyRequest {
 export interface ImportSSHKeyRequest {
   name: string
   private_key: string
+  passphrase?: string
 }
 
 /**
@@ -50,11 +52,23 @@ export async function generateSSHKey(
  */
 export async function importSSHKey(
   data: ImportSSHKeyRequest
-): Promise<SSHKeyWithPrivateKey> {
-  return apiFetch<SSHKeyWithPrivateKey>("/ssh-keys/import", {
+): Promise<SSHKey> {
+  return apiFetch<SSHKey>("/ssh-keys/import", {
     method: "POST",
     body: JSON.stringify(data),
   })
+}
+
+export interface SSHKeyApi {
+  list: () => Promise<SSHKey[]>
+  import: (input: ImportSSHKeyRequest) => Promise<SSHKey>
+  delete: (id: number) => Promise<void>
+}
+
+export const sshKeyApi: SSHKeyApi = {
+  list: getSSHKeys,
+  import: importSSHKey,
+  delete: deleteSSHKey,
 }
 
 /**

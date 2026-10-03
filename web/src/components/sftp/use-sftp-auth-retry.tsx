@@ -376,6 +376,7 @@ export function useSftpAuthRetry({
       options?: {
         password?: string
         privateKey?: string
+        privateKeyPassphrase?: string
       },
     ) => {
       if (!adapters?.requestCredentialSave || !adapters.saveCredential) {
@@ -397,6 +398,7 @@ export function useSftpAuthRetry({
             secret: saveSecret,
             password: options?.password,
             privateKey: options?.privateKey,
+            privateKeyPassphrase: options?.privateKeyPassphrase,
           }).then(() => {
             adapters.notifySuccess?.(tTerminal("authRetrySaveSuccess"))
         }).catch((error) => {
@@ -423,6 +425,9 @@ export function useSftpAuthRetry({
       }, async (prompt, respond) => {
         try {
           const { response, authMethod } = await requestInteractiveResponse(serverName, prompt)
+          if (prompt.kind === "private_key_passphrase") {
+            credential.privateKeyPassphrase = Array.isArray(response) ? response[0] : response.privateKeyPassphrase ?? response.answers?.[0]
+          }
           respond(response, false, authMethod)
         } catch {
           respond([], true)
@@ -567,6 +572,7 @@ export function useSftpAuthRetry({
             {
               password: credential.password,
               privateKey: credential.privateKey,
+              privateKeyPassphrase: credential.privateKeyPassphrase,
             },
           )
           return result
@@ -597,6 +603,7 @@ export function useSftpAuthRetry({
                   {
                     password: credential.password,
                     privateKey: credential.privateKey,
+                    privateKeyPassphrase: passphrase,
                   },
                 )
                 return result
@@ -667,13 +674,14 @@ export function useSftpAuthRetry({
       secret: string
       password?: string
       privateKey?: string
+      privateKeyPassphrase?: string
     }>> = {}
     let lastError: unknown = null
 
     const setCredential = (
       side: "source" | "target",
       credential: SftpTransferCredential,
-      saveCandidate?: { authMethod: TerminalAuthMethod; secret?: string; password?: string; privateKey?: string },
+      saveCandidate?: SftpCredentialInput,
     ) => {
       if (side === "source") {
         options.sourceCredential = credential
@@ -681,6 +689,9 @@ export function useSftpAuthRetry({
         options.targetCredential = credential
       }
 
+      if (successfulCredentials[side] && credential.private_key_passphrase !== undefined) {
+        successfulCredentials[side].privateKeyPassphrase = credential.private_key_passphrase
+      }
       const saveSecret = saveCandidate?.secret ?? saveCandidate?.password ?? saveCandidate?.privateKey
       if (saveCandidate && saveSecret) {
         successfulCredentials[side] = {
@@ -688,6 +699,7 @@ export function useSftpAuthRetry({
           secret: saveSecret,
           password: saveCandidate.password,
           privateKey: saveCandidate.privateKey,
+          privateKeyPassphrase: saveCandidate.privateKeyPassphrase,
         }
       }
     }
@@ -713,6 +725,7 @@ export function useSftpAuthRetry({
             {
               password: credential.password,
               privateKey: credential.privateKey,
+              privateKeyPassphrase: credential.privateKeyPassphrase,
             },
           )
         }

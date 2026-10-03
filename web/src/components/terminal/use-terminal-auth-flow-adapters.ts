@@ -31,12 +31,13 @@ export function useTerminalAuthFlowAdapters({
         actionLabel,
         onAction: onConfirm,
       }),
-      saveCredential: ({ serverId, authMethod, secret, password, privateKey }) => saveVerifiedCredential({
+      saveCredential: ({ serverId, authMethod, secret, password, privateKey, privateKeyPassphrase }) => saveVerifiedCredential({
         serverId,
         authMethod,
         secret,
         password,
         privateKey,
+        privateKeyPassphrase,
       }),
     }
   }, [workspace?.adapters.apiClient?.terminal?.saveVerifiedCredential, workspace?.adapters.notifier])
@@ -53,10 +54,11 @@ export function useTerminalAuthFlowAdapters({
         },
       })
     },
-      saveCredential: ({ serverId, authMethod, secret, password, privateKey }) => {
+      saveCredential: ({ serverId, authMethod, secret, password, privateKey, privateKeyPassphrase }) => {
         const payload = {
           auth_method: authMethod,
           verified_connection_credential: true,
+          private_key_passphrase: privateKeyPassphrase,
           ...(password !== undefined ? { password } : {}),
           ...(privateKey !== undefined ? { private_key: privateKey } : {}),
           ...(password === undefined && privateKey === undefined

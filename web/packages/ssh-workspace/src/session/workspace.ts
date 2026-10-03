@@ -132,6 +132,7 @@ export interface WorkspaceTerminalCredentialSaveRequest {
   secret: string
   password?: string
   privateKey?: string
+  privateKeyPassphrase?: string
 }
 
 export interface WorkspaceSftpCredentialRequest extends WorkspaceTerminalCredentialSaveRequest {

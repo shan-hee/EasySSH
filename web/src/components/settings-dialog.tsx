@@ -1,3 +1,4 @@
+import { PrivateKeyInput } from "@/components/servers/private-key-input"
 
 import * as React from "react"
 import { QRCodeSVG } from "qrcode.react"
@@ -126,6 +127,7 @@ const settingsNavItems: { id: SettingsSection; icon: typeof User }[] = [
 ]
 
 export const SettingsDialog = React.memo(function SettingsDialog({ children }: { children: React.ReactNode }) {
+  const { t: tServers } = useTranslation("servers")
   const { t: tAccount } = useTranslation("accountSettings")
   const { t: tCommon } = useTranslation("common")
   const { t: tUpdate } = useTranslation("headerActions")
@@ -229,6 +231,7 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
   const [importForm, setImportForm] = React.useState({
     name: "",
     private_key: "",
+    passphrase: "",
   })
   const [generateLoading, setGenerateLoading] = React.useState(false)
   const [importLoading, setImportLoading] = React.useState(false)
@@ -927,12 +930,10 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
 
     setImportLoading(true)
     try {
-      const newKey = await sshKeysApi.importSSHKey(importForm)
+      await sshKeysApi.importSSHKey(importForm)
       toast.success(tAccount("sshKeyToastImportSuccess"))
-      setSelectedKey(newKey)
-      setViewKeyDialogOpen(true)
       setImportDialogOpen(false)
-      setImportForm({ name: "", private_key: "" })
+      setImportForm({ name: "", private_key: "", passphrase: "" })
       loadSSHKeys() // 刷新列表
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, tAccount("sshKeyToastImportFailed")))
@@ -1958,7 +1959,7 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                     </Dialog>
 
                     {/* 导入密钥对话框 */}
-                    <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+                    <Dialog open={importDialogOpen} onOpenChange={open => { if (importLoading) return; setImportDialogOpen(open); if (!open) setImportForm({ name: "", private_key: "", passphrase: "" }) }}>
                       <DialogContent className="sm:max-w-md">
                         <DialogTitle>{tAccount("sshImportDialogTitle")}</DialogTitle>
                         <DialogDescription>
@@ -1971,6 +1972,7 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                             </Label>
                             <Input
                               id="imp-name"
+                              disabled={importLoading}
                               placeholder={tAccount("sshImportNamePlaceholder")}
                               value={importForm.name}
                               onChange={(e) =>
@@ -1979,29 +1981,27 @@ export const SettingsDialog = React.memo(function SettingsDialog({ children }: {
                             />
                           </div>
                           <div className="space-y-2">
-                            <Label htmlFor="imp-key">
-                              {tAccount("sshImportPrivateKeyLabel")}
-                            </Label>
-                            <Textarea
+                            <PrivateKeyInput
                               id="imp-key"
-                              className="min-h-[200px] font-mono text-sm"
+                              label={tAccount("sshImportPrivateKeyLabel")}
                               placeholder={tAccount("sshImportPrivateKeyPlaceholder")}
                               value={importForm.private_key}
-                              onChange={(e) =>
-                                setImportForm({
-                                  ...importForm,
-                                  private_key: e.target.value,
-                                })
-                              }
+                              disabled={importLoading}
+                              onChange={private_key => setImportForm({ ...importForm, private_key })}
                             />
                             <p className="text-xs text-muted-foreground">
                               {tAccount("sshImportPrivateKeyHint")}
                             </p>
                           </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="imp-passphrase">{tServers("keyPassphraseLabel")}</Label>
+                            <Input id="imp-passphrase" disabled={importLoading} type="password" autoComplete="off" data-bwignore="true" value={importForm.passphrase} onChange={e => setImportForm({ ...importForm, passphrase: e.target.value })} />
+                            <p className="text-xs text-muted-foreground">{tServers("keyPassphraseHint")}</p>
+                          </div>
                           <div className="flex justify-end gap-2">
                             <Button
                               variant="outline"
-                              onClick={() => setImportDialogOpen(false)}
+                              onClick={() => { setImportDialogOpen(false); setImportForm({ name: "", private_key: "", passphrase: "" }) }}
                               disabled={importLoading}
                             >
                               {tAccount("sshDialogCancel")}

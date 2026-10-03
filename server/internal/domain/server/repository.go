@@ -75,13 +75,13 @@ func (r *gormRepository) Create(ctx context.Context, server *Server) error {
 			Select("COALESCE(MAX(sort_order), -1) + 1").Scan(&server.SortOrder).Error; err != nil {
 			return err
 		}
-		return tx.Create(server).Error
+		return tx.Omit("SSHKey").Create(server).Error
 	})
 }
 
 func (r *gormRepository) FindByID(ctx context.Context, id uuid.UUID) (*Server, error) {
 	var server Server
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&server).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("SSHKey").Where("id = ?", id).First(&server).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrServerNotFound
 		}
@@ -118,6 +118,7 @@ func (r *gormRepository) FindByUserIDAndID(ctx context.Context, userID, serverID
 	var server Server
 	if err := r.db.WithContext(ctx).
 		Where("id = ? AND user_id = ?", serverID, userID).
+		Preload("SSHKey").
 		First(&server).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrServerNotFound
@@ -128,7 +129,7 @@ func (r *gormRepository) FindByUserIDAndID(ctx context.Context, userID, serverID
 }
 
 func (r *gormRepository) Update(ctx context.Context, server *Server) error {
-	return r.db.WithContext(ctx).Save(server).Error
+	return r.db.WithContext(ctx).Omit("SSHKey").Save(server).Error
 }
 
 // UpdateStatus 仅更新服务器状态和最后连接时间（性能优化）
@@ -186,8 +187,8 @@ func (r *gormRepository) Delete(ctx context.Context, id uuid.UUID) error {
 		result := tx.Model(&Server{}).
 			Where("id = ?", id).
 			UpdateColumns(map[string]interface{}{
-				"password":    "",
-				"private_key": "",
+				"password":   "",
+				"ssh_key_id": nil,
 			})
 		if result.Error != nil {
 			return result.Error

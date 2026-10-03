@@ -236,6 +236,9 @@ func (s *DesktopBackupService) RestoreBackup(input DesktopBackupRestoreInput) (D
 	var result DesktopBackupRestoreResult
 	var notificationTable *desktopBackupTable
 	taskDataRestored := false
+	if err := restoreDesktopSSHKeys(tx, &backup, strategy, &result, allowSensitiveDatabaseRestore); err != nil {
+		return DesktopBackupRestoreResult{}, err
+	}
 	for _, table := range orderedDesktopBackupTables(backup.Database.Tables) {
 		tableName := strings.ToLower(strings.TrimSpace(table.Name))
 		if tableName == "inbox_notifications" {
@@ -392,7 +395,11 @@ func exportDesktopBackupTables(database *sql.DB, notifications []DesktopNotifica
 	if err != nil {
 		return nil, err
 	}
-	tables = append(tables, servers)
+	keys, err := exportDesktopSSHKeys(database, false)
+	if err != nil {
+		return nil, err
+	}
+	tables = append(tables, keys, servers)
 
 	scripts, err := exportDesktopScripts(database)
 	if err != nil {
@@ -433,14 +440,14 @@ func exportDesktopServers(database *sql.DB) (desktopBackupTable, error) {
 		Name:       "servers",
 		PrimaryKey: []string{"id"},
 		Columns: []string{
-			"id", "user_id", "name", "host", "port", "username", "auth_method", "server_group",
+			"id", "user_id", "name", "host", "port", "username", "auth_method", "ssh_key_id", "server_group",
 			"tags", "status", "last_connected", "description", "os", "sort_order", "created_at", "updated_at",
 		},
 		Rows: []map[string]any{},
 	}
 
 	rows, err := database.Query(`
-		SELECT id, name, host, port, username, auth_method, server_group, tags_json,
+		SELECT id, name, host, port, username, auth_method, ssh_key_id, server_group, tags_json,
 			status, last_connected, description, os, sort_order, created_at, updated_at
 		FROM desktop_servers
 		ORDER BY sort_order ASC, created_at ASC, id ASC`)
@@ -452,10 +459,15 @@ func exportDesktopServers(database *sql.DB) (desktopBackupTable, error) {
 	for rows.Next() {
 		var id, name, host, username, authMethod, group, tagsJSON, status, lastConnected, description, osValue, createdAt, updatedAt string
 		var port, sortOrder int
-		if err := rows.Scan(&id, &name, &host, &port, &username, &authMethod, &group, &tagsJSON, &status, &lastConnected, &description, &osValue, &sortOrder, &createdAt, &updatedAt); err != nil {
+		var keyID sql.NullInt64
+		if err := rows.Scan(&id, &name, &host, &port, &username, &authMethod, &keyID, &group, &tagsJSON, &status, &lastConnected, &description, &osValue, &sortOrder, &createdAt, &updatedAt); err != nil {
 			return table, err
 		}
 		backupID := desktopBackupUUID("server", id)
+		var keyRef any
+		if keyID.Valid {
+			keyRef = keyID.Int64
+		}
 		table.Rows = append(table.Rows, map[string]any{
 			"id":             backupID,
 			"user_id":        desktopBackupUserID,
@@ -464,6 +476,7 @@ func exportDesktopServers(database *sql.DB) (desktopBackupTable, error) {
 			"port":           port,
 			"username":       username,
 			"auth_method":    authMethod,
+			"ssh_key_id":     keyRef,
 			"server_group":   group,
 			"tags":           normalizeDesktopJSONText(tagsJSON),
 			"status":         status,
@@ -843,6 +856,10 @@ func exportDesktopSensitivePayload(database *sql.DB, exportTime string, baseSHA2
 		return nil, err
 	}
 
+	keys, err := exportDesktopSSHKeys(database, true)
+	if err != nil {
+		return nil, err
+	}
 	return &desktopBackupSensitivePayload{
 		Version:    backuputil.SensitivePayloadVersion,
 		ExportTime: exportTime,
@@ -854,11 +871,10 @@ func exportDesktopSensitivePayload(database *sql.DB, exportTime string, baseSHA2
 		BaseSHA256: baseSHA256,
 		Database: &desktopBackupSection{
 			Driver: "sqlite",
-			Tables: []desktopBackupTable{servers},
+			Tables: []desktopBackupTable{servers, keys},
 		},
 		Warnings: []string{
 			"desktop server passwords and private keys are encrypted with the backup password.",
-			"web-only sensitive tables are ignored by desktop restore.",
 		},
 	}, nil
 }
@@ -867,12 +883,12 @@ func exportDesktopSensitiveServers(database *sql.DB) (desktopBackupTable, error)
 	table := desktopBackupTable{
 		Name:       "servers",
 		PrimaryKey: []string{"id"},
-		Columns:    []string{"id", "user_id", "password", "private_key"},
+		Columns:    []string{"id", "user_id", "password"},
 		Rows:       []map[string]any{},
 	}
 
 	rows, err := database.Query(`
-		SELECT id, password, private_key
+		SELECT id, password
 		FROM desktop_servers
 		ORDER BY sort_order ASC, created_at ASC, id ASC`)
 	if err != nil {
@@ -881,15 +897,18 @@ func exportDesktopSensitiveServers(database *sql.DB) (desktopBackupTable, error)
 	defer rows.Close()
 
 	for rows.Next() {
-		var id, password, privateKey string
-		if err := rows.Scan(&id, &password, &privateKey); err != nil {
+		var id, password string
+		if err := rows.Scan(&id, &password); err != nil {
+			return table, err
+		}
+		password, err = decryptDesktopCredential(password, "desktop_servers", id, "password")
+		if err != nil {
 			return table, err
 		}
 		table.Rows = append(table.Rows, map[string]any{
-			"id":          desktopBackupUUID("server", id),
-			"user_id":     desktopBackupUserID,
-			"password":    password,
-			"private_key": privateKey,
+			"id":       desktopBackupUUID("server", id),
+			"user_id":  desktopBackupUserID,
+			"password": password,
 		})
 	}
 	return table, rows.Err()
@@ -937,7 +956,7 @@ func sanitizeDesktopPlainSensitive(backup *desktopUnifiedBackup) {
 	}
 	for tableIndex := range backup.Database.Tables {
 		table := &backup.Database.Tables[tableIndex]
-		if !strings.EqualFold(table.Name, "servers") {
+		if !strings.EqualFold(table.Name, "servers") && !strings.EqualFold(table.Name, "ssh_keys") {
 			continue
 		}
 		table.Columns = removeDesktopBackupColumns(table.Columns, "password", "private_key")
@@ -965,14 +984,14 @@ func mergeDesktopSensitivePayload(backup *desktopUnifiedBackup, payload *desktop
 	}
 
 	for _, sensitiveTable := range payload.Database.Tables {
-		if !strings.EqualFold(sensitiveTable.Name, "servers") {
+		if !strings.EqualFold(sensitiveTable.Name, "servers") && !strings.EqualFold(sensitiveTable.Name, "ssh_keys") {
 			continue
 		}
-		targetTable := targetTables["servers"]
+		targetTable := targetTables[strings.ToLower(sensitiveTable.Name)]
 		if targetTable == nil {
-			return errors.New("sensitive servers payload has no matching base table")
+			return errors.New("sensitive credential payload has no matching base table")
 		}
-		if err := mergeDesktopSensitiveServerTable(targetTable, sensitiveTable); err != nil {
+		if err := mergeDesktopSensitiveCredentialTable(targetTable, sensitiveTable); err != nil {
 			return err
 		}
 	}
@@ -980,26 +999,28 @@ func mergeDesktopSensitivePayload(backup *desktopUnifiedBackup, payload *desktop
 	return nil
 }
 
-func mergeDesktopSensitiveServerTable(target *desktopBackupTable, sensitive desktopBackupTable) error {
+func mergeDesktopSensitiveCredentialTable(target *desktopBackupTable, sensitive desktopBackupTable) error {
+	secret := "password"
+	allowed := []string{"id", "user_id", "password"}
+	if strings.EqualFold(target.Name, "ssh_keys") {
+		secret = "private_key"
+		allowed = []string{"id", "user_id", "fingerprint", "private_key"}
+	}
 	for _, column := range sensitive.Columns {
-		if !desktopBackupColumnAllowed(column, "id", "user_id", "password", "private_key") {
-			return fmt.Errorf("sensitive servers table contains unsupported column %s", column)
+		if !desktopBackupColumnAllowed(column, allowed...) {
+			return fmt.Errorf("sensitive credential table contains unsupported column %s", column)
 		}
 	}
 
-	target.Columns = appendDesktopBackupColumn(target.Columns, "password")
-	target.Columns = appendDesktopBackupColumn(target.Columns, "private_key")
+	target.Columns = appendDesktopBackupColumn(target.Columns, secret)
 
 	for _, sensitiveRow := range sensitive.Rows {
 		targetRow := findDesktopBackupRowByID(target.Rows, firstDesktopString(sensitiveRow, "id"))
 		if targetRow == nil {
-			return fmt.Errorf("sensitive servers row is missing in base backup: id=%s", firstDesktopString(sensitiveRow, "id"))
+			return fmt.Errorf("sensitive credential row is missing in base backup: id=%s", firstDesktopString(sensitiveRow, "id"))
 		}
-		if value, ok := sensitiveRow["password"]; ok {
-			targetRow["password"] = value
-		}
-		if value, ok := sensitiveRow["private_key"]; ok {
-			targetRow["private_key"] = value
+		if value, ok := sensitiveRow[secret]; ok {
+			targetRow[secret] = value
 		}
 	}
 	return nil
@@ -1045,6 +1066,8 @@ func desktopBackupColumnAllowed(column string, allowed ...string) bool {
 
 func restoreDesktopBackupTable(tx *sql.Tx, table desktopBackupTable, strategy backuputil.RestoreConflictStrategy, result *DesktopBackupRestoreResult, allowSensitive bool) error {
 	switch strings.ToLower(strings.TrimSpace(table.Name)) {
+	case "ssh_keys":
+		return nil // Restored first, with key IDs remapped by fingerprint.
 	case "servers":
 		for _, row := range table.Rows {
 			if err := restoreDesktopServerRow(tx, row, strategy, result, allowSensitive); err != nil {
@@ -1119,6 +1142,7 @@ func restoreDesktopServerRow(tx *sql.Tx, row map[string]any, strategy backuputil
 		"port":           desktopIntValue(row["port"], 22),
 		"username":       firstDesktopString(row, "username"),
 		"auth_method":    normalizeDesktopBackupAuthMethod(firstDesktopString(row, "auth_method")),
+		"ssh_key_id":     row["ssh_key_id"],
 		"server_group":   firstDesktopString(row, "server_group", "group"),
 		"tags_json":      desktopJSONText(row["tags"]),
 		"status":         normalizeDesktopBackupServerStatus(firstDesktopString(row, "status")),
@@ -1130,11 +1154,16 @@ func restoreDesktopServerRow(tx *sql.Tx, row map[string]any, strategy backuputil
 		"updated_at":     desktopTimeValue(row["updated_at"], now),
 	}
 	if allowSensitive {
-		if _, ok := row["password"]; ok {
-			values["password"] = firstDesktopString(row, "password")
-		}
-		if _, ok := row["private_key"]; ok {
-			values["private_key"] = firstDesktopString(row, "private_key")
+		if raw, ok := row["password"]; ok {
+			password, valid := raw.(string)
+			if !valid {
+				return errors.New("backup password must be a string")
+			}
+			encrypted, err := encryptDesktopCredential(password, "desktop_servers", id, "password")
+			if err != nil {
+				return err
+			}
+			values["password"] = encrypted
 		}
 	}
 	return restoreDesktopMappedRow(tx, "desktop_servers", id, values, strategy, result)
@@ -1716,6 +1745,8 @@ func desktopIntValue(value any, fallback int) int {
 	switch typed := value.(type) {
 	case int:
 		return typed
+	case uint:
+		return int(typed)
 	case int64:
 		return int(typed)
 	case float64:

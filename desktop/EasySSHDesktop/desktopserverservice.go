@@ -60,8 +60,9 @@ type DesktopServer struct {
 	Port          int                     `json:"port"`
 	Username      string                  `json:"username"`
 	AuthMethod    DesktopServerAuthMethod `json:"auth_method"`
-	Password      string                  `json:"password,omitempty"`
-	PrivateKey    string                  `json:"private_key,omitempty"`
+	Password      string                  `json:"-"`
+	PrivateKey    string                  `json:"-"`
+	SSHKeyID      *uint                   `json:"ssh_key_id"`
 	HasPassword   bool                    `json:"has_password"`
 	HasPrivateKey bool                    `json:"has_private_key"`
 	Group         string                  `json:"group,omitempty"`
@@ -89,18 +90,20 @@ type DesktopServerListResult struct {
 }
 
 type DesktopServerInput struct {
-	Name          string                  `json:"name,omitempty"`
-	Host          string                  `json:"host"`
-	Port          int                     `json:"port"`
-	Username      string                  `json:"username"`
-	AuthMethod    DesktopServerAuthMethod `json:"auth_method"`
-	Password      string                  `json:"password,omitempty"`
-	PrivateKey    string                  `json:"private_key,omitempty"`
-	PasswordSet   bool                    `json:"password_set,omitempty"`
-	PrivateKeySet bool                    `json:"private_key_set,omitempty"`
-	Group         string                  `json:"group,omitempty"`
-	Tags          []string                `json:"tags,omitempty"`
-	Description   string                  `json:"description,omitempty"`
+	Name                 string                  `json:"name,omitempty"`
+	Host                 string                  `json:"host"`
+	Port                 int                     `json:"port"`
+	Username             string                  `json:"username"`
+	AuthMethod           DesktopServerAuthMethod `json:"auth_method"`
+	Password             string                  `json:"password,omitempty"`
+	PrivateKey           string                  `json:"private_key,omitempty"`
+	PasswordSet          bool                    `json:"password_set,omitempty"`
+	PrivateKeySet        bool                    `json:"private_key_set,omitempty"`
+	SSHKeyID             *uint                   `json:"ssh_key_id"`
+	PrivateKeyPassphrase string                  `json:"private_key_passphrase,omitempty"`
+	Group                string                  `json:"group,omitempty"`
+	Tags                 []string                `json:"tags,omitempty"`
+	Description          string                  `json:"description,omitempty"`
 }
 
 type DesktopServerCommandInput struct {
@@ -227,7 +230,7 @@ func (s *DesktopServerService) List(params DesktopServerListParams) (DesktopServ
 	offset := (params.Page - 1) * params.Limit
 	queryArgs := append(append([]any{}, args...), params.Limit, offset)
 	querySQL := fmt.Sprintf(`
-		SELECT id, user_id, name, host, port, username, auth_method, password, private_key,
+		SELECT id, user_id, name, host, port, username, auth_method, password, ssh_key_id,
 			server_group, tags_json, status, last_connected, description, os, created_at, updated_at
 		FROM desktop_servers
 		WHERE %s
@@ -307,7 +310,7 @@ func (s *DesktopServerService) GetById(id string) (DesktopServer, error) {
 	}
 
 	row := database.QueryRow(`
-		SELECT id, user_id, name, host, port, username, auth_method, password, private_key,
+		SELECT id, user_id, name, host, port, username, auth_method, password, ssh_key_id,
 			server_group, tags_json, status, last_connected, description, os, created_at, updated_at
 		FROM desktop_servers
 		WHERE id = ?`, id)
@@ -338,6 +341,14 @@ func (s *DesktopServerService) Create(input DesktopServerInput) (DesktopServer, 
 	server.CreatedAt = now
 	server.UpdatedAt = now
 
+	if err := s.assignSSHKey(&server, input); err != nil {
+		return DesktopServer{}, err
+	}
+	server.Password, err = encryptDesktopCredential(server.Password, "desktop_servers", server.ID, "password")
+	if err != nil {
+		return DesktopServer{}, err
+	}
+
 	var sortOrder int
 	if err := database.QueryRow("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM desktop_servers").Scan(&sortOrder); err != nil {
 		return DesktopServer{}, err
@@ -345,11 +356,11 @@ func (s *DesktopServerService) Create(input DesktopServerInput) (DesktopServer, 
 
 	_, err = database.Exec(`
 		INSERT INTO desktop_servers (
-			id, user_id, name, host, port, username, auth_method, password, private_key,
+			id, user_id, name, host, port, username, auth_method, password, ssh_key_id,
 			server_group, tags_json, status, last_connected, description, os, sort_order, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		server.ID, server.UserID, server.Name, server.Host, server.Port, server.Username,
-		server.AuthMethod, server.Password, server.PrivateKey, server.Group, tagsJSON,
+		server.AuthMethod, server.Password, server.SSHKeyID, server.Group, tagsJSON,
 		server.Status, server.LastConnected, server.Description, server.OS, sortOrder, server.CreatedAt, server.UpdatedAt)
 	if err != nil {
 		return DesktopServer{}, err
@@ -374,15 +385,16 @@ func (s *DesktopServerService) Update(id string, input DesktopServerInput) (Desk
 		return DesktopServer{}, err
 	}
 
-	current, err := s.getByIDRaw(id)
+	current, err := s.getByIDStored(id)
 	if err != nil {
 		return DesktopServer{}, err
 	}
 	if !input.PasswordSet {
 		server.Password = current.Password
 	}
-	if !input.PrivateKeySet {
-		server.PrivateKey = current.PrivateKey
+	server.SSHKeyID = current.SSHKeyID
+	if err := s.assignSSHKey(&server, input); err != nil {
+		return DesktopServer{}, err
 	}
 	server.OS = current.OS
 	configChanged := server.Host != current.Host ||
@@ -390,19 +402,29 @@ func (s *DesktopServerService) Update(id string, input DesktopServerInput) (Desk
 		server.Username != current.Username ||
 		server.AuthMethod != current.AuthMethod ||
 		input.PasswordSet ||
-		input.PrivateKeySet
+		input.PrivateKeySet || input.SSHKeyID != nil
 	if configChanged {
 		server.OS = ""
+	}
+
+	if input.PasswordSet {
+		server.Password, err = encryptDesktopCredential(server.Password, "desktop_servers", id, "password")
+		if err != nil {
+			return DesktopServer{}, err
+		}
+	}
+	if configChanged {
+		s.clearTemporaryCredential(id)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	result, err := database.Exec(`
 		UPDATE desktop_servers
-		SET name = ?, host = ?, port = ?, username = ?, auth_method = ?, password = ?, private_key = ?,
+		SET name = ?, host = ?, port = ?, username = ?, auth_method = ?, password = ?, ssh_key_id = ?,
 			server_group = ?, tags_json = ?, description = ?, os = ?, updated_at = ?
 		WHERE id = ?`,
 		server.Name, server.Host, server.Port, server.Username, server.AuthMethod,
-		server.Password, server.PrivateKey, server.Group, tagsJSON, server.Description, server.OS, now, id)
+		server.Password, server.SSHKeyID, server.Group, tagsJSON, server.Description, server.OS, now, id)
 	if err != nil {
 		return DesktopServer{}, err
 	}
@@ -805,11 +827,15 @@ func (s *DesktopServerService) database() (*sql.DB, error) {
 		return nil, err
 	}
 
+	if err := initializeDesktopCredentials(database); err != nil {
+		database.Close()
+		return nil, err
+	}
 	s.db = database
 	return s.db, nil
 }
 
-func (s *DesktopServerService) getByIDRaw(id string) (DesktopServer, error) {
+func (s *DesktopServerService) getByIDStored(id string) (DesktopServer, error) {
 	database, err := s.database()
 	if err != nil {
 		return DesktopServer{}, err
@@ -821,7 +847,7 @@ func (s *DesktopServerService) getByIDRaw(id string) (DesktopServer, error) {
 	}
 
 	row := database.QueryRow(`
-		SELECT id, user_id, name, host, port, username, auth_method, password, private_key,
+		SELECT id, user_id, name, host, port, username, auth_method, password, ssh_key_id,
 			server_group, tags_json, status, last_connected, description, os, created_at, updated_at
 		FROM desktop_servers
 		WHERE id = ?`, id)
@@ -829,13 +855,45 @@ func (s *DesktopServerService) getByIDRaw(id string) (DesktopServer, error) {
 	return scanDesktopServer(row)
 }
 
+func (s *DesktopServerService) getByIDRaw(id string) (DesktopServer, error) {
+	server, err := s.getByIDStored(id)
+	if err != nil {
+		return DesktopServer{}, err
+	}
+	server.Password, err = decryptDesktopCredential(server.Password, "desktop_servers", server.ID, "password")
+	if err != nil {
+		return DesktopServer{}, err
+	}
+	server.PrivateKey, err = s.resolveSSHKey(server.SSHKeyID)
+	if err != nil {
+		return DesktopServer{}, err
+	}
+	return server, nil
+}
+
 func configureDesktopServerDatabase(database *sql.DB) error {
 	database.SetMaxOpenConns(1)
+	// Development schema replacement: reject the retired layout explicitly instead
+	// of silently leaving plaintext credentials behind or reading two formats.
+	var oldPrivateKeyColumn int
+	if err := database.QueryRow("SELECT COUNT(*) FROM pragma_table_info('desktop_servers') WHERE name = 'private_key'").Scan(&oldPrivateKeyColumn); err != nil {
+		return err
+	}
+	if oldPrivateKeyColumn != 0 {
+		return errors.New("retired desktop credential schema: use a fresh development database; existing data has not been modified")
+	}
 
 	statements := []string{
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA busy_timeout=5000",
 		"PRAGMA foreign_keys=ON",
+		`CREATE TABLE IF NOT EXISTS desktop_ssh_keys (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ name TEXT NOT NULL, public_key TEXT NOT NULL, fingerprint TEXT NOT NULL UNIQUE,
+ algorithm TEXT NOT NULL, key_size INTEGER NOT NULL DEFAULT 0,
+ passphrase_required INTEGER NOT NULL DEFAULT 0,
+ private_key TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+ )`,
 		`CREATE TABLE IF NOT EXISTS desktop_servers (
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL DEFAULT 'local',
@@ -845,7 +903,7 @@ func configureDesktopServerDatabase(database *sql.DB) error {
 			username TEXT NOT NULL,
 			auth_method TEXT NOT NULL DEFAULT 'password',
 			password TEXT NOT NULL DEFAULT '',
-			private_key TEXT NOT NULL DEFAULT '',
+			ssh_key_id INTEGER REFERENCES desktop_ssh_keys(id) ON DELETE RESTRICT,
 			server_group TEXT NOT NULL DEFAULT '',
 			tags_json TEXT NOT NULL DEFAULT '[]',
 			status TEXT NOT NULL DEFAULT 'offline',
@@ -856,6 +914,7 @@ func configureDesktopServerDatabase(database *sql.DB) error {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
+		"CREATE INDEX IF NOT EXISTS idx_desktop_servers_ssh_key ON desktop_servers (ssh_key_id)",
 		"CREATE INDEX IF NOT EXISTS idx_desktop_servers_host ON desktop_servers (host)",
 		"CREATE INDEX IF NOT EXISTS idx_desktop_servers_group ON desktop_servers (server_group)",
 		"CREATE INDEX IF NOT EXISTS idx_desktop_servers_sort ON desktop_servers (sort_order)",
@@ -950,6 +1009,7 @@ func normalizeDesktopServerInput(input DesktopServerInput) (DesktopServer, strin
 		AuthMethod:  authMethod,
 		Password:    input.Password,
 		PrivateKey:  input.PrivateKey,
+		SSHKeyID:    input.SSHKeyID,
 		Group:       strings.TrimSpace(input.Group),
 		Tags:        tags,
 		Description: strings.TrimSpace(input.Description),
@@ -1168,6 +1228,7 @@ func scanDesktopServers(rows *sql.Rows) ([]DesktopServer, error) {
 func scanDesktopServer(scanner desktopServerScanner) (DesktopServer, error) {
 	var server DesktopServer
 	var tagsJSON string
+	var keyID sql.NullInt64
 
 	err := scanner.Scan(
 		&server.ID,
@@ -1178,7 +1239,7 @@ func scanDesktopServer(scanner desktopServerScanner) (DesktopServer, error) {
 		&server.Username,
 		&server.AuthMethod,
 		&server.Password,
-		&server.PrivateKey,
+		&keyID,
 		&server.Group,
 		&tagsJSON,
 		&server.Status,
@@ -1198,19 +1259,20 @@ func scanDesktopServer(scanner desktopServerScanner) (DesktopServer, error) {
 		}
 	}
 
+	server.SSHKeyID = desktopSSHKeyID(keyID)
 	server.AuthMethod = normalizeDesktopServerAuthMethod(server.AuthMethod)
 	if server.Tags == nil {
 		server.Tags = []string{}
 	}
 	server.HasPassword = server.Password != ""
-	server.HasPrivateKey = strings.TrimSpace(server.PrivateKey) != ""
+	server.HasPrivateKey = server.SSHKeyID != nil
 
 	return server, nil
 }
 
 func sanitizeDesktopServer(server DesktopServer) DesktopServer {
 	server.HasPassword = server.Password != ""
-	server.HasPrivateKey = strings.TrimSpace(server.PrivateKey) != ""
+	server.HasPrivateKey = server.SSHKeyID != nil
 	server.Password = ""
 	server.PrivateKey = ""
 	return server
@@ -1223,4 +1285,42 @@ func newDesktopServerID() string {
 	}
 
 	return fmt.Sprintf("srv_%d", time.Now().UnixNano())
+}
+
+func (s *DesktopServerService) assignSSHKey(server *DesktopServer, input DesktopServerInput) error {
+	if !server.AuthMethod.RequiresPrivateKey() {
+		server.SSHKeyID = nil
+		return nil
+	}
+	if input.SSHKeyID != nil && input.PrivateKey != "" {
+		return errors.New("choose a saved SSH key or import a key, not both")
+	}
+	if input.SSHKeyID != nil {
+		if *input.SSHKeyID == 0 {
+			server.SSHKeyID = nil
+			return nil
+		}
+		db, err := s.database()
+		if err != nil {
+			return err
+		}
+		var id uint
+		if err := db.QueryRow("SELECT id FROM desktop_ssh_keys WHERE id = ?", *input.SSHKeyID).Scan(&id); err != nil {
+			return err
+		}
+		server.SSHKeyID = &id
+		return nil
+	}
+	if input.PrivateKey == "" {
+		if input.PrivateKeySet {
+			server.SSHKeyID = nil
+		}
+		return nil
+	}
+	key, err := s.ImportSSHKey(DesktopSSHKeyImport{Name: server.Host, PrivateKey: input.PrivateKey, Passphrase: input.PrivateKeyPassphrase})
+	if err != nil {
+		return err
+	}
+	server.SSHKeyID = &key.ID
+	return nil
 }

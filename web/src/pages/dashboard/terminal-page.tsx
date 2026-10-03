@@ -181,10 +181,11 @@ function TerminalPageContent() {
     apiClient: {
       sftp: sftpSessionApi,
       terminal: {
-          saveVerifiedCredential: ({ serverId, authMethod, secret, password, privateKey }) => {
+          saveVerifiedCredential: ({ serverId, authMethod, secret, password, privateKey, privateKeyPassphrase }) => {
             const payload = {
               auth_method: authMethod,
               verified_connection_credential: true,
+              private_key_passphrase: privateKeyPassphrase,
               ...(password !== undefined ? { password } : {}),
               ...(privateKey !== undefined ? { private_key: privateKey } : {}),
               ...(password === undefined && privateKey === undefined

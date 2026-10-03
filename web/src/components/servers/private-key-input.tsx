@@ -11,6 +11,7 @@ export interface PrivateKeyInputProps {
   label?: string
   value: string
   onChange: (value: string) => void
+  disabled?: boolean
   required?: boolean
   placeholder?: string
   errorText?: string
@@ -25,7 +26,7 @@ function likelyPrivateKey(text: string) {
     "BEGIN OPENSSH PRIVATE KEY",
     "BEGIN RSA PRIVATE KEY",
     "BEGIN PRIVATE KEY",
-    "PuTTY-User-Key-File",
+    "BEGIN EC PRIVATE KEY",
   ]
   return markers.some((m) => text.includes(m))
 }
@@ -35,11 +36,12 @@ export function PrivateKeyInput({
   label,
   value,
   onChange,
+  disabled = false,
   required,
   placeholder,
   errorText,
   className,
-  accept = ".pem,.key,.ppk,.txt",
+  accept,
   allowDragDrop = true,
 }: PrivateKeyInputProps) {
   const { t: tServers } = useTranslation("servers")
@@ -75,19 +77,19 @@ export function PrivateKeyInput({
   }
 
   const handleDragOver = (e: React.DragEvent) => {
-    if (!allowDragDrop) return
+    if (!allowDragDrop || disabled) return
     e.preventDefault()
     setDragActive(true)
   }
 
   const handleDragLeave = (e: React.DragEvent) => {
-    if (!allowDragDrop) return
+    if (!allowDragDrop || disabled) return
     e.preventDefault()
     setDragActive(false)
   }
 
   const handleDrop = (e: React.DragEvent) => {
-    if (!allowDragDrop) return
+    if (!allowDragDrop || disabled) return
     e.preventDefault()
     setDragActive(false)
     const file = e.dataTransfer.files?.[0]
@@ -107,6 +109,7 @@ export function PrivateKeyInput({
           <input
             ref={fileInputRef}
             type="file"
+            disabled={disabled}
             onChange={handleFileChange}
             accept={accept}
             className="hidden"
@@ -114,6 +117,7 @@ export function PrivateKeyInput({
           <Button
             type="button"
             variant="outline"
+            disabled={disabled}
             onClick={() => fileInputRef.current?.click()}
             aria-label={tServers("formPrivateKeyFileAria")}
           >
@@ -132,6 +136,9 @@ export function PrivateKeyInput({
         )}
       >
         <Textarea
+          disabled={disabled}
+          autoComplete="off"
+          data-bwignore="true"
           id={id}
           placeholder={placeholderText}
           value={value}

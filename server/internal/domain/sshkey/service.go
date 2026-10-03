@@ -2,7 +2,6 @@ package sshkey
 
 import (
 	"crypto/ed25519"
-	"crypto/md5"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -12,14 +11,17 @@ import (
 	"strings"
 
 	"github.com/easyssh/shared/secretcrypto"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/ssh"
 )
+
+var ErrInvalidImport = errors.New("invalid SSH key import")
 
 // Service defines the interface for SSH key business logic
 type Service interface {
 	GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error)
 	ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error)
+	GetKey(keyID uint, userID uuid.UUID) (*SSHKey, error)
 	GetUserKeys(userID uuid.UUID) ([]SSHKey, error)
 	DeleteKey(keyID uint, userID uuid.UUID) error
 }
@@ -41,12 +43,10 @@ func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
 func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error) {
 	var privateKey interface{}
 	var err error
-	var algorithm string
 	var keySize int
 
 	switch req.Algorithm {
 	case "rsa":
-		algorithm = "rsa"
 		keySize = req.KeySize
 		if keySize == 0 {
 			keySize = 2048 // 默认2048位
@@ -59,7 +59,6 @@ func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*
 			return nil, fmt.Errorf("failed to generate RSA key: %w", err)
 		}
 	case "ed25519":
-		algorithm = "ed25519"
 		keySize = 0
 		_, privateKey, err = ed25519.GenerateKey(rand.Reader)
 		if err != nil {
@@ -75,147 +74,46 @@ func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*
 		return nil, fmt.Errorf("failed to encode private key: %w", err)
 	}
 
-	// 生成公钥
-	publicKey, err := generatePublicKey(privateKey)
+	result, err := s.ImportKeyPair(&ImportSSHKeyRequest{Name: req.Name, PrivateKey: privateKeyPEM}, userID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate public key: %w", err)
+		return nil, err
 	}
+	result.PrivateKey = privateKeyPEM
+	return result, nil
+}
 
-	// 计算指纹
-	fingerprint, err := calculateFingerprint(publicKey)
+// ImportKeyPair preserves the original key's passphrase protection.
+func (s *service) ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error) {
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return nil, fmt.Errorf("%w: key name is required", ErrInvalidImport)
+	}
+	material := strings.TrimSpace(req.PrivateKey)
+	metadata, err := sshutil.InspectPrivateKey(material, req.Passphrase)
 	if err != nil {
-		return nil, fmt.Errorf("failed to calculate fingerprint: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidImport, err)
 	}
-
-	// 保存到数据库
-	sshKey := &SSHKey{
-		UserID:      userID,
-		Name:        req.Name,
-		PublicKey:   publicKey,
-		Fingerprint: fingerprint,
-		Algorithm:   algorithm,
-		KeySize:     keySize,
+	key := &SSHKey{
+		UserID: userID, Name: name, PublicKey: metadata.PublicKey,
+		Fingerprint: metadata.Fingerprint, Algorithm: metadata.Algorithm,
+		KeySize: metadata.KeySize, PassphraseRequired: metadata.PassphraseRequired,
 	}
-	encryptedPrivateKey, err := s.encryptPrivateKey(sshKey, privateKeyPEM)
+	key.PrivateKey, err = s.encryptPrivateKey(key, material)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
+		return nil, err
 	}
-	sshKey.PrivateKey = encryptedPrivateKey
-
-	if err := s.repo.Create(sshKey); err != nil {
-		return nil, fmt.Errorf("failed to save SSH key: %w", err)
+	if err = s.repo.Create(key); err != nil {
+		return nil, err
 	}
-
-	// 返回响应（包含未加密的私钥，仅此一次）
 	return &SSHKeyResponse{
-		ID:          sshKey.ID,
-		CreatedAt:   sshKey.CreatedAt,
-		UserID:      sshKey.UserID,
-		Name:        sshKey.Name,
-		PublicKey:   sshKey.PublicKey,
-		PrivateKey:  privateKeyPEM, // 返回原始私钥
-		Fingerprint: sshKey.Fingerprint,
-		Algorithm:   sshKey.Algorithm,
-		KeySize:     sshKey.KeySize,
+		ID: key.ID, CreatedAt: key.CreatedAt, UserID: key.UserID, Name: key.Name,
+		PublicKey: key.PublicKey, Fingerprint: key.Fingerprint, Algorithm: key.Algorithm,
+		KeySize: key.KeySize, PassphraseRequired: key.PassphraseRequired,
 	}, nil
 }
 
-// ImportKeyPair imports an existing SSH key pair
-func (s *service) ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error) {
-	// 解析私钥
-	privateKeyPEM := strings.TrimSpace(req.PrivateKey)
-
-	// 验证私钥格式
-	block, _ := pem.Decode([]byte(privateKeyPEM))
-	if block == nil {
-		return nil, errors.New("invalid private key format: failed to decode PEM block")
-	}
-
-	// 尝试解析私钥
-	var privateKey interface{}
-	var err error
-	var algorithm string
-	var keySize int
-
-	// 尝试解析为不同类型的私钥
-	if strings.Contains(block.Type, "RSA") {
-		privateKey, err = x509.ParsePKCS1PrivateKey(block.Bytes)
-		if err != nil {
-			// 尝试PKCS8格式
-			privateKey, err = x509.ParsePKCS8PrivateKey(block.Bytes)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse RSA private key: %w", err)
-			}
-		}
-		if rsaKey, ok := privateKey.(*rsa.PrivateKey); ok {
-			algorithm = "rsa"
-			keySize = rsaKey.N.BitLen()
-		}
-	} else if strings.Contains(block.Type, "OPENSSH") || strings.Contains(block.Type, "PRIVATE KEY") {
-		// 尝试解析为OpenSSH格式
-		privateKey, err = ssh.ParseRawPrivateKey([]byte(privateKeyPEM))
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse private key: %w", err)
-		}
-
-		// 确定算法类型
-		switch key := privateKey.(type) {
-		case *rsa.PrivateKey:
-			algorithm = "rsa"
-			keySize = key.N.BitLen()
-		case *ed25519.PrivateKey:
-			algorithm = "ed25519"
-			keySize = 0
-		default:
-			return nil, errors.New("unsupported key type, only RSA and ED25519 are supported")
-		}
-	} else {
-		return nil, errors.New("unsupported private key type")
-	}
-
-	// 生成公钥
-	publicKey, err := generatePublicKey(privateKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate public key: %w", err)
-	}
-
-	// 计算指纹
-	fingerprint, err := calculateFingerprint(publicKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to calculate fingerprint: %w", err)
-	}
-
-	// 保存到数据库
-	sshKey := &SSHKey{
-		UserID:      userID,
-		Name:        req.Name,
-		PublicKey:   publicKey,
-		Fingerprint: fingerprint,
-		Algorithm:   algorithm,
-		KeySize:     keySize,
-	}
-	encryptedPrivateKey, err := s.encryptPrivateKey(sshKey, privateKeyPEM)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt private key: %w", err)
-	}
-	sshKey.PrivateKey = encryptedPrivateKey
-
-	if err := s.repo.Create(sshKey); err != nil {
-		return nil, fmt.Errorf("failed to save SSH key: %w", err)
-	}
-
-	// 返回响应（包含原始私钥，仅此一次）
-	return &SSHKeyResponse{
-		ID:          sshKey.ID,
-		CreatedAt:   sshKey.CreatedAt,
-		UserID:      sshKey.UserID,
-		Name:        sshKey.Name,
-		PublicKey:   sshKey.PublicKey,
-		PrivateKey:  privateKeyPEM,
-		Fingerprint: sshKey.Fingerprint,
-		Algorithm:   sshKey.Algorithm,
-		KeySize:     sshKey.KeySize,
-	}, nil
+func (s *service) GetKey(keyID uint, userID uuid.UUID) (*SSHKey, error) {
+	return s.repo.FindByID(keyID, userID)
 }
 
 // GetUserKeys retrieves all SSH keys for a user
@@ -233,13 +131,6 @@ func (s *service) encryptPrivateKey(key *SSHKey, privateKeyPEM string) (string, 
 		return "", errors.New("encryptor is required")
 	}
 	return s.encryptor.EncryptWithAAD(privateKeyPEM, key.PrivateKeyAAD())
-}
-
-func (s *service) decryptPrivateKey(key *SSHKey) (string, error) {
-	if s.encryptor == nil {
-		return "", errors.New("encryptor is required")
-	}
-	return s.encryptor.DecryptWithAAD(key.PrivateKey, key.PrivateKeyAAD())
 }
 
 // encodePrivateKeyToPEM encodes a private key to PEM format
@@ -266,47 +157,4 @@ func encodePrivateKeyToPEM(privateKey interface{}) (string, error) {
 	}
 
 	return string(pem.EncodeToMemory(pemBlock)), nil
-}
-
-// generatePublicKey generates an SSH public key from a private key
-func generatePublicKey(privateKey interface{}) (string, error) {
-	var publicKey ssh.PublicKey
-	var err error
-
-	switch key := privateKey.(type) {
-	case *rsa.PrivateKey:
-		publicKey, err = ssh.NewPublicKey(&key.PublicKey)
-	case ed25519.PrivateKey:
-		publicKey, err = ssh.NewPublicKey(key.Public())
-	default:
-		return "", errors.New("unsupported private key type")
-	}
-
-	if err != nil {
-		return "", err
-	}
-
-	return string(ssh.MarshalAuthorizedKey(publicKey)), nil
-}
-
-// calculateFingerprint calculates the MD5 fingerprint of an SSH public key
-func calculateFingerprint(publicKeyStr string) (string, error) {
-	publicKeyStr = strings.TrimSpace(publicKeyStr)
-
-	// 解析公钥
-	publicKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(publicKeyStr))
-	if err != nil {
-		return "", err
-	}
-
-	// 计算MD5指纹
-	hash := md5.Sum(publicKey.Marshal())
-
-	// 格式化为 xx:xx:xx:xx:... 格式
-	fingerprint := fmt.Sprintf("%02x", hash[0])
-	for i := 1; i < len(hash); i++ {
-		fingerprint += fmt.Sprintf(":%02x", hash[i])
-	}
-
-	return fingerprint, nil
 }

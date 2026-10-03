@@ -819,6 +819,10 @@ components:
         username:
           type: string
           example: root
+        ssh_key_id:
+          type: integer
+          nullable: true
+          description: 连接引用的密钥条目 ID。
         auth_method:
           type: string
           enum: [password, key]
@@ -1718,10 +1722,18 @@ components:
         password:
           type: string
           format: password
-          description: 当 auth_method 为 password 时必填
+          description: 可选；未保存时在连接时输入。
+        ssh_key_id:
+          type: integer
+          minimum: 0
+          description: 已保存的密钥条目 ID；0 表示连接时临时提供私钥。与非空 private_key 互斥。
+        private_key_passphrase:
+          type: string
+          format: password
+          description: 仅用于导入私钥时校验口令，不持久化。
         private_key:
           type: string
-          description: 当 auth_method 为 key 时必填
+          description: 导入私钥为独立条目并建立引用；不在连接记录中保存私钥。
         group:
           type: string
           example: production
@@ -1744,8 +1756,17 @@ components:
         password:
           type: string
           format: password
+        ssh_key_id:
+          type: integer
+          minimum: 0
+          description: 已保存的密钥条目 ID；0 表示连接时临时提供私钥。与非空 private_key 互斥。
+        private_key_passphrase:
+          type: string
+          format: password
+          description: 仅用于导入私钥时校验口令，不持久化。
         private_key:
           type: string
+          description: 导入私钥为独立条目并建立引用；不在连接记录中保存私钥。
         group:
           type: string
         tags:

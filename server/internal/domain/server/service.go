@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/easyssh/server/internal/domain/sshkey"
 	"github.com/easyssh/server/internal/pkg/geoip"
 	"github.com/easyssh/shared/secretcrypto"
 	"github.com/google/uuid"
@@ -46,16 +47,18 @@ type Service interface {
 
 // CreateServerRequest 创建服务器请求
 type CreateServerRequest struct {
-	Name        string     `json:"name"`
-	Host        string     `json:"host" binding:"required"`
-	Port        int        `json:"port"`
-	Username    string     `json:"username" binding:"required"`
-	AuthMethod  AuthMethod `json:"auth_method" binding:"required"`
-	Password    string     `json:"password"`
-	PrivateKey  string     `json:"private_key"`
-	Group       string     `json:"group"`
-	Tags        []string   `json:"tags"`
-	Description string     `json:"description"`
+	Name                 string     `json:"name"`
+	Host                 string     `json:"host" binding:"required"`
+	Port                 int        `json:"port"`
+	Username             string     `json:"username" binding:"required"`
+	AuthMethod           AuthMethod `json:"auth_method" binding:"required"`
+	Password             string     `json:"password"`
+	PrivateKey           string     `json:"private_key"`
+	SSHKeyID             *uint      `json:"ssh_key_id"`
+	PrivateKeyPassphrase string     `json:"private_key_passphrase"`
+	Group                string     `json:"group"`
+	Tags                 []string   `json:"tags"`
+	Description          string     `json:"description"`
 }
 
 // UpdateServerRequest 更新服务器请求
@@ -67,6 +70,8 @@ type UpdateServerRequest struct {
 	AuthMethod                   *AuthMethod `json:"auth_method"`
 	Password                     *string     `json:"password"`
 	PrivateKey                   *string     `json:"private_key"`
+	SSHKeyID                     *uint       `json:"ssh_key_id"`
+	PrivateKeyPassphrase         string      `json:"private_key_passphrase"`
 	Group                        *string     `json:"group"`
 	Tags                         *[]string   `json:"tags"`
 	Description                  *string     `json:"description"`
@@ -87,14 +92,16 @@ type serverService struct {
 	repo        Repository
 	encryptor   *crypto.Encryptor
 	geoipClient *geoip.Client
+	keys        sshkey.Service
 }
 
 // NewService 创建服务器服务
-func NewService(repo Repository, encryptor *crypto.Encryptor, geoipClient *geoip.Client) Service {
+func NewService(repo Repository, encryptor *crypto.Encryptor, geoipClient *geoip.Client, keys sshkey.Service) Service {
 	return &serverService{
 		repo:        repo,
 		encryptor:   encryptor,
 		geoipClient: geoipClient,
+		keys:        keys,
 	}
 }
 
@@ -136,13 +143,8 @@ func (s *serverService) Create(ctx context.Context, userID uuid.UUID, req *Creat
 		server.Password = encrypted
 	}
 
-	// 加密私钥
-	if req.PrivateKey != "" {
-		encrypted, err := s.encryptor.EncryptWithAAD(req.PrivateKey, server.CredentialAAD("private_key"))
-		if err != nil {
-			return nil, fmt.Errorf("failed to encrypt private key: %w", err)
-		}
-		server.PrivateKey = encrypted
+	if err := s.assignKey(server, req.SSHKeyID, &req.PrivateKey, req.PrivateKeyPassphrase); err != nil {
+		return nil, err
 	}
 
 	// 查询 IP 地理位置；查询失败不影响创建。
@@ -179,7 +181,7 @@ func (s *serverService) Update(ctx context.Context, userID, serverID uuid.UUID, 
 	authConfigChanged :=
 		(req.AuthMethod != nil && *req.AuthMethod != server.AuthMethod) ||
 			req.Password != nil ||
-			req.PrivateKey != nil
+			req.PrivateKey != nil || req.SSHKeyID != nil
 
 	// 更新字段
 	if req.Name != nil {
@@ -223,17 +225,8 @@ func (s *serverService) Update(ctx context.Context, userID, serverID uuid.UUID, 
 		}
 	}
 
-	// 更新私钥
-	if req.PrivateKey != nil {
-		if *req.PrivateKey == "" {
-			server.PrivateKey = ""
-		} else {
-			encrypted, err := s.encryptor.EncryptWithAAD(*req.PrivateKey, server.CredentialAAD("private_key"))
-			if err != nil {
-				return nil, fmt.Errorf("failed to encrypt private key: %w", err)
-			}
-			server.PrivateKey = encrypted
-		}
+	if err := s.assignKey(server, req.SSHKeyID, req.PrivateKey, req.PrivateKeyPassphrase); err != nil {
+		return nil, err
 	}
 
 	// 主机改变后旧位置即失效；普通编辑不重复消耗在线查询额度。
@@ -316,4 +309,44 @@ func (s *serverService) updateServerLocation(ctx context.Context, server *Server
 	server.CountryCode = loc.CountryCode
 	server.Region = loc.Region
 	server.City = loc.City
+}
+
+// Private key material is an import command, never a field of a saved connection.
+func (s *serverService) assignKey(srv *Server, keyID *uint, material *string, passphrase string) error {
+	if !srv.AuthMethod.RequiresPrivateKey() {
+		srv.SSHKeyID = nil
+		srv.SSHKey = nil
+		return nil
+	}
+	if keyID != nil && material != nil && *material != "" {
+		return errors.New("choose a saved SSH key or import a key, not both")
+	}
+	if keyID != nil {
+		if *keyID == 0 {
+			srv.SSHKeyID = nil
+			srv.SSHKey = nil
+			return nil
+		}
+		key, err := s.keys.GetKey(*keyID, srv.UserID)
+		if err != nil {
+			return fmt.Errorf("SSH key is not available to this user: %w", err)
+		}
+		srv.SSHKeyID, srv.SSHKey = &key.ID, key
+		return nil
+	}
+	if material == nil {
+		return nil
+	}
+	if *material == "" {
+		srv.SSHKeyID = nil
+		srv.SSHKey = nil
+		return nil
+	}
+	key, err := s.keys.ImportKeyPair(&sshkey.ImportSSHKeyRequest{Name: srv.Host, PrivateKey: *material, Passphrase: passphrase}, srv.UserID)
+	if err != nil {
+		return err
+	}
+	srv.SSHKeyID = &key.ID
+	srv.SSHKey, err = s.keys.GetKey(key.ID, srv.UserID)
+	return err
 }

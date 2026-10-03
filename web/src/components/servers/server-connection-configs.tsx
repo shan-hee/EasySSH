@@ -12,6 +12,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ServerSystemIcon } from "@/components/servers/server-system-icon"
 import type { ServerFormData } from "@/components/servers/add-server-dialog"
 import { serversApi, type Server, type AuthMethod } from "@/lib/api"
+import { sshKeyApi, type SSHKeyApi } from "@/lib/api/ssh-keys"
+
 import { cn } from "@/lib/utils"
 import { normalizeSSHAuthMethod, requiresPassword, requiresPrivateKey } from "@/lib/ssh-auth-methods"
 import {
@@ -50,6 +52,8 @@ import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
 import { useServerConnectionList } from "@/hooks/use-server-connection-list"
 
+const defaultServerApi = { ...serversApi, sshKeys: sshKeyApi }
+
 type ViewMode = "grid" | "list"
 type DragOverlaySize = { width: number; height: number } | null
 
@@ -77,6 +81,7 @@ interface ServerConnectionConfigsProps {
 }
 
 export interface ServerConnectionConfigsApi {
+ sshKeys: SSHKeyApi
  getById: typeof serversApi.getById
  list: typeof serversApi.list
  create: typeof serversApi.create
@@ -366,7 +371,7 @@ function SortableServerItem({
 export function ServerConnectionConfigs({
  onConnect,
  defaultViewMode = "list",
- serverApi = serversApi,
+ serverApi = defaultServerApi,
  ready: externalReady,
 }: ServerConnectionConfigsProps) {
  const authReady = useAuthReady()
@@ -433,7 +438,7 @@ export function ServerConnectionConfigs({
  username: duplicatingServer.username,
 	 authMethod: normalizeSSHAuthMethod(duplicatingServer.auth_method),
  password: "",
- privateKey: "",
+ sshKeyId: duplicatingServer.ssh_key_id ?? 0,
  rememberPassword: false,
  tags: duplicatingServer.tags || [],
  description: duplicatingServer.description || "",
@@ -593,7 +598,7 @@ export function ServerConnectionConfigs({
  username: string
  auth_method: AuthMethod
  password?: string
- private_key?: string
+ ssh_key_id: number
  group?: string
  tags?: string[]
  description?: string
@@ -606,14 +611,12 @@ export function ServerConnectionConfigs({
  group: data.group?.trim() || undefined,
  tags: data.tags,
  description: data.description,
+ ssh_key_id: requiresPrivateKey(data.authMethod) ? data.sshKeyId : 0,
  }
 
 	 if (data.rememberPassword) {
 	 if (requiresPassword(data.authMethod) && data.password) {
 	 serverData.password = data.password
-	 }
-	 if (requiresPrivateKey(data.authMethod) && data.privateKey) {
-	 serverData.private_key = data.privateKey
 	 }
 	 }
 
@@ -650,7 +653,7 @@ export function ServerConnectionConfigs({
  username: string
 	 auth_method: AuthMethod
  password?: string
- private_key?: string
+ ssh_key_id: number
  group?: string
  tags?: string[]
  description?: string
@@ -663,10 +666,10 @@ export function ServerConnectionConfigs({
  group: data.group?.trim() || "",
  tags: data.tags,
  description: data.description,
+ ssh_key_id: requiresPrivateKey(data.authMethod) ? data.sshKeyId : 0,
  }
 
 	 const needsPassword = requiresPassword(data.authMethod)
-	 const needsPrivateKey = requiresPrivateKey(data.authMethod)
 	 if (needsPassword) {
 	 if (data.rememberPassword && data.password) {
 	 updateData.password = data.password
@@ -675,16 +678,6 @@ export function ServerConnectionConfigs({
 	 }
 	 } else if (editingServer.has_password) {
 	 updateData.password = ""
-	 }
-
-	 if (needsPrivateKey) {
-	 if (data.rememberPassword && data.privateKey) {
-	 updateData.private_key = data.privateKey
-	 } else if (!data.rememberPassword && (editingServer.has_private_key || data.privateKey)) {
-	 updateData.private_key = ""
-	 }
-	 } else if (editingServer.has_private_key) {
-	 updateData.private_key = ""
 	 }
 
  const updatedServer = await serverApi.update(editingServer.id, updateData)
@@ -932,6 +925,7 @@ export function ServerConnectionConfigs({
 
  {/* 添加服务器弹窗 */}
  <AddServerDialog
+ keyApi={serverApi.sshKeys}
  open={isAddDialogOpen}
  onOpenChange={handleAddDialogOpenChange}
  onSubmit={handleAddServer}
@@ -944,6 +938,7 @@ export function ServerConnectionConfigs({
 
  {/* 编辑服务器弹窗 */}
  <EditServerDialog
+ keyApi={serverApi.sshKeys}
  open={isEditDialogOpen}
  onOpenChange={setIsEditDialogOpen}
  onSubmit={handleEditServer}
@@ -955,14 +950,9 @@ export function ServerConnectionConfigs({
  port: editingServer.port?.toString() || "22",
  username: editingServer.username,
 	 authMethod: normalizeSSHAuthMethod(editingServer.auth_method),
- password: editingServer.password || "",
- privateKey: editingServer.private_key || "",
-	 rememberPassword: Boolean(
-	 editingServer.has_private_key ||
-	 editingServer.private_key ||
-	 editingServer.has_password ||
-	 editingServer.password
-	 ),
+ password: "",
+ sshKeyId: editingServer.ssh_key_id ?? 0,
+ rememberPassword: Boolean(editingServer.has_password),
  tags: editingServer.tags || [],
  description: editingServer.description || "",
  group: editingServer.group || "",

@@ -175,7 +175,7 @@ func (s *ToolExecutorService) executeGetServerInfo(ctx context.Context, userID u
 		"os":              srv.OS,
 		"last_connected":  srv.LastConnected,
 		"has_password":    srv.Password != "",
-		"has_private_key": srv.PrivateKey != "",
+		"has_private_key": srv.SSHKeyID != nil,
 		"country":         srv.Country,
 		"city":            srv.City,
 	}

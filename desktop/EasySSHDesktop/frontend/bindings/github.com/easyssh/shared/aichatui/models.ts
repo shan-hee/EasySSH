@@ -5,6 +5,51 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+/**
+ * ServerReference keeps identity separate from its display snapshot.
+ */
+export class ServerReference {
+    "server_id": string;
+    "name": string;
+    "host": string;
+    "port": number;
+    "username": string;
+    "label"?: string;
+    "offset": number;
+
+    /** Creates a new ServerReference instance. */
+    constructor($$source: Partial<ServerReference> = {}) {
+        if (!("server_id" in $$source)) {
+            this["server_id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("host" in $$source)) {
+            this["host"] = "";
+        }
+        if (!("port" in $$source)) {
+            this["port"] = 0;
+        }
+        if (!("username" in $$source)) {
+            this["username"] = "";
+        }
+        if (!("offset" in $$source)) {
+            this["offset"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ServerReference instance from a string or object.
+     */
+    static createFrom($$source: any = {}): ServerReference {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ServerReference($$parsedSource as Partial<ServerReference>);
+    }
+}
+
 export class UIMessage {
     "id": string;
     "role": string;
@@ -46,22 +91,3 @@ export class UIMessage {
 // Private type creation functions
 const $$createType0 = $Create.Map($Create.Any, $Create.Any);
 const $$createType1 = $Create.Array($$createType0);
-
-export class ServerReference {
-    "server_id": string = "";
-    "name": string = "";
-    "host": string = "";
-    "port": number = 0;
-    "username": string = "";
-    "label"?: string;
-    "offset": number = 0;
-
-    constructor($$source: Partial<ServerReference> = {}) {
-        Object.assign(this, $$source);
-    }
-
-    static createFrom($$source: any = {}): ServerReference {
-        const $$parsedSource = typeof $$source === "string" ? JSON.parse($$source) : $$source;
-        return new ServerReference($$parsedSource as Partial<ServerReference>);
-    }
-}

@@ -3,6 +3,7 @@ module github.com/easyssh/easyssh-desktop
 go 1.25.0
 
 require (
+	github.com/zalando/go-keyring v0.2.6
 	github.com/coder/websocket v1.8.14
 	github.com/easyssh/shared v0.0.0
 	github.com/google/uuid v1.6.0
@@ -17,6 +18,7 @@ replace github.com/easyssh/shared => ../../shared
 replace github.com/wailsapp/wails/v3 => ./third_party/wails-v3-runtime
 
 require (
+	al.essio.dev/pkg/shellescape v1.6.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	filippo.io/age v1.3.1 // indirect
 	filippo.io/hpke v0.4.0 // indirect
@@ -31,6 +33,7 @@ require (
 	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
+	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect

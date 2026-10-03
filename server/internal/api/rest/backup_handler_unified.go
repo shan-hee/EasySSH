@@ -648,6 +648,7 @@ func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSecti
 	summary := &restoreSectionSummary{}
 	restoredTables := make([]BackupTable, 0)
 	userIDMappings := make(map[string]interface{})
+	keyMappings := make(map[string]restoredSSHKey)
 
 	for _, table := range orderedDataRestoreTables(section.Tables) {
 		policy, ok := backupPolicyForTable(table.Name)
@@ -658,6 +659,17 @@ func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSecti
 			continue
 		}
 
+		if normalizeBackupTableName(table.Name) == "ssh_keys" {
+			if err := h.restoreSSHKeyTable(tx, table, policy, strategy, userIDMappings, keyMappings, summary, allowSensitive); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if normalizeBackupTableName(table.Name) == "servers" {
+			if err := remapBackupServerKeys(table, userIDMappings, keyMappings); err != nil {
+				return nil, err
+			}
+		}
 		changed, restoredTable, err := h.restoreEntityTable(tx, table, policy, strategy, userIDMappings, summary, allowSensitive)
 		if err != nil {
 			return nil, err
@@ -1166,7 +1178,12 @@ func orderedDataRestoreTables(tables []BackupTable) []BackupTable {
 		}
 	}
 	for _, table := range tables {
-		if !isUsersRestoreTable(table.Name) {
+		if normalizeBackupTableName(table.Name) == "ssh_keys" {
+			ordered = append(ordered, table)
+		}
+	}
+	for _, table := range tables {
+		if !isUsersRestoreTable(table.Name) && normalizeBackupTableName(table.Name) != "ssh_keys" {
 			ordered = append(ordered, table)
 		}
 	}

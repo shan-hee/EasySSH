@@ -244,8 +244,8 @@ function App() {
         }
         return `desktop://terminal?${params.toString()}`
       },
-      saveVerifiedCredential: async ({ serverId, authMethod, secret, password, privateKey }) => {
-        await saveDesktopVerifiedCredential({ serverId, authMethod, secret, password, privateKey })
+      saveVerifiedCredential: async ({ serverId, authMethod, secret, password, privateKey, privateKeyPassphrase }) => {
+        await saveDesktopVerifiedCredential({ serverId, authMethod, secret, password, privateKey, privateKeyPassphrase })
       },
     },
   }), [desktopGatewayToken, desktopGatewayWsBaseUrl, desktopTerminalGatewayReady, dockerApi, monitorApi, runtimeLoaded, sftpApi, terminalSocket])

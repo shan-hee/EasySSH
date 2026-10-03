@@ -44,7 +44,7 @@ var backupTablePolicies = map[string]backupTablePolicy{
 
 	// Core business entities.
 	"users":           excludeColumns(entityPolicy("users", [][]string{{"email"}, {"google_sub"}}, false), "password", "two_factor_enabled", "two_factor_secret", "backup_codes", "nezha_api_token", "komari_api_token"),
-	"servers":         excludeColumns(entityPolicy("servers", nil, true), "password", "private_key"),
+	"servers":         excludeColumns(entityPolicy("servers", nil, true), "password"),
 	"ssh_keys":        excludeColumns(entityPolicy("ssh_keys", [][]string{{"user_id", "fingerprint"}}, true), "private_key"),
 	"ssh_host_keys":   entityPolicy("ssh_host_keys", [][]string{{"host", "port"}}, false),
 	"scripts":         entityPolicy("scripts", nil, true),

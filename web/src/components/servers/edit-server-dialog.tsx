@@ -24,7 +24,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { X } from "lucide-react"
-import { PrivateKeyInput } from "@/components/servers/private-key-input"
+import { SSHKeySelector } from "@/components/servers/ssh-key-selector"
+import type { SSHKeyApi } from "@/lib/api/ssh-keys"
 import { toast } from "@/components/ui/sonner"
 import { ServerTagCombobox } from "@/components/servers/server-tag-combobox"
 import type { AuthMethod } from "@/lib/server-types"
@@ -40,6 +41,7 @@ interface EditServerDialogProps {
   onOpenChange: (open: boolean) => void
   onSubmit?: (data: ServerFormData) => void
   initialData?: Partial<ServerFormData>
+  keyApi: SSHKeyApi
   availableGroups?: string[]
   availableTags?: string[]
 }
@@ -51,7 +53,7 @@ export interface ServerFormData {
   username: string
   authMethod: AuthMethod
   password: string
-  privateKey: string
+  sshKeyId: number
   rememberPassword: boolean
   tags: string[]
   description: string
@@ -66,6 +68,7 @@ export function EditServerDialog({
   onOpenChange,
   onSubmit,
   initialData,
+  keyApi,
   availableGroups = [],
   availableTags = [],
 }: EditServerDialogProps) {
@@ -78,7 +81,7 @@ export function EditServerDialog({
     username: "",
     authMethod: "password",
     password: "",
-    privateKey: "",
+    sshKeyId: 0,
     rememberPassword: false,
     tags: [],
     description: "",
@@ -88,6 +91,7 @@ export function EditServerDialog({
     keepAlive: true,
   })
 
+  const [keyImportPending, setKeyImportPending] = useState(false)
   const [newTag, setNewTag] = useState("")
 
   // 当initialData变化时更新表单
@@ -101,7 +105,7 @@ export function EditServerDialog({
           username: initialData.username || "",
           authMethod: initialData.authMethod || "password",
           password: initialData.password || "",
-          privateKey: initialData.privateKey || "",
+          sshKeyId: initialData.sshKeyId || 0,
           rememberPassword: initialData.rememberPassword || false,
           tags: initialData.tags || [],
           description: initialData.description || "",
@@ -117,7 +121,7 @@ export function EditServerDialog({
     }
   }, [initialData, open])
 
-  const handleInputChange = (field: keyof ServerFormData, value: string | boolean) => {
+  const handleInputChange = (field: keyof ServerFormData, value: string | boolean | number) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
@@ -169,6 +173,7 @@ export function EditServerDialog({
       ...formData,
       jumpServer: formData.jumpServer === "none" ? "" : formData.jumpServer,
     }
+    if (keyImportPending) return
     onSubmit?.(normalized)
     setNewTag("")
     onOpenChange(false)
@@ -184,7 +189,7 @@ export function EditServerDialog({
       username: "",
       authMethod: "password",
       password: "",
-      privateKey: "",
+      sshKeyId: 0,
       rememberPassword: false,
       tags: [],
       description: "",
@@ -360,6 +365,7 @@ export function EditServerDialog({
                       </SelectContent>
                     </Select>
 
+                    {requiresPassword(formData.authMethod) && (
                     <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5">
                       <Checkbox
                         id="remember"
@@ -381,6 +387,7 @@ export function EditServerDialog({
                         </p>
                       </div>
                     </div>
+                    )}
 
                     {requiresPassword(formData.authMethod) && (
                       <div className="space-y-1.5">
@@ -398,13 +405,7 @@ export function EditServerDialog({
                     )}
 
                     {requiresPrivateKey(formData.authMethod) && (
-                      <PrivateKeyInput
-                        id="privateKey"
-                        label={tServers("quickFormPrivateKeyLabel")}
-                        value={formData.privateKey}
-                        onChange={(v) => handleInputChange("privateKey", v)}
-                        placeholder={tServers("quickFormPrivateKeyPlaceholder")}
-                      />
+                      <SSHKeySelector onPendingChange={setKeyImportPending} api={keyApi} value={formData.sshKeyId} onChange={id => handleInputChange("sshKeyId", id)} />
                     )}
                   </div>
               </div>
@@ -480,7 +481,7 @@ export function EditServerDialog({
             <Button type="button" variant="outline" onClick={handleCancel}>
               {tServers("quickFormCancelButton")}
             </Button>
-            <Button type="submit">
+            <Button type="submit" disabled={keyImportPending}>
               {tServers("quickFormSaveButton")}
             </Button>
           </div>

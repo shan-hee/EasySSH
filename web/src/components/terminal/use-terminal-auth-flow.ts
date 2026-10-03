@@ -18,6 +18,7 @@ export interface TerminalCredentialSaveRequest {
   secret: string
   password?: string
   privateKey?: string
+  privateKeyPassphrase?: string
 }
 
 export interface TerminalCredentialSavePrompt {
@@ -64,6 +65,7 @@ export function useTerminalAuthFlow({
     secret: string
     password?: string
     privateKey?: string
+    privateKeyPassphrase?: string
   } | null>(null)
 
   const handleAuthPrompt = useCallback((
@@ -108,9 +110,13 @@ export function useTerminalAuthFlow({
         secret: payload.answers[0] ?? payload.password ?? payload.privateKey ?? "",
         password: payload.password,
         privateKey: payload.privateKey,
+        privateKeyPassphrase: payload.privateKeyPassphrase,
       }
     }
 
+    if (authChallenge?.prompt.kind === "private_key_passphrase" && successfulCredentialRef.current) {
+      successfulCredentialRef.current.privateKeyPassphrase = payload.privateKeyPassphrase ?? payload.answers?.[0]
+    }
     authChallenge?.respond(answers, false, authMethod)
     setAuthChallenge(null)
   }, [authChallenge])
@@ -170,6 +176,7 @@ export function useTerminalAuthFlow({
           secret: credential.secret,
           password: credential.password,
           privateKey: credential.privateKey,
+          privateKeyPassphrase: credential.privateKeyPassphrase,
         }).then(() => {
           adapters.notifySuccess?.(tTerminal("authRetrySaveSuccess"))
         }).catch((error) => {

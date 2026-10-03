@@ -5,6 +5,7 @@ import type {
   WorkspaceTerminalCredentialSaveRequest,
 } from "@easyssh/ssh-workspace/desktop"
 import {
+  primaryCredentialMethod,
   requiresPassword,
   requiresPrivateKey,
 } from "@easyssh/ssh-workspace/desktop"
@@ -59,8 +60,7 @@ export function mapDesktopServer(server: DesktopServer): Server {
     port: server.port || 22,
     username: server.username,
     auth_method: fromDesktopAuthMethod(server.auth_method),
-    password: server.password || undefined,
-    private_key: server.private_key || undefined,
+    ssh_key_id: server.ssh_key_id,
     has_password: Boolean(server.has_password),
     has_private_key: Boolean(server.has_private_key),
     group: server.group || undefined,
@@ -88,6 +88,8 @@ export function mapServerInput(input: Parameters<ServerConnectionConfigsApi["cre
     private_key: input.private_key || "",
     password_set: passwordSet,
     private_key_set: privateKeySet,
+    ssh_key_id: input.ssh_key_id ?? null,
+    private_key_passphrase: input.private_key_passphrase,
     group: input.group || "",
     tags: input.tags || [],
     description: input.description || "",
@@ -96,6 +98,11 @@ export function mapServerInput(input: Parameters<ServerConnectionConfigsApi["cre
 
 export function createDesktopServerApi(): ServerConnectionConfigsApi {
   return {
+    sshKeys: {
+      list: () => Call.ByName("main.DesktopServerService.ListSSHKeys"),
+      import: input => Call.ByName("main.DesktopServerService.ImportSSHKey", input),
+      delete: id => Call.ByName("main.DesktopServerService.DeleteSSHKey", id),
+    },
     getStatistics: () => Call.ByName("main.DesktopServerService.GetStatistics"),
     async getById(id) { return mapDesktopServer(await DesktopServerService.GetById(id)) },
     async list(params) {
@@ -132,6 +139,8 @@ export function createDesktopServerApi(): ServerConnectionConfigsApi {
       if (Object.prototype.hasOwnProperty.call(input, "password")) {
         mergedInput.password = input.password ?? ""
       }
+      mergedInput.ssh_key_id = input.ssh_key_id
+      mergedInput.private_key_passphrase = input.private_key_passphrase
       if (Object.prototype.hasOwnProperty.call(input, "private_key")) {
         mergedInput.private_key = input.private_key ?? ""
       }
@@ -153,6 +162,7 @@ export async function saveDesktopVerifiedCredential({
   secret,
   password,
   privateKey,
+  privateKeyPassphrase,
 }: WorkspaceTerminalCredentialSaveRequest): Promise<void> {
   const current = await DesktopServerService.GetById(serverId)
   const input: Parameters<ServerConnectionConfigsApi["create"]>[0] = {
@@ -166,17 +176,14 @@ export async function saveDesktopVerifiedCredential({
     description: current.description ?? "",
   }
 
-  if (password !== undefined) {
-    input.password = password
-  } else if (desktopAuthRequiresPassword(authMethod)) {
-    input.password = secret
-  }
-  if (privateKey !== undefined) {
-    input.private_key = privateKey
-  } else if (desktopAuthRequiresPrivateKey(authMethod)) {
-    input.private_key = secret
+  if (password !== undefined) input.password = password
+  if (privateKey !== undefined) input.private_key = privateKey
+  if (password === undefined && privateKey === undefined) {
+    if (primaryCredentialMethod(authMethod) === "key") input.private_key = secret
+    else input.password = secret
   }
 
+  input.private_key_passphrase = privateKeyPassphrase
   await DesktopServerService.Update(serverId, mapServerInput(input))
 }
 

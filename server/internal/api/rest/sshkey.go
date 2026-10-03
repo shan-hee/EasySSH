@@ -1,6 +1,8 @@
 package rest
 
 import (
+	"errors"
+	"gorm.io/gorm"
 	"net/http"
 	"strconv"
 
@@ -125,7 +127,11 @@ func (h *SSHKeyHandler) ImportSSHKey(c *gin.Context) {
 
 	keyResponse, err := h.service.ImportKeyPair(&req, userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{
+		status := http.StatusInternalServerError
+		if errors.Is(err, sshkey.ErrInvalidImport) {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, ErrorResponse{
 			Error: "Failed to import SSH key: " + err.Error(),
 		})
 		return
@@ -166,8 +172,12 @@ func (h *SSHKeyHandler) DeleteSSHKey(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteKey(uint(keyID), userID); err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error: "Failed to delete SSH key",
+		status := http.StatusConflict
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			status = http.StatusNotFound
+		}
+		c.JSON(status, ErrorResponse{
+			Error: err.Error(),
 		})
 		return
 	}

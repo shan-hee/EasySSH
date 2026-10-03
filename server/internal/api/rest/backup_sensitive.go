@@ -59,8 +59,8 @@ var sensitiveBackupTables = []sensitiveTableSpec{
 	{
 		Table:            "servers",
 		Section:          backupSectionDatabase,
-		Columns:          []string{"id", "user_id", "password", "private_key"},
-		SensitiveColumns: []string{"password", "private_key"},
+		Columns:          []string{"id", "user_id", "password"},
+		SensitiveColumns: []string{"password"},
 	},
 	{
 		Table:            "ssh_keys",
@@ -458,10 +458,7 @@ func (h *BackupHandler) decryptUserTwoFactorSecret(row map[string]interface{}, u
 func (h *BackupHandler) decryptServerSensitiveRow(row map[string]interface{}) error {
 	serverID := row["id"]
 	userID := row["user_id"]
-	if err := h.decryptRowSecret(row, "password", serverCredentialAAD(userID, serverID, "password")); err != nil {
-		return err
-	}
-	return h.decryptRowSecret(row, "private_key", serverCredentialAAD(userID, serverID, "private_key"))
+	return h.decryptRowSecret(row, "password", serverCredentialAAD(userID, serverID, "password"))
 }
 
 func (h *BackupHandler) decryptSSHKeySensitiveRow(row map[string]interface{}) error {
@@ -600,10 +597,7 @@ func (h *BackupHandler) encryptUserRestoreSecrets(row map[string]interface{}) er
 func (h *BackupHandler) encryptServerRestoreSecrets(row map[string]interface{}) error {
 	serverID := row["id"]
 	userID := row["user_id"]
-	if err := h.encryptRestoreSecret(row, "password", serverCredentialAAD(userID, serverID, "password")); err != nil {
-		return err
-	}
-	return h.encryptRestoreSecret(row, "private_key", serverCredentialAAD(userID, serverID, "private_key"))
+	return h.encryptRestoreSecret(row, "password", serverCredentialAAD(userID, serverID, "password"))
 }
 
 func (h *BackupHandler) encryptNotificationConfigRow(row map[string]interface{}) error {

@@ -92,6 +92,11 @@ func main() {
 	}
 	defer db.Close(database)
 
+	// This development release replaces inline private keys with shared key records.
+	// Refuse the retired schema rather than silently retaining unusable secrets.
+	if database.Migrator().HasColumn("servers", "private_key") || database.Migrator().HasColumn("ssh_keys", "deleted_at") {
+		log.Fatal("Retired SSH credential schema: use a fresh development database. Existing data has not been modified.")
+	}
 	if err := database.AutoMigrate(
 		&auth.User{},
 		&auth.Session{}, // 用户会话表
@@ -305,7 +310,9 @@ func main() {
 
 	// 服务器服务
 	serverRepo := server.NewRepository(database)
-	serverService := server.NewService(serverRepo, encryptor, geoipClient)
+	sshKeyRepo := sshkey.NewRepository(database)
+	sshKeyService := sshkey.NewService(sshKeyRepo, encryptor)
+	serverService := server.NewService(serverRepo, encryptor, geoipClient, sshKeyService)
 
 	// SSH 主机密钥验证服务（TOFU安全模型）
 	sshHostKeyService := sshhostkey.NewService(database)
@@ -407,8 +414,6 @@ func main() {
 	userService := user.NewService(userRepo, permissionService)
 
 	// SSH密钥服务
-	sshKeyRepo := sshkey.NewRepository(database)
-	sshKeyService := sshkey.NewService(sshKeyRepo, encryptor)
 
 	// SFTP 上传 WebSocket 处理器
 	sftpUploadWSHandler := ws.NewSFTPUploadHandler(securityService, cfg.Server.WebDevPort)
