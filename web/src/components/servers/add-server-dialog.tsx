@@ -200,271 +200,268 @@ export function AddServerDialog({
           </DialogHeader>
         </div>
 
-        <Tabs defaultValue="server" className="w-full flex-1 flex flex-col overflow-hidden px-6 pt-4">
-          <TabsList className="w-full">
-            <TabsTrigger value="server">{tServers("quickFormTabServer")}</TabsTrigger>
-            <TabsTrigger value="advanced">{tServers("quickFormTabAdvanced")}</TabsTrigger>
-            <TabsTrigger value="settings">{tServers("quickFormTabSettings")}</TabsTrigger>
-          </TabsList>
+        <form
+          id="ssh-connection-create-form"
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(event) => {
+            event.preventDefault()
+            handleSave()
+          }}
+        >
+          <Tabs defaultValue="server" className="w-full flex-1 flex flex-col overflow-hidden px-6 pt-4">
+            <TabsList className="w-full">
+              <TabsTrigger value="server">{tServers("quickFormTabServer")}</TabsTrigger>
+              <TabsTrigger value="advanced">{tServers("quickFormTabAdvanced")}</TabsTrigger>
+              <TabsTrigger value="settings">{tServers("quickFormTabSettings")}</TabsTrigger>
+            </TabsList>
 
-          {/* 云服务器标签 */}
-          <TabsContent value="server" className="flex-1 overflow-y-auto mt-4 pr-1 pl-0.5">
-            <div className="space-y-4 px-1">
-              {/* 连接信息 */}
-              <div className="grid grid-cols-[1fr_140px] gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="host">{tServers("quickFormHostLabel")}</Label>
-                  <Input
-                    id="host"
-                    placeholder={tServers("quickFormHostPlaceholder")}
-                    value={formData.host}
-                    onChange={(e) => handleInputChange("host", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="port">{tServers("quickFormPortLabel")}</Label>
-                  <Input
-                    id="port"
-                    placeholder="22"
-                    value={formData.port}
-                    onChange={(e) => handleInputChange("port", e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* 用户信息 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="username">{tServers("quickFormUsernameLabel")}</Label>
-                  <Input
-                    id="username"
-                    autoComplete="username"
-                    placeholder={tServers("quickFormUsernamePlaceholder")}
-                    value={formData.username}
-                    onChange={(e) => handleInputChange("username", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="name">{tServers("quickFormNameLabel")}</Label>
-                  <Input
-                    id="name"
-                    placeholder={tServers("quickFormNamePlaceholder")}
-                    value={formData.name}
-                    onChange={(e) => handleInputChange("name", e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* 分组和标签 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="server-group">{tServers("quickFormGroupLabel")}</Label>
-                  <Input
-                    id="server-group"
-                    list="server-group-options"
-                    placeholder={tServers("quickFormGroupPlaceholder")}
-                    value={formData.group || ""}
-                    onChange={(e) => handleInputChange("group", e.target.value)}
-                  />
-                  {availableGroups.length > 0 && (
-                    <datalist id="server-group-options">
-                      {availableGroups.map((group) => (
-                        <option key={group} value={group} />
-                      ))}
-                    </datalist>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="server-tags">{tServers("quickFormTagsLabel")}</Label>
-                  <ServerTagCombobox
-                    id="server-tags"
-                    value={newTag}
-                    onValueChange={setNewTag}
-                    selectedTags={formData.tags}
-                    availableTags={availableTags}
-                    placeholder={tServers("quickFormTagsPlaceholder")}
-                    createLabel={(tag) => tServers("quickFormCreateTag", { tag })}
-                    onAddTag={handleAddTag}
-                  />
-                </div>
-              </div>
-
-              {/* 标签显示 */}
-              {formData.tags.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-1">
-                  {formData.tags.map((tag) => (
-                    <Badge key={tag} variant="secondary" className="flex items-center gap-1">
-                      {tag}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveTag(tag)}
-                        className="h-4 w-4 p-0 hover:bg-transparent"
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
-                {/* 认证方式 */}
-                <div className="space-y-3 pt-2">
-                  <Label>{tServers("quickFormAuthMethodLabel")}</Label>
-                  <Select
-                    value={formData.authMethod}
-                    onValueChange={(value) => handleInputChange("authMethod", value)}
-                  >
-                    <SelectTrigger className="w-full max-w-md">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SSH_AUTH_METHODS.map((method) => (
-                        <SelectItem key={method} value={method}>
-                          {tServers(authMethodLabelKey(method))}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-
-                  <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5">
-                    <Checkbox
-                      id="remember"
-                      checked={formData.rememberPassword}
-                      onCheckedChange={(checked) =>
-                        handleInputChange("rememberPassword", checked === true)
-                      }
-                      className="mt-0.5"
+            {/* 云服务器标签 */}
+            <TabsContent value="server" className="flex-1 overflow-y-auto mt-4 pr-1 pl-0.5">
+              <div className="space-y-4 px-1">
+                {/* 连接信息 */}
+                <div className="grid grid-cols-[1fr_140px] gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="host">{tServers("quickFormHostLabel")}</Label>
+                    <Input
+                      id="host"
+                      placeholder={tServers("quickFormHostPlaceholder")}
+                      value={formData.host}
+                      onChange={(e) => handleInputChange("host", e.target.value)}
                     />
-                    <div className="grid gap-1 leading-none">
-                      <Label
-                        htmlFor="remember"
-                        className="text-sm font-normal cursor-pointer"
-                      >
-                        {tServers("quickFormRememberPasswordLabel")}
-                      </Label>
-                      <p className="text-xs text-muted-foreground">
-                        {tServers("quickFormRememberCredentialDescription")}
-                      </p>
-                    </div>
                   </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="port">{tServers("quickFormPortLabel")}</Label>
+                    <Input
+                      id="port"
+                      placeholder="22"
+                      value={formData.port}
+                      onChange={(e) => handleInputChange("port", e.target.value)}
+                    />
+                  </div>
+                </div>
 
-                  {requiresPassword(formData.authMethod) && (
-                    <form className="space-y-3" onSubmit={(e) => e.preventDefault()}>
-                      <Label htmlFor="username-hidden" className="sr-only">
-                        {tServers("quickFormUsernameLabel")}
-                      </Label>
-                      <Input
-                        id="username-hidden"
-                        name="username"
-                        type="text"
-                        autoComplete="username"
-                        value={formData.username}
-                        onChange={(e) => handleInputChange("username", e.target.value)}
-                        className="sr-only"
+                {/* 用户信息 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="username">{tServers("quickFormUsernameLabel")}</Label>
+                    <Input
+                      id="username"
+                      name="username"
+                      autoComplete="username"
+                      placeholder={tServers("quickFormUsernamePlaceholder")}
+                      value={formData.username}
+                      onChange={(e) => handleInputChange("username", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="name">{tServers("quickFormNameLabel")}</Label>
+                    <Input
+                      id="name"
+                      placeholder={tServers("quickFormNamePlaceholder")}
+                      value={formData.name}
+                      onChange={(e) => handleInputChange("name", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* 分组和标签 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="server-group">{tServers("quickFormGroupLabel")}</Label>
+                    <Input
+                      id="server-group"
+                      list="server-group-options"
+                      placeholder={tServers("quickFormGroupPlaceholder")}
+                      value={formData.group || ""}
+                      onChange={(e) => handleInputChange("group", e.target.value)}
+                    />
+                    {availableGroups.length > 0 && (
+                      <datalist id="server-group-options">
+                        {availableGroups.map((group) => (
+                          <option key={group} value={group} />
+                        ))}
+                      </datalist>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="server-tags">{tServers("quickFormTagsLabel")}</Label>
+                    <ServerTagCombobox
+                      id="server-tags"
+                      value={newTag}
+                      onValueChange={setNewTag}
+                      selectedTags={formData.tags}
+                      availableTags={availableTags}
+                      placeholder={tServers("quickFormTagsPlaceholder")}
+                      createLabel={(tag) => tServers("quickFormCreateTag", { tag })}
+                      onAddTag={handleAddTag}
+                    />
+                  </div>
+                </div>
+
+                {/* 标签显示 */}
+                {formData.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 px-1">
+                    {formData.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="flex items-center gap-1">
+                        {tag}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveTag(tag)}
+                          className="h-4 w-4 p-0 hover:bg-transparent"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+
+                  {/* 认证方式 */}
+                  <div className="space-y-3 pt-2">
+                    <Label>{tServers("quickFormAuthMethodLabel")}</Label>
+                    <Select
+                      value={formData.authMethod}
+                      onValueChange={(value) => handleInputChange("authMethod", value)}
+                    >
+                      <SelectTrigger className="w-full max-w-md">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SSH_AUTH_METHODS.map((method) => (
+                          <SelectItem key={method} value={method}>
+                            {tServers(authMethodLabelKey(method))}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <div className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+                      <Checkbox
+                        id="remember"
+                        checked={formData.rememberPassword}
+                        onCheckedChange={(checked) =>
+                          handleInputChange("rememberPassword", checked === true)
+                        }
+                        className="mt-0.5"
                       />
+                      <div className="grid gap-1 leading-none">
+                        <Label
+                          htmlFor="remember"
+                          className="text-sm font-normal cursor-pointer"
+                        >
+                          {tServers("quickFormRememberPasswordLabel")}
+                        </Label>
+                        <p className="text-xs text-muted-foreground">
+                          {tServers("quickFormRememberCredentialDescription")}
+                        </p>
+                      </div>
+                    </div>
+
+                    {requiresPassword(formData.authMethod) && (
                       <div className="space-y-1.5">
                         <Label htmlFor="password">{tServers("quickFormPasswordLabel")}</Label>
                         <Input
                           id="password"
+                          name="password"
                           type="password"
-                          autoComplete="new-password"
+                          autoComplete="current-password"
                           placeholder={tServers("quickFormPasswordPlaceholder")}
                           value={formData.password}
                           onChange={(e) => handleInputChange("password", e.target.value)}
                         />
                       </div>
-                    </form>
-                  )}
+                    )}
 
-                  {requiresPrivateKey(formData.authMethod) && (
-                    <PrivateKeyInput
-                      id="privateKey"
-                      label={tServers("quickFormPrivateKeyLabel")}
-                      value={formData.privateKey}
-                      onChange={(v) => handleInputChange("privateKey", v)}
-                      placeholder={tServers("quickFormPrivateKeyPlaceholder")}
-                    />
-                  )}
-                </div>
-            </div>
-          </TabsContent>
+                    {requiresPrivateKey(formData.authMethod) && (
+                      <PrivateKeyInput
+                        id="privateKey"
+                        label={tServers("quickFormPrivateKeyLabel")}
+                        value={formData.privateKey}
+                        onChange={(v) => handleInputChange("privateKey", v)}
+                        placeholder={tServers("quickFormPrivateKeyPlaceholder")}
+                      />
+                    )}
+                  </div>
+              </div>
+            </TabsContent>
 
-          {/* 高级配置标签 */}
-          <TabsContent value="advanced" className="flex-1 overflow-y-auto mt-4 pr-1 pl-0.5">
-            <div className="space-y-4 px-1">
+            {/* 高级配置标签 */}
+            <TabsContent value="advanced" className="flex-1 overflow-y-auto mt-4 pr-1 pl-0.5">
+              <div className="space-y-4 px-1">
+                <div className="space-y-2">
+                  <Label htmlFor="description">{tServers("quickFormDescriptionLabel")}</Label>
+                <Textarea
+                  id="description"
+                  placeholder={tServers("quickFormDescriptionPlaceholder")}
+                  value={formData.description}
+                  onChange={(e) => handleInputChange("description", e.target.value)}
+                  rows={4}
+                />
+              </div>
+
               <div className="space-y-2">
-                <Label htmlFor="description">{tServers("quickFormDescriptionLabel")}</Label>
-              <Textarea
-                id="description"
-                placeholder={tServers("quickFormDescriptionPlaceholder")}
-                value={formData.description}
-                onChange={(e) => handleInputChange("description", e.target.value)}
-                rows={4}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="jumpServer">{tServers("quickFormJumpServerLabel")}</Label>
-              <Select
-                value={formData.jumpServer}
-                onValueChange={(value) => handleInputChange("jumpServer", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={tServers("quickFormJumpServerPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{tServers("quickFormJumpServerNone")}</SelectItem>
-                  <SelectItem value="jump-01">跳板机01 (192.168.1.10)</SelectItem>
-                  <SelectItem value="jump-02">跳板机02 (192.168.1.11)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            </div>
-          </TabsContent>
-
-          {/* 其他设置标签 */}
-          <TabsContent value="settings" className="flex-1 overflow-y-auto mt-4 pr-1 pl-0.5">
-            <div className="space-y-4 px-1">
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="space-y-0.5">
-                  <Label>{tServers("quickFormAutoConnectLabel")}</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {tServers("quickFormAutoConnectDescription")}
-                  </p>
-                </div>
-                <Switch
-                  checked={formData.autoConnect}
-                  onCheckedChange={(checked) => handleInputChange("autoConnect", checked)}
-                />
+                <Label htmlFor="jumpServer">{tServers("quickFormJumpServerLabel")}</Label>
+                <Select
+                  value={formData.jumpServer}
+                  onValueChange={(value) => handleInputChange("jumpServer", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={tServers("quickFormJumpServerPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">{tServers("quickFormJumpServerNone")}</SelectItem>
+                    <SelectItem value="jump-01">跳板机01 (192.168.1.10)</SelectItem>
+                    <SelectItem value="jump-02">跳板机02 (192.168.1.11)</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-
-              <div className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="space-y-0.5">
-                  <Label>{tServers("quickFormKeepAliveLabel")}</Label>
-                  <p className="text-sm text-muted-foreground">
-                    {tServers("quickFormKeepAliveDescription")}
-                  </p>
-                </div>
-                <Switch
-                  checked={formData.keepAlive}
-                  onCheckedChange={(checked) => handleInputChange("keepAlive", checked)}
-                />
               </div>
-            </div>
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
 
-        {/* 底部按钮 */}
-        <div className="flex justify-end gap-2 px-6 py-4">
-          <Button variant="outline" onClick={handleCancel}>
-            {tServers("quickFormCancelButton")}
-          </Button>
-          <Button onClick={handleSave}>
-            {tServers("quickFormSaveButton")}
-          </Button>
-        </div>
+            {/* 其他设置标签 */}
+            <TabsContent value="settings" className="flex-1 overflow-y-auto mt-4 pr-1 pl-0.5">
+              <div className="space-y-4 px-1">
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="space-y-0.5">
+                    <Label>{tServers("quickFormAutoConnectLabel")}</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {tServers("quickFormAutoConnectDescription")}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.autoConnect}
+                    onCheckedChange={(checked) => handleInputChange("autoConnect", checked)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="space-y-0.5">
+                    <Label>{tServers("quickFormKeepAliveLabel")}</Label>
+                    <p className="text-sm text-muted-foreground">
+                      {tServers("quickFormKeepAliveDescription")}
+                    </p>
+                  </div>
+                  <Switch
+                    checked={formData.keepAlive}
+                    onCheckedChange={(checked) => handleInputChange("keepAlive", checked)}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          {/* 底部按钮 */}
+          <div className="flex justify-end gap-2 px-6 py-4">
+            <Button type="button" variant="outline" onClick={handleCancel}>
+              {tServers("quickFormCancelButton")}
+            </Button>
+            <Button type="submit">
+              {tServers("quickFormSaveButton")}
+            </Button>
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   )
