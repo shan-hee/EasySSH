@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/secretcrypto"
 	"github.com/go-jose/go-jose/v3"
 	"github.com/google/uuid"
 	"github.com/ory/fosite"

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/domain/oauthprovider"
-	secretcrypto "github.com/easyssh/server/internal/pkg/crypto"
+	secretcrypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/google/uuid"
 )
 

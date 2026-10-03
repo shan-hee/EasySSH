@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/easyssh/server/internal/pkg/mailclient"
+	"github.com/easyssh/shared/secretcrypto"
 )
 
 // Service 通知配置服务接口

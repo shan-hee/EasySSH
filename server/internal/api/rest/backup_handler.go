@@ -1,7 +1,7 @@
 package rest
 
 import (
-	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/secretcrypto"
 	"gorm.io/gorm"
 )
 

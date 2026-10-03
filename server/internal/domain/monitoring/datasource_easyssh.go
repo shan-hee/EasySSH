@@ -10,8 +10,8 @@ import (
 
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
-	"github.com/easyssh/server/internal/pkg/crypto"
 	sharedmonitoring "github.com/easyssh/shared/monitoring"
+	"github.com/easyssh/shared/secretcrypto"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 )

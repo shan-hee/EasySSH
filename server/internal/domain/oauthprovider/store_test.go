@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	servercrypto "github.com/easyssh/server/internal/pkg/crypto"
+	servercrypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/ory/fosite"

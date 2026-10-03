@@ -7,7 +7,7 @@ import (
 
 	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/server"
-	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/secretcrypto"
 	"golang.org/x/crypto/ssh"
 )
 

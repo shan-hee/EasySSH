@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/domain/server"
-	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/secretcrypto"
 	"github.com/easyssh/shared/sshutil"
 	"golang.org/x/crypto/ssh"
 )

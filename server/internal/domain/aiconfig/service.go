@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/secretcrypto"
 )
 
 // Service AI配置服务接口

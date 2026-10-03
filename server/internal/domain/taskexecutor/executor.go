@@ -18,7 +18,7 @@ import (
 	"github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/easyssh/server/internal/domain/transferjob"
-	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/secretcrypto"
 	"github.com/google/uuid"
 	gossh "golang.org/x/crypto/ssh"
 )

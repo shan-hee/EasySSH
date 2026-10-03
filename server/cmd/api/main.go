@@ -53,10 +53,10 @@ import (
 	"github.com/easyssh/server/internal/domain/verification"
 	"github.com/easyssh/server/internal/infra/config"
 	"github.com/easyssh/server/internal/infra/db"
-	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/easyssh/server/internal/pkg/geoip"
 	"github.com/easyssh/server/internal/pkg/password"
 	"github.com/easyssh/server/internal/platform"
+	"github.com/easyssh/shared/secretcrypto"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 )

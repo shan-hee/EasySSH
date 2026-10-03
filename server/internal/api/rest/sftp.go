@@ -25,7 +25,7 @@ import (
 	"github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/domain/taskcenter"
-	"github.com/easyssh/server/internal/pkg/crypto"
+	"github.com/easyssh/shared/secretcrypto"
 	"github.com/easyssh/shared/sftputil"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

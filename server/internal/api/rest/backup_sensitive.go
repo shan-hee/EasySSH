@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	api "github.com/easyssh/server/internal/api/openapi"
-	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/easyssh/shared/backupcrypto"
 	"github.com/easyssh/shared/backuputil"
+	"github.com/easyssh/shared/secretcrypto"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )

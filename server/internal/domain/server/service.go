@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/easyssh/server/internal/pkg/crypto"
 	"github.com/easyssh/server/internal/pkg/geoip"
+	"github.com/easyssh/shared/secretcrypto"
 	"github.com/google/uuid"
 )
 
