@@ -100,12 +100,13 @@ func main() {
 	}
 
 	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "EasySSH",
-		Width:     1320,
-		Height:    860,
-		MinWidth:  960,
-		MinHeight: 620,
-		Frameless: true,
+		Title:          "EasySSH",
+		Width:          1320,
+		Height:         860,
+		MinWidth:       960,
+		MinHeight:      620,
+		Frameless:      true,
+		EnableFileDrop: true,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 50,
 			Backdrop:                application.MacBackdropTranslucent,
