@@ -1,4 +1,3 @@
-import { MotionConfig } from "motion/react"
 import { AppRouter } from "@/router"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
@@ -11,19 +10,17 @@ import { RuntimeProvider } from "@/shell/runtime/runtime-provider"
 export function App() {
   return (
     <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange>
-      <MotionConfig reducedMotion="user">
-        <QueryProvider>
-          <RuntimeProvider>
-            <SystemConfigProvider>
-              <SessionRefreshProvider>
-                <DynamicHeadUpdater />
-                <AppRouter />
-              </SessionRefreshProvider>
-            </SystemConfigProvider>
-          </RuntimeProvider>
-        </QueryProvider>
-        <Toaster richColors position="bottom-right" />
-      </MotionConfig>
+      <QueryProvider>
+        <RuntimeProvider>
+          <SystemConfigProvider>
+            <SessionRefreshProvider>
+              <DynamicHeadUpdater />
+              <AppRouter />
+            </SessionRefreshProvider>
+          </SystemConfigProvider>
+        </RuntimeProvider>
+      </QueryProvider>
+      <Toaster richColors position="bottom-right" />
     </ThemeProvider>
   )
 }

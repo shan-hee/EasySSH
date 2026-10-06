@@ -1,5 +1,4 @@
 import type { ComponentProps } from "react"
-import { motion } from "motion/react"
 
 import { Spinner } from "@/components/ui/spinner"
 import { useDelayedLoading } from "@/hooks/use-delayed-loading"
@@ -32,15 +31,12 @@ export function AppLoadingScreen({
       {...props}
     >
       {visible ? (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.16, ease: "easeOut" }}
-          className="inline-flex items-center justify-center"
+        <div
+          className="inline-flex items-center justify-center animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none"
           aria-hidden="true"
         >
           <Spinner className="size-5 text-muted-foreground" />
-        </motion.div>
+        </div>
       ) : null}
     </div>
   )

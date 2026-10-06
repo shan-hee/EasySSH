@@ -1,11 +1,11 @@
 import { resolveTerminalInactiveMinutes } from "@/components/terminal/terminal-settings"
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react"
+import { lazy, Suspense, useEffect, useRef, useState, useCallback, useMemo } from "react"
+import { PageLoading } from "@/components/page-loading"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "@/components/ui/sonner"
 import { SshWorkspace } from "@easyssh/ssh-workspace"
 import { TerminalComponent, type TerminalExtraSessionRenderOptions } from "@/components/terminal/terminal-component"
-import { TerminalSftpTabContent } from "@/components/terminal/terminal-sftp-tab-content"
 import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
 import type {
   TerminalSession,
@@ -27,6 +27,10 @@ import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sft
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
 import { primaryCredentialMethod } from "@/lib/ssh-auth-methods"
 import { ViewportWorkspaceTransition } from "@/components/viewport-workspace-transition"
+
+const TerminalSftpTabContent = lazy(() => import("@/components/terminal/terminal-sftp-tab-content").then(
+  (module) => ({ default: module.TerminalSftpTabContent }),
+))
 
 const statusFromConnectionPhase = (phase: TerminalConnectionPhase) => {
   if (phase === "ready") return "connected" as const
@@ -505,32 +509,34 @@ function TerminalPageContent() {
     if (!tab) return null
 
     return (
-      <TerminalSftpTabContent
-        sessionId={tab.id}
-        isActive={options?.isActive ?? true}
-        externalTransferTasks={options?.externalTransferTasks}
-        onClearExternalTransfers={options?.onClearExternalTransfers}
-        onCancelExternalTransfer={options?.onCancelExternalTransfer}
-        server={tab.server}
-        label={tab.label}
-        chrome={options?.chrome}
-        surface={options?.surface}
-        onConnectionStateChange={(connected, loading) => {
-          const phase: TerminalConnectionPhase = connected ? "ready" : loading ? "ssh_connecting" : "failed"
-          setSftpTabs(current => current.some(item => item.id === tab.id && item.connectionPhase !== phase) ? current.map(item => item.id === tab.id ? { ...item, connectionPhase: phase } : item) : current)
-        }}
-        onPathChange={(path) => {
-          options?.onPathChange?.(path)
-          setSftpTabs(current => current.some(item => item.id === tab.id && item.initialPath !== path) ? current.map(item => item.id === tab.id ? { ...item, initialPath: path } : item) : current)
-        }}
-        refreshRequestVersion={options?.refreshRequestVersion}
-        initialPath={options?.initialPath ?? tab.initialPath}
-        initialPathBackStack={options?.initialPathBackStack}
-        initialPathForwardStack={options?.initialPathForwardStack}
-        onHistoryChange={options?.onHistoryChange}
-        onClose={() => handleCloseSftpTab(tab.id)}
-        onRenameSession={(label) => handleRenameSftpTab(tab.id, label)}
-      />
+      <Suspense fallback={<PageLoading className="h-full min-h-0" />}>
+        <TerminalSftpTabContent
+          sessionId={tab.id}
+          isActive={options?.isActive ?? true}
+          externalTransferTasks={options?.externalTransferTasks}
+          onClearExternalTransfers={options?.onClearExternalTransfers}
+          onCancelExternalTransfer={options?.onCancelExternalTransfer}
+          server={tab.server}
+          label={tab.label}
+          chrome={options?.chrome}
+          surface={options?.surface}
+          onConnectionStateChange={(connected, loading) => {
+            const phase: TerminalConnectionPhase = connected ? "ready" : loading ? "ssh_connecting" : "failed"
+            setSftpTabs(current => current.some(item => item.id === tab.id && item.connectionPhase !== phase) ? current.map(item => item.id === tab.id ? { ...item, connectionPhase: phase } : item) : current)
+          }}
+          onPathChange={(path) => {
+            options?.onPathChange?.(path)
+            setSftpTabs(current => current.some(item => item.id === tab.id && item.initialPath !== path) ? current.map(item => item.id === tab.id ? { ...item, initialPath: path } : item) : current)
+          }}
+          refreshRequestVersion={options?.refreshRequestVersion}
+          initialPath={options?.initialPath ?? tab.initialPath}
+          initialPathBackStack={options?.initialPathBackStack}
+          initialPathForwardStack={options?.initialPathForwardStack}
+          onHistoryChange={options?.onHistoryChange}
+          onClose={() => handleCloseSftpTab(tab.id)}
+          onRenameSession={(label) => handleRenameSftpTab(tab.id, label)}
+        />
+      </Suspense>
     )
   }, [handleCloseSftpTab, handleRenameSftpTab, sftpTabs])
 

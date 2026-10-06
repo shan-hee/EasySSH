@@ -3,11 +3,12 @@ import { Navigate, Route, Routes } from "react-router-dom"
 import { AppLoadingScreen } from "@/components/app-loading"
 import { PageLoading } from "@/components/page-loading"
 import AuthTransition from "@/layouts/auth-transition"
-import DashboardLayout from "@/layouts/dashboard-layout"
 import HomePage from "@/pages/home-page"
 import { dashboardRouteRegistry } from "@/lib/dashboard-route-registry"
+import { ResourceBoundary } from "@/components/resource-boundary"
 
 const AuthLayout = lazy(() => import("@/layouts/auth-layout"))
+const DashboardLayout = lazy(() => import("@/layouts/dashboard-layout"))
 const SetupPage = lazy(() => import("@/pages/setup-page"))
 const GoogleAuthCallbackPage = lazy(() => import("@/pages/auth/google-callback-page"))
 const LoginPage = lazy(() => import("@/pages/auth/login-page"))
@@ -30,14 +31,20 @@ function lazyElement(
   fallback: ReactNode = <RouteFallback />,
 ) {
   return (
-    <Suspense fallback={fallback}>
-      <Page />
-    </Suspense>
+    <ResourceBoundary>
+      <Suspense fallback={fallback}>
+        <Page />
+      </Suspense>
+    </ResourceBoundary>
   )
 }
 
-function lazyDashboardElement(Page: ComponentType) {
-  return lazyElement(Page, <DashboardRouteFallback />)
+function lazyDashboardElement(Page: ComponentType, reset: () => void, url: string) {
+  return (
+    <ResourceBoundary key={url} onRetry={reset}>
+      <Suspense fallback={<DashboardRouteFallback />}><Page /></Suspense>
+    </ResourceBoundary>
+  )
 }
 
 export function AppRouter() {
@@ -55,13 +62,13 @@ export function AppRouter() {
 
       <Route
         path="/dashboard"
-        element={<DashboardLayout />}
+        element={lazyElement(DashboardLayout)}
       >
-        {dashboardRouteRegistry.map(({ Page, index, path, url }) => (
+        {dashboardRouteRegistry.map(({ Page, index, path, url, reset }) => (
           index ? (
-            <Route key={url} index element={lazyDashboardElement(Page)} />
+            <Route key={url} index element={lazyDashboardElement(Page, reset, url)} />
           ) : (
-            <Route key={url} path={path} element={lazyDashboardElement(Page)} />
+            <Route key={url} path={path} element={lazyDashboardElement(Page, reset, url)} />
           )
         ))}
         <Route path="sftp" element={<Navigate to="/dashboard/terminal?sftpPicker=1" replace />} />

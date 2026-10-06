@@ -38,11 +38,11 @@ export const NavUser = React.memo(function NavUser({
   const { isMobile } = useSidebar()
   const { logout } = useClientAuth()
   const { t: tCommon } = useTranslation("common")
-  const { t: tAccount } = useTranslation("accountSettings")
 
-  const handleSettingsSelect = React.useCallback((e: Event) => {
-    e.preventDefault()
-  }, [])
+  const [settingsOpen, setSettingsOpen] = React.useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    return params.get("account_settings") === "security" || params.has("google_link")
+  })
 
   const handleLogout = React.useCallback(async () => {
     try {
@@ -98,12 +98,10 @@ export const NavUser = React.memo(function NavUser({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <SettingsDialog>
-              <DropdownMenuItem onSelect={handleSettingsSelect}>
+              <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
                 <Settings />
-                {tAccount("dialogTitle")}
+                {tCommon("accountSettings")}
               </DropdownMenuItem>
-            </SettingsDialog>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut />
@@ -111,6 +109,7 @@ export const NavUser = React.memo(function NavUser({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       </SidebarMenuItem>
     </SidebarMenu>
   )

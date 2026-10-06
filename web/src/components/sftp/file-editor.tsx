@@ -27,7 +27,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-const MonacoEditor = lazy(() => import("@monaco-editor/react"))
+const MonacoEditor = lazy(() => import("./local-monaco-editor"))
 
 type TextEncodingOption = {
   value: string

@@ -1,5 +1,6 @@
 import { createElement, type ComponentType } from "react"
 import type { QueryClient } from "@tanstack/react-query"
+import { createRetryableLoader } from "@/lib/retryable-loader"
 
 import {
   auditLogsQueryOptions,
@@ -17,7 +18,6 @@ type DashboardPageModule = { default: ComponentType }
 
 interface DashboardRouteDefinitionBase {
   url: string
-  idlePreload?: boolean
   load: () => Promise<DashboardPageModule>
   prefetchData?: (queryClient: QueryClient, url: string) => Promise<unknown>
 }
@@ -30,39 +30,26 @@ type DashboardRouteDefinitionInput = DashboardRouteDefinitionBase & DashboardRou
 
 export type DashboardRouteDefinition = DashboardRouteDefinitionInput & {
   Page: ComponentType
+  reset: () => void
 }
 
 function defineDashboardRoute(
   definition: DashboardRouteDefinitionInput,
 ): DashboardRouteDefinition {
-  let loadPromise: Promise<DashboardPageModule> | undefined
-  let loadedPage: ComponentType | undefined
-  let loadError: unknown
-  const load = () => {
-    if (loadError) return Promise.reject(loadError)
-    if (!loadPromise) {
-      loadPromise = definition.load()
-        .then((module) => {
-          loadedPage = module.default
-          return module
-        })
-        .catch((error) => {
-          loadError = error
-          throw error
-        })
-    }
-    return loadPromise
+  const resource = createRetryableLoader(definition.load)
+  const load = async () => {
+    await resource.load()
+    return resource.read()
   }
   const Page = () => {
-    if (loadError) throw loadError
-    if (!loadedPage) throw load()
-    return createElement(loadedPage)
+    return createElement(resource.read().default)
   }
 
   return {
     ...definition,
     load,
     Page,
+    reset: resource.reset,
   }
 }
 
@@ -91,13 +78,11 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
   defineDashboardRoute({
     url: "/dashboard/users",
     path: "users",
-    idlePreload: true,
     load: () => import("@/pages/dashboard/users-page"),
   }),
   defineDashboardRoute({
     url: "/dashboard/logs",
     path: "logs",
-    idlePreload: true,
     load: () => import("@/pages/dashboard/logs-page"),
     prefetchData: (queryClient, url) => {
       const action = getSearchParams(url).get("action") || undefined
@@ -110,7 +95,6 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
   defineDashboardRoute({
     url: "/dashboard/operation-logs",
     path: "operation-logs",
-    idlePreload: true,
     load: () => import("@/pages/dashboard/operation-logs-page"),
     prefetchData: (queryClient, url) => {
       const type = getSearchParams(url).get("type")
@@ -143,7 +127,6 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
   defineDashboardRoute({
     url: "/dashboard/settings",
     path: "settings",
-    idlePreload: true,
     load: () => import("@/pages/dashboard/settings-page"),
     prefetchData: (queryClient, url) => {
       const section = getSearchParams(url).get("section") || "basic"

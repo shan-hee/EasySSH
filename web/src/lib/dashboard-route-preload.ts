@@ -1,11 +1,26 @@
 import type { QueryClient } from "@tanstack/react-query"
 
-import {
-  dashboardRouteRegistry,
-  getDashboardRouteDefinition,
-} from "@/lib/dashboard-route-registry"
+import { getDashboardRouteDefinition } from "@/lib/dashboard-route-registry"
+
+type NetworkInformation = {
+  saveData?: boolean
+  effectiveType?: string
+  downlink?: number
+  rtt?: number
+}
 
 export function preloadDashboardRoute(url: string, queryClient?: QueryClient) {
+  // CPU 空闲不代表网络空闲；弱网下让带宽优先用于当前页面。
+  const connection = typeof navigator === "undefined"
+    ? undefined
+    : (navigator as Navigator & { connection?: NetworkInformation }).connection
+  if (connection?.saveData ||
+    (connection?.effectiveType && connection.effectiveType !== "4g") ||
+    (connection?.downlink !== undefined && connection.downlink < 1.5) ||
+    (connection?.rtt !== undefined && connection.rtt > 300)) {
+    return Promise.resolve()
+  }
+
   const route = getDashboardRouteDefinition(url)
   if (!route) {
     return Promise.resolve()
@@ -16,14 +31,4 @@ export function preloadDashboardRoute(url: string, queryClient?: QueryClient) {
     : Promise.resolve()
 
   return Promise.allSettled([route.load(), dataPreload]).then(() => undefined)
-}
-
-export function preloadCommonDashboardRoutes(availableRoutes: readonly string[]) {
-  const available = new Set(availableRoutes.map((route) => route.split("?", 1)[0]))
-
-  dashboardRouteRegistry
-    .filter((route) => route.idlePreload && available.has(route.url))
-    .forEach((route) => {
-      void preloadDashboardRoute(route.url)
-    })
 }

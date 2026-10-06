@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef } from "react"
+import { MotionConfig } from "motion/react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import SidebarProviderServer from "@/components/sidebar-provider-server"
@@ -17,8 +18,6 @@ import { AppLoadingScreen } from "@/components/app-loading"
 import { cn } from "@/lib/utils"
 import { FadeIn } from "@/components/motion/fade-in"
 import { motionTransitions } from "@/lib/motion"
-import { preloadCommonDashboardRoutes } from "@/lib/dashboard-route-preload"
-import { buildNavigationGroups } from "@/shell/navigation/navigation-registry"
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -70,7 +69,6 @@ export default function DashboardLayout() {
   const navigate = useNavigate()
   const pageScrollRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation("common")
-  const { t: tNav } = useTranslation("nav")
   const { pathname } = useLocation()
   const { authStatus, error, isLoading, refreshConfig } = useSystemConfig()
   const { runtime, isLoading: isRuntimeLoading } = useRuntime()
@@ -85,33 +83,6 @@ export default function DashboardLayout() {
       pageScrollRef.current.scrollLeft = 0
     }
   }, [pathname])
-
-  useEffect(() => {
-    if (!authStatus?.is_authenticated || isRuntimeLoading || !runtime) {
-      return
-    }
-
-    const permissions = user?.permissions || []
-    const isOwner = runtime.principal.role === "owner"
-    const navigationGroups = buildNavigationGroups({
-      runtime,
-      isOwner,
-      permissions,
-      t: tNav,
-    })
-    const availableRoutes = [...navigationGroups.workbench, ...navigationGroups.systemOrg].map(
-      (item) => item.url,
-    )
-    const preload = () => preloadCommonDashboardRoutes(availableRoutes)
-
-    if (typeof window.requestIdleCallback === "function") {
-      const idleCallback = window.requestIdleCallback(preload, { timeout: 1200 })
-      return () => window.cancelIdleCallback(idleCallback)
-    }
-
-    const timeout = window.setTimeout(preload, 400)
-    return () => window.clearTimeout(timeout)
-  }, [authStatus?.is_authenticated, isRuntimeLoading, runtime, tNav, user?.permissions])
 
   useEffect(() => {
     if (isLoading || (error && !authStatus?.is_authenticated)) return
@@ -162,7 +133,7 @@ export default function DashboardLayout() {
   }
 
   return (
-    <ClientAuthProvider>
+    <MotionConfig reducedMotion="user"><ClientAuthProvider>
       <DashboardI18nProvider>
         <SidebarProviderServer className="h-svh overflow-hidden">
           <AISidebarHost>
@@ -186,6 +157,6 @@ export default function DashboardLayout() {
           </AISidebarHost>
         </SidebarProviderServer>
       </DashboardI18nProvider>
-    </ClientAuthProvider>
+    </ClientAuthProvider></MotionConfig>
   )
 }

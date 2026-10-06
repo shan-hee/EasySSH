@@ -1,6 +1,4 @@
 
-import { FadeIn } from "@/components/motion/fade-in"
-import { motionTransitions } from "@/lib/motion"
 
 export default function AuthTemplate({
   children,
@@ -8,8 +6,8 @@ export default function AuthTemplate({
   children: React.ReactNode
 }) {
   return (
-    <FadeIn transition={motionTransitions.fade}>
+    <div className="animate-in fade-in duration-150 motion-reduce:animate-none">
       {children}
-    </FadeIn>
+    </div>
   )
 }

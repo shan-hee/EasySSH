@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { lazy, Suspense, useEffect, useMemo, useState } from "react"
 import {
   Activity,
   ArrowUpRight,
@@ -20,9 +20,12 @@ import { PageHeader } from "@/components/page-header"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { dashboardOverviewQueryOptions } from "@/lib/dashboard-query-options"
 
-import { DashboardGlobe } from "./components/dashboard-globe"
 import { DashboardRegionPanel } from "./components/dashboard-region-panel"
 import "./overview-page.css"
+
+const DashboardGlobe = lazy(() => import("./components/dashboard-globe").then(
+  (module) => ({ default: module.DashboardGlobe }),
+))
 
 const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000
 
@@ -252,11 +255,13 @@ export default function DashboardPage() {
 
           <div className="dashboard-globe-stage">
             <div className="dashboard-globe-aura" aria-hidden="true" />
+            <Suspense fallback={<div className="aspect-square w-full" aria-hidden="true" />}>
             <DashboardGlobe
               distribution={overview?.distribution ?? []}
               selectedCountryCode={selectedRegion?.country_code ?? null}
               onSelectCountry={setSelectedCountryCode}
             />
+            </Suspense>
           </div>
 
           {selectedRegion ? (

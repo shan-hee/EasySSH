@@ -1,7 +1,8 @@
 import { resolveTerminalInactiveMinutes } from "./terminal-settings"
 import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
+import { PageLoading } from "@/components/page-loading"
 import {
   SessionTabBar,
   type CrossSessionFileDragData,
@@ -22,11 +23,9 @@ import { SessionSplitDropOverlay } from "@/components/tabs/session-split-drop-ov
 import { SessionSplitPane } from "@/components/tabs/session-split-pane"
 import { PersistentSessionContent, SessionContentSlot, useSessionContentHosts } from "@/components/tabs/session-content-host"
 import { SessionDockview } from "@/components/tabs/session-dockview"
-import {
-  TerminalSettingsDialog,
-} from "./terminal-settings-dialog"
+import { ResourceBoundary } from "@/components/resource-boundary"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
-import { TabTerminalContent } from "./tab-terminal-content"
 import { useTabUIStore } from "@/stores/tab-ui-store"
 import { useTranslation } from "react-i18next"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
@@ -47,6 +46,14 @@ import {
 } from "@/components/terminal/use-terminal-renderer-settings"
 
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
+
+const TerminalSettingsDialog = lazy(() => import("./terminal-settings-dialog").then(
+  (module) => ({ default: module.TerminalSettingsDialog }),
+))
+
+const TabTerminalContent = lazy(() => import("./tab-terminal-content").then(
+  (module) => ({ default: module.TabTerminalContent }),
+))
 
 type LoaderState = "entering" | "loading" | "exiting"
 
@@ -1290,30 +1297,31 @@ export function TerminalComponent({
     )
 
     return (
-      <TabTerminalContent
-        key={`terminal-content-${session.id}`}
-        session={session}
-        isActive={isVisible}
-        keyboardActive={isVisible && activeSession === session.id && chrome !== "toolbar"}
-        settings={settings}
-        chrome={chrome}
-        surface={surface}
-        effectiveIsLoading={sessionIsLoading}
-        loaderState={sessionLoaderState || "entering"}
-        onAnimationComplete={handleAnimationComplete}
-        onCommand={handleCommand}
-        onConnectionPhaseChange={onConnectionPhaseChange}
-        onAuthCancelled={onAuthCancelled}
-        aiAssistantAdapters={aiAssistantAdapters}
-        onInternalBackHandlerChange={handleInternalBackHandlerChange}
-        onInternalBackAvailabilityChange={handleInternalBackAvailabilityChange}
-        onSftpPathChange={handleSftpPathChange}
-        initialSftpPath={sftpPathBySessionId[session.id] ?? DEFAULT_TERMINAL_SFTP_PATH}
-        sftpRefreshRequestVersion={sftpRefreshRequests[session.id] ?? 0}
-        externalTransferTasks={crossSessionTransferTasks}
-        onClearExternalCompletedTransfers={clearCrossSessionCompletedTransfers}
-        onCancelExternalTransfer={handleCancelCrossSessionTransfer}
-      />
+      <Suspense key={`terminal-content-${session.id}`} fallback={<PageLoading className="h-full min-h-0" />}>
+        <TabTerminalContent
+          session={session}
+          isActive={isVisible}
+          keyboardActive={isVisible && activeSession === session.id && chrome !== "toolbar"}
+          settings={settings}
+          chrome={chrome}
+          surface={surface}
+          effectiveIsLoading={sessionIsLoading}
+          loaderState={sessionLoaderState || "entering"}
+          onAnimationComplete={handleAnimationComplete}
+          onCommand={handleCommand}
+          onConnectionPhaseChange={onConnectionPhaseChange}
+          onAuthCancelled={onAuthCancelled}
+          aiAssistantAdapters={aiAssistantAdapters}
+          onInternalBackHandlerChange={handleInternalBackHandlerChange}
+          onInternalBackAvailabilityChange={handleInternalBackAvailabilityChange}
+          onSftpPathChange={handleSftpPathChange}
+          initialSftpPath={sftpPathBySessionId[session.id] ?? DEFAULT_TERMINAL_SFTP_PATH}
+          sftpRefreshRequestVersion={sftpRefreshRequests[session.id] ?? 0}
+          externalTransferTasks={crossSessionTransferTasks}
+          onClearExternalCompletedTransfers={clearCrossSessionCompletedTransfers}
+          onCancelExternalTransfer={handleCancelCrossSessionTransfer}
+        />
+      </Suspense>
     )
   }, [
     activeSession,
@@ -1585,13 +1593,33 @@ export function TerminalComponent({
       </div>
 
       {/* 设置对话框 */}
-      <TerminalSettingsDialog
-        open={isSettingsOpen}
-        onOpenChange={setIsSettingsOpen}
-        settings={settings}
-        inactiveReminderLimit={inactiveReminderLimit}
-        onSettingsChange={handleSettingsChange}
-      />
+      {isSettingsOpen && (
+        <ResourceBoundary renderError={(recovery) => (
+          <Dialog open onOpenChange={setIsSettingsOpen}>
+            <DialogContent aria-describedby={undefined}>
+              <DialogTitle>{tTerminal("ariaSettings")}</DialogTitle>
+              {recovery}
+            </DialogContent>
+          </Dialog>
+        )}>
+          <Suspense fallback={
+            <Dialog open onOpenChange={setIsSettingsOpen}>
+              <DialogContent aria-describedby={undefined}>
+                <DialogTitle>{tTerminal("ariaSettings")}</DialogTitle>
+                <PageLoading />
+              </DialogContent>
+            </Dialog>
+          }>
+            <TerminalSettingsDialog
+              open={isSettingsOpen}
+              onOpenChange={setIsSettingsOpen}
+              settings={settings}
+              inactiveReminderLimit={inactiveReminderLimit}
+              onSettingsChange={handleSettingsChange}
+            />
+          </Suspense>
+        </ResourceBoundary>
+      )}
     </div>
   )
 }

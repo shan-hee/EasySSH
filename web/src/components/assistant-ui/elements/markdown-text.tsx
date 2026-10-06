@@ -1,4 +1,5 @@
 import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown"
+import "katex/dist/katex.min.css"
 import { cjk } from "@streamdown/cjk"
 import { createCodePlugin, type ThemeInput } from "@streamdown/code"
 import { math } from "@streamdown/math"

@@ -1,8 +1,10 @@
 
 import { Outlet } from "react-router-dom"
 import { useTheme } from "@/components/theme-provider"
-import LightRays from "@/components/LightRays"
+import { lazy, Suspense } from "react"
 import { AuthI18nProvider } from "@/providers/auth-i18n-provider"
+
+const LightRays = lazy(() => import("@/components/LightRays"))
 
 export default function AuthLayout() {
   const { resolvedTheme } = useTheme()
@@ -15,7 +17,7 @@ export default function AuthLayout() {
     <AuthI18nProvider>
       <div className="relative flex min-h-svh flex-col items-center justify-center gap-6 overflow-hidden bg-background p-6 md:p-10">
         <div className="absolute inset-0 z-0">
-          <LightRays
+          <Suspense fallback={null}><LightRays
             raysOrigin="top-center"
             raysColor={raysColor}
             raysSpeed={1}
@@ -29,7 +31,7 @@ export default function AuthLayout() {
             distortion={0}
             pulsating={false}
             className={raysOpacity}
-          />
+          /></Suspense>
         </div>
 
         {/* 表单内容区域 */}
