@@ -1,0 +1,20 @@
+{
+  "sectionTitle": "{name} - System monitoring",
+  "refresh": "Refresh data",
+  "refreshing": "Refreshing...",
+  "statusNormal": "Normal",
+  "statusWarning": "Warning",
+  "statusDanger": "High",
+  "cardCpuTitle": "CPU usage",
+  "cpuCoresAndLoad": "{cores} cores | Load: {load}",
+  "cardMemoryTitle": "Memory usage",
+  "cardDiskTitle": "Disk usage",
+  "cardUptimeTitle": "Uptime",
+  "uptimeStableLabel": "Stable",
+  "uptimeSinceLastReboot": "Since last reboot",
+  "cardNetworkTitle": "Network statistics",
+  "networkDownloadLabel": "Download",
+  "networkUploadLabel": "Upload",
+  "cardRealtimeTitle": "Real-time performance chart",
+  "realtimePlaceholder": "Performance chart will be displayed here"
+}

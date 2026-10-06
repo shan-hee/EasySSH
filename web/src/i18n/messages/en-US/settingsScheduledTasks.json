@@ -1,0 +1,17 @@
+{
+  "runtimeTitle": "Background task runtime",
+  "runtimeDescription": "The queue dispatches on demand. No execution workers remain idle, and new jobs start immediately when capacity is available.",
+  "dispatchMode": "Dispatch mode",
+  "dispatchModeOnDemand": "On demand",
+  "activeJobs": "Active jobs",
+  "queuedJobs": "Queued jobs",
+  "runtimeState": "Runtime state",
+  "stateReady": "Ready",
+  "stateScalingDown": "Scaling down",
+  "concurrencyTitle": "Execution capacity",
+  "concurrencyDescription": "Limit the number of top-level background jobs this EasySSH instance can run concurrently.",
+  "maxConcurrency": "Maximum concurrency",
+  "maxConcurrencyDescription": "Allowed range: 1–16. Changes take effect immediately; the default is 2.",
+  "concurrencyHint": "This setting limits top-level jobs such as task.execute, batch.execute, and transfer.execute. It is not the final total of SSH or transfer connections. Reducing it does not interrupt running jobs; it only pauses new claims.",
+  "scalingDownHint": "{active} jobs are still running. The runtime will gradually scale down to {max} as they finish."
+}

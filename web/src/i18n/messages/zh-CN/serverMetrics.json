@@ -1,0 +1,20 @@
+{
+  "sectionTitle": "{name} - 系统监控",
+  "refresh": "刷新数据",
+  "refreshing": "刷新中...",
+  "statusNormal": "正常",
+  "statusWarning": "警告",
+  "statusDanger": "危险",
+  "cardCpuTitle": "CPU 使用率",
+  "cpuCoresAndLoad": "{cores} 核心 | 负载: {load}",
+  "cardMemoryTitle": "内存使用",
+  "cardDiskTitle": "磁盘使用",
+  "cardUptimeTitle": "运行时间",
+  "uptimeStableLabel": "稳定运行",
+  "uptimeSinceLastReboot": "自上次重启以来",
+  "cardNetworkTitle": "网络统计",
+  "networkDownloadLabel": "下载流量",
+  "networkUploadLabel": "上传流量",
+  "cardRealtimeTitle": "实时性能图表",
+  "realtimePlaceholder": "性能图表将在此处显示"
+}

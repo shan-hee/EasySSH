@@ -1,0 +1,8 @@
+{
+  "errorUnknown": "未知错误",
+  "toastActionFailed": "操作失败",
+  "toastLoadFailed": "加载配置失败：{message}",
+  "toastFormInvalid": "请检查表单输入",
+  "toastSaveSuccess": "保存成功",
+  "toastSaveFailed": "保存失败：{message}"
+}

@@ -1,0 +1,11 @@
+{
+  "sectionTitle": "IP 访问控制",
+  "sectionDescription": "配置允许或禁止访问的 IP 地址范围",
+  "labelAllowlist": "IP 白名单（允许访问）",
+  "placeholderAllowlist": "输入允许访问的 IP 地址，每行一个，支持 CIDR 格式\n例如：192.168.1.0/24",
+  "helperAllowlist": "留空表示允许所有 IP 访问。支持单个 IP 或 CIDR 格式，每行一个。",
+  "labelBlocklist": "IP 黑名单（禁止访问）",
+  "placeholderBlocklist": "输入禁止访问的 IP 地址，每行一个，支持 CIDR 格式\n例如：10.0.0.0/8",
+  "helperBlocklist": "黑名单优先级高于白名单。支持单个 IP 或 CIDR 格式，每行一个。",
+  "alertContent": "IP 访问控制会影响所有用户的访问权限。建议仅在必要时启用，并定期审查配置。"
+}

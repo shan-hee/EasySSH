@@ -57,7 +57,7 @@ function getTranslatedErrorMessage(t: TranslationFn, error: unknown): string | u
   }
 
   return rawMessage.startsWith("settingsValidation.")
-    ? t(rawMessage as string)
+    ? t(rawMessage.slice("settingsValidation.".length))
     : rawMessage
 }
 
@@ -77,7 +77,7 @@ export function FormInput<TFieldValues extends FieldValues>({
   step,
   className,
 }: FormInputProps<TFieldValues>) {
-  const { t } = useTranslation()
+  const { t } = useTranslation("settingsValidation")
   const error = form.formState.errors[name]
   const message = getTranslatedErrorMessage(t, error)
 
@@ -161,7 +161,7 @@ export function FormSelect<TFieldValues extends FieldValues>({
   options,
   className,
 }: FormSelectProps<TFieldValues>) {
-  const { t } = useTranslation()
+  const { t } = useTranslation("settingsValidation")
   const error = form.formState.errors[name]
   const message = getTranslatedErrorMessage(t, error)
   const value = form.watch(name)
@@ -216,7 +216,7 @@ export function FormTextarea<TFieldValues extends FieldValues>({
   rows = 3,
   className,
 }: FormTextareaProps<TFieldValues>) {
-  const { t } = useTranslation()
+  const { t } = useTranslation("settingsValidation")
   const error = form.formState.errors[name]
   const message = getTranslatedErrorMessage(t, error)
 

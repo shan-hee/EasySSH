@@ -1,0 +1,21 @@
+{
+  "sectionDownloadTitle": "下载设置",
+  "sectionDownloadDescription": "配置文件下载的排除规则",
+  "fieldExcludePatternsLabel": "排除规则（{count} 个）",
+  "fieldExcludePatternsDesc": "下载文件夹时自动跳过的目录/文件，每行一个",
+  "fieldExcludePatternsPlaceholder": "node_modules\n.git\ndist\nbuild",
+  "alertExamplesTitle": "常见排除规则示例：",
+  "alertExampleNodeModules": "Node.js 依赖",
+  "alertExampleGitRepo": "Git 仓库",
+  "alertExampleBuildOutputs": "构建产物",
+  "alertExamplePycache": "Python 缓存",
+  "alertExampleVendor": "Go/PHP 依赖",
+  "sectionUploadTitle": "上传设置",
+  "sectionUploadDescription": "配置文件上传时的过滤行为和大小限制",
+  "fieldMaxUploadSize": "最大文件上传大小（MB）",
+  "fieldMaxUploadSizeDesc": "允许上传的单个文件最大大小（1-1024 MB）",
+  "fieldSkipExcludedOnUpload": "上传时跳过排除的文件",
+  "fieldSkipExcludedOnUploadDesc": "上传文件夹时，自动跳过上述排除规则中的文件和目录",
+  "performanceHintTitle": "性能提示：",
+  "performanceHintExcludeRules": "排除规则：可大幅减少下载时间和文件大小（如 node_modules 通常占用数百 MB）"
+}

@@ -1,0 +1,21 @@
+{
+  "pageTitle": "系统设置",
+  "navigationTitle": "设置导航",
+  "groupGeneral": "常规",
+  "groupIdentity": "认证与安全",
+  "groupWorkspace": "工作区",
+  "groupAutomation": "任务与自动化",
+  "groupNetwork": "网络与连接",
+  "groupIntegrations": "服务集成",
+  "groupData": "数据保护",
+  "itemBasic": "基本信息",
+  "itemFileTransfer": "文件传输",
+  "itemAccessControl": "访问控制",
+  "itemAuthentication": "身份认证",
+  "itemWorkspace": "终端工作区",
+  "itemScheduledTasks": "定时任务",
+  "itemNetworkDeployment": "Web 与部署",
+  "itemAIConfig": "AI 配置",
+  "itemNotificationConfig": "通知配置",
+  "itemBackup": "备份恢复"
+}

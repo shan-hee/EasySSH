@@ -36,18 +36,13 @@ const routeTitles = [
 
 export function PageHeaderHost({ children }: React.PropsWithChildren) {
   const { pathname } = useLocation()
-  const { t, t: tNav } = useTranslation([
-    "nav",
-    "dashboard",
-    "users",
-    "logsAudit",
-    "operationLogs",
-    "scripts",
-    "taskCenter",
-    "settingsMain",
-    "settingsManagement",
-    "errors",
-  ])
+  const route = routeTitles.find((item) => (
+    "exact" in item && item.exact
+      ? pathname === item.path
+      : pathname === item.path || pathname.startsWith(`${item.path}/`)
+  ))
+  const { t: tNav } = useTranslation("nav")
+  const { t } = useTranslation(route?.namespace ?? "nav")
   const [titleTarget, setTitleTarget] = React.useState<HTMLDivElement | null>(null)
   const [contentTarget, setContentTarget] = React.useState<HTMLDivElement | null>(null)
   const [hasPageTitle, setHasPageTitle] = React.useState(false)
@@ -61,14 +56,7 @@ export function PageHeaderHost({ children }: React.PropsWithChildren) {
       setHasPageTitle(titleRegistrations.current > 0)
     }
   }, [])
-  const routeTitle = React.useMemo(() => {
-    const route = routeTitles.find((item) => (
-      "exact" in item && item.exact
-        ? pathname === item.path
-        : pathname === item.path || pathname.startsWith(`${item.path}/`)
-    ))
-    return route ? t(`${route.namespace}:${route.key}`) : ""
-  }, [pathname, t])
+  const routeTitle = route ? t(route.key) : ""
   const targets = React.useMemo(
     () => ({ title: titleTarget, content: contentTarget, registerTitle }),
     [contentTarget, registerTitle, titleTarget],

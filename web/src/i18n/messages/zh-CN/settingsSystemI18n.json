@@ -1,0 +1,11 @@
+{
+  "sectionTitle": "国际化设置",
+  "sectionDescription": "配置时区和日期时间格式",
+  "fieldDefaultTimezone": "默认时区",
+  "fieldDefaultTimezoneDesc": "系统使用的默认时区",
+  "placeholderTimezone": "选择时区",
+  "fieldDateFormat": "日期格式",
+  "fieldDateFormatDesc": "系统中日期时间的显示格式",
+  "placeholderDateFormat": "选择日期格式",
+  "previewTitle": "格式预览："
+}

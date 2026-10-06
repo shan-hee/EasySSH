@@ -1,0 +1,22 @@
+{
+  "cpuLabel": "CPU",
+  "networkLabel": "Network",
+  "tooltipTimeLabel": "Time",
+  "tooltipMetricLabel": "CPU",
+  "waitingData": "Waiting for data...",
+  "systemInfoTitle": "System info",
+  "copyTooltip": "Click to copy: {value}",
+  "copyCopied": "Copied!",
+  "labelHost": "Host",
+  "labelArch": "Arch",
+  "labelLoad": "Load",
+  "labelUptime": "Uptime",
+  "memoryLabel": "Memory",
+  "diskLabel": "Disk",
+  "downloadLabel": "Download",
+  "uploadLabel": "Upload",
+  "diskTooltipTotal": "Total",
+  "diskTooltipUsed": "Used",
+  "diskTooltipFree": "Free",
+  "memoryTooltipUsed": "Used:"
+}

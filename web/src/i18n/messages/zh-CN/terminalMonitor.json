@@ -1,0 +1,22 @@
+{
+  "cpuLabel": "CPU",
+  "networkLabel": "网络",
+  "tooltipTimeLabel": "时间",
+  "tooltipMetricLabel": "CPU",
+  "waitingData": "等待数据...",
+  "systemInfoTitle": "系统信息",
+  "copyTooltip": "点击复制: {value}",
+  "copyCopied": "已复制!",
+  "labelHost": "主机",
+  "labelArch": "架构",
+  "labelLoad": "负载",
+  "labelUptime": "运行",
+  "memoryLabel": "内存",
+  "diskLabel": "磁盘",
+  "downloadLabel": "下载",
+  "uploadLabel": "上传",
+  "diskTooltipTotal": "总容量",
+  "diskTooltipUsed": "已使用",
+  "diskTooltipFree": "剩余",
+  "memoryTooltipUsed": "已用:"
+}

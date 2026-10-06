@@ -1,0 +1,21 @@
+{
+  "sectionDownloadTitle": "Download settings",
+  "sectionDownloadDescription": "Configure exclude rules for downloads",
+  "fieldExcludePatternsLabel": "Exclude rules ({count} items)",
+  "fieldExcludePatternsDesc": "Folders/files to skip when downloading directories, one per line",
+  "fieldExcludePatternsPlaceholder": "node_modules\n.git\ndist\nbuild",
+  "alertExamplesTitle": "Common exclude rules:",
+  "alertExampleNodeModules": "Node.js dependencies",
+  "alertExampleGitRepo": "Git repository",
+  "alertExampleBuildOutputs": "Build outputs",
+  "alertExamplePycache": "Python cache",
+  "alertExampleVendor": "Go/PHP dependencies",
+  "sectionUploadTitle": "Upload settings",
+  "sectionUploadDescription": "Configure filtering behavior and size limits for uploads",
+  "fieldMaxUploadSize": "Max file upload size (MB)",
+  "fieldMaxUploadSizeDesc": "Maximum size allowed for a single uploaded file (1-1024 MB)",
+  "fieldSkipExcludedOnUpload": "Skip excluded files on upload",
+  "fieldSkipExcludedOnUploadDesc": "When uploading folders, automatically skip files and directories matching the exclude rules above",
+  "performanceHintTitle": "Performance tips:",
+  "performanceHintExcludeRules": "Exclude rules: can significantly reduce download time and size (e.g. node_modules often takes hundreds of MB)."
+}

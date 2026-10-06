@@ -1,0 +1,8 @@
+{
+  "defaultTitle": "出错了",
+  "defaultDescription": "页面加载时发生错误。",
+  "unknownError": "未知错误",
+  "errorId": "错误 ID: {id}",
+  "retryButton": "重试",
+  "homeButton": "首页"
+}

@@ -1,0 +1,10 @@
+{
+  "title": "终端工作区",
+  "description": "只管理浏览器中的终端标签页行为，不改变登录会话或 OAuth 令牌。",
+  "maxTabs": "最大标签页数",
+  "maxTabsDescription": "单个用户可同时打开的终端标签页数量。",
+  "inactiveMinutes": "非活动断开提醒（分钟）",
+  "inactiveMinutesDescription": "终端标签页长期未使用时提示断开，不会退出 EasySSH 登录。",
+  "hibernate": "后台标签页休眠",
+  "hibernateDescription": "降低非活动标签页的浏览器资源占用。"
+}

@@ -1,0 +1,16 @@
+{
+  "workbench": "工作台",
+  "console": "控制台",
+  "aiAssistant": "AI 助手",
+  "scripts": "脚本库",
+  "tasks": "任务管理",
+  "fileManager": "文件管理器",
+  "logs": "活动日志",
+  "operationLogs": "操作日志",
+  "terminal": "终端",
+  "userManagement": "用户管理",
+  "systemSettings": "系统设置",
+  "systemOrg": "系统与组织",
+  "planPro": "专业版",
+  "openSidebar": "打开导航菜单"
+}

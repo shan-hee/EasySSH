@@ -1,0 +1,8 @@
+{
+  "sectionTitle": "Basic performance",
+  "sectionDescription": "Configure basic performance-related parameters",
+  "fieldDefaultPageSize": "Default page size",
+  "fieldDefaultPageSizeDesc": "Default number of items per page in lists (10-100)",
+  "fieldMaxUploadSize": "Max file upload size (MB)",
+  "fieldMaxUploadSizeDesc": "Maximum size allowed for a single uploaded file (1-1024 MB)"
+}

@@ -1,0 +1,8 @@
+{
+  "defaultTitle": "Something went wrong",
+  "defaultDescription": "An error occurred while loading this page.",
+  "unknownError": "Unknown error",
+  "errorId": "Error ID: {id}",
+  "retryButton": "Retry",
+  "homeButton": "Back to dashboard"
+}

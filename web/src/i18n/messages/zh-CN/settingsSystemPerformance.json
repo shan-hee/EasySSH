@@ -1,0 +1,8 @@
+{
+  "sectionTitle": "基本性能设置",
+  "sectionDescription": "配置系统的基本性能参数",
+  "fieldDefaultPageSize": "默认分页大小",
+  "fieldDefaultPageSizeDesc": "列表页面每页显示的默认条数（10-100）",
+  "fieldMaxUploadSize": "最大文件上传大小（MB）",
+  "fieldMaxUploadSizeDesc": "允许上传的单个文件最大大小（1-1024 MB）"
+}

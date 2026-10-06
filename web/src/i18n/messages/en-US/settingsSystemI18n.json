@@ -1,0 +1,11 @@
+{
+  "sectionTitle": "Internationalization",
+  "sectionDescription": "Configure timezone and date/time format",
+  "fieldDefaultTimezone": "Default timezone",
+  "fieldDefaultTimezoneDesc": "Default timezone used by the system",
+  "placeholderTimezone": "Select timezone",
+  "fieldDateFormat": "Date format",
+  "fieldDateFormatDesc": "Display format for date/time across the system",
+  "placeholderDateFormat": "Select date format",
+  "previewTitle": "Preview:"
+}

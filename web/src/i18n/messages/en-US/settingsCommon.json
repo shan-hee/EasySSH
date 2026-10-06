@@ -1,0 +1,8 @@
+{
+  "errorUnknown": "Unknown error",
+  "toastActionFailed": "Operation failed",
+  "toastLoadFailed": "Failed to load settings: {message}",
+  "toastFormInvalid": "Please check the form input.",
+  "toastSaveSuccess": "Saved successfully.",
+  "toastSaveFailed": "Failed to save: {message}"
+}

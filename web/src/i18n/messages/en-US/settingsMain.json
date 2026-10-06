@@ -1,0 +1,21 @@
+{
+  "pageTitle": "System settings",
+  "navigationTitle": "Settings navigation",
+  "groupGeneral": "General",
+  "groupIdentity": "Identity & security",
+  "groupWorkspace": "Workspace",
+  "groupAutomation": "Tasks & automation",
+  "groupNetwork": "Network & connections",
+  "groupIntegrations": "Integrations",
+  "groupData": "Data protection",
+  "itemBasic": "Basic info",
+  "itemFileTransfer": "File transfer",
+  "itemAccessControl": "Access control",
+  "itemAuthentication": "Authentication",
+  "itemWorkspace": "Terminal workspace",
+  "itemScheduledTasks": "Scheduled tasks",
+  "itemNetworkDeployment": "Web & deployment",
+  "itemAIConfig": "AI config",
+  "itemNotificationConfig": "Notification config",
+  "itemBackup": "Backup & restore"
+}

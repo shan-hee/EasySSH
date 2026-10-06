@@ -1,0 +1,16 @@
+{
+  "workbench": "Workbench",
+  "console": "Console",
+  "aiAssistant": "AI Assistant",
+  "scripts": "Script Library",
+  "tasks": "Task Center",
+  "fileManager": "File Manager",
+  "logs": "Activity Logs",
+  "operationLogs": "Operation Logs",
+  "terminal": "Terminal",
+  "userManagement": "User Management",
+  "systemSettings": "System Settings",
+  "systemOrg": "System & Organization",
+  "planPro": "Pro",
+  "openSidebar": "Open navigation menu"
+}
