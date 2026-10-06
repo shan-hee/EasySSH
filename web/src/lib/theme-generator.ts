@@ -93,7 +93,7 @@ const MENU_COLOR_IDS: ThemeMenuColorId[] = ["solid", "soft", "transparent"]
 const MENU_ACCENT_IDS: ThemeMenuAccentId[] = ["subtle", "bold"]
 
 export const DEFAULT_FONT_SANS =
-  'var(--font-inter), "Inter", var(--font-noto-sans-sc), "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+  'var(--font-inter), "Inter", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
 export const DEFAULT_FONT_SERIF = 'Georgia, Cambria, "Times New Roman", Times, serif'
 export const DEFAULT_FONT_MONO =
   'var(--font-jetbrains-mono), "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
@@ -309,9 +309,9 @@ export const THEME_PRESETS: ThemePreset[] = [
 
 export const FONT_OPTIONS = {
   Inter: DEFAULT_FONT_SANS,
-  Montserrat: 'Montserrat, var(--font-inter), var(--font-noto-sans-sc), sans-serif',
-  Poppins: 'Poppins, var(--font-inter), var(--font-noto-sans-sc), sans-serif',
-  Barlow: 'Barlow, var(--font-inter), var(--font-noto-sans-sc), sans-serif',
+  Montserrat: 'Montserrat, var(--font-inter), "PingFang SC", "Microsoft YaHei", sans-serif',
+  Poppins: 'Poppins, var(--font-inter), "PingFang SC", "Microsoft YaHei", sans-serif',
+  Barlow: 'Barlow, var(--font-inter), "PingFang SC", "Microsoft YaHei", sans-serif',
   Merriweather: 'Merriweather, Georgia, serif',
   "JetBrains Mono": 'var(--font-jetbrains-mono), "JetBrains Mono", monospace',
   "Fira Code": '"Fira Code", var(--font-jetbrains-mono), monospace',
