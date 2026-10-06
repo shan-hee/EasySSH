@@ -16,6 +16,7 @@ import (
 
 	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/api/rest"
+	"github.com/easyssh/server/internal/api/staticfiles"
 	"github.com/easyssh/server/internal/api/ws"
 	"github.com/easyssh/server/internal/domain/aichat"
 	"github.com/easyssh/server/internal/domain/aichat/runtime"
@@ -1115,9 +1116,12 @@ func main() {
 		log.Printf("✅ Serving static files from %s", staticDir)
 
 		// 托管 Vite 生成的静态资源
-		r.Static("/assets", filepath.Join(staticDir, "assets"))
-		r.StaticFile("/icon.svg", filepath.Join(staticDir, "icon.svg"))
-		r.StaticFile("/favicon.ico", filepath.Join(staticDir, "favicon.ico"))
+		serveAsset := func(c *gin.Context) {
+			assetPath := strings.TrimPrefix(path.Clean("/"+c.Param("filepath")), "/")
+			staticfiles.Serve(c, filepath.Join(staticDir, "assets", assetPath), true)
+		}
+		r.GET("/assets/*filepath", serveAsset)
+		r.HEAD("/assets/*filepath", serveAsset)
 
 		// 统一处理非 API 路由：
 		// 1. 先尝试返回对应的静态文件（包括 /login、/login/index.txt 等）
@@ -1134,7 +1138,7 @@ func main() {
 			// 规范化路径，防止 ../ 等越界
 			cleanPath := path.Clean(requestPath)
 			if cleanPath == "/" || cleanPath == "." {
-				c.File(filepath.Join(staticDir, "index.html"))
+				staticfiles.Serve(c, filepath.Join(staticDir, "index.html"), false)
 				return
 			}
 
@@ -1144,7 +1148,7 @@ func main() {
 			// 优先尝试直接文件
 			filePath := filepath.Join(staticDir, cleanPath)
 			if info, err := os.Stat(filePath); err == nil && !info.IsDir() {
-				c.File(filePath)
+				staticfiles.Serve(c, filePath, false)
 				return
 			}
 
@@ -1152,13 +1156,13 @@ func main() {
 			if info, err := os.Stat(filePath); err == nil && info.IsDir() {
 				indexPath := filepath.Join(filePath, "index.html")
 				if _, err := os.Stat(indexPath); err == nil {
-					c.File(indexPath)
+					staticfiles.Serve(c, indexPath, false)
 					return
 				}
 			}
 
 			// 最终回退到根 index.html
-			c.File(filepath.Join(staticDir, "index.html"))
+			staticfiles.Serve(c, filepath.Join(staticDir, "index.html"), false)
 		})
 	} else {
 		log.Printf("⚠️  Static directory not found: %s (frontend not built)", staticDir)

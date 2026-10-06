@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath, URL } from "node:url"
 import { defineConfig, loadEnv } from "vite"
+import { precompress } from "./plugins/precompress.ts"
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url))
 const version = readFileSync(join(projectRoot, "VERSION"), "utf-8").trim()
@@ -27,7 +28,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     envDir: "..",
-    plugins: [react()],
+    plugins: [react(), precompress()],
     server: webPort
       ? {
           port: webPort,
@@ -50,7 +51,7 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_BUILD_DATE": JSON.stringify(buildDate),
     },
     build: {
-      reportCompressedSize: false,
+      reportCompressedSize: true,
     },
   }
 })
