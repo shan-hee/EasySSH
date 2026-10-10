@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { InstanceBackupPanel, webInstanceBackupAdapter, type InstanceBackupAdapter } from "./instance-backup-panel"
 import { SyncPanel } from "./sync-panel"
 import type { SyncAdapter } from "@/lib/sync/types"
 import { Button } from "@/components/ui/button"
@@ -37,9 +38,12 @@ type ExportBackupOptions = BackupExportContract & {
 }
 type RestoreBackupOptions = components["schemas"]["BackupRestoreOptions"]
 export type ConflictStrategy = RestoreBackupOptions["conflict_strategy"]
+type ImportReport = components["schemas"]["BackupRestoreResponse"]
 export interface BackupRestoreAdapter {
+  instanceBackup: InstanceBackupAdapter
   exportBackup: (options: ExportBackupOptions) => Promise<{ blob: Blob; filename?: string }>
-  restoreBackup: (file: File, options: RestoreBackupOptions) => Promise<void>
+  restoreBackup: (file: File, options: RestoreBackupOptions) => Promise<ImportReport>
+  previewBackup: (file: File, options: RestoreBackupOptions) => Promise<ImportReport>
   supportsConfig?: boolean
   supportsSensitive?: boolean
 }
@@ -229,7 +233,7 @@ export function BackupRestoreTab({
       const downloadUrl = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = downloadUrl
-      a.download = filename || `easyssh_backup_${new Date().toISOString().slice(0, 10)}.json`
+      a.download = filename || `easyssh_application_data_${new Date().toISOString().slice(0, 10)}.json`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(downloadUrl)
@@ -258,21 +262,8 @@ export function BackupRestoreTab({
 
   const handleRestoreFile = async (file: File) => {
     try {
-      if (conflictStrategy === "overwrite") {
-        if (restoreFileInputRef.current) {
-          restoreFileInputRef.current.value = ""
-        }
-        const confirmed = await requestConfirm({
-          description: t("confirmOverwriteRestore"),
-        })
-        if (!confirmed) {
-          return
-        }
-      }
       setLoading("restore")
-      toast.info(t("toastRestoreLoading"))
-
-      await activeAdapter.restoreBackup(file, {
+      const options: RestoreBackupOptions = {
         include_config: supportsConfig && restoreContent.config,
         include_database: restoreContent.database,
         conflict_strategy: conflictStrategy,
@@ -284,7 +275,22 @@ export function BackupRestoreTab({
           restoreEncryptionMode === "x25519" && parseAgeKeys(ageIdentities).length !== 0
             ? parseAgeKeys(ageIdentities)
             : undefined,
+      }
+
+      const preview = await activeAdapter.previewBackup(file, options)
+      const totals = Object.values(preview.summary).reduce((sum, section) => ({
+        inserted: sum.inserted + section.inserted,
+        updated: sum.updated + section.updated,
+        skipped: sum.skipped + section.skipped,
+      }), { inserted: 0, updated: 0, skipped: 0 })
+      const ignored = preview.ignored_fields || []
+      const confirmed = await requestConfirm({
+        description: `${t("importPreview", totals)}${ignored.length ? ` ${t("ignoredFields")}: ${ignored.join(", ")}.` : ""} ${t("importPreviewRecheck")}`,
       })
+      if (!confirmed) return
+      toast.info(t("toastRestoreLoading"))
+      const result = await activeAdapter.restoreBackup(file, options)
+      if (result.ignored_fields?.length) toast.info(`${t("ignoredFields")}: ${result.ignored_fields.join(", ")}`)
 
       if (supportsConfig && restoreContent.config && !desktopMode) {
         await refreshConfig({ refreshAuth: false })
@@ -310,14 +316,15 @@ export function BackupRestoreTab({
   return (
     <div className="min-w-0 p-4">
       {confirmDialog}
-      <Tabs defaultValue={desktopMode ? "sync" : "export"} className="space-y-4">
-        <TabsList className={`grid w-full ${desktopMode ? "grid-cols-3" : "grid-cols-2"}`}>
+      <Tabs defaultValue={desktopMode ? "sync" : "native"} className="space-y-4">
+        <TabsList className={`grid w-full ${desktopMode ? "grid-cols-4" : "grid-cols-3"}`}>
           {desktopMode && (
             <TabsTrigger value="sync">
               <RefreshCw className="mr-2 size-4" />
               {t("syncTab")}
             </TabsTrigger>
           )}
+          <TabsTrigger value="native"><Database className="mr-2 size-4" />{t("nativeTab")}</TabsTrigger>
           <TabsTrigger value="export">
             <Download className="mr-2 size-4" />
             {t("exportTab")}
@@ -332,6 +339,9 @@ export function BackupRestoreTab({
             <SyncPanel adapter={syncAdapter} desktopMode />
           </TabsContent>
         )}
+        <TabsContent value="native">
+          <InstanceBackupPanel adapter={activeAdapter.instanceBackup} />
+        </TabsContent>
         <TabsContent value="export">
           <SettingsSection
             title={t("exportTitle")}
@@ -616,7 +626,7 @@ export function BackupRestoreTab({
                     .text()
                     .then((text) => {
                       const content = JSON.parse(text)
-                      if (content.format !== "easyssh-unified-backup" || content.version !== "3.0")
+                      if (content.format !== "easyssh-application-data" || content.version !== "1.0")
                         throw new Error(t("invalidBackupFile"))
                       if (selection !== fileSelectionRef.current) return
                       setRestoreFile(file)
@@ -668,6 +678,7 @@ export function BackupRestoreTab({
 
 function createWebBackupRestoreAdapter(): BackupRestoreAdapter {
   return {
+    instanceBackup: webInstanceBackupAdapter,
     async exportBackup(options) {
       const headers = {
         "Content-Type": "application/json",
@@ -689,30 +700,23 @@ function createWebBackupRestoreAdapter(): BackupRestoreAdapter {
       }
     },
 
-    async restoreBackup(file, options) {
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("include_config", String(options.include_config))
-      formData.append("include_database", String(options.include_database))
-      formData.append("conflict_strategy", options.conflict_strategy)
-      if (options.age_passphrase) {
-        formData.append("age_passphrase", options.age_passphrase)
-      }
-      for (const identity of options.age_identities || []) {
-        formData.append("age_identities", identity)
-      }
-
-      const response = await authenticatedFetch(`${getApiUrl()}/backup/restore`, {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const detail = await readErrorMessage(response)
-        throw new Error(detail || "Restore failed")
-      }
-    },
+    previewBackup: (file, options) => requestApplicationImport("preview", file, options),
+    restoreBackup: (file, options) => requestApplicationImport("restore", file, options),
   }
+}
+
+async function requestApplicationImport(action: "preview" | "restore", file: File, options: RestoreBackupOptions): Promise<ImportReport> {
+  const formData = new FormData()
+  formData.append("file", file)
+  formData.append("include_config", String(options.include_config))
+  formData.append("include_database", String(options.include_database))
+  formData.append("conflict_strategy", options.conflict_strategy)
+  if (options.age_passphrase) formData.append("age_passphrase", options.age_passphrase)
+  for (const identity of options.age_identities || []) formData.append("age_identities", identity)
+  const response = await authenticatedFetch(`${getApiUrl()}/backup/${action}`, { method: "POST", body: formData })
+  if (!response.ok) throw new Error(await readErrorMessage(response) || "Import failed")
+  return response.json()
+
 }
 
 function parseAgeKeys(value: string) {

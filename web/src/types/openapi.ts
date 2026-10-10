@@ -1121,6 +1121,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/backup/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List managed native instance backups */
+        get: operations["listInstanceBackups"];
+        put?: never;
+        /** Start an encrypted native backup in the background */
+        post: operations["createInstanceBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup/instances/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload an encrypted instance archive (maximum 16 GiB) */
+        post: operations["uploadInstanceBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup/instances/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the encrypted instance archive */
+        get: operations["downloadInstanceBackup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup/instances/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete the archive and its history record */
+        delete: operations["deleteInstanceBackup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup/instances/{id}/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decrypt and verify a backup in the background */
+        post: operations["inspectInstanceBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup/instances/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore into a new directory; the active instance is not switched */
+        post: operations["restoreInstanceBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backup/export": {
         parameters: {
             query?: never;
@@ -1131,6 +1234,22 @@ export interface paths {
         get: operations["exportBackup"];
         put?: never;
         post: operations["exportSensitiveBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewBackup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4592,6 +4711,37 @@ export interface components {
             data: components["schemas"]["ResourceGrant"][];
             total: number;
         };
+        InstanceBackupRecord: {
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: int64 */
+            size: number;
+            /** @enum {string} */
+            status: "creating" | "uploading" | "checking" | "restoring" | "ready" | "failed";
+            /** @enum {string} */
+            source: "created" | "uploaded";
+            error?: string;
+            /** Format: date-time */
+            verified_at?: string;
+            app_version?: string;
+            driver?: string;
+            /** Format: int64 */
+            schema_version?: number;
+            restored_to?: string;
+        };
+        InstanceBackupList: {
+            items: components["schemas"]["InstanceBackupRecord"][];
+            restore_available: boolean;
+            /** Format: int64 */
+            max_upload_bytes: number;
+        };
+        InstanceBackupPassword: {
+            password: string;
+            /** @description Required to be true for restoration to a new directory. */
+            confirm?: boolean;
+        };
         BackupExportRequest: {
             /** @default true */
             include_config: boolean;
@@ -4624,6 +4774,8 @@ export interface components {
             message: string;
             /** @enum {string} */
             conflict_strategy: "skip" | "overwrite" | "error";
+            /** @description 本次迁移忽略的废弃或可选字段 */
+            ignored_fields?: string[];
             summary: {
                 [key: string]: components["schemas"]["BackupRestoreSectionSummary"];
             };
@@ -6866,6 +7018,237 @@ export interface operations {
             };
         };
     };
+    listInstanceBackups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Backup history and capabilities */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceBackupList"];
+                };
+            };
+        };
+    };
+    createInstanceBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstanceBackupPassword"];
+            };
+        };
+        responses: {
+            /** @description Backup accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceBackupRecord"];
+                };
+            };
+            /** @description Another backup operation is running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    uploadInstanceBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Uploaded; password verification is still required */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceBackupRecord"];
+                };
+            };
+        };
+    };
+    downloadInstanceBackup: {
+        parameters: {
+            query?: {
+                /** @description Single-use ticket scoped to this archive, obtained from POST /auth/ticket with type instance_backup_download and backup_id. */
+                ticket?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Encrypted backup archive */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Backup not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Another backup operation is running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    deleteInstanceBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Backup deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Backup not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Another backup operation is running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    inspectInstanceBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstanceBackupPassword"];
+            };
+        };
+        responses: {
+            /** @description Operation accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceBackupRecord"];
+                };
+            };
+            /** @description Backup not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Another backup operation is running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    restoreInstanceBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstanceBackupPassword"];
+            };
+        };
+        responses: {
+            /** @description Operation accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceBackupRecord"];
+                };
+            };
+            /** @description Backup not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Another backup operation is running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     exportBackup: {
         parameters: {
             query?: {
@@ -6878,7 +7261,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 脱敏的 EasySSH 3.0 备份文件 */
+            /** @description 脱敏的 EasySSH 应用数据 1.0 文件 */
             200: {
                 headers: {
                     "Content-Disposition"?: string;
@@ -6904,7 +7287,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 可包含 age 加密敏感段的 EasySSH 3.0 备份文件 */
+            /** @description 可包含 age 加密敏感段的 EasySSH 应用数据 1.0 文件 */
             200: {
                 headers: {
                     "Content-Disposition"?: string;
@@ -6915,6 +7298,36 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+        };
+    };
+    previewBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["BackupRestoreOptions"] & {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 导入预览（不写入数据） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackupRestoreResponse"];
+                };
+            };
+            400: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            413: components["responses"]["Error"];
         };
     };
     restoreBackup: {

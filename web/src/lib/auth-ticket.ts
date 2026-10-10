@@ -1,6 +1,7 @@
 import { apiFetch } from "@/lib/api-client"
 
 export type AuthTicketType =
+  | "instance_backup_download"
   | "ws_terminal"
   | "ws_monitor"
   | "ws_sftp_auth"
@@ -11,6 +12,7 @@ export type AuthTicketType =
 
 export interface CreateTicketInput {
   type: AuthTicketType
+  backup_id?: string
   server_id?: string
   task_id?: string
   path?: string
