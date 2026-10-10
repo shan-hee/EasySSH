@@ -1102,6 +1102,7 @@ export class DesktopBackupRestoreInput {
 }
 
 export class DesktopBackupRestoreResult {
+    "ignored_fields": string[] = [];
     "inserted": number;
     "updated": number;
     "skipped": number;

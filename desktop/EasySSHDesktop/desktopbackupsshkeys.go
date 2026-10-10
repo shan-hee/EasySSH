@@ -11,7 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func exportDesktopSSHKeys(db *sql.DB, sensitive bool) (desktopBackupTable, error) {
+func exportDesktopSSHKeys(db desktopBackupQuery, sensitive bool) (desktopBackupTable, error) {
 	table := desktopBackupTable{Name: "ssh_keys", PrimaryKey: []string{"id"}, Rows: []map[string]any{}}
 	table.Columns = []string{"id", "user_id", "name", "public_key", "fingerprint", "algorithm", "key_size", "passphrase_required", "created_at", "updated_at"}
 	if sensitive {

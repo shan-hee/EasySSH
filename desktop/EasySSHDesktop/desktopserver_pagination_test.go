@@ -14,7 +14,7 @@ func TestDesktopServerPaginationReorderAndStatistics(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if err := configureDesktopServerDatabase(db); err != nil {
+	if err := configureDesktopDatabase(db); err != nil {
 		t.Fatal(err)
 	}
 	wantIDs := make([]string, 35)

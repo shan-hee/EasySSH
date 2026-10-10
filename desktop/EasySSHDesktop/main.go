@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"github.com/easyssh/shared/instancebackup"
 
 	"log"
 	"os"
@@ -25,6 +26,19 @@ var appIcon []byte
 // main initializes the desktop shell. The first screen is the SSH/SFTP workspace;
 // Dashboard navigation and server administration stay outside this window shell.
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "maintenance" {
+		if err := runDesktopMaintenance(os.Args[2:]); err != nil {
+			log.Print(err)
+			os.Exit(1)
+		}
+		return
+	}
+	instanceLock, err := instancebackup.Lock(desktopDataDir())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer instanceLock.Close()
+
 	if err := ensureDesktopDataDir(); err != nil {
 		log.Fatalf("failed to initialize desktop data directory: %v", err)
 	}
@@ -47,7 +61,7 @@ func main() {
 	desktopGateway := NewDesktopGateway(serverService, scriptService, monitorService, sftpService)
 	dockerService := NewDesktopDockerService(serverService)
 	aiService := NewDesktopAIService(serverService, sftpService, monitorService)
-	backupService := NewDesktopBackupService(notificationService, taskService)
+	backupService := NewDesktopBackupService()
 	updateService := NewDesktopUpdateService()
 	var mainWindow *application.WebviewWindow
 
@@ -142,7 +156,7 @@ func main() {
 	tray.SetTooltip("EasySSH")
 	notificationService.attachTray(tray)
 
-	err := app.Run()
+	err = app.Run()
 	if err != nil {
 		log.Printf("desktop app failed: %v", err)
 		closeDesktopLogger()

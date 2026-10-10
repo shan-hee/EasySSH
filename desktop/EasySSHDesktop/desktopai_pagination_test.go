@@ -13,7 +13,7 @@ func TestDesktopAISessionPaginationAndScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if err := configureDesktopAIDatabase(db); err != nil {
+	if err := configureDesktopDatabase(db); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 70; i++ {

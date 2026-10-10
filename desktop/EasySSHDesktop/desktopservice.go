@@ -174,6 +174,14 @@ func readVersion() string {
 }
 
 func desktopDataDir() string {
+	if value := os.Getenv("EASYSSH_DESKTOP_DATA_DIR"); value != "" {
+		resolved, err := filepath.Abs(value)
+		if err != nil {
+			panic(err)
+		}
+		return resolved
+	}
+
 	executablePath, err := os.Executable()
 	if err != nil {
 		panic(fmt.Errorf("failed to resolve desktop executable path: %w", err))
@@ -297,6 +305,8 @@ func readDesktopPreferences() (DesktopPreferenceSnapshot, error) {
 }
 
 func writeDesktopPreferences(preferences DesktopPreferenceSnapshot) error {
+	desktopInstanceFilesMu.RLock()
+	defer desktopInstanceFilesMu.RUnlock()
 	dataDir := desktopDataDir()
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return err

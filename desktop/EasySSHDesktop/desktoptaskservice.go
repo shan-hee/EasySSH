@@ -723,51 +723,12 @@ func (s *DesktopTaskService) database() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := configureDesktopTaskDatabase(database); err != nil {
+	if err := configureDesktopDatabase(database); err != nil {
 		database.Close()
 		return nil, err
 	}
 	s.db = database
 	return s.db, nil
-}
-
-func configureDesktopTaskDatabase(database *sql.DB) error {
-	database.SetMaxOpenConns(1)
-	statements := []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA foreign_keys=ON",
-		`CREATE TABLE IF NOT EXISTS desktop_task_runs (
-			id TEXT PRIMARY KEY, user_id TEXT NOT NULL DEFAULT 'local_owner', definition_id TEXT NOT NULL DEFAULT '',
-			retry_of_id TEXT NOT NULL DEFAULT '', source_type TEXT NOT NULL DEFAULT '', source_id TEXT NOT NULL DEFAULT '',
-			task_type TEXT NOT NULL, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', trigger_type TEXT NOT NULL DEFAULT 'manual',
-			runner TEXT NOT NULL DEFAULT 'desktop', status TEXT NOT NULL DEFAULT 'queued', stage TEXT NOT NULL DEFAULT '',
-			server_id TEXT NOT NULL DEFAULT '', server_name TEXT NOT NULL DEFAULT '', resource TEXT NOT NULL DEFAULT '',
-			payload_json TEXT NOT NULL DEFAULT '', result_json TEXT NOT NULL DEFAULT '', progress INTEGER NOT NULL DEFAULT 0,
-			total_count INTEGER NOT NULL DEFAULT 0, success_count INTEGER NOT NULL DEFAULT 0, failure_count INTEGER NOT NULL DEFAULT 0,
-			bytes_total INTEGER NOT NULL DEFAULT 0, bytes_processed INTEGER NOT NULL DEFAULT 0, progress_json TEXT NOT NULL DEFAULT '',
-			cancelable INTEGER NOT NULL DEFAULT 0, retryable INTEGER NOT NULL DEFAULT 0, attempt INTEGER NOT NULL DEFAULT 1,
-			max_attempts INTEGER NOT NULL DEFAULT 1, error_code TEXT NOT NULL DEFAULT '', error_message TEXT NOT NULL DEFAULT '',
-			cancel_requested_at TEXT NOT NULL DEFAULT '', started_at TEXT NOT NULL DEFAULT '', finished_at TEXT NOT NULL DEFAULT '',
-			created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-		)`,
-		"CREATE INDEX IF NOT EXISTS idx_desktop_task_runs_status ON desktop_task_runs (status)",
-		"CREATE INDEX IF NOT EXISTS idx_desktop_task_runs_finished ON desktop_task_runs (finished_at)",
-		"CREATE INDEX IF NOT EXISTS idx_desktop_task_runs_created ON desktop_task_runs (created_at DESC)",
-		"CREATE INDEX IF NOT EXISTS idx_desktop_task_runs_type ON desktop_task_runs (task_type)",
-		`CREATE TABLE IF NOT EXISTS desktop_task_events (
-			id INTEGER PRIMARY KEY AUTOINCREMENT, task_run_id TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT 'local_owner',
-			level TEXT NOT NULL DEFAULT 'info', message TEXT NOT NULL, data_json TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL,
-			FOREIGN KEY (task_run_id) REFERENCES desktop_task_runs(id) ON DELETE CASCADE
-		)`,
-		"CREATE INDEX IF NOT EXISTS idx_desktop_task_events_run ON desktop_task_events (task_run_id, created_at)",
-	}
-	for _, statement := range statements {
-		if _, err := database.Exec(statement); err != nil {
-			return err
-		}
-	}
-	return database.Ping()
 }
 
 const desktopTaskSelectSQL = `SELECT id, user_id, definition_id, retry_of_id, source_type, source_id, task_type, title,

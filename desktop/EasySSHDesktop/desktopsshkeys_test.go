@@ -23,7 +23,7 @@ func newSSHKeyTestService(t *testing.T) *DesktopServerService {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	if err := configureDesktopServerDatabase(db); err != nil {
+	if err := configureDesktopDatabase(db); err != nil {
 		t.Fatal(err)
 	}
 	e, err := crypto.NewEncryptor(base64.StdEncoding.EncodeToString(make([]byte, 32)))

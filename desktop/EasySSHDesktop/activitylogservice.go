@@ -294,46 +294,13 @@ func (s *ActivityLogService) database() (*sql.DB, error) {
 		return nil, err
 	}
 
-	if err := configureActivityDatabase(database); err != nil {
+	if err := configureDesktopDatabase(database); err != nil {
 		database.Close()
 		return nil, err
 	}
 
 	s.db = database
 	return s.db, nil
-}
-
-func configureActivityDatabase(database *sql.DB) error {
-	database.SetMaxOpenConns(1)
-
-	statements := []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA foreign_keys=ON",
-		`CREATE TABLE IF NOT EXISTS activity_logs (
-			id TEXT PRIMARY KEY,
-			action TEXT NOT NULL,
-			resource TEXT NOT NULL DEFAULT '',
-			status TEXT NOT NULL DEFAULT 'success',
-			server_id TEXT,
-			duration_ms INTEGER,
-			detail TEXT,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		"CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs (created_at DESC)",
-		"CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON activity_logs (action)",
-		"CREATE INDEX IF NOT EXISTS idx_activity_logs_status ON activity_logs (status)",
-		"CREATE INDEX IF NOT EXISTS idx_activity_logs_server ON activity_logs (server_id)",
-	}
-
-	for _, statement := range statements {
-		if _, err := database.Exec(statement); err != nil {
-			return err
-		}
-	}
-
-	return database.Ping()
 }
 
 func normalizeActivityListParams(params DesktopActivityLogListParams) DesktopActivityLogListParams {

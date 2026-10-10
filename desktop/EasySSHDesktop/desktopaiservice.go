@@ -1434,7 +1434,7 @@ func (s *DesktopAIService) database() (*sql.DB, error) {
 		return nil, err
 	}
 
-	if err := configureDesktopAIDatabase(database); err != nil {
+	if err := configureDesktopDatabase(database); err != nil {
 		database.Close()
 		return nil, err
 	}
@@ -2197,39 +2197,6 @@ func (s *DesktopAIService) executeDesktopAIGetSystemInfo(ctx context.Context, ar
 		"collected_at":   snapshot.CollectedAt,
 	}
 	return desktopAIToolJSON("系统信息", payload), nil
-}
-
-func configureDesktopAIDatabase(database *sql.DB) error {
-	database.SetMaxOpenConns(1)
-	statements := []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA foreign_keys=ON",
-
-		`CREATE TABLE IF NOT EXISTS desktop_ai_sessions (
-			id TEXT PRIMARY KEY,
- config_space_id TEXT NOT NULL DEFAULT 'local',
-			title TEXT NOT NULL DEFAULT '',
-			custom_title INTEGER NOT NULL DEFAULT 0,
-			model TEXT NOT NULL DEFAULT '',
-			permission_mode TEXT NOT NULL DEFAULT 'balanced',
-			scope_json TEXT NOT NULL DEFAULT '{}',
-			status TEXT NOT NULL DEFAULT 'idle',
-			messages_json TEXT NOT NULL DEFAULT '[]',
-			tasks_json TEXT NOT NULL DEFAULT '[]',
-			ui_messages_json TEXT NOT NULL DEFAULT '[]',
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		"CREATE INDEX IF NOT EXISTS idx_desktop_ai_sessions_updated ON desktop_ai_sessions (updated_at DESC)",
-		"CREATE INDEX IF NOT EXISTS idx_desktop_ai_sessions_scope ON desktop_ai_sessions (scope_json)",
-	}
-	for _, statement := range statements {
-		if _, err := database.Exec(statement); err != nil {
-			return err
-		}
-	}
-	return database.Ping()
 }
 
 func normalizeDesktopAIListParams(params DesktopAIListSessionsParams) DesktopAIListSessionsParams {

@@ -229,6 +229,8 @@ func ensureDesktopHostKeyStoreLocked() error {
 }
 
 func writeDesktopHostKeyStoreLocked() error {
+	desktopInstanceFilesMu.RLock()
+	defer desktopInstanceFilesMu.RUnlock()
 	if desktopHostKeyStore == nil {
 		return nil
 	}

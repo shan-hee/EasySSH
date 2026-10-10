@@ -10,10 +10,10 @@ import (
 func newDesktopSyncTestService(t *testing.T) *DesktopSyncService {
 	t.Helper()
 	servers := newSSHKeyTestService(t)
-	if err := configureDesktopScriptDatabase(servers.db); err != nil {
+	if err := configureDesktopDatabase(servers.db); err != nil {
 		t.Fatal(err)
 	}
-	if err := configureDesktopAIDatabase(servers.db); err != nil {
+	if err := configureDesktopDatabase(servers.db); err != nil {
 		t.Fatal(err)
 	}
 	return &DesktopSyncService{servers: servers, scripts: &DesktopScriptService{db: servers.db}, ai: &DesktopAIService{db: servers.db, serverService: servers}}

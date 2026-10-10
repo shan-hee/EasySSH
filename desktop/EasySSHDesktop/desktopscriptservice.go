@@ -502,85 +502,13 @@ func (s *DesktopScriptService) database() (*sql.DB, error) {
 		return nil, err
 	}
 
-	if err := configureDesktopScriptDatabase(database); err != nil {
+	if err := configureDesktopDatabase(database); err != nil {
 		database.Close()
 		return nil, err
 	}
 
 	s.db = database
 	return s.db, nil
-}
-
-func configureDesktopScriptDatabase(database *sql.DB) error {
-	database.SetMaxOpenConns(1)
-
-	statements := []string{
-		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=5000",
-		"PRAGMA foreign_keys=ON",
-		`CREATE TABLE IF NOT EXISTS desktop_scripts (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL DEFAULT 'local',
-			name TEXT NOT NULL,
-			description TEXT NOT NULL DEFAULT '',
-			content TEXT NOT NULL,
-			language TEXT NOT NULL DEFAULT 'bash',
-			tags_json TEXT NOT NULL DEFAULT '[]',
-			executions INTEGER NOT NULL DEFAULT 0,
-			author TEXT NOT NULL DEFAULT 'desktop',
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		"CREATE INDEX IF NOT EXISTS idx_desktop_scripts_name ON desktop_scripts (name)",
-		"CREATE INDEX IF NOT EXISTS idx_desktop_scripts_language ON desktop_scripts (language)",
-		"CREATE INDEX IF NOT EXISTS idx_desktop_scripts_updated_at ON desktop_scripts (updated_at DESC)",
-		`CREATE TABLE IF NOT EXISTS desktop_batch_tasks (
-			id TEXT PRIMARY KEY,
-			user_id TEXT NOT NULL DEFAULT 'local',
-			task_name TEXT NOT NULL,
-			task_type TEXT NOT NULL,
-			content TEXT NOT NULL DEFAULT '',
-			script_id TEXT NOT NULL DEFAULT '',
-			server_ids_json TEXT NOT NULL DEFAULT '[]',
-			execution_mode TEXT NOT NULL DEFAULT 'parallel',
-			status TEXT NOT NULL DEFAULT 'pending',
-			success_count INTEGER NOT NULL DEFAULT 0,
-			failed_count INTEGER NOT NULL DEFAULT 0,
-			started_at TEXT NOT NULL DEFAULT '',
-			completed_at TEXT NOT NULL DEFAULT '',
-			duration INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		"CREATE INDEX IF NOT EXISTS idx_desktop_batch_tasks_created_at ON desktop_batch_tasks (created_at DESC)",
-		"CREATE INDEX IF NOT EXISTS idx_desktop_batch_tasks_status ON desktop_batch_tasks (status)",
-		"CREATE INDEX IF NOT EXISTS idx_desktop_batch_tasks_type ON desktop_batch_tasks (task_type)",
-		`CREATE TABLE IF NOT EXISTS desktop_batch_task_results (
-			id TEXT PRIMARY KEY,
-			task_id TEXT NOT NULL,
-			server_id TEXT NOT NULL DEFAULT '',
-			server_name TEXT NOT NULL DEFAULT '',
-			server_host TEXT NOT NULL DEFAULT '',
-			status TEXT NOT NULL,
-			exit_code INTEGER NOT NULL DEFAULT 0,
-			output TEXT NOT NULL DEFAULT '',
-			error_message TEXT NOT NULL DEFAULT '',
-			started_at TEXT NOT NULL,
-			completed_at TEXT NOT NULL,
-			duration_ms INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL
-		)`,
-		"CREATE INDEX IF NOT EXISTS idx_desktop_batch_results_task ON desktop_batch_task_results (task_id)",
-		"CREATE INDEX IF NOT EXISTS idx_desktop_batch_results_server ON desktop_batch_task_results (server_id)",
-	}
-
-	for _, statement := range statements {
-		if _, err := database.Exec(statement); err != nil {
-			return err
-		}
-	}
-
-	return database.Ping()
 }
 
 func (s *DesktopScriptService) runBatchTask(taskID string, runID string) {

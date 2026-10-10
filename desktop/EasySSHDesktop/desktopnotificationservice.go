@@ -241,6 +241,8 @@ func stageDesktopNotifications(items []DesktopNotification) (string, error) {
 }
 
 func commitDesktopNotificationsStage(tmp string) error {
+	desktopInstanceFilesMu.RLock()
+	defer desktopInstanceFilesMu.RUnlock()
 	path := desktopNotificationsPath()
 	if err := os.Rename(tmp, path); err == nil {
 		return nil
