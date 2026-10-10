@@ -1,5 +1,4 @@
 {
-  "dialogTitle": "Terminal settings",
   "dialogDescription": "Changes are saved automatically for all terminals on this device and synced across its windows.",
   "tab_appearance": "Appearance",
   "tab_input": "Input & shortcuts",

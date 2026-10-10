@@ -1,5 +1,4 @@
 {
-  "dialogTitle": "终端设置",
   "dialogDescription": "修改后自动保存，应用于当前设备的所有终端；不同窗口会同步。",
   "tab_appearance": "外观",
   "tab_input": "输入与快捷键",

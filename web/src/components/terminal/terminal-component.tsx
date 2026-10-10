@@ -23,8 +23,7 @@ import { SessionSplitDropOverlay } from "@/components/tabs/session-split-drop-ov
 import { SessionSplitPane } from "@/components/tabs/session-split-pane"
 import { PersistentSessionContent, SessionContentSlot, useSessionContentHosts } from "@/components/tabs/session-content-host"
 import { SessionDockview } from "@/components/tabs/session-dockview"
-import { ResourceBoundary } from "@/components/resource-boundary"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { TerminalSettingsDialog } from "./terminal-settings-dialog"
 import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
 import { useTabUIStore } from "@/stores/tab-ui-store"
 import { useTranslation } from "react-i18next"
@@ -46,10 +45,6 @@ import {
 } from "@/components/terminal/use-terminal-renderer-settings"
 
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
-
-const TerminalSettingsDialog = lazy(() => import("./terminal-settings-dialog").then(
-  (module) => ({ default: module.TerminalSettingsDialog }),
-))
 
 const TabTerminalContent = lazy(() => import("./tab-terminal-content").then(
   (module) => ({ default: module.TabTerminalContent }),
@@ -1594,31 +1589,13 @@ export function TerminalComponent({
 
       {/* 设置对话框 */}
       {isSettingsOpen && (
-        <ResourceBoundary renderError={(recovery) => (
-          <Dialog open onOpenChange={setIsSettingsOpen}>
-            <DialogContent aria-describedby={undefined}>
-              <DialogTitle>{tTerminal("ariaSettings")}</DialogTitle>
-              {recovery}
-            </DialogContent>
-          </Dialog>
-        )}>
-          <Suspense fallback={
-            <Dialog open onOpenChange={setIsSettingsOpen}>
-              <DialogContent aria-describedby={undefined}>
-                <DialogTitle>{tTerminal("ariaSettings")}</DialogTitle>
-                <PageLoading />
-              </DialogContent>
-            </Dialog>
-          }>
-            <TerminalSettingsDialog
-              open={isSettingsOpen}
-              onOpenChange={setIsSettingsOpen}
-              settings={settings}
-              inactiveReminderLimit={inactiveReminderLimit}
-              onSettingsChange={handleSettingsChange}
-            />
-          </Suspense>
-        </ResourceBoundary>
+        <TerminalSettingsDialog
+          open={isSettingsOpen}
+          onOpenChange={setIsSettingsOpen}
+          settings={settings}
+          inactiveReminderLimit={inactiveReminderLimit}
+          onSettingsChange={handleSettingsChange}
+        />
       )}
     </div>
   )
