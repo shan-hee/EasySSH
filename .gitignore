@@ -121,3 +121,10 @@ yarn-error.log*
 .vercel
 
 /server/sync-runtime/node_modules/
+
+# Local database migration source and encrypted instance archives
+/server/data1/
+/server/backups/
+/docker/backups/
+/docker/backups-dev/
+/desktop/EasySSHDesktop/backups/

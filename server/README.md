@@ -62,7 +62,7 @@ go mod download
 
 ```bash
 # 开发模式
-go run cmd/api/main.go
+go run ./cmd/api
 
 # 或使用 air 热重载（需安装 air）
 air
@@ -252,10 +252,10 @@ server/
 
 ```bash
 # 开发模式（带调试信息）
-go build -o easyssh-server cmd/api/main.go
+go build -o easyssh-server ./cmd/api
 
 # 生产模式（优化编译）
-go build -ldflags="-s -w" -o easyssh-server cmd/api/main.go
+go build -ldflags="-s -w" -o easyssh-server ./cmd/api
 ```
 
 ### 测试
@@ -308,7 +308,7 @@ golangci-lint run
 | `DB_DSN` | 数据库连接串 | ./data/easyssh.db | 否 |
 EasySSH 只保留启动自举配置。Cookie、CORS、CSRF、CSP、可信代理、SFTP 连接池、后台任务最大并发、Access Token/Refresh Token 生命周期以及对外 OAuth/OIDC Provider 地址与开关都在“系统设置”维护。后台任务队列按需创建执行协程，空闲时不保留 Worker；最大并发默认 2，保存后立即生效。对外 Provider 默认关闭，EasySSH 自身登录始终使用固定内部 issuer/redirect，不依赖部署域名。服务器与登录位置统一通过 HTTPS 调用 `ipwho.is`，无需 API Key 或本地位置库；成功结果缓存 24 小时，单次查询（含 DNS）最多等待 3 秒。免费接口按出口 IP 每天限额 1,000 次，收到 429 后按 `Retry-After` 暂停请求（未提供有效值时暂停 24 小时）；位置查询失败不阻止保存或登录。
 
-未设置 `ENCRYPTION_KEY` 时，服务首次启动会生成权限为 `0600` 的 `easyssh-root.key`。服务通过 HKDF-SHA256 派生 OAuth、CSRF 和 2FA 备份码子密钥，不再需要额外全局密钥。外部数据库多实例必须显式提供同一根密钥。首次填写或修改对外 Provider 地址后需重启，关闭/开启开关本身即时生效。
+未设置 `ENCRYPTION_KEY` 时，服务首次启动会生成权限为 `0600` 的 `easyssh-root.key`。服务通过 HKDF-SHA256 派生 OAuth、CSRF 和 2FA 备份码子密钥，不再需要额外全局密钥。同一数据库由一个 EasySSH 进程独占；备份维护前需停止正常进程。首次填写或修改对外 Provider 地址后需重启，关闭/开启开关本身即时生效。
 
 ### 生成加密密钥
 
@@ -411,3 +411,7 @@ Owner-scoped server metadata and scripts form the basic scope. Browser approval 
 Passwords, private keys, personal API keys and conversation bodies stay out of Automerge history and the Node process; the worker sees random version references. Go transports payloads over HTTPS and encrypts sync objects at rest. Existing AI history tables retain their existing storage policy. This is not end-to-end encryption: the configured server can decrypt data. Concurrent conversation snapshots are retained as separate versions; Web and desktop support choosing a version or copying it into a new read-only conversation. Runtime synchronization refuses active/waiting sessions, flushes in-memory idle edits and updates the cached session without replaying historical tools.
 
 Limits: 12 MiB document exchange request bodies; 16 MiB object request bodies with 12 MiB payload values, 8 MiB encoded document history, 10,000 active records, 20,000 total records with deletion markers. Attachments are separate objects, limited to 8 MiB each and 32 MiB decoded total per conversation. Document compaction and payload-history garbage collection are not implemented. Node worker errors are reported in the sync UI; existing SSH and backup features remain available.
+
+## 备份、数据迁移与数据库升级
+
+完整实例使用原生数据库备份；JSON 仅迁移应用数据；数据库结构由 Goose 的编号迁移管理。具体命令、数据目录与根密钥恢复步骤见[备份、数据迁移与数据库升级](../docs/backup-and-migrations.md)。

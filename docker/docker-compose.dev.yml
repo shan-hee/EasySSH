@@ -15,6 +15,7 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
     volumes:
       - ./data-dev:/app/data
+      - ./backups-dev:/app/backups
     networks:
       - easyssh-network
     healthcheck:

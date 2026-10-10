@@ -69,21 +69,22 @@ FROM alpine:3.22
 WORKDIR /app
 
 # 运行时组件：证书与时区；健康检查使用 Alpine 自带的 BusyBox wget
-RUN apk --no-cache add ca-certificates tzdata nodejs
+RUN apk --no-cache add ca-certificates tzdata nodejs postgresql-client mariadb-client
 
 # 使用非 root 用户运行
 ARG APP_UID=1001
 ARG APP_GID=1001
 RUN addgroup -S -g ${APP_GID} appuser \
     && adduser -S -u ${APP_UID} appuser -G appuser \
-    && mkdir -p /app/data \
-    && chown -R appuser:appuser /app/data
+    && mkdir -p /app/data /app/backups \
+    && chown -R appuser:appuser /app/data /app/backups
 
 # 默认环境（可在运行容器时覆盖）
 ENV TZ=Asia/Shanghai \
     ENV=production \
     BACKEND_URL=http://localhost:8520 \
     EASYSSH_SYNC_ENGINE=/app/server/sync-runtime/engine.mjs \
+    EASYSSH_BACKUP_DIR=/app/backups \
     DB_DRIVER=sqlite \
     DB_DSN=/app/data/easyssh.db
 

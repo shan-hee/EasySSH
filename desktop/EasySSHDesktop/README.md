@@ -66,3 +66,7 @@ Each AI conversation has a separate reference document. Messages retain identifi
 This development schema replaces the earlier token-pairing prototype and AI configuration/session schema directly. No legacy-table migration or compatibility reads are provided; use a fresh development database if the prototype's sync tables were already created. The application does not automatically delete existing databases.
 
 Each encoded sync document is limited to 8 MiB, with up to 10,000 active records and 20,000 records including deletion markers. This version does not compact history or synchronize sorting/preferences. Immutable payload history is retained without automatic garbage collection. This is selective data synchronization, not a database replica or a backup replacement.
+
+## 备份、数据迁移与数据库升级
+
+完整实例使用原生数据库备份；JSON 仅迁移应用数据；数据库结构由 Goose 的编号迁移管理。具体命令、数据目录与根密钥恢复步骤见[备份、数据迁移与数据库升级](../../docs/backup-and-migrations.md)。
