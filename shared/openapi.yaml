@@ -55,6 +55,10 @@ tags:
 
 components:
   securitySchemes:
+    syncDeviceAuth:
+      type: http
+      scheme: bearer
+      description: Revocable device-only synchronization credential
     bearerAuth:
       type: http
       scheme: bearer
@@ -121,6 +125,254 @@ components:
       description: 操作成功，无响应体
 
   schemas:
+    SyncPeer:
+      type: object
+      properties:
+        document:
+          type: string
+          description: Base64 Automerge document for initial synchronization
+        changes:
+          type: array
+          items:
+            type: string
+          description: Base64 Automerge changes since the last acknowledged heads
+        heads:
+          type: array
+          items:
+            type: string
+    SyncConflict:
+      type: object
+      required: [key, field, values]
+      properties:
+        previews:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SyncVersionPreview'
+        key:
+          type: string
+        field:
+          type: string
+          enum: [connection, content, ref]
+        values:
+          type: array
+          items:
+            type: string
+    SyncResolution:
+      type: object
+      required: [key, field, value]
+      properties:
+        key:
+          type: string
+        field:
+          type: string
+          enum: [connection, content, ref]
+        value:
+          type: string
+    SyncScopes:
+      type: object
+      required: [credentials, ai_config, sessions]
+      properties:
+        credentials:
+          type: boolean
+        ai_config:
+          type: boolean
+        sessions:
+          type: boolean
+    SyncVersionPreview:
+      type: object
+      description: Safe summary; never contains credential material or message bodies
+      properties:
+        source:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        deleted:
+          type: boolean
+        title:
+          type: string
+        messages:
+          type: integer
+        last_message_at:
+          type: string
+          format: date-time
+        has_password:
+          type: boolean
+        fingerprint:
+          type: string
+        provider:
+          type: string
+        has_api_key:
+          type: boolean
+    SyncVaultEntry:
+      type: object
+      required: [kind, id, name]
+      properties:
+        kind:
+          type: string
+          enum: [credential, ai_config, ai_session]
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    SyncVaultObject:
+      type: object
+      required: [kind, resource_id, value]
+      properties:
+        kind:
+          type: string
+          enum: [credential, ai_config, ai_session, attachment]
+        resource_id:
+          type: string
+          format: uuid
+        value:
+          type: string
+          description: JSON payload or base64 attachment; encrypted by Go at rest, HTTPS in transit
+    SyncVaultExchange:
+      type: object
+      required: [peer]
+      properties:
+        peer:
+          $ref: '#/components/schemas/SyncPeer'
+        resolution:
+          $ref: '#/components/schemas/SyncResolution'
+    SyncVaultResult:
+      type: object
+      required: [response, snapshot, conflicts]
+      properties:
+        response:
+          $ref: '#/components/schemas/SyncPeer'
+        snapshot:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties:
+              type: string
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncConflict'
+    SyncDevice:
+      type: object
+      required: [id, name, created_at, expires_at, last_used_at, scopes]
+      properties:
+        scopes:
+          $ref: '#/components/schemas/SyncScopes'
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+    SyncStatus:
+      type: object
+      required: [can_sync, enabled, devices, conflicts]
+      properties:
+        enabled:
+          type: boolean
+        can_sync:
+          type: boolean
+        error:
+          type: string
+        space_id:
+          type: string
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncDevice'
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncConflict'
+        records:
+          type: integer
+    SyncAuthorizationStart:
+      type: object
+      required: [name, token_hash]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        token_hash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+    SyncAuthorizationStarted:
+      type: object
+      required: [device_code, user_code, expires_at]
+      properties:
+        device_code:
+          type: string
+        user_code:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    SyncAuthorizationDeviceCode:
+      type: object
+      required: [device_code]
+      properties:
+        device_code:
+          type: string
+          minLength: 64
+          maxLength: 64
+    SyncAuthorizationUserCode:
+      type: object
+      required: [user_code]
+      properties:
+        user_code:
+          type: string
+          minLength: 64
+          maxLength: 64
+    SyncAuthorizationApproval:
+      type: object
+      required: [user_code, scopes]
+      properties:
+        user_code:
+          type: string
+          minLength: 64
+          maxLength: 64
+        scopes:
+          $ref: '#/components/schemas/SyncScopes'
+    SyncAuthorizationStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, approved, denied]
+        name:
+          type: string
+    SyncIdentity:
+      type: object
+      required: [space_id, instance_id, user_id, account_name, protocol, grants]
+      properties:
+        space_id:
+          type: string
+          format: uuid
+        instance_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        account_name:
+          type: string
+        protocol:
+          type: integer
+          enum: [3]
+        grants:
+          $ref: '#/components/schemas/SyncScopes'
     # ========================================
     # 通用响应
     # ========================================
@@ -2363,6 +2615,439 @@ components:
             additionalProperties: true
 
 paths:
+  /sync/authorization/start:
+    post:
+      operationId: startSyncAuthorization
+      summary: startSyncAuthorization
+      tags: [sync]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncAuthorizationStart'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncAuthorizationStarted'
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/authorization/poll:
+    post:
+      operationId: pollSyncAuthorization
+      summary: pollSyncAuthorization
+      tags: [sync]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncAuthorizationDeviceCode'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncAuthorizationStatus'
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/authorization/cancel:
+    post:
+      operationId: cancelSyncAuthorization
+      summary: cancelSyncAuthorization
+      tags: [sync]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncAuthorizationDeviceCode'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncAuthorizationStatus'
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/authorization/info:
+    post:
+      operationId: getSyncAuthorization
+      summary: getSyncAuthorization
+      tags: [sync]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncAuthorizationUserCode'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncAuthorizationStatus'
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/authorization/approve:
+    post:
+      operationId: approveSyncAuthorization
+      summary: approveSyncAuthorization
+      tags: [sync]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncAuthorizationApproval'
+      responses:
+        '204':
+          description: Success
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/authorization/deny:
+    post:
+      operationId: denySyncAuthorization
+      summary: denySyncAuthorization
+      tags: [sync]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncAuthorizationUserCode'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncAuthorizationStatus'
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/device/disconnect:
+    post:
+      operationId: disconnectSyncDevice
+      summary: disconnectSyncDevice
+      tags: [sync]
+      security:
+        - syncDeviceAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JSONObject'
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/settings:
+    put:
+      operationId: setSyncEnabled
+      summary: Enable or pause device synchronization for the current account
+      tags: [sync]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+      responses:
+        '204':
+          description: Sync setting saved
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/status:
+    get:
+      operationId: getSyncStatus
+      summary: getSyncStatus
+      tags: [sync]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatus'
+        default:
+          description: Authentication, authorization, validation or synchronization error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /sync/devices/{id}:
+    delete:
+      operationId: revokeSyncDevice
+      summary: revokeSyncDevice
+      tags: [sync]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ID'
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Authentication, authorization, validation or synchronization error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /sync/resolve:
+    post:
+      operationId: resolveSyncConflict
+      summary: resolveSyncConflict
+      tags: [sync]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncResolution'
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Authentication, authorization, validation or synchronization error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /sync/device:
+    get:
+      operationId: getSyncDeviceIdentity
+      summary: getSyncDeviceIdentity
+      tags: [sync]
+      security:
+        - syncDeviceAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncIdentity'
+        default:
+          description: Authentication, authorization, validation or synchronization error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
+  /sync/vault/fork:
+    post:
+      operationId: forkSyncConversation
+      summary: Copy a retained conversation version without executing historical tasks
+      tags: [sync]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id, ref]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                ref:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Copied conversation
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/device/vault:
+    get:
+      operationId: listSyncVaultDocuments
+      summary: List the authenticated owner's authorized supplementary documents
+      tags: [sync]
+      security:
+        - syncDeviceAuth: []
+      responses:
+        '200':
+          description: Sync documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SyncVaultEntry'
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/device/vault/objects/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getSyncVaultObject
+      summary: Download an authorized payload directly to desktop Go
+      tags: [sync]
+      security:
+        - syncDeviceAuth: []
+      responses:
+        '200':
+          description: Payload, never cached
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [value]
+                properties:
+                  value:
+                    type: string
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: putSyncVaultObject
+      summary: Upload an immutable payload for encrypted persistence
+      tags: [sync]
+      security:
+        - syncDeviceAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncVaultObject'
+      responses:
+        '200':
+          description: Object saved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [saved]
+                properties:
+                  saved:
+                    type: boolean
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/device/vault/documents/{kind}/{id}:
+    parameters:
+      - in: path
+        name: kind
+        required: true
+        schema:
+          type: string
+          enum: [credential, ai_config, ai_session]
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: exchangeSyncVaultDocument
+      summary: Merge a document containing random payload references
+      tags: [sync]
+      security:
+        - syncDeviceAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncVaultExchange'
+      responses:
+        '200':
+          description: Merged reference document and retained conflicts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncVaultResult'
+        default:
+          $ref: '#/components/responses/Error'
+  /sync/device/exchange:
+    post:
+      operationId: exchangeSyncChanges
+      summary: exchangeSyncChanges
+      tags: [sync]
+      security:
+        - syncDeviceAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPeer'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPeer'
+        default:
+          description: Authentication, authorization, validation or synchronization error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  message:
+                    type: string
   # ========================================
   # 健康检查
   # ========================================

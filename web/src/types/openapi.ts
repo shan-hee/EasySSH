@@ -4,6 +4,301 @@
  */
 
 export interface paths {
+    "/sync/authorization/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** startSyncAuthorization */
+        post: operations["startSyncAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/authorization/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** pollSyncAuthorization */
+        post: operations["pollSyncAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/authorization/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** cancelSyncAuthorization */
+        post: operations["cancelSyncAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/authorization/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** getSyncAuthorization */
+        post: operations["getSyncAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/authorization/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** approveSyncAuthorization */
+        post: operations["approveSyncAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/authorization/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** denySyncAuthorization */
+        post: operations["denySyncAuthorization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** disconnectSyncDevice */
+        post: operations["disconnectSyncDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Enable or pause device synchronization for the current account */
+        put: operations["setSyncEnabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getSyncStatus */
+        get: operations["getSyncStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** revokeSyncDevice */
+        delete: operations["revokeSyncDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** resolveSyncConflict */
+        post: operations["resolveSyncConflict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** getSyncDeviceIdentity */
+        get: operations["getSyncDeviceIdentity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/vault/fork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy a retained conversation version without executing historical tasks */
+        post: operations["forkSyncConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device/vault": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the authenticated owner's authorized supplementary documents */
+        get: operations["listSyncVaultDocuments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device/vault/objects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Download an authorized payload directly to desktop Go */
+        get: operations["getSyncVaultObject"];
+        put?: never;
+        /** Upload an immutable payload for encrypted persistence */
+        post: operations["putSyncVaultObject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device/vault/documents/{kind}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "credential" | "ai_config" | "ai_session";
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Merge a document containing random payload references */
+        post: operations["exchangeSyncVaultDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** exchangeSyncChanges */
+        post: operations["exchangeSyncChanges"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -2926,6 +3221,134 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SyncPeer: {
+            /** @description Base64 Automerge document for initial synchronization */
+            document?: string;
+            /** @description Base64 Automerge changes since the last acknowledged heads */
+            changes?: string[];
+            heads?: string[];
+        };
+        SyncConflict: {
+            previews?: {
+                [key: string]: components["schemas"]["SyncVersionPreview"];
+            };
+            key: string;
+            /** @enum {string} */
+            field: "connection" | "content" | "ref";
+            values: string[];
+        };
+        SyncResolution: {
+            key: string;
+            /** @enum {string} */
+            field: "connection" | "content" | "ref";
+            value: string;
+        };
+        SyncScopes: {
+            credentials: boolean;
+            ai_config: boolean;
+            sessions: boolean;
+        };
+        /** @description Safe summary; never contains credential material or message bodies */
+        SyncVersionPreview: {
+            source?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            deleted?: boolean;
+            title?: string;
+            messages?: number;
+            /** Format: date-time */
+            last_message_at?: string;
+            has_password?: boolean;
+            fingerprint?: string;
+            provider?: string;
+            has_api_key?: boolean;
+        };
+        SyncVaultEntry: {
+            /** @enum {string} */
+            kind: "credential" | "ai_config" | "ai_session";
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        SyncVaultObject: {
+            /** @enum {string} */
+            kind: "credential" | "ai_config" | "ai_session" | "attachment";
+            /** Format: uuid */
+            resource_id: string;
+            /** @description JSON payload or base64 attachment; encrypted by Go at rest, HTTPS in transit */
+            value: string;
+        };
+        SyncVaultExchange: {
+            peer: components["schemas"]["SyncPeer"];
+            resolution?: components["schemas"]["SyncResolution"];
+        };
+        SyncVaultResult: {
+            response: components["schemas"]["SyncPeer"];
+            snapshot: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            conflicts: components["schemas"]["SyncConflict"][];
+        };
+        SyncDevice: {
+            scopes: components["schemas"]["SyncScopes"];
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            last_used_at: string | null;
+        };
+        SyncStatus: {
+            enabled: boolean;
+            can_sync: boolean;
+            error?: string;
+            space_id?: string;
+            devices: components["schemas"]["SyncDevice"][];
+            conflicts: components["schemas"]["SyncConflict"][];
+            records?: number;
+        };
+        SyncAuthorizationStart: {
+            name: string;
+            token_hash: string;
+        };
+        SyncAuthorizationStarted: {
+            device_code: string;
+            user_code: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        SyncAuthorizationDeviceCode: {
+            device_code: string;
+        };
+        SyncAuthorizationUserCode: {
+            user_code: string;
+        };
+        SyncAuthorizationApproval: {
+            user_code: string;
+            scopes: components["schemas"]["SyncScopes"];
+        };
+        SyncAuthorizationStatus: {
+            /** @enum {string} */
+            status: "pending" | "approved" | "denied";
+            name?: string;
+        };
+        SyncIdentity: {
+            /** Format: uuid */
+            space_id: string;
+            /** Format: uuid */
+            instance_id: string;
+            /** Format: uuid */
+            user_id: string;
+            account_name: string;
+            /** @enum {integer} */
+            protocol: 3;
+            grants: components["schemas"]["SyncScopes"];
+        };
         Error: {
             /** @example validation_error */
             error: string;
@@ -4270,6 +4693,502 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    startSyncAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncAuthorizationStart"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncAuthorizationStarted"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    pollSyncAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncAuthorizationDeviceCode"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncAuthorizationStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    cancelSyncAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncAuthorizationDeviceCode"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncAuthorizationStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSyncAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncAuthorizationUserCode"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncAuthorizationStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    approveSyncAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncAuthorizationApproval"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    denySyncAuthorization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncAuthorizationUserCode"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncAuthorizationStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    disconnectSyncDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JSONObject"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setSyncEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    enabled: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Sync setting saved */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSyncStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncStatus"];
+                };
+            };
+            /** @description Authentication, authorization, validation or synchronization error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
+    revokeSyncDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, authorization, validation or synchronization error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
+    resolveSyncConflict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncResolution"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, authorization, validation or synchronization error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
+    getSyncDeviceIdentity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncIdentity"];
+                };
+            };
+            /** @description Authentication, authorization, validation or synchronization error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
+    forkSyncConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    ref: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Copied conversation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSyncVaultDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sync documents */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncVaultEntry"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSyncVaultObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payload, never cached */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        value: string;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putSyncVaultObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncVaultObject"];
+            };
+        };
+        responses: {
+            /** @description Object saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        saved: boolean;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exchangeSyncVaultDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "credential" | "ai_config" | "ai_session";
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncVaultExchange"];
+            };
+        };
+        responses: {
+            /** @description Merged reference document and retained conflicts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncVaultResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exchangeSyncChanges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncPeer"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncPeer"];
+                };
+            };
+            /** @description Authentication, authorization, validation or synchronization error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
     getHealth: {
         parameters: {
             query?: never;
