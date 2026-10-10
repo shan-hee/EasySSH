@@ -295,27 +295,20 @@ export const TerminalSettingsDialog = memo(function TerminalSettingsDialog({
                   )}
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>div]:min-w-0 [&_[data-slot=select-trigger]]:w-full">
-                  {choice(
-                    "theme",
-                    "themeLabel",
-                    ["default", "dark", "light", "solarized", "dracula"].map((value) => ({
-                      value,
-                      label: ["solarized", "dracula"].includes(value)
-                        ? value === "solarized"
-                          ? "Solarized"
-                          : "Dracula"
-                        : t(`themeOption${value[0].toUpperCase()}${value.slice(1)}`),
-                    })),
-                  )}
-                  {choice(
-                    "material",
-                    "materialLabel",
-                    [
-                      { value: "solid", label: t("materialSolid") },
-                      { value: "glass", label: t("materialGlass") },
-                    ],
-                    "materialHelp",
-                  )}
+                  <div className="sm:col-span-2">
+                    {choice(
+                      "theme",
+                      "themeLabel",
+                      ["default", "dark", "light", "solarized", "dracula"].map((value) => ({
+                        value,
+                        label: ["solarized", "dracula"].includes(value)
+                          ? value === "solarized"
+                            ? "Solarized"
+                            : "Dracula"
+                          : t(`themeOption${value[0].toUpperCase()}${value.slice(1)}`),
+                      })),
+                    )}
+                  </div>
                   {choice(
                     "lineHeight",
                     "lineHeightLabel",

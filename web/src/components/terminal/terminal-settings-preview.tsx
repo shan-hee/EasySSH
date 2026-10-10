@@ -23,12 +23,12 @@ const SAMPLE_OUTPUT = [
 
 export function TerminalSettingsPreview({ settings }: { settings: TerminalSettings }) {
   const { t } = useTranslation("terminalSettings")
-  const { mode, version } = useEffectiveThemeMode()
+  const { mode, version, isGlassTheme } = useEffectiveThemeMode()
   const containerRef = useRef<HTMLDivElement>(null)
   const [instance, setInstance] = useState<{ terminal: Terminal; fit: FitAddon } | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [failedBackground, setFailedBackground] = useState<string | null>(null)
-  const transparentBackground = !!settings.backgroundImage || settings.material === "glass"
+  const transparentBackground = !!settings.backgroundImage || isGlassTheme
   const { terminalTheme, terminalRendererTheme } = useMemo(() => {
     void version
     return resolveTerminalRendererTheme({
@@ -146,7 +146,7 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
         data-terminal-theme-mode={resolveTerminalSurfaceMode(settings.theme, mode)}
         className={cn(
           "relative h-[160px] overflow-hidden rounded-lg border p-3 sm:p-4",
-          settings.material === "glass" && "terminal-workspace-glass",
+          isGlassTheme && "terminal-workspace-glass",
         )}
         style={{ backgroundColor: terminalTheme.background }}
       >

@@ -11,22 +11,16 @@ import {
 } from "../src/components/terminal/terminal-settings"
 
 describe("terminal settings", () => {
-  it("preserves the color theme when switching and exporting surface materials", () => {
+  it("preserves terminal color themes and backgrounds when exporting preferences", () => {
     for (const theme of ["default", "light", "dark", "solarized", "dracula"] as const) {
-      const glass = normalizeTerminalSettings({
+      const settings = normalizeTerminalSettings({
         ...DEFAULT_TERMINAL_SETTINGS,
         theme,
-        material: "glass",
         backgroundImage: "https://example.com/wallpaper.png",
         backgroundImageOpacity: 45,
       })
-      assert.equal(glass.theme, theme)
-      assert.equal(glass.material, "glass")
-      assert.deepEqual(parseTerminalSettingsImport(serializeTerminalSettingsExport(glass)), glass)
-
-      const standard = normalizeTerminalSettings({ ...glass, material: "solid" })
-      assert.deepEqual(standard, { ...glass, material: "solid" })
-      assert.deepEqual(parseTerminalSettingsImport(serializeTerminalSettingsExport(standard)), standard)
+      assert.equal(settings.theme, theme)
+      assert.deepEqual(parseTerminalSettingsImport(serializeTerminalSettingsExport(settings)), settings)
     }
   })
 
@@ -58,6 +52,7 @@ describe("terminal settings", () => {
       { ...payload, settings: { ...payload.settings, fontWeight: "950" } },
       { ...payload, settings: { ...payload.settings, fontWeight: 500 } },
       { ...payload, settings: { ...payload.settings, confirmBeforeClose: true } },
+      { ...payload, settings: { ...payload.settings, material: "glass" } },
       { ...payload, settings: { ...payload.settings, pasteShortcut: payload.settings.copyShortcut } },
     ]
     for (const value of cases) {
@@ -77,6 +72,7 @@ describe("terminal settings", () => {
       monitorInterval: 30,
       confirmBeforeClose: true,
       maxTabs: 10,
+      material: "glass",
     })
     assert.equal(settings.fontSize, 40)
     assert.equal(settings.lineHeight, DEFAULT_TERMINAL_SETTINGS.lineHeight)
@@ -87,6 +83,7 @@ describe("terminal settings", () => {
     assert.ok(!("monitorInterval" in settings))
     assert.ok(!("confirmBeforeClose" in settings))
     assert.ok(!("maxTabs" in settings))
+    assert.ok(!("material" in settings))
   })
 
   it("normalizes shortcut spelling and prevents two actions sharing one shortcut", () => {

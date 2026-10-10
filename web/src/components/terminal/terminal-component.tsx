@@ -353,6 +353,7 @@ export function TerminalComponent({
   const {
     mode: effectiveAppTheme,
     version: effectiveThemeVersion,
+    isGlassTheme,
   } = useEffectiveThemeMode()
   const workspace = useOptionalSshWorkspace()
   const workspaceTheme = workspace?.adapters.theme
@@ -1024,8 +1025,7 @@ export function TerminalComponent({
 
   const effectiveTerminalTheme = resolveTerminalThemeName(workspaceTheme?.terminalTheme, settings.theme)
   const effectiveTerminalAppTheme = resolveTerminalAppThemeMode(workspaceTheme?.mode, effectiveAppTheme)
-  const isGlassMaterial = settings.material === "glass"
-  const hasWorkspaceBackground = isGlassMaterial || !!settings.backgroundImage
+  const hasWorkspaceBackground = isGlassTheme || !!settings.backgroundImage
   const terminalTheme = useMemo(() => {
     // Workspace theme adapters may update in place; the version invalidates this memo.
     void effectiveThemeVersion
@@ -1437,7 +1437,7 @@ export function TerminalComponent({
           data-terminal-theme-mode={resolveTerminalSurfaceMode(effectiveTerminalTheme, effectiveTerminalAppTheme)}
           className={cn(
             "relative isolate flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-colors",
-            isGlassMaterial && "terminal-workspace-glass",
+            isGlassTheme && "terminal-workspace-glass",
             unframed
               ? "bg-background text-foreground"
               : "rounded-xl border border-border/60 bg-background/70 text-foreground shadow-2xl"

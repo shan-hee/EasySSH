@@ -212,6 +212,7 @@ function TabTerminalContentComponent({
   const {
     mode: effectiveAppTheme,
     version: effectiveThemeVersion,
+    isGlassTheme,
   } = useEffectiveThemeMode()
   const workspaceCapabilities = workspace?.capabilities
   const workspaceTheme = workspace?.adapters.theme
@@ -484,7 +485,7 @@ function TabTerminalContentComponent({
   const completionFetchOptions = useMemo(() => buildTerminalCompletionFetchOptions(completionSettings), [completionSettings])
   const pathCompletionCwd = sftpSession.currentPath || sftpSessionInitialPath || initialSftpPath
   const hasWorkspaceBackground = isTerminalSession && (
-    !!settings.backgroundImage || settings.material === "glass"
+    !!settings.backgroundImage || isGlassTheme
   )
   const [enableTerminalWebgl, setEnableTerminalWebgl] = useState(
     () => isActive
