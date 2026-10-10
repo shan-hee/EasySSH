@@ -12,6 +12,7 @@ import * as DesktopSFTPService from "./desktopsftpservice.js";
 import * as DesktopScriptService from "./desktopscriptservice.js";
 import * as DesktopServerService from "./desktopserverservice.js";
 import * as DesktopService from "./desktopservice.js";
+import * as DesktopSyncService from "./desktopsyncservice.js";
 import * as DesktopTaskService from "./desktoptaskservice.js";
 import * as DesktopTerminalService from "./desktopterminalservice.js";
 import * as DesktopUpdateService from "./desktopupdateservice.js";
@@ -27,6 +28,7 @@ export {
     DesktopScriptService,
     DesktopServerService,
     DesktopService,
+    DesktopSyncService,
     DesktopTaskService,
     DesktopTerminalService,
     DesktopUpdateService
@@ -132,6 +134,10 @@ export {
     DesktopServerListParams,
     DesktopServerListResult,
     DesktopServerStatus,
+    DesktopSyncCandidate,
+    DesktopSyncLogin,
+    DesktopSyncSave,
+    DesktopSyncState,
     DesktopTaskCleanupResult,
     DesktopTaskDetails,
     DesktopTaskEvent,
@@ -151,7 +157,10 @@ export {
     DesktopUpdateCheckResult,
     DesktopUpdateFailureNotice,
     DesktopUpdateStatus,
-    DesktopUserAIConfig
+    DesktopUserAIConfig,
+    DesktopVaultEntry,
+    DesktopVaultSave,
+    DesktopVaultState
 } from "./models.js";
 
 export type {

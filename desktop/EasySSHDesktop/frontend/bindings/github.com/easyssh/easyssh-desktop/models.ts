@@ -11,6 +11,12 @@ import * as aichatui$0 from "../shared/aichatui/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as dockerutil$0 from "../shared/dockerutil/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as syncdata$0 from "../shared/syncdata/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as time$0 from "../../../time/models.js";
 
 export class DesktopAIConfigStatus {
     "configured": boolean;
@@ -3328,6 +3334,198 @@ export enum DesktopServerStatus {
     DesktopServerOffline = "offline",
 };
 
+export class DesktopSyncCandidate {
+    "key": string;
+    "name": string;
+    "space_id": string;
+    "account_name": string;
+    "server_url": string;
+
+    /** Creates a new DesktopSyncCandidate instance. */
+    constructor($$source: Partial<DesktopSyncCandidate> = {}) {
+        if (!("key" in $$source)) {
+            this["key"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("space_id" in $$source)) {
+            this["space_id"] = "";
+        }
+        if (!("account_name" in $$source)) {
+            this["account_name"] = "";
+        }
+        if (!("server_url" in $$source)) {
+            this["server_url"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSyncCandidate instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSyncCandidate {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSyncCandidate($$parsedSource as Partial<DesktopSyncCandidate>);
+    }
+}
+
+export class DesktopSyncLogin {
+    "url": string;
+    "code": string;
+    "expires_at": time$0.Time;
+
+    /** Creates a new DesktopSyncLogin instance. */
+    constructor($$source: Partial<DesktopSyncLogin> = {}) {
+        if (!("url" in $$source)) {
+            this["url"] = "";
+        }
+        if (!("code" in $$source)) {
+            this["code"] = "";
+        }
+        if (!("expires_at" in $$source)) {
+            this["expires_at"] = null;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSyncLogin instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSyncLogin {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopSyncLogin($$parsedSource as Partial<DesktopSyncLogin>);
+    }
+}
+
+export class DesktopSyncSave {
+    "revision": number;
+    "hash": string;
+    "document": string;
+    "remote_heads": string[];
+    "snapshot": syncdata$0.Snapshot;
+
+    /** Creates a new DesktopSyncSave instance. */
+    constructor($$source: Partial<DesktopSyncSave> = {}) {
+        if (!("revision" in $$source)) {
+            this["revision"] = 0;
+        }
+        if (!("hash" in $$source)) {
+            this["hash"] = "";
+        }
+        if (!("document" in $$source)) {
+            this["document"] = "";
+        }
+        if (!("remote_heads" in $$source)) {
+            this["remote_heads"] = [];
+        }
+        if (!("snapshot" in $$source)) {
+            this["snapshot"] = {};
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSyncSave instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSyncSave {
+        const $$createField3_0 = $$createType0;
+        const $$createField4_0 = $$createType59;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("remote_heads" in $$parsedSource) {
+            $$parsedSource["remote_heads"] = $$createField3_0($$parsedSource["remote_heads"]);
+        }
+        if ("snapshot" in $$parsedSource) {
+            $$parsedSource["snapshot"] = $$createField4_0($$parsedSource["snapshot"]);
+        }
+        return new DesktopSyncSave($$parsedSource as Partial<DesktopSyncSave>);
+    }
+}
+
+export class DesktopSyncState {
+    "server_url": string;
+    "space_id": string;
+    "account_name": string;
+    "scopes": syncdata$0.SyncScopes;
+    "grants": syncdata$0.SyncScopes;
+    "enabled": boolean;
+    "document": string;
+    "remote_heads": string[];
+    "last_sync": string;
+    "revision": number;
+    "snapshot": syncdata$0.Snapshot;
+    "hash": string;
+
+    /** Creates a new DesktopSyncState instance. */
+    constructor($$source: Partial<DesktopSyncState> = {}) {
+        if (!("server_url" in $$source)) {
+            this["server_url"] = "";
+        }
+        if (!("space_id" in $$source)) {
+            this["space_id"] = "";
+        }
+        if (!("account_name" in $$source)) {
+            this["account_name"] = "";
+        }
+        if (!("scopes" in $$source)) {
+            this["scopes"] = (new syncdata$0.SyncScopes());
+        }
+        if (!("grants" in $$source)) {
+            this["grants"] = (new syncdata$0.SyncScopes());
+        }
+        if (!("enabled" in $$source)) {
+            this["enabled"] = false;
+        }
+        if (!("document" in $$source)) {
+            this["document"] = "";
+        }
+        if (!("remote_heads" in $$source)) {
+            this["remote_heads"] = [];
+        }
+        if (!("last_sync" in $$source)) {
+            this["last_sync"] = "";
+        }
+        if (!("revision" in $$source)) {
+            this["revision"] = 0;
+        }
+        if (!("snapshot" in $$source)) {
+            this["snapshot"] = {};
+        }
+        if (!("hash" in $$source)) {
+            this["hash"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopSyncState instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopSyncState {
+        const $$createField3_0 = $$createType63;
+        const $$createField4_0 = $$createType63;
+        const $$createField7_0 = $$createType0;
+        const $$createField10_0 = $$createType59;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("scopes" in $$parsedSource) {
+            $$parsedSource["scopes"] = $$createField3_0($$parsedSource["scopes"]);
+        }
+        if ("grants" in $$parsedSource) {
+            $$parsedSource["grants"] = $$createField4_0($$parsedSource["grants"]);
+        }
+        if ("remote_heads" in $$parsedSource) {
+            $$parsedSource["remote_heads"] = $$createField7_0($$parsedSource["remote_heads"]);
+        }
+        if ("snapshot" in $$parsedSource) {
+            $$parsedSource["snapshot"] = $$createField10_0($$parsedSource["snapshot"]);
+        }
+        return new DesktopSyncState($$parsedSource as Partial<DesktopSyncState>);
+    }
+}
+
 export class DesktopTaskCleanupResult {
     "deleted_count": number;
     "deleted_events": number;
@@ -3381,8 +3579,8 @@ export class DesktopTaskDetails {
      * Creates a new DesktopTaskDetails instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopTaskDetails {
-        const $$createField0_0 = $$createType59;
-        const $$createField1_0 = $$createType61;
+        const $$createField0_0 = $$createType64;
+        const $$createField1_0 = $$createType66;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("run" in $$parsedSource) {
             $$parsedSource["run"] = $$createField0_0($$parsedSource["run"]);
@@ -3619,7 +3817,7 @@ export class DesktopTaskRunList {
      * Creates a new DesktopTaskRunList instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopTaskRunList {
-        const $$createField0_0 = $$createType62;
+        const $$createField0_0 = $$createType67;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("runs" in $$parsedSource) {
             $$parsedSource["runs"] = $$createField0_0($$parsedSource["runs"]);
@@ -3954,7 +4152,7 @@ export class DesktopUpdateCheckResult {
      * Creates a new DesktopUpdateCheckResult instance from a string or object.
      */
     static createFrom($$source: any = {}): DesktopUpdateCheckResult {
-        const $$createField7_0 = $$createType64;
+        const $$createField7_0 = $$createType69;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         if ("artifact" in $$parsedSource) {
             $$parsedSource["artifact"] = $$createField7_0($$parsedSource["artifact"]);
@@ -4062,6 +4260,157 @@ export class DesktopUserAIConfig {
     }
 }
 
+export class DesktopVaultEntry {
+    "kind": string;
+    "id": string;
+    "name": string;
+
+    /** Creates a new DesktopVaultEntry instance. */
+    constructor($$source: Partial<DesktopVaultEntry> = {}) {
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopVaultEntry instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopVaultEntry {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopVaultEntry($$parsedSource as Partial<DesktopVaultEntry>);
+    }
+}
+
+export class DesktopVaultSave {
+    "kind": string;
+    "id": string;
+    "space_id": string;
+    "binding_revision": number;
+    "revision": number;
+    "document": string;
+    "heads": string[];
+    "snapshot": syncdata$0.Snapshot;
+    "conflicts": syncdata$0.VaultConflict[];
+
+    /** Creates a new DesktopVaultSave instance. */
+    constructor($$source: Partial<DesktopVaultSave> = {}) {
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("space_id" in $$source)) {
+            this["space_id"] = "";
+        }
+        if (!("binding_revision" in $$source)) {
+            this["binding_revision"] = 0;
+        }
+        if (!("revision" in $$source)) {
+            this["revision"] = 0;
+        }
+        if (!("document" in $$source)) {
+            this["document"] = "";
+        }
+        if (!("heads" in $$source)) {
+            this["heads"] = [];
+        }
+        if (!("snapshot" in $$source)) {
+            this["snapshot"] = {};
+        }
+        if (!("conflicts" in $$source)) {
+            this["conflicts"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopVaultSave instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopVaultSave {
+        const $$createField6_0 = $$createType0;
+        const $$createField7_0 = $$createType59;
+        const $$createField8_0 = $$createType71;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("heads" in $$parsedSource) {
+            $$parsedSource["heads"] = $$createField6_0($$parsedSource["heads"]);
+        }
+        if ("snapshot" in $$parsedSource) {
+            $$parsedSource["snapshot"] = $$createField7_0($$parsedSource["snapshot"]);
+        }
+        if ("conflicts" in $$parsedSource) {
+            $$parsedSource["conflicts"] = $$createField8_0($$parsedSource["conflicts"]);
+        }
+        return new DesktopVaultSave($$parsedSource as Partial<DesktopVaultSave>);
+    }
+}
+
+export class DesktopVaultState {
+    "space_id": string;
+    "kind": string;
+    "id": string;
+    "document": string;
+    "heads": string[];
+    "snapshot": syncdata$0.Snapshot;
+    "revision": number;
+    "binding_revision": number;
+
+    /** Creates a new DesktopVaultState instance. */
+    constructor($$source: Partial<DesktopVaultState> = {}) {
+        if (!("space_id" in $$source)) {
+            this["space_id"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("document" in $$source)) {
+            this["document"] = "";
+        }
+        if (!("heads" in $$source)) {
+            this["heads"] = [];
+        }
+        if (!("snapshot" in $$source)) {
+            this["snapshot"] = {};
+        }
+        if (!("revision" in $$source)) {
+            this["revision"] = 0;
+        }
+        if (!("binding_revision" in $$source)) {
+            this["binding_revision"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopVaultState instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopVaultState {
+        const $$createField4_0 = $$createType0;
+        const $$createField5_0 = $$createType59;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("heads" in $$parsedSource) {
+            $$parsedSource["heads"] = $$createField4_0($$parsedSource["heads"]);
+        }
+        if ("snapshot" in $$parsedSource) {
+            $$parsedSource["snapshot"] = $$createField5_0($$parsedSource["snapshot"]);
+        }
+        return new DesktopVaultState($$parsedSource as Partial<DesktopVaultState>);
+    }
+}
+
 // Private type creation functions
 const $$createType0 = $Create.Array($Create.Any);
 const $$createType1 = DesktopAISessionScope.createFrom;
@@ -4122,9 +4471,26 @@ const $$createType55 = DesktopScript.createFrom;
 const $$createType56 = $Create.Array($$createType55);
 const $$createType57 = DesktopServer.createFrom;
 const $$createType58 = $Create.Array($$createType57);
-const $$createType59 = DesktopTaskRun.createFrom;
-const $$createType60 = DesktopTaskEvent.createFrom;
-const $$createType61 = $Create.Array($$createType60);
-const $$createType62 = $Create.Array($$createType59);
-const $$createType63 = DesktopUpdateAsset.createFrom;
-const $$createType64 = $Create.Nullable($$createType63);
+var $$createType59 = (function $$initCreateType59(...args: any[]): any {
+    if ($$createType59 === $$initCreateType59) {
+        $$createType59 = $$createType62;
+    }
+    return $$createType59(...args);
+});
+var $$createType60 = (function $$initCreateType60(...args: any[]): any {
+    if ($$createType60 === $$initCreateType60) {
+        $$createType60 = $$createType61;
+    }
+    return $$createType60(...args);
+});
+const $$createType61 = $Create.Map($Create.Any, $Create.Any);
+const $$createType62 = $Create.Map($Create.Any, $$createType60);
+const $$createType63 = syncdata$0.SyncScopes.createFrom;
+const $$createType64 = DesktopTaskRun.createFrom;
+const $$createType65 = DesktopTaskEvent.createFrom;
+const $$createType66 = $Create.Array($$createType65);
+const $$createType67 = $Create.Array($$createType64);
+const $$createType68 = DesktopUpdateAsset.createFrom;
+const $$createType69 = $Create.Nullable($$createType68);
+const $$createType70 = syncdata$0.VaultConflict.createFrom;
+const $$createType71 = $Create.Array($$createType70);
