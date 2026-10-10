@@ -2,7 +2,10 @@ import assert from "node:assert/strict"
 import { readdir, readFile } from "node:fs/promises"
 import { describe, it } from "node:test"
 import { createInstance } from "i18next"
+import { createElement, Suspense } from "react"
+import { renderToString } from "react-dom/server"
 import { createRetryableLoader } from "../src/lib/retryable-loader"
+import { createPreloadableComponent } from "../src/lib/preloadable-component"
 import { createNamespaceBackend, type NamespaceLoaders } from "../src/i18n/namespace-backend"
 
 describe("retryable page loading", () => {
@@ -24,6 +27,27 @@ describe("retryable page loading", () => {
     resource.reset()
     await resource.load()
     assert.equal(attempts, 2)
+  })
+})
+
+describe("preloaded component rendering", () => {
+  it("shares concurrent preloads and renders immediately without the Suspense fallback", async () => {
+    let attempts = 0
+    const { Component, preload } = createPreloadableComponent(async () => {
+      attempts += 1
+      return { default: ({ label }: { label: string }) => createElement("span", null, label) }
+    })
+
+    await Promise.all([preload(), preload()])
+    const html = renderToString(createElement(
+      Suspense,
+      { fallback: createElement("p", null, "loading-fallback") },
+      createElement(Component, { label: "connection-ready" }),
+    ))
+
+    assert.equal(attempts, 1)
+    assert.match(html, /<span>connection-ready<\/span>/)
+    assert.doesNotMatch(html, /loading-fallback/)
   })
 })
 
