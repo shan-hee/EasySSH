@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	Format                    = "easyssh-unified-backup"
-	Version                   = "3.0"
-	SensitivePayloadVersion   = "3"
+	Format                    = "easyssh-application-data"
+	Version                   = "1.0"
+	SensitivePayloadVersion   = "1"
 	MaxRestoreFileSizeBytes   = 32 << 20
 	RestoreMultipartSizeBytes = MaxRestoreFileSizeBytes + (1 << 20)
 )
