@@ -58,6 +58,8 @@ import (
 	"github.com/easyssh/server/internal/pkg/geoip"
 	"github.com/easyssh/server/internal/pkg/password"
 	"github.com/easyssh/server/internal/platform"
+	"github.com/easyssh/shared/dbmigration"
+	"github.com/easyssh/shared/instancebackup"
 	"github.com/easyssh/shared/secretcrypto"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -65,6 +67,14 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "maintenance" {
+		if err := runMaintenance(os.Args[2:]); err != nil {
+			log.Print(err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	// 加载根目录的 .env 文件
 	if err := godotenv.Load("../.env"); err != nil {
 		log.Printf("⚠️ Warning: .env file not found, using environment variables")
@@ -76,6 +86,11 @@ func main() {
 		log.Fatalf("❌ Failed to load config: %v", err)
 	}
 	configureLogging(cfg.Server.Env)
+	instanceLock, err := instancebackup.Lock(maintenanceDataDir(cfg))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer instanceLock.Close()
 
 	// 设置 Gin 模式
 	if cfg.Server.Env == "production" {
@@ -84,10 +99,14 @@ func main() {
 
 	runtimeInfo := platform.NewRuntimeInfo(platform.RuntimeOptions{
 		Profile: platform.ProfileFromEnvironment(),
-		DataDir: runtimeDataDir(cfg.Database.Driver, cfg.Database.DSN),
+		DataDir: maintenanceDataDir(cfg),
 		Version: readAppVersion(),
 	})
 
+	// Reserve one connection for the instance advisory lock.
+	if cfg.Database.Driver != "sqlite" && cfg.Database.MaxOpenConns < 2 {
+		cfg.Database.MaxOpenConns = 2
+	}
 	// 初始化数据库
 	database, err := db.NewDB(&cfg.Database)
 	if err != nil {
@@ -95,57 +114,18 @@ func main() {
 	}
 	defer db.Close(database)
 
-	// This development release replaces inline private keys with shared key records.
-	// Refuse the retired schema rather than silently retaining unusable secrets.
-	if database.Migrator().HasColumn("servers", "private_key") || database.Migrator().HasColumn("ssh_keys", "deleted_at") {
-		log.Fatal("Retired SSH credential schema: use a fresh development database. Existing data has not been modified.")
+	sqlDB, err := database.DB()
+	if err != nil {
+		log.Fatal(err)
 	}
-	if err := database.AutoMigrate(
-		&auth.User{},
-		&datasync.State{},
-		&datasync.Device{},
-		&datasync.Instance{},
-		&datasync.Authorization{},
-		&datasync.VaultDocument{},
-		&datasync.VaultObject{},
-		&auth.Session{}, // 用户会话表
-		&auth.TOTPReplay{},
-		&server.Server{},
-		&script.Script{},                   // 脚本表
-		&batchtask.BatchTask{},             // 批量任务表
-		&scheduledtask.ScheduledTask{},     // 定时任务表
-		&operationrecord.OperationRecord{}, // 统一操作记录表
-		&transferjob.TransferJob{},         // 后台文件传输任务表
-		&jobqueue.Job{},                    // 数据库持久化任务队列
-		&taskcenter.TaskRun{},              // 统一任务运行表
-		&taskcenter.TaskEvent{},            // 任务事件表
-		&inboxnotification.Notification{},  // 站内通知表
-		&inboxnotification.Delivery{},      // 通知投递记录表
-		// 新的配置表
-		&systemconfig.SystemConfig{},             // 系统配置表
-		&security.SecurityConfig{},               // 安全配置表
-		&notificationconfig.NotificationConfig{}, // 通知配置表
-		&aiconfig.AIConfig{},                     // AI配置表
-		&useraiconfig.UserAIConfig{},             // 用户AI配置表
-		// 其他表
-		&sshkey.SSHKey{},         // SSH密钥表
-		&sshhostkey.SSHHostKey{}, // SSH主机密钥表（TOFU安全验证）
-		// 安全增强相关表
-		&auth.LoginAttempt{},  // 登录尝试记录表
-		&auth.TrustedDevice{}, // 可信设备表
-		&auth.LoginAlert{},    // 登录告警表
-		&auth.TicketRecord{},  // 一次性握手票据
-		&permission.Role{},    // 自定义角色元数据
-		&oauthprovider.Client{},
-		&oauthprovider.ClientAssertion{},
-		&oauthprovider.Grant{},
-		&oauthprovider.SigningKey{},
-		&oauthprovider.LoginChallenge{},
-		&runtime.AISessionRecord{}, // AI 会话持久化表
-	); err != nil {
-		log.Fatalf("❌ Failed to migrate database: %v", err)
+	releaseDatabase, err := instancebackup.DatabaseLock(context.Background(), sqlDB, cfg.Database.Driver)
+	if err != nil {
+		log.Fatal(err)
 	}
-	log.Println("✅ Database migrated successfully")
+	defer releaseDatabase()
+	if err := dbmigration.Start(context.Background(), sqlDB, "server", cfg.Database.Driver); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
 
 	// 统一加密器（用于所有需要再次使用的敏感凭据）
 	encryptor, err := crypto.NewEncryptor(cfg.Server.EncryptionKey)
@@ -543,6 +523,13 @@ func main() {
 	sshKeyHandler := rest.NewSSHKeyHandler(sshKeyService)
 	avatarHandler := rest.NewAvatarHandler()
 	backupHandler := rest.NewBackupHandler(database, encryptor)
+	instanceHistory, err := newInstanceHistory(cfg, database, transferJobService.SnapshotStorage)
+	if err != nil {
+		log.Fatalf("Failed to initialize backup history: %v", err)
+	}
+	defer instanceHistory.Close()
+	instanceBackupHandler := rest.NewInstanceBackupHandler(instanceHistory, cfg.Database.Driver == "sqlite" || os.Getenv("EASYSSH_RESTORE_DSN") != "")
+
 	syncEngine := &datasync.Engine{}
 	defer syncEngine.Close()
 	syncHandler := rest.NewSyncHandler(&datasync.Service{DB: database, Engine: syncEngine, Encryptor: encryptor, WithSessionSync: aiRuntimeManager.WithSyncSession, InvalidateConnection: func(owner, id uuid.UUID) {
@@ -570,9 +557,23 @@ func main() {
 	}
 
 	// 全局中间件
-	r.Use(middleware.Recovery())                                       // 错误恢复
-	r.Use(middleware.Logger())                                         // 日志记录
-	r.Use(middleware.RequestID())                                      // 请求 ID
+	r.Use(middleware.Recovery())  // 错误恢复
+	r.Use(middleware.Logger())    // 日志记录
+	r.Use(middleware.RequestID()) // 请求 ID
+	// Freeze transfer-root changes during the database + artifact snapshot.
+	r.Use(func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if (strings.HasPrefix(path, "/api/v1/settings/system/") && c.Request.Method != http.MethodGet) || path == "/api/v1/backup/restore" {
+			release, ok := transferJobService.TryStorageChange()
+			if !ok {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "instance backup is capturing files; retry shortly"})
+				return
+			}
+			defer release()
+		}
+		c.Next()
+	})
+
 	r.Use(middleware.SecurityConfigCache(securityService))             // 请求级安全配置快照
 	r.Use(middleware.SecurityHeaders(cfg.Server.Env != "production"))  // 安全响应头
 	r.Use(middleware.CORS(cfg, securityService))                       // 跨域（支持动态配置）
@@ -1130,7 +1131,16 @@ func main() {
 		{
 			backupRoutes.GET("/export", backupHandler.ExportBackup)      // 导出统一备份（默认脱敏）
 			backupRoutes.POST("/export", backupHandler.ExportBackupPost) // 导出统一备份（支持完整加密备份）
-			backupRoutes.POST("/restore", backupHandler.RestoreBackup)   // 恢复统一备份
+			backupRoutes.POST("/preview", backupHandler.PreviewBackup)
+			backupRoutes.GET("/instances", instanceBackupHandler.List)
+			backupRoutes.POST("/instances", instanceBackupHandler.Create)
+			backupRoutes.POST("/instances/upload", instanceBackupHandler.Upload)
+			backupRoutes.GET("/instances/:id/download", instanceBackupHandler.Download)
+			backupRoutes.DELETE("/instances/:id", instanceBackupHandler.Delete)
+			backupRoutes.POST("/instances/:id/inspect", instanceBackupHandler.Inspect)
+			backupRoutes.POST("/instances/:id/restore", instanceBackupHandler.Restore)
+
+			backupRoutes.POST("/restore", backupHandler.RestoreBackup) // 恢复统一备份
 		}
 
 		// SSH密钥路由（需要认证）
@@ -1237,6 +1247,7 @@ func main() {
 	<-quit
 
 	log.Println("🛑 Shutting down server...")
+	instanceHistory.Cancel()
 
 	taskCenterService.StopRetention()
 	log.Println("✅ Task retention worker stopped")
@@ -1303,32 +1314,4 @@ func readAppVersion() string {
 		}
 	}
 	return "dev"
-}
-
-func runtimeDataDir(driver string, dsn string) string {
-	if strings.ToLower(strings.TrimSpace(driver)) != "sqlite" {
-		return ""
-	}
-
-	pathValue := strings.TrimSpace(dsn)
-	if pathValue == "" {
-		return ""
-	}
-
-	if strings.HasPrefix(pathValue, "file:") {
-		pathValue = strings.TrimPrefix(pathValue, "file:")
-		if index := strings.Index(pathValue, "?"); index >= 0 {
-			pathValue = pathValue[:index]
-		}
-	}
-
-	if pathValue == "" || pathValue == ":memory:" {
-		return ""
-	}
-
-	if absolutePath, err := filepath.Abs(pathValue); err == nil {
-		pathValue = absolutePath
-	}
-
-	return filepath.Dir(pathValue)
 }

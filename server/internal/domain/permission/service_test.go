@@ -2,6 +2,7 @@ package permission
 
 import (
 	"context"
+	gormadapter "github.com/casbin/gorm-adapter/v3"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -14,7 +15,10 @@ func TestEnsureDefaultsSynchronizesExistingSystemAdminPermissions(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&Role{}); err != nil {
+	if err := db.AutoMigrate(&Role{}, &gormadapter.CasbinRule{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("CREATE UNIQUE INDEX idx_casbin_rule ON casbin_rule (ptype,v0,v1,v2,v3,v4,v5)").Error; err != nil {
 		t.Fatal(err)
 	}
 	admin := &Role{Key: "admin", Name: "旧管理员", Description: "旧定义", System: true}

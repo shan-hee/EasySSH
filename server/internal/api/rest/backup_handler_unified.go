@@ -2,6 +2,7 @@ package rest
 
 import (
 	cryptorand "crypto/rand"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -87,7 +88,15 @@ func (h *BackupHandler) ExportBackupPost(c *gin.Context) {
 	h.exportBackup(c, options)
 }
 
-func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions) {
+func (handler *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions) {
+	tx := handler.db.WithContext(c.Request.Context()).Begin(&sql.TxOptions{Isolation: sql.LevelSerializable, ReadOnly: true})
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": tx.Error.Error()})
+		return
+	}
+	defer tx.Rollback()
+	h := &BackupHandler{db: tx, encryptor: handler.encryptor}
+
 	includeConfig := options.IncludeConfig
 	includeDatabase := options.IncludeDatabase
 	if !includeConfig && !includeDatabase {
@@ -179,10 +188,18 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 		return
 	}
 
+	if len(jsonData) > backuputil.MaxRestoreFileSizeBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "application data exceeds 32 MiB; use a native instance backup"})
+		return
+	}
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	timestamp := time.Now().Format("20060102_150405")
-	prefix := "easyssh_backup"
+	prefix := "easyssh_application_data"
 	if options.IncludeSensitive {
-		prefix = "easyssh_full_backup"
+		prefix = "easyssh_application_data_encrypted"
 	}
 	filename := fmt.Sprintf("%s_%s.json", prefix, timestamp)
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filename))
@@ -201,7 +218,9 @@ func (h *BackupHandler) exportBackup(c *gin.Context, options exportBackupOptions
 // @Param age_identities formData []string false "age X25519 私钥，与 age_passphrase 互斥"
 // @Success 200 {object} map[string]interface{}
 // @Router /api/v1/backup/restore [post]
-func (h *BackupHandler) RestoreBackup(c *gin.Context) {
+func (h *BackupHandler) RestoreBackup(c *gin.Context) { h.restoreApplicationData(c, false) }
+func (h *BackupHandler) PreviewBackup(c *gin.Context) { h.restoreApplicationData(c, true) }
+func (h *BackupHandler) restoreApplicationData(c *gin.Context, preview bool) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, backuputil.RestoreMultipartSizeBytes)
 
 	file, err := c.FormFile("file")
@@ -273,14 +292,6 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Sensitive backup restore is not available"})
 			return
 		}
-		if err := h.validatePlainBackupSections(&backup, includeConfig, includeDatabase); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":  "Invalid backup file",
-				"detail": err.Error(),
-			})
-			return
-		}
-		sanitizePlainBackupSections(&backup, includeConfig, includeDatabase)
 		passphrase := c.PostForm("age_passphrase")
 		identities := c.PostFormArray("age_identities")
 		if err := validateAgeDecryptionOptions(passphrase, identities); err != nil {
@@ -302,6 +313,14 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 			})
 			return
 		}
+		if err := h.validatePlainBackupSections(&backup, includeConfig, includeDatabase); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "Invalid backup file",
+				"detail": err.Error(),
+			})
+			return
+		}
+		sanitizePlainBackupSections(&backup, includeConfig, includeDatabase)
 		if err := mergeSensitivePayload(&backup, sensitivePayload, includeConfig, includeDatabase); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":  "Invalid sensitive backup data",
@@ -311,6 +330,39 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		}
 		allowSensitiveConfigRestore = includeConfig && sensitivePayload.Config != nil
 		allowSensitiveDatabaseRestore = includeDatabase && sensitivePayload.Database != nil
+	}
+
+	ignoredFields, err := backuputil.NormalizeApplicationData(&backup)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	for _, part := range []struct {
+		section             *BackupDataSection
+		selected, sensitive bool
+	}{{backup.Config, includeConfig, allowSensitiveConfigRestore}, {backup.Database, includeDatabase, allowSensitiveDatabaseRestore}} {
+		if !part.selected || part.section == nil {
+			continue
+		}
+		for i := range part.section.Tables {
+			table := &part.section.Tables[i]
+			before := append([]string(nil), table.Columns...)
+			policy, ok := backupPolicyForTable(table.Name)
+			if !ok {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported application resource"})
+				return
+			}
+			if err := h.validateRestoreTable(h.db.WithContext(c.Request.Context()), table, policy, part.sensitive); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			for _, column := range before {
+				if !containsString(table.Columns, column) {
+					ignoredFields = append(ignoredFields, table.Name+"."+column)
+				}
+			}
+		}
 	}
 
 	strategy := RestoreConflictError
@@ -323,6 +375,15 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 		}
 	}
 
+	if preview {
+		summary, err := h.previewApplicationData(c.Request.Context(), &backup, includeConfig, includeDatabase, allowSensitiveConfigRestore, allowSensitiveDatabaseRestore, strategy)
+		if err != nil {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "Application data preview", "conflict_strategy": strategy, "summary": summary, "ignored_fields": ignoredFields})
+		return
+	}
 	summary := gin.H{}
 	if err := h.db.Transaction(func(tx *gorm.DB) error {
 		if includeConfig {
@@ -351,7 +412,8 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":           "Backup restored successfully",
+		"message":           "Application data imported successfully",
+		"ignored_fields":    ignoredFields,
 		"conflict_strategy": strategy,
 		"summary":           summary,
 	})
@@ -430,13 +492,13 @@ func (h *BackupHandler) exportStructuredSection(sectionType backupSection) (*Bac
 		Tables: make([]BackupTable, 0),
 	}
 
-	tables, err := h.getAllTables()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get tables: %w", err)
+	tables := make([]string, 0, len(backuputil.ApplicationColumns))
+	for name := range backuputil.ApplicationColumns {
+		tables = append(tables, name)
 	}
-	tables, err = h.sortTablesByDependencies(tables)
+	tables, err := h.sortTablesByDependencies(tables)
 	if err != nil {
-		return nil, fmt.Errorf("failed to sort tables: %w", err)
+		return nil, err
 	}
 
 	for _, table := range tables {
@@ -448,19 +510,13 @@ func (h *BackupHandler) exportStructuredSection(sectionType backupSection) (*Bac
 			continue
 		}
 
-		columns, err := h.getTableColumns(table)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get columns for table %s: %w", table, err)
-		}
+		columns := append([]string(nil), backuputil.ApplicationColumns[table]...)
 		columns = filterExcludedBackupColumns(columns, policy.ExcludedColumns)
 		if len(columns) == 0 {
 			continue
 		}
 
-		primaryKey, err := h.getTablePrimaryKeys(h.db, table, columns)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get primary key for table %s: %w", table, err)
-		}
+		primaryKey := []string{"id"}
 
 		rows, err := h.getStructuredTableRows(table, columns, policy, true)
 		if err != nil {
@@ -827,11 +883,20 @@ func (h *BackupHandler) validateRestoreTable(tx *gorm.DB, table *BackupTable, po
 	for _, column := range currentColumns {
 		currentColumnSet[column] = true
 	}
+	kept := make([]string, 0, len(table.Columns))
 	for _, column := range table.Columns {
-		if !currentColumnSet[column] {
-			return fmt.Errorf("table %s does not have column %s", table.Name, column)
+		if currentColumnSet[column] {
+			kept = append(kept, column)
+			continue
+		}
+		if column == "id" || strings.HasSuffix(column, "_id") {
+			return fmt.Errorf("required reference field missing: %s.%s", table.Name, column)
+		}
+		for _, row := range table.Rows {
+			delete(row, column)
 		}
 	}
+	table.Columns = kept
 
 	return nil
 }
@@ -861,15 +926,12 @@ func firstExcludedBackupColumn(columns []string, excludedColumns []string) strin
 }
 
 func shouldExcludeSoftDeletedRows(policy backupTablePolicy, columns []string) bool {
-	return !policy.History && policy.Section != backupSectionRuntime && containsStringFold(columns, "deleted_at")
+	return containsStringFold(columns, "deleted_at")
 }
 
 func (h *BackupHandler) shouldExcludeSoftDeletedRows(table string, policy backupTablePolicy, columns []string) bool {
 	if shouldExcludeSoftDeletedRows(policy, columns) {
 		return true
-	}
-	if policy.History || policy.Section == backupSectionRuntime {
-		return false
 	}
 	tableColumns, err := h.getTableColumns(table)
 	if err != nil {

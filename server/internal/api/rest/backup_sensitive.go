@@ -53,8 +53,8 @@ var sensitiveBackupTables = []sensitiveTableSpec{
 	{
 		Table:            "users",
 		Section:          backupSectionDatabase,
-		Columns:          []string{"id", "password", "two_factor_enabled", "two_factor_secret", "backup_codes", "nezha_api_token", "komari_api_token"},
-		SensitiveColumns: []string{"password", "two_factor_enabled", "two_factor_secret", "backup_codes", "nezha_api_token", "komari_api_token"},
+		Columns:          []string{"id", "nezha_api_token", "komari_api_token"},
+		SensitiveColumns: []string{"nezha_api_token", "komari_api_token"},
 	},
 	{
 		Table:            "servers",
@@ -128,10 +128,7 @@ func (h *BackupHandler) exportSensitivePayload(includeConfig bool, includeDataba
 			Database:  includeDatabase,
 			Sensitive: true,
 		},
-		Warnings: []string{
-			"users.password is restored as bcrypt hash; plaintext passwords are not recoverable.",
-			"users.backup_codes are restored as stored HMAC hashes and remain usable only with the same deployment root key.",
-		},
+		Warnings: []string{"Account login credentials and authorization sessions are not portable application data."},
 	}
 
 	if includeConfig {
@@ -433,26 +430,10 @@ func (h *BackupHandler) decryptRowSecret(row map[string]interface{}, column stri
 
 func (h *BackupHandler) decryptUserSensitiveRow(row map[string]interface{}) error {
 	userID := row["id"]
-	if err := h.decryptUserTwoFactorSecret(row, userID); err != nil {
-		return err
-	}
 	if err := h.decryptRowSecret(row, "nezha_api_token", crypto.SecretAAD("users", userID, "nezha_api_token")); err != nil {
 		return err
 	}
 	return h.decryptRowSecret(row, "komari_api_token", crypto.SecretAAD("users", userID, "komari_api_token"))
-}
-
-func (h *BackupHandler) decryptUserTwoFactorSecret(row map[string]interface{}, userID interface{}) error {
-	value := backupStringValue(row["two_factor_secret"])
-	if strings.TrimSpace(value) == "" {
-		return nil
-	}
-	plaintext, err := h.encryptor.DecryptSecret(value, crypto.SecretAAD("users", userID, "two_factor_secret"))
-	if err != nil {
-		return err
-	}
-	row["two_factor_secret"] = plaintext
-	return nil
 }
 
 func (h *BackupHandler) decryptServerSensitiveRow(row map[string]interface{}) error {
@@ -585,9 +566,6 @@ func (h *BackupHandler) encryptRestoreSecret(row map[string]interface{}, column 
 
 func (h *BackupHandler) encryptUserRestoreSecrets(row map[string]interface{}) error {
 	userID := row["id"]
-	if err := h.encryptRestoreSecret(row, "two_factor_secret", crypto.SecretAAD("users", userID, "two_factor_secret")); err != nil {
-		return err
-	}
 	if err := h.encryptRestoreSecret(row, "nezha_api_token", crypto.SecretAAD("users", userID, "nezha_api_token")); err != nil {
 		return err
 	}

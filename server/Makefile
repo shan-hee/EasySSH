@@ -1,4 +1,4 @@
-.PHONY: dev dev-simple build test clean deps mock migrate-up migrate-down help
+.PHONY: dev dev-simple build test clean deps mock migrate-up help
 
 # 默认目标 - 显示帮助
 .DEFAULT_GOAL := help
@@ -25,16 +25,16 @@ dev: sync-deps
 	else \
 		echo "⚠️  Air 未安装,使用普通模式 (无热重载)"; \
 		echo "💡 安装 Air: go install github.com/cosmtrek/air@latest"; \
-		go run cmd/api/main.go; \
+		go run ./cmd/api; \
 	fi
 
 # 开发模式运行 - 无热重载
 dev-simple: sync-deps
-	go run cmd/api/main.go
+	go run ./cmd/api
 
 # 构建
 build:
-	go build -o bin/easyssh-api cmd/api/main.go
+	go build -o bin/easyssh-api ./cmd/api
 
 # 运行测试
 test: sync-deps
@@ -59,8 +59,9 @@ mock:
 	mockgen -source=internal/domain/repository.go -destination=internal/mock/repository.go
 
 # 数据库迁移
+# Use an already built binary; migrations never trigger a build implicitly.
+# Existing versioned upgrades require BACKUP_FILE and PASSWORD_FILE.
+BACKUP_FILE ?=
+PASSWORD_FILE ?=
 migrate-up:
-	# TODO: 添加迁移工具
-
-migrate-down:
-	# TODO: 添加迁移工具
+	./bin/easyssh-api maintenance migrate --file "$(BACKUP_FILE)" --password-file "$(PASSWORD_FILE)"

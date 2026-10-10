@@ -23,20 +23,21 @@ var (
 type TicketType string
 
 const (
-	TicketTypeWSTerminal        TicketType = "ws_terminal"
-	TicketTypeWSMonitor         TicketType = "ws_monitor"
-	TicketTypeWSSFTPAuth        TicketType = "ws_sftp_auth"
-	TicketTypeWSSFTPUpload      TicketType = "ws_sftp_upload"
-	TicketTypeWSSFTPTransfer    TicketType = "ws_sftp_transfer"
-	TicketTypeSFTPDownload      TicketType = "sftp_download"
-	TicketTypeSFTPBatchDownload TicketType = "sftp_batch_download"
+	TicketTypeWSTerminal             TicketType = "ws_terminal"
+	TicketTypeWSMonitor              TicketType = "ws_monitor"
+	TicketTypeWSSFTPAuth             TicketType = "ws_sftp_auth"
+	TicketTypeWSSFTPUpload           TicketType = "ws_sftp_upload"
+	TicketTypeWSSFTPTransfer         TicketType = "ws_sftp_transfer"
+	TicketTypeInstanceBackupDownload TicketType = "instance_backup_download"
+	TicketTypeSFTPDownload           TicketType = "sftp_download"
+	TicketTypeSFTPBatchDownload      TicketType = "sftp_batch_download"
 )
 
 func (t TicketType) IsValid() bool {
 	switch t {
 	case TicketTypeWSTerminal, TicketTypeWSMonitor, TicketTypeWSSFTPAuth,
 		TicketTypeWSSFTPUpload, TicketTypeWSSFTPTransfer,
-		TicketTypeSFTPDownload, TicketTypeSFTPBatchDownload:
+		TicketTypeSFTPDownload, TicketTypeSFTPBatchDownload, TicketTypeInstanceBackupDownload:
 		return true
 	default:
 		return false

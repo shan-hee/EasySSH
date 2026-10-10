@@ -74,6 +74,7 @@ type service struct {
 }
 
 func NewService(db *gorm.DB) (Service, error) {
+	gormadapter.TurnOffAutoMigrate(db)
 	adapter, err := gormadapter.NewAdapterByDB(db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Casbin GORM adapter: %w", err)

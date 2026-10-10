@@ -2528,8 +2528,39 @@ components:
           type: integer
 
     # ========================================
-    # age 备份 3.0
+    # 应用数据迁移 1.0
     # ========================================
+    InstanceBackupRecord:
+      type: object
+      required: [id, name, created_at, size, status, source]
+      properties:
+        id: {type: string, pattern: '^[a-f0-9]{32}$'}
+        name: {type: string}
+        created_at: {type: string, format: date-time}
+        size: {type: integer, format: int64}
+        status: {type: string, enum: [creating, uploading, checking, restoring, ready, failed]}
+        source: {type: string, enum: [created, uploaded]}
+        error: {type: string}
+        verified_at: {type: string, format: date-time}
+        app_version: {type: string}
+        driver: {type: string}
+        schema_version: {type: integer, format: int64}
+        restored_to: {type: string}
+    InstanceBackupList:
+      type: object
+      required: [items, restore_available, max_upload_bytes]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/InstanceBackupRecord'}
+        restore_available: {type: boolean}
+        max_upload_bytes: {type: integer, format: int64}
+    InstanceBackupPassword:
+      type: object
+      required: [password]
+      properties:
+        password: {type: string, minLength: 1, maxLength: 1024}
+        confirm: {type: boolean, description: Required to be true for restoration to a new directory.}
     BackupExportRequest:
       type: object
       properties:
@@ -2582,6 +2613,11 @@ components:
         conflict_strategy:
           type: string
           enum: [skip, overwrite, error]
+        ignored_fields:
+          type: array
+          items:
+            type: string
+          description: 本次迁移忽略的废弃或可选字段
         summary:
           type: object
           additionalProperties:
@@ -4778,8 +4814,147 @@ paths:
                         type: string
 
   # ========================================
-  # 统一备份 3.0（age）
+  # 应用数据迁移 1.0（可选 age 加密凭据）
   # ========================================
+  /backup/instances:
+    get:
+      operationId: listInstanceBackups
+      tags: [backup]
+      summary: List managed native instance backups
+      responses:
+        '200':
+          description: Backup history and capabilities
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstanceBackupList'}
+    post:
+      operationId: createInstanceBackup
+      tags: [backup]
+      summary: Start an encrypted native backup in the background
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InstanceBackupPassword'}
+      responses:
+        '202':
+          description: Backup accepted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstanceBackupRecord'}
+        '409':
+          description: Another backup operation is running
+  /backup/instances/upload:
+    post:
+      operationId: uploadInstanceBackup
+      tags: [backup]
+      summary: Upload an encrypted instance archive (maximum 16 GiB)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '201':
+          description: Uploaded; password verification is still required
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstanceBackupRecord'}
+  /backup/instances/{id}/download:
+    get:
+      operationId: downloadInstanceBackup
+      tags: [backup]
+      summary: Download the encrypted instance archive
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, pattern: '^[a-f0-9]{32}$'}
+        - in: query
+          name: ticket
+          description: Single-use ticket scoped to this archive, obtained from POST /auth/ticket with type instance_backup_download and backup_id.
+          schema: {type: string}
+      responses:
+        '200':
+          description: Encrypted backup archive
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        '404':
+          description: Backup not found
+        '409':
+          description: Another backup operation is running
+  /backup/instances/{id}:
+    delete:
+      operationId: deleteInstanceBackup
+      tags: [backup]
+      summary: Delete the archive and its history record
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, pattern: '^[a-f0-9]{32}$'}
+      responses:
+        '204':
+          description: Backup deleted
+        '404':
+          description: Backup not found
+        '409':
+          description: Another backup operation is running
+  /backup/instances/{id}/inspect:
+    post:
+      operationId: inspectInstanceBackup
+      tags: [backup]
+      summary: Decrypt and verify a backup in the background
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, pattern: '^[a-f0-9]{32}$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InstanceBackupPassword'}
+      responses:
+        '202':
+          description: Operation accepted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstanceBackupRecord'}
+        '404':
+          description: Backup not found
+        '409':
+          description: Another backup operation is running
+  /backup/instances/{id}/restore:
+    post:
+      operationId: restoreInstanceBackup
+      tags: [backup]
+      summary: Restore into a new directory; the active instance is not switched
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, pattern: '^[a-f0-9]{32}$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InstanceBackupPassword'}
+      responses:
+        '202':
+          description: Operation accepted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstanceBackupRecord'}
+        '404':
+          description: Backup not found
+        '409':
+          description: Another backup operation is running
   /backup/export:
     get:
       operationId: exportBackup
@@ -4799,7 +4974,7 @@ paths:
             default: true
       responses:
         '200':
-          description: 脱敏的 EasySSH 3.0 备份文件
+          description: 脱敏的 EasySSH 应用数据 1.0 文件
           headers:
             Content-Disposition:
               schema:
@@ -4824,7 +4999,7 @@ paths:
               $ref: '#/components/schemas/BackupExportRequest'
       responses:
         '200':
-          description: 可包含 age 加密敏感段的 EasySSH 3.0 备份文件
+          description: 可包含 age 加密敏感段的 EasySSH 应用数据 1.0 文件
           headers:
             Content-Disposition:
               schema:
@@ -4836,6 +5011,40 @@ paths:
                 format: binary
         '400':
           $ref: '#/components/responses/Error'
+
+  /backup/preview:
+    post:
+      operationId: previewBackup
+      tags: [backup]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/BackupRestoreOptions'
+                - type: object
+                  required: [file]
+                  properties:
+                    file:
+                      type: string
+                      format: binary
+      responses:
+        '200':
+          description: 导入预览（不写入数据）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackupRestoreResponse'
+        '400':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+
 
   /backup/restore:
     post:

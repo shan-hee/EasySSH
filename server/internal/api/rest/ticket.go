@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"encoding/hex"
 	"net/http"
 	"strings"
 
@@ -18,6 +19,7 @@ func NewTicketHandler(ticketService auth.TicketService) *TicketHandler {
 }
 
 type CreateTicketRequest struct {
+	BackupID        string   `json:"backup_id"`
 	Type            string   `json:"type" binding:"required"`
 	ServerID        string   `json:"server_id"`
 	TaskID          string   `json:"task_id"`
@@ -100,6 +102,15 @@ func (h *TicketHandler) CreateTicket(c *gin.Context) {
 	}
 
 	switch tt {
+	case auth.TicketTypeInstanceBackupDownload:
+		id := strings.TrimSpace(req.BackupID)
+		_, err := hex.DecodeString(id)
+		if len(id) != 32 || err != nil || id != strings.ToLower(id) {
+			RespondError(c, http.StatusBadRequest, "invalid_backup_id", "Invalid backup_id")
+			return
+		}
+		createReq.Ref = id
+
 	case auth.TicketTypeWSTerminal, auth.TicketTypeWSMonitor, auth.TicketTypeWSSFTPAuth:
 		serverID := strings.TrimSpace(req.ServerID)
 		if serverID == "" {

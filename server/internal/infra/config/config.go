@@ -255,6 +255,9 @@ func rootKeyDataDir(driver, dsn string) string {
 			return filepath.Dir(pathValue)
 		}
 	}
+	if value := strings.TrimSpace(os.Getenv("EASYSSH_DATA_DIR")); value != "" {
+		return value
+	}
 	return "./data"
 }
 

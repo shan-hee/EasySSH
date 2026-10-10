@@ -31,6 +31,8 @@ var (
 )
 
 type Service interface {
+	SnapshotStorage(fn func() error) error
+	TryStorageChange() (func(), bool)
 	CreateUploadJob(ctx context.Context, userID uuid.UUID, req *CreateUploadRequest, reader io.Reader) (*TransferJob, error)
 	CreateDownloadJob(ctx context.Context, userID uuid.UUID, req *CreateDownloadRequest) (*TransferJob, error)
 	ValidateScheduledTask(ctx context.Context, userID uuid.UUID, scheduledTaskID uuid.UUID, taskType string, payloadJSON string) error
@@ -52,6 +54,7 @@ type Service interface {
 }
 
 type service struct {
+	storageMu        sync.RWMutex
 	repo             Repository
 	pool             *sftp.Pool
 	serverService    server.Service
@@ -100,6 +103,8 @@ func NewService(
 }
 
 func (s *service) CreateUploadJob(ctx context.Context, userID uuid.UUID, req *CreateUploadRequest, reader io.Reader) (*TransferJob, error) {
+	s.storageMu.RLock()
+	defer s.storageMu.RUnlock()
 	if req == nil || reader == nil {
 		return nil, ErrInvalidJobRequest
 	}
@@ -279,6 +284,8 @@ func (s *service) CreateDownloadJob(ctx context.Context, userID uuid.UUID, req *
 }
 
 func (s *service) RunScheduledTask(ctx context.Context, req RunScheduledRequest) (*TransferJob, error) {
+	s.storageMu.RLock()
+	defer s.storageMu.RUnlock()
 	var payload ScheduledPayload
 	if strings.TrimSpace(req.PayloadJSON) != "" {
 		if err := json.Unmarshal([]byte(req.PayloadJSON), &payload); err != nil {
@@ -503,6 +510,8 @@ func (s *service) DeleteScheduledInputJob(ctx context.Context, userID uuid.UUID,
 }
 
 func (s *service) deleteLoadedJob(ctx context.Context, job *TransferJob) error {
+	s.storageMu.RLock()
+	defer s.storageMu.RUnlock()
 	if job == nil {
 		return ErrJobNotFound
 	}
@@ -723,6 +732,8 @@ func (s *service) enqueueTransfer(ctx context.Context, job *TransferJob) error {
 }
 
 func (s *service) HandleQueueJob(ctx context.Context, queuedJob *jobqueue.Job) error {
+	s.storageMu.RLock()
+	defer s.storageMu.RUnlock()
 	var payload struct {
 		JobID string `json:"job_id"`
 	}
@@ -1118,6 +1129,8 @@ func (s *service) ensureQuota(ctx context.Context, cfg *systemconfig.SystemConfi
 }
 
 func (s *service) cleanupExpired(ctx context.Context) {
+	s.storageMu.RLock()
+	defer s.storageMu.RUnlock()
 	cfg, err := s.config(ctx)
 	if err != nil || cfg == nil {
 		return
@@ -1428,4 +1441,20 @@ func (r *limitReader) Read(p []byte) (int, error) {
 		return n, fmt.Errorf("read limit exceeded")
 	}
 	return n, err
+}
+
+// A native database snapshot is consistent by itself. Hold local artifacts stable
+// for the entire database + files snapshot so cleanup cannot delete referenced files.
+func (s *service) SnapshotStorage(fn func() error) error {
+	if !s.storageMu.TryLock() {
+		return errors.New("file transfers or cleanup are active; retry backup when they finish")
+	}
+	defer s.storageMu.Unlock()
+	return fn()
+}
+func (s *service) TryStorageChange() (func(), bool) {
+	if !s.storageMu.TryRLock() {
+		return nil, false
+	}
+	return s.storageMu.RUnlock, true
 }

@@ -38,6 +38,8 @@ func extractTicket(c *gin.Context) string {
 
 func ticketExpectationForRequest(c *gin.Context) (auth.TicketExpectation, bool) {
 	switch c.FullPath() {
+	case "/api/v1/backup/instances/:id/download":
+		return auth.TicketExpectation{Type: auth.TicketTypeInstanceBackupDownload, Ref: c.Param("id")}, true
 	case "/api/v1/ssh/terminal/:server_id":
 		return auth.TicketExpectation{Type: auth.TicketTypeWSTerminal, Ref: c.Param("server_id")}, true
 	case "/api/v1/monitor/server/:server_id":

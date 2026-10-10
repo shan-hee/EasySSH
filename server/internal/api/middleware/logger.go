@@ -17,7 +17,13 @@ func Logger() gin.HandlerFunc {
 		c.Next()
 
 		// 过滤健康检查和ping请求，避免日志污染
-		reqURI := c.Request.RequestURI
+		safeURL := *c.Request.URL
+		if safeURL.Query().Has("ticket") {
+			query := safeURL.Query()
+			query.Set("ticket", "[redacted]")
+			safeURL.RawQuery = query.Encode()
+		}
+		reqURI := safeURL.RequestURI()
 		if reqURI == "/api/v1/ping" || reqURI == "/api/v1/health" {
 			return
 		}
