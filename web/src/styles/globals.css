@@ -346,12 +346,11 @@
   --terminal-glass-text-shadow: inherit;
 }
 
-/* Navigation has a stronger optical edge than the quieter content surfaces. */
+/* Navigation uses a soft shadow without an extra top-edge highlight. */
 .terminal-workspace-glass [data-terminal-tab-bar] {
   background-color: var(--terminal-glass-panel);
   background-image: var(--terminal-glass-sheen);
-  border-color: var(--terminal-glass-border);
-  box-shadow: inset 0 1px var(--terminal-glass-highlight), 0 4px 16px rgb(0 0 0 / 4%);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 4%);
   -webkit-backdrop-filter: blur(28px) saturate(1.1);
   backdrop-filter: blur(28px) saturate(1.1);
 }

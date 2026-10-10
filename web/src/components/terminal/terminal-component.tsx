@@ -1440,7 +1440,7 @@ export function TerminalComponent({
             isGlassTheme && "terminal-workspace-glass",
             unframed
               ? "bg-background text-foreground"
-              : "rounded-xl border border-border/60 bg-background/70 text-foreground shadow-2xl"
+              : "rounded-xl bg-background/70 text-foreground shadow-2xl"
           )}
         >
           {hasWorkspaceBackground && (

@@ -777,7 +777,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
       {/* 页签栏（现代化设计） */}
       <div ref={tabBarRef} data-terminal-tab-bar className={
-        "w-full min-w-0 border-b border-border/60 bg-background/65 text-foreground backdrop-blur-md transition-colors [--wails-draggable:drag]"
+        "w-full min-w-0 bg-background/65 text-foreground backdrop-blur-md transition-colors [--wails-draggable:drag]"
       } onDragOver={handleSplitPaneDragOver} onDrop={handleSplitPaneDrop}>
         <div className={cn(
           "flex h-10 min-w-0 items-center gap-0 overflow-hidden [--wails-draggable:drag]",
