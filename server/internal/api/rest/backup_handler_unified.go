@@ -117,6 +117,7 @@ func (handler *BackupHandler) exportBackup(c *gin.Context, options exportBackupO
 	backup := &UnifiedBackup{
 		Format:     backuputil.Format,
 		Version:    backuputil.Version,
+		Source:     backuputil.SourceServer,
 		ExportTime: time.Now().UTC().Format(time.RFC3339),
 		Contents: BackupContentSelection{
 			Config:    includeConfig,
@@ -338,6 +339,18 @@ func (h *BackupHandler) restoreApplicationData(c *gin.Context, preview bool) {
 		return
 	}
 
+	// Bind desktop resources only after verifying the original encrypted payload
+	// and its source references. Preview and import consume the same mapped data.
+	desktopOwnerID := ""
+	if includeDatabase && backup.Source == backuputil.SourceDesktop {
+		desktopOwnerID = c.GetString("user_id")
+		if desktopOwnerID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authenticated user is required for desktop import"})
+			return
+		}
+		bindDesktopImportOwner(&backup, desktopOwnerID)
+	}
+
 	for _, part := range []struct {
 		section             *BackupDataSection
 		selected, sensitive bool
@@ -376,7 +389,7 @@ func (h *BackupHandler) restoreApplicationData(c *gin.Context, preview bool) {
 	}
 
 	if preview {
-		summary, err := h.previewApplicationData(c.Request.Context(), &backup, includeConfig, includeDatabase, allowSensitiveConfigRestore, allowSensitiveDatabaseRestore, strategy)
+		summary, err := h.previewApplicationData(c.Request.Context(), &backup, includeConfig, includeDatabase, allowSensitiveConfigRestore, allowSensitiveDatabaseRestore, strategy, desktopOwnerID)
 		if err != nil {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
@@ -395,7 +408,7 @@ func (h *BackupHandler) restoreApplicationData(c *gin.Context, preview bool) {
 		}
 
 		if includeDatabase {
-			result, err := h.restoreDataSection(tx, backup.Database, strategy, allowSensitiveDatabaseRestore)
+			result, err := h.restoreDataSection(tx, backup.Database, strategy, allowSensitiveDatabaseRestore, desktopOwnerID)
 			if err != nil {
 				return err
 			}
@@ -700,7 +713,7 @@ func (h *BackupHandler) restoreSingletonConfigTable(tx *gorm.DB, table BackupTab
 	return changed, table, nil
 }
 
-func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSection, strategy RestoreConflictStrategy, allowSensitive bool) (*restoreSectionSummary, error) {
+func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSection, strategy RestoreConflictStrategy, allowSensitive bool, desktopOwnerID string) (*restoreSectionSummary, error) {
 	summary := &restoreSectionSummary{}
 	restoredTables := make([]BackupTable, 0)
 	userIDMappings := make(map[string]interface{})
@@ -726,7 +739,7 @@ func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSecti
 				return nil, err
 			}
 		}
-		changed, restoredTable, err := h.restoreEntityTable(tx, table, policy, strategy, userIDMappings, summary, allowSensitive)
+		changed, restoredTable, err := h.restoreEntityTable(tx, table, policy, strategy, userIDMappings, summary, allowSensitive, desktopOwnerID)
 		if err != nil {
 			return nil, err
 		}
@@ -740,7 +753,7 @@ func (h *BackupHandler) restoreDataSection(tx *gorm.DB, section *BackupDataSecti
 	return summary, nil
 }
 
-func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, policy backupTablePolicy, strategy RestoreConflictStrategy, userIDMappings map[string]interface{}, summary *restoreSectionSummary, allowSensitive bool) (bool, BackupTable, error) {
+func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, policy backupTablePolicy, strategy RestoreConflictStrategy, userIDMappings map[string]interface{}, summary *restoreSectionSummary, allowSensitive bool, desktopOwnerID string) (bool, BackupTable, error) {
 	summary.Tables++
 	if len(table.Rows) == 0 {
 		return false, table, nil
@@ -777,6 +790,11 @@ func (h *BackupHandler) restoreEntityTable(tx *gorm.DB, table BackupTable, polic
 		}
 
 		if conflictKey != nil {
+			if desktopOwnerID != "" {
+				if err := h.validateDesktopImportConflictOwner(tx, table.Name, *conflictKey, row, desktopOwnerID); err != nil {
+					return false, table, err
+				}
+			}
 			if isUsersRestoreTable(table.Name) {
 				existingID, err := h.recordExistingUserIDMapping(tx, table.Name, table.PrimaryKey, *conflictKey, row, userIDMappings)
 				if err != nil {

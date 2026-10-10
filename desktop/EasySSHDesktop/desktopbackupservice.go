@@ -129,6 +129,7 @@ func (s *DesktopBackupService) ExportBackup(input DesktopBackupExportInput) (Des
 	backup := desktopUnifiedBackup{
 		Format:     backuputil.Format,
 		Version:    backuputil.Version,
+		Source:     backuputil.SourceDesktop,
 		ExportTime: time.Now().UTC().Format(time.RFC3339),
 		Contents: desktopBackupContents{
 			Config:    false,

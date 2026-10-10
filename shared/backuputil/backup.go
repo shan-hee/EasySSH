@@ -12,7 +12,9 @@ import (
 
 const (
 	Format                    = "easyssh-application-data"
-	Version                   = "1.0"
+	Version                   = "1.1"
+	SourceServer              = "server"
+	SourceDesktop             = "desktop"
 	SensitivePayloadVersion   = "1"
 	MaxRestoreFileSizeBytes   = 32 << 20
 	RestoreMultipartSizeBytes = MaxRestoreFileSizeBytes + (1 << 20)
@@ -27,6 +29,7 @@ type ContentSelection struct {
 type UnifiedBackup struct {
 	Format     string           `json:"format"`
 	Version    string           `json:"version"`
+	Source     string           `json:"source"`
 	ExportTime string           `json:"export_time"`
 	Contents   ContentSelection `json:"contents"`
 	Config     *DataSection     `json:"config,omitempty"`
@@ -88,6 +91,21 @@ func ValidateUnifiedBackup(backup *UnifiedBackup) error {
 	if strings.TrimSpace(backup.Version) != Version {
 		return fmt.Errorf("unsupported backup version: %s", backup.Version)
 	}
+	if backup.Source != SourceServer && backup.Source != SourceDesktop {
+		return fmt.Errorf("unsupported application data source: %s", backup.Source)
+	}
+	if backup.Source == SourceDesktop {
+		if backup.Config != nil || backup.Database == nil {
+			return errors.New("desktop application data must contain database resources only")
+		}
+		for _, table := range backup.Database.Tables {
+			switch table.Name {
+			case "users", "servers", "scripts", "ssh_keys":
+			default:
+				return fmt.Errorf("unsupported desktop application resource: %s", table.Name)
+			}
+		}
+	}
 	if backup.Config == nil && backup.Database == nil {
 		return fmt.Errorf("backup has no restorable content")
 	}
@@ -104,6 +122,7 @@ func BaseSHA256(backup *UnifiedBackup) (string, error) {
 	base := struct {
 		Format     string           `json:"format"`
 		Version    string           `json:"version"`
+		Source     string           `json:"source"`
 		ExportTime string           `json:"export_time"`
 		Contents   ContentSelection `json:"contents"`
 		Config     *DataSection     `json:"config,omitempty"`
@@ -111,6 +130,7 @@ func BaseSHA256(backup *UnifiedBackup) (string, error) {
 	}{
 		Format:     backup.Format,
 		Version:    backup.Version,
+		Source:     backup.Source,
 		ExportTime: backup.ExportTime,
 		Contents:   backup.Contents,
 		Config:     backup.Config,

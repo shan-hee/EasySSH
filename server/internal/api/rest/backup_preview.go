@@ -9,7 +9,7 @@ import (
 
 // Preview uses SELECTs only: it never allocates sequence IDs, invokes write hooks or mutates data.
 // Import rechecks conflicts inside its transaction because data may change after preview.
-func (h *BackupHandler) previewApplicationData(ctx context.Context, backup *UnifiedBackup, includeConfig, includeData, sensitiveConfig, sensitiveData bool, strategy RestoreConflictStrategy) (map[string]*restoreSectionSummary, error) {
+func (h *BackupHandler) previewApplicationData(ctx context.Context, backup *UnifiedBackup, includeConfig, includeData, sensitiveConfig, sensitiveData bool, strategy RestoreConflictStrategy, desktopOwnerID string) (map[string]*restoreSectionSummary, error) {
 	db := h.db.WithContext(ctx)
 	summaries := map[string]*restoreSectionSummary{}
 	owners := map[string]interface{}{}
@@ -74,6 +74,11 @@ func (h *BackupHandler) previewApplicationData(ctx context.Context, backup *Unif
 				if conflict == nil {
 					summary.Inserted++
 					continue
+				}
+				if desktopOwnerID != "" && table.Name != "ssh_keys" {
+					if err := h.validateDesktopImportConflictOwner(db, table.Name, *conflict, row, desktopOwnerID); err != nil {
+						return nil, err
+					}
 				}
 				if table.Name == "users" {
 					if _, err := h.recordExistingUserIDMapping(db, table.Name, table.PrimaryKey, *conflict, row, owners); err != nil {
