@@ -194,6 +194,12 @@ func (s *DesktopService) ListPreferences() (DesktopPreferenceSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
+	if value, exists := preferences[desktopProxyPreferenceKey]; exists {
+		preferences[desktopProxyPreferenceKey], err = redactDesktopProxyPreference(value)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return preferences, nil
 }
@@ -202,7 +208,6 @@ func (s *DesktopService) SetPreference(key string, value string) error {
 	if err := validateDesktopPreferenceKey(key); err != nil {
 		return err
 	}
-
 	desktopPreferenceMu.Lock()
 	defer desktopPreferenceMu.Unlock()
 
@@ -211,8 +216,21 @@ func (s *DesktopService) SetPreference(key string, value string) error {
 		return err
 	}
 
+	var proxyConfig desktopProxyConfig
+	if key == desktopProxyPreferenceKey {
+		proxyConfig, value, err = prepareDesktopProxyPreference(value, preferences[key])
+		if err != nil {
+			return err
+		}
+	}
 	preferences[key] = value
-	return writeDesktopPreferences(preferences)
+	if err := writeDesktopPreferences(preferences); err != nil {
+		return err
+	}
+	if key == desktopProxyPreferenceKey {
+		applyDesktopProxy(proxyConfig)
+	}
+	return nil
 }
 
 func (s *DesktopService) RemovePreference(key string) error {
@@ -229,7 +247,13 @@ func (s *DesktopService) RemovePreference(key string) error {
 	}
 
 	delete(preferences, key)
-	return writeDesktopPreferences(preferences)
+	if err := writeDesktopPreferences(preferences); err != nil {
+		return err
+	}
+	if key == desktopProxyPreferenceKey {
+		applyDesktopProxy(desktopProxyConfig{Mode: "system"})
+	}
+	return nil
 }
 
 func validateDesktopPreferenceKey(key string) error {

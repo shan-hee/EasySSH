@@ -22,6 +22,7 @@ import {
   Bot,
   FileText,
   FolderOpen,
+  Globe,
   Info,
   ListChecks,
   Loader2,
@@ -36,6 +37,7 @@ import type { Locale } from "@/i18n"
 import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
 import { DesktopHeaderActions } from "./desktop-header-actions"
+import { DesktopProxyDialog } from "./desktop-proxy-dialog"
 import { desktopUpdateApi, type DesktopUpdateCheckResult } from "../adapters/desktop-update-api"
 import { DesktopInlineUpdateAction } from "./desktop-inline-update-action"
 import { useTranslation } from "react-i18next"
@@ -183,6 +185,7 @@ function DesktopSettingsMenu({
 }) {
   const { t } = useTranslation("desktop")
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [proxyOpen, setProxyOpen] = useState(false)
 
   const handleOpenDataDir = useCallback(() => {
     void DesktopService.OpenDataDir().catch((error) => {
@@ -220,6 +223,10 @@ function DesktopSettingsMenu({
             <Activity className="h-4 w-4" />
             <span>{t("activityLogLabel")}</span>
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setProxyOpen(true)}>
+            <Globe className="h-4 w-4" />
+            <span>{t("networkProxyLabel")}</span>
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={onOpenBackupRestore}>
             <ArchiveRestore className="h-4 w-4" />
             <span>{t("backupRestoreLabel")}</span>
@@ -241,6 +248,7 @@ function DesktopSettingsMenu({
         onOpenChange={setAboutOpen}
         runtime={runtime}
       />
+      {proxyOpen && <DesktopProxyDialog onOpenChange={setProxyOpen} platform={runtime?.platform} />}
     </>
   )
 }

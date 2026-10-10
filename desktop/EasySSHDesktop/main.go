@@ -32,6 +32,9 @@ func main() {
 		log.Fatalf("failed to initialize desktop logger: %v", err)
 	}
 	defer closeDesktopLogger()
+	if err := initDesktopProxy(); err != nil {
+		log.Fatalf("failed to initialize desktop network proxy: %v", err)
+	}
 
 	activityLogService := NewActivityLogService()
 	notificationService := NewDesktopNotificationService()
