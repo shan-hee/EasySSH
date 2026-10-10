@@ -5,7 +5,7 @@
   "taskManagementLabel": "任务管理",
   "activityLogLabel": "活动日志",
   "returnToTerminalLabel": "返回终端",
-  "backupRestoreLabel": "备份/恢复",
+  "backupRestoreLabel": "数据与同步",
   "openDataDirLabel": "打开数据目录",
   "aboutDesktopLabel": "关于 EasySSH",
   "aboutDesktopTitle": "关于 EasySSH Desktop",

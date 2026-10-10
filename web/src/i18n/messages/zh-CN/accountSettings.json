@@ -311,5 +311,6 @@
   "aboutDocsButton": "文档",
   "aboutFeedbackButton": "反馈问题",
   "aboutFooterCopyright": "© {year} {name}。保留所有权利。",
-  "aboutFooterBuiltBy": "由 Claude 与开发者用 ❤️ 打造"
+  "aboutFooterBuiltBy": "由 Claude 与开发者用 ❤️ 打造",
+  "navSync": "数据与同步"
 }

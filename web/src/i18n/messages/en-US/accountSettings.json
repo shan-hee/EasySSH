@@ -311,5 +311,6 @@
   "aboutDocsButton": "Docs",
   "aboutFeedbackButton": "Feedback",
   "aboutFooterCopyright": "© {year} {name}. All rights reserved.",
-  "aboutFooterBuiltBy": "Built with ❤️ by Claude & Developer"
+  "aboutFooterBuiltBy": "Built with ❤️ by Claude & Developer",
+  "navSync": "Data & sync"
 }

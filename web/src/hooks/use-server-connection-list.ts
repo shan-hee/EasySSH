@@ -93,6 +93,13 @@ export function useServerConnectionList({ api, ready, search, group, busy }: {
     return () => { sequenceRef.current += 1 }
   }, [ready, reload])
 
+  useEffect(() => {
+    if (!ready) return
+    const refresh = () => { void reload(); void refreshStatistics() }
+    window.addEventListener("easyssh:sync-applied", refresh)
+    return () => window.removeEventListener("easyssh:sync-applied", refresh)
+  }, [ready, reload, refreshStatistics])
+
   const loadMore = useCallback(async () => {
     if (!ready || busy || loading || loadingMoreRef.current || !hasMore || search.trim() !== query) return
     await fetchPage(Math.floor(offsetRef.current / PAGE_SIZE) + 1, false)

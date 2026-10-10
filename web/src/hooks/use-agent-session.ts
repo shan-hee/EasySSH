@@ -322,6 +322,20 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
   }, [adapter, commitSessionSnapshot])
 
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible" && sessionRef.current?.status === "idle") void refreshSessionSnapshot()
+    }
+    const timer = !adapter ? window.setInterval(refresh, 15000) : undefined
+    window.addEventListener("easyssh:sync-applied", refresh)
+    window.addEventListener("focus", refresh)
+    return () => {
+      if (timer !== undefined) window.clearInterval(timer)
+      window.removeEventListener("easyssh:sync-applied", refresh)
+      window.removeEventListener("focus", refresh)
+    }
+  }, [adapter, refreshSessionSnapshot])
+
   const chat = useChat<UIMessage>({
     id: chatId,
     messages: [],

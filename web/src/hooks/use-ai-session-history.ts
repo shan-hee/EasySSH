@@ -171,6 +171,20 @@ export function useAISessionHistory({
     loadingMoreRef.current = false
   }, [historyVisible, reload])
 
+  useEffect(() => {
+    const refresh = () => {
+      if (historyVisible && document.visibilityState === "visible" && !renamingId && !actionLoadingId && !loadingMoreRef.current && loadedOffsetRef.current <= SESSION_LIST_LIMIT) void reload()
+    }
+    const timer = historyVisible ? window.setInterval(refresh, 15000) : undefined
+    window.addEventListener("easyssh:sync-applied", refresh)
+    window.addEventListener("focus", refresh)
+    return () => {
+      if (timer !== undefined) window.clearInterval(timer)
+      window.removeEventListener("easyssh:sync-applied", refresh)
+      window.removeEventListener("focus", refresh)
+    }
+  }, [actionLoadingId, historyVisible, reload, renamingId])
+
   const loadMore = useCallback(async () => {
     if (
       !enabled ||

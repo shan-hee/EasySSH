@@ -1,8 +1,8 @@
-
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
-  AlertTriangle,
+  RefreshCw,
+  FileJson,
   ArchiveRestore,
   Database,
   Download,
@@ -13,9 +13,11 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { SyncPanel } from "./sync-panel"
+import type { SyncAdapter } from "@/lib/sync/types"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { SettingsSection } from "@/components/settings/settings-section"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -102,18 +104,26 @@ const conflictOptions: Array<{
 export function BackupRestoreTab({
   adapter,
   desktopMode = false,
+  syncAdapter,
 }: {
   adapter?: BackupRestoreAdapter
   desktopMode?: boolean
+  syncAdapter?: SyncAdapter
 } = {}) {
-  if (desktopMode && !adapter) {
-    throw new Error("Desktop backup restore requires a desktop backup adapter")
+  if (desktopMode && (!adapter || !syncAdapter)) {
+    throw new Error("Desktop data and sync requires desktop backup and sync adapters")
   }
 
   const { t } = useTranslation("settingsManagementBackup")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const { refreshConfig } = useSystemConfig()
   const restoreFileInputRef = useRef<HTMLInputElement>(null)
+  const fileSelectionRef = useRef(0)
+  const [restoreFile, setRestoreFile] = useState<File | null>(null)
+  const [restoreFileInfo, setRestoreFileInfo] = useState<{
+    encrypted: boolean
+    date?: string
+  } | null>(null)
   const [loading, setLoading] = useState<"export" | "restore" | null>(null)
   const [exportContent, setExportContent] = useState<Record<BackupContent, boolean>>({
     config: true,
@@ -125,10 +135,14 @@ export function BackupRestoreTab({
   })
   const [conflictStrategy, setConflictStrategy] = useState<ConflictStrategy>("skip")
   const [includeSensitive, setIncludeSensitive] = useState(false)
-  const [exportEncryptionMode, setExportEncryptionMode] = useState<"passphrase" | "x25519">("passphrase")
+  const [exportEncryptionMode, setExportEncryptionMode] = useState<"passphrase" | "x25519">(
+    "passphrase",
+  )
   const [agePassphrase, setAgePassphrase] = useState("")
   const [ageRecipients, setAgeRecipients] = useState("")
-  const [restoreEncryptionMode, setRestoreEncryptionMode] = useState<"passphrase" | "x25519">("passphrase")
+  const [restoreEncryptionMode, setRestoreEncryptionMode] = useState<"passphrase" | "x25519">(
+    "passphrase",
+  )
   const [restoreAgePassphrase, setRestoreAgePassphrase] = useState("")
   const [ageIdentities, setAgeIdentities] = useState("")
 
@@ -239,7 +253,7 @@ export function BackupRestoreTab({
       toast.error(t("toastSelectRestoreContent"))
       return
     }
-    restoreFileInputRef.current?.click()
+    if (restoreFile) void handleRestoreFile(restoreFile)
   }
 
   const handleRestoreFile = async (file: File) => {
@@ -277,6 +291,9 @@ export function BackupRestoreTab({
       }
 
       toast.success(t("toastRestoreSuccess"))
+      setRestoreFile(null)
+      setRestoreFileInfo(null)
+      window.dispatchEvent(new Event("easyssh:sync-applied"))
       setRestoreAgePassphrase("")
       setAgeIdentities("")
     } catch (error) {
@@ -291,288 +308,360 @@ export function BackupRestoreTab({
   }
 
   return (
-    <div className="px-4 pb-6 pt-4 md:px-6">
+    <div className="min-w-0 p-4">
       {confirmDialog}
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-4">
-        <Alert className="py-3">
-          <AlertTriangle className="h-4 w-4" />
-          <AlertDescription className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              <span className="font-medium">{t("alertTitle")}</span>
-              {desktopMode ? t("desktopAlertItemUnified") : t("alertItemUnified")}
-            </span>
-            <span className="text-muted-foreground">
-              {desktopMode ? t("desktopDatabaseOnlyHint") : t("alertItemSensitive")}
-            </span>
-          </AlertDescription>
-        </Alert>
+      <Tabs defaultValue={desktopMode ? "sync" : "export"} className="space-y-4">
+        <TabsList className={`grid w-full ${desktopMode ? "grid-cols-3" : "grid-cols-2"}`}>
+          {desktopMode && (
+            <TabsTrigger value="sync">
+              <RefreshCw className="mr-2 size-4" />
+              {t("syncTab")}
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="export">
+            <Download className="mr-2 size-4" />
+            {t("exportTab")}
+          </TabsTrigger>
+          <TabsTrigger value="restore">
+            <ArchiveRestore className="mr-2 size-4" />
+            {t("restoreTab")}
+          </TabsTrigger>
+        </TabsList>
+        {desktopMode && syncAdapter && (
+          <TabsContent value="sync">
+            <SyncPanel adapter={syncAdapter} desktopMode />
+          </TabsContent>
+        )}
+        <TabsContent value="export">
+          <SettingsSection
+            title={t("exportTitle")}
+            description={t("exportDescription")}
+            icon={<Download className="h-5 w-5" />}
+          >
+            <ContentSelector
+              idPrefix="export"
+              options={visibleContentOptions}
+              values={exportContent}
+              onChange={toggleExportContent}
+              disabled={loading !== null}
+              desktopMode={desktopMode}
+              t={t}
+            />
 
-        <div className="grid items-start gap-4 lg:grid-cols-2">
-          <Card className="overflow-hidden">
-            <CardHeader className="space-y-1 pb-3">
-              <div className="flex items-center gap-2">
-                <Download className="h-5 w-5 text-blue-500" />
-                <CardTitle className="text-base">{t("exportTitle")}</CardTitle>
-              </div>
-              <CardDescription>{t("exportDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <ContentSelector
-                idPrefix="export"
-                options={visibleContentOptions}
-                values={exportContent}
-                onChange={toggleExportContent}
-                disabled={loading !== null}
-                desktopMode={desktopMode}
-                t={t}
-              />
-
-              {supportsSensitive && (
-                <div className="space-y-3 rounded-md border bg-background/40 p-3">
-                  <Label
-                    htmlFor="export-include-sensitive"
-                    className="flex cursor-pointer items-start gap-3"
-                  >
-                    <Checkbox
-                      id="export-include-sensitive"
-                      checked={includeSensitive}
+            {supportsSensitive && (
+              <div className="space-y-3 rounded-md border bg-background/40 p-3">
+                <Label
+                  htmlFor="export-include-sensitive"
+                  className="flex cursor-pointer items-start gap-3"
+                >
+                  <Checkbox
+                    id="export-include-sensitive"
+                    checked={includeSensitive}
+                    disabled={loading !== null}
+                    onCheckedChange={(checked) => setIncludeSensitive(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 space-y-1">
+                    <span className="block text-sm font-medium leading-none">
+                      {t("sensitiveExportTitle")}
+                    </span>
+                    <span className="block text-xs font-normal leading-5 text-muted-foreground">
+                      {desktopMode
+                        ? t("desktopSensitiveExportDescription")
+                        : t("sensitiveExportDescription")}
+                    </span>
+                  </span>
+                </Label>
+                {includeSensitive && (
+                  <div className="space-y-3">
+                    <RadioGroup
+                      value={exportEncryptionMode}
+                      onValueChange={(value) =>
+                        setExportEncryptionMode(value as "passphrase" | "x25519")
+                      }
+                      className="grid grid-cols-2 gap-2"
                       disabled={loading !== null}
-                      onCheckedChange={(checked) => setIncludeSensitive(checked === true)}
+                    >
+                      <Label
+                        htmlFor="export-age-passphrase-mode"
+                        className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs"
+                      >
+                        <RadioGroupItem id="export-age-passphrase-mode" value="passphrase" />
+                        {t("agePassphraseMode")}
+                      </Label>
+                      <Label
+                        htmlFor="export-age-x25519-mode"
+                        className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs"
+                      >
+                        <RadioGroupItem id="export-age-x25519-mode" value="x25519" />
+                        {t("ageX25519Mode")}
+                      </Label>
+                    </RadioGroup>
+                    {exportEncryptionMode === "passphrase" ? (
+                      <div className="space-y-1">
+                        <Label htmlFor="age-passphrase" className="text-xs font-medium">
+                          {t("agePassphraseLabel")}
+                        </Label>
+                        <Input
+                          id="age-passphrase"
+                          type="password"
+                          value={agePassphrase}
+                          onChange={(event) => setAgePassphrase(event.target.value)}
+                          disabled={loading !== null}
+                          autoComplete="new-password"
+                          placeholder={t("agePassphrasePlaceholder")}
+                        />
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          {t("agePassphraseHint")}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <Label htmlFor="age-recipients" className="text-xs font-medium">
+                          {t("ageRecipientsLabel")}
+                        </Label>
+                        <Textarea
+                          id="age-recipients"
+                          value={ageRecipients}
+                          onChange={(event) => setAgeRecipients(event.target.value)}
+                          disabled={loading !== null}
+                          autoComplete="off"
+                          placeholder={t("ageRecipientsPlaceholder")}
+                          className="min-h-20 font-mono text-xs"
+                        />
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          {t("ageRecipientsHint")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-3 border-t pt-4">
+              <div className="space-y-1 text-xs leading-5 text-muted-foreground">
+                <p>{t("exportHintFormat")}</p>
+                <p>{desktopMode ? t("desktopExportHintContent") : t("exportHintContent")}</p>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  className="w-full sm:w-auto sm:min-w-36"
+                  onClick={handleExport}
+                  disabled={loading !== null || !exportSelected}
+                >
+                  {loading === "export" ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t("btnExportLoading")}
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      {t("btnExport")}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </SettingsSection>
+        </TabsContent>
+        <TabsContent value="restore">
+          <SettingsSection
+            title={t("restoreTitle")}
+            description={t("restoreDescription")}
+            icon={<ArchiveRestore className="h-5 w-5" />}
+          >
+            <button
+              type="button"
+              disabled={loading !== null}
+              onClick={() => restoreFileInputRef.current?.click()}
+              className="flex w-full items-center gap-4 rounded-lg border border-dashed bg-muted/20 p-5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+            >
+              <FileJson className="size-8 shrink-0 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium">
+                  {restoreFile?.name || t("selectFile")}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {restoreFile
+                    ? `${(restoreFile.size / 1024).toFixed(1)} KB · ${restoreFileInfo?.encrypted ? t("encryptedFile") : t("plainFile")}`
+                    : t("selectFileHint")}
+                </span>
+              </span>
+            </button>
+            <ContentSelector
+              idPrefix="restore"
+              options={visibleContentOptions}
+              values={restoreContent}
+              onChange={toggleRestoreContent}
+              disabled={loading !== null}
+              desktopMode={desktopMode}
+              t={t}
+            />
+
+            <div className="space-y-3 border-t pt-4">
+              <div>
+                <Label className="text-sm font-medium">{t("conflictStrategyLabel")}</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {desktopMode
+                    ? t("desktopConflictStrategyDescription")
+                    : t("conflictStrategyDescription")}
+                </p>
+              </div>
+              <RadioGroup
+                value={conflictStrategy}
+                onValueChange={(value) => setConflictStrategy(value as ConflictStrategy)}
+                className="grid gap-2"
+                disabled={loading !== null}
+              >
+                {conflictOptions.map((option) => (
+                  <Label
+                    key={option.value}
+                    htmlFor={`conflict-${option.value}`}
+                    className="flex min-h-[58px] cursor-pointer items-start gap-3 rounded-md border bg-background/40 p-3 transition-colors hover:bg-muted/50"
+                  >
+                    <RadioGroupItem
+                      id={`conflict-${option.value}`}
+                      value={option.value}
                       className="mt-0.5"
                     />
-                    <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="min-w-0 space-y-1">
-                      <span className="block text-sm font-medium leading-none">{t("sensitiveExportTitle")}</span>
+                      <span className="block text-sm font-medium leading-none">
+                        {t(option.titleKey)}
+                      </span>
                       <span className="block text-xs font-normal leading-5 text-muted-foreground">
-                        {desktopMode ? t("desktopSensitiveExportDescription") : t("sensitiveExportDescription")}
+                        {t(option.descriptionKey)}
                       </span>
                     </span>
                   </Label>
-                  {includeSensitive && (
-                    <div className="space-y-3">
-                      <RadioGroup
-                        value={exportEncryptionMode}
-                        onValueChange={(value) => setExportEncryptionMode(value as "passphrase" | "x25519")}
-                        className="grid grid-cols-2 gap-2"
-                        disabled={loading !== null}
-                      >
-                        <Label htmlFor="export-age-passphrase-mode" className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs">
-                          <RadioGroupItem id="export-age-passphrase-mode" value="passphrase" />
-                          {t("agePassphraseMode")}
-                        </Label>
-                        <Label htmlFor="export-age-x25519-mode" className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs">
-                          <RadioGroupItem id="export-age-x25519-mode" value="x25519" />
-                          {t("ageX25519Mode")}
-                        </Label>
-                      </RadioGroup>
-                      {exportEncryptionMode === "passphrase" ? (
-                        <div className="space-y-1">
-                          <Label htmlFor="age-passphrase" className="text-xs font-medium">
-                            {t("agePassphraseLabel")}
-                          </Label>
-                          <Input
-                            id="age-passphrase"
-                            type="password"
-                            value={agePassphrase}
-                            onChange={(event) => setAgePassphrase(event.target.value)}
-                            disabled={loading !== null}
-                            autoComplete="new-password"
-                            placeholder={t("agePassphrasePlaceholder")}
-                          />
-                          <p className="text-xs leading-5 text-muted-foreground">{t("agePassphraseHint")}</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          <Label htmlFor="age-recipients" className="text-xs font-medium">
-                            {t("ageRecipientsLabel")}
-                          </Label>
-                          <Textarea
-                            id="age-recipients"
-                            value={ageRecipients}
-                            onChange={(event) => setAgeRecipients(event.target.value)}
-                            disabled={loading !== null}
-                            autoComplete="off"
-                            placeholder={t("ageRecipientsPlaceholder")}
-                            className="min-h-20 font-mono text-xs"
-                          />
-                          <p className="text-xs leading-5 text-muted-foreground">{t("ageRecipientsHint")}</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
+                ))}
+              </RadioGroup>
+            </div>
 
-              <div className="space-y-3 border-t pt-4">
-                <div className="space-y-1 text-xs leading-5 text-muted-foreground">
-                  <p>{t("exportHintFormat")}</p>
-                  <p>{desktopMode ? t("desktopExportHintContent") : t("exportHintContent")}</p>
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    className="w-full sm:w-auto sm:min-w-36"
-                    onClick={handleExport}
-                    disabled={loading !== null || !exportSelected}
-                  >
-                    {loading === "export" ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {t("btnExportLoading")}
-                      </>
-                    ) : (
-                      <>
-                        <Download className="mr-2 h-4 w-4" />
-                        {t("btnExport")}
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="overflow-hidden">
-            <CardHeader className="space-y-1 pb-3">
-              <div className="flex items-center gap-2">
-                <ArchiveRestore className="h-5 w-5 text-green-500" />
-                <CardTitle className="text-base">{t("restoreTitle")}</CardTitle>
-              </div>
-              <CardDescription>{t("restoreDescription")}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <ContentSelector
-                idPrefix="restore"
-                options={visibleContentOptions}
-                values={restoreContent}
-                onChange={toggleRestoreContent}
-                disabled={loading !== null}
-                desktopMode={desktopMode}
-                t={t}
-              />
-
+            {supportsSensitive && restoreFileInfo?.encrypted && (
               <div className="space-y-3 border-t pt-4">
                 <div>
-                  <Label className="text-sm font-medium">{t("conflictStrategyLabel")}</Label>
+                  <Label className="text-sm font-medium">{t("restoreAgeCredentialLabel")}</Label>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {desktopMode ? t("desktopConflictStrategyDescription") : t("conflictStrategyDescription")}
+                    {t("restoreAgeCredentialHint")}
                   </p>
                 </div>
                 <RadioGroup
-                  value={conflictStrategy}
-                  onValueChange={(value) => setConflictStrategy(value as ConflictStrategy)}
-                  className="grid gap-2"
+                  value={restoreEncryptionMode}
+                  onValueChange={(value) =>
+                    setRestoreEncryptionMode(value as "passphrase" | "x25519")
+                  }
+                  className="grid grid-cols-2 gap-2"
                   disabled={loading !== null}
                 >
-                  {conflictOptions.map((option) => (
-                    <Label
-                      key={option.value}
-                      htmlFor={`conflict-${option.value}`}
-                      className="flex min-h-[58px] cursor-pointer items-start gap-3 rounded-md border bg-background/40 p-3 transition-colors hover:bg-muted/50"
-                    >
-                      <RadioGroupItem
-                        id={`conflict-${option.value}`}
-                        value={option.value}
-                        className="mt-0.5"
-                      />
-                      <span className="min-w-0 space-y-1">
-                        <span className="block text-sm font-medium leading-none">{t(option.titleKey)}</span>
-                        <span className="block text-xs font-normal leading-5 text-muted-foreground">
-                          {t(option.descriptionKey)}
-                        </span>
-                      </span>
-                    </Label>
-                  ))}
+                  <Label
+                    htmlFor="restore-age-passphrase-mode"
+                    className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs"
+                  >
+                    <RadioGroupItem id="restore-age-passphrase-mode" value="passphrase" />
+                    {t("agePassphraseMode")}
+                  </Label>
+                  <Label
+                    htmlFor="restore-age-x25519-mode"
+                    className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs"
+                  >
+                    <RadioGroupItem id="restore-age-x25519-mode" value="x25519" />
+                    {t("ageX25519Mode")}
+                  </Label>
                 </RadioGroup>
-              </div>
-
-              {supportsSensitive && (
-                <div className="space-y-3 border-t pt-4">
-                  <div>
-                    <Label className="text-sm font-medium">{t("restoreAgeCredentialLabel")}</Label>
-                    <p className="mt-1 text-xs text-muted-foreground">{t("restoreAgeCredentialHint")}</p>
-                  </div>
-                  <RadioGroup
-                    value={restoreEncryptionMode}
-                    onValueChange={(value) => setRestoreEncryptionMode(value as "passphrase" | "x25519")}
-                    className="grid grid-cols-2 gap-2"
+                {restoreEncryptionMode === "passphrase" ? (
+                  <Input
+                    id="restore-age-passphrase"
+                    type="password"
+                    value={restoreAgePassphrase}
+                    onChange={(event) => setRestoreAgePassphrase(event.target.value)}
                     disabled={loading !== null}
-                  >
-                    <Label htmlFor="restore-age-passphrase-mode" className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs">
-                      <RadioGroupItem id="restore-age-passphrase-mode" value="passphrase" />
-                      {t("agePassphraseMode")}
-                    </Label>
-                    <Label htmlFor="restore-age-x25519-mode" className="flex cursor-pointer items-center gap-2 rounded-md border p-2 text-xs">
-                      <RadioGroupItem id="restore-age-x25519-mode" value="x25519" />
-                      {t("ageX25519Mode")}
-                    </Label>
-                  </RadioGroup>
-                  {restoreEncryptionMode === "passphrase" ? (
-                    <Input
-                      id="restore-age-passphrase"
-                      type="password"
-                      value={restoreAgePassphrase}
-                      onChange={(event) => setRestoreAgePassphrase(event.target.value)}
-                      disabled={loading !== null}
-                      autoComplete="current-password"
-                      placeholder={t("restoreAgePassphrasePlaceholder")}
-                    />
-                  ) : (
-                    <Textarea
-                      id="restore-age-identities"
-                      value={ageIdentities}
-                      onChange={(event) => setAgeIdentities(event.target.value)}
-                      disabled={loading !== null}
-                      autoComplete="off"
-                      placeholder={t("ageIdentitiesPlaceholder")}
-                      className="min-h-20 font-mono text-xs"
-                    />
-                  )}
-                </div>
-              )}
-
-              <input
-                ref={restoreFileInputRef}
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0]
-                  if (file) {
-                    void handleRestoreFile(file)
-                  }
-                }}
-              />
-
-              <div className="space-y-3 border-t pt-4">
-                <div className="space-y-1 text-xs leading-5 text-muted-foreground">
-                  <p>{t("restoreHintFormat")}</p>
-                  <p className="text-destructive">{t("restoreHintWarning")}</p>
-                </div>
-                <div className="flex justify-end">
-                  <Button
-                    variant={conflictStrategy === "overwrite" ? "destructive" : "outline"}
-                    className="w-full sm:w-auto sm:min-w-44"
-                    onClick={handleRestoreClick}
-                    disabled={loading !== null || !restoreSelected}
-                  >
-                    {loading === "restore" ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {t("btnRestoreLoading")}
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="mr-2 h-4 w-4" />
-                        {t("btnRestore")}
-                      </>
-                    )}
-                  </Button>
-                </div>
+                    autoComplete="current-password"
+                    placeholder={t("restoreAgePassphrasePlaceholder")}
+                  />
+                ) : (
+                  <Textarea
+                    id="restore-age-identities"
+                    value={ageIdentities}
+                    onChange={(event) => setAgeIdentities(event.target.value)}
+                    disabled={loading !== null}
+                    autoComplete="off"
+                    placeholder={t("ageIdentitiesPlaceholder")}
+                    className="min-h-20 font-mono text-xs"
+                  />
+                )}
               </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+            )}
+
+            <input
+              ref={restoreFileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) {
+                  const selection = ++fileSelectionRef.current
+                  setRestoreFile(null)
+                  setRestoreFileInfo(null)
+                  setRestoreAgePassphrase("")
+                  setAgeIdentities("")
+                  if (file.size > 32 * 1024 * 1024) {
+                    toast.error(t("invalidBackupFile"))
+                    return
+                  }
+                  void file
+                    .text()
+                    .then((text) => {
+                      const content = JSON.parse(text)
+                      if (content.format !== "easyssh-unified-backup" || content.version !== "3.0")
+                        throw new Error(t("invalidBackupFile"))
+                      if (selection !== fileSelectionRef.current) return
+                      setRestoreFile(file)
+                      setRestoreFileInfo({
+                        encrypted: !!content.sensitive,
+                        date: content.export_time,
+                      })
+                    })
+                    .catch(() => {
+                      if (selection === fileSelectionRef.current)
+                        toast.error(t("invalidBackupFile"))
+                    })
+                }
+              }}
+            />
+
+            <div className="space-y-3 border-t pt-4">
+              <div className="space-y-1 text-xs leading-5 text-muted-foreground">
+                <p>{t("restoreHintFormat")}</p>
+                <p className="text-destructive">{t("restoreHintWarning")}</p>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  variant={conflictStrategy === "overwrite" ? "destructive" : "outline"}
+                  className="w-full sm:w-auto sm:min-w-44"
+                  onClick={handleRestoreClick}
+                  disabled={loading !== null || !restoreSelected || !restoreFile}
+                >
+                  {loading === "restore" ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t("btnRestoreLoading")}
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      {t("btnRestore")}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </SettingsSection>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
@@ -650,8 +739,14 @@ function ContentSelector({
   desktopMode?: boolean
   t: BackupTranslator
 }) {
+  if (options.length === 1)
+    return (
+      <p className="text-sm leading-6 text-muted-foreground">
+        {t(desktopMode ? "desktopContentDatabaseDescription" : options[0].descriptionKey)}
+      </p>
+    )
   return (
-    <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-1 xl:grid-cols-2">
+    <div className="grid gap-3 sm:grid-cols-2">
       {options.map((option) => {
         const Icon = option.icon
         const inputId = `${idPrefix}-backup-content-${option.value}`
@@ -672,7 +767,11 @@ function ContentSelector({
             <span className="min-w-0 space-y-1">
               <span className="block text-sm font-medium leading-none">{t(option.titleKey)}</span>
               <span className="block text-xs font-normal leading-5 text-muted-foreground">
-                {t(desktopMode && option.value === "database" ? "desktopContentDatabaseDescription" : option.descriptionKey)}
+                {t(
+                  desktopMode && option.value === "database"
+                    ? "desktopContentDatabaseDescription"
+                    : option.descriptionKey,
+                )}
               </span>
             </span>
           </Label>

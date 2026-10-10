@@ -1,3 +1,5 @@
+import { SyncPanel } from "@/components/settings/sync-panel"
+import { webSyncAdapter } from "@/lib/sync/web-adapter"
 import { PrivateKeyInput } from "@/components/servers/private-key-input"
 
 import * as React from "react"
@@ -114,7 +116,7 @@ function getErrorMessage(error: unknown, defaultMessage: string): string {
   return defaultMessage
 }
 
-type SettingsSection = "profile" | "security" | "notifications" | "sshKeys" | "monitor" | "about"
+type SettingsSection = "sync" | "profile" | "security" | "notifications" | "sshKeys" | "monitor" | "about"
 
 const settingsNavItems: { id: SettingsSection; icon: typeof User }[] = [
   { id: "profile", icon: User },
@@ -122,6 +124,7 @@ const settingsNavItems: { id: SettingsSection; icon: typeof User }[] = [
   { id: "notifications", icon: Bell },
   { id: "sshKeys", icon: Key },
   { id: "monitor", icon: Activity },
+  { id: "sync", icon: RefreshCw },
   { id: "about", icon: Info },
 ]
 
@@ -505,6 +508,8 @@ export default function AccountSettingsDialog({ open, setOpen }: { open: boolean
           return tAccount("navSSHKeys")
         case "monitor":
           return tAccount("navMonitor")
+        case "sync":
+          return tAccount("navSync")
         case "about":
           return tAccount("navAbout")
         default:
@@ -1092,6 +1097,7 @@ export default function AccountSettingsDialog({ open, setOpen }: { open: boolean
                 <h3 className="text-lg font-semibold">
                   {getSectionLabel(activeSection)}
                 </h3>
+                {activeSection === "sync" && <SyncPanel adapter={webSyncAdapter} desktopMode={false} />}
                 {activeSection === "profile" && (
                   <div className="space-y-4">
                     <div className="bg-muted/50 rounded-xl p-4">

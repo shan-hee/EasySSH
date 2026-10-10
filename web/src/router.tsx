@@ -7,6 +7,7 @@ import HomePage from "@/pages/home-page"
 import { dashboardRouteRegistry } from "@/lib/dashboard-route-registry"
 import { ResourceBoundary } from "@/components/resource-boundary"
 
+const SyncAuthorizePage = lazy(() => import("@/pages/dashboard/sync-authorize-page"))
 const AuthLayout = lazy(() => import("@/layouts/auth-layout"))
 const DashboardLayout = lazy(() => import("@/layouts/dashboard-layout"))
 const SetupPage = lazy(() => import("@/pages/setup-page"))
@@ -64,6 +65,7 @@ export function AppRouter() {
         path="/dashboard"
         element={lazyElement(DashboardLayout)}
       >
+        <Route path="sync-authorize" element={lazyElement(SyncAuthorizePage, <DashboardRouteFallback />)} />
         {dashboardRouteRegistry.map(({ Page, index, path, url, reset }) => (
           index ? (
             <Route key={url} index element={lazyDashboardElement(Page, reset, url)} />

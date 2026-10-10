@@ -18,7 +18,9 @@ export function useAIConfig(adapter?: AIConfigAdapter) {
   const query = useQuery({
     queryKey: adapter?.queryKey ?? ["aiConfig"],
     queryFn,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 15 * 1000,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true,
     gcTime: 10 * 60 * 1000,
     retry: 1,
     // Web 端等待认证；桌面等自定义 runtime adapter 可直接查询本地配置。
