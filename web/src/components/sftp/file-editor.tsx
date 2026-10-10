@@ -1,5 +1,5 @@
 
-import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from "react"
+import { Suspense, useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { useTheme } from "@/components/theme-provider"
 import { Button } from "@/components/ui/button"
@@ -26,8 +26,7 @@ import {
   FileCode,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-
-const MonacoEditor = lazy(() => import("./local-monaco-editor"))
+import { PreloadedMonacoEditor as MonacoEditor } from "@/lib/file-editor-preload"
 
 type TextEncodingOption = {
   value: string

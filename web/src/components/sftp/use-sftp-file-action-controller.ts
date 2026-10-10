@@ -21,6 +21,7 @@ import {
 } from "@/lib/session/sftp-operations"
 import type { SshWorkspaceNotifier } from "@/lib/session/workspace"
 import { joinSftpRemotePath, sftpRemoteBaseName, type SftpFileItem } from "@/lib/sftp-file-utils"
+import { loadFileEditor } from "@/lib/file-editor-preload"
 
 type SftpTranslator = (key: string, params?: Record<string, string | number>) => string
 
@@ -185,6 +186,11 @@ export function useSftpFileActionController({
       console.warn("onReadFile 回调未提供")
       return
     }
+
+    // 读取远程文件期间并行下载编辑器，文件返回后即可复用已加载的模块。
+    void loadFileEditor().catch((error) => {
+      console.error("Failed to preload file editor:", error)
+    })
 
     try {
       const content = await onReadFile(fileName)
