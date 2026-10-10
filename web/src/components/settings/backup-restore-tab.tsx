@@ -126,6 +126,8 @@ export function BackupRestoreTab({
   const [restoreFile, setRestoreFile] = useState<File | null>(null)
   const [restoreFileInfo, setRestoreFileInfo] = useState<{
     encrypted: boolean
+    source: "server" | "desktop"
+    contents: Record<BackupContent, boolean>
     date?: string
   } | null>(null)
   const [loading, setLoading] = useState<"export" | "restore" | null>(null)
@@ -284,8 +286,11 @@ export function BackupRestoreTab({
         skipped: sum.skipped + section.skipped,
       }), { inserted: 0, updated: 0, skipped: 0 })
       const ignored = preview.ignored_fields || []
+      const ownershipHint = !desktopMode && restoreFileInfo?.source === "desktop"
+        ? ` ${t("desktopImportOwnershipHint")}`
+        : ""
       const confirmed = await requestConfirm({
-        description: `${t("importPreview", totals)}${ignored.length ? ` ${t("ignoredFields")}: ${ignored.join(", ")}.` : ""} ${t("importPreviewRecheck")}`,
+        description: `${t("importPreview", totals)}${ignored.length ? ` ${t("ignoredFields")}: ${ignored.join(", ")}.` : ""} ${t("importPreviewRecheck")}${ownershipHint}`,
       })
       if (!confirmed) return
       toast.info(t("toastRestoreLoading"))
@@ -503,7 +508,9 @@ export function BackupRestoreTab({
             </button>
             <ContentSelector
               idPrefix="restore"
-              options={visibleContentOptions}
+              options={visibleContentOptions.filter((option) =>
+                !restoreFileInfo || restoreFileInfo.contents[option.value],
+              )}
               values={restoreContent}
               onChange={toggleRestoreContent}
               disabled={loading !== null}
@@ -626,12 +633,24 @@ export function BackupRestoreTab({
                     .text()
                     .then((text) => {
                       const content = JSON.parse(text)
-                      if (content.format !== "easyssh-application-data" || content.version !== "1.0")
+                      if (
+                        content.format !== "easyssh-application-data" ||
+                        content.version !== "1.1" ||
+                        (content.source !== "server" && content.source !== "desktop")
+                      ) {
                         throw new Error(t("invalidBackupFile"))
+                      }
                       if (selection !== fileSelectionRef.current) return
+                      const contents = {
+                        config: supportsConfig && !!content.config,
+                        database: !!content.database,
+                      }
                       setRestoreFile(file)
+                      setRestoreContent(contents)
                       setRestoreFileInfo({
                         encrypted: !!content.sensitive,
+                        source: content.source,
+                        contents,
                         date: content.export_time,
                       })
                     })
@@ -646,6 +665,9 @@ export function BackupRestoreTab({
             <div className="space-y-3 border-t pt-4">
               <div className="space-y-1 text-xs leading-5 text-muted-foreground">
                 <p>{t("restoreHintFormat")}</p>
+                {!desktopMode && restoreFileInfo?.source === "desktop" && (
+                  <p>{t("desktopImportOwnershipHint")}</p>
+                )}
                 <p className="text-destructive">{t("restoreHintWarning")}</p>
               </div>
               <div className="flex justify-end">
