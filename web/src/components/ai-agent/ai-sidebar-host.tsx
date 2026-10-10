@@ -1,4 +1,5 @@
 import {
+  Suspense,
   createContext,
   useCallback,
   useContext,
@@ -109,7 +110,10 @@ export function AISidebarTarget({ navigation }: { navigation?: ReactNode }) {
   useLayoutEffect(() => register?.(), [register])
   return (
     <AISidebarNavigationContext.Provider value={navigation}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{content}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Sidebar content renders outside the route's Suspense boundary. */}
+        <Suspense fallback={null}>{content}</Suspense>
+      </div>
     </AISidebarNavigationContext.Provider>
   )
 }
