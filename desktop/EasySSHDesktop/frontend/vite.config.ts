@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { chunkOutput } from "../../../web/plugins/code-splitting.ts";
 
 const frontendRoot = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(frontendRoot, "../../..");
@@ -28,6 +29,7 @@ export default defineConfig({
   cacheDir: `node_modules/.vite-desktop/${webDependencyHash}`,
   build: {
     rolldownOptions: {
+      output: chunkOutput,
       checks: {
         pluginTimings: false,
       },

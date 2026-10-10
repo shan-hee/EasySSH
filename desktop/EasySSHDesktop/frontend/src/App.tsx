@@ -1,6 +1,7 @@
 import { startDesktopSync } from "./adapters/desktop-sync"
 import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { PageLoading } from "@/components/page-loading"
 import { useTranslation } from "react-i18next"
 import {
   DEFAULT_SYSTEM_CONFIG,
@@ -35,16 +36,27 @@ import { createDesktopDockerApi } from "./adapters/desktop-docker-api"
 import { createDesktopMonitorApi } from "./adapters/desktop-monitor-api"
 import { createDesktopScriptAdapters } from "./adapters/desktop-script-api"
 import { createDesktopSftpApi } from "./adapters/desktop-sftp-api"
-import { DesktopAIAssistantView } from "./shell/desktop-ai-assistant-view"
-import { DesktopActivityLogsView } from "./shell/desktop-activity-logs-view"
-import { DesktopBackupRestoreView } from "./shell/desktop-backup-restore-view"
 import { DesktopProviders } from "./shell/desktop-providers"
-import { DesktopScriptsView } from "./shell/desktop-scripts-view"
-import { DesktopTaskCenterView } from "./shell/desktop-task-center-view"
 import { DesktopWindowActions, type DesktopView } from "./shell/desktop-titlebar"
 import { DesktopUpdateFailureDialog } from "./shell/desktop-update-failure-dialog"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
 import { useFileTransfer, type FileTransferSftpApi } from "@/hooks/useFileTransfer"
+
+const DesktopAIAssistantView = lazy(() => import("./shell/desktop-ai-assistant-view").then(
+  module => ({ default: module.DesktopAIAssistantView }),
+))
+const DesktopActivityLogsView = lazy(() => import("./shell/desktop-activity-logs-view").then(
+  module => ({ default: module.DesktopActivityLogsView }),
+))
+const DesktopBackupRestoreView = lazy(() => import("./shell/desktop-backup-restore-view").then(
+  module => ({ default: module.DesktopBackupRestoreView }),
+))
+const DesktopScriptsView = lazy(() => import("./shell/desktop-scripts-view").then(
+  module => ({ default: module.DesktopScriptsView }),
+))
+const DesktopTaskCenterView = lazy(() => import("./shell/desktop-task-center-view").then(
+  module => ({ default: module.DesktopTaskCenterView }),
+))
 
 const defaultMaxTabs = 50
 
@@ -760,13 +772,15 @@ function App() {
               inert={activeView !== "ai"}
             >
               {aiAssistantMounted ? (
-                <DesktopAIAssistantView
-                  active={activeView === "ai"}
-                  adapters={aiAssistantAdapters}
-                  locale={locale}
-                  onReturnToTerminal={handleReturnToTerminal}
-                  headerActions={activeView === "ai" ? windowActions : undefined}
-                />
+                <Suspense fallback={<PageLoading />}>
+                  <DesktopAIAssistantView
+                    active={activeView === "ai"}
+                    adapters={aiAssistantAdapters}
+                    locale={locale}
+                    onReturnToTerminal={handleReturnToTerminal}
+                    headerActions={activeView === "ai" ? windowActions : undefined}
+                  />
+                </Suspense>
               ) : null}
             </section>
             <section
@@ -775,12 +789,14 @@ function App() {
               aria-hidden={activeView !== "scripts"}
             >
               {scriptsMounted ? (
-                <DesktopScriptsView
-                  adapters={scriptAdapters}
-                  locale={locale}
-                  onReturnToTerminal={handleReturnToTerminal}
-                  headerActions={activeView === "scripts" ? windowActions : undefined}
-                />
+                <Suspense fallback={<PageLoading />}>
+                  <DesktopScriptsView
+                    adapters={scriptAdapters}
+                    locale={locale}
+                    onReturnToTerminal={handleReturnToTerminal}
+                    headerActions={activeView === "scripts" ? windowActions : undefined}
+                  />
+                </Suspense>
               ) : null}
             </section>
             <section
@@ -789,13 +805,15 @@ function App() {
               aria-hidden={activeView !== "tasks"}
             >
               {tasksMounted ? (
-                <DesktopTaskCenterView
-                  locale={locale}
-                  requestedRunID={requestedTaskRunID}
-                  onClearRequestedRun={() => setRequestedTaskRunID(null)}
-                  onReturnToTerminal={handleReturnToTerminal}
-                  headerActions={activeView === "tasks" ? windowActions : undefined}
-                />
+                <Suspense fallback={<PageLoading />}>
+                  <DesktopTaskCenterView
+                    locale={locale}
+                    requestedRunID={requestedTaskRunID}
+                    onClearRequestedRun={() => setRequestedTaskRunID(null)}
+                    onReturnToTerminal={handleReturnToTerminal}
+                    headerActions={activeView === "tasks" ? windowActions : undefined}
+                  />
+                </Suspense>
               ) : null}
             </section>
             <section
@@ -804,11 +822,13 @@ function App() {
               aria-hidden={activeView !== "activity-logs"}
             >
               {activityLogsMounted ? (
-                <DesktopActivityLogsView
-                  locale={locale}
-                  onReturnToTerminal={handleReturnToTerminal}
-                  headerActions={activeView === "activity-logs" ? windowActions : undefined}
-                />
+                <Suspense fallback={<PageLoading />}>
+                  <DesktopActivityLogsView
+                    locale={locale}
+                    onReturnToTerminal={handleReturnToTerminal}
+                    headerActions={activeView === "activity-logs" ? windowActions : undefined}
+                  />
+                </Suspense>
               ) : null}
             </section>
             <section
@@ -817,11 +837,13 @@ function App() {
               aria-hidden={activeView !== "backup-restore"}
             >
               {backupRestoreMounted ? (
-                <DesktopBackupRestoreView
-                  locale={locale}
-                  onReturnToTerminal={handleReturnToTerminal}
-                  headerActions={activeView === "backup-restore" ? windowActions : undefined}
-                />
+                <Suspense fallback={<PageLoading />}>
+                  <DesktopBackupRestoreView
+                    locale={locale}
+                    onReturnToTerminal={handleReturnToTerminal}
+                    headerActions={activeView === "backup-restore" ? windowActions : undefined}
+                  />
+                </Suspense>
               ) : null}
             </section>
           </div>

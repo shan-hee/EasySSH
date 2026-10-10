@@ -58,6 +58,7 @@ tasks:
       - "../../../web/packages/ssh-workspace/src/**/*"
       - "../../../web/package.json"
       - "../../../web/pnpm-lock.yaml"
+      - "../../../web/plugins/code-splitting.ts"
     generates:
       - dist/**/*
     deps:
