@@ -13,6 +13,10 @@ export const motionEase = [0.22, 1, 0.36, 1] as const
 export const motionExitEase = [0.4, 0, 1, 1] as const
 
 export const motionTransitions = {
+  layout: {
+    duration: motionDurations.layout,
+    ease: motionEase,
+  },
   fade: {
     duration: motionDurations.page,
     ease: motionEase,

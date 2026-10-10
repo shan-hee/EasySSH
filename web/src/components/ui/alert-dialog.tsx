@@ -4,6 +4,7 @@ import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { useDialogSizeAnimation } from "@/hooks/use-dialog-size-animation"
 
 function AlertDialog({
   ...props
@@ -44,14 +45,17 @@ function AlertDialogOverlay({
 }
 
 function AlertDialogContent({
+  ref,
   className,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+  const contentRef = useDialogSizeAnimation(ref)
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
         <AlertDialogPrimitive.Content
+          ref={contentRef}
           data-slot="alert-dialog-content"
           className={cn(
             "dialog-scrollbar-root bg-background data-[state=open]:animate-overlay-content-in data-[state=closed]:animate-overlay-content-out pointer-events-auto relative grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border p-6 shadow-lg sm:max-w-lg",
