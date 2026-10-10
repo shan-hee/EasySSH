@@ -10,7 +10,9 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { MonitorWebSocketProvider } from './monitor/contexts/MonitorWebSocketContext'
 import { MonitorSkeleton } from './monitor/components/MonitorSkeleton'
 import { Button } from '@/components/ui/button'
-import { FolderOpen, Activity, Bot, Search } from 'lucide-react'
+import { FolderOpen, Activity, Bot, Search, X } from 'lucide-react'
+import { PageLoading } from '@/components/page-loading'
+import { loadAiAssistantPanel, PreloadedAiAssistantPanel as AiAssistantPanel } from '@/lib/ai-assistant-preload'
 import { NetworkLatencyPopover } from './network-latency-popover'
 import { WebTerminal } from './web-terminal'
 import {
@@ -48,10 +50,6 @@ const loadMonitorPanel = () => (
   import("./monitor/MonitorPanel").then((module) => ({ default: module.MonitorPanel }))
 )
 const MonitorPanel = React.lazy(loadMonitorPanel)
-const loadAiAssistantPanel = () => (
-  import("./ai-assistant-panel").then((module) => ({ default: module.AiAssistantPanel }))
-)
-const AiAssistantPanel = React.lazy(loadAiAssistantPanel)
 
 const monitorFallback = <div className="h-full w-[280px] px-3 py-1.5"><MonitorSkeleton /></div>
 
@@ -693,6 +691,7 @@ function TabTerminalContentComponent({
                     aria-label={tTerminal("ariaAiAssistant")}
                     title={tTerminal("titleAiAssistantWithShortcut")}
                     onPointerEnter={() => { void loadAiAssistantPanel().catch((error) => console.error('Failed to preload AI panel:', error)) }}
+                    onPointerDown={() => { void loadAiAssistantPanel().catch((error) => console.error('Failed to preload AI panel:', error)) }}
                     onFocus={() => { void loadAiAssistantPanel().catch((error) => console.error('Failed to preload AI panel:', error)) }}
                     onClick={() => setTabState(session.id, { isAiInputOpen: !isAiInputOpen })}
                   >
@@ -841,7 +840,26 @@ function TabTerminalContentComponent({
           )}
 
           {shouldMountAi && (
-            <React.Suspense fallback={null}>
+            <React.Suspense fallback={canUseAi ? (
+              <aside
+                data-terminal-panel
+                aria-label={tTerminal("ariaAiAssistant")}
+                className="absolute inset-0 z-40 flex min-h-0 w-full shrink-0 flex-col bg-background text-foreground md:relative md:inset-auto md:w-[420px] md:max-w-[55vw]"
+              >
+                <div className="flex items-center justify-between border-b px-3 py-2">
+                  <span className="text-sm">{tTerminal("ariaAiAssistant")}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={tTerminal("common:cancel")}
+                    onClick={() => setTabState(session.id, { isAiInputOpen: false })}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+                <PageLoading className="min-h-0" delay={0} />
+              </aside>
+            ) : null}>
               <AiAssistantPanel
                 isOpen={canUseAi}
                 onClose={() => setTabState(session.id, { isAiInputOpen: false })}

@@ -1,6 +1,6 @@
 import type { AgentServerReference } from "@/lib/ai-agent-types"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
-import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent, type PointerEvent } from "react"
+import { Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent, type PointerEvent } from "react"
 import { Link } from "react-router-dom"
 import {
   Loader2,
@@ -46,6 +46,8 @@ import { cn } from "@/lib/utils"
 import type { TerminalSession } from "./types"
 import { TerminalAIContextPicker } from "./terminal-ai-context-picker"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
+import { PageLoading } from "@/components/page-loading"
+import { PreloadedAgentThread as AgentThread } from "@/lib/ai-assistant-preload"
 
 const ANIMATION_DELAY = 160
 const PANEL_OPEN_SETTLE_DELAY = 180
@@ -53,8 +55,6 @@ const PANEL_WIDTH_STORAGE_KEY = "easyssh:terminal-ai-assistant:panel-width"
 const DEFAULT_PANEL_WIDTH = 420
 const MIN_PANEL_WIDTH = 320
 const MAX_PANEL_WIDTH = 720
-const loadAgentThread = () => import("@/components/ai-agent/agent-thread").then(module => ({ default: module.AgentThread }))
-const AgentThread = lazy(loadAgentThread)
 
 interface AiAssistantPanelProps {
   isOpen: boolean
@@ -366,8 +366,6 @@ export function AiAssistantPanel({
         setHasMountedThread(true)
       }, PANEL_OPEN_SETTLE_DELAY)
     })
-
-    void loadAgentThread().catch(error => console.error('Failed to preload AI thread:', error))
 
     return () => {
       window.cancelAnimationFrame(frame)
@@ -936,7 +934,7 @@ export function AiAssistantPanel({
           onPointerCancel={handleResizeEnd}
         />
 
-        <Suspense fallback={<div className="min-h-0 flex-1" aria-busy="true" />}>
+        <Suspense fallback={<PageLoading className="min-h-0" delay={0} />}>
         {hasMountedThread ? <AgentThread
           key={sessionId ?? "new"}
           tText={tAI}
@@ -949,7 +947,7 @@ export function AiAssistantPanel({
           emptyDescription={tAI("terminalEmptyDescription")}
           compact
           className="z-[1] min-h-0 w-full flex-1"
-        /> : <div className="min-h-0 flex-1" aria-busy="true" />}
+        /> : <PageLoading className="min-h-0" />}
         </Suspense>
 
         <div className="relative z-[1] shrink-0 p-3">
