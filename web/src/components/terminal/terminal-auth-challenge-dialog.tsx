@@ -172,7 +172,7 @@ export function TerminalAuthChallengeDialog({
       <DialogContent className="flex max-h-[min(680px,calc(100vh-3rem))] w-[min(560px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden p-0">
         {prompt && (
           <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-            <div className="px-6 pt-6">
+            <div className="shrink-0 px-6 pt-6">
               <DialogHeader>
                 <DialogTitle>
                   {isCredentialRetry
@@ -305,7 +305,7 @@ export function TerminalAuthChallengeDialog({
               </div>
             </div>
 
-            <DialogFooter className="gap-2 px-6 py-4">
+            <DialogFooter className="shrink-0 gap-2 px-6 py-4">
               <Button type="button" variant="outline" onClick={onCancel}>
                 {tTerminal("authChallengeCancel")}
               </Button>
