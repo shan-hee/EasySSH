@@ -74,6 +74,7 @@ func main() {
 			application.NewService(dockerService),
 			application.NewService(activityLogService),
 			application.NewService(backupService),
+			application.NewService(NewDesktopSyncService(serverService, scriptService, sftpService, aiService)),
 			application.NewService(NewDesktopService(desktopGateway)),
 			application.NewService(updateService),
 			application.NewService(aiService),

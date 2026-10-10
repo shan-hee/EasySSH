@@ -914,6 +914,55 @@ func configureDesktopServerDatabase(database *sql.DB) error {
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS desktop_sync_spaces (
+            id TEXT PRIMARY KEY,
+            instance_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            account_name TEXT NOT NULL,
+            server_url TEXT NOT NULL,
+            scopes TEXT NOT NULL DEFAULT '{}',
+            document TEXT NOT NULL DEFAULT '',
+            remote_heads TEXT NOT NULL DEFAULT '[]',
+            last_sync TEXT NOT NULL DEFAULT '',
+            UNIQUE(instance_id,user_id)
+        )`,
+		`CREATE TABLE IF NOT EXISTS desktop_sync_records (
+            kind TEXT NOT NULL CHECK(kind IN ('server','script')),
+            local_id TEXT NOT NULL,
+            space_id TEXT NOT NULL REFERENCES desktop_sync_spaces(id),
+            remote_id TEXT NOT NULL,
+            PRIMARY KEY(kind,local_id),
+            UNIQUE(space_id,kind,remote_id)
+        )`,
+		`CREATE TABLE IF NOT EXISTS desktop_ai_config (
+			id TEXT PRIMARY KEY,
+			use_system_config INTEGER NOT NULL DEFAULT 0,
+			custom_enabled INTEGER NOT NULL DEFAULT 0,
+			custom_provider TEXT NOT NULL DEFAULT 'openai',
+			custom_endpoint TEXT NOT NULL DEFAULT '',
+			custom_api_key TEXT NOT NULL DEFAULT '',
+			custom_models TEXT NOT NULL DEFAULT '',
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE TABLE IF NOT EXISTS desktop_sync_vault (
+          space_id TEXT NOT NULL REFERENCES desktop_sync_spaces(id),kind TEXT NOT NULL,remote_id TEXT NOT NULL,local_id TEXT NOT NULL DEFAULT '',
+          document TEXT NOT NULL DEFAULT '',current_ref TEXT NOT NULL DEFAULT '',observed_ref TEXT NOT NULL DEFAULT '',applied_ref TEXT NOT NULL DEFAULT '',
+          heads TEXT NOT NULL DEFAULT '[]',conflicts TEXT NOT NULL DEFAULT '[]',revision INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY(space_id,kind,remote_id)
+        )`,
+		`CREATE TABLE IF NOT EXISTS desktop_sync_objects (
+          space_id TEXT NOT NULL,id TEXT NOT NULL,kind TEXT NOT NULL,resource_id TEXT NOT NULL,ciphertext TEXT NOT NULL,
+          uploaded INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(space_id,id)
+        )`,
+		`CREATE TABLE IF NOT EXISTS desktop_sync_state (
+            id INTEGER PRIMARY KEY CHECK(id=1),
+            space_id TEXT NOT NULL DEFAULT '',
+            token TEXT NOT NULL DEFAULT '',
+            grants TEXT NOT NULL DEFAULT '{}',
+            enabled INTEGER NOT NULL DEFAULT 0,
+            revision INTEGER NOT NULL DEFAULT 0
+        )`,
+		`INSERT OR IGNORE INTO desktop_sync_state(id) VALUES(1)`,
 		"CREATE INDEX IF NOT EXISTS idx_desktop_servers_ssh_key ON desktop_servers (ssh_key_id)",
 		"CREATE INDEX IF NOT EXISTS idx_desktop_servers_host ON desktop_servers (host)",
 		"CREATE INDEX IF NOT EXISTS idx_desktop_servers_group ON desktop_servers (server_group)",

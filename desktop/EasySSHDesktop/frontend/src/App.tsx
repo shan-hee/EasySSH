@@ -1,3 +1,4 @@
+import { startDesktopSync } from "./adapters/desktop-sync"
 import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -126,6 +127,7 @@ function shouldCheckTerminalInactivity(session: TerminalSession) {
 }
 
 function App() {
+  useEffect(() => startDesktopSync(), [])
   const [locale, setLocale] = useState<Locale>(() => getEffectiveLocale(null, DEFAULT_SYSTEM_CONFIG))
   const [runtime, setRuntime] = useState<DesktopRuntimeBindingInfo | null>(null)
   const [runtimeLoaded, setRuntimeLoaded] = useState(false)

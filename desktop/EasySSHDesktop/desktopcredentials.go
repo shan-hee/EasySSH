@@ -70,7 +70,7 @@ func decryptDesktopCredential(value, table, id, column string) (string, error) {
 // the database still contains protected material.
 func initializeDesktopCredentials(db *sql.DB) error {
 	var hasSecrets bool
-	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM desktop_servers WHERE password <> '') OR EXISTS(SELECT 1 FROM desktop_ssh_keys WHERE private_key <> '')`).Scan(&hasSecrets); err != nil {
+	if err := db.QueryRow(`SELECT EXISTS(SELECT 1 FROM desktop_servers WHERE password <> '') OR EXISTS(SELECT 1 FROM desktop_ssh_keys WHERE private_key <> '') OR EXISTS(SELECT 1 FROM desktop_sync_state WHERE token <> '') OR EXISTS(SELECT 1 FROM desktop_ai_config WHERE custom_api_key <> '') OR EXISTS(SELECT 1 FROM desktop_sync_objects)`).Scan(&hasSecrets); err != nil {
 		return err
 	}
 	_, err := desktopCredentialEncryptor(!hasSecrets)

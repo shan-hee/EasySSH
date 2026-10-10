@@ -23,6 +23,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+var desktopAISyncMu sync.RWMutex
+
 type DesktopAIPermissionMode string
 
 const (
@@ -284,6 +286,7 @@ type desktopAIConfigRecord struct {
 }
 
 type desktopAISessionRecord struct {
+	ConfigSpaceID  string
 	ID             string
 	Title          string
 	CustomTitle    bool
@@ -432,12 +435,18 @@ func (s *DesktopAIService) GetUserAIConfig() (DesktopUserAIConfig, error) {
 }
 
 func (s *DesktopAIService) SaveUserAIConfig(input DesktopSaveUserAIConfigRequest) error {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	database, err := s.database()
 	if err != nil {
 		return err
 	}
 
-	current, err := s.loadConfig()
+	configID, err := s.configSpace("")
+	if err != nil {
+		return err
+	}
+	current, err := s.loadSpaceConfig(configID)
 	if err != nil {
 		return err
 	}
@@ -456,10 +465,14 @@ func (s *DesktopAIService) SaveUserAIConfig(input DesktopSaveUserAIConfigRequest
 		return errors.New("AI API key is required")
 	}
 
+	apiKey, err = encryptDesktopCredential(apiKey, "desktop_ai_config", configID, "custom_api_key")
+	if err != nil {
+		return err
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	_, err = database.Exec(`
 		INSERT INTO desktop_ai_config (id, use_system_config, custom_enabled, custom_provider, custom_endpoint, custom_api_key, custom_models, updated_at)
-		VALUES ('local', 0, ?, ?, ?, ?, ?, ?)
+		VALUES (?, 0, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			use_system_config = 0,
 			custom_enabled = excluded.custom_enabled,
@@ -468,7 +481,7 @@ func (s *DesktopAIService) SaveUserAIConfig(input DesktopSaveUserAIConfigRequest
 			custom_api_key = excluded.custom_api_key,
 			custom_models = excluded.custom_models,
 			updated_at = excluded.updated_at`,
-		boolToInt(input.CustomEnabled), provider, strings.TrimSpace(input.CustomEndpoint), apiKey, models, now)
+		configID, boolToInt(input.CustomEnabled), provider, strings.TrimSpace(input.CustomEndpoint), apiKey, models, now)
 	return err
 }
 
@@ -605,7 +618,13 @@ func (s *DesktopAIService) GetSession(id string) (DesktopAICreateSessionResponse
 }
 
 func (s *DesktopAIService) CreateSession(input DesktopAICreateSessionInput) (DesktopAICreateSessionResponse, error) {
-	config, err := s.loadConfig()
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
+	configSpaceID, err := s.configSpace("")
+	if err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
+	config, err := s.loadSpaceConfig(configSpaceID)
 	if err != nil {
 		return DesktopAICreateSessionResponse{}, err
 	}
@@ -624,6 +643,7 @@ func (s *DesktopAIService) CreateSession(input DesktopAICreateSessionInput) (Des
 	permissionMode := normalizeDesktopAIPermission(input.PermissionMode)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	record := desktopAISessionRecord{
+		ConfigSpaceID:  configSpaceID,
 		ID:             newDesktopAIID("ai-session"),
 		Title:          "",
 		CustomTitle:    false,
@@ -640,6 +660,9 @@ func (s *DesktopAIService) CreateSession(input DesktopAICreateSessionInput) (Des
 		return DesktopAICreateSessionResponse{}, err
 	}
 
+	if err := s.enrollNewSyncSession(record.ID); err != nil {
+		return DesktopAICreateSessionResponse{}, err
+	}
 	view := record.toView()
 	return DesktopAICreateSessionResponse{
 		SessionID:        view.ID,
@@ -649,6 +672,8 @@ func (s *DesktopAIService) CreateSession(input DesktopAICreateSessionInput) (Des
 }
 
 func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendMessageInput) (DesktopAICreateSessionResponse, error) {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	sessionID := strings.TrimSpace(input.SessionID)
 	if sessionID == "" {
 		return DesktopAICreateSessionResponse{}, errors.New("AI session id is required")
@@ -676,7 +701,7 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 		return DesktopAICreateSessionResponse{}, errors.New("AI session has pending confirmations")
 	}
 
-	config, err := s.loadConfig()
+	config, err := s.loadSessionConfig(record.ID)
 	if err != nil {
 		return DesktopAICreateSessionResponse{}, err
 	}
@@ -863,6 +888,8 @@ func (s *DesktopAIService) failDesktopAITurn(record desktopAISessionRecord, turn
 }
 
 func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input DesktopAIToolApprovalInput) (DesktopAICreateSessionResponse, error) {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	sessionID := strings.TrimSpace(input.SessionID)
 	taskID := strings.TrimSpace(input.ID)
 	if sessionID == "" || taskID == "" {
@@ -974,6 +1001,8 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 	arguments map[string]any,
 	run *desktopAIConfirmedToolRun,
 ) {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	var result desktopAIToolResult
 	var executeErr error
 	if approved && run.Context.Err() == nil {
@@ -1050,7 +1079,7 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 
 	defer run.Cancel()
 	defer s.finishAIRequest(sessionID, run.Request)
-	config, err := s.loadConfig()
+	config, err := s.loadSessionConfig(sessionID)
 	if err != nil {
 		s.emitAISessionEvent(DesktopAISessionEvent{SessionID: sessionID, Type: "error", Error: err.Error()})
 		_, _ = s.failDesktopAITurn(record, err)
@@ -1100,6 +1129,8 @@ func (s *DesktopAIService) cancelDesktopConfirmedRun(sessionID string) {
 }
 
 func (s *DesktopAIService) CancelSession(id string) (map[string]bool, error) {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	id = strings.TrimSpace(id)
 	cancelled := s.cancelAIRequest(id)
 	s.cancelDesktopConfirmedRun(id)
@@ -1122,6 +1153,8 @@ func (s *DesktopAIService) CancelSession(id string) (map[string]bool, error) {
 }
 
 func (s *DesktopAIService) UpdateMessage(input DesktopAIUpdateMessageInput) (DesktopAICreateSessionResponse, error) {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	sessionID := strings.TrimSpace(input.SessionID)
 	messageID := strings.TrimSpace(input.MessageID)
 	content := strings.TrimSpace(input.Content)
@@ -1185,6 +1218,8 @@ func (s *DesktopAIService) UpdateMessage(input DesktopAIUpdateMessageInput) (Des
 }
 
 func (s *DesktopAIService) RegenerateMessage(ctx context.Context, input DesktopAIRegenerateMessageInput) (DesktopAICreateSessionResponse, error) {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	sessionID := strings.TrimSpace(input.SessionID)
 	messageID := strings.TrimSpace(input.MessageID)
 	if sessionID == "" || messageID == "" {
@@ -1216,7 +1251,7 @@ func (s *DesktopAIService) RegenerateMessage(ctx context.Context, input DesktopA
 		return DesktopAICreateSessionResponse{}, errors.New("AI message cannot be regenerated")
 	}
 
-	config, err := s.loadConfig()
+	config, err := s.loadSessionConfig(record.ID)
 	if err != nil {
 		return DesktopAICreateSessionResponse{}, err
 	}
@@ -1261,6 +1296,8 @@ func (s *DesktopAIService) RegenerateMessage(ctx context.Context, input DesktopA
 }
 
 func (s *DesktopAIService) DeleteMessage(sessionID string, messageID string) (DesktopAICreateSessionResponse, error) {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	sessionID = strings.TrimSpace(sessionID)
 	messageID = strings.TrimSpace(messageID)
 	if sessionID == "" || messageID == "" {
@@ -1317,6 +1354,8 @@ func (s *DesktopAIService) DeleteMessage(sessionID string, messageID string) (De
 }
 
 func (s *DesktopAIService) RenameSession(id string, title string) (map[string]bool, error) {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	record, err := s.loadSession(strings.TrimSpace(id))
 	if err != nil {
 		return nil, err
@@ -1335,6 +1374,8 @@ func (s *DesktopAIService) RenameSession(id string, title string) (map[string]bo
 }
 
 func (s *DesktopAIService) DeleteSession(id string) error {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return errors.New("AI session id is required")
@@ -1350,6 +1391,8 @@ func (s *DesktopAIService) DeleteSession(id string) error {
 }
 
 func (s *DesktopAIService) CloseSession(id string) error {
+	desktopAISyncMu.RLock()
+	defer desktopAISyncMu.RUnlock()
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return errors.New("AI session id is required")
@@ -1401,6 +1444,13 @@ func (s *DesktopAIService) database() (*sql.DB, error) {
 }
 
 func (s *DesktopAIService) loadConfig() (desktopAIConfigRecord, error) {
+	id, err := s.configSpace("")
+	if err != nil {
+		return desktopAIConfigRecord{}, err
+	}
+	return s.loadSpaceConfig(id)
+}
+func (s *DesktopAIService) loadSpaceConfig(id string) (desktopAIConfigRecord, error) {
 	database, err := s.database()
 	if err != nil {
 		return desktopAIConfigRecord{}, err
@@ -1411,7 +1461,7 @@ func (s *DesktopAIService) loadConfig() (desktopAIConfigRecord, error) {
 	err = database.QueryRow(`
 		SELECT use_system_config, custom_enabled, custom_provider, custom_endpoint, custom_api_key, custom_models
 		FROM desktop_ai_config
-		WHERE id = 'local'`).Scan(
+		WHERE id = ?`, id).Scan(
 		&useSystemConfig,
 		&customEnabled,
 		&record.CustomProvider,
@@ -1428,6 +1478,10 @@ func (s *DesktopAIService) loadConfig() (desktopAIConfigRecord, error) {
 			CustomModels:    "",
 		}, nil
 	}
+	if err != nil {
+		return desktopAIConfigRecord{}, err
+	}
+	record.CustomAPIKey, err = decryptDesktopCredential(record.CustomAPIKey, "desktop_ai_config", id, "custom_api_key")
 	if err != nil {
 		return desktopAIConfigRecord{}, err
 	}
@@ -1450,10 +1504,11 @@ func (s *DesktopAIService) loadSession(id string) (desktopAISessionRecord, error
 	var customTitle int
 	var permissionMode, status, scopeJSON, messagesJSON, tasksJSON string
 	err = database.QueryRow(`
-		SELECT id, title, custom_title, model, permission_mode, scope_json, status, messages_json, tasks_json, created_at, updated_at
+		SELECT id, config_space_id, title, custom_title, model, permission_mode, scope_json, status, messages_json, tasks_json, created_at, updated_at
 		FROM desktop_ai_sessions
 		WHERE id = ?`, id).Scan(
 		&record.ID,
+		&record.ConfigSpaceID,
 		&record.Title,
 		&customTitle,
 		&record.Model,
@@ -1491,8 +1546,8 @@ func (s *DesktopAIService) saveSession(record desktopAISessionRecord) error {
 	uiMessagesJSON := "[]"
 	_, err = database.Exec(`
 		INSERT INTO desktop_ai_sessions
-			(id, title, custom_title, model, permission_mode, scope_json, status, messages_json, tasks_json, ui_messages_json, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			(id, config_space_id, title, custom_title, model, permission_mode, scope_json, status, messages_json, tasks_json, ui_messages_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			title = excluded.title,
 			custom_title = excluded.custom_title,
@@ -1503,8 +1558,9 @@ func (s *DesktopAIService) saveSession(record desktopAISessionRecord) error {
 			messages_json = excluded.messages_json,
 			tasks_json = excluded.tasks_json,
 			ui_messages_json = excluded.ui_messages_json,
-			updated_at = excluded.updated_at`,
+			updated_at = excluded.updated_at WHERE desktop_ai_sessions.updated_at <= excluded.updated_at`,
 		record.ID,
+		record.ConfigSpaceID,
 		record.Title,
 		boolToInt(record.CustomTitle),
 		record.Model,
@@ -2149,18 +2205,10 @@ func configureDesktopAIDatabase(database *sql.DB) error {
 		"PRAGMA journal_mode=WAL",
 		"PRAGMA busy_timeout=5000",
 		"PRAGMA foreign_keys=ON",
-		`CREATE TABLE IF NOT EXISTS desktop_ai_config (
-			id TEXT PRIMARY KEY,
-			use_system_config INTEGER NOT NULL DEFAULT 0,
-			custom_enabled INTEGER NOT NULL DEFAULT 0,
-			custom_provider TEXT NOT NULL DEFAULT 'openai',
-			custom_endpoint TEXT NOT NULL DEFAULT '',
-			custom_api_key TEXT NOT NULL DEFAULT '',
-			custom_models TEXT NOT NULL DEFAULT '',
-			updated_at TEXT NOT NULL
-		)`,
+
 		`CREATE TABLE IF NOT EXISTS desktop_ai_sessions (
 			id TEXT PRIMARY KEY,
+ config_space_id TEXT NOT NULL DEFAULT 'local',
 			title TEXT NOT NULL DEFAULT '',
 			custom_title INTEGER NOT NULL DEFAULT 0,
 			model TEXT NOT NULL DEFAULT '',
