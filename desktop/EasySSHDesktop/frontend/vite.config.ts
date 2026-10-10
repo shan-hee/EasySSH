@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import wails from "@wailsio/runtime/plugins/vite";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,12 +15,17 @@ const webNodeModulesRoot = resolve(repoRoot, "web/node_modules");
 const webI18next = resolve(webNodeModulesRoot, "i18next/dist/esm/i18next.js");
 const webReactI18next = resolve(webNodeModulesRoot, "react-i18next/dist/es/index.js");
 const webRoot = resolve(repoRoot, "web");
+// Vite only hashes the desktop lockfile, but shared components use Web dependencies.
+const webDependencyHash = createHash("sha256")
+  .update(readFileSync(resolve(webRoot, "pnpm-lock.yaml")))
+  .digest("hex")
+  .slice(0, 16);
 const webRequire = createRequire(resolve(webRoot, "package.json"));
 const tailwindPostcss = webRequire("@tailwindcss/postcss");
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  cacheDir: "node_modules/.vite-desktop",
+  cacheDir: `node_modules/.vite-desktop/${webDependencyHash}`,
   build: {
     rolldownOptions: {
       checks: {
