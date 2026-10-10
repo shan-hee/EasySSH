@@ -64,6 +64,12 @@ var backupTablePolicies = map[string]backupTablePolicy{
 	"ai_sessions":         historyPolicy("ai_sessions", nil, true),
 
 	// Runtime/security state should not travel with backup restore.
+	"sync_vault_documents":    ignoredRuntimePolicy("sync_vault_documents"),
+	"sync_vault_objects":      ignoredRuntimePolicy("sync_vault_objects"),
+	"sync_states":             ignoredRuntimePolicy("sync_states"),
+	"sync_instance":           ignoredRuntimePolicy("sync_instance"),
+	"sync_authorizations":     ignoredRuntimePolicy("sync_authorizations"),
+	"sync_devices":            ignoredRuntimePolicy("sync_devices"),
 	"user_sessions":           ignoredRuntimePolicy("user_sessions"),
 	"auth_tickets":            ignoredRuntimePolicy("auth_tickets"),
 	"totp_replays":            ignoredRuntimePolicy("totp_replays"),

@@ -1,0 +1,7 @@
+{
+  "name": "easyssh-sync-runtime",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "dependencies": {"@automerge/automerge": "3.5.0"}
+}

@@ -260,7 +260,12 @@ go build -ldflags="-s -w" -o easyssh-server cmd/api/main.go
 
 ### 测试
 
+同步集成测试会启动真实的 Automerge worker，需安装 Node.js 22+。
+
 ```bash
+# 安装同步测试运行时依赖（首次检出或依赖更新后执行）
+npm ci --prefix sync-runtime --ignore-scripts
+
 # 运行所有测试
 go test ./...
 
@@ -392,3 +397,17 @@ Apache License 2.0 - 详见 [LICENSE](../LICENSE)
 ---
 
 **EasySSH Backend** - 安全、高效的 SSH 管理后端服务 🚀
+
+## Configuration synchronization
+
+The Web **Account settings → Data & sync** page manages authorized desktop devices and concurrent configuration changes. Its sync switch persists a per-account pause flag and blocks subsequent device sync requests while paused; device revocation/logout and existing data remain available. System backup/restore remains in system settings. The sync service uses Automerge 3.5.0, with the same document logic as the desktop JS/WASM client (`shared/syncjs`). The Go server launches a private Node.js stdio worker on demand; no extra public port is exposed and CGO remains disabled.
+
+Docker includes the runtime automatically. For a source checkout, install Node.js 22+ and run `npm ci --prefix server/sync-runtime --ignore-scripts` from the repository root. `scripts/dev.sh` and `make dev` install the worker dependencies. When deploying the Go executable separately, include `server/sync-runtime` (with its production `node_modules`) and `shared/syncjs` with their relative directory layout, and point `EASYSSH_SYNC_ENGINE` to the absolute path of `server/sync-runtime/engine.mjs`.
+
+Owner-scoped server metadata and scripts form the basic scope. Browser approval can additionally grant server credentials (passwords/private keys), personal AI configuration/API keys and conversation history. Each grant is enforced on the supplementary object/document endpoints. System-shared AI keys, account/device credentials, live terminal state, execution authorization and another owner’s resources are excluded. Device tokens are generated in desktop Go, stored only as SHA-256 hashes on the server, expire in 90 days, and require the owner's current `server:manage` permission for bidirectional sync. The default ordinary-user role lacks this resource permission and must be granted it explicitly; no system backup permission is required. Listing and revoking one's own devices requires only account authentication. Local desktop tokens use the OS credential store-backed encryption already used for SSH credentials.
+
+`sync_states` persists Automerge history per account; `sync_devices` stores revocable device grants; `sync_instance` provides a stable database instance UUID; `sync_authorizations` stores five-minute browser approval requests. `sync_vault_documents` holds reference documents and safe conflict previews; `sync_vault_objects` encrypts immutable payloads and attachments with owner/object-bound associated data. All six tables are excluded from portable backup/restore. Device identity protocol 3 combines the instance UUID with the authenticated user UUID, independently of email or display names. Browser approval uses separate high-entropy approval and polling codes, explicit account/code confirmation and a single-use transactional approval. The desktop polling secret and credential never enter the browser. Requests can be cancelled or denied; revocation invalidates the associated device grant. HTTPS is mandatory outside localhost. Web API changes and restored data are reconciled against the saved document on the next sync request, even if no browser is open. A transaction serializes exchanges, reconciles current database values, applies the merge, and saves the document together. Initial synchronization sends a full document; subsequent requests exchange changes since acknowledged heads. Critical concurrent values are retained for explicit resolution.
+
+Passwords, private keys, personal API keys and conversation bodies stay out of Automerge history and the Node process; the worker sees random version references. Go transports payloads over HTTPS and encrypts sync objects at rest. Existing AI history tables retain their existing storage policy. This is not end-to-end encryption: the configured server can decrypt data. Concurrent conversation snapshots are retained as separate versions; Web and desktop support choosing a version or copying it into a new read-only conversation. Runtime synchronization refuses active/waiting sessions, flushes in-memory idle edits and updates the cached session without replaying historical tools.
+
+Limits: 12 MiB document exchange request bodies; 16 MiB object request bodies with 12 MiB payload values, 8 MiB encoded document history, 10,000 active records, 20,000 total records with deletion markers. Attachments are separate objects, limited to 8 MiB each and 32 MiB decoded total per conversation. Document compaction and payload-history garbage collection are not implemented. Node worker errors are reported in the sync UI; existing SSH and backup features remain available.

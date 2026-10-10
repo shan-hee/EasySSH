@@ -119,3 +119,5 @@ yarn-error.log*
 
 # vercel
 .vercel
+
+/server/sync-runtime/node_modules/

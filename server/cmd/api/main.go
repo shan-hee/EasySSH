@@ -26,6 +26,7 @@ import (
 	"github.com/easyssh/server/internal/domain/batchtask"
 	"github.com/easyssh/server/internal/domain/completion"
 	"github.com/easyssh/server/internal/domain/dashboard"
+	"github.com/easyssh/server/internal/domain/datasync"
 	"github.com/easyssh/server/internal/domain/inboxnotification"
 	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/monitor"
@@ -59,6 +60,7 @@ import (
 	"github.com/easyssh/server/internal/platform"
 	"github.com/easyssh/shared/secretcrypto"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
@@ -100,6 +102,12 @@ func main() {
 	}
 	if err := database.AutoMigrate(
 		&auth.User{},
+		&datasync.State{},
+		&datasync.Device{},
+		&datasync.Instance{},
+		&datasync.Authorization{},
+		&datasync.VaultDocument{},
+		&datasync.VaultObject{},
 		&auth.Session{}, // 用户会话表
 		&auth.TOTPReplay{},
 		&server.Server{},
@@ -535,6 +543,13 @@ func main() {
 	sshKeyHandler := rest.NewSSHKeyHandler(sshKeyService)
 	avatarHandler := rest.NewAvatarHandler()
 	backupHandler := rest.NewBackupHandler(database, encryptor)
+	syncEngine := &datasync.Engine{}
+	defer syncEngine.Close()
+	syncHandler := rest.NewSyncHandler(&datasync.Service{DB: database, Engine: syncEngine, Encryptor: encryptor, WithSessionSync: aiRuntimeManager.WithSyncSession, InvalidateConnection: func(owner, id uuid.UUID) {
+		runtimeCredentialStore.Delete(owner, id)
+		sftpHandler.GetPool().CloseByKey(owner, id)
+		_ = monitorConnectionPool.ForceClose(owner.String(), id.String())
+	}}, permissionService)
 	runtimeHandler := rest.NewRuntimeHandler(runtimeInfo)
 	updateCheckHandler := rest.NewUpdateCheckHandler(runtimeInfo)
 
@@ -1081,7 +1096,34 @@ func main() {
 			aiChatRoutes.DELETE("/sessions/:session_id", aiSessionHandler.DeleteSession)
 		}
 
-		// 备份恢复路由（需要认证）
+		// Personal sync authorization is independent of system backup permissions.
+		v1.POST("/sync/authorization/start", middleware.LoginRateLimitMiddleware(securityService), syncHandler.StartAuthorization)
+		v1.POST("/sync/authorization/cancel", middleware.APIRateLimitMiddleware(securityService), syncHandler.CancelAuthorization)
+		v1.POST("/sync/authorization/poll", middleware.APIRateLimitMiddleware(securityService), syncHandler.PollAuthorization)
+		syncRoutes := v1.Group("/sync")
+		syncRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+
+		{
+			syncRoutes.GET("/status", syncHandler.Status)
+			syncRoutes.PUT("/settings", middleware.RequirePermission(permissionService, "server:manage"), syncHandler.SetEnabled)
+			syncRoutes.POST("/authorization/deny", syncHandler.DenyAuthorization)
+			syncRoutes.POST("/authorization/info", syncHandler.AuthorizationInfo)
+			syncRoutes.POST("/authorization/approve", middleware.RequirePermission(permissionService, "server:manage"), syncHandler.ApproveAuthorization)
+			syncRoutes.DELETE("/devices/:id", syncHandler.RevokeDevice)
+			syncRoutes.POST("/vault/fork", middleware.RequirePermission(permissionService, "server:manage"), syncHandler.ForkVaultSession)
+			syncRoutes.POST("/resolve", middleware.RequirePermission(permissionService, "server:manage"), syncHandler.Resolve)
+		}
+		deviceSyncRoutes := v1.Group("/sync/device")
+		deviceSyncRoutes.Use(syncHandler.DeviceAuth())
+		{
+			deviceSyncRoutes.GET("", syncHandler.Identity)
+			deviceSyncRoutes.POST("/exchange", syncHandler.Exchange)
+			deviceSyncRoutes.POST("/disconnect", syncHandler.Disconnect)
+			deviceSyncRoutes.GET("/vault", syncHandler.VaultList)
+			deviceSyncRoutes.GET("/vault/objects/:id", syncHandler.VaultGet)
+			deviceSyncRoutes.POST("/vault/objects/:id", syncHandler.VaultPut)
+			deviceSyncRoutes.POST("/vault/documents/:kind/:id", syncHandler.VaultExchange)
+		}
 		backupRoutes := v1.Group("/backup")
 		backupRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
 		backupRoutes.Use(middleware.RequirePermission(permissionService, "backup:manage"))

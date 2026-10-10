@@ -122,22 +122,19 @@ func (s *gormSessionStore) Save(ctx context.Context, snapshot SessionSnapshot) e
 		return err
 	}
 
-	return s.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"user_id",
-			"model",
-			"title",
-			"permission_mode",
-			"status",
-			"messages",
-			"message_views",
-			"tasks",
-			"task_order",
-			"created_at",
-			"updated_at",
-		}),
-	}).Create(&record).Error
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Older in-flight snapshots must not overwrite an imported revision.
+		result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&record)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected > 0 {
+			return nil
+		}
+		return tx.Model(&AISessionRecord{}).Where("id=? AND user_id=? AND updated_at<=?", record.ID, record.UserID, record.UpdatedAt).Updates(map[string]any{
+			"model": record.Model, "title": record.Title, "permission_mode": record.PermissionMode, "status": record.Status, "messages": record.Messages, "message_views": record.MessageViews, "tasks": record.Tasks, "task_order": record.TaskOrder, "updated_at": record.UpdatedAt,
+		}).Error
+	})
 }
 
 func (s *gormSessionStore) Get(ctx context.Context, userID uuid.UUID, sessionID string) (*SessionSnapshot, error) {

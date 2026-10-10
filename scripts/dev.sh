@@ -187,6 +187,9 @@ if [ ! -d "web/node_modules" ]; then
     echo ""
 fi
 
+# Install the pinned Automerge worker without running lifecycle scripts.
+npm ci --prefix server/sync-runtime --ignore-scripts --no-audit --no-fund
+
 # 启动后端
 echo -e "${GREEN}🔧 启动 Go 后端服务 (热重载模式)...${NC}"
 cd server

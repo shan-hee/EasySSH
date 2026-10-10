@@ -82,7 +82,7 @@ jobs:
 
       - name: 🧪 运行 Server 测试
         working-directory: server
-        run: go test ./...
+        run: make test
 
   # 3. 构建并推送 Docker 镜像（内部含逐架构 Trivy 安全关卡）
   docker:

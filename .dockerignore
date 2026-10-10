@@ -96,3 +96,5 @@ data/
 .env.development
 .env.test
 .env.production
+
+server/sync-runtime/node_modules

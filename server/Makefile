@@ -17,7 +17,7 @@ help:
 	@echo ""
 
 # 开发模式运行 - 支持热重载
-dev:
+dev: sync-deps
 	@if [ -f /root/go/bin/air ]; then \
 		/root/go/bin/air; \
 	elif command -v air >/dev/null 2>&1; then \
@@ -29,7 +29,7 @@ dev:
 	fi
 
 # 开发模式运行 - 无热重载
-dev-simple:
+dev-simple: sync-deps
 	go run cmd/api/main.go
 
 # 构建
@@ -37,15 +37,20 @@ build:
 	go build -o bin/easyssh-api cmd/api/main.go
 
 # 运行测试
-test:
+test: sync-deps
 	go test -v ./...
 
 # 清理构建文件
 clean:
 	rm -rf bin/
 
+# Automerge worker runtime; Go remains CGO-free.
+.PHONY: sync-deps
+sync-deps:
+	npm ci --prefix sync-runtime --ignore-scripts --no-audit --no-fund
+
 # 安装依赖
-deps:
+deps: sync-deps
 	go mod download
 	go mod tidy
 

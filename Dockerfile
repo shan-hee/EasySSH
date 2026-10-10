@@ -25,7 +25,15 @@ RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
 # 复制源码并执行 Vite 静态构建
 COPY VERSION /app/VERSION
 COPY web/ ./
+COPY shared/syncjs/ /app/shared/syncjs/
 RUN pnpm run build
+
+# Automerge runs as a private stdio worker managed by the Go service.
+FROM node:24-alpine AS sync-runtime-builder
+WORKDIR /app/server/sync-runtime
+COPY server/sync-runtime/package.json server/sync-runtime/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY server/sync-runtime/engine.mjs ./
 
 # Stage 2: 构建后端（Go）
 FROM golang:1.25-alpine AS backend-builder
@@ -61,7 +69,7 @@ FROM alpine:3.22
 WORKDIR /app
 
 # 运行时组件：证书与时区；健康检查使用 Alpine 自带的 BusyBox wget
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata nodejs
 
 # 使用非 root 用户运行
 ARG APP_UID=1001
@@ -75,10 +83,13 @@ RUN addgroup -S -g ${APP_GID} appuser \
 ENV TZ=Asia/Shanghai \
     ENV=production \
     BACKEND_URL=http://localhost:8520 \
+    EASYSSH_SYNC_ENGINE=/app/server/sync-runtime/engine.mjs \
     DB_DRIVER=sqlite \
     DB_DSN=/app/data/easyssh.db
 
 # 复制后端二进制与前端静态资源
+COPY --from=sync-runtime-builder --chown=appuser:appuser /app/server/sync-runtime ./server/sync-runtime
+COPY --chown=appuser:appuser shared/syncjs/ ./shared/syncjs/
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./
 COPY --from=backend-builder --chown=appuser:appuser /app/server/static ./static
 COPY --from=frontend-builder --chown=appuser:appuser /app/VERSION ./VERSION
