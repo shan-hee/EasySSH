@@ -1,6 +1,6 @@
 import { resolveTerminalInactiveMinutes } from "@/components/terminal/terminal-settings"
 
-import { lazy, Suspense, useEffect, useRef, useState, useCallback, useMemo } from "react"
+import { Suspense, useEffect, useRef, useState, useCallback, useMemo } from "react"
 import { PageLoading } from "@/components/page-loading"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "@/components/ui/sonner"
@@ -27,10 +27,7 @@ import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sft
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
 import { primaryCredentialMethod } from "@/lib/ssh-auth-methods"
 import { ViewportWorkspaceTransition } from "@/components/viewport-workspace-transition"
-
-const TerminalSftpTabContent = lazy(() => import("@/components/terminal/terminal-sftp-tab-content").then(
-  (module) => ({ default: module.TerminalSftpTabContent }),
-))
+import { loadTerminalSftpTabContent, PreloadedTerminalSftpTabContent as TerminalSftpTabContent } from "@/lib/terminal-preload"
 
 const statusFromConnectionPhase = (phase: TerminalConnectionPhase) => {
   if (phase === "ready") return "connected" as const
@@ -241,6 +238,9 @@ function TerminalPageContent() {
     }
 
     setSftpPickerOpen(true)
+    void loadTerminalSftpTabContent().catch((error) => {
+      console.error("Failed to preload SFTP tab:", error)
+    })
   }, [canUseSftpCapability, maxTabs, t, totalTabCount])
 
   const handleCreateSftpTabFromServer = useCallback((server: Server, initialPath = "~"): boolean => {

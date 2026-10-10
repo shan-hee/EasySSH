@@ -51,6 +51,7 @@ import { AnimatedList } from "@/components/motion/animated-list"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
 import { useServerConnectionList } from "@/hooks/use-server-connection-list"
+import { preloadTerminalConnection } from "@/lib/terminal-preload"
 
 const defaultServerApi = { ...serversApi, sshKeys: sshKeyApi }
 
@@ -397,6 +398,12 @@ export function ServerConnectionConfigs({
  })
  const { servers, setServers, statistics, loading, loadingMore, hasMore, error, loadMore, reload: loadServers } = history
  const requestBusy = saving || draggedServer !== null || isAddDialogOpen || isEditDialogOpen || deleteTargetId !== null
+
+ useEffect(() => {
+   void preloadTerminalConnection().catch((error) => {
+     console.error("Failed to preload terminal connection:", error)
+   })
+ }, [])
 
  useEffect(() => {
    const root = scrollRef.current

@@ -1,8 +1,8 @@
 import { resolveTerminalInactiveMinutes } from "./terminal-settings"
 import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
-import { PageLoading } from "@/components/page-loading"
+import { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
+import { ConnectionLoader } from "./connection-loader"
 import {
   SessionTabBar,
   type CrossSessionFileDragData,
@@ -45,10 +45,7 @@ import {
 } from "@/components/terminal/use-terminal-renderer-settings"
 
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
-
-const TabTerminalContent = lazy(() => import("./tab-terminal-content").then(
-  (module) => ({ default: module.TabTerminalContent }),
-))
+import { PreloadedTabTerminalContent as TabTerminalContent } from "@/lib/terminal-preload"
 
 type LoaderState = "entering" | "loading" | "exiting"
 
@@ -1292,7 +1289,13 @@ export function TerminalComponent({
     )
 
     return (
-      <Suspense key={`terminal-content-${session.id}`} fallback={<PageLoading className="h-full min-h-0" />}>
+      <Suspense key={`terminal-content-${session.id}`} fallback={chrome !== "toolbar" ? (
+        <ConnectionLoader
+          transparentBackground={hasWorkspaceBackground}
+          serverName={session.username && session.host ? `${session.username}@${session.host}` : session.serverName}
+          message={tTerminal("connectionLoaderPreparing")}
+        />
+      ) : null}>
         <TabTerminalContent
           session={session}
           isActive={isVisible}
@@ -1320,6 +1323,8 @@ export function TerminalComponent({
     )
   }, [
     activeSession,
+    hasWorkspaceBackground,
+    tTerminal,
     clearCrossSessionCompletedTransfers,
     crossSessionTransferTasks,
     handleInternalBackAvailabilityChange,

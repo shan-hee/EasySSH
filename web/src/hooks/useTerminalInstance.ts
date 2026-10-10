@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useTerminalStore, type TerminalInstanceState } from '@/stores/terminal-store'
 import type { TerminalTheme } from '@/components/terminal/terminal-themes'
 import type { TerminalFontWeight } from '@/components/terminal/use-terminal-renderer-settings'
+import { loadTerminalRuntime, loadTerminalWebgl } from '@/lib/terminal-preload'
 
 export interface TerminalConfig {
   theme: TerminalTheme
@@ -109,7 +110,7 @@ export function useTerminalInstance(
     }
 
     try {
-      const { WebglAddon } = await import('@xterm/addon-webgl')
+      const { WebglAddon } = await loadTerminalWebgl()
       const currentInstance = getTerminal(sessionId)
 
       if (!currentInstance || currentInstance.terminal !== terminal || currentInstance.webglAddon) {
@@ -174,12 +175,7 @@ export function useTerminalInstance(
           { Terminal: XTermTerminal },
           { FitAddon: XTermFitAddon },
           { WebLinksAddon },
-        ] = await Promise.all([
-          import('@xterm/xterm'),
-          import('@xterm/addon-fit'),
-          import('@xterm/addon-web-links'),
-          import('@xterm/xterm/css/xterm.css'),
-        ])
+        ] = await loadTerminalRuntime()
 
         // 创建终端实例
         const terminal = new XTermTerminal({
