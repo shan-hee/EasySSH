@@ -24,6 +24,7 @@
   "windowOpacity": "Window opacity",
   "themeScheme": "Color scheme",
   "themeSchemeDefault": "Default",
+  "themeSchemeFrostedGlass": "Frosted Glass",
   "updateTooltip": "Check for updates",
   "updateMenuTitle": "Updates",
   "updateMenuAvailable": "Version {version} available",

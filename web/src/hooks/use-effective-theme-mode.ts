@@ -39,5 +39,8 @@ export function useEffectiveThemeMode() {
     setMode(getEffectiveThemeMode())
   }, [version])
 
-  return { mode, version }
+  const isGlassTheme = typeof document !== "undefined"
+    && document.documentElement.dataset.themePreset === "frosted-glass"
+
+  return { mode, version, isGlassTheme }
 }

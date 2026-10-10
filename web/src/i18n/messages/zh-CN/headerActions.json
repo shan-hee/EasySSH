@@ -24,6 +24,7 @@
   "windowOpacity": "窗口透明度",
   "themeScheme": "配色方案",
   "themeSchemeDefault": "默认",
+  "themeSchemeFrostedGlass": "磨砂玻璃",
   "updateTooltip": "检查更新",
   "updateMenuTitle": "版本更新",
   "updateMenuAvailable": "发现新版本 {version}",

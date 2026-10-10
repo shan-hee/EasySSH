@@ -174,7 +174,7 @@ const colorGroups: Array<{
 ]
 
 export function ThemeGeneratorPanel() {
-  const { t } = useTranslation("themeGenerator")
+  const { t } = useTranslation(["themeGenerator", "headerActions"])
   const { theme, setTheme } = useTheme()
   const [open, setOpen] = React.useState(false)
   const [state, setState] = React.useState<ThemeGeneratorState>(() => createThemeGeneratorState())
@@ -555,7 +555,7 @@ export function ThemeGeneratorPanel() {
                     <SelectItem key={preset.id} value={preset.id}>
                       <span className="flex items-center gap-2">
                         <ThemeSwatch colors={getThemeSwatches(preset.styles)} />
-                        {preset.label}
+                        {preset.id === "frosted-glass" ? t("headerActions:themeSchemeFrostedGlass") : preset.label}
                       </span>
                     </SelectItem>
                   ))}
@@ -604,7 +604,7 @@ export function ThemeGeneratorPanel() {
                         <SelectItem key={preset.id} value={preset.id}>
                           <span className="flex items-center gap-2">
                             <ThemeSwatch colors={getThemeSwatches(preset.styles)} />
-                            <span>{preset.label}</span>
+                            <span>{preset.id === "frosted-glass" ? t("headerActions:themeSchemeFrostedGlass") : preset.label}</span>
                             {preset.badge && (
                               <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                                 {preset.badge}

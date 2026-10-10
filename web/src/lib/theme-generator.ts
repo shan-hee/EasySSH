@@ -300,6 +300,64 @@ const SHADCN_STUDIO_PRESET_LABELS: Record<(typeof SHADCN_STUDIO_PRESET_IDS)[numb
 
 export const THEME_PRESETS: ThemePreset[] = [
   { id: "default", label: "Default", styles: cloneThemeStyles(DEFAULT_THEME_STYLES) },
+  {
+    id: "frosted-glass",
+    label: "Frosted Glass",
+    styles: mergeThemeStyles({
+      light: {
+        background: "oklch(0.965 0.012 240)",
+        foreground: "oklch(0.24 0.025 250)",
+        card: "oklch(0.99 0.006 240)",
+        "card-foreground": "oklch(0.24 0.025 250)",
+        popover: "oklch(0.985 0.008 240)",
+        "popover-foreground": "oklch(0.24 0.025 250)",
+        primary: "oklch(0.48 0.1 240)",
+        secondary: "oklch(0.93 0.018 240)",
+        muted: "oklch(0.94 0.014 240)",
+        "muted-foreground": "oklch(0.48 0.025 250)",
+        accent: "oklch(0.91 0.03 235)",
+        border: "oklch(0.85 0.022 240)",
+        input: "oklch(0.83 0.025 240)",
+        ring: "oklch(0.6 0.09 240)",
+        sidebar: "oklch(0.955 0.018 240)",
+        "sidebar-foreground": "oklch(0.24 0.025 250)",
+        "sidebar-primary": "oklch(0.48 0.1 240)",
+        "sidebar-accent": "oklch(0.9 0.03 235)",
+        "sidebar-border": "oklch(0.85 0.022 240)",
+        "sidebar-ring": "oklch(0.6 0.09 240)",
+        "shadow-color": "oklch(0.35 0.04 240)",
+        "shadow-opacity": "0.08",
+        "shadow-blur": "16px",
+        "shadow-offset-y": "4px",
+      },
+      dark: {
+        background: "oklch(0.18 0.018 250)",
+        foreground: "oklch(0.96 0.008 240)",
+        card: "oklch(0.24 0.022 250)",
+        "card-foreground": "oklch(0.96 0.008 240)",
+        popover: "oklch(0.26 0.022 250)",
+        "popover-foreground": "oklch(0.96 0.008 240)",
+        primary: "oklch(0.8 0.07 225)",
+        secondary: "oklch(0.29 0.025 250)",
+        muted: "oklch(0.25 0.02 250)",
+        "muted-foreground": "oklch(0.74 0.022 240)",
+        accent: "oklch(0.33 0.04 240)",
+        border: "oklch(0.8 0.025 240 / 20%)",
+        input: "oklch(0.8 0.025 240 / 26%)",
+        ring: "oklch(0.7 0.08 225)",
+        sidebar: "oklch(0.21 0.022 250)",
+        "sidebar-foreground": "oklch(0.96 0.008 240)",
+        "sidebar-primary": "oklch(0.8 0.07 225)",
+        "sidebar-primary-foreground": "oklch(0.205 0 0)",
+        "sidebar-accent": "oklch(0.3 0.035 240)",
+        "sidebar-border": "oklch(0.8 0.025 240 / 18%)",
+        "sidebar-ring": "oklch(0.7 0.08 225)",
+        "shadow-opacity": "0.22",
+        "shadow-blur": "20px",
+        "shadow-offset-y": "4px",
+      },
+    }),
+  },
   ...SHADCN_STUDIO_PRESET_IDS.map((id) => ({
     id,
     label: SHADCN_STUDIO_PRESET_LABELS[id],
@@ -535,7 +593,11 @@ export function clearThemeGeneratorState() {
   }
 
   if (typeof document !== "undefined") {
-    applyThemeChange(() => document.getElementById(THEME_GENERATOR_STYLE_ID)?.remove())
+    applyThemeChange(() => {
+      document.getElementById(THEME_GENERATOR_STYLE_ID)?.remove()
+      delete document.documentElement.dataset.themePreset
+      dispatchThemeGeneratorChange()
+    })
   }
 }
 
@@ -548,6 +610,12 @@ export function applyThemeGeneratorState(
   }
 
   applyThemeChange(() => {
+    if (state.preset) {
+      document.documentElement.dataset.themePreset = state.preset
+    } else {
+      delete document.documentElement.dataset.themePreset
+    }
+
     if (isDefaultThemeState(state)) {
       document.getElementById(THEME_GENERATOR_STYLE_ID)?.remove()
       if (options.notify !== false) {

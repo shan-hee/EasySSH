@@ -66,8 +66,10 @@ function getCurrentPresetId(): string | null {
   return loadThemeGeneratorState().preset
 }
 
-function getPresetLabel(id: string, label: string, defaultLabel: string) {
-  return id === "default" ? defaultLabel : label
+function getPresetLabel(id: string, label: string, defaultLabel: string, glassLabel: string) {
+  if (id === "default") return defaultLabel
+  if (id === "frosted-glass") return glassLabel
+  return label
 }
 
 function resolveThemeGeneratorMode(mode: ThemePreference, fallback: "light" | "dark"): "light" | "dark" {
@@ -183,7 +185,7 @@ export function ThemeMenu() {
               <DropdownMenuItem key={preset.id} onSelect={() => selectPreset(preset.id)}>
                 <SchemeDot presetId={preset.id} />
                 <span className="min-w-0 flex-1 truncate">
-                  {getPresetLabel(preset.id, preset.label, t("themeSchemeDefault"))}
+                  {getPresetLabel(preset.id, preset.label, t("themeSchemeDefault"), t("themeSchemeFrostedGlass"))}
                 </span>
                 {selectedPreset === preset.id && <Check className="size-4" />}
               </DropdownMenuItem>
