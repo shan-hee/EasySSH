@@ -128,7 +128,7 @@ const settingsNavItems: { id: SettingsSection; icon: typeof User }[] = [
   { id: "about", icon: Info },
 ]
 
-export default function AccountSettingsDialog({ open, setOpen }: { open: boolean; setOpen: (open: boolean) => void }) {
+export default function AccountSettingsContent({ open, setOpen }: { open: boolean; setOpen: (open: boolean) => void }) {
   const { t: tServers } = useTranslation("servers")
   const { t: tAccount } = useTranslation("accountSettings")
   const { t: tCommon } = useTranslation("common")
@@ -1038,14 +1038,7 @@ export default function AccountSettingsDialog({ open, setOpen }: { open: boolean
   return (
     <>
       {confirmDialog}
-      <DialogContent className="overflow-hidden p-0 md:max-h-[600px] md:max-w-[700px] lg:max-w-[800px]">
-        <DialogTitle className="sr-only">
-          {tAccount("dialogTitle")}
-        </DialogTitle>
-        <DialogDescription className="sr-only">
-          {tAccount("dialogDescription")}
-        </DialogDescription>
-        <SidebarProvider>
+        <SidebarProvider className="h-full min-h-0">
           <Sidebar collapsible="none" className="hidden md:flex md:w-44 lg:w-48 border-r shrink-0">
             <SidebarContent className="py-4">
               <SidebarGroup>
@@ -1070,7 +1063,7 @@ export default function AccountSettingsDialog({ open, setOpen }: { open: boolean
               </SidebarGroup>
             </SidebarContent>
           </Sidebar>
-          <main className="flex min-h-[400px] max-h-[600px] flex-1 flex-col overflow-hidden">
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {/* 移动端导航 */}
             <div className="md:hidden border-b px-4 py-3">
               <Select
@@ -2481,7 +2474,6 @@ export default function AccountSettingsDialog({ open, setOpen }: { open: boolean
             </div>
           </main>
         </SidebarProvider>
-      </DialogContent>
 
       {/* QR 码扫描对话框 */}
       <Dialog open={qrCodeDialogOpen} onOpenChange={setQrCodeDialogOpen}>
