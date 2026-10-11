@@ -1224,6 +1224,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/backup/instances/{id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a restored Windows local SQLite instance and restart */
+        post: operations["activateRestoredInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup/activation/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restart the previous local instance without merging data */
+        post: operations["rollbackActiveInstance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/backup/activation/status/{operationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read only the restart outcome using an unguessable operation ID */
+        get: operations["getInstanceActivationStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/backup/export": {
         parameters: {
             query?: never;
@@ -4736,6 +4787,27 @@ export interface components {
             restore_available: boolean;
             /** Format: int64 */
             max_upload_bytes: number;
+            activation?: components["schemas"]["InstanceActivationInfo"];
+        };
+        InstanceActivationOperation: {
+            id: string;
+            /** @enum {string} */
+            status: "switching" | "succeeded" | "rolled_back";
+            /** @enum {string} */
+            reason?: "interrupted" | "startup_failed";
+        };
+        InstanceActivationInfo: {
+            available: boolean;
+            can_rollback: boolean;
+            active_backup_id?: string;
+            active_directory?: string;
+            operation?: components["schemas"]["InstanceActivationOperation"];
+        };
+        InstanceActivationRequest: {
+            /** @enum {boolean} */
+            confirm: true;
+            /** @description Must match the selected backup record for activation. */
+            restored_to?: string;
         };
         InstanceBackupPassword: {
             password: string;
@@ -7242,6 +7314,141 @@ export interface operations {
             };
             /** @description Another backup operation is running */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    activateRestoredInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstanceActivationRequest"];
+            };
+        };
+        responses: {
+            /** @description Activation accepted; use the operation ID to track restart */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceActivationOperation"];
+                };
+            };
+            /** @description Invalid confirmation or restored directory */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Backup management permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Busy or activation unavailable */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rollbackActiveInstance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstanceActivationRequest"];
+            };
+        };
+        responses: {
+            /** @description Rollback accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceActivationOperation"];
+                };
+            };
+            /** @description Confirmation required */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Backup management permission required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Busy or no previous instance */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getInstanceActivationStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Restart status, without credentials or instance paths */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstanceActivationOperation"];
+                };
+            };
+            /** @description Operation not found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

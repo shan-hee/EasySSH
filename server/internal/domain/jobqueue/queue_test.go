@@ -12,6 +12,36 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+func TestQueueWaitsForInstanceActivationAndCanStopBeforeCommit(t *testing.T) {
+	for _, commit := range []bool{false, true} {
+		t.Run(fmt.Sprintf("commit=%t", commit), func(t *testing.T) {
+			gate := make(chan struct{})
+			q := New(newQueueTestRepository(t), Options{StartGate: gate, FallbackPollInterval: time.Hour})
+			started := make(chan struct{}, 1)
+			q.Register("test", func(context.Context, *Job) error { started <- struct{}{}; return nil })
+			if _, err := q.Enqueue(context.Background(), "test", "test", "activation", nil, EnqueueOptions{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := q.Start(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			defer q.Stop()
+			assertNoStart(t, started)
+			if commit {
+				close(gate)
+				waitForStarts(t, started, 1)
+			}
+			stopped := make(chan struct{})
+			go func() { q.Stop(); close(stopped) }()
+			select {
+			case <-stopped:
+			case <-time.After(2 * time.Second):
+				t.Fatal("queue failed to stop behind activation gate")
+			}
+		})
+	}
+}
+
 func TestQueueDispatchesOnDemandAndExpandsImmediately(t *testing.T) {
 	repo := newQueueTestRepository(t)
 	queue := New(repo, Options{

@@ -49,16 +49,17 @@ type HistoryOptions struct {
 }
 
 type History struct {
-	mu        sync.Mutex
-	pins      map[string]int
-	opts      HistoryOptions
-	busy      bool
-	closed    bool
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	closeOnce sync.Once
-	release   func() error
+	mu                sync.Mutex
+	pins              map[string]int
+	opts              HistoryOptions
+	busy              bool
+	activationPending bool
+	closed            bool
+	ctx               context.Context
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	closeOnce         sync.Once
+	release           func() error
 }
 
 func NewHistory(opts HistoryOptions) (*History, error) {
@@ -188,6 +189,31 @@ func (h *History) List() ([]Record, error) {
 	}
 	sort.Slice(records, func(i, j int) bool { return records[i].CreatedAt.After(records[j].CreatedAt) })
 	return records, nil
+}
+
+// ReserveActivation serializes activation with restores, downloads and deletion.
+// The caller releases on failure; on success the reservation lasts until exit.
+func (h *History) ReserveActivation(id string) (Record, func(), error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.closed || h.busy || len(h.pins) != 0 {
+		return Record{}, nil, ErrBusy
+	}
+	var record Record
+	if id != "" {
+		var err error
+		record, err = h.get(id)
+		if err != nil {
+			return record, nil, err
+		}
+		if record.Status != "ready" || record.RestoredTo == "" || record.Driver != "sqlite" {
+			return record, nil, errors.New("a successfully restored SQLite instance is required")
+		}
+	}
+	h.busy = true
+	var once sync.Once
+	h.activationPending = true
+	return record, func() { once.Do(func() { h.mu.Lock(); h.busy = false; h.activationPending = false; h.mu.Unlock() }) }, nil
 }
 
 func (h *History) newRecord(source, status string) (Record, error) {
@@ -387,6 +413,10 @@ func (h *History) Inspect(id, password string, restore bool) (Record, error) {
 // Open pins a file while it is downloaded; callers must close it before release.
 func (h *History) Open(id string) (*os.File, Record, func(), error) {
 	h.mu.Lock()
+	if h.closed || h.activationPending {
+		h.mu.Unlock()
+		return nil, Record{}, nil, ErrBusy
+	}
 	record, err := h.get(id)
 	if err != nil {
 		h.mu.Unlock()

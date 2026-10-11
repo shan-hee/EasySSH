@@ -9,6 +9,7 @@ import (
 
 	"github.com/easyssh/server/internal/infra/config"
 	"github.com/easyssh/shared/dbmigration"
+	"github.com/easyssh/shared/instanceactivation"
 	"github.com/easyssh/shared/instancebackup"
 	"gorm.io/gorm"
 )
@@ -37,7 +38,10 @@ func newInstanceHistory(cfg *config.Config, database *gorm.DB, freeze func(func(
 	if err != nil {
 		return nil, err
 	}
-	if withinPath(dataDir, directory) || withinPath(directory, dataDir) {
+	// A launcher-selected restored child keeps its original catalog. Snapshot
+	// output is outside that child's data; arbitrary overlapping roots stay invalid.
+	managedRestore := instanceactivation.FromEnvironment() != nil && withinPath(filepath.Join(directory, "restored"), dataDir) && dataDir != filepath.Join(directory, "restored")
+	if withinPath(dataDir, directory) || (withinPath(directory, dataDir) && !managedRestore) {
 		return nil, errors.New("backup storage must be separate from the instance data directory")
 	}
 	return instancebackup.NewHistory(instancebackup.HistoryOptions{
@@ -61,7 +65,7 @@ func newInstanceHistory(cfg *config.Config, database *gorm.DB, freeze func(func(
 						} else if !os.IsNotExist(resolveErr) {
 							return resolveErr
 						}
-						if withinPath(absolute, directory) || withinPath(directory, absolute) {
+						if withinPath(absolute, directory) || (withinPath(directory, absolute) && !(managedRestore && withinPath(dataDir, absolute))) {
 							return errors.New("backup storage must be separate from transfer storage")
 						}
 					}

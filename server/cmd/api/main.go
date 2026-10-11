@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -59,6 +61,7 @@ import (
 	"github.com/easyssh/server/internal/pkg/password"
 	"github.com/easyssh/server/internal/platform"
 	"github.com/easyssh/shared/dbmigration"
+	"github.com/easyssh/shared/instanceactivation"
 	"github.com/easyssh/shared/instancebackup"
 	"github.com/easyssh/shared/secretcrypto"
 	"github.com/gin-gonic/gin"
@@ -85,6 +88,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("❌ Failed to load config: %v", err)
 	}
+	if handled, err := runInstanceLauncher(cfg); handled {
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	launcher := instanceactivation.FromEnvironment()
 	configureLogging(cfg.Server.Env)
 	instanceLock, err := instancebackup.Lock(maintenanceDataDir(cfg))
 	if err != nil {
@@ -131,6 +141,11 @@ func main() {
 	encryptor, err := crypto.NewEncryptor(cfg.Server.EncryptionKey)
 	if err != nil {
 		log.Fatalf("❌ Failed to create encryptor: %v", err)
+	}
+	if launcher != nil {
+		if err := rest.NewBackupHandler(database, encryptor).VerifyStoredCredentials(context.Background()); err != nil {
+			log.Fatal(err)
+		}
 	}
 	oauthGlobalSecret, err := crypto.DeriveKey(cfg.Server.EncryptionKey, "oauth-global-secret", 32)
 	if err != nil {
@@ -335,7 +350,9 @@ func main() {
 	batchTaskRepo := batchtask.NewRepository(database)
 	batchTaskService := batchtask.NewService(batchTaskRepo)
 	jobQueueRepo := jobqueue.NewRepository(database)
+	instanceStarted := make(chan struct{})
 	jobQueue := jobqueue.New(jobQueueRepo, jobqueue.Options{
+		StartGate:            instanceStarted,
 		MaxConcurrency:       systemCfg.JobQueueMaxConcurrency,
 		FallbackPollInterval: 2 * time.Second,
 		LeaseDuration:        60 * time.Second,
@@ -356,7 +373,6 @@ func main() {
 	taskCenterService := taskcenter.NewService(taskCenterRepo, realtimeHub)
 	inboxNotificationRepo := inboxnotification.NewRepository(database)
 	inboxNotificationService := inboxnotification.NewService(inboxNotificationRepo, authRepo, notificationConfigService, emailService, realtimeHub)
-	inboxNotificationService.Start(context.Background())
 	taskCenterService.SetNotifier(inboxNotificationService)
 
 	// 任务执行引擎
@@ -376,7 +392,6 @@ func main() {
 	if err := taskCenterService.RecoverInterrupted(context.Background()); err != nil {
 		log.Printf("⚠️ Warning: Failed to recover interrupted task runs: %v", err)
 	}
-	taskCenterService.StartRetention(context.Background())
 
 	// 注入执行器到批量任务服务
 	batchTaskService.SetExecutor(taskExecutor)
@@ -472,21 +487,9 @@ func main() {
 	transferJobService.SetTaskCenter(taskCenterService)
 	transferJobService.SetQueue(jobQueue)
 	taskExecutor.SetTransferJobService(transferJobService)
-	transferJobService.StartMaintenance(context.Background())
 	jobQueue.Register(taskexecutor.QueueJobKind, taskExecutor.HandleQueueJob)
 	jobQueue.Register("batch.execute", batchTaskService.HandleQueueJob)
 	jobQueue.Register("transfer.execute", transferJobService.HandleQueueJob)
-	if err := jobQueue.Start(context.Background()); err != nil {
-		log.Fatalf("❌ Failed to start database job queue: %v", err)
-	}
-	log.Println("✅ Database job queue started")
-
-	// 启动调度器。需在 transfer job service 注入后启动，避免 SFTP 定时任务触发时执行器缺少传输服务。
-	if err := taskScheduler.Start(); err != nil {
-		log.Printf("⚠️ Warning: Failed to start task scheduler: %v", err)
-	} else {
-		log.Println("✅ Task scheduler started")
-	}
 
 	terminalHandler := ws.NewTerminalHandler(serverService, serverRepo, sessionManager, encryptor, operationRecordService, sshHostKeyService, securityService, cfg.Server.WebDevPort, completionService, runtimeCredentialStore)
 	monitorHandler := ws.NewMonitorHandler(monitorConnectionPool, serverRepo, securityService, cfg.Server.WebDevPort)
@@ -529,6 +532,7 @@ func main() {
 	}
 	defer instanceHistory.Close()
 	instanceBackupHandler := rest.NewInstanceBackupHandler(instanceHistory, cfg.Database.Driver == "sqlite" || os.Getenv("EASYSSH_RESTORE_DSN") != "")
+	instanceBackupHandler.SetActivation(launcher)
 
 	syncEngine := &datasync.Engine{}
 	defer syncEngine.Close()
@@ -586,6 +590,7 @@ func main() {
 	{
 		v1.GET("/runtime", runtimeHandler.GetRuntime)
 		v1.GET("/updates/check", updateCheckHandler.Check)
+		v1.GET("/backup/activation/status/:operationId", instanceBackupHandler.ActivationStatus)
 
 		// 健康检查
 		v1.GET("/health", func(c *gin.Context) {
@@ -1139,6 +1144,8 @@ func main() {
 			backupRoutes.DELETE("/instances/:id", instanceBackupHandler.Delete)
 			backupRoutes.POST("/instances/:id/inspect", instanceBackupHandler.Inspect)
 			backupRoutes.POST("/instances/:id/restore", instanceBackupHandler.Restore)
+			backupRoutes.POST("/instances/:id/activate", instanceBackupHandler.Activate)
+			backupRoutes.POST("/activation/rollback", instanceBackupHandler.Rollback)
 
 			backupRoutes.POST("/restore", backupHandler.RestoreBackup) // 恢复统一备份
 		}
@@ -1222,31 +1229,76 @@ func main() {
 
 	// 创建 HTTP 服务器
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	var httpReady atomic.Bool
 	srv := &http.Server{
-		Addr:         addr,
-		Handler:      r,
+		Addr: addr,
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			if !httpReady.Load() {
+				http.Error(w, "instance startup is in progress", http.StatusServiceUnavailable)
+				return
+			}
+			r.ServeHTTP(w, request)
+		}),
 		ReadTimeout:  60 * time.Second,  // 读取请求超时
 		WriteTimeout: 300 * time.Second, // 写入响应超时（5分钟，用于长时间操作如删除大目录）
 		IdleTimeout:  120 * time.Second, // 空闲连接超时
 	}
 
+	// Bind and verify the selected instance before the launcher commits activation.
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", err)
+	}
+	defer listener.Close()
+	// Prepare the queue and scheduler while execution is gated. Failures here
+	// still belong to candidate startup and trigger launcher rollback.
+	if err := jobQueue.Start(context.Background()); err != nil {
+		log.Fatalf("Failed to start database job queue: %v", err)
+	}
+	if err := taskScheduler.Start(); err != nil {
+		if launcher != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Warning: Failed to start task scheduler: %v", err)
+	}
+	if err := launcher.Ready(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+	accepting := &instanceactivation.Listening{Listener: listener, Accepting: make(chan struct{})}
 	// 启动服务器（在 goroutine 中）
 	go func() {
 		log.Printf("🚀 Server starting on http://localhost%s", addr)
 		log.Printf("📝 Environment: %s", cfg.Server.Env)
 		log.Printf("🔗 Health check: http://localhost%s/api/v1/health", addr)
 
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(accepting); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("❌ Failed to start server: %v", err)
 		}
 	}()
+	<-accepting.Accepting
+	if err := launcher.Serving(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+	// Do not dispatch restored work or accept requests before the durable commit.
+	close(instanceStarted)
+	inboxNotificationService.Start(context.Background())
+	taskCenterService.StartRetention(context.Background())
+	transferJobService.StartMaintenance(context.Background())
+	httpReady.Store(true)
 
 	// 优雅关闭
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	defer signal.Stop(quit)
+	launcherContext, cancelLauncher := context.WithCancel(context.Background())
+	defer cancelLauncher()
+	select {
+	case <-quit:
+	case <-launcher.Shutdown(launcherContext):
+	}
 
 	log.Println("🛑 Shutting down server...")
+	httpReady.Store(false)
 	instanceHistory.Cancel()
 
 	taskCenterService.StopRetention()

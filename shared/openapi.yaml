@@ -2555,6 +2555,38 @@ components:
           items: {$ref: '#/components/schemas/InstanceBackupRecord'}
         restore_available: {type: boolean}
         max_upload_bytes: {type: integer, format: int64}
+        activation: {$ref: '#/components/schemas/InstanceActivationInfo'}
+    InstanceActivationOperation:
+      type: object
+      required: [id, status]
+      properties:
+        id: {type: string, pattern: '^[a-f0-9]{64}$'}
+        status:
+          type: string
+          enum: [switching, succeeded, rolled_back]
+          x-enum-varnames: [InstanceActivationSwitching, InstanceActivationSucceeded, InstanceActivationRolledBack]
+        reason:
+          type: string
+          enum: [interrupted, startup_failed]
+          x-enum-varnames: [InstanceActivationInterrupted, InstanceActivationStartupFailed]
+    InstanceActivationInfo:
+      type: object
+      required: [available, can_rollback]
+      properties:
+        available: {type: boolean}
+        can_rollback: {type: boolean}
+        active_backup_id: {type: string}
+        active_directory: {type: string}
+        operation: {$ref: '#/components/schemas/InstanceActivationOperation'}
+    InstanceActivationRequest:
+      type: object
+      required: [confirm]
+      properties:
+        confirm:
+          type: boolean
+          enum: [true]
+          x-enum-varnames: [InstanceActivationConfirmed]
+        restored_to: {type: string, description: Must match the selected backup record for activation.}
     InstanceBackupPassword:
       type: object
       required: [password]
@@ -4955,6 +4987,73 @@ paths:
           description: Backup not found
         '409':
           description: Another backup operation is running
+  /backup/instances/{id}/activate:
+    post:
+      operationId: activateRestoredInstance
+      tags: [backup]
+      summary: Activate a restored Windows local SQLite instance and restart
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, pattern: '^[a-f0-9]{32}$'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InstanceActivationRequest'}
+      responses:
+        '202':
+          description: Activation accepted; use the operation ID to track restart
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstanceActivationOperation'}
+        '400': {description: Invalid confirmation or restored directory}
+        '401': {description: Authentication required}
+        '403': {description: Backup management permission required}
+        '409': {description: Busy or activation unavailable}
+  /backup/activation/rollback:
+    post:
+      operationId: rollbackActiveInstance
+      tags: [backup]
+      summary: Restart the previous local instance without merging data
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/InstanceActivationRequest'}
+      responses:
+        '202':
+          description: Rollback accepted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstanceActivationOperation'}
+        '400': {description: Confirmation required}
+        '401': {description: Authentication required}
+        '403': {description: Backup management permission required}
+        '409': {description: Busy or no previous instance}
+  /backup/activation/status/{operationId}:
+    get:
+      operationId: getInstanceActivationStatus
+      tags: [backup]
+      summary: Read only the restart outcome using an unguessable operation ID
+      security: []
+      parameters:
+        - in: path
+          name: operationId
+          required: true
+          schema: {type: string, pattern: '^[a-f0-9]{64}$'}
+      responses:
+        '200':
+          description: Restart status, without credentials or instance paths
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/InstanceActivationOperation'}
+        '404': {description: Operation not found}
   /backup/export:
     get:
       operationId: exportBackup

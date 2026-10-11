@@ -1,12 +1,14 @@
 package rest
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/easyssh/shared/instanceactivation"
 	"github.com/easyssh/shared/instancebackup"
 	"github.com/gin-gonic/gin"
 )
@@ -14,6 +16,11 @@ import (
 type InstanceBackupHandler struct {
 	history          *instancebackup.History
 	restoreAvailable bool
+	activation       *instanceactivation.Client
+}
+
+func (h *InstanceBackupHandler) SetActivation(client *instanceactivation.Client) {
+	h.activation = client
 }
 
 func NewInstanceBackupHandler(history *instancebackup.History, restoreAvailable bool) *InstanceBackupHandler {
@@ -38,7 +45,70 @@ func (h *InstanceBackupHandler) List(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, gin.H{"items": records, "restore_available": h.restoreAvailable, "max_upload_bytes": instancebackup.MaxUploadBytes})
+	activation, err := h.activation.Info(c.Request.Context())
+	if err != nil {
+		instanceBackupError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": records, "restore_available": h.restoreAvailable, "max_upload_bytes": instancebackup.MaxUploadBytes, "activation": activation})
+}
+
+func (h *InstanceBackupHandler) Activate(c *gin.Context) { h.activate(c, false) }
+func (h *InstanceBackupHandler) Rollback(c *gin.Context) { h.activate(c, true) }
+
+func (h *InstanceBackupHandler) activate(c *gin.Context, rollback bool) {
+	if h.activation == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "automatic activation requires the Windows local SQLite launcher"})
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	var input struct {
+		Confirm    bool   `json:"confirm"`
+		RestoredTo string `json:"restored_to"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil || !input.Confirm {
+		c.JSON(400, gin.H{"error": "activation confirmation is required"})
+		return
+	}
+	id := c.Param("id")
+	if rollback {
+		id = ""
+	}
+	record, release, err := h.history.ReserveActivation(id)
+	if err != nil {
+		instanceBackupError(c, err)
+		return
+	}
+	if !rollback && record.RestoredTo != input.RestoredTo {
+		release()
+		c.JSON(409, gin.H{"error": "restored instance changed; refresh the backup list"})
+		return
+	}
+	operation, err := h.activation.Activate(c.Request.Context(), instanceactivation.Request{RecordID: id, Directory: record.RestoredTo, Rollback: rollback})
+	if err != nil {
+		// A lost response may follow a durable acceptance. Keep the reservation
+		// until shutdown unless the launcher confirms that no switch is pending.
+		info, statusErr := h.activation.Info(context.Background())
+		if statusErr == nil && (info.Operation == nil || info.Operation.Status != "switching") {
+			release()
+		}
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusAccepted, operation)
+}
+
+// A random operation ID permits only this status read, not access to any data.
+// It remains usable after the restored instance invalidates the login session.
+func (h *InstanceBackupHandler) ActivationStatus(c *gin.Context) {
+	operation, err := h.activation.Status(c.Request.Context(), c.Param("operationId"))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "activation operation not found"})
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, operation)
 }
 
 func (h *InstanceBackupHandler) Create(c *gin.Context) {

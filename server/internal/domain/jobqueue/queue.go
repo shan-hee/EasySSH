@@ -31,6 +31,9 @@ type Queue interface {
 }
 
 type Options struct {
+	// StartGate delays background work until instance activation is committed.
+	// A nil gate preserves the existing startup behavior.
+	StartGate            <-chan struct{}
 	MaxConcurrency       int
 	FallbackPollInterval time.Duration
 	LeaseDuration        time.Duration
@@ -193,8 +196,23 @@ func (q *queue) Stop() {
 	})
 }
 
+func (q *queue) awaitStart() bool {
+	if q.opts.StartGate == nil {
+		return true
+	}
+	select {
+	case <-q.ctx.Done():
+		return false
+	case <-q.opts.StartGate:
+		return true
+	}
+}
+
 func (q *queue) dispatch() {
 	defer q.wg.Done()
+	if !q.awaitStart() {
+		return
+	}
 	hostname, _ := os.Hostname()
 	dispatcherID := fmt.Sprintf("%s:%d:%s", hostname, os.Getpid(), uuid.NewString()[:8])
 	ticker := time.NewTicker(q.opts.FallbackPollInterval)
@@ -318,6 +336,9 @@ func (q *queue) process(workerID string, job *Job) {
 
 func (q *queue) recoverExpiredLeases() {
 	defer q.wg.Done()
+	if !q.awaitStart() {
+		return
+	}
 	interval := q.opts.LeaseDuration / 2
 	if interval < 10*time.Second {
 		interval = 10 * time.Second

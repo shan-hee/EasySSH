@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { useNavigate } from "react-router-dom"
 import { ArchiveRestore, Download, Loader2, Plus, RefreshCw, ShieldCheck, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -23,13 +24,17 @@ export interface InstanceBackupAdapter {
   remove(id: string): Promise<void>
   inspect(id: string, password: string): Promise<InstanceBackupRecord>
   restore(id: string, password: string): Promise<InstanceBackupRecord>
+  activate?(record: InstanceBackupRecord): Promise<components["schemas"]["InstanceActivationOperation"]>
+  rollback?(): Promise<components["schemas"]["InstanceActivationOperation"]>
   nativeFilePicker?: boolean
+  nativeRestart?: boolean
 }
 
 const activeStatuses = new Set(["creating", "uploading", "checking", "restoring"])
 
 export function InstanceBackupPanel({ adapter }: { adapter: InstanceBackupAdapter }) {
   const { t } = useTranslation("settingsManagementBackup")
+  const navigate = useNavigate()
   const { confirm, confirmDialog } = useConfirmDialog()
   const [data, setData] = useState<InstanceBackupList>({ items: [], restore_available: false, max_upload_bytes: 0 })
   const [loadError, setLoadError] = useState("")
@@ -43,11 +48,13 @@ export function InstanceBackupPanel({ adapter }: { adapter: InstanceBackupAdapte
   const input = useRef<HTMLInputElement>(null)
   const previous = useRef<Map<string, string>>(new Map())
   const mounted = useRef(true)
+  const activating = useRef(false)
 
   const refresh = useCallback(async () => {
+    if (activating.current) return
     try {
       const next = await adapter.list()
-      if (!mounted.current) return
+      if (!mounted.current || activating.current) return
       for (const record of next.items) {
         if (activeStatuses.has(previous.current.get(record.id) || "") && !activeStatuses.has(record.status)) {
           if (record.error) toast.error(record.error)
@@ -59,7 +66,7 @@ export function InstanceBackupPanel({ adapter }: { adapter: InstanceBackupAdapte
       setLoaded(true)
       setLoadError("")
     } catch (error) {
-      if (mounted.current) setLoadError(error instanceof Error ? error.message : t("instanceLoadFailed"))
+      if (mounted.current && !activating.current) setLoadError(error instanceof Error ? error.message : t("instanceLoadFailed"))
     }
   }, [adapter, t])
 
@@ -75,7 +82,7 @@ export function InstanceBackupPanel({ adapter }: { adapter: InstanceBackupAdapte
     return () => { cancelled = true; mounted.current = false; clearTimeout(timer) }
   }, [refresh])
 
-  const running = data.items.some(record => activeStatuses.has(record.status))
+  const running = data.items.some(record => activeStatuses.has(record.status)) || data.activation?.operation?.status === "switching"
   const disabled = busy || running || !loaded || Boolean(loadError)
   const filtered = data.items.filter(record => `${record.name} ${record.app_version || ""}`.toLowerCase().includes(query.toLowerCase()))
   const maxPage = Math.max(0, Math.ceil(filtered.length / 10) - 1)
@@ -112,17 +119,36 @@ export function InstanceBackupPanel({ adapter }: { adapter: InstanceBackupAdapte
     if (record) toast.success(t("instanceUploadDone"))
   })
 
+  const activate = async (record?: InstanceBackupRecord) => {
+    if (record ? !adapter.activate : !adapter.rollback) return
+    if (!await confirm({ title: t(record ? "instanceActivate" : "instanceRollback"), description: record ? t(adapter.nativeRestart ? "instanceDesktopActivateConfirm" : "instanceActivateConfirm", { name: record.name, date: new Date(record.created_at).toLocaleString() }) : t(adapter.nativeRestart ? "instanceDesktopRollbackConfirm" : "instanceRollbackConfirm"), variant: "destructive" })) return
+    activating.current = true
+    setBusy(true)
+    try {
+      const operation = record ? await adapter.activate!(record) : await adapter.rollback!()
+      if (adapter.nativeRestart) toast.info(t("instanceDesktopRestartWaiting"))
+      else navigate(`/instance-restart?operation=${encodeURIComponent(operation.id)}`, { replace: true })
+    } catch (error) {
+      activating.current = false
+      setBusy(false)
+      toast.error(error instanceof Error ? error.message : t("instanceOperationFailed"))
+      await refresh()
+    }
+  }
+
   return (
     <SettingsSection title={t("nativeTitle")} description={t("instanceDescription")} icon={<ArchiveRestore className="size-5" />}>
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => open("create")} disabled={disabled}><Plus className="mr-2 size-4" />{t("instanceCreate")}</Button>
         <Button variant="outline" disabled={disabled} onClick={() => adapter.nativeFilePicker ? void upload() : input.current?.click()}><Upload className="mr-2 size-4" />{t("instanceUpload")}</Button>
         <Button variant="ghost" disabled={busy} onClick={() => void refresh()}><RefreshCw className="mr-2 size-4" />{t("instanceRefresh")}</Button>
+        {data.activation?.available && data.activation.can_rollback && adapter.rollback && <Button variant="outline" disabled={disabled} onClick={() => void activate()}>{t("instanceRollback")}</Button>}
         {(busy || running) && <span role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />{t("instanceWorking")}</span>}
         <input ref={input} type="file" accept=".age,.easyssh.age" className="hidden" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void upload(file) }} />
       </div>
       <p className="text-sm text-muted-foreground">{t("instancePasswordNote")}</p>
-      <p className="text-sm text-muted-foreground">{t("instanceRestoreNote")}</p>
+      <p className="text-sm text-muted-foreground">{t(data.activation?.available ? "instanceActivationNote" : "instanceRestoreNote")}</p>
+      {data.activation?.operation && <p role="status" className="text-sm text-muted-foreground">{t(data.activation.operation.status === "rolled_back" ? (adapter.nativeRestart ? "instanceDesktopRestartRolledBack" : "instanceRestartRolledBack") : data.activation.operation.status === "switching" ? (adapter.nativeRestart ? "instanceDesktopRestartWaiting" : "instanceRestartWaiting") : (adapter.nativeRestart ? "instanceDesktopRestartSucceeded" : "instanceRestartSucceeded"))}{data.activation.operation.status === "switching" && !adapter.nativeRestart && <Button variant="link" onClick={() => navigate(`/instance-restart?operation=${encodeURIComponent(data.activation!.operation!.id)}`, { replace: true })}>{t("instanceRestartView")}</Button>}</p>}
       {!data.restore_available && loaded && <p className="text-sm text-muted-foreground">{t("instanceRestoreUnavailable")}</p>}
       {loadError && <p role="alert" className="text-sm text-destructive">{loadError}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
@@ -135,7 +161,7 @@ export function InstanceBackupPanel({ adapter }: { adapter: InstanceBackupAdapte
           <tbody>
             {rows.map(record => (
               <tr key={record.id} className="border-t align-top">
-                <td className="min-w-64 p-3"><div className="break-all font-medium">{record.name}</div><div className="mt-1 text-xs text-muted-foreground">{record.source === "uploaded" ? t("instanceSourceUploaded") : t("instanceSourceCreated")}{record.app_version ? ` · ${record.app_version} · ${record.driver}` : ""}</div>{record.restored_to && <div className="mt-2 max-w-lg break-all text-xs">{t("instanceRestoredTo", { path: record.restored_to })}</div>}</td>
+                <td className="min-w-64 p-3"><div className="break-all font-medium">{record.name}</div><div className="mt-1 text-xs text-muted-foreground">{record.source === "uploaded" ? t("instanceSourceUploaded") : t("instanceSourceCreated")}{record.app_version ? ` · ${record.app_version} · ${record.driver}` : ""}</div>{record.restored_to && <div className="mt-2 max-w-lg break-all text-xs">{t(data.activation?.active_directory === record.restored_to ? "instanceActiveTo" : "instanceRestoredTo", { path: record.restored_to })}</div>}</td>
                 <td className="whitespace-nowrap p-3">{new Date(record.created_at).toLocaleString()}</td>
                 <td className="whitespace-nowrap p-3">{formatSize(record.size)}</td>
                 <td className="min-w-40 p-3"><span>{t(`instanceState_${record.status}` as "instanceState_ready")}</span>{record.verified_at && <div className="mt-1 text-xs text-muted-foreground">{t("instanceVerifiedAt", { date: new Date(record.verified_at).toLocaleString() })}</div>}{record.error && <p className="mt-1 max-w-xs break-words text-xs text-destructive">{record.error}</p>}</td>
@@ -143,6 +169,7 @@ export function InstanceBackupPanel({ adapter }: { adapter: InstanceBackupAdapte
                   <Button size="sm" variant="ghost" disabled={busy || record.size === 0 || activeStatuses.has(record.status)} onClick={() => void run(() => adapter.download(record))}><Download className="mr-1 size-4" />{t("instanceDownload")}</Button>
                   <Button size="sm" variant="ghost" disabled={disabled || record.size === 0} onClick={() => open("inspect", record)}><ShieldCheck className="mr-1 size-4" />{t("instanceInspect")}</Button>
                   <Button size="sm" variant="ghost" disabled={disabled || record.size === 0 || !data.restore_available} onClick={() => open("restore", record)}><ArchiveRestore className="mr-1 size-4" />{t("instanceRestore")}</Button>
+                  {data.activation?.available && adapter.activate && record.restored_to && <Button size="sm" variant="outline" disabled={disabled || record.status !== "ready" || data.activation.active_directory === record.restored_to} onClick={() => void activate(record)}><RefreshCw className="mr-1 size-4" />{t("instanceActivate")}</Button>}
                   <Button size="sm" variant="ghost" className="text-destructive" disabled={disabled} onClick={() => void (async () => { if (await confirm({ title: t("instanceDelete"), description: t("instanceDeleteConfirm", { name: record.name }), variant: "destructive" })) await run(() => adapter.remove(record.id)) })()}><Trash2 className="mr-1 size-4" />{t("instanceDelete")}</Button>
                 </div></td>
               </tr>
@@ -199,4 +226,11 @@ export const webInstanceBackupAdapter: InstanceBackupAdapter = {
   remove: async id => { await instanceRequest(`/${id}`, { method: "DELETE" }) },
   inspect: async (id, password) => (await instanceRequest(`/${id}/inspect`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })).json(),
   restore: async (id, password) => (await instanceRequest(`/${id}/restore`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password, confirm: true }) })).json(),
+  activate: async record => (await instanceRequest(`/${record.id}/activate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true, restored_to: record.restored_to }) })).json(),
+  rollback: async () => {
+    const response = await authenticatedFetch(`${getApiUrl()}/backup/activation/rollback`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirm: true }) })
+    const body = await response.json()
+    if (!response.ok) throw new Error(body.error || `Activation request failed (${response.status})`)
+    return body
+  },
 }

@@ -34,6 +34,7 @@ export function resetUnauthorizedRedirectFlag() {
 
 function handleGlobalUnauthorized() {
   const currentPath = getCurrentBrowserPath()
+  if (currentPath.split("?")[0] === "/instance-restart") return
   if (isLoginPath(currentPath)) {
     return
   }
@@ -61,6 +62,7 @@ export function resetAccountLockedRedirectFlag() {
 
 function handleAccountLocked(detail: unknown) {
   const currentPath = getCurrentBrowserPath()
+  if (currentPath.split("?")[0] === "/instance-restart") return
   // 已在登录页时收到锁定错误，忽略
   if (isLoginPath(currentPath)) {
     return

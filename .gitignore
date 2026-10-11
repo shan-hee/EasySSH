@@ -128,3 +128,8 @@ yarn-error.log*
 /docker/backups/
 /docker/backups-dev/
 /desktop/EasySSHDesktop/backups/
+
+# Windows launcher selection and protected root-key material
+.easyssh-runtime/
+
+.easyssh-desktop-runtime/
