@@ -4,8 +4,12 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	secretcrypto "github.com/easyssh/shared/secretcrypto"
@@ -25,7 +29,11 @@ func desktopCredentialEncryptor(create bool) (*secretcrypto.Encryptor, error) {
 	if desktopCredentialVault.encryptor != nil {
 		return desktopCredentialVault.encryptor, nil
 	}
-	const service, account = "EasySSH Desktop", "credential-encryption-v1"
+	const service = "EasySSH Desktop"
+	account, err := desktopCredentialAccount(desktopDataDir())
+	if err != nil {
+		return nil, err
+	}
 	encoded, err := keyring.Get(service, account)
 	if errors.Is(err, keyring.ErrNotFound) && create {
 		key := make([]byte, 32)
@@ -75,4 +83,25 @@ func initializeDesktopCredentials(db *sql.DB) error {
 	}
 	_, err := desktopCredentialEncryptor(!hasSecrets)
 	return err
+}
+
+// Old data directories continue using the original vault entry. Restored
+// directories carry only an account identifier, never a plaintext key.
+func desktopCredentialAccount(directory string) (string, error) {
+	b, err := os.ReadFile(filepath.Join(directory, ".easyssh-key-account"))
+	if os.IsNotExist(err) {
+		return "credential-encryption-v1", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	value := strings.TrimSpace(string(b))
+	suffix := strings.TrimPrefix(value, "credential-encryption-v1/")
+	if suffix == value || len(suffix) != 64 {
+		return "", errors.New("invalid desktop credential account")
+	}
+	if _, err := hex.DecodeString(suffix); err != nil {
+		return "", err
+	}
+	return value, nil
 }

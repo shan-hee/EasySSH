@@ -582,6 +582,9 @@ func (s *DesktopTaskService) emitChanged(eventType string, taskID string) {
 
 func (s *DesktopTaskService) runRetentionWorker(ctx context.Context) {
 	defer s.workerWG.Done()
+	if !waitForDesktopActivation(ctx) {
+		return
+	}
 	_, _ = s.cleanupDefaultRetention()
 	ticker := time.NewTicker(desktopTaskRetentionInterval)
 	defer ticker.Stop()

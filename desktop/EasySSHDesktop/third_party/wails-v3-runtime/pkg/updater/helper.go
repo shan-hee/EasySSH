@@ -94,13 +94,13 @@ func runHelperSwap(target, newPath string, parentPID int, logPath string, wait p
 
 	if _, err := os.Stat(target); err != nil {
 		message := fmt.Sprintf("stat target failed: %v", err)
-		lg.logf(message)
+		lg.logf("%s", message)
 		writeHelperFailureNotice(target, newPath, "", logPath, "stat-target", message, false, lg)
 		return 10
 	}
 	if _, err := os.Stat(newPath); err != nil {
 		message := fmt.Sprintf("stat new failed: %v", err)
-		lg.logf(message)
+		lg.logf("%s", message)
 		relaunched := launchOriginal(target, l, lg)
 		writeHelperFailureNotice(target, newPath, "", logPath, "stat-new", message, relaunched, lg)
 		return 11
@@ -117,19 +117,29 @@ func runHelperSwap(target, newPath string, parentPID int, logPath string, wait p
 	if parentPID > 0 {
 		if err := wait(parentPID, 30*time.Second); err != nil {
 			message := fmt.Sprintf("parent did not exit within timeout: %v; aborting swap", err)
-			lg.logf(message)
+			lg.logf("%s", message)
 			writeHelperFailureNotice(target, newPath, "", logPath, "wait-parent", message, true, lg)
 			return 17
 		}
 	}
 
+	// The launcher also maps the old executable. Wait for it to release the
+	// binary and state lock before swapping or starting the replacement.
+	if launcherPID, _ := strconv.Atoi(os.Getenv("EASYSSH_LAUNCHER_PID")); launcherPID > 0 && launcherPID != parentPID {
+		if err := wait(launcherPID, 30*time.Second); err != nil {
+			message := fmt.Sprintf("instance launcher did not exit: %v", err)
+			lg.logf("%s", message)
+			writeHelperFailureNotice(target, newPath, "", logPath, "wait-launcher", message, false, lg)
+			return 17
+		}
+	}
 	backup := target + ".bak"
 	_ = os.RemoveAll(backup)
 
 	lg.logf("backing up %s → %s", target, backup)
 	if err := copyAny(target, backup); err != nil {
 		message := fmt.Sprintf("backup failed: %v", err)
-		lg.logf(message)
+		lg.logf("%s", message)
 		relaunched := launchOriginal(target, l, lg)
 		writeHelperFailureNotice(target, newPath, backup, logPath, "backup", message, relaunched, lg)
 		return 12
@@ -171,7 +181,7 @@ func runHelperSwap(target, newPath string, parentPID int, logPath string, wait p
 
 	if !swapped {
 		message := "all swap attempts exhausted; restoring backup"
-		lg.logf(message)
+		lg.logf("%s", message)
 		writeHelperFailureNotice(target, newPath, backup, logPath, "replace", message, true, lg)
 		if err := restoreFromBackup(backup, target, l); err != nil {
 			message = fmt.Sprintf("%s; restore failed: %v", message, err)
@@ -194,7 +204,7 @@ func runHelperSwap(target, newPath string, parentPID int, logPath string, wait p
 
 	if err := l.launch(target); err != nil {
 		message := fmt.Sprintf("launch new failed: %v; restoring backup", err)
-		lg.logf(message)
+		lg.logf("%s", message)
 		writeHelperFailureNotice(target, "", backup, logPath, "launch-new", message, true, lg)
 		if err := restoreFromBackup(backup, target, l); err != nil {
 			message = fmt.Sprintf("%s; restore failed: %v", message, err)
@@ -446,7 +456,7 @@ func (h *helperLog) Close() {
 // binary so the launched process boots in normal mode instead of inheriting
 // our helper-mode sentinels.
 func clearHelperEnv() {
-	for _, k := range []string{envHelperMode, envHelperTarget, envHelperNew, envHelperPID, envHelperLog} {
+	for _, k := range []string{envHelperMode, envHelperTarget, envHelperNew, envHelperPID, envHelperLog, "EASYSSH_LAUNCHER_PID", "EASYSSH_LAUNCHER_ADDRESS", "EASYSSH_LAUNCHER_TOKEN"} {
 		_ = os.Unsetenv(k)
 	}
 }

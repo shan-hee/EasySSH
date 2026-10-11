@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -144,7 +146,11 @@ func createDesktopInstanceArchive(ctx context.Context, database *sql.DB, output,
 	}(); err != nil {
 		return err
 	}
-	key, err := keyring.Get("EasySSH Desktop", "credential-encryption-v1")
+	account, err := desktopCredentialAccount(root)
+	if err != nil {
+		return err
+	}
+	key, err := keyring.Get("EasySSH Desktop", account)
 	if err != nil {
 		return err
 	}
@@ -195,13 +201,6 @@ func restoreDesktopInstance(ctx context.Context, stage, into string, manifest in
 	if err != nil || len(raw) != 32 {
 		return errors.New("invalid root key in instance backup")
 	}
-	existing, err := keyring.Get("EasySSH Desktop", "credential-encryption-v1")
-	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-		return err
-	}
-	if err == nil && existing != key {
-		return errors.New("OS credential vault belongs to a different instance; restore in a separate OS account to preserve both encryption keys")
-	}
 	data := filepath.Join(stage, "data")
 	if err = os.MkdirAll(data, 0700); err != nil {
 		return err
@@ -250,15 +249,28 @@ func restoreDesktopInstance(ctx context.Context, stage, into string, manifest in
 	if err = instancebackup.CopyTree(ctx, data, publish, nil); err != nil {
 		return err
 	}
-	// Install the original key only when the vault is empty; the original profile stays untouched.
-	if existing == "" {
-		if err = keyring.Set("EasySSH Desktop", "credential-encryption-v1", key); err != nil {
-			return err
+	// Give each restored copy its own vault entry, preserving the old key.
+	var random [32]byte
+	if _, err = rand.Read(random[:]); err != nil {
+		return err
+	}
+	account := "credential-encryption-v1/" + hex.EncodeToString(random[:])
+	if err = keyring.Set("EasySSH Desktop", account, key); err != nil {
+		return err
+	}
+	published := false
+	defer func() {
+		if !published {
+			_ = keyring.Delete("EasySSH Desktop", account)
 		}
+	}()
+	if err = os.WriteFile(filepath.Join(publish, ".easyssh-key-account"), []byte(account), 0600); err != nil {
+		return err
 	}
 	if err = os.Rename(publish, destination); err != nil {
 		return err
 	}
+	published = true
 	fmt.Fprintln(os.Stdout, "Restored desktop data:", destination, "; start with EASYSSH_DESKTOP_DATA_DIR set to this directory. Reauthorize device sync.")
 	return nil
 }

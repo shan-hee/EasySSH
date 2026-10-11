@@ -3,6 +3,7 @@
 package updater
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -19,5 +20,10 @@ func applyDetachAttrs(cmd *exec.Cmd) {
 		createNewProcGroup = 0x00000200
 	)
 	cmd.SysProcAttr.CreationFlags |= detachedProcess | createNoWindow | createNewProcGroup
+	// A managed EasySSH child lives in a kill-on-close Job. Only the
+	// detached updater helper must outlive that Job to replace both processes.
+	if os.Getenv("EASYSSH_LAUNCHER_PID") != "" {
+		cmd.SysProcAttr.CreationFlags |= 0x01000000
+	} // CREATE_BREAKAWAY_FROM_JOB
 	cmd.SysProcAttr.HideWindow = true
 }

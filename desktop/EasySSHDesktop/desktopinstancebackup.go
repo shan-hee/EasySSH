@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/easyssh/shared/dbmigration"
+	"github.com/easyssh/shared/instanceactivation"
 	"github.com/easyssh/shared/instancebackup"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -18,9 +19,10 @@ import (
 var desktopInstanceFilesMu sync.RWMutex
 
 type DesktopInstanceBackupList struct {
-	Items            []instancebackup.Record `json:"items"`
-	RestoreAvailable bool                    `json:"restore_available"`
-	MaxUploadBytes   int64                   `json:"max_upload_bytes"`
+	Activation       *instanceactivation.Info `json:"activation,omitempty"`
+	Items            []instancebackup.Record  `json:"items"`
+	RestoreAvailable bool                     `json:"restore_available"`
+	MaxUploadBytes   int64                    `json:"max_upload_bytes"`
 }
 
 func (s *DesktopBackupService) instanceHistory() (*instancebackup.History, error) {
@@ -33,10 +35,7 @@ func (s *DesktopBackupService) instanceHistory() (*instancebackup.History, error
 	if err != nil {
 		return nil, err
 	}
-	directory := os.Getenv("EASYSSH_DESKTOP_BACKUP_DIR")
-	if directory == "" {
-		directory = filepath.Join(filepath.Dir(desktopDataDir()), "backups")
-	}
+	directory := desktopBackupDirectory()
 	directory, err = filepath.Abs(directory)
 	if err != nil {
 		return nil, err
@@ -57,7 +56,7 @@ func (s *DesktopBackupService) instanceHistory() (*instancebackup.History, error
 		if err != nil {
 			return nil, err
 		}
-		if rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		if rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !managedDesktopRestore(directory, dataDir) {
 			return nil, errors.New("backup storage must be separate from desktop data")
 		}
 	}
@@ -93,7 +92,11 @@ func (s *DesktopBackupService) ListInstanceBackups() (DesktopInstanceBackupList,
 		return DesktopInstanceBackupList{}, err
 	}
 	items, err := h.List()
-	return DesktopInstanceBackupList{Items: items, RestoreAvailable: true, MaxUploadBytes: instancebackup.MaxUploadBytes}, err
+	if err != nil {
+		return DesktopInstanceBackupList{}, err
+	}
+	info, err := instanceactivation.FromEnvironment().Info(context.Background())
+	return DesktopInstanceBackupList{Items: items, RestoreAvailable: true, MaxUploadBytes: instancebackup.MaxUploadBytes, Activation: &info}, err
 }
 func (s *DesktopBackupService) CreateInstanceBackup(password string) (instancebackup.Record, error) {
 	h, err := s.instanceHistory()

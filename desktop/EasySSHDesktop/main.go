@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"embed"
-	"github.com/easyssh/shared/instancebackup"
 
 	"log"
 	"os"
 	"sync/atomic"
 
+	"github.com/easyssh/shared/instanceactivation"
+	"github.com/easyssh/shared/instancebackup"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/wailsapp/wails/v3/pkg/updater"
 )
 
 // Wails uses Go's `embed` package to embed the frontend files into the binary.
@@ -26,10 +29,17 @@ var appIcon []byte
 // main initializes the desktop shell. The first screen is the SSH/SFTP workspace;
 // Dashboard navigation and server administration stay outside this window shell.
 func main() {
+	updater.HandleHelperMode()
 	if len(os.Args) > 1 && os.Args[1] == "maintenance" {
 		if err := runDesktopMaintenance(os.Args[2:]); err != nil {
 			log.Print(err)
 			os.Exit(1)
+		}
+		return
+	}
+	if managed, err := runDesktopInstanceLauncher(); managed {
+		if err != nil {
+			log.Fatal(err)
 		}
 		return
 	}
@@ -96,6 +106,7 @@ func main() {
 			application.NewService(updateService),
 			application.NewService(aiService),
 			application.NewService(notificationService),
+			application.NewService(&DesktopActivationService{backup: backupService}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -117,6 +128,11 @@ func main() {
 		log.Printf("failed to initialize desktop updater: %v", err)
 	}
 
+	launcher := instanceactivation.FromEnvironment()
+	initialURL := "/"
+	if launcher != nil {
+		initialURL = "about:blank"
+	}
 	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:          "EasySSH",
 		Width:          1320,
@@ -132,7 +148,8 @@ func main() {
 		},
 		BackgroundType:   application.BackgroundTypeTransparent,
 		BackgroundColour: application.NewRGBA(13, 17, 23, 0),
-		URL:              "/",
+		URL:              initialURL,
+		Hidden:           launcher != nil,
 	})
 	taskService.attachWindow(mainWindow)
 
@@ -156,6 +173,32 @@ func main() {
 	tray.SetTooltip("EasySSH")
 	notificationService.attachTray(tray)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if launcher != nil {
+		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+			if err := launcher.Serving(ctx); err != nil {
+				log.Printf("desktop instance startup failed: %v", err)
+				quitting.Store(true)
+				app.Quit()
+				return
+			}
+			close(desktopInstanceStarted)
+			mainWindow.SetURL("/")
+			showMainWindow()
+			go func() {
+				select {
+				case <-ctx.Done():
+				case <-launcher.Shutdown(ctx):
+					quitting.Store(true)
+					app.Quit()
+				}
+			}()
+		})
+	}
+	if launcher == nil {
+		close(desktopInstanceStarted)
+	}
 	err = app.Run()
 	if err != nil {
 		log.Printf("desktop app failed: %v", err)

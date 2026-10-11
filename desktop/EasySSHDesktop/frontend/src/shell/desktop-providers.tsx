@@ -8,6 +8,7 @@ import {
   Toaster,
 } from "@easyssh/ssh-workspace/desktop"
 import { QueryProvider } from "@/providers/query-provider"
+import { DesktopInstanceNotice } from "./desktop-instance-notice"
 
 export function DesktopProviders({
   children,
@@ -32,6 +33,7 @@ export function DesktopProviders({
           </StaticSystemConfigProvider>
         </QueryProvider>
         <Toaster richColors position="bottom-right" />
+        <DesktopInstanceNotice />
       </ThemeProvider>
     </BrowserRouter>
   )
