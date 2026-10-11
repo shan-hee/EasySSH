@@ -7,20 +7,71 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as instancebackup$0 from "../shared/instancebackup/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
+
+export function CreateInstanceBackup(password: string): $CancellablePromise<instancebackup$0.Record> {
+    return $Call.ByID(4075642358, password).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+export function DeleteInstanceBackup(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2718444769, id);
+}
+
+export function DownloadInstanceBackup(id: string): $CancellablePromise<void> {
+    return $Call.ByID(3041406610, id);
+}
 
 export function ExportBackup(input: $models.DesktopBackupExportInput): $CancellablePromise<$models.DesktopBackupExportResult> {
     return $Call.ByID(1621194995, input).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+export function InspectInstanceBackup(id: string, password: string): $CancellablePromise<instancebackup$0.Record> {
+    return $Call.ByID(525596836, id, password).then(($result: any) => {
         return $$createType0($result);
+    });
+}
+
+export function ListInstanceBackups(): $CancellablePromise<$models.DesktopInstanceBackupList> {
+    return $Call.ByID(1374701191).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
+export function PreviewBackup(input: $models.DesktopBackupRestoreInput): $CancellablePromise<$models.DesktopBackupRestoreResult> {
+    return $Call.ByID(1939856631, input).then(($result: any) => {
+        return $$createType3($result);
     });
 }
 
 export function RestoreBackup(input: $models.DesktopBackupRestoreInput): $CancellablePromise<$models.DesktopBackupRestoreResult> {
     return $Call.ByID(3388571433, input).then(($result: any) => {
-        return $$createType1($result);
+        return $$createType3($result);
+    });
+}
+
+export function RestoreInstanceBackup(id: string, password: string, confirm: boolean): $CancellablePromise<instancebackup$0.Record> {
+    return $Call.ByID(315846454, id, password, confirm).then(($result: any) => {
+        return $$createType0($result);
+    });
+}
+
+export function UploadInstanceBackup(): $CancellablePromise<instancebackup$0.Record | null> {
+    return $Call.ByID(3039160587).then(($result: any) => {
+        return $$createType4($result);
     });
 }
 
 // Private type creation functions
-const $$createType0 = $models.DesktopBackupExportResult.createFrom;
-const $$createType1 = $models.DesktopBackupRestoreResult.createFrom;
+const $$createType0 = instancebackup$0.Record.createFrom;
+const $$createType1 = $models.DesktopBackupExportResult.createFrom;
+const $$createType2 = $models.DesktopInstanceBackupList.createFrom;
+const $$createType3 = $models.DesktopBackupRestoreResult.createFrom;
+const $$createType4 = $Create.Nullable($$createType0);

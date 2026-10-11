@@ -88,6 +88,7 @@ export {
     DesktopDockerServerInput,
     DesktopDockerSystemInfo,
     DesktopGatewayInfo,
+    DesktopInstanceBackupList,
     DesktopMonitorCPUInfo,
     DesktopMonitorCollectInput,
     DesktopMonitorDiskInfo,
