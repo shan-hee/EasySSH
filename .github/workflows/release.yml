@@ -21,6 +21,13 @@ jobs:
     steps:
       - name: 📥 检出代码
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 设置版本检查工具
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - name: 🔎 校验 tag 与 VERSION 文件一致
         id: version
@@ -36,7 +43,11 @@ jobs:
             exit 1
           fi
 
+          node scripts/release-version.mjs --release "$TAG_VERSION"
           echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
+
+      - name: 🧪 发布版本脚本回归检查
+        run: node --test scripts/release-version.test.mjs
 
   # 2. 发版前自动化测试
   test:
