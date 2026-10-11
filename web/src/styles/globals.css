@@ -107,7 +107,7 @@
   --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --window-opacity: 1;
   --font-inter: "Inter Variable";
-  --font-noto-sans-sc: "Noto Sans SC";
+  --font-noto-sans-sc: "Noto Sans SC Variable";
   --font-jetbrains-mono: "JetBrains Mono Variable";
   --radius: 0.65rem;
   --background: oklch(0.98 0 0);
