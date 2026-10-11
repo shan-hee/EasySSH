@@ -414,4 +414,4 @@ Limits: 12 MiB document exchange request bodies; 16 MiB object request bodies wi
 
 ## 备份、数据迁移与数据库升级
 
-完整实例使用原生数据库备份；JSON 仅迁移应用数据；数据库结构由 Goose 的编号迁移管理。具体命令、数据目录与根密钥恢复步骤见[备份、数据迁移与数据库升级](../docs/backup-and-migrations.md)。
+日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../docs/backup-and-migrations.md)。

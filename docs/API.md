@@ -60,15 +60,21 @@ Casbin 角色和资源授权端点：
 
 角色 `key` 是普通字符串，不再限制为 `admin`、`user`、`viewer`。当前用户响应中的 `permissions` 是 Casbin 计算出的有效权限代码数组。
 
-## 备份 3.0
+## 完整备份与设备同步
 
-统一备份端点：
+整体恢复使用加密原生归档，管理接口要求 `backup:manage` 权限：
 
-- `GET /backup/export` 导出脱敏备份。
-- `POST /backup/export` 接收 `BackupExportRequest`，可选择 `age_passphrase`（Scrypt）或 `age_recipients`（X25519）之一导出敏感段。
-- `POST /backup/restore` 以 multipart 上传备份文件，并用 `age_passphrase` 或 `age_identities` 之一解密敏感段。
+- `GET /backup/instances` 查询备份历史与恢复能力。
+- `POST /backup/instances` 使用密码创建完整备份。
+- `POST /backup/instances/upload` 上传已有加密归档。
+- `GET /backup/instances/{id}/download` 使用一次性下载票据下载归档。
+- `POST /backup/instances/{id}/inspect`、`POST /backup/instances/{id}/restore` 分别校验归档、恢复独立副本。
+- `POST /backup/instances/{id}/activate`、`POST /backup/activation/rollback` 在支持启动器时启用副本或切回上一实例。
+- `DELETE /backup/instances/{id}` 删除归档及历史，不删除当前实例或已恢复副本。
 
-敏感段使用标准 age ASCII-armored 密文，备份格式版本为 `3.0`。`backup_password` 和旧的自定义 KDF/Envelope 不再存在。
+归档只支持同应用形态、同数据库类型并满足版本要求的恢复。通用 JSON 数据导出、预览、导入接口及对应请求模型已移除。
+
+日常跨端使用 `/sync` 下的账户授权和设备同步接口。桌面通过浏览器授权后交换本人服务器配置及脚本；凭据、个人 AI 配置和 AI 历史需单独授权并开启。同步权限与完整备份管理权限分开，数据范围及恢复步骤见[实例备份、设备同步与数据库升级](backup-and-migrations.md)。
 
 ## 路径与部署
 
