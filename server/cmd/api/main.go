@@ -143,7 +143,7 @@ func main() {
 		log.Fatalf("❌ Failed to create encryptor: %v", err)
 	}
 	if launcher != nil {
-		if err := rest.NewBackupHandler(database, encryptor).VerifyStoredCredentials(context.Background()); err != nil {
+		if err := rest.VerifyStoredCredentials(context.Background(), database, encryptor); err != nil {
 			log.Fatal(err)
 		}
 	}

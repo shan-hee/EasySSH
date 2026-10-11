@@ -179,7 +179,7 @@ func createInstanceArchive(ctx context.Context, cfg *config.Config, database *go
 			return err
 		}
 		if version == dbmigration.Latest {
-			if err = rest.NewBackupHandler(database, encryptor).VerifyStoredCredentials(ctx); err != nil {
+			if err = rest.VerifyStoredCredentials(ctx, database, encryptor); err != nil {
 				return err
 			}
 		}
@@ -473,7 +473,7 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 	if err != nil {
 		return err
 	}
-	if err = rest.NewBackupHandler(database, encryptor).VerifyStoredCredentials(ctx); err != nil {
+	if err = rest.VerifyStoredCredentials(ctx, database, encryptor); err != nil {
 		return err
 	}
 	// Restored grants/sessions must not resurrect credentials revoked after the snapshot.
