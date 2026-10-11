@@ -69,15 +69,15 @@ FROM alpine:3.22
 WORKDIR /app
 
 # 运行时组件：证书与时区；健康检查使用 Alpine 自带的 BusyBox wget
-RUN apk --no-cache add ca-certificates tzdata nodejs postgresql-client mariadb-client
+RUN apk --no-cache add ca-certificates tzdata nodejs postgresql-client mariadb-client tini
 
 # 使用非 root 用户运行
 ARG APP_UID=1001
 ARG APP_GID=1001
 RUN addgroup -S -g ${APP_GID} appuser \
     && adduser -S -u ${APP_UID} appuser -G appuser \
-    && mkdir -p /app/data /app/backups \
-    && chown -R appuser:appuser /app/data /app/backups
+    && mkdir -p /app/data /app/backups /app/instance-state \
+    && chown -R appuser:appuser /app/data /app/backups /app/instance-state
 
 # 默认环境（可在运行容器时覆盖）
 ENV TZ=Asia/Shanghai \
@@ -85,6 +85,7 @@ ENV TZ=Asia/Shanghai \
     BACKEND_URL=http://localhost:8520 \
     EASYSSH_SYNC_ENGINE=/app/server/sync-runtime/engine.mjs \
     EASYSSH_BACKUP_DIR=/app/backups \
+    EASYSSH_INSTANCE_STATE_DIR=/app/instance-state \
     DB_DRIVER=sqlite \
     DB_DSN=/app/data/easyssh.db
 
@@ -103,4 +104,5 @@ EXPOSE 8520
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD busybox wget -q -O /dev/null http://127.0.0.1:8520/api/v1/health || exit 1
 
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["./easyssh-api"]

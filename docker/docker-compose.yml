@@ -3,15 +3,18 @@ services:
     image: shanhee/easyssh:latest
     container_name: easyssh
     restart: unless-stopped
+    stop_grace_period: 75s
     ports:
       - "8520:8520"
     environment:
       DB_DRIVER: ${DB_DRIVER:-sqlite}
       DB_DSN: ${DB_DSN:-/app/data/easyssh.db}
+      EASYSSH_INSTANCE_STATE_DIR: /app/instance-state
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups
+      - instance-state:/app/instance-state
     networks:
       - easyssh-network
     healthcheck:
@@ -25,3 +28,6 @@ networks:
   easyssh-network:
     name: easyssh-network
     driver: bridge
+
+volumes:
+  instance-state:

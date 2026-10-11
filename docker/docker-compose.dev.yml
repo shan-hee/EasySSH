@@ -6,16 +6,19 @@ services:
     image: easyssh:dev
     container_name: easyssh-dev
     restart: unless-stopped
+    stop_grace_period: 75s
     ports:
       - "8520:8520"
     environment:
       ENV: development
       DB_DRIVER: ${DB_DRIVER:-sqlite}
       DB_DSN: ${DB_DSN:-/app/data/easyssh.db}
+      EASYSSH_INSTANCE_STATE_DIR: /app/instance-state
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
     volumes:
       - ./data-dev:/app/data
       - ./backups-dev:/app/backups
+      - instance-state-dev:/app/instance-state
     networks:
       - easyssh-network
     healthcheck:
@@ -29,3 +32,6 @@ networks:
   easyssh-network:
     name: easyssh-network-dev
     driver: bridge
+
+volumes:
+  instance-state-dev:
