@@ -755,9 +755,15 @@ func restoreDesktopServerRow(tx *sql.Tx, row map[string]any, strategy backuputil
 	}
 	if allowSensitive {
 		if raw, ok := row["password"]; ok {
-			password, valid := raw.(string)
-			if !valid {
-				return errors.New("backup password must be a string")
+			// Web exports SQL NULL as JSON null for absent server passwords.
+			// An explicit null clears the password; an omitted field preserves it.
+			password := ""
+			if raw != nil {
+				var valid bool
+				password, valid = raw.(string)
+				if !valid {
+					return fmt.Errorf("backup server %s password must be a string or null", id)
+				}
 			}
 			encrypted, err := encryptDesktopCredential(password, "desktop_servers", id, "password")
 			if err != nil {
