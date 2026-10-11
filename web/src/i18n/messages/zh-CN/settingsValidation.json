@@ -49,6 +49,5 @@
   "backupRetentionMin": "保留天数不能小于 1",
   "backupRetentionMax": "保留天数不能超过 365",
   "storageLocationRequired": "存储位置不能为空",
-  "manualBackupDescriptionMax": "描述不能超过 200 个字符",
-  "restoreBackupFileRequired": "请选择备份文件"
+  "manualBackupDescriptionMax": "描述不能超过 200 个字符"
 }

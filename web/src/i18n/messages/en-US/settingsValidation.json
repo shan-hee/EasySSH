@@ -49,6 +49,5 @@
   "backupRetentionMin": "Retention days cannot be less than 1.",
   "backupRetentionMax": "Retention days cannot exceed 365.",
   "storageLocationRequired": "Storage location is required.",
-  "manualBackupDescriptionMax": "Description cannot exceed 200 characters.",
-  "restoreBackupFileRequired": "Please select a backup file."
+  "manualBackupDescriptionMax": "Description cannot exceed 200 characters."
 }

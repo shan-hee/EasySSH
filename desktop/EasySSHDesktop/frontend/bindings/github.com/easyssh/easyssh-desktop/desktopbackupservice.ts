@@ -36,15 +36,9 @@ export function DownloadInstanceBackup(id: string): $CancellablePromise<void> {
     return $Call.ByID(3041406610, id);
 }
 
-export function ExportBackup(input: $models.DesktopBackupExportInput): $CancellablePromise<$models.DesktopBackupExportResult> {
-    return $Call.ByID(1621194995, input).then(($result: any) => {
-        return $$createType2($result);
-    });
-}
-
 export function GetInstanceActivation(): $CancellablePromise<instanceactivation$0.Info> {
     return $Call.ByID(605729618).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType2($result);
     });
 }
 
@@ -56,19 +50,7 @@ export function InspectInstanceBackup(id: string, password: string): $Cancellabl
 
 export function ListInstanceBackups(): $CancellablePromise<$models.DesktopInstanceBackupList> {
     return $Call.ByID(1374701191).then(($result: any) => {
-        return $$createType4($result);
-    });
-}
-
-export function PreviewBackup(input: $models.DesktopBackupRestoreInput): $CancellablePromise<$models.DesktopBackupRestoreResult> {
-    return $Call.ByID(1939856631, input).then(($result: any) => {
-        return $$createType5($result);
-    });
-}
-
-export function RestoreBackup(input: $models.DesktopBackupRestoreInput): $CancellablePromise<$models.DesktopBackupRestoreResult> {
-    return $Call.ByID(3388571433, input).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType3($result);
     });
 }
 
@@ -86,15 +68,13 @@ export function RollbackInstance(confirm: boolean): $CancellablePromise<instance
 
 export function UploadInstanceBackup(): $CancellablePromise<instancebackup$0.Record | null> {
     return $Call.ByID(3039160587).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType4($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = instanceactivation$0.Operation.createFrom;
 const $$createType1 = instancebackup$0.Record.createFrom;
-const $$createType2 = $models.DesktopBackupExportResult.createFrom;
-const $$createType3 = instanceactivation$0.Info.createFrom;
-const $$createType4 = $models.DesktopInstanceBackupList.createFrom;
-const $$createType5 = $models.DesktopBackupRestoreResult.createFrom;
-const $$createType6 = $Create.Nullable($$createType1);
+const $$createType2 = instanceactivation$0.Info.createFrom;
+const $$createType3 = $models.DesktopInstanceBackupList.createFrom;
+const $$createType4 = $Create.Nullable($$createType1);

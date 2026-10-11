@@ -525,7 +525,6 @@ func main() {
 	// 其他处理器
 	sshKeyHandler := rest.NewSSHKeyHandler(sshKeyService)
 	avatarHandler := rest.NewAvatarHandler()
-	backupHandler := rest.NewBackupHandler(database, encryptor)
 	instanceHistory, err := newInstanceHistory(cfg, database, transferJobService.SnapshotStorage)
 	if err != nil {
 		log.Fatalf("Failed to initialize backup history: %v", err)
@@ -567,7 +566,7 @@ func main() {
 	// Freeze transfer-root changes during the database + artifact snapshot.
 	r.Use(func(c *gin.Context) {
 		path := c.Request.URL.Path
-		if (strings.HasPrefix(path, "/api/v1/settings/system/") && c.Request.Method != http.MethodGet) || path == "/api/v1/backup/restore" {
+		if strings.HasPrefix(path, "/api/v1/settings/system/") && c.Request.Method != http.MethodGet {
 			release, ok := transferJobService.TryStorageChange()
 			if !ok {
 				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "instance backup is capturing files; retry shortly"})
@@ -1134,9 +1133,6 @@ func main() {
 		backupRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
 		backupRoutes.Use(middleware.RequirePermission(permissionService, "backup:manage"))
 		{
-			backupRoutes.GET("/export", backupHandler.ExportBackup)      // 导出统一备份（默认脱敏）
-			backupRoutes.POST("/export", backupHandler.ExportBackupPost) // 导出统一备份（支持完整加密备份）
-			backupRoutes.POST("/preview", backupHandler.PreviewBackup)
 			backupRoutes.GET("/instances", instanceBackupHandler.List)
 			backupRoutes.POST("/instances", instanceBackupHandler.Create)
 			backupRoutes.POST("/instances/upload", instanceBackupHandler.Upload)
@@ -1146,8 +1142,6 @@ func main() {
 			backupRoutes.POST("/instances/:id/restore", instanceBackupHandler.Restore)
 			backupRoutes.POST("/instances/:id/activate", instanceBackupHandler.Activate)
 			backupRoutes.POST("/activation/rollback", instanceBackupHandler.Rollback)
-
-			backupRoutes.POST("/restore", backupHandler.RestoreBackup) // 恢复统一备份
 		}
 
 		// SSH密钥路由（需要认证）
