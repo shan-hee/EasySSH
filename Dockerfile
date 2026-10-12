@@ -5,6 +5,19 @@
 # 多阶段构建：Vite 前端静态构建 + Go 后端
 # ============================================
 
+# Browser SSH uses the same Go SSH implementation, compiled for the browser.
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS browser-ssh-builder
+WORKDIR /app/shared
+COPY shared/go.mod shared/go.sum ./
+RUN --mount=type=cache,id=easyssh-go-mod,target=/go/pkg/mod go mod download
+COPY shared/ ./
+RUN --mount=type=cache,id=easyssh-go-mod,target=/go/pkg/mod \
+    --mount=type=cache,id=easyssh-wasm-build,target=/root/.cache/go-build \
+    mkdir -p /out && \
+    CGO_ENABLED=0 GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o /out/ssh.wasm ./cmd/browser-ssh && \
+    CGO_ENABLED=0 GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o /out/crypto.wasm ./cmd/client-crypto && \
+    cp /usr/local/go/lib/wasm/wasm_exec.js /out/wasm_exec.js
+
 # Stage 1: 构建前端（React + Vite）
 FROM node:24-alpine AS frontend-builder
 
@@ -26,14 +39,8 @@ RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
 COPY VERSION /app/VERSION
 COPY web/ ./
 COPY shared/syncjs/ /app/shared/syncjs/
-RUN pnpm run build
-
-# Automerge runs as a private stdio worker managed by the Go service.
-FROM node:24-alpine AS sync-runtime-builder
-WORKDIR /app/server/sync-runtime
-COPY server/sync-runtime/package.json server/sync-runtime/package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
-COPY server/sync-runtime/engine.mjs ./
+COPY --from=browser-ssh-builder /out/ ./public/browser-ssh/
+RUN pnpm run build:ui
 
 # Stage 2: 构建后端（Go）
 FROM golang:1.25-alpine AS backend-builder
@@ -69,7 +76,7 @@ FROM alpine:3.22
 WORKDIR /app
 
 # 运行时组件：证书与时区；健康检查使用 Alpine 自带的 BusyBox wget
-RUN apk --no-cache add ca-certificates tzdata nodejs postgresql-client mariadb-client tini
+RUN apk --no-cache add ca-certificates tzdata postgresql-client mariadb-client tini
 
 # 使用非 root 用户运行
 ARG APP_UID=1001
@@ -83,15 +90,12 @@ RUN addgroup -S -g ${APP_GID} appuser \
 ENV TZ=Asia/Shanghai \
     ENV=production \
     BACKEND_URL=http://localhost:8520 \
-    EASYSSH_SYNC_ENGINE=/app/server/sync-runtime/engine.mjs \
     EASYSSH_BACKUP_DIR=/app/backups \
     EASYSSH_INSTANCE_STATE_DIR=/app/instance-state \
     DB_DRIVER=sqlite \
     DB_DSN=/app/data/easyssh.db
 
 # 复制后端二进制与前端静态资源
-COPY --from=sync-runtime-builder --chown=appuser:appuser /app/server/sync-runtime ./server/sync-runtime
-COPY --chown=appuser:appuser shared/syncjs/ ./shared/syncjs/
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./
 COPY --from=backend-builder --chown=appuser:appuser /app/server/static ./static
 COPY --from=frontend-builder --chown=appuser:appuser /app/VERSION ./VERSION

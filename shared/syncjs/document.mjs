@@ -1,4 +1,4 @@
-// Shared by Wails and the server worker. Transport and persistence stay outside.
+// Shared by desktop and browser clients. The server never parses documents.
 export function createEngine(A) {
   const decode = (value) => Uint8Array.from(atob(value), (c) => c.charCodeAt(0))
   const encode = (value) => {
@@ -32,7 +32,7 @@ export function createEngine(A) {
     if (entries.length > 20000) throw new Error("Sync history has too many records")
     for (const [key, record] of entries) {
       if (
-        !/^(server|script|value)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        !/^(server|script|value|order)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
           key,
         ) ||
         !record ||
@@ -53,7 +53,7 @@ export function createEngine(A) {
           throw new Error("Invalid sync field")
         fields[field] = String(value)
         const values = [...new Set(Object.values(A.getConflicts(record, field) || {}).map(String))]
-        if ((field === "connection" || field === "content" || field === "ref") && values.length > 1)
+        if (["connection", "content", "ref", "ids"].includes(field) && values.length > 1)
           conflicts.push({ key, field, values })
       }
       snapshot[key] = fields
@@ -89,9 +89,22 @@ export function createEngine(A) {
         if (!(key in current)) d.records[key].$deleted = new A.ImmutableString("true")
       for (const [key, record] of Object.entries(current)) {
         if (!previous[key]) d.records[key].$deleted = new A.ImmutableString("false")
+        for (const field of Object.keys(previous[key] || {}))
+          if (!(field in record)) delete d.records[key][field]
         // Immutable strings keep connection bundles and scripts atomic.
-        for (const [field, value] of Object.entries(record))
-          if (previous[key]?.[field] !== value) d.records[key][field] = new A.ImmutableString(value)
+        for (const [field, value] of Object.entries(record)) {
+          if (previous[key]?.[field] === value) continue
+          // Membership changes alter the projection, not the ordering decision.
+          // Keep unresolved concurrent orders when storage matches the winner.
+          if (field === "ids" && key.startsWith("order/") && previous[key]?.ids) {
+            const actual = JSON.parse(value)
+            const members = new Set(actual)
+            const expected = JSON.parse(previous[key].ids).filter((id) => members.delete(id))
+            expected.push(...[...members].sort())
+            if (JSON.stringify(expected) === value) continue
+          }
+          d.records[key][field] = new A.ImmutableString(value)
+        }
       }
     })
   }
@@ -119,7 +132,7 @@ export function createEngine(A) {
     const record = doc.records[key]
     if (
       !record ||
-      !["connection", "content", "ref"].includes(field) ||
+      !["connection", "content", "ref", "ids"].includes(field) ||
       !Object.values(A.getConflicts(record, field) || {})
         .map(String)
         .includes(value)
