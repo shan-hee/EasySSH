@@ -74,6 +74,15 @@ func runDesktopInstanceLauncher() (bool, error) {
 // Registered last: all Wails services must initialize before Ready.
 type DesktopActivationService struct{ backup *DesktopBackupService }
 
+// Keep business UI and its background work gated until the launcher commits.
+// The window runtime must be allowed to load so it can confirm readiness first.
+func (s *DesktopActivationService) WaitForStartup(ctx context.Context) error {
+	if !waitForDesktopActivation(ctx) {
+		return ctx.Err()
+	}
+	return nil
+}
+
 func (s *DesktopActivationService) ServiceStartup(ctx context.Context, _ application.ServiceOptions) error {
 	client := instanceactivation.FromEnvironment()
 	if client == nil {

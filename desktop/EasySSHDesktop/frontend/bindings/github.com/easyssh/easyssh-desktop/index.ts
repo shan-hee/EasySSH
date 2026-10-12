@@ -3,6 +3,7 @@
 
 import * as ActivityLogService from "./activitylogservice.js";
 import * as DesktopAIService from "./desktopaiservice.js";
+import * as DesktopActivationService from "./desktopactivationservice.js";
 import * as DesktopBackupService from "./desktopbackupservice.js";
 import * as DesktopDockerService from "./desktopdockerservice.js";
 import * as DesktopGateway from "./desktopgateway.js";
@@ -19,6 +20,7 @@ import * as DesktopUpdateService from "./desktopupdateservice.js";
 export {
     ActivityLogService,
     DesktopAIService,
+    DesktopActivationService,
     DesktopBackupService,
     DesktopDockerService,
     DesktopGateway,

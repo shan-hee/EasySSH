@@ -129,10 +129,6 @@ func main() {
 	}
 
 	launcher := instanceactivation.FromEnvironment()
-	initialURL := "/"
-	if launcher != nil {
-		initialURL = "about:blank"
-	}
 	mainWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:          "EasySSH",
 		Width:          1320,
@@ -148,7 +144,7 @@ func main() {
 		},
 		BackgroundType:   application.BackgroundTypeTransparent,
 		BackgroundColour: application.NewRGBA(13, 17, 23, 0),
-		URL:              initialURL,
+		URL:              "/",
 		Hidden:           launcher != nil,
 	})
 	taskService.attachWindow(mainWindow)
@@ -176,7 +172,13 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if launcher != nil {
-		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		var startupHandled atomic.Bool
+		// ApplicationStarted can fire before WebView2 has finished initializing.
+		// Wait for the window runtime before committing the selected instance.
+		mainWindow.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
+			if !startupHandled.CompareAndSwap(false, true) {
+				return
+			}
 			if err := launcher.Serving(ctx); err != nil {
 				log.Printf("desktop instance startup failed: %v", err)
 				quitting.Store(true)
@@ -184,7 +186,6 @@ func main() {
 				return
 			}
 			close(desktopInstanceStarted)
-			mainWindow.SetURL("/")
 			showMainWindow()
 			go func() {
 				select {

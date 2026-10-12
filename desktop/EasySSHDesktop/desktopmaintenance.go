@@ -174,7 +174,7 @@ func createDesktopInstanceArchive(ctx context.Context, database *sql.DB, output,
 
 func restoreDesktopInstance(ctx context.Context, stage, into string, manifest instancebackup.Manifest) error {
 	if manifest.Profile != "desktop" || manifest.Driver != "sqlite" {
-		return errors.New("not a desktop instance backup; use JSON application migration between desktop and server")
+		return errors.New("not a desktop instance backup; use device sync to share personal data between desktop and server")
 	}
 	if err := instancebackup.CheckApplicationVersion(manifest.AppVersion, desktopBundledVersion); err != nil {
 		return err
