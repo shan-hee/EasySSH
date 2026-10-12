@@ -8,7 +8,11 @@ export type AssistantLoadingState = false | "waiting" | "thinking" | "generating
 export function getAgentToolActivity(messages: UIMessage[]) {
   let hasToolParts = false
   let hasActiveTools = false
-  for (const message of messages) {
+  // Older turns must not suppress the current turn's loading indicator.
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.role === "user") break
+    if (message.role !== "assistant") continue
     for (const part of message.parts) {
       if (!isToolUIPart(part)) continue
       hasToolParts = true
