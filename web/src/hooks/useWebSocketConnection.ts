@@ -80,6 +80,7 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
   const terminalRef = useRef<Terminal | undefined>(terminal)
   const isActiveRef = useRef(isActive)
   const outputBufferRef = useRef<string[]>([])
+  const outputAcksRef = useRef<(() => void)[]>([])
   const outputFrameRef = useRef<number | null>(null)
   const outputTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [connectionPhase, setConnectionPhase] = useState<TerminalConnectionPhase>(() => {
@@ -214,7 +215,10 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
     const data = chunks.length === 1 ? chunks[0] : chunks.join("")
     const inst = getTerminal(sessionId)
     const currentTerminal = inst?.terminal || terminalRef.current
-    currentTerminal?.write(data)
+    const acks = outputAcksRef.current.splice(0)
+    const consumed = () => { for (const ack of acks) ack() }
+    if (currentTerminal) currentTerminal.write(data, consumed)
+    else consumed()
   }, [getTerminal, sessionId])
 
   const scheduleTerminalOutputFlush = useCallback(() => {
@@ -233,12 +237,14 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
     )
   }, [flushTerminalOutput])
 
-  const queueTerminalOutput = useCallback((data: string) => {
+  const queueTerminalOutput = useCallback((data: string, consumed?: () => void) => {
     if (!data) {
+      consumed?.()
       return
     }
 
     outputBufferRef.current.push(data)
+    if (consumed) outputAcksRef.current.push(consumed)
     scheduleTerminalOutputFlush()
   }, [scheduleTerminalOutputFlush])
 
@@ -283,6 +289,7 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
         outputTimerRef.current = null
       }
       outputBufferRef.current = []
+      for (const ack of outputAcksRef.current.splice(0)) ack()
     }
   }, [])
 
@@ -350,8 +357,8 @@ export function useWebSocketConnection(config: WebSocketConnectionConfig) {
         serverId,
         cols,
         rows,
-        onData: (data) => {
-          queueTerminalOutput(data)
+        onData: (data, consumed) => {
+          queueTerminalOutput(data, consumed)
         },
         onConnected: () => {
           errorShownRef.current = false

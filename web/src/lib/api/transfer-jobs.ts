@@ -1,4 +1,3 @@
-import { apiFetch, authenticatedFetch, getApiUrl } from "@/lib/api-client"
 
 export type TransferJobKind = "sftp_upload" | "sftp_download" | "sftp_transfer"
 export type TransferJobStatus =
@@ -83,94 +82,25 @@ export interface CreateBackgroundDownloadRequest {
   retention_days?: number
 }
 
-async function throwArtifactDownloadError(response: Response): Promise<never> {
-  const contentType = response.headers.get("content-type") || ""
-  let detail: unknown
-  try {
-    detail = contentType.includes("application/json")
-      ? await response.json()
-      : await response.text()
-  } catch {
-    detail = `download artifact failed: ${response.status}`
-  }
-  throw Object.assign(new Error(`download artifact failed: ${response.status}`), {
-    status: response.status,
-    detail,
-  })
-}
-
 export const transferJobsApi = {
-  async list(params?: {
+  async list(_params?: {
     page?: number
     page_size?: number
     kind?: TransferJobKind
     status?: TransferJobStatus
-  }): Promise<TransferJobListResponse> {
-    const query = new URLSearchParams()
-    if (params?.page) query.set("page", String(params.page))
-    if (params?.page_size) query.set("page_size", String(params.page_size))
-    if (params?.kind) query.set("kind", params.kind)
-    if (params?.status) query.set("status", params.status)
-    return apiFetch<TransferJobListResponse>(`/transfer-jobs${query.toString() ? `?${query}` : ""}`)
-  },
+  }): Promise<TransferJobListResponse> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
-  async getStatistics(): Promise<TransferJobStatistics> {
-    return apiFetch<TransferJobStatistics>("/transfer-jobs/statistics")
-  },
+  async getStatistics(): Promise<TransferJobStatistics> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
-  async getById(id: string): Promise<TransferJob> {
-    return apiFetch<TransferJob>(`/transfer-jobs/${encodeURIComponent(id)}`)
-  },
+  async getById(_id: string): Promise<TransferJob> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
-  async createBackgroundUpload(options: CreateBackgroundUploadOptions): Promise<TransferJob> {
-    const form = new FormData()
-    form.set("server_id", options.serverId)
-    form.set("target_path", options.targetPath)
-    form.set("file_name", options.file.name)
-    form.set("file_size", String(options.file.size))
-    if (options.name) form.set("name", options.name)
-    if (options.description) form.set("description", options.description)
-    if (options.retentionDays) form.set("retention_days", String(options.retentionDays))
-    if (options.deferStart) form.set("defer_start", "true")
-    form.set("file", options.file)
+  async createBackgroundUpload(_options: CreateBackgroundUploadOptions): Promise<TransferJob> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
-    return apiFetch<TransferJob>("/transfer-jobs/sftp/upload", {
-      method: "POST",
-      body: form,
-      retry: false,
-      timeout: 0,
-    })
-  },
+  async createBackgroundDownload(_data: CreateBackgroundDownloadRequest): Promise<TransferJob> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
-  async createBackgroundDownload(data: CreateBackgroundDownloadRequest): Promise<TransferJob> {
-    return apiFetch<TransferJob>("/transfer-jobs/sftp/download", {
-      method: "POST",
-      body: data,
-      retry: false,
-      timeout: 30000,
-    })
-  },
+  async cancel(_id: string): Promise<void> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
-  async cancel(id: string): Promise<void> {
-    await apiFetch<void>(`/transfer-jobs/${encodeURIComponent(id)}/cancel`, {
-      method: "POST",
-      retry: false,
-    })
-  },
+  async delete(_id: string): Promise<void> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
-  async delete(id: string): Promise<void> {
-    await apiFetch<void>(`/transfer-jobs/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-      retry: false,
-    })
-  },
-
-  async downloadArtifact(id: string): Promise<Blob> {
-    const url = getApiUrl(`/transfer-jobs/${encodeURIComponent(id)}/artifact`)
-    const response = await authenticatedFetch(url)
-    if (!response.ok) {
-      await throwArtifactDownloadError(response)
-    }
-    return response.blob()
-  },
+  async downloadArtifact(_id: string): Promise<Blob> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 }

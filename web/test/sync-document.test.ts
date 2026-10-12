@@ -9,6 +9,34 @@ const refA = "10000000-0000-4000-8000-000000000001"
 const refB = "20000000-0000-4000-8000-000000000002"
 
 describe("shared Automerge sync engine", () => {
+  it("keeps whole-order conflicts after membership projection until explicitly resolved", () => {
+    const orderKey = "order/00000000-0000-4000-8000-000000000001"
+    const removed = "30000000-0000-4000-8000-000000000003"
+    const orderA = JSON.stringify([refA, removed, refB])
+    const orderB = JSON.stringify([refB, refA, removed])
+    let left = engine.reconcile(engine.load(""), { [orderKey]: { ids: orderA } })
+    let right = engine.reconcile(engine.load(""), { [orderKey]: { ids: orderB } })
+    try {
+      left = engine.receive(left, engine.outgoing(right, []))
+      let projected = engine.project(left)
+      assert.equal(projected.conflicts.length, 1)
+      assert.deepEqual(new Set(projected.conflicts[0].values), new Set([orderA, orderB]))
+      // The local database no longer contains the deleted server. Its filtered
+      // order must not erase the two unresolved user decisions on the next sync.
+      const localOrder = JSON.parse(projected.snapshot[orderKey].ids).filter((id: string) => id !== removed)
+      left = engine.reconcile(left, { [orderKey]: { ids: JSON.stringify(localOrder) } })
+      projected = engine.project(left)
+      assert.equal(projected.conflicts.length, 1)
+      left = engine.resolve(left, orderKey, "ids", orderB)
+      right = engine.receive(right, engine.outgoing(left, []))
+      assert.equal(engine.project(right).conflicts.length, 0)
+      assert.equal(engine.project(right).snapshot[orderKey].ids, orderB)
+    } finally {
+      engine.free(left)
+      engine.free(right)
+    }
+  })
+
   it("preserves concurrent first writes until an explicit conflict resolution", () => {
     let left = engine.reconcile(engine.load(""), { [key]: { ref: refA } })
     let right = engine.reconcile(engine.load(""), { [key]: { ref: refB } })

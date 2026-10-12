@@ -3,6 +3,7 @@ import { apiFetch } from "@/lib/api-client"
 export type AuthTicketType =
   | "instance_backup_download"
   | "ws_terminal"
+  | "ws_ssh_relay"
   | "ws_monitor"
   | "ws_sftp_auth"
   | "ws_sftp_upload"
@@ -27,6 +28,7 @@ export interface CreateTicketOutput {
 }
 
 export async function createAuthTicket(input: CreateTicketInput): Promise<CreateTicketOutput> {
+  if (input.type !== "ws_ssh_relay" && input.type !== "instance_backup_download") throw new Error("此票据仅由桌面本机传输提供")
   return apiFetch<CreateTicketOutput>("/auth/ticket", {
     method: "POST",
     body: input,

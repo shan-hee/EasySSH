@@ -1,4 +1,5 @@
 {
+  "browserSSHAction": "Browser SSH preview",
   "connectionConfigTitle": "Connection configs",
   "errorServerNotFound": "Server not found",
   "errorServerOffline": "Server is offline, unable to connect",

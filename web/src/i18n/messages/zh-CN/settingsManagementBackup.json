@@ -30,6 +30,7 @@
   "syncConflictHint": "并发修改会保留多个版本。选择一个版本继续同步；AI 会话可先将其他版本另存，分别继续聊天。凭据只显示摘要，不显示秘密。",
   "syncConnectionField": "连接参数",
   "syncContentField": "脚本内容",
+  "syncOrderField": "服务器自定义顺序",
   "syncUseVersion": "采用版本 {number}",
   "syncLoginExpired": "授权已过期，请重新登录。",
   "syncLoginWaiting": "请在已打开的浏览器中登录并确认授权。",

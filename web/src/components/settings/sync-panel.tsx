@@ -12,8 +12,26 @@ import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import type { SyncAdapter, SyncStatus, SyncLogin, SyncCandidate } from "@/lib/sync/types"
+import { useEncryptedWorkspace } from "@/providers/encrypted-workspace-provider"
+import { EncryptedWorkspacePanel } from "./encrypted-workspace-panel"
 
-export function SyncPanel({
+function formatOrderPreview(value: string, names: Record<string, string> = {}): string {
+  try {
+    const ids: unknown = JSON.parse(value)
+    if (Array.isArray(ids) && ids.every((id) => typeof id === "string")) {
+      return ids.map((id, index) => `${index + 1}. ${names[id] ? `${names[id]} (${id})` : id}`).join("\n")
+    }
+  } catch { /* Invalid remote values stay visible but are rejected on apply. */ }
+  return value
+}
+
+export function SyncPanel(props: { adapter: SyncAdapter; desktopMode: boolean }) {
+  const encrypted = useEncryptedWorkspace()
+  if (!props.desktopMode && encrypted) return <EncryptedWorkspacePanel workspace={encrypted.workspace} onLock={encrypted.lock} />
+  return <DesktopAccountSyncPanel {...props} />
+}
+
+function DesktopAccountSyncPanel({
   adapter,
   desktopMode,
 }: {
@@ -23,6 +41,7 @@ export function SyncPanel({
   const { t } = useTranslation("settingsManagementBackup")
   const { confirm, confirmDialog } = useConfirmDialog()
   const [status, setStatus] = useState<SyncStatus | null>(null)
+  const [encryptedWorkspace, setEncryptedWorkspace] = useState<import("@/lib/secure-runtime/workspace").EncryptedWorkspace | null>(null)
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
   const [url, setUrl] = useState("")
@@ -34,6 +53,7 @@ export function SyncPanel({
     try {
       const next = await adapter.status()
       setStatus(next)
+      if (adapter.encryptedWorkspace) setEncryptedWorkspace(await adapter.encryptedWorkspace())
       setError(next.error || "")
       if (adapter.candidates) {
         const items = await adapter.candidates()
@@ -110,10 +130,11 @@ export function SyncPanel({
   const available = candidates.filter(
     (item) =>
       (item.space_id !== status?.space_id || !item.space_id) &&
-      (!item.key.startsWith("ai_session/") || status?.scopes?.sessions),
+      (!item.key.startsWith("ai_session/") || status?.scopes?.sessions) && (!item.key.startsWith("ssh_key/") || status?.scopes?.credentials),
   )
   return (
     <div className="space-y-6">
+      {encryptedWorkspace && <EncryptedWorkspacePanel workspace={encryptedWorkspace} onSync={() => adapter.sync()} onLock={() => { adapter.lockEncryptedWorkspace?.(); void refresh() }} />}
       {confirmDialog}
       <SettingsSection
         title={desktopMode ? t("syncDesktopTitle") : t("syncServerTitle")}
@@ -439,7 +460,9 @@ export function SyncPanel({
             <div key={`${conflict.key}/${conflict.field}`} className="space-y-2 border-t pt-4">
               <p className="break-all text-xs text-muted-foreground">
                 {conflict.key} ·{" "}
-                {conflict.field === "connection"
+                {conflict.field === "ids"
+                  ? t("syncOrderField")
+                  : conflict.field === "connection"
                   ? t("syncConnectionField")
                   : conflict.field === "ref"
                     ? t("syncVersionField")
@@ -447,7 +470,11 @@ export function SyncPanel({
               </p>
               {conflict.values.map((value, i) => (
                 <div key={i} className="space-y-2 rounded-lg bg-muted/40 p-3">
-                  {conflict.previews?.[value] ? (
+                  {conflict.field === "ids" ? (
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs">
+                      {formatOrderPreview(value, conflict.order_names)}
+                    </pre>
+                  ) : conflict.previews?.[value] ? (
                     <div className="space-y-1 text-sm">
                       <p className="text-xs text-muted-foreground">
                         {t(

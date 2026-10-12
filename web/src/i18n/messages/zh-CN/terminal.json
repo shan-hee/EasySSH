@@ -1,4 +1,5 @@
 {
+  "browserSSHAction": "浏览器 SSH 预览",
   "connectionConfigTitle": "连接配置",
   "errorServerNotFound": "服务器不存在",
   "errorServerOffline": "服务器离线，无法连接",

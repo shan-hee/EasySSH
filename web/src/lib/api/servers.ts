@@ -1,95 +1,56 @@
-import { apiFetch } from "@/lib/api-client"
-import type {
-  CreateServerRequest,
-  Server,
-  ServerListResponse,
-  ServerStatisticsResponse,
-  UpdateServerRequest,
-} from "@/lib/server-types"
+import type { CreateServerRequest, Server, ServerListResponse, ServerStatisticsResponse, UpdateServerRequest } from "@/lib/server-types"
+import { configSnapshot, configuration, credentialsResource, orderedIDs, orderKey, saveServer, scheduleSync, serverFromRecord } from "@/lib/secure-runtime/records"
+import { currentWorkspace } from "@/lib/secure-runtime/session"
+export type { AuthMethod, CreateServerRequest, Server, ServerListResponse, ServerStatisticsResponse, ServerStatus, UpdateServerRequest } from "@/lib/server-types"
 
-export type {
-  AuthMethod,
-  CreateServerRequest,
-  Server,
-  ServerListResponse,
-  ServerStatisticsResponse,
-  ServerStatus,
-  UpdateServerRequest,
-} from "@/lib/server-types"
-
-/**
- * 服务器 API 服务
- */
 export const serversApi = {
-  /**
-   * 获取服务器列表
-   */
-  async list(params?: {
-    page?: number
-    limit?: number
-    group?: string
-    search?: string
-  }): Promise<ServerListResponse> {
-    const queryParams = new URLSearchParams()
-    if (params?.page) queryParams.set("page", params.page.toString())
-    if (params?.limit) queryParams.set("limit", params.limit.toString())
-    if (params?.group) queryParams.set("group", params.group)
-    if (params?.search) queryParams.set("q", params.search)
-
-    const url = `/servers${queryParams.toString() ? `?${queryParams}` : ""}`
-    return apiFetch<ServerListResponse>(url)
+  async list(params?: { page?: number; limit?: number; group?: string; search?: string }): Promise<ServerListResponse> {
+    const snapshot = await configSnapshot()
+    const search = params?.search?.toLocaleLowerCase()
+    const rows = orderedIDs(snapshot).map((id) => serverFromRecord(id, snapshot['server/' + id])).filter((s) =>
+      (!params?.group || s.group === params.group) && (!search || [s.name, s.host, s.username].join(' ').toLocaleLowerCase().includes(search)))
+    const page = Math.max(1, params?.page || 1), limit = Math.max(1, params?.limit || 100)
+    return { data: await withCredentialFlags(rows.slice((page - 1) * limit, page * limit), snapshot), total: rows.length, page, limit }
   },
-
-  /**
-   * 获取服务器详情
-   */
   async getById(id: string): Promise<Server> {
-    return apiFetch<Server>(`/servers/${id}`)
+    if ((await currentWorkspace().conflicts("config", configuration)).some((c) => c.key === "server/" + id && c.field === "connection")) throw new Error("服务器连接配置存在冲突，请先在加密工作区选择版本")
+    const record = (await configSnapshot())['server/' + id]
+    if (!record) throw new Error("服务器不存在")
+    return (await withCredentialFlags([serverFromRecord(id, record)], { ["server/" + id]: record }))[0]
   },
-
-  /**
-   * 创建服务器
-   */
-  async create(data: CreateServerRequest): Promise<Server> {
-    return apiFetch<Server>("/servers", {
-      method: "POST",
-      body: data,
-    })
-  },
-
-  /**
-   * 更新服务器
-   */
-  async update(id: string, data: UpdateServerRequest): Promise<Server> {
-    return apiFetch<Server>(`/servers/${id}`, {
-      method: "PUT",
-      body: data,
-    })
-  },
-
-  /**
-   * 删除服务器
-   */
+  create(data: CreateServerRequest) { return saveServer(crypto.randomUUID(), data, true) },
+  update(id: string, data: UpdateServerRequest) { return saveServer(id, data, false) },
   async delete(id: string): Promise<void> {
-    return apiFetch<void>(`/servers/${id}`, {
-      method: "DELETE",
-    })
+    const workspace = currentWorkspace()
+    await workspace.editMany([
+      { scope: "config", resource: configuration, edit(snapshot) { delete snapshot['server/' + id]; return snapshot } },
+      ...(workspace.view?.scopes.includes("credentials") ? [{ scope: "credentials" as const, resource: credentialsResource,
+        edit(snapshot: Record<string, Record<string, string>>) { delete snapshot['value/' + id]; return snapshot } }] : []),
+    ])
+    scheduleSync()
   },
-
-  /**
-   * 获取服务器统计信息
-   */
   async getStatistics(): Promise<ServerStatisticsResponse> {
-    return apiFetch<ServerStatisticsResponse>("/servers/statistics")
+    const rows = (await this.list({ limit: 10000 })).data
+    const by_group: Record<string, number> = {}, by_tag: Record<string, number> = {}
+    for (const row of rows) { by_group[row.group || ""] = (by_group[row.group || ""] || 0) + 1; for (const tag of row.tags || []) by_tag[tag] = (by_tag[tag] || 0) + 1 }
+    return { total: rows.length, online: rows.filter((s) => s.status === "online").length, offline: rows.filter((s) => s.status !== "online").length, by_group, by_tag }
   },
-
-  /**
-   * 批量更新服务器排序顺序
-   */
   async reorder(serverIds: string[]): Promise<void> {
-    return apiFetch<void>("/servers/reorder", {
-      method: "PATCH",
-      body: { server_ids: serverIds },
+    await currentWorkspace().edit("config", configuration, (snapshot) => {
+      if (new Set(serverIds).size !== serverIds.length || serverIds.some((id) => !snapshot['server/' + id])) throw new Error("服务器排序包含重复或未知服务器")
+      return { ...snapshot, [orderKey]: { ids: JSON.stringify(serverIds) } }
     })
+    scheduleSync()
   },
+}
+
+async function withCredentialFlags(servers: Server[], config: Record<string, Record<string, string>>): Promise<Server[]> {
+ const workspace = currentWorkspace()
+ if (!workspace.view?.scopes.includes("credentials")) return servers
+ const snapshot = await workspace.snapshot("credentials", credentialsResource)
+ return servers.map((server) => {
+  const value = JSON.parse(snapshot['value/' + server.id]?.content || "{}")
+  const current = config['server/' + server.id]?.connection
+  return { ...server, has_password: value.connection === current && !!value.password, has_private_key: value.connection === current && !!value.private_key }
+ })
 }

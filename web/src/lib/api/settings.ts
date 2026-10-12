@@ -1,5 +1,5 @@
+import { getClientAIConfig, saveClientAIConfig, deleteClientAIConfig } from "@/lib/secure-runtime/ai-config"
 import { apiFetch } from "@/lib/api-client"
-import type { SaveUserAIConfigRequest, UserAIConfig } from "@/lib/ai-agent-types"
 
 /**
  * SMTP 配置
@@ -84,11 +84,6 @@ export interface SystemConfig {
   default_download_mode: "fast" | "compatible"
   skip_excluded_on_upload: boolean
   max_file_upload_size: number
-  transfer_storage_path?: string
-  transfer_retention_days?: number
-  transfer_max_storage_gb?: number
-  transfer_max_concurrency?: number
-  transfer_cleanup_enabled?: boolean
 
   tab_session?: WorkspaceConfig & LoginSessionConfig
   oauth_access_token_minutes?: number
@@ -98,12 +93,6 @@ export interface SystemConfig {
 	external_oauth_issuer?: string
 	external_oauth_login_url?: string
 	external_oauth_redirect_uris?: string
-	sftp_max_idle_time_seconds?: number
-	sftp_cleanup_interval_seconds?: number
-	sftp_max_life_time_minutes?: number
-	sftp_conn_timeout_seconds?: number
-	sftp_max_sessions_per_conn?: number
-	job_queue_max_concurrency?: number
 
   // 注册配置
   allow_registration?: boolean
@@ -121,20 +110,6 @@ export interface SystemConfig {
  */
 export interface GetSystemConfigResponse {
   config: SystemConfig
-}
-
-export interface ScheduledTaskRuntimeStatus {
-  max_concurrency: number
-  active: number
-  queued: number
-  scaling_down: boolean
-}
-
-export interface ScheduledTaskSettingsResponse {
-  config: {
-    job_queue_max_concurrency: number
-  }
-  status: ScheduledTaskRuntimeStatus
 }
 
 export interface WorkspaceConfig {
@@ -204,12 +179,6 @@ interface ConfigResponse<T> {
  */
 export type AISystemProvider = "openai" | "openai-response" | "gemini" | "anthropic"
 
-const VALID_AI_SYSTEM_PROVIDERS: AISystemProvider[] = [
-  "openai",
-  "openai-response",
-  "gemini",
-  "anthropic",
-]
 
 export interface AISystemConfig {
   system_enabled: boolean
@@ -428,21 +397,6 @@ export const settingsApi = {
     return apiFetch<void>("/settings/system/oauth-provider", { method: "PATCH", body: config })
   },
 
-  async getScheduledTaskSettings(): Promise<ScheduledTaskSettingsResponse> {
-    return apiFetch<ScheduledTaskSettingsResponse>("/settings/system/scheduled-tasks", {
-      method: "GET",
-    })
-  },
-
-  async saveScheduledTaskSettings(config: {
-    job_queue_max_concurrency: number
-  }): Promise<ScheduledTaskSettingsResponse> {
-    return apiFetch<ScheduledTaskSettingsResponse>("/settings/system/scheduled-tasks", {
-      method: "PATCH",
-      body: config,
-    })
-  },
-
   async getWorkspaceConfig(): Promise<WorkspaceConfig> {
 	const response = await apiFetch<ConfigResponse<WorkspaceConfig>>("/settings/workspace", {
 		method: "GET",
@@ -525,49 +479,7 @@ export const settingsApi = {
     })
   },
 
-  // === AI 配置相关 API ===
 
-  /**
-   * 获取系统级 AI 配置
-   */
-  async getAISystemConfig(): Promise<AISystemConfig> {
-    const response = await apiFetch<
-      Partial<Omit<AISystemConfig, "system_provider">> & { system_provider?: string }
-    >("/settings/ai/system", { method: "GET" })
-    const rawProvider = (response.system_provider || "").toLowerCase()
-    const normalizedProvider: AISystemProvider =
-      VALID_AI_SYSTEM_PROVIDERS.includes(rawProvider as AISystemProvider)
-        ? (rawProvider as AISystemProvider)
-        : "openai"
-    return {
-      system_enabled: response.system_enabled ?? false,
-      system_provider: normalizedProvider,
-      system_api_endpoint: response.system_api_endpoint ?? "",
-      system_models: response.system_models ?? "",
-      has_api_key: response.has_api_key ?? false,
-      system_api_key: "",
-    }
-  },
-
-  /**
-   * 保存系统级 AI 配置
-   */
-  async saveAISystemConfig(config: SaveAISystemConfigRequest): Promise<void> {
-    return apiFetch<void>("/settings/ai/system", {
-      method: "POST",
-      body: config,
-    })
-  },
-
-  /**
-   * 探测系统级 AI 可用模型
-   */
-  async probeAISystemModels(payload: ProbeAISystemModelsRequest): Promise<ProbeAISystemModelsResponse> {
-    return apiFetch<ProbeAISystemModelsResponse>("/settings/ai/system/models", {
-      method: "POST",
-      body: payload,
-    })
-  },
 }
 
 export type { SaveUserAIConfigRequest, UserAIConfig } from "@/lib/ai-agent-types"
@@ -576,41 +488,8 @@ export type { SaveUserAIConfigRequest, UserAIConfig } from "@/lib/ai-agent-types
  * 用户AI配置 API 服务
  */
 export const userAIConfigApi = {
-  /**
-   * 获取当前用户的AI配置
-   */
-  async getUserAIConfig(): Promise<UserAIConfig> {
-    return apiFetch<UserAIConfig>("/users/me/ai-config", {
-      method: "GET",
-    })
-  },
-
-  /**
-   * 保存当前用户的AI配置
-   */
-  async saveUserAIConfig(config: SaveUserAIConfigRequest): Promise<void> {
-    return apiFetch<void>("/users/me/ai-config", {
-      method: "PUT",
-      body: config,
-    })
-  },
-
-  /**
-   * 使用当前用户的自定义 AI 凭据获取可用模型
-   */
-  async probeModels(payload: ProbeUserAIModelsRequest): Promise<ProbeAISystemModelsResponse> {
-    return apiFetch<ProbeAISystemModelsResponse>("/users/me/ai-config/models", {
-      method: "POST",
-      body: payload,
-    })
-  },
-
-  /**
-   * 删除当前用户的AI配置（恢复使用系统配置）
-   */
-  async deleteUserAIConfig(): Promise<void> {
-    return apiFetch<void>("/users/me/ai-config", {
-      method: "DELETE",
-    })
-  },
+ getUserAIConfig: getClientAIConfig,
+ saveUserAIConfig: saveClientAIConfig,
+ deleteUserAIConfig: deleteClientAIConfig,
+ async probeModels(_payload: ProbeUserAIModelsRequest): Promise<ProbeAISystemModelsResponse> { return { available: false, models: [], message: "浏览器端不通过服务端代理 AI 请求。请在桌面端检测模型。" } },
 }

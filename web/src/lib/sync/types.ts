@@ -13,6 +13,7 @@ export type SyncVersionPreview = {
   has_api_key?: boolean
 }
 export type SyncConflict = {
+  order_names?: Record<string, string>
   key: string
   field: string
   values: string[]
@@ -42,6 +43,8 @@ export type SyncStatus = {
   grants?: SyncScopes
 }
 export interface SyncAdapter {
+  encryptedWorkspace?(): Promise<import("@/lib/secure-runtime/workspace").EncryptedWorkspace | null>
+  lockEncryptedWorkspace?(): void
   status(): Promise<SyncStatus>
   sync(): Promise<void>
   resolve(key: string, field: string, value: string): Promise<void>

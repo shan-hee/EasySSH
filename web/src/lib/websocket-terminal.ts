@@ -6,6 +6,7 @@
 import { getWsUrl } from './config'
 import { createAuthTicket } from "@/lib/auth-ticket"
 import type { AuthMethod } from "@/lib/server-types"
+import { BrowserTerminal } from "@/lib/secure-runtime/terminal"
 
 const TERMINAL_PING_INTERVAL_MS = 5000
 const TERMINAL_PING_TIMEOUT_MS = 60000
@@ -52,7 +53,7 @@ export interface TerminalWebSocketOptions {
   serverId: string
   cols: number
   rows: number
-  onData: (data: string) => void
+  onData: (data: string, consumed?: () => void) => void
   onConnected?: () => void
   onDisconnected?: () => void
   onError?: (error: TerminalConnectionError) => void
@@ -215,6 +216,7 @@ export interface ScriptItem {
 }
 
 export class TerminalWebSocket {
+  private browser?: BrowserTerminal
   private ws: WebSocket | null = null
   private serverId: string
   private cols: number
@@ -255,6 +257,7 @@ export class TerminalWebSocket {
   private decoder = new TextDecoder("utf-8")
   private encoder = new TextEncoder()
   constructor(options: TerminalWebSocketOptions) {
+    if (!options.WebSocketCtor && !options.createWebSocketUrl) this.browser = new BrowserTerminal(options)
     this.autoReconnect = options.autoReconnect ?? true
     this.serverId = options.serverId
     this.cols = options.cols
@@ -315,6 +318,7 @@ export class TerminalWebSocket {
    * 连接到 WebSocket 服务器
    */
   connect(): void {
+    if (this.browser) return this.browser.connect()
     void this.connectInternal()
   }
 
@@ -445,6 +449,7 @@ export class TerminalWebSocket {
    * 发送输入数据（二进制）
    */
   sendInput(data: string): void {
+    if (this.browser) return this.browser.sendInput(data)
     if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
       console.warn("[TerminalWS] WebSocket 未连接，无法发送数据")
       return
@@ -470,6 +475,7 @@ export class TerminalWebSocket {
    * 调整终端大小
    */
   resize(cols: number, rows: number): void {
+    if (this.browser) return this.browser.resize(cols, rows)
     if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
       return
     }
@@ -492,6 +498,7 @@ export class TerminalWebSocket {
    * 请求补全数据
    */
   fetchCompletionData(options: CompletionFetchOptions = this.completionFetchOptions ?? {}): void {
+    if (this.browser) return this.browser.fetchCompletionData(options)
     if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
       console.warn("[TerminalWS] WebSocket 未连接，无法请求补全数据")
       return
@@ -521,6 +528,7 @@ export class TerminalWebSocket {
     cancelled: boolean = false,
     authMethod?: TerminalAuthMethod
   ): void {
+    if (this.browser) return this.browser.sendAuthResponse(requestId, answersOrPayload, cancelled, authMethod)
     if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
       console.warn("[TerminalWS] WebSocket 未连接，无法发送认证响应")
       return
@@ -576,6 +584,7 @@ export class TerminalWebSocket {
     accepted: boolean,
     fingerprint?: string
   ): void {
+    if (this.browser) return this.browser.sendHostKeyResponse(requestId, accepted, fingerprint)
     if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
       console.warn("[TerminalWS] WebSocket 未连接，无法发送主机密钥确认")
       return
@@ -607,10 +616,12 @@ export class TerminalWebSocket {
    * 动态更新补全拉取开关
    */
   setCompletionFetchEnabled(enabled: boolean): void {
+    if (this.browser) return this.browser.setCompletionFetchEnabled(enabled)
     this.enableCompletionFetch = enabled
   }
 
   setCompletionFetchOptions(options?: CompletionFetchOptions): void {
+    if (this.browser) return this.browser.setCompletionFetchOptions(options)
     this.completionFetchOptions = options
   }
 
@@ -618,6 +629,7 @@ export class TerminalWebSocket {
    * 断开连接
    */
   setAutoReconnect(enabled: boolean): void {
+    if (this.browser) return this.browser.setAutoReconnect(enabled)
     this.autoReconnect = enabled
     if (!enabled && this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer)
@@ -628,6 +640,7 @@ export class TerminalWebSocket {
   }
 
   disconnect(): void {
+    if (this.browser) return this.browser.disconnect()
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
     this.isManualClose = true
@@ -659,6 +672,7 @@ export class TerminalWebSocket {
    * 检查连接状态
    */
   isConnected(): boolean {
+    if (this.browser) return this.browser.isConnected()
     return (
       this.ws !== null &&
       this.ws.readyState === this.ws.OPEN &&
@@ -667,6 +681,7 @@ export class TerminalWebSocket {
   }
 
   getPhase(): TerminalConnectionPhase {
+    if (this.browser) return this.browser.getPhase()
     return this.phase
   }
 

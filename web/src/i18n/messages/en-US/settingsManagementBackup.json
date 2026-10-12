@@ -30,6 +30,7 @@
   "syncConflictHint": "Concurrent edits retain multiple versions. Choose a version to continue syncing. Save other conversation versions separately to continue each branch. Credential previews never display secrets.",
   "syncConnectionField": "Connection parameters",
   "syncContentField": "Script content",
+  "syncOrderField": "Custom server order",
   "syncUseVersion": "Use version {number}",
   "syncLoginExpired": "Authorization expired. Please sign in again.",
   "syncLoginWaiting": "Sign in and approve access in the browser that was opened.",

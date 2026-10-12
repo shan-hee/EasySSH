@@ -1,4 +1,3 @@
-import { apiFetch } from "@/lib/api-client"
 
 export type ScheduledTaskType = "command" | "script" | "sftp_upload" | "sftp_download"
 
@@ -80,82 +79,46 @@ export const scheduledTasksApi = {
    * 获取定时任务列表
    */
   async list(
-    params?: ListScheduledTasksParams
-  ): Promise<ListScheduledTasksResponse> {
-    const queryParams = new URLSearchParams()
-    if (params?.page) queryParams.append("page", params.page.toString())
-    if (params?.limit) queryParams.append("limit", params.limit.toString())
-    if (params?.enabled !== undefined) queryParams.append("enabled", params.enabled.toString())
-    if (params?.task_type) queryParams.append("task_type", params.task_type)
-
-    const url = `/scheduled-tasks${queryParams.toString() ? `?${queryParams}` : ""}`
-    return apiFetch<ListScheduledTasksResponse>(url)
-  },
+    _params?: ListScheduledTasksParams
+  ): Promise<ListScheduledTasksResponse> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
   /**
    * 创建定时任务
    */
   async create(
-    data: CreateScheduledTaskRequest
-  ): Promise<ScheduledTask> {
-    return apiFetch<ScheduledTask>(`/scheduled-tasks`, {
-      method: "POST",
-      body: data,
-    })
-  },
+    _data: CreateScheduledTaskRequest
+  ): Promise<ScheduledTask> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
   /**
    * 获取定时任务详情
    */
-  async getById(id: string): Promise<ScheduledTask> {
-    return apiFetch<ScheduledTask>(`/scheduled-tasks/${id}`)
-  },
+  async getById(_id: string): Promise<ScheduledTask> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
   /**
    * 更新定时任务
    */
   async update(
-    id: string,
-    data: UpdateScheduledTaskRequest
-  ): Promise<ScheduledTask> {
-    return apiFetch<ScheduledTask>(`/scheduled-tasks/${id}`, {
-      method: "PUT",
-      body: data,
-    })
-  },
+    _id: string,
+    _data: UpdateScheduledTaskRequest
+  ): Promise<ScheduledTask> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
   /**
    * 删除定时任务
    */
-  async delete(id: string): Promise<{ message: string }> {
-    return apiFetch<{ message: string }>(`/scheduled-tasks/${id}`, {
-      method: "DELETE",
-    })
-  },
+  async delete(_id: string): Promise<{ message: string }> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
   /**
    * 获取定时任务统计信息
    */
-  async getStatistics(): Promise<ScheduledTaskStatistics> {
-    return apiFetch<ScheduledTaskStatistics>(`/scheduled-tasks/statistics`)
-  },
+  async getStatistics(): Promise<ScheduledTaskStatistics> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
   /**
    * 启用/禁用定时任务
    */
-  async toggle(id: string, enabled: boolean): Promise<{ message: string }> {
-    return apiFetch<{ message: string }>(`/scheduled-tasks/${id}/toggle`, {
-      method: "POST",
-      body: { enabled },
-    })
-  },
+  async toggle(_id: string, _enabled: boolean): Promise<{ message: string }> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 
   /**
    * 手动触发定时任务
    */
-  async trigger(id: string): Promise<{ message: string; task_run_id: string }> {
-    return apiFetch<{ message: string; task_run_id: string }>(`/scheduled-tasks/${id}/trigger`, {
-      method: "POST",
-    })
-  },
+  async trigger(_id: string): Promise<{ message: string; task_run_id: string }> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
 }

@@ -22,11 +22,9 @@ import {
   type TaskView,
   type ToolView,
 } from "@/lib/api/ai-agent"
-import { getApiUrl } from "@/lib/api-client"
 import { useAgentFeedback } from "@/hooks/use-agent-feedback"
 import { isSessionView, useAISessionRecovery } from "@/hooks/use-ai-session-recovery"
-import { fetchAIChatStream, isRecoverableAIStreamError } from "@/lib/ai-agent/stream-transport"
-import { resolveOutgoingUserMessageId } from "@/lib/ai-agent/message-transport"
+import { isRecoverableAIStreamError } from "@/lib/ai-agent/stream-transport"
 
 type TransportState = "idle" | "connecting" | "ai_sdk_ui"
 const TARGET_SESSION_ID_BODY_KEY = "__easyssh_target_session_id"
@@ -96,9 +94,6 @@ function compareTaskExecutionOrder(left: TaskView, right: TaskView) {
   return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
 }
 
-function getSessionChatApi(sessionId?: string | null) {
-  return getApiUrl(`/ai/sessions/${sessionId?.trim() || "__idle__"}/chat`)
-}
 
 function getSessionMessagesSyncKey(session: SessionView) {
   const messages = session.ui_messages ?? []
@@ -239,38 +234,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
   const chatTransport = useMemo(
     () => new DefaultChatTransport<UIMessage>({
-      api: getSessionChatApi(null),
-      fetch: fetchAIChatStream,
-      prepareReconnectToStreamRequest: ({ id }) => ({ api: `${getSessionChatApi(id)}/stream` }),
-      prepareSendMessagesRequest(options) {
-        const body = options.body ?? {}
-        const targetSessionIdValue = body[TARGET_SESSION_ID_BODY_KEY]
-        const targetSessionId = typeof targetSessionIdValue === "string"
-          ? targetSessionIdValue.trim()
-          : ""
-        const requestBody = { ...body }
-        delete requestBody[TARGET_SESSION_ID_BODY_KEY]
-        const latestMessage = options.messages.at(-1)
-        const requestMessages = latestMessage
-          ? [{
-              ...latestMessage,
-              parts: latestMessage.parts.filter((part) => part.type !== "file"),
-            }]
-          : []
-
-        return {
-          api: targetSessionId ? getSessionChatApi(targetSessionId) : options.api,
-          headers: options.headers,
-          credentials: options.credentials,
-          body: {
-            ...requestBody,
-            id: options.id,
-            messages: requestMessages,
-            trigger: options.trigger,
-            messageId: resolveOutgoingUserMessageId(latestMessage, options.messageId),
-          },
-        }
-      },
+      api: "about:blank",
+      fetch: async () => { throw new Error("浏览器不提供服务端 AI 代理，请使用桌面端") },
     }),
     []
   )

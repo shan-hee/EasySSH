@@ -1,4 +1,5 @@
-import { apiFetch } from "@/lib/api-client"
+import { serversApi } from "./servers"
+import { localSSHSessions } from "@/lib/secure-runtime/terminal"
 
 /**
  * 统计卡片数据块
@@ -7,7 +8,7 @@ export interface OverviewStatsBlock {
   online_servers: number
   total_servers: number
   active_sessions: number
-  today_commands: number
+  today_commands: number | null
 }
 
 /**
@@ -44,7 +45,9 @@ export interface DashboardOverview {
  * 获取仪表盘聚合概览（实时指标 + 区域分布）
  */
 async function getOverview(): Promise<DashboardOverview> {
-  return apiFetch<DashboardOverview>("/dashboard/overview")
+  const servers = await serversApi.list({ limit: 10000 })
+  const sessions = localSSHSessions()
+  return { stats: { total_servers: servers.total, online_servers: new Set(sessions.map((s) => s.server_id)).size, active_sessions: sessions.length, today_commands: null }, distribution: [] }
 }
 
 /**
