@@ -1,4 +1,3 @@
-import { desktopSyncAdapter } from "../adapters/desktop-sync"
 import { useMemo, type ReactNode } from "react"
 import { BackupRestoreTab } from "@easyssh/ssh-workspace/desktop"
 import type { Locale } from "@/i18n"
@@ -23,7 +22,7 @@ export function DesktopBackupRestoreView({
       <div className="flex min-h-0 flex-1 flex-col">
         <DesktopReturnHeader title={t("backupRestoreLabel")} onReturnToTerminal={onReturnToTerminal} actions={headerActions} />
         <DesktopPageContent>
-          <BackupRestoreTab adapter={adapter} syncAdapter={desktopSyncAdapter} desktopMode />
+          <BackupRestoreTab adapter={adapter} />
         </DesktopPageContent>
       </div>
     </DesktopWebViewShell>

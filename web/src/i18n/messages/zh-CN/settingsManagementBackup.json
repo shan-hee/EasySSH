@@ -83,7 +83,6 @@
   "syncVersionDesktop": "桌面端版本",
   "syncVersionServer": "服务端版本",
   "syncToggleLabel": "启用同步",
-  "nativeTab": "完整备份",
   "nativeTitle": "实例完整备份与恢复",
   "instanceDescription": "使用数据库原生快照备份整个实例，包含业务数据、外部文件和根密钥。备份在后台创建并加密保存，用于同端整体恢复或迁机；跨端个人数据使用设备同步。",
   "instanceCreate": "创建完整备份",
@@ -150,6 +149,5 @@
   "instanceDesktopRollbackConfirm": "EasySSH 将关闭并重新打开上一实例。当前连接和进行中操作会中断；当前实例及其密钥仍会保留，新增数据不会合并到上一实例。是否继续？",
   "instanceDesktopRestartWaiting": "正在切换实例，EasySSH 将自动关闭并重新打开。",
   "instanceDesktopRestartSucceeded": "实例已切换成功，请核对恢复后的数据。",
-  "instanceDesktopRestartRolledBack": "上次切换未完成或启动校验失败，已返回原实例。数据及密钥已保留，具体原因可查阅启动器日志。",
-  "dataAndSyncDescription": "通过设备同步在 Web 与桌面之间共享个人数据；使用加密完整备份保存和恢复整个实例。"
+  "instanceDesktopRestartRolledBack": "上次切换未完成或启动校验失败，已返回原实例。数据及密钥已保留，具体原因可查阅启动器日志。"
 }

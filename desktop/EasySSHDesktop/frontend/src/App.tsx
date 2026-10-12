@@ -51,6 +51,9 @@ const DesktopActivityLogsView = lazy(() => import("./shell/desktop-activity-logs
 const DesktopBackupRestoreView = lazy(() => import("./shell/desktop-backup-restore-view").then(
   module => ({ default: module.DesktopBackupRestoreView }),
 ))
+const DesktopSyncView = lazy(() => import("./shell/desktop-sync-view").then(
+  module => ({ default: module.DesktopSyncView }),
+))
 const DesktopScriptsView = lazy(() => import("./shell/desktop-scripts-view").then(
   module => ({ default: module.DesktopScriptsView }),
 ))
@@ -635,6 +638,8 @@ function App() {
     setActiveView("backup-restore")
   }, [])
 
+  const handleOpenSync = useCallback(() => setActiveView("sync"), [])
+
   const handleReturnToTerminal = useCallback(() => {
     setRequestedTaskRunID(null)
     setActiveView("terminal")
@@ -683,6 +688,7 @@ function App() {
       onOpenTasks={handleOpenTasks}
       onOpenActivityLogs={handleOpenActivityLogs}
       onOpenBackupRestore={handleOpenBackupRestore}
+      onOpenSync={handleOpenSync}
     />
   )
 
@@ -846,6 +852,13 @@ function App() {
                 </Suspense>
               ) : null}
             </section>
+            {activeView === "sync" && (
+              <section className="absolute inset-0 flex min-h-0 min-w-0 overflow-hidden">
+                <Suspense fallback={<PageLoading />}>
+                  <DesktopSyncView locale={locale} onReturnToTerminal={handleReturnToTerminal} headerActions={windowActions} />
+                </Suspense>
+              </section>
+            )}
           </div>
         </main>
         <DesktopUpdateFailureDialog />

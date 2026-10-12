@@ -83,7 +83,6 @@
   "syncVersionDesktop": "Desktop version",
   "syncVersionServer": "Server version",
   "syncToggleLabel": "Enable synchronization",
-  "nativeTab": "Instance backup",
   "nativeTitle": "Complete instance backup and recovery",
   "instanceDescription": "Create native database snapshots with application data, external files, and the root key. Encrypted archives support full recovery or migration within the same app type; use device sync for personal data across web and desktop.",
   "instanceCreate": "Create full backup",
@@ -150,6 +149,5 @@
   "instanceDesktopRollbackConfirm": "EasySSH will close and reopen the previous instance. Active connections and operations will be interrupted. The current instance and key will be retained; new data will not be merged.",
   "instanceDesktopRestartWaiting": "Switching instances. EasySSH will close and reopen automatically.",
   "instanceDesktopRestartSucceeded": "The instance was activated. Please verify the restored data.",
-  "instanceDesktopRestartRolledBack": "The switch was interrupted or startup validation failed. The previous instance is active and its data and key are retained. See the launcher log for details.",
-  "dataAndSyncDescription": "Use device sync to share personal data between web and desktop, and encrypted full backups to save and restore an entire instance."
+  "instanceDesktopRestartRolledBack": "The switch was interrupted or startup validation failed. The previous instance is active and its data and key are retained. See the launcher log for details."
 }

@@ -37,13 +37,14 @@ import type { Locale } from "@/i18n"
 import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
 import { DesktopHeaderActions } from "./desktop-header-actions"
+import { DesktopSyncAction } from "./desktop-sync-action"
 import { DesktopProxyDialog } from "./desktop-proxy-dialog"
 import { desktopUpdateApi, type DesktopUpdateCheckResult } from "../adapters/desktop-update-api"
 import { DesktopInlineUpdateAction } from "./desktop-inline-update-action"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
 
-export type DesktopView = "terminal" | "ai" | "scripts" | "tasks" | "activity-logs" | "backup-restore"
+export type DesktopView = "terminal" | "ai" | "scripts" | "tasks" | "activity-logs" | "backup-restore" | "sync"
 
 const windowActionErrorMessage = "Failed to run window action:"
 const githubLabel = "GitHub"
@@ -263,6 +264,7 @@ export function DesktopWindowActions({
   onOpenTasks,
   onOpenActivityLogs,
   onOpenBackupRestore,
+  onOpenSync,
 }: {
   runtime: DesktopRuntimeBindingInfo | null
   activeView: DesktopView
@@ -273,6 +275,7 @@ export function DesktopWindowActions({
   onOpenTasks: (taskID?: string) => void
   onOpenActivityLogs: () => void
   onOpenBackupRestore: () => void
+  onOpenSync: () => void
 }) {
   const { t } = useTranslation("desktop")
   const handleMinimize = useCallback(() => {
@@ -302,6 +305,7 @@ export function DesktopWindowActions({
           <Bot className="h-4 w-4" />
         </Button>
       )}
+      <DesktopSyncAction onOpenSettings={onOpenSync} />
       <DesktopSettingsMenu
         runtime={runtime}
         onOpenScripts={onOpenScripts}

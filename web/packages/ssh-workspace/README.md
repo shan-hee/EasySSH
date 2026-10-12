@@ -8,7 +8,7 @@
 
 - `@easyssh/ssh-workspace`：Web/UI Kit 主入口，暴露 Workspace context、UI building blocks、session/transfer core 与 Web 当前 adapters。
 - `@easyssh/ssh-workspace/desktop`：Desktop Shell 轻量入口，只暴露桌面挂载所需的 Workspace 根组件、context、基础 settings、capabilities helper 和 adapter/types，避免把 Web Dashboard 专属 UI barrel 带入 Wails 前端。Desktop 入口可以复用 SSH、SFTP、transfer、script、本地批量执行、monitor、Docker、AI、activity log 和 backup/restore 等核心能力组件，但必须通过 adapter/runtime/`desktopMode` 保持本地单用户语义。
-- Desktop 入口导出的 `LogsClient`、`ScriptsPage`、`BackupRestoreTab` 是本地语义 wrapper，会强制 Desktop 模式；脚本执行不会跳转到 Web operation logs。
+- Desktop 入口导出的 `LogsClient`、`ScriptsPage` 是本地语义 wrapper，会强制 Desktop 模式；脚本执行不会跳转到 Web operation logs。`BackupRestoreTab` 要求传入桌面备份 adapter，与 Web 共用完整备份页面；设备同步由桌面壳单独提供入口。
 
 当前公开边界覆盖：
 

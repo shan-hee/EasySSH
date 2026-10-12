@@ -42,6 +42,5 @@ export function BackupRestoreTab(props: BackupRestoreTabProps = {}) {
 
   return createElement(DesktopBackupRestoreTab, {
     ...props,
-    desktopMode: true,
   })
 }

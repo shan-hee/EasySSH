@@ -29,6 +29,14 @@ let active: Promise<void> | null = null
 let lastError = ""
 let changingAccount = false
 
+export function isDesktopSyncRunning() {
+  return active !== null
+}
+
+function notifySyncStatus() {
+  window.dispatchEvent(new Event("easyssh:sync-status-changed"))
+}
+
 async function synchronizeConfiguration() {
   // Lazy loading keeps WASM off the startup path for users without sync.
   let state = await call<LocalState>("Load")
@@ -158,7 +166,7 @@ async function synchronize() {
 
 function syncNow(): Promise<void> {
   if (changingAccount) return Promise.resolve()
-  if (!active)
+  if (!active) {
     active = synchronize()
       .catch((error) => {
         lastError = error instanceof Error ? error.message : String(error)
@@ -166,7 +174,10 @@ function syncNow(): Promise<void> {
       })
       .finally(() => {
         active = null
+        notifySyncStatus()
       })
+    notifySyncStatus()
+  }
   return active
 }
 export const desktopSyncAdapter: SyncAdapter = {
@@ -255,6 +266,7 @@ export const desktopSyncAdapter: SyncAdapter = {
   },
   async setEnabled(enabled) {
     await call("SetEnabled", enabled)
+    notifySyncStatus()
     if (enabled) await syncNow()
   },
   async disconnect() {
