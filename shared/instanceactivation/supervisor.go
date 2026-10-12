@@ -126,6 +126,15 @@ func inside(root, path string) bool {
 	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
+func samePath(left, right string) bool {
+	leftResolved, leftErr := filepath.EvalSymlinks(left)
+	rightResolved, rightErr := filepath.EvalSymlinks(right)
+	if leftErr == nil && rightErr == nil {
+		return strings.EqualFold(filepath.Clean(leftResolved), filepath.Clean(rightResolved))
+	}
+	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
+}
+
 func (s *supervisor) validateFiles(target Target, allowNewDatabase bool) error {
 	if !filepath.IsAbs(target.DSN) || (s.options.Key == nil && !filepath.IsAbs(target.KeyFile)) || !filepath.IsAbs(target.Directory) {
 		return errors.New("instance selection must use absolute paths")
@@ -196,14 +205,19 @@ func (s *supervisor) candidate(input Request) (Target, error) {
 	if err != nil || !inside(root, directory) {
 		return Target{}, errors.New("restored directory is outside managed backup storage")
 	}
-	if strings.EqualFold(directory, s.state.Current.Directory) {
+	if samePath(directory, s.state.Current.Directory) {
 		return Target{}, errors.New("this restored instance is already active")
 	}
 	name := s.options.DatabaseName
 	if name == "" {
 		name = "easyssh.db"
 	}
-	target := Target{DSN: filepath.Join(directory, name), KeyFile: filepath.Join(directory, "easyssh-root.key"), Directory: directory, RecordID: record.ID}
+	// Keep the caller's path spelling in the durable selection. Windows may
+	// expose the same directory through an 8.3 alias (for example
+	// C:\\Users\\XIANGB~1 and C:\\Users\\xiangbang); preserving the requested
+	// spelling keeps the launcher API stable while DSN/key paths use the
+	// canonical directory for actual file access.
+	target := Target{DSN: filepath.Join(directory, name), KeyFile: filepath.Join(directory, "easyssh-root.key"), Directory: input.Directory, RecordID: record.ID}
 	if err := s.validateFiles(target, false); err != nil {
 		return Target{}, err
 	}
