@@ -283,6 +283,7 @@ func verifyDesktopSnapshotCredentials(ctx context.Context, db *sql.DB, dataDir, 
 	for _, spec := range []struct{ table, id, column, aadColumn string }{
 		{"desktop_servers", "id", "password", "password"},
 		{"desktop_ssh_keys", "fingerprint", "private_key", "private_key"},
+		{"desktop_ssh_keys", "fingerprint", "passphrase", "passphrase"},
 		{"desktop_ai_config", "id", "custom_api_key", "custom_api_key"},
 		{"desktop_sync_state", "id", "token", "token"},
 		{"desktop_sync_objects", "space_id || ':' || id", "ciphertext", "value"},

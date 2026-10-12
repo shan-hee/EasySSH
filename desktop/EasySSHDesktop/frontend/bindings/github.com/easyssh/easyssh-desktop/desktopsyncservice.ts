@@ -58,17 +58,8 @@ export function EnrollSession(spaceID: string, localID: string): $CancellablePro
     return $Call.ByID(3220310886, spaceID, localID);
 }
 
-export function Exchange(payload: string, revision: number): $CancellablePromise<string> {
-    return $Call.ByID(2064768723, payload, revision);
-}
 
-export function ExchangeVault(kind: string, id: string, peer: string, space: string, binding: number): $CancellablePromise<string> {
-    return $Call.ByID(858656725, kind, id, peer, space, binding);
-}
 
-export function ForkVaultSession(spaceID: string, key: string, ref: string): $CancellablePromise<void> {
-    return $Call.ByID(2453123446, spaceID, key, ref);
-}
 
 export function Load(): $CancellablePromise<$models.DesktopSyncState> {
     return $Call.ByID(3448827274).then(($result: any) => {
@@ -87,11 +78,6 @@ export function PollAuthorization(): $CancellablePromise<boolean> {
     return $Call.ByID(1058338284);
 }
 
-export function PrepareVault(kind: string, id: string): $CancellablePromise<$models.DesktopVaultState> {
-    return $Call.ByID(1935779003, kind, id).then(($result: any) => {
-        return $$createType4($result);
-    });
-}
 
 /**
  * Compare-and-swap protects edits made by another Wails call during network IO.
@@ -100,9 +86,6 @@ export function Save(input: $models.DesktopSyncSave): $CancellablePromise<boolea
     return $Call.ByID(2416178047, input);
 }
 
-export function SaveVault(input: $models.DesktopVaultSave): $CancellablePromise<boolean> {
-    return $Call.ByID(236178537, input);
-}
 
 export function SessionCandidates(): $CancellablePromise<$models.DesktopSyncCandidate[]> {
     return $Call.ByID(3070277612).then(($result: any) => {
@@ -118,25 +101,10 @@ export function SetScopes(scopes: syncdata$0.SyncScopes): $CancellablePromise<vo
     return $Call.ByID(4146449951, scopes);
 }
 
-export function VaultConflicts(): $CancellablePromise<syncdata$0.VaultConflict[]> {
-    return $Call.ByID(3616236021).then(($result: any) => {
-        return $$createType6($result);
-    });
-}
 
-export function VaultList(): $CancellablePromise<$models.DesktopVaultEntry[]> {
-    return $Call.ByID(763749834).then(($result: any) => {
-        return $$createType8($result);
-    });
-}
 
 // Private type creation functions
 const $$createType0 = $models.DesktopSyncLogin.createFrom;
 const $$createType1 = $models.DesktopSyncCandidate.createFrom;
 const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = $models.DesktopSyncState.createFrom;
-const $$createType4 = $models.DesktopVaultState.createFrom;
-const $$createType5 = syncdata$0.VaultConflict.createFrom;
-const $$createType6 = $Create.Array($$createType5);
-const $$createType7 = $models.DesktopVaultEntry.createFrom;
-const $$createType8 = $Create.Array($$createType7);

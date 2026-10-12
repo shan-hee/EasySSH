@@ -17,18 +17,22 @@ import (
 	"sync"
 	"time"
 
+	"github.com/easyssh/shared/synccrypto"
 	"github.com/easyssh/shared/syncdata"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type DesktopSyncService struct {
-	servers *DesktopServerService
-	scripts *DesktopScriptService
-	sftp    *DesktopSFTPService
-	ai      *DesktopAIService
-	authMu  sync.Mutex
-	pending *desktopSyncAuthorization
+	cryptoMu    sync.Mutex
+	cryptoVault *synccrypto.Vault
+	cryptoOwner string
+	servers     *DesktopServerService
+	scripts     *DesktopScriptService
+	sftp        *DesktopSFTPService
+	ai          *DesktopAIService
+	authMu      sync.Mutex
+	pending     *desktopSyncAuthorization
 }
 
 func NewDesktopSyncService(servers *DesktopServerService, scripts *DesktopScriptService, sftp *DesktopSFTPService, ai *DesktopAIService) *DesktopSyncService {
@@ -59,8 +63,6 @@ type DesktopSyncState struct {
 	Scopes      syncdata.SyncScopes `json:"scopes"`
 	Grants      syncdata.SyncScopes `json:"grants"`
 	Enabled     bool                `json:"enabled"`
-	Document    string              `json:"document"`
-	RemoteHeads []string            `json:"remote_heads"`
 	LastSync    string              `json:"last_sync"`
 	Revision    int64               `json:"revision"`
 	Snapshot    syncdata.Snapshot   `json:"snapshot"`
@@ -73,39 +75,42 @@ type desktopSyncQuery interface {
 func desktopSyncSnapshot(db desktopSyncQuery, spaceID string) (syncdata.Snapshot, map[string]string, error) {
 	snapshot := syncdata.Snapshot{}
 	ids := map[string]string{}
-	rows, err := db.Query(`SELECT s.id,m.remote_id,s.name,s.host,s.port,s.username,s.auth_method,s.server_group,s.tags_json,s.description FROM desktop_servers s JOIN desktop_sync_records m ON m.kind='server' AND m.local_id=s.id WHERE m.space_id=?`, spaceID)
+	rows, err := db.Query(`SELECT s.id,m.remote_id,s.name,s.host,s.port,s.username,s.auth_method,s.server_group,s.tags_json,s.description,s.created_at,s.updated_at FROM desktop_servers s JOIN desktop_sync_records m ON m.kind='server' AND m.local_id=s.id WHERE m.space_id=? ORDER BY s.sort_order ASC,s.created_at ASC,s.id ASC`, spaceID)
 	if err != nil {
 		return nil, nil, err
 	}
+	order := []string{}
 	for rows.Next() {
-		var id, remoteID, name, host, username, method, group, tags, description string
+		var id, remoteID, name, host, username, method, group, tags, description, created, updated string
 		var port int
-		if err = rows.Scan(&id, &remoteID, &name, &host, &port, &username, &method, &group, &tags, &description); err != nil {
+		if err = rows.Scan(&id, &remoteID, &name, &host, &port, &username, &method, &group, &tags, &description, &created, &updated); err != nil {
 			rows.Close()
 			return nil, nil, err
 		}
 		key := "server/" + remoteID
+		order = append(order, remoteID)
 		ids[key] = id
-		snapshot[key] = syncdata.Record{"name": name, "connection": syncdata.JSON(syncdata.Connection{Host: host, Port: port, Username: username, AuthMethod: method}), "group": group, "tags": syncdata.JSON(syncdata.Tags(tags)), "description": description}
+		snapshot[key] = syncdata.Record{"name": name, "connection": syncdata.JSON(syncdata.Connection{Host: host, Port: port, Username: username, AuthMethod: method}), "group": group, "tags": syncdata.JSON(syncdata.Tags(tags)), "description": description, "created_at": created, "updated_at": updated}
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
 		return nil, nil, err
 	}
-	rows, err = db.Query(`SELECT s.id,m.remote_id,s.name,s.content,s.language,s.tags_json,s.description FROM desktop_scripts s JOIN desktop_sync_records m ON m.kind='script' AND m.local_id=s.id WHERE m.space_id=?`, spaceID)
+	rows, err = db.Query(`SELECT s.id,m.remote_id,s.name,s.content,s.language,s.tags_json,s.description,s.created_at,s.updated_at FROM desktop_scripts s JOIN desktop_sync_records m ON m.kind='script' AND m.local_id=s.id WHERE m.space_id=?`, spaceID)
+	snapshot[syncdata.ServerOrderKey] = syncdata.Record{"ids": syncdata.JSON(order)}
 	if err != nil {
 		return nil, nil, err
 	}
 	for rows.Next() {
-		var id, remoteID, name, content, language, tags, description string
-		if err = rows.Scan(&id, &remoteID, &name, &content, &language, &tags, &description); err != nil {
+		var id, remoteID, name, content, language, tags, description, created, updated string
+		if err = rows.Scan(&id, &remoteID, &name, &content, &language, &tags, &description, &created, &updated); err != nil {
 			rows.Close()
 			return nil, nil, err
 		}
 		key := "script/" + remoteID
 		ids[key] = id
-		snapshot[key] = syncdata.Record{"name": name, "content": content, "language": language, "tags": syncdata.JSON(syncdata.Tags(tags)), "description": description}
+		snapshot[key] = syncdata.Record{"name": name, "content": content, "language": language, "tags": syncdata.JSON(syncdata.Tags(tags)), "description": description, "created_at": created, "updated_at": updated}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -122,12 +127,9 @@ func (s *DesktopSyncService) Load() (DesktopSyncState, error) {
 		return result, err
 	}
 	defer tx.Rollback()
-	var heads, scopes, grants string
-	err = tx.QueryRow(`SELECT COALESCE(p.server_url,''),s.space_id,COALESCE(p.account_name,''),COALESCE(p.scopes,'{}'),s.grants,s.enabled,COALESCE(p.document,''),COALESCE(p.remote_heads,'[]'),COALESCE(p.last_sync,''),s.revision FROM desktop_sync_state s LEFT JOIN desktop_sync_spaces p ON p.id=s.space_id WHERE s.id=1`).Scan(&result.ServerURL, &result.SpaceID, &result.AccountName, &scopes, &grants, &result.Enabled, &result.Document, &heads, &result.LastSync, &result.Revision)
+	var scopes, grants string
+	err = tx.QueryRow(`SELECT COALESCE(p.server_url,''),s.space_id,COALESCE(p.account_name,''),COALESCE(p.scopes,'{}'),s.grants,s.enabled,COALESCE(p.last_sync,''),s.revision FROM desktop_sync_state s LEFT JOIN desktop_sync_spaces p ON p.id=s.space_id WHERE s.id=1`).Scan(&result.ServerURL, &result.SpaceID, &result.AccountName, &scopes, &grants, &result.Enabled, &result.LastSync, &result.Revision)
 	if err != nil {
-		return result, err
-	}
-	if err = json.Unmarshal([]byte(heads), &result.RemoteHeads); err != nil {
 		return result, err
 	}
 	if err = json.Unmarshal([]byte(scopes), &result.Scopes); err != nil {
@@ -220,7 +222,7 @@ func (s *DesktopSyncService) connect(serverURL, token string) error {
 		UserID      string              `json:"user_id"`
 		AccountName string              `json:"account_name"`
 	}
-	if json.Unmarshal(data, &identity) != nil || identity.Protocol != 3 {
+	if json.Unmarshal(data, &identity) != nil || identity.Protocol != synccrypto.Version {
 		return errors.New("unsupported sync protocol")
 	}
 	if _, err = uuid.Parse(identity.SpaceID); err != nil {
@@ -319,42 +321,18 @@ func (s *DesktopSyncService) Disconnect() (bool, error) {
 	}
 	return revokeErr == nil, nil
 }
-func (s *DesktopSyncService) Exchange(payload string, revision int64) (string, error) {
-	if len(payload) > 12<<20 {
-		return "", errors.New("sync payload is too large")
-	}
-	db, err := s.database()
-	if err != nil {
-		return "", err
-	}
-	var address, encrypted string
-	if err = db.QueryRow(`SELECT p.server_url,s.token FROM desktop_sync_state s JOIN desktop_sync_spaces p ON p.id=s.space_id WHERE s.id=1 AND s.enabled=1 AND s.revision=?`, revision).Scan(&address, &encrypted); err != nil {
-		return "", errors.New("sync configuration changed; retry")
-	}
-	token, err := decryptDesktopCredential(encrypted, "desktop_sync_state", "1", "token")
-	if err != nil {
-		return "", err
-	}
-	data, err := syncRequest(address, token, "/device/exchange", []byte(payload))
-	return string(data), err
-}
 
 type DesktopSyncSave struct {
-	Revision    int64             `json:"revision"`
-	Hash        string            `json:"hash"`
-	Document    string            `json:"document"`
-	RemoteHeads []string          `json:"remote_heads"`
-	Snapshot    syncdata.Snapshot `json:"snapshot"`
+	Revision int64             `json:"revision"`
+	Hash     string            `json:"hash"`
+	Snapshot syncdata.Snapshot `json:"snapshot"`
 }
 
 // Compare-and-swap protects edits made by another Wails call during network IO.
 func (s *DesktopSyncService) Save(input DesktopSyncSave) (bool, error) {
-	if len(input.Document) > 8<<20 {
-		return false, errors.New("sync history exceeds 8 MiB")
-	}
 	if input.Snapshot != nil {
 		for key := range input.Snapshot {
-			if !strings.HasPrefix(key, "server/") && !strings.HasPrefix(key, "script/") {
+			if !strings.HasPrefix(key, "server/") && !strings.HasPrefix(key, "script/") && key != syncdata.ServerOrderKey {
 				return false, errors.New("invalid configuration record")
 			}
 		}
@@ -395,10 +373,6 @@ func (s *DesktopSyncService) Save(input DesktopSyncSave) (bool, error) {
 			return false, err
 		}
 	}
-	_, err = tx.Exec(`UPDATE desktop_sync_spaces SET document=?,remote_heads=? WHERE id=?`, input.Document, syncdata.JSON(input.RemoteHeads), spaceID)
-	if err != nil {
-		return false, err
-	}
 	if err = tx.Commit(); err != nil {
 		return false, err
 	}
@@ -413,6 +387,9 @@ func (s *DesktopSyncService) Save(input DesktopSyncSave) (bool, error) {
 }
 func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapshot, ids map[string]string) error {
 	for key := range before {
+		if key == syncdata.ServerOrderKey {
+			continue
+		}
 		if _, ok := after[key]; ok {
 			continue
 		}
@@ -424,8 +401,10 @@ func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapsho
 			return err
 		}
 	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for key, r := range after {
+		if key == syncdata.ServerOrderKey {
+			continue
+		}
 		if syncdata.Equal(before[key], r) {
 			continue
 		}
@@ -439,6 +418,7 @@ func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapsho
 			if err != nil {
 				return err
 			}
+			ids[key] = id
 		}
 		if parts[0] == "server" {
 			conn, err := syncdata.ParseConnection(r["connection"])
@@ -446,10 +426,10 @@ func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapsho
 				return err
 			}
 			if before[key] == nil {
-				_, err = tx.Exec(`INSERT INTO desktop_servers(id,user_id,name,host,port,username,auth_method,server_group,tags_json,description,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, id, desktopLocalDataUserID, r["name"], conn.Host, conn.Port, conn.Username, conn.AuthMethod, r["group"], r["tags"], r["description"], now, now)
+				_, err = tx.Exec(`INSERT INTO desktop_servers(id,user_id,name,host,port,username,auth_method,server_group,tags_json,description,created_at,updated_at,sort_order) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,(SELECT COALESCE(MAX(sort_order),-1)+1 FROM desktop_servers))`, id, desktopLocalDataUserID, r["name"], conn.Host, conn.Port, conn.Username, conn.AuthMethod, r["group"], r["tags"], r["description"], r["created_at"], r["updated_at"])
 			} else {
 				clear := before[key]["connection"] != r["connection"]
-				_, err = tx.Exec(`UPDATE desktop_servers SET name=?,host=?,port=?,username=?,auth_method=?,server_group=?,tags_json=?,description=?,password=CASE WHEN ? THEN '' ELSE password END,ssh_key_id=CASE WHEN ? THEN NULL ELSE ssh_key_id END,updated_at=? WHERE id=?`, r["name"], conn.Host, conn.Port, conn.Username, conn.AuthMethod, r["group"], r["tags"], r["description"], clear, clear, now, id)
+				_, err = tx.Exec(`UPDATE desktop_servers SET name=?,host=?,port=?,username=?,auth_method=?,server_group=?,tags_json=?,description=?,password=CASE WHEN ? THEN '' ELSE password END,ssh_key_id=CASE WHEN ? THEN NULL ELSE ssh_key_id END,updated_at=? WHERE id=?`, r["name"], conn.Host, conn.Port, conn.Username, conn.AuthMethod, r["group"], r["tags"], r["description"], clear, clear, r["updated_at"], id)
 			}
 			if err != nil {
 				return err
@@ -457,13 +437,48 @@ func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapsho
 		} else {
 			var err error
 			if before[key] == nil {
-				_, err = tx.Exec(`INSERT INTO desktop_scripts(id,user_id,name,content,language,tags_json,description,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`, id, desktopLocalDataUserID, r["name"], r["content"], r["language"], r["tags"], r["description"], now, now)
+				_, err = tx.Exec(`INSERT INTO desktop_scripts(id,user_id,name,content,language,tags_json,description,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`, id, desktopLocalDataUserID, r["name"], r["content"], r["language"], r["tags"], r["description"], r["created_at"], r["updated_at"])
 			} else {
-				_, err = tx.Exec(`UPDATE desktop_scripts SET name=?,content=?,language=?,tags_json=?,description=?,updated_at=? WHERE id=?`, r["name"], r["content"], r["language"], r["tags"], r["description"], now, id)
+				_, err = tx.Exec(`UPDATE desktop_scripts SET name=?,content=?,language=?,tags_json=?,description=?,updated_at=? WHERE id=?`, r["name"], r["content"], r["language"], r["tags"], r["description"], r["updated_at"], id)
 			}
 			if err != nil {
 				return err
 			}
+		}
+	}
+	ordered, err := syncdata.OrderedServers(after)
+	if err != nil {
+		return err
+	}
+	remoteToLocal := make(map[string]string, len(ordered))
+	for _, remoteID := range ordered {
+		remoteToLocal[remoteID] = ids["server/"+remoteID]
+	}
+	rows, err := tx.Query(`SELECT id FROM desktop_servers ORDER BY sort_order ASC,created_at ASC,id ASC`)
+	if err != nil {
+		return err
+	}
+	localIDs := []string{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		localIDs = append(localIDs, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	projected, err := syncdata.ProjectServerSlots(localIDs, ordered, remoteToLocal)
+	if err != nil {
+		return err
+	}
+	for index, id := range projected {
+		if _, err := tx.Exec(`UPDATE desktop_servers SET sort_order=? WHERE id=? AND sort_order<>?`, index, id, index); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -105,17 +105,7 @@ func verifyDesktopHostKey(hostname string, key ssh.PublicKey) error {
 	storeKey := desktopHostKeyRecordKey(host, port)
 	existing, ok := desktopHostKeyStore[storeKey]
 	if !ok {
-		desktopHostKeyStore[storeKey] = DesktopHostKeyRecord{
-			Host:        host,
-			Port:        port,
-			KeyType:     keyType,
-			PublicKey:   base64.StdEncoding.EncodeToString(key.Marshal()),
-			Fingerprint: fingerprint,
-			FirstSeen:   nowString,
-			LastSeen:    nowString,
-			TrustStatus: desktopHostKeyTrustTrusted,
-		}
-		return writeDesktopHostKeyStoreLocked()
+		return &DesktopHostKeyVerificationError{Host: host, Port: port, ReceivedKey: fingerprint, ReceivedKeyType: keyType, Message: fmt.Sprintf("First SSH connection to %s:%d: confirm fingerprint %s (%s)", host, port, fingerprint, keyType)}
 	}
 
 	if existing.TrustStatus == desktopHostKeyTrustRevoked {

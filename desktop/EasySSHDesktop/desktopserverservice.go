@@ -53,26 +53,27 @@ const (
 )
 
 type DesktopServer struct {
-	ID            string                  `json:"id"`
-	UserID        string                  `json:"user_id"`
-	Name          string                  `json:"name,omitempty"`
-	Host          string                  `json:"host"`
-	Port          int                     `json:"port"`
-	Username      string                  `json:"username"`
-	AuthMethod    DesktopServerAuthMethod `json:"auth_method"`
-	Password      string                  `json:"-"`
-	PrivateKey    string                  `json:"-"`
-	SSHKeyID      *uint                   `json:"ssh_key_id"`
-	HasPassword   bool                    `json:"has_password"`
-	HasPrivateKey bool                    `json:"has_private_key"`
-	Group         string                  `json:"group,omitempty"`
-	Tags          []string                `json:"tags,omitempty"`
-	Status        DesktopServerStatus     `json:"status"`
-	LastConnected string                  `json:"last_connected,omitempty"`
-	Description   string                  `json:"description,omitempty"`
-	OS            string                  `json:"os,omitempty"`
-	CreatedAt     string                  `json:"created_at"`
-	UpdatedAt     string                  `json:"updated_at"`
+	PrivateKeyPassphrase string                  `json:"-"`
+	ID                   string                  `json:"id"`
+	UserID               string                  `json:"user_id"`
+	Name                 string                  `json:"name,omitempty"`
+	Host                 string                  `json:"host"`
+	Port                 int                     `json:"port"`
+	Username             string                  `json:"username"`
+	AuthMethod           DesktopServerAuthMethod `json:"auth_method"`
+	Password             string                  `json:"-"`
+	PrivateKey           string                  `json:"-"`
+	SSHKeyID             *uint                   `json:"ssh_key_id"`
+	HasPassword          bool                    `json:"has_password"`
+	HasPrivateKey        bool                    `json:"has_private_key"`
+	Group                string                  `json:"group,omitempty"`
+	Tags                 []string                `json:"tags,omitempty"`
+	Status               DesktopServerStatus     `json:"status"`
+	LastConnected        string                  `json:"last_connected,omitempty"`
+	Description          string                  `json:"description,omitempty"`
+	OS                   string                  `json:"os,omitempty"`
+	CreatedAt            string                  `json:"created_at"`
+	UpdatedAt            string                  `json:"updated_at"`
 }
 
 type DesktopServerListParams struct {
@@ -868,6 +869,10 @@ func (s *DesktopServerService) getByIDRaw(id string) (DesktopServer, error) {
 	if err != nil {
 		return DesktopServer{}, err
 	}
+	server.PrivateKeyPassphrase, err = s.resolveSSHKeyPassphrase(server.SSHKeyID)
+	if err != nil {
+		return DesktopServer{}, err
+	}
 	return server, nil
 }
 
@@ -1088,7 +1093,11 @@ func buildDesktopServerSSHAuthMethodsWithCredentialAndKeyboard(server DesktopSer
 			if strings.TrimSpace(privateKey) == "" {
 				return nil, errors.New("server credential is required")
 			}
-			signer, err := sshutil.ParsePrivateKey(privateKey, desktopServerCredentialPrivateKeyPassphrase(credential))
+			passphrase := server.PrivateKeyPassphrase
+			if credential != nil && credential.PrivateKeyPassphrase != "" {
+				passphrase = credential.PrivateKeyPassphrase
+			}
+			signer, err := sshutil.ParsePrivateKey(privateKey, passphrase)
 			if err != nil {
 				return nil, err
 			}
@@ -1217,6 +1226,7 @@ func sanitizeDesktopServer(server DesktopServer) DesktopServer {
 	server.HasPrivateKey = server.SSHKeyID != nil
 	server.Password = ""
 	server.PrivateKey = ""
+	server.PrivateKeyPassphrase = ""
 	return server
 }
 

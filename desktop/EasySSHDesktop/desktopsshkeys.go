@@ -68,8 +68,13 @@ func (s *DesktopServerService) ImportSSHKey(input DesktopSSHKeyImport) (DesktopS
 	if err != nil {
 		return DesktopSSHKey{}, err
 	}
-	_, err = db.Exec(`INSERT INTO desktop_ssh_keys (name, public_key, fingerprint, algorithm, key_size, passphrase_required, private_key, created_at, updated_at)
-	 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(fingerprint) DO UPDATE SET private_key = excluded.private_key, passphrase_required = excluded.passphrase_required WHERE desktop_ssh_keys.private_key = ''`, name, metadata.PublicKey, metadata.Fingerprint, metadata.Algorithm, metadata.KeySize, metadata.PassphraseRequired, encrypted, time.Now().UTC().Format(time.RFC3339Nano), time.Now().UTC().Format(time.RFC3339Nano))
+	passphrase, err := encryptDesktopCredential(input.Passphrase, "desktop_ssh_keys", metadata.Fingerprint, "passphrase")
+	if err != nil {
+		return DesktopSSHKey{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err = db.Exec(`INSERT INTO desktop_ssh_keys(name,public_key,fingerprint,algorithm,key_size,passphrase_required,private_key,passphrase,created_at,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(fingerprint) DO UPDATE SET private_key=excluded.private_key,passphrase=excluded.passphrase,passphrase_required=excluded.passphrase_required,updated_at=excluded.updated_at`, name, metadata.PublicKey, metadata.Fingerprint, metadata.Algorithm, metadata.KeySize, metadata.PassphraseRequired, encrypted, passphrase, now, now)
 	if err != nil {
 		return DesktopSSHKey{}, err
 	}
@@ -131,4 +136,19 @@ func desktopSSHKeyID(value sql.NullInt64) *uint {
 	}
 	id := uint(value.Int64)
 	return &id
+}
+
+func (s *DesktopServerService) resolveSSHKeyPassphrase(id *uint) (string, error) {
+	if id == nil {
+		return "", nil
+	}
+	db, err := s.database()
+	if err != nil {
+		return "", err
+	}
+	var value, fingerprint string
+	if err = db.QueryRow("SELECT passphrase,fingerprint FROM desktop_ssh_keys WHERE id=?", *id).Scan(&value, &fingerprint); err != nil {
+		return "", err
+	}
+	return decryptDesktopCredential(value, "desktop_ssh_keys", fingerprint, "passphrase")
 }

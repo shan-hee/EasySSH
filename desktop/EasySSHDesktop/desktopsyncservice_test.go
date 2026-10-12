@@ -1,11 +1,63 @@
 package main
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/easyssh/shared/syncdata"
 	"github.com/google/uuid"
 )
+
+func TestDesktopSyncOrderKeepsUnenrolledAndOtherSpacePositions(t *testing.T) {
+	s := newDesktopSyncTestService(t)
+	space, otherSpace := uuid.NewString(), uuid.NewString()
+	local, a, other, b := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
+	for index, id := range []string{local, a, other, b} {
+		if _, err := s.servers.db.Exec(`INSERT INTO desktop_servers(id,host,username,sort_order,created_at,updated_at) VALUES(?,'host','user',?,'','')`, id, index); err != nil {
+			t.Fatal(err)
+		}
+	}
+	activateSyncTestSpace(t, s, otherSpace)
+	if err := s.Enroll(otherSpace, []string{"server/" + other}); err != nil {
+		t.Fatal(err)
+	}
+	activateSyncTestSpace(t, s, space)
+	if err := s.Enroll(space, []string{"server/" + a, "server/" + b}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	order, err := syncdata.OrderedServers(state.Snapshot)
+	if err != nil || len(order) != 2 {
+		t.Fatalf("invalid initial order: %v %v", order, err)
+	}
+	state.Snapshot[syncdata.ServerOrderKey]["ids"] = syncdata.JSON([]string{order[1], order[0]})
+	ok, err := s.Save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot})
+	if err != nil || !ok {
+		t.Fatalf("apply order: saved=%v error=%v", ok, err)
+	}
+	rows, err := s.servers.db.Query(`SELECT id FROM desktop_servers ORDER BY sort_order,created_at,id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{local, b, other, a}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("order=%v want=%v", got, want)
+	}
+}
 
 func newDesktopSyncTestService(t *testing.T) *DesktopSyncService {
 	t.Helper()
@@ -43,7 +95,7 @@ func TestDesktopSyncEnrollmentAndAccountIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Snapshot) != 0 {
+	if syncdata.ConfigurationRecordCount(state.Snapshot) != 0 {
 		t.Fatal("login enrolled local data implicitly")
 	}
 	if err := s.Enroll(a, []string{"server/" + localID}); err != nil {
@@ -53,7 +105,7 @@ func TestDesktopSyncEnrollmentAndAccountIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(old.Snapshot) != 1 {
+	if syncdata.ConfigurationRecordCount(old.Snapshot) != 1 {
 		t.Fatal("explicit enrollment missing")
 	}
 	activateSyncTestSpace(t, s, b)
@@ -61,10 +113,10 @@ func TestDesktopSyncEnrollmentAndAccountIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Snapshot) != 0 {
+	if syncdata.ConfigurationRecordCount(current.Snapshot) != 0 {
 		t.Fatal("new account inherited previous space data")
 	}
-	saved, err := s.Save(DesktopSyncSave{Revision: old.Revision, Hash: old.Hash, Document: "stale"})
+	saved, err := s.Save(DesktopSyncSave{Revision: old.Revision, Hash: old.Hash})
 	if err != nil || saved {
 		t.Fatalf("accepted stale account response: %v", err)
 	}
@@ -107,7 +159,7 @@ func TestDesktopSyncRejectsChangesMadeDuringExchange(t *testing.T) {
 	if _, err := s.servers.db.Exec(`UPDATE desktop_scripts SET content='echo edited' WHERE id=?`, id); err != nil {
 		t.Fatal(err)
 	}
-	saved, err := s.Save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Document: "stale", Snapshot: state.Snapshot})
+	saved, err := s.Save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot})
 	if err != nil || saved {
 		t.Fatalf("overwrote concurrent local edit: %v", err)
 	}

@@ -36,12 +36,16 @@ func (s *DesktopSyncService) captureLocalVault(tx *sql.Tx, v DesktopVaultState) 
 		p.Credential = &syncdata.Credential{Connection: syncdata.JSON(syncdata.Connection{Host: host, Port: port, Username: user, AuthMethod: method}), Password: password}
 		if keyID.Valid {
 			var k syncdata.KeyMaterial
-			var enc string
-			err = tx.QueryRow(`SELECT name,public_key,private_key,fingerprint,algorithm,key_size,passphrase_required FROM desktop_ssh_keys WHERE id=?`, keyID.Int64).Scan(&k.Name, &k.PublicKey, &enc, &k.Fingerprint, &k.Algorithm, &k.KeySize, &k.PassphraseRequired)
+			var enc, passphrase string
+			err = tx.QueryRow(`SELECT name,public_key,private_key,fingerprint,algorithm,key_size,passphrase_required,passphrase FROM desktop_ssh_keys WHERE id=?`, keyID.Int64).Scan(&k.Name, &k.PublicKey, &enc, &k.Fingerprint, &k.Algorithm, &k.KeySize, &k.PassphraseRequired, &passphrase)
 			if err != nil {
 				return nil, err
 			}
 			k.PrivateKey, err = decryptDesktopCredential(enc, "desktop_ssh_keys", k.Fingerprint, "private_key")
+			if err != nil {
+				return nil, err
+			}
+			p.Credential.Passphrase, err = decryptDesktopCredential(passphrase, "desktop_ssh_keys", k.Fingerprint, "passphrase")
 			if err != nil {
 				return nil, err
 			}
@@ -103,7 +107,7 @@ func (s *DesktopSyncService) captureLocalVault(tx *sql.Tx, v DesktopVaultState) 
 			c.Messages[i].ServerReferences = refs
 		}
 		for id, data := range syncdata.ExtractAttachments(c) {
-			if err = s.putLocalObject(tx, v.SpaceID, "attachment", id, v.ID, data, false); err != nil {
+			if err = s.putLocalObject(tx, v.SpaceID, "attachment", id, v.ID, data); err != nil {
 				return nil, err
 			}
 		}
@@ -156,9 +160,16 @@ func (s *DesktopSyncService) applyLocalVault(tx *sql.Tx, v DesktopVaultState, p 
 				if err != nil {
 					return err
 				}
-				if _, err = tx.Exec(`UPDATE desktop_ssh_keys SET private_key=?,passphrase_required=?,updated_at=? WHERE id=? AND private_key=''`, encrypted, k.PassphraseRequired, now, id); err != nil {
+				if _, err = tx.Exec(`UPDATE desktop_ssh_keys SET private_key=?,passphrase_required=?,updated_at=? WHERE id=?`, encrypted, k.PassphraseRequired, now, id); err != nil {
 					return err
 				}
+			}
+			passphrase, e := encryptDesktopCredential(c.Passphrase, "desktop_ssh_keys", k.Fingerprint, "passphrase")
+			if e != nil {
+				return e
+			}
+			if _, e = tx.Exec(`UPDATE desktop_ssh_keys SET passphrase=? WHERE id=?`, passphrase, id); e != nil {
+				return e
 			}
 			keyID = &id
 		}
@@ -295,7 +306,7 @@ func (s *DesktopSyncService) EnrollSession(spaceID, localID string) error {
 			return err
 		}
 		for id, data := range syncdata.ExtractAttachments(payload.Conversation) {
-			if err = s.putLocalObject(tx, spaceID, "attachment", id, source.ID, data, false); err != nil {
+			if err = s.putLocalObject(tx, spaceID, "attachment", id, source.ID, data); err != nil {
 				return err
 			}
 		}
