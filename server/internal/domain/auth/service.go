@@ -121,9 +121,6 @@ type Service interface {
 
 	// Monitor Data Source settings
 
-	// UpdateMonitorDataSource 更新监控数据源设置
-	// setActive: 是否将此数据源设为当前激活的数据源
-	UpdateMonitorDataSource(ctx context.Context, userID uuid.UUID, dataSource, endpoint, token string, setActive bool) error
 }
 
 // authService 认证服务实现
@@ -1105,66 +1102,6 @@ func (s *authService) UpdateNotificationSettings(ctx context.Context, userID uui
 	}
 	if taskExternal != nil {
 		user.NotifyTaskExternal = *taskExternal
-	}
-
-	return s.repo.Update(ctx, user)
-}
-
-// UpdateMonitorDataSource 更新监控数据源设置
-// dataSource: 要更新的数据源类型 (easyssh/nezha/komari)
-// endpoint: API 端点地址（仅 nezha/komari 有效）
-// token: API Token（仅 nezha/komari 有效）
-// setActive: 是否将此数据源设为当前激活的数据源
-func (s *authService) UpdateMonitorDataSource(ctx context.Context, userID uuid.UUID, dataSource, endpoint, token string, setActive bool) error {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-
-	// 验证数据源类型
-	dsType := MonitorDataSourceType(dataSource)
-	switch dsType {
-	case MonitorDataSourceEasySSH:
-		// EasySSH 无需额外配置，只需设置为当前数据源
-		if setActive {
-			user.MonitorDataSource = dataSource
-		}
-
-	case MonitorDataSourceNezha:
-		// 更新 Nezha 配置
-		if endpoint != "" {
-			user.NezhaAPIEndpoint = endpoint
-		}
-		if token != "" {
-			encrypted, err := s.encryptUserSecret(user.ID, "nezha_api_token", token)
-			if err != nil {
-				return fmt.Errorf("failed to encrypt Nezha token: %w", err)
-			}
-			user.NezhaAPIToken = encrypted
-		}
-		if setActive {
-			user.MonitorDataSource = dataSource
-		}
-
-	case MonitorDataSourceKomari:
-		// 更新 Komari 配置
-		if endpoint != "" {
-			user.KomariAPIEndpoint = endpoint
-		}
-		if token != "" {
-			encrypted, err := s.encryptUserSecret(user.ID, "komari_api_token", token)
-			if err != nil {
-				return fmt.Errorf("failed to encrypt Komari token: %w", err)
-			}
-			user.KomariAPIToken = encrypted
-		}
-		if setActive {
-			user.MonitorDataSource = dataSource
-		}
-
-	default:
-		return fmt.Errorf("invalid data source type: %s", dataSource)
 	}
 
 	return s.repo.Update(ctx, user)

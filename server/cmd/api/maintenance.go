@@ -192,33 +192,9 @@ func createInstanceArchive(ctx context.Context, cfg *config.Config, database *go
 		}
 		dbFile := filepath.Base(sqliteDatabasePath(cfg.Database.DSN))
 		if err = instancebackup.CopyTree(ctx, dataDir, filepath.Join(stage, "data"), func(name string) bool {
-			return name == ".easyssh-instance.lock" || name == "easyssh-root.key" || (cfg.Database.Driver == "sqlite" && (name == dbFile || name == dbFile+"-wal" || name == dbFile+"-shm" || name == dbFile+"-journal"))
+			return name == "transfers" || name == ".easyssh-instance.lock" || name == "easyssh-root.key" || (cfg.Database.Driver == "sqlite" && (name == dbFile || name == dbFile+"-wal" || name == dbFile+"-shm" || name == dbFile+"-journal"))
 		}); err != nil {
 			return err
-		}
-		var configured sql.NullString
-		if err = sqlDB.QueryRowContext(ctx, "SELECT transfer_storage_path FROM system_config LIMIT 1").Scan(&configured); err != nil && err != sql.ErrNoRows {
-			return err
-		}
-		transferRoot := filepath.Join(dataDir, "transfers")
-		if configured.Valid && strings.TrimSpace(configured.String) != "" {
-			transferRoot, err = filepath.Abs(configured.String)
-			if err != nil {
-				return err
-			}
-		}
-		manifest.TransferRoot = transferRoot
-		if transferRoot != filepath.Join(dataDir, "transfers") {
-			if _, err = os.Stat(filepath.Join(stage, "data", "transfers")); err == nil {
-				return errors.New("custom transfer storage conflicts with data/transfers; consolidate storage before backup")
-			}
-			if _, err = os.Stat(transferRoot); err == nil {
-				if err = instancebackup.CopyTree(ctx, transferRoot, filepath.Join(stage, "data", "transfers"), nil); err != nil {
-					return err
-				}
-			} else if !os.IsNotExist(err) {
-				return err
-			}
 		}
 		if err = os.WriteFile(filepath.Join(stage, "root.key"), []byte(cfg.Server.EncryptionKey), 0600); err != nil {
 			return err
@@ -484,44 +460,6 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 	defer tx.Rollback()
 	for _, table := range []string{"user_sessions", "auth_tickets", "totp_replays", "trusted_devices", "sync_authorizations", "sync_devices", "oauth_grants", "oauth_login_challenges", "oauth_client_assertions"} {
 		if err = tx.Exec("DELETE FROM " + table).Error; err != nil {
-			return err
-		}
-	}
-	transferRoot := filepath.Join(destination, "transfers")
-	if err = tx.Exec("UPDATE system_config SET transfer_storage_path=?", transferRoot).Error; err != nil {
-		return err
-	}
-	rows, err := tx.Table("transfer_jobs").Select("id, artifact_path").Rows()
-	if err != nil {
-		return err
-	}
-	type artifact struct{ ID, Path string }
-	var artifacts []artifact
-	for rows.Next() {
-		var id string
-		var value sql.NullString
-		if err = rows.Scan(&id, &value); err != nil {
-			rows.Close()
-			return err
-		}
-		if value.Valid && value.String != "" {
-			artifacts = append(artifacts, artifact{id, value.String})
-		}
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return err
-	}
-	for _, item := range artifacts {
-		if !withinPath(manifest.TransferRoot, item.Path) {
-			return errors.New("transfer artifact lies outside recorded storage root")
-		}
-		relative, err := filepath.Rel(manifest.TransferRoot, item.Path)
-		if err != nil {
-			return err
-		}
-		if err = tx.Table("transfer_jobs").Where("id=?", item.ID).Update("artifact_path", filepath.Join(transferRoot, relative)).Error; err != nil {
 			return err
 		}
 	}

@@ -48,30 +48,7 @@ func newInstanceHistory(cfg *config.Config, database *gorm.DB, freeze func(func(
 		AppVersion: readAppVersion(), Driver: cfg.Database.Driver, SchemaVersion: dbmigration.Latest,
 		Directory: directory,
 		Snapshot: func(ctx context.Context, output, password string) error {
-			return createInstanceArchive(ctx, cfg, database, output, password, func(capture func() error) error {
-				return freeze(func() error {
-					// A custom transfer directory must not contain the backup catalog.
-					var root string
-					if err := database.WithContext(ctx).Raw("SELECT COALESCE(transfer_storage_path,'') FROM system_config LIMIT 1").Scan(&root).Error; err != nil {
-						return err
-					}
-					if root != "" {
-						absolute, err := filepath.Abs(root)
-						if err != nil {
-							return err
-						}
-						if resolved, resolveErr := filepath.EvalSymlinks(absolute); resolveErr == nil {
-							absolute = resolved
-						} else if !os.IsNotExist(resolveErr) {
-							return resolveErr
-						}
-						if withinPath(absolute, directory) || (withinPath(directory, absolute) && !(managedRestore && withinPath(dataDir, absolute))) {
-							return errors.New("backup storage must be separate from transfer storage")
-						}
-					}
-					return capture()
-				})
-			})
+			return createInstanceArchive(ctx, cfg, database, output, password, freeze)
 		},
 		Validate: func(ctx context.Context, stage string, m instancebackup.Manifest) error {
 			if m.Profile != "server" || m.Driver != cfg.Database.Driver {

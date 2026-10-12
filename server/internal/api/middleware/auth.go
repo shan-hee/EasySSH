@@ -40,20 +40,8 @@ func ticketExpectationForRequest(c *gin.Context) (auth.TicketExpectation, bool) 
 	switch c.FullPath() {
 	case "/api/v1/backup/instances/:id/download":
 		return auth.TicketExpectation{Type: auth.TicketTypeInstanceBackupDownload, Ref: c.Param("id")}, true
-	case "/api/v1/ssh/terminal/:server_id":
-		return auth.TicketExpectation{Type: auth.TicketTypeWSTerminal, Ref: c.Param("server_id")}, true
-	case "/api/v1/monitor/server/:server_id":
-		return auth.TicketExpectation{Type: auth.TicketTypeWSMonitor, Ref: c.Param("server_id")}, true
-	case "/api/v1/sftp/upload/ws/:task_id":
-		return auth.TicketExpectation{Type: auth.TicketTypeWSSFTPUpload, Ref: c.Param("task_id")}, true
-	case "/api/v1/sftp/:server_id/auth/ws":
-		return auth.TicketExpectation{Type: auth.TicketTypeWSSFTPAuth, Ref: c.Param("server_id")}, true
-	case "/api/v1/sftp/transfer/ws/:task_id":
-		return auth.TicketExpectation{Type: auth.TicketTypeWSSFTPTransfer, Ref: c.Param("task_id")}, true
-	case "/api/v1/sftp/:server_id/download":
-		return auth.TicketExpectation{Type: auth.TicketTypeSFTPDownload, Ref: c.Param("server_id")}, true
-	case "/api/v1/sftp/:server_id/batch-download":
-		return auth.TicketExpectation{Type: auth.TicketTypeSFTPBatchDownload, Ref: c.Param("server_id")}, true
+	case "/api/v1/ssh/relay/:server_id":
+		return auth.TicketExpectation{Type: auth.TicketTypeWSSSHRelay, Ref: c.Param("server_id")}, true
 	default:
 		return auth.TicketExpectation{}, false
 	}

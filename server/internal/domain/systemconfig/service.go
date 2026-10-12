@@ -19,7 +19,6 @@ type Service interface {
 	SaveGoogleAuth(ctx context.Context, config *SystemConfig) error
 	SaveOAuthProvider(ctx context.Context, config *SystemConfig) error
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
-	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
 }
 
 type service struct {
@@ -117,21 +116,10 @@ func (s *service) SaveFileTransfer(ctx context.Context, config *SystemConfig) er
 	if config == nil {
 		return errors.New("file transfer configuration is required")
 	}
-	config.ApplyTransferDefaults()
 	if err := s.validateFileTransfer(config); err != nil {
 		return err
 	}
 	return s.repo.SaveFileTransfer(ctx, config)
-}
-
-func (s *service) SaveScheduledTasks(ctx context.Context, config *SystemConfig) error {
-	if config == nil {
-		return errors.New("scheduled task configuration is required")
-	}
-	if config.JobQueueMaxConcurrency < 1 || config.JobQueueMaxConcurrency > 16 {
-		return errors.New("job queue max concurrency must be between 1 and 16")
-	}
-	return s.repo.SaveScheduledTasks(ctx, config)
 }
 
 func (s *service) validateBasic(config *SystemConfig) error {
@@ -191,31 +179,6 @@ func (s *service) validateFileTransfer(config *SystemConfig) error {
 	// 验证文件上传大小
 	if config.MaxFileUploadSize < 1 || config.MaxFileUploadSize > 1024 {
 		return errors.New("max file upload size must be between 1 and 1024 MB")
-	}
-	if config.TransferRetentionDays < 1 || config.TransferRetentionDays > 30 {
-		return errors.New("transfer retention days must be between 1 and 30")
-	}
-	if config.TransferMaxStorageGB < 1 || config.TransferMaxStorageGB > 1024 {
-		return errors.New("transfer max storage must be between 1 and 1024 GB")
-	}
-	if config.TransferMaxConcurrency < 1 || config.TransferMaxConcurrency > 16 {
-		return errors.New("transfer max concurrency must be between 1 and 16")
-	}
-
-	if config.SFTPMaxIdleTimeSeconds < 5 || config.SFTPMaxIdleTimeSeconds > 3600 {
-		return errors.New("SFTP max idle time must be between 5 and 3600 seconds")
-	}
-	if config.SFTPCleanupIntervalSeconds < 5 || config.SFTPCleanupIntervalSeconds > 600 {
-		return errors.New("SFTP cleanup interval must be between 5 and 600 seconds")
-	}
-	if config.SFTPMaxLifeTimeMinutes < 0 || config.SFTPMaxLifeTimeMinutes > 1440 {
-		return errors.New("SFTP max life time must be between 0 and 1440 minutes")
-	}
-	if config.SFTPConnTimeoutSeconds < 1 || config.SFTPConnTimeoutSeconds > 120 {
-		return errors.New("SFTP connection timeout must be between 1 and 120 seconds")
-	}
-	if config.SFTPMaxSessionsPerConn < 0 || config.SFTPMaxSessionsPerConn > 64 {
-		return errors.New("SFTP max sessions per connection must be between 0 and 64")
 	}
 
 	return nil

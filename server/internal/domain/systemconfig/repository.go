@@ -17,7 +17,6 @@ type Repository interface {
 	SaveGoogleAuth(ctx context.Context, config *SystemConfig, updateSecret bool) error
 	SaveOAuthProvider(ctx context.Context, config *SystemConfig) error
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
-	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
 }
 
 type repository struct {
@@ -48,19 +47,9 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 				SkipExcludedOnUpload:         true,
 				MaxFileUploadSize:            100,
 				DownloadExcludePatterns:      DefaultDownloadExcludePatterns(),
-				TransferStoragePath:          DefaultTransferStoragePath(),
-				TransferRetentionDays:        DefaultTransferRetentionDays(),
-				TransferMaxStorageGB:         DefaultTransferMaxStorageGB(),
-				TransferMaxConcurrency:       DefaultTransferMaxConcurrency(),
-				TransferCleanupEnabled:       true,
-				JobQueueMaxConcurrency:       DefaultJobQueueMaxConcurrency(),
 				OAuthAccessTokenMinutes:      oauthDefaults.AccessTokenMinutes,
 				OAuthRefreshTokenDays:        oauthDefaults.RefreshTokenDays,
 				ExternalOAuthProviderEnabled: oauthDefaults.ExternalOAuthProviderEnabled,
-				SFTPMaxIdleTimeSeconds:       120,
-				SFTPCleanupIntervalSeconds:   30,
-				SFTPConnTimeoutSeconds:       10,
-				SFTPMaxSessionsPerConn:       8,
 			}
 
 			// 创建默认配置
@@ -72,8 +61,6 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 		}
 	}
 
-	config.ApplyTransferDefaults()
-	config.ApplyJobQueueDefaults()
 	return &config, nil
 }
 
@@ -127,25 +114,9 @@ func (r *repository) SaveOAuthProvider(ctx context.Context, config *SystemConfig
 
 func (r *repository) SaveFileTransfer(ctx context.Context, config *SystemConfig) error {
 	return r.update(ctx, map[string]any{
-		"download_exclude_patterns":     config.DownloadExcludePatterns,
-		"default_download_mode":         config.DefaultDownloadMode,
-		"skip_excluded_on_upload":       config.SkipExcludedOnUpload,
-		"max_file_upload_size":          config.MaxFileUploadSize,
-		"transfer_storage_path":         config.TransferStoragePath,
-		"transfer_retention_days":       config.TransferRetentionDays,
-		"transfer_max_storage_gb":       config.TransferMaxStorageGB,
-		"transfer_max_concurrency":      config.TransferMaxConcurrency,
-		"transfer_cleanup_enabled":      config.TransferCleanupEnabled,
-		"sftp_max_idle_time_seconds":    config.SFTPMaxIdleTimeSeconds,
-		"sftp_cleanup_interval_seconds": config.SFTPCleanupIntervalSeconds,
-		"sftp_max_life_time_minutes":    config.SFTPMaxLifeTimeMinutes,
-		"sftp_conn_timeout_seconds":     config.SFTPConnTimeoutSeconds,
-		"sftp_max_sessions_per_conn":    config.SFTPMaxSessionsPerConn,
-	})
-}
-
-func (r *repository) SaveScheduledTasks(ctx context.Context, config *SystemConfig) error {
-	return r.update(ctx, map[string]any{
-		"job_queue_max_concurrency": config.JobQueueMaxConcurrency,
+		"download_exclude_patterns": config.DownloadExcludePatterns,
+		"default_download_mode":     config.DefaultDownloadMode,
+		"skip_excluded_on_upload":   config.SkipExcludedOnUpload,
+		"max_file_upload_size":      config.MaxFileUploadSize,
 	})
 }

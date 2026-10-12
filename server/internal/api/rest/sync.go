@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
@@ -11,7 +10,7 @@ import (
 	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/datasync"
-	"github.com/easyssh/shared/syncdata"
+	"github.com/easyssh/shared/synccrypto"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -83,7 +82,7 @@ func (h *SyncHandler) Identity(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(200, gin.H{"space_id": uuid.NewSHA1(instance, []byte(owner.String())).String(), "instance_id": instance, "user_id": owner, "account_name": user.Username, "protocol": 3, "grants": c.MustGet("sync_scopes")})
+	c.JSON(200, gin.H{"space_id": uuid.NewSHA1(instance, []byte(owner.String())).String(), "instance_id": instance, "user_id": owner, "account_name": user.Username, "protocol": synccrypto.Version, "grants": c.MustGet("sync_scopes")})
 }
 func (h *SyncHandler) Status(c *gin.Context) {
 	owner, ok := requireCurrentUserID(c)
@@ -116,31 +115,9 @@ func (h *SyncHandler) Status(c *gin.Context) {
 	}
 	spaceID := uuid.NewSHA1(instance, []byte(owner.String())).String()
 	c.Header("Cache-Control", "no-store")
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
-	defer cancel()
-	if !enabled {
-		c.JSON(200, gin.H{"can_sync": true, "enabled": false, "space_id": spaceID, "devices": devices, "conflicts": []any{}})
-		return
-	}
-	result, err := h.service.Exchange(ctx, owner, datasync.Peer{}, nil)
-	if err != nil {
-		c.JSON(200, gin.H{"can_sync": true, "enabled": enabled, "space_id": spaceID, "devices": devices, "conflicts": []any{}, "error": err.Error()})
-		return
-	}
-	vaultConflicts, err := h.service.VaultConflicts(ctx, owner)
-	if err != nil {
-		RespondError(c, 500, "sync_status_failed", err.Error())
-		return
-	}
-	conflicts := []any{}
-	for _, conflict := range result.Conflicts {
-		conflicts = append(conflicts, conflict)
-	}
-	for _, conflict := range vaultConflicts {
-		conflicts = append(conflicts, conflict)
-	}
-	c.JSON(200, gin.H{"can_sync": true, "enabled": enabled, "space_id": spaceID, "devices": devices, "conflicts": conflicts, "records": len(result.Snapshot)})
+	c.JSON(200, gin.H{"can_sync": true, "enabled": enabled, "space_id": spaceID, "devices": devices, "conflicts": []any{}})
 }
+
 func (h *SyncHandler) RevokeDevice(c *gin.Context) {
 	owner, ok := requireCurrentUserID(c)
 	if !ok {
@@ -152,62 +129,6 @@ func (h *SyncHandler) RevokeDevice(c *gin.Context) {
 	}
 	c.Status(204)
 }
-func (h *SyncHandler) Exchange(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 12<<20)
-	var peer datasync.Peer
-	if err := c.ShouldBindJSON(&peer); err != nil {
-		RespondError(c, 400, "invalid_sync_payload", "Invalid or oversized sync payload")
-		return
-	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
-	defer cancel()
-	result, err := h.service.Exchange(ctx, owner, peer, nil)
-	if err != nil {
-		RespondError(c, 409, "sync_failed", err.Error())
-		return
-	}
-	if id := c.GetString("sync_device_id"); id != "" {
-		h.service.DB.Model(&datasync.Device{}).Where("id = ?", id).Update("last_used_at", time.Now())
-	}
-	c.Header("Cache-Control", "no-store")
-	c.JSON(200, result.Response)
-}
-func (h *SyncHandler) Resolve(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
-	var resolution datasync.Resolution
-	if c.ShouldBindJSON(&resolution) != nil {
-		RespondError(c, 400, "invalid_resolution", "Invalid conflict resolution")
-		return
-	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
-	defer cancel()
-	var err error
-	if strings.HasPrefix(resolution.Key, "vault/") {
-		parts := strings.Split(resolution.Key, "/")
-		if len(parts) != 3 || resolution.Field != "ref" {
-			RespondError(c, 400, "invalid_resolution", "Invalid vault resolution")
-			return
-		}
-		resolution.Key = syncdata.ValueKey
-		_, err = h.service.VaultExchange(ctx, owner, parts[1], parts[2], datasync.Peer{}, &resolution)
-	} else {
-		_, err = h.service.Exchange(ctx, owner, datasync.Peer{}, &resolution)
-	}
-	if err != nil {
-		RespondError(c, 409, "resolution_failed", err.Error())
-		return
-	}
-	c.Status(204)
-}
-
 func (h *SyncHandler) Disconnect(c *gin.Context) {
 	if err := h.service.DB.Where("id = ?", c.GetString("sync_device_id")).Delete(&datasync.Device{}).Error; err != nil {
 		RespondError(c, 500, "device_failed", err.Error())

@@ -17,15 +17,6 @@ const (
 	RoleViewer UserRole = "viewer"
 )
 
-// MonitorDataSourceType 监控数据源类型
-type MonitorDataSourceType string
-
-const (
-	MonitorDataSourceEasySSH MonitorDataSourceType = "easyssh" // SSH 直连采集（默认）
-	MonitorDataSourceNezha   MonitorDataSourceType = "nezha"   // Nezha Dashboard API
-	MonitorDataSourceKomari  MonitorDataSourceType = "komari"  // Komari Monitor REST API
-)
-
 // User 用户模型
 type User struct {
 	ID        uuid.UUID `gorm:"type:char(36);primary_key" json:"id"`
@@ -60,17 +51,6 @@ type User struct {
 	LastFailedLogin     *time.Time `json:"-"`                                                    // 最后一次登录失败时间
 	LockedUntil         *time.Time `gorm:"index:idx_users_locked" json:"locked_until,omitempty"` // 锁定截止时间
 	LockReason          string     `gorm:"size:200" json:"lock_reason,omitempty"`                // 锁定原因
-
-	// 监控数据源设置
-	// MonitorDataSource: 当前选中的数据源类型 (easyssh/nezha/komari)
-	// 每个外部数据源单独存储配置，切换时配置不会丢失
-	MonitorDataSource string `gorm:"size:20;default:'easyssh'" json:"monitor_data_source"` // 当前选中的数据源
-	// Nezha 数据源配置
-	NezhaAPIEndpoint string `gorm:"type:text" json:"nezha_api_endpoint"` // Nezha API 地址
-	NezhaAPIToken    string `gorm:"type:text" json:"-"`                  // Nezha API Token（加密存储）
-	// Komari 数据源配置
-	KomariAPIEndpoint string `gorm:"type:text" json:"komari_api_endpoint"` // Komari API 地址
-	KomariAPIToken    string `gorm:"type:text" json:"-"`                   // Komari API Token（加密存储）
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -139,13 +119,6 @@ func (u *User) ToPublic() map[string]interface{} {
 		"notify_task_failure":  u.NotifyTaskFailure,
 		"notify_task_partial":  u.NotifyTaskPartial,
 		"notify_task_external": u.NotifyTaskExternal,
-		"monitor_data_source":  u.MonitorDataSource,
-		// Nezha 配置
-		"nezha_api_endpoint":  u.NezhaAPIEndpoint,
-		"nezha_api_token_set": u.NezhaAPIToken != "",
-		// Komari 配置
-		"komari_api_endpoint":  u.KomariAPIEndpoint,
-		"komari_api_token_set": u.KomariAPIToken != "",
 		"created_at":           u.CreatedAt,
 		"updated_at":           u.UpdatedAt,
 	}

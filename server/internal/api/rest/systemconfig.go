@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/oauthprovider"
 	"github.com/easyssh/server/internal/domain/systemconfig"
 	"github.com/gin-gonic/gin"
@@ -13,11 +12,7 @@ import (
 
 // SystemConfigHandler 系统配置处理器
 type SystemConfigHandler struct {
-	service  systemconfig.Service
-	jobQueue interface {
-		SetMaxConcurrency(maxConcurrency int)
-		RuntimeStatus(ctx context.Context) (jobqueue.RuntimeStatus, error)
-	}
+	service                   systemconfig.Service
 	externalOAuthProviderGate *oauthprovider.ExternalProviderGate
 	roleService               interface {
 		RoleExists(ctx context.Context, key string) (bool, error)
@@ -27,12 +22,9 @@ type SystemConfigHandler struct {
 // NewSystemConfigHandler 创建系统配置处理器
 func NewSystemConfigHandler(service systemconfig.Service, roleService interface {
 	RoleExists(ctx context.Context, key string) (bool, error)
-}, externalOAuthProviderGate *oauthprovider.ExternalProviderGate, jobQueue interface {
-	SetMaxConcurrency(maxConcurrency int)
-	RuntimeStatus(ctx context.Context) (jobqueue.RuntimeStatus, error)
-}) *SystemConfigHandler {
+}, externalOAuthProviderGate *oauthprovider.ExternalProviderGate) *SystemConfigHandler {
 	return &SystemConfigHandler{
-		service: service, roleService: roleService, externalOAuthProviderGate: externalOAuthProviderGate, jobQueue: jobQueue,
+		service: service, roleService: roleService, externalOAuthProviderGate: externalOAuthProviderGate,
 	}
 }
 
@@ -53,11 +45,6 @@ type SystemConfigDTOV2 struct {
 	DefaultDownloadMode     string `json:"default_download_mode"`
 	SkipExcludedOnUpload    bool   `json:"skip_excluded_on_upload"`
 	MaxFileUploadSize       int    `json:"max_file_upload_size"`
-	TransferStoragePath     string `json:"transfer_storage_path"`
-	TransferRetentionDays   int    `json:"transfer_retention_days"`
-	TransferMaxStorageGB    int    `json:"transfer_max_storage_gb"`
-	TransferMaxConcurrency  int    `json:"transfer_max_concurrency"`
-	TransferCleanupEnabled  bool   `json:"transfer_cleanup_enabled"`
 	// 注册配置
 	AllowRegistration bool   `json:"allow_registration"`
 	DefaultRole       string `json:"default_role"`
@@ -75,12 +62,6 @@ type SystemConfigDTOV2 struct {
 	ExternalOAuthLoginURL           string `json:"external_oauth_login_url"`
 	ExternalOAuthRedirectURIs       string `json:"external_oauth_redirect_uris"`
 	// SFTP/SSH 连接池（保存后重启生效）
-	SFTPMaxIdleTimeSeconds     int `json:"sftp_max_idle_time_seconds"`
-	SFTPCleanupIntervalSeconds int `json:"sftp_cleanup_interval_seconds"`
-	SFTPMaxLifeTimeMinutes     int `json:"sftp_max_life_time_minutes"`
-	SFTPConnTimeoutSeconds     int `json:"sftp_conn_timeout_seconds"`
-	SFTPMaxSessionsPerConn     int `json:"sftp_max_sessions_per_conn"`
-	JobQueueMaxConcurrency     int `json:"job_queue_max_concurrency"`
 }
 
 type BasicInfoConfigDTO struct {
@@ -113,29 +94,10 @@ type OAuthProviderConfigDTO struct {
 }
 
 type FileTransferConfigDTO struct {
-	DownloadExcludePatterns    string `json:"download_exclude_patterns"`
-	DefaultDownloadMode        string `json:"default_download_mode"`
-	SkipExcludedOnUpload       bool   `json:"skip_excluded_on_upload"`
-	MaxFileUploadSize          int    `json:"max_file_upload_size"`
-	TransferStoragePath        string `json:"transfer_storage_path"`
-	TransferRetentionDays      int    `json:"transfer_retention_days"`
-	TransferMaxStorageGB       int    `json:"transfer_max_storage_gb"`
-	TransferMaxConcurrency     int    `json:"transfer_max_concurrency"`
-	TransferCleanupEnabled     bool   `json:"transfer_cleanup_enabled"`
-	SFTPMaxIdleTimeSeconds     int    `json:"sftp_max_idle_time_seconds"`
-	SFTPCleanupIntervalSeconds int    `json:"sftp_cleanup_interval_seconds"`
-	SFTPMaxLifeTimeMinutes     int    `json:"sftp_max_life_time_minutes"`
-	SFTPConnTimeoutSeconds     int    `json:"sftp_conn_timeout_seconds"`
-	SFTPMaxSessionsPerConn     int    `json:"sftp_max_sessions_per_conn"`
-}
-
-type ScheduledTaskConfigDTO struct {
-	JobQueueMaxConcurrency int `json:"job_queue_max_concurrency"`
-}
-
-type ScheduledTaskConfigResponse struct {
-	Config ScheduledTaskConfigDTO `json:"config"`
-	Status jobqueue.RuntimeStatus `json:"status"`
+	DownloadExcludePatterns string `json:"download_exclude_patterns"`
+	DefaultDownloadMode     string `json:"default_download_mode"`
+	SkipExcludedOnUpload    bool   `json:"skip_excluded_on_upload"`
+	MaxFileUploadSize       int    `json:"max_file_upload_size"`
 }
 
 // GetSystemConfig 获取系统配置
@@ -172,11 +134,6 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 		DefaultDownloadMode:             config.DefaultDownloadMode,
 		SkipExcludedOnUpload:            config.SkipExcludedOnUpload,
 		MaxFileUploadSize:               config.MaxFileUploadSize,
-		TransferStoragePath:             config.TransferStoragePath,
-		TransferRetentionDays:           config.TransferRetentionDays,
-		TransferMaxStorageGB:            config.TransferMaxStorageGB,
-		TransferMaxConcurrency:          config.TransferMaxConcurrency,
-		TransferCleanupEnabled:          config.TransferCleanupEnabled,
 		AllowRegistration:               config.AllowRegistration,
 		DefaultRole:                     config.DefaultRole,
 		OAuthEnabled:                    config.OAuthEnabled,
@@ -189,12 +146,6 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 		ExternalOAuthIssuer:             oauthTokenConfig.Issuer,
 		ExternalOAuthLoginURL:           oauthTokenConfig.LoginURL,
 		ExternalOAuthRedirectURIs:       oauthTokenConfig.RedirectURIs,
-		SFTPMaxIdleTimeSeconds:          config.SFTPMaxIdleTimeSeconds,
-		SFTPCleanupIntervalSeconds:      config.SFTPCleanupIntervalSeconds,
-		SFTPMaxLifeTimeMinutes:          config.SFTPMaxLifeTimeMinutes,
-		SFTPConnTimeoutSeconds:          config.SFTPConnTimeoutSeconds,
-		SFTPMaxSessionsPerConn:          config.SFTPMaxSessionsPerConn,
-		JobQueueMaxConcurrency:          config.JobQueueMaxConcurrency,
 	}
 
 	return dto
@@ -378,16 +329,6 @@ func (h *SystemConfigHandler) PatchFileTransferConfig(c *gin.Context) {
 	existingConfig.DefaultDownloadMode = dto.DefaultDownloadMode
 	existingConfig.SkipExcludedOnUpload = dto.SkipExcludedOnUpload
 	existingConfig.MaxFileUploadSize = dto.MaxFileUploadSize
-	existingConfig.TransferStoragePath = dto.TransferStoragePath
-	existingConfig.TransferRetentionDays = dto.TransferRetentionDays
-	existingConfig.TransferMaxStorageGB = dto.TransferMaxStorageGB
-	existingConfig.TransferMaxConcurrency = dto.TransferMaxConcurrency
-	existingConfig.TransferCleanupEnabled = dto.TransferCleanupEnabled
-	existingConfig.SFTPMaxIdleTimeSeconds = dto.SFTPMaxIdleTimeSeconds
-	existingConfig.SFTPCleanupIntervalSeconds = dto.SFTPCleanupIntervalSeconds
-	existingConfig.SFTPMaxLifeTimeMinutes = dto.SFTPMaxLifeTimeMinutes
-	existingConfig.SFTPConnTimeoutSeconds = dto.SFTPConnTimeoutSeconds
-	existingConfig.SFTPMaxSessionsPerConn = dto.SFTPMaxSessionsPerConn
 
 	if err := h.service.SaveFileTransfer(c.Request.Context(), existingConfig); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -395,70 +336,6 @@ func (h *SystemConfigHandler) PatchFileTransferConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "File transfer config updated successfully"})
-}
-
-// GetScheduledTaskConfig 获取后台任务队列配置与当前运行状态。
-// @Summary 获取定时任务运行配置
-// @Tags 系统设置
-// @Produce json
-// @Success 200 {object} ScheduledTaskConfigResponse
-// @Router /api/v1/settings/system/scheduled-tasks [get]
-func (h *SystemConfigHandler) GetScheduledTaskConfig(c *gin.Context) {
-	if h.jobQueue == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Job queue runtime is unavailable"})
-		return
-	}
-	config, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	status, err := h.jobQueue.RuntimeStatus(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, ScheduledTaskConfigResponse{
-		Config: ScheduledTaskConfigDTO{JobQueueMaxConcurrency: config.JobQueueMaxConcurrency},
-		Status: status,
-	})
-}
-
-// PatchScheduledTaskConfig 更新后台任务最大并发并立即应用。
-// @Summary 更新定时任务运行配置
-// @Tags 系统设置
-// @Accept json
-// @Produce json
-// @Param request body ScheduledTaskConfigDTO true "定时任务运行配置"
-// @Success 200 {object} ScheduledTaskConfigResponse
-// @Router /api/v1/settings/system/scheduled-tasks [patch]
-func (h *SystemConfigHandler) PatchScheduledTaskConfig(c *gin.Context) {
-	if h.jobQueue == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Job queue runtime is unavailable"})
-		return
-	}
-	var dto ScheduledTaskConfigDTO
-	if err := c.ShouldBindJSON(&dto); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-	existingConfig, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	existingConfig.JobQueueMaxConcurrency = dto.JobQueueMaxConcurrency
-	if err := h.service.SaveScheduledTasks(c.Request.Context(), existingConfig); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	h.jobQueue.SetMaxConcurrency(existingConfig.JobQueueMaxConcurrency)
-	status, err := h.jobQueue.RuntimeStatus(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, ScheduledTaskConfigResponse{Config: dto, Status: status})
 }
 
 func (h *SystemConfigHandler) validateExternalOAuthProvider(c *gin.Context, enabled bool) bool {

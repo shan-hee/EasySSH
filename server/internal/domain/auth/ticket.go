@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -23,63 +22,46 @@ var (
 type TicketType string
 
 const (
-	TicketTypeWSTerminal             TicketType = "ws_terminal"
-	TicketTypeWSMonitor              TicketType = "ws_monitor"
-	TicketTypeWSSFTPAuth             TicketType = "ws_sftp_auth"
-	TicketTypeWSSFTPUpload           TicketType = "ws_sftp_upload"
-	TicketTypeWSSFTPTransfer         TicketType = "ws_sftp_transfer"
+	TicketTypeWSSSHRelay             TicketType = "ws_ssh_relay"
 	TicketTypeInstanceBackupDownload TicketType = "instance_backup_download"
-	TicketTypeSFTPDownload           TicketType = "sftp_download"
-	TicketTypeSFTPBatchDownload      TicketType = "sftp_batch_download"
 )
 
 func (t TicketType) IsValid() bool {
 	switch t {
-	case TicketTypeWSTerminal, TicketTypeWSMonitor, TicketTypeWSSFTPAuth,
-		TicketTypeWSSFTPUpload, TicketTypeWSSFTPTransfer,
-		TicketTypeSFTPDownload, TicketTypeSFTPBatchDownload, TicketTypeInstanceBackupDownload:
+	case TicketTypeWSSSHRelay, TicketTypeInstanceBackupDownload:
 		return true
 	default:
 		return false
 	}
 }
 
-type SFTPBatchDownloadPayload struct {
-	Paths           []string
-	Mode            string
-	ExcludePatterns []string
-}
-
 type Ticket struct {
-	Value                  string
-	Type                   TicketType
-	Ref                    string
-	UserID                 uuid.UUID
-	Username               string
-	Email                  string
-	Role                   UserRole
-	SessionID              uuid.UUID
-	SFTPDownloadPath       string
-	SFTPBatchDownloadInput *SFTPBatchDownloadPayload
-	CreatedAt              time.Time
-	ExpiresAt              time.Time
-	UsedAt                 *time.Time
+	Value     string
+	Type      TicketType
+	Ref       string
+	UserID    uuid.UUID
+	Username  string
+	Email     string
+	Role      UserRole
+	SessionID uuid.UUID
+	CreatedAt time.Time
+	ExpiresAt time.Time
+	UsedAt    *time.Time
 }
 
 type TicketRecord struct {
-	ID          uuid.UUID  `gorm:"type:char(36);primaryKey"`
-	TokenHash   string     `gorm:"not null;uniqueIndex;size:64"`
-	Type        TicketType `gorm:"not null;size:40;index"`
-	Ref         string     `gorm:"size:255;index"`
-	UserID      uuid.UUID  `gorm:"type:char(36);not null;index"`
-	Username    string     `gorm:"size:100"`
-	Email       string     `gorm:"size:255"`
-	Role        UserRole   `gorm:"size:40"`
-	SessionID   uuid.UUID  `gorm:"type:char(36);index"`
-	PayloadJSON string     `gorm:"type:text"`
-	CreatedAt   time.Time
-	ExpiresAt   time.Time  `gorm:"not null;index"`
-	UsedAt      *time.Time `gorm:"index"`
+	ID        uuid.UUID  `gorm:"type:char(36);primaryKey"`
+	TokenHash string     `gorm:"not null;uniqueIndex;size:64"`
+	Type      TicketType `gorm:"not null;size:40;index"`
+	Ref       string     `gorm:"size:255;index"`
+	UserID    uuid.UUID  `gorm:"type:char(36);not null;index"`
+	Username  string     `gorm:"size:100"`
+	Email     string     `gorm:"size:255"`
+	Role      UserRole   `gorm:"size:40"`
+	SessionID uuid.UUID  `gorm:"type:char(36);index"`
+	CreatedAt time.Time
+	ExpiresAt time.Time  `gorm:"not null;index"`
+	UsedAt    *time.Time `gorm:"index"`
 }
 
 func (TicketRecord) TableName() string { return "auth_tickets" }
@@ -92,15 +74,13 @@ func (r *TicketRecord) BeforeCreate(*gorm.DB) error {
 }
 
 type CreateTicketRequest struct {
-	Type                   TicketType
-	Ref                    string
-	UserID                 uuid.UUID
-	Username               string
-	Email                  string
-	Role                   UserRole
-	SessionID              uuid.UUID
-	SFTPDownloadPath       string
-	SFTPBatchDownloadInput *SFTPBatchDownloadPayload
+	Type      TicketType
+	Ref       string
+	UserID    uuid.UUID
+	Username  string
+	Email     string
+	Role      UserRole
+	SessionID uuid.UUID
 }
 
 type TicketExpectation struct {
@@ -135,18 +115,11 @@ func (s *ticketService) Create(ctx context.Context, req CreateTicketRequest) (st
 	if err != nil {
 		return "", 0, err
 	}
-	payload, err := json.Marshal(struct {
-		DownloadPath string                    `json:"download_path,omitempty"`
-		Batch        *SFTPBatchDownloadPayload `json:"batch,omitempty"`
-	}{req.SFTPDownloadPath, req.SFTPBatchDownloadInput})
-	if err != nil {
-		return "", 0, err
-	}
 	now := time.Now()
 	record := &TicketRecord{
 		TokenHash: ticketHash(value), Type: req.Type, Ref: req.Ref,
 		UserID: req.UserID, Username: req.Username, Email: req.Email, Role: req.Role, SessionID: req.SessionID,
-		PayloadJSON: string(payload), CreatedAt: now, ExpiresAt: now.Add(s.ttl),
+		CreatedAt: now, ExpiresAt: now.Add(s.ttl),
 	}
 	if err := s.db.WithContext(ctx).Create(record).Error; err != nil {
 		return "", 0, err
@@ -183,17 +156,9 @@ func (s *ticketService) Consume(ctx context.Context, value string, expect Ticket
 	if result.RowsAffected != 1 {
 		return nil, ErrTicketUsed
 	}
-	var payload struct {
-		DownloadPath string                    `json:"download_path"`
-		Batch        *SFTPBatchDownloadPayload `json:"batch"`
-	}
-	if err := json.Unmarshal([]byte(record.PayloadJSON), &payload); err != nil {
-		return nil, err
-	}
 	return &Ticket{
 		Value: value, Type: record.Type, Ref: record.Ref,
 		UserID: record.UserID, Username: record.Username, Email: record.Email, Role: record.Role, SessionID: record.SessionID,
-		SFTPDownloadPath: payload.DownloadPath, SFTPBatchDownloadInput: payload.Batch,
 		CreatedAt: record.CreatedAt, ExpiresAt: record.ExpiresAt, UsedAt: &now,
 	}, nil
 }
