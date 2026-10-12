@@ -43,6 +43,7 @@ type KeyMaterial struct {
 	PassphraseRequired bool   `json:"passphrase_required"`
 }
 type Credential struct {
+	Passphrase string       `json:"private_key_passphrase"`
 	Connection string       `json:"connection"`
 	Password   string       `json:"password"`
 	Key        *KeyMaterial `json:"key,omitempty"`
@@ -93,7 +94,7 @@ func (p VaultPayload) Validate(kind string) error {
 		if _, err := ParseConnection(p.Credential.Connection); err != nil {
 			return err
 		}
-		if len(p.Credential.Password) > 65536 {
+		if len(p.Credential.Password) > 65536 || len(p.Credential.Passphrase) > 65536 {
 			return errors.New("password too large")
 		}
 		if k := p.Credential.Key; k != nil && (len(k.PrivateKey) > 1<<20 || k.Fingerprint == "" || k.PublicKey == "") {

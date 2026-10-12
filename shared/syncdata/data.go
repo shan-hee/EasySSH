@@ -50,7 +50,11 @@ func ParseConnection(value string) (Connection, error) {
 	return c, nil
 }
 func Validate(snapshot Snapshot) error {
-	if len(snapshot) > 10000 {
+	count := len(snapshot)
+	if _, hasOrder := snapshot[ServerOrderKey]; hasOrder {
+		count--
+	}
+	if count > 10000 {
 		return fmt.Errorf("sync supports at most 10000 records")
 	}
 	for key, r := range snapshot {
@@ -66,8 +70,16 @@ func Validate(snapshot Snapshot) error {
 		if _, err := hex.DecodeString(rawID); err != nil {
 			return fmt.Errorf("invalid sync record ID")
 		}
-		allowed := map[string]bool{"name": true, "description": true, "tags": true}
+		allowed := map[string]bool{"name": true, "description": true, "tags": true, "created_at": true, "updated_at": true}
 		switch parts[0] {
+		case "order":
+			if key != ServerOrderKey || len(r) != 1 {
+				return fmt.Errorf("invalid server order record")
+			}
+			if _, err := ParseServerOrder(r["ids"]); err != nil {
+				return err
+			}
+			continue
 		case "value":
 			if key != ValueKey || len(r) != 1 || !ValidUUID(r["ref"]) {
 				return fmt.Errorf("invalid vault reference")

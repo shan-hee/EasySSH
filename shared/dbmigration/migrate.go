@@ -15,7 +15,7 @@ import (
 //go:embed server/*/*.sql desktop/*/*.sql
 var migrations embed.FS
 
-const Latest int64 = 1
+const Latest int64 = 2
 
 func provider(db *sql.DB, profile, driver string) (*goose.Provider, error) {
 	if profile != "server" && profile != "desktop" {
