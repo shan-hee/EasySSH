@@ -113,10 +113,7 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
   const { t } = useTranslation("aiAssistant")
   const messages = useAuiState((s) => s.thread.messages)
   const count = messages.length
-  const hasRunningAssistant = useAuiState((s) => {
-    const last = s.thread.messages[s.thread.messages.length - 1]
-    return last?.role === "assistant" && last.status.type === "running"
-  })
+  const hasInlineLoadingIndicator = !components.AssistantMessage && messages.at(-1)?.role === "assistant"
   const [visibleCount, setVisibleCount] = useState(MESSAGE_BATCH)
   const pairs = useMemo(() => {
     const groups: { id: string; indices: number[] }[] = []
@@ -184,7 +181,7 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
                         components={{ Message: ThreadMessage, EditComposer: ThreadMessage }}
                       />
                     ))}
-                    {index === pairs.length - 1 && loadingText && !hasRunningAssistant && (
+                    {index === pairs.length - 1 && loadingText && !hasInlineLoadingIndicator && (
                       <ThinkingIndicator label={loadingText} className="px-2 py-1" />
                     )}
                   </MessagePair>
@@ -251,8 +248,8 @@ const MessageError: FC = () => {
 }
 
 const AssistantMessage: FC = () => {
-  const { t } = useTranslation("aiAssistant")
   const { loadingText } = useContext(ThreadOptionsContext)
+  const isLast = useAuiState((s) => s.message.isLast)
   const {
     ToolFallback: ToolFallbackComponent = ToolFallback,
     ToolGroup,
@@ -275,6 +272,8 @@ const AssistantMessage: FC = () => {
         className="agent-message-content min-w-0 text-foreground px-2 text-sm leading-relaxed wrap-break-word"
       >
         <MessagePrimitive.GroupedParts
+          // Loading comes from the session, not the final part's type or status.
+          indicator="never"
           groupBy={groupPartByType({
             reasoning: ["group-chainOfThought", "group-reasoning"],
             "tool-call": ["group-chainOfThought", "group-tool"],
@@ -329,19 +328,14 @@ const AssistantMessage: FC = () => {
                     <Image {...part} />
                   </div>
                 )
-              case "indicator":
-                return (
-                  <ThinkingIndicator
-                    data-slot="aui_assistant-message-indicator"
-                    label={loadingText || t("auiThinking")}
-                    className="py-1"
-                  />
-                )
               default:
                 return null
             }
           }}
         </MessagePrimitive.GroupedParts>
+        {isLast && loadingText && (
+          <ThinkingIndicator label={loadingText} className="py-1" />
+        )}
         <MessageError />
       </div>
 
