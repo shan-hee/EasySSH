@@ -289,13 +289,6 @@ export function DesktopWindowActions({
 
   return (
     <div className="flex h-full min-w-0 shrink-0 items-center gap-1 pl-2 text-foreground [--wails-draggable:no-drag] [&_[data-radix-popper-content-wrapper]]:[--wails-draggable:no-drag] [&_[data-slot=button]]:size-[30px] [&_a]:[--wails-draggable:no-drag] [&_button]:[--wails-draggable:no-drag] [&_svg]:pointer-events-none">
-      <DesktopSettingsMenu
-        runtime={runtime}
-        onOpenScripts={onOpenScripts}
-        onOpenTasks={onOpenTasks}
-        onOpenActivityLogs={onOpenActivityLogs}
-        onOpenBackupRestore={onOpenBackupRestore}
-      />
       {activeView !== "ai" && (
         <Button
           type="button"
@@ -309,6 +302,13 @@ export function DesktopWindowActions({
           <Bot className="h-4 w-4" />
         </Button>
       )}
+      <DesktopSettingsMenu
+        runtime={runtime}
+        onOpenScripts={onOpenScripts}
+        onOpenTasks={onOpenTasks}
+        onOpenActivityLogs={onOpenActivityLogs}
+        onOpenBackupRestore={onOpenBackupRestore}
+      />
       <DesktopHeaderActions locale={locale} onLocaleChange={onLocaleChange} onOpenTask={onOpenTasks} />
       <div className="ml-1 flex h-full items-stretch [--wails-draggable:no-drag]" role="group" aria-label={t("windowControlsLabel")}>
         <button
