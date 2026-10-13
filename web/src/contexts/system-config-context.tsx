@@ -61,6 +61,12 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   default_download_mode: "fast",
   skip_excluded_on_upload: true,
   max_file_upload_size: 100,
+  transfer_storage_path: "",
+  transfer_retention_days: 3,
+  transfer_max_storage_gb: 10,
+  transfer_max_concurrency: 2,
+  transfer_cleanup_enabled: true,
+  job_queue_max_concurrency: 2,
   tab_session: {
     max_tabs: 50,
     inactive_minutes: 60,

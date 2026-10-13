@@ -70,7 +70,7 @@ func Validate(snapshot Snapshot) error {
 		if _, err := hex.DecodeString(rawID); err != nil {
 			return fmt.Errorf("invalid sync record ID")
 		}
-		allowed := map[string]bool{"name": true, "description": true, "tags": true, "created_at": true, "updated_at": true}
+		allowed := map[string]bool{"name": true, "description": true, "tags": true}
 		switch parts[0] {
 		case "order":
 			if key != ServerOrderKey || len(r) != 1 {

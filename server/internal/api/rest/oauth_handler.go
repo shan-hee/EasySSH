@@ -162,6 +162,10 @@ func (h *OAuthHandler) GoogleVerify(c *gin.Context) {
 					return
 				}
 			} else {
+				if !user.EmailVerified {
+					RespondError(c, 409, "account_link_required", "Sign in and link Google in account settings")
+					return
+				}
 				if user.IsLocked() {
 					respondGoogleAccountLocked(c, user)
 					return
@@ -203,6 +207,16 @@ func (h *OAuthHandler) GoogleVerify(c *gin.Context) {
 			RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to bind Google account")
 			return
 		}
+	}
+
+	if user.TwoFactorEnabled {
+		token, err := h.oauthProvider.CreateLoginChallenge(c.Request.Context(), user.ID, oauthprovider.AuthorizeInput{GoogleLogin: true, RememberLogin: rememberLogin})
+		if err != nil {
+			RespondError(c, 500, "internal_error", "Failed to create login challenge")
+			return
+		}
+		RespondSuccess(c, gin.H{"requires_2fa": true, "temp_token": token})
+		return
 	}
 
 	// 提取设备信息

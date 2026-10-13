@@ -18,7 +18,6 @@ import { AppLoadingScreen } from "@/components/app-loading"
 import { cn } from "@/lib/utils"
 import { FadeIn } from "@/components/motion/fade-in"
 import { motionTransitions } from "@/lib/motion"
-import { EncryptedWorkspaceProvider } from "@/providers/encrypted-workspace-provider"
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -133,7 +132,7 @@ export default function DashboardLayout() {
     return <AppLoadingScreen />
   }
 
-  const dashboard = (
+  return (
     <MotionConfig reducedMotion="user"><ClientAuthProvider>
       <DashboardI18nProvider>
         <SidebarProviderServer className="h-svh overflow-hidden">
@@ -160,7 +159,4 @@ export default function DashboardLayout() {
       </DashboardI18nProvider>
     </ClientAuthProvider></MotionConfig>
   )
-  return runtime?.profile === "web"
-    ? <EncryptedWorkspaceProvider owner={`${window.location.origin}/${authStatus.user.id}`}>{dashboard}</EncryptedWorkspaceProvider>
-    : dashboard
 }

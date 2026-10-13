@@ -15,7 +15,7 @@ import (
 //go:embed server/*/*.sql desktop/*/*.sql
 var migrations embed.FS
 
-const Latest int64 = 2
+const Latest int64 = 4
 
 func provider(db *sql.DB, profile, driver string) (*goose.Provider, error) {
 	if profile != "server" && profile != "desktop" {
@@ -104,29 +104,29 @@ func Tables(ctx context.Context, db *sql.DB, driver string) ([]string, error) {
 	return names, rows.Err()
 }
 
-// Start initializes an empty installation. Existing installations require explicit upgrades.
+// Start initializes an empty installation and rejects unsupported database versions.
 func Start(ctx context.Context, db *sql.DB, profile, driver string) error {
 	version, err := Version(ctx, db, driver)
 	if err != nil {
 		return err
 	}
 	if version == 0 {
-		return Up(ctx, db, profile, driver)
+		return Initialize(ctx, db, profile, driver)
 	}
 	if version != Latest {
-		return fmt.Errorf("database version %d, application requires %d; run maintenance migrate with the appropriate application version", version, Latest)
+		return fmt.Errorf("database version %d is not supported; initialize an empty database with schema %d", version, Latest)
 	}
 	return nil
 }
 
-// Up must be called while the instance lock is held and application services are stopped.
-func Up(ctx context.Context, db *sql.DB, profile, driver string) error {
+// Initialize must be called while the instance lock is held and application services are stopped.
+func Initialize(ctx context.Context, db *sql.DB, profile, driver string) error {
 	version, err := Version(ctx, db, driver)
 	if err != nil {
 		return err
 	}
-	if version > Latest {
-		return fmt.Errorf("database version %d is newer than supported version %d", version, Latest)
+	if version != 0 {
+		return fmt.Errorf("database version %d is not supported; only empty databases can be initialized", version)
 	}
 	p, err := provider(db, profile, driver)
 	if err != nil {

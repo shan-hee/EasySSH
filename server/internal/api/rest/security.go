@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/easyssh/server/internal/domain/security"
-	"github.com/easyssh/server/internal/pkg/password"
 	"github.com/gin-gonic/gin"
 )
 
@@ -79,10 +78,9 @@ func (h *SecurityHandler) SaveLoginSessionConfig(c *gin.Context) {
 }
 
 type LoginSecurityConfigDTO struct {
-	LoginLimit                int  `json:"login_limit"`
-	APILimit                  int  `json:"api_limit"`
-	TwoFALimit                int  `json:"two_fa_limit"`
-	PasswordPwnedCheckEnabled bool `json:"password_pwned_check_enabled"`
+	LoginLimit int `json:"login_limit"`
+	APILimit   int `json:"api_limit"`
+	TwoFALimit int `json:"two_fa_limit"`
 }
 
 func (h *SecurityHandler) GetLoginSecurityConfig(c *gin.Context) {
@@ -92,7 +90,6 @@ func (h *SecurityHandler) GetLoginSecurityConfig(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"config": LoginSecurityConfigDTO{
 		LoginLimit: config.LoginLimit, APILimit: config.APILimit, TwoFALimit: config.TwoFALimit,
-		PasswordPwnedCheckEnabled: config.PasswordPwnedCheckEnabled,
 	}})
 }
 
@@ -108,11 +105,9 @@ func (h *SecurityHandler) SaveLoginSecurityConfig(c *gin.Context) {
 	config.LoginLimit = request.LoginLimit
 	config.APILimit = request.APILimit
 	config.TwoFALimit = request.TwoFALimit
-	config.PasswordPwnedCheckEnabled = request.PasswordPwnedCheckEnabled
 	if !h.save(c, config, h.service.SaveLoginSecurity, "Login security configuration saved successfully") {
 		return
 	}
-	password.SetPwnedCheckEnabled(config.PasswordPwnedCheckEnabled)
 }
 
 type WebSecurityConfigDTO struct {

@@ -23,7 +23,7 @@ import (
 
 func runDesktopMaintenance(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: EasySSHDesktop maintenance backup|inspect|restore|migrate [options]")
+		return errors.New("usage: EasySSHDesktop maintenance backup|inspect|restore [options]")
 	}
 	flags := flag.NewFlagSet("maintenance "+args[0], flag.ContinueOnError)
 	file := flags.String("file", "", "encrypted instance archive")
@@ -61,7 +61,7 @@ func runDesktopMaintenance(args []string) error {
 		defer lock.Close()
 		return restoreDesktopInstance(ctx, stage, *into, manifest)
 	}
-	if args[0] != "backup" && args[0] != "migrate" {
+	if args[0] != "backup" {
 		return errors.New("unknown maintenance action")
 	}
 	root := desktopDataDir()
@@ -75,15 +75,6 @@ func runDesktopMaintenance(args []string) error {
 		return err
 	}
 	defer database.Close()
-	if args[0] == "migrate" {
-		version, err := dbmigration.Version(ctx, database, "sqlite")
-		if err != nil {
-			return err
-		}
-		if version == 0 || version == dbmigration.Latest {
-			return dbmigration.Up(ctx, database, "desktop", "sqlite")
-		}
-	}
 	password, err := instancebackup.PasswordFile(*passwordFile)
 	if err != nil {
 		return err
@@ -106,9 +97,6 @@ func runDesktopMaintenance(args []string) error {
 		return err
 	}
 	fmt.Fprintln(os.Stdout, "Desktop instance backup created:", output)
-	if args[0] == "migrate" {
-		return dbmigration.Up(ctx, database, "desktop", "sqlite")
-	}
 	return nil
 }
 
@@ -118,7 +106,7 @@ func createDesktopInstanceArchive(ctx context.Context, database *sql.DB, output,
 	if err != nil {
 		return err
 	}
-	if version == 0 || version > dbmigration.Latest {
+	if version != dbmigration.Latest {
 		return errors.New("database migration version mismatch")
 	}
 	if err = instancebackup.CheckSQLite(ctx, database); err != nil {
@@ -179,7 +167,7 @@ func restoreDesktopInstance(ctx context.Context, stage, into string, manifest in
 	if err := instancebackup.CheckApplicationVersion(manifest.AppVersion, desktopBundledVersion); err != nil {
 		return err
 	}
-	if manifest.SchemaVersion <= 0 || manifest.SchemaVersion > dbmigration.Latest {
+	if manifest.SchemaVersion != dbmigration.Latest {
 		return errors.New("unsupported database migration version")
 	}
 	if into == "" {
@@ -217,11 +205,8 @@ func restoreDesktopInstance(ctx context.Context, stage, into string, manifest in
 	if err != nil {
 		return err
 	}
-	if version != manifest.SchemaVersion {
+	if version != manifest.SchemaVersion || version != dbmigration.Latest {
 		return errors.New("manifest schema version does not match database")
-	}
-	if err = dbmigration.Up(ctx, database, "desktop", "sqlite"); err != nil {
-		return err
 	}
 	if err = verifyDesktopSnapshotCredentials(ctx, database, data, key); err != nil {
 		return err
@@ -283,7 +268,6 @@ func verifyDesktopSnapshotCredentials(ctx context.Context, db *sql.DB, dataDir, 
 	for _, spec := range []struct{ table, id, column, aadColumn string }{
 		{"desktop_servers", "id", "password", "password"},
 		{"desktop_ssh_keys", "fingerprint", "private_key", "private_key"},
-		{"desktop_ssh_keys", "fingerprint", "passphrase", "passphrase"},
 		{"desktop_ai_config", "id", "custom_api_key", "custom_api_key"},
 		{"desktop_sync_state", "id", "token", "token"},
 		{"desktop_sync_objects", "space_id || ':' || id", "ciphertext", "value"},

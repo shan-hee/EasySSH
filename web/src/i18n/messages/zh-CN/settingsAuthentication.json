@@ -25,8 +25,6 @@
   "loginLimit": "登录限流（次/分钟/IP）",
   "apiLimit": "API 限流（次/分钟/用户）",
   "twoFALimit": "2FA 限流（次/分钟/IP）",
-  "pwnedCheck": "检查公开泄露密码",
-  "pwnedCheckDescription": "通过 k-Anonymity 前缀查询 Have I Been Pwned；服务不可用时不会阻断注册或改密。",
   "providerTitle": "对外 OAuth/OIDC Provider",
   "providerDescription": "默认关闭。仅当其他系统需要使用 EasySSH 作为统一授权站点时配置。",
   "providerEnabled": "允许其他站点使用 EasySSH 授权",
@@ -38,5 +36,7 @@
   "accessTokenMinutes": "Access Token 有效期（分钟）",
   "refreshTokenDays": "Refresh Token 有效期（天）",
   "providerRestartNotice": "首次填写或修改公开地址后需重启服务。重启加载成功后，此处开关才可开启；EasySSH 自身登录始终不依赖这些地址。",
-  "providerIssuerWarning": "Issuer 是外部令牌的信任锚点。修改后，依赖旧 Issuer 的外部客户端和已签发令牌可能失效，请在维护窗口操作。"
+  "providerIssuerWarning": "Issuer 是外部令牌的信任锚点。修改后，依赖旧 Issuer 的外部客户端和已签发令牌可能失效，请在维护窗口操作。",
+  "requireEmailVerification": "注册时验证邮箱",
+  "requireEmailVerificationDescription": "新用户注册时需要邮箱验证码，需先配置邮件服务。"
 }

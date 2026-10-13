@@ -97,6 +97,7 @@ type Identity struct {
 }
 
 type AuthorizeInput struct {
+	GoogleLogin         bool   `json:"google_login,omitempty"`
 	ResponseType        string `json:"response_type"`
 	ClientID            string `json:"client_id"`
 	RedirectURI         string `json:"redirect_uri"`

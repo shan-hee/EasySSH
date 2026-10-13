@@ -25,8 +25,6 @@
   "loginLimit": "Login limit (requests/minute/IP)",
   "apiLimit": "API limit (requests/minute/user)",
   "twoFALimit": "2FA limit (requests/minute/IP)",
-  "pwnedCheck": "Check publicly breached passwords",
-  "pwnedCheckDescription": "Queries Have I Been Pwned using a k-anonymity prefix. Service outages do not block registration or password changes.",
   "providerTitle": "External OAuth/OIDC provider",
   "providerDescription": "Disabled by default. Configure only when another system needs EasySSH as its authorization server.",
   "providerEnabled": "Allow other sites to authorize through EasySSH",
@@ -38,5 +36,7 @@
   "accessTokenMinutes": "Access token lifetime (minutes)",
   "refreshTokenDays": "Refresh token lifetime (days)",
   "providerRestartNotice": "Restart after first configuring or changing public URLs. The switch becomes available after startup validation; EasySSH's own login never depends on these URLs.",
-  "providerIssuerWarning": "The issuer is the trust anchor for external tokens. Changing it can invalidate existing client trust and issued tokens, so use a maintenance window."
+  "providerIssuerWarning": "The issuer is the trust anchor for external tokens. Changing it can invalidate existing client trust and issued tokens, so use a maintenance window.",
+  "requireEmailVerification": "Verify email at registration",
+  "requireEmailVerificationDescription": "Require an email verification code for new accounts. Configure email delivery first."
 }

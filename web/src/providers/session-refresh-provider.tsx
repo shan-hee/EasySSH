@@ -18,6 +18,7 @@ import { useTerminalStore } from "@/stores/terminal-store"
 import {
   authSessionStorageKeys,
   getLastAuthActivity,
+  hasAuthActivityTimedOut,
   isAuthIdleExpired,
   markAuthIdleExpired,
   recordAuthActivity,
@@ -210,6 +211,7 @@ export function SessionRefreshProvider({ children }: SessionRefreshProviderProps
 
     const handleUserActivity = () => {
       if (disposed || isAuthIdleExpired()) return
+      if (hasAuthActivityTimedOut(timeoutMinutes)) { expireForInactivity(); return }
       const now = Date.now()
       if (now - lastRecordedAt < 1_000) return
       lastRecordedAt = now
@@ -244,6 +246,8 @@ export function SessionRefreshProvider({ children }: SessionRefreshProviderProps
       window.addEventListener(eventName, handleUserActivity, { passive: true })
     }
     window.addEventListener("storage", handleStorage)
+    window.addEventListener("focus", scheduleIdleExpiration)
+    document.addEventListener("visibilitychange", scheduleIdleExpiration)
 
     return () => {
       disposed = true
@@ -252,6 +256,8 @@ export function SessionRefreshProvider({ children }: SessionRefreshProviderProps
         window.removeEventListener(eventName, handleUserActivity)
       }
       window.removeEventListener("storage", handleStorage)
+      window.removeEventListener("focus", scheduleIdleExpiration)
+      document.removeEventListener("visibilitychange", scheduleIdleExpiration)
     }
   }, [
     accessToken,

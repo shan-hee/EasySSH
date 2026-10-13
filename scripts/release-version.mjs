@@ -42,37 +42,32 @@ function checkMigrations(version, tags, prepare, includeCurrent) {
   for (const track of tracks) {
     const directory = `${migrationRoot}/${track}`
     const names = fs.readdirSync(path.join(root, directory)).filter(name => name.endsWith(".sql"))
-    const numbers = names.map(name => {
-      if (!/^\d{5,}_[a-z0-9_]+\.sql$/.test(name)) fail(`迁移文件名不规范：${directory}/${name}`)
-      const text = normalize(read(`${directory}/${name}`))
-      const up = [...text.matchAll(/^-- \+goose Up\s*$/gm)]
-      const down = [...text.matchAll(/^-- \+goose Down\s*$/gm)]
-      if (up.length !== 1 || down.length !== 1 || up[0].index >= down[0].index) fail(`迁移必须包含顺序正确的唯一 Goose Up / Down 段：${directory}/${name}`)
-      const executable = section => section.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "").trim()
-      if (!executable(text.slice(up[0].index + up[0][0].length, down[0].index)) || !executable(text.slice(down[0].index + down[0][0].length))) fail(`迁移的 Up / Down 段不能为空：${directory}/${name}`)
-      return Number(name.split("_")[0])
-    }).sort((a, b) => a - b)
-    if (!numbers.length || numbers.some((n, i) => !Number.isSafeInteger(n) || n !== i + 1)) fail(`${track} 的迁移编号必须从 1 连续递增，不能重复或缺号`)
-    if (expected && numbers.join(",") !== expected.join(",")) fail(`${track} 的迁移编号与其他数据库不一致；无结构变化的平台也需显式提供同编号的空操作迁移`)
-    expected = numbers
+    if (names.length !== 1 || !/^\d{5,}_initial\.sql$/.test(names[0])) fail(`${track} 只允许一个新库初始化基线，不能重复或保留升级迁移`)
+    const number = Number(names[0].split("_")[0])
+    if (!Number.isSafeInteger(number) || number < 1) fail(`${track} 基线编号无效`)
+    const text = normalize(read(`${directory}/${names[0]}`))
+    const up = [...text.matchAll(/^-- \+goose Up\s*$/gm)]
+    if (up.length !== 1 || /^-- \+goose Down\s*$/m.test(text)) fail(`${track} 新库基线必须只有一个 Goose Up 段，不提供原地降级`)
+    if (!text.slice(up[0].index + up[0][0].length).replace(/--[^\n]*/g, "").trim()) fail(`${track} 初始化 SQL 不能为空`)
+    if (expected !== undefined && number !== expected) fail(`${track} 的基线编号与其他数据库不一致`)
+    expected = number
   }
-  const latest = expected.at(-1)
-  if (declared > latest) fail(`dbmigration.Latest=${declared}，但 SQL 只到 ${latest}；不能降低版本或缺失迁移`)
-  if (!prepare && declared !== latest) fail(`dbmigration.Latest=${declared} 与迁移文件版本 ${latest} 不一致，请使用版本更新脚本同步`)
-
+  const latest = expected
+  if (declared > latest) fail(`dbmigration.Latest=${declared}，不能降低数据库基线版本`)
+  if (!prepare && declared !== latest) fail(`dbmigration.Latest=${declared} 与初始化基线 ${latest} 不一致`)
   const baseline = tags.find(tag => compare(tag.slice(1), version) < 0 || (includeCurrent && tag.slice(1) === version))
   if (baseline) {
     const files = git("ls-tree", "-r", "--name-only", baseline, "--", migrationRoot).split("\n").filter(name => name.endsWith(".sql"))
     for (const name of files) {
-      if (!fs.existsSync(path.join(root, name))) fail(`禁止删除或重命名 ${baseline} 已发布的迁移：${name}`)
+      const number = Number(path.basename(name).split("_")[0])
+      if (number > latest) fail(`不能低于 ${baseline} 已发布的数据库版本`)
+      if (number !== latest) continue
+      if (!fs.existsSync(path.join(root, name))) fail(`禁止重命名 ${baseline} 同版本初始化基线：${name}`)
       const published = execFileSync("git", ["show", `${baseline}:${name}`], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 })
-      if (normalize(read(name)) !== normalize(published)) fail(`禁止改写 ${baseline} 已发布的迁移：${name}；请新增下一个编号的 SQL`)
+      if (normalize(read(name)) !== normalize(published)) fail(`禁止改写 ${baseline} 同版本初始化基线：${name}；请提升全部平台基线编号并使用空库`)
     }
-    console.log(`已校验已发布迁移：${baseline}（${files.length} 个 SQL 文件）`)
-  } else {
-    console.log("当前分支无可用的历史发布标签，仅校验迁移链；历史不可变性检查尚无基线。")
   }
-  console.log(`数据库迁移：四套编号一致，目标版本 ${latest}${declared !== latest ? `（将从 ${declared} 同步）` : ""}`)
+  console.log(`数据库：四套新库基线一致，版本 ${latest}；不支持旧库升级`)
   return { latest, source }
 }
 

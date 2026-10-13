@@ -1,5 +1,4 @@
 {
-  "browserSSHAction": "浏览器 SSH 预览",
   "connectionConfigTitle": "连接配置",
   "errorServerNotFound": "服务器不存在",
   "errorServerOffline": "服务器离线，无法连接",
@@ -201,5 +200,6 @@
   "dockerImageGroupImagesCount": "{count} 个镜像",
   "dockerNotComposeWarning": "非 Compose 容器",
   "dockerNotComposeHint": "此容器不是通过 Docker Compose 创建的，仅执行镜像拉取，需要手动重启容器",
-  "retry": "重试"
+  "retry": "重试",
+  "browserSSHAction": "浏览器 SSH 预览"
 }

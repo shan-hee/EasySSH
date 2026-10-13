@@ -1,4 +1,4 @@
-// Shared by desktop and browser clients. The server never parses documents.
+// Shared by desktop clients and the server sync worker.
 export function createEngine(A) {
   const decode = (value) => Uint8Array.from(atob(value), (c) => c.charCodeAt(0))
   const encode = (value) => {

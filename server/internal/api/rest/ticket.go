@@ -19,9 +19,14 @@ func NewTicketHandler(ticketService auth.TicketService) *TicketHandler {
 }
 
 type CreateTicketRequest struct {
-	BackupID string `json:"backup_id"`
-	Type     string `json:"type" binding:"required"`
-	ServerID string `json:"server_id"`
+	BackupID        string   `json:"backup_id"`
+	Type            string   `json:"type" binding:"required"`
+	ServerID        string   `json:"server_id"`
+	TaskID          string   `json:"task_id"`
+	Path            string   `json:"path"`
+	Paths           []string `json:"paths"`
+	Mode            string   `json:"mode"`
+	ExcludePatterns []string `json:"exclude_patterns"`
 }
 
 type CreateTicketResponse struct {
@@ -106,7 +111,7 @@ func (h *TicketHandler) CreateTicket(c *gin.Context) {
 		}
 		createReq.Ref = id
 
-	case auth.TicketTypeWSSSHRelay:
+	case auth.TicketTypeWSTerminal, auth.TicketTypeWSMonitor, auth.TicketTypeWSSFTPAuth:
 		serverID := strings.TrimSpace(req.ServerID)
 		if serverID == "" {
 			RespondError(c, http.StatusBadRequest, "missing_server_id", "server_id is required")
@@ -118,6 +123,64 @@ func (h *TicketHandler) CreateTicket(c *gin.Context) {
 		}
 		createReq.Ref = serverID
 
+	case auth.TicketTypeWSSFTPUpload, auth.TicketTypeWSSFTPTransfer:
+		taskID := strings.TrimSpace(req.TaskID)
+		if taskID == "" {
+			RespondError(c, http.StatusBadRequest, "missing_task_id", "task_id is required")
+			return
+		}
+		if len(taskID) > 256 {
+			RespondError(c, http.StatusBadRequest, "invalid_task_id", "task_id too long")
+			return
+		}
+		createReq.Ref = taskID
+
+	case auth.TicketTypeSFTPDownload:
+		serverID := strings.TrimSpace(req.ServerID)
+		if serverID == "" {
+			RespondError(c, http.StatusBadRequest, "missing_server_id", "server_id is required")
+			return
+		}
+		if _, err := uuid.Parse(serverID); err != nil {
+			RespondError(c, http.StatusBadRequest, "invalid_server_id", "Invalid server_id")
+			return
+		}
+		remotePath := strings.TrimSpace(req.Path)
+		if remotePath == "" {
+			RespondError(c, http.StatusBadRequest, "missing_path", "path is required")
+			return
+		}
+		if len(remotePath) > 4096 {
+			RespondError(c, http.StatusBadRequest, "invalid_path", "path too long")
+			return
+		}
+		createReq.Ref = serverID
+		createReq.SFTPDownloadPath = remotePath
+
+	case auth.TicketTypeSFTPBatchDownload:
+		serverID := strings.TrimSpace(req.ServerID)
+		if serverID == "" {
+			RespondError(c, http.StatusBadRequest, "missing_server_id", "server_id is required")
+			return
+		}
+		if _, err := uuid.Parse(serverID); err != nil {
+			RespondError(c, http.StatusBadRequest, "invalid_server_id", "Invalid server_id")
+			return
+		}
+		if len(req.Paths) == 0 {
+			RespondError(c, http.StatusBadRequest, "missing_paths", "paths is required")
+			return
+		}
+		if len(req.Paths) > 100 {
+			RespondError(c, http.StatusBadRequest, "invalid_paths", "paths too many (max 100)")
+			return
+		}
+		createReq.Ref = serverID
+		createReq.SFTPBatchDownloadInput = &auth.SFTPBatchDownloadPayload{
+			Paths:           req.Paths,
+			Mode:            strings.TrimSpace(req.Mode),
+			ExcludePatterns: req.ExcludePatterns,
+		}
 	}
 
 	ticket, expiresIn, err := h.ticketService.Create(c.Request.Context(), createReq)

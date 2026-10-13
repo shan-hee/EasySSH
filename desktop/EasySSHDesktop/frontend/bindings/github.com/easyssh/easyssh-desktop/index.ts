@@ -157,6 +157,9 @@ export {
     DesktopUpdateFailureNotice,
     DesktopUpdateStatus,
     DesktopUserAIConfig,
+    DesktopVaultEntry,
+    DesktopVaultSave,
+    DesktopVaultState
 } from "./models.js";
 
 export type {

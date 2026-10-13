@@ -1,4 +1,4 @@
-.PHONY: dev dev-simple build test clean deps mock migrate-up help
+.PHONY: dev dev-simple build test clean deps mock help
 
 # 默认目标 - 显示帮助
 .DEFAULT_GOAL := help
@@ -17,7 +17,7 @@ help:
 	@echo ""
 
 # 开发模式运行 - 支持热重载
-dev:
+dev: sync-deps
 	@if [ -f /root/go/bin/air ]; then \
 		/root/go/bin/air; \
 	elif command -v air >/dev/null 2>&1; then \
@@ -29,7 +29,7 @@ dev:
 	fi
 
 # 开发模式运行 - 无热重载
-dev-simple:
+dev-simple: sync-deps
 	go run ./cmd/api
 
 # 构建
@@ -37,26 +37,23 @@ build:
 	go build -o bin/easyssh-api ./cmd/api
 
 # 运行测试
-test:
+test: sync-deps
 	go test -v ./...
 
 # 清理构建文件
 clean:
 	rm -rf bin/
 
+# Automerge worker runtime; Go remains CGO-free.
+.PHONY: sync-deps
+sync-deps:
+	npm ci --prefix sync-runtime --ignore-scripts --no-audit --no-fund
+
 # 安装依赖
-deps:
+deps: sync-deps
 	go mod download
 	go mod tidy
 
 # 生成 mock 文件
 mock:
 	mockgen -source=internal/domain/repository.go -destination=internal/mock/repository.go
-
-# 数据库迁移
-# Use an already built binary; migrations never trigger a build implicitly.
-# Existing versioned upgrades require BACKUP_FILE and PASSWORD_FILE.
-BACKUP_FILE ?=
-PASSWORD_FILE ?=
-migrate-up:
-	./bin/easyssh-api maintenance migrate --file "$(BACKUP_FILE)" --password-file "$(PASSWORD_FILE)"

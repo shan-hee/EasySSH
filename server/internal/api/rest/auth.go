@@ -258,29 +258,29 @@ const (
 // RegisterRequest 注册请求
 type RegisterRequest struct {
 	Email            string `json:"email" binding:"required,email"`
-	Password         string `json:"password" binding:"required,min=6"`
-	VerificationCode string `json:"verification_code" binding:"required,len=6"` // 邮箱验证码
+	Password         string `json:"password" binding:"required,min=9"`
+	VerificationCode string `json:"verification_code" binding:"omitempty,len=6"` // 邮箱验证码
 }
 
 // InitializeAdminRequest 初始化管理员请求
 type InitializeAdminRequest struct {
 	Username string  `json:"username" binding:"required"`
 	Email    string  `json:"email" binding:"required,email"`
-	Password string  `json:"password" binding:"required,min=6"`
+	Password string  `json:"password" binding:"required,min=9"`
 	RunMode  RunMode `json:"run_mode,omitempty"`
 }
 
 // ChangePasswordRequest 修改密码请求
 type ChangePasswordRequest struct {
 	OldPassword string `json:"old_password" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=6"`
+	NewPassword string `json:"new_password" binding:"required,min=9"`
 }
 
 // ResetPasswordRequest 重置密码请求
 type ResetPasswordRequest struct {
 	Email            string `json:"email" binding:"required,email"`
 	VerificationCode string `json:"verification_code" binding:"required,len=6"`
-	NewPassword      string `json:"new_password" binding:"required,min=6"`
+	NewPassword      string `json:"new_password" binding:"required,min=9"`
 }
 
 // UpdateProfileRequest 更新资料请求
@@ -531,28 +531,22 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// 检查是否允许注册
-	if h.systemConfigService != nil {
-		config, err := h.systemConfigService.Get(c.Request.Context())
-		if err == nil && config != nil && !config.AllowRegistration {
-			RespondError(c, http.StatusForbidden, "registration_disabled", "User registration is currently disabled")
+	config, err := h.systemConfigService.Get(c.Request.Context())
+	if err != nil || config == nil {
+		RespondError(c, 500, "internal_error", "Failed to load registration policy")
+		return
+	}
+	if !config.AllowRegistration {
+		RespondError(c, 403, "registration_disabled", "User registration is currently disabled")
+		return
+	}
+	if config.RequireEmailVerification {
+		if h.verificationService == nil {
+			RespondError(c, 503, "service_unavailable", "Verification service is unavailable")
 			return
 		}
-	}
-
-	// 验证邮箱验证码
-	if h.verificationService != nil {
 		if err := h.verificationService.VerifyWithType(c.Request.Context(), req.Email, req.VerificationCode, verification.TypeRegister); err != nil {
-			// 根据错误类型返回不同的错误信息
-			errMsg := "Invalid or expired verification code"
-			if err.Error() == "verification code not found" {
-				errMsg = "Verification code not found, please request a new one"
-			} else if err.Error() == "too many verification attempts" {
-				errMsg = "Too many failed attempts, please request a new code"
-			} else if err.Error() == "verification code invalid" {
-				errMsg = "Invalid verification code"
-			}
-			RespondError(c, http.StatusBadRequest, "verification_failed", errMsg)
+			RespondError(c, 400, "verification_failed", "Invalid or expired verification code")
 			return
 		}
 	}
@@ -576,7 +570,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	// 注册用户（使用系统配置的默认角色，username 自动生成）
-	user, err := h.authService.Register(c.Request.Context(), req.Email, req.Password, defaultRole)
+	user, err := h.authService.Register(c.Request.Context(), req.Email, req.Password, defaultRole, config.RequireEmailVerification)
 	if err != nil {
 		if errors.Is(err, auth.ErrUserAlreadyExists) {
 			RespondError(c, http.StatusConflict, "user_exists", "Email already exists")
@@ -1153,19 +1147,20 @@ func (h *AuthHandler) CheckStatus(c *gin.Context) {
 	if h.systemConfigService != nil {
 		if cfg, err := h.systemConfigService.Get(c.Request.Context()); err == nil && cfg != nil {
 			response["system_config"] = gin.H{
-				"system_name":               cfg.SystemName,
-				"system_logo":               cfg.SystemLogo,
-				"system_favicon":            cfg.SystemFavicon,
-				"default_language":          cfg.DefaultLanguage,
-				"default_timezone":          cfg.DefaultTimezone,
-				"date_format":               cfg.DateFormat,
-				"download_exclude_patterns": cfg.DownloadExcludePatterns,
-				"default_download_mode":     cfg.DefaultDownloadMode,
-				"skip_excluded_on_upload":   cfg.SkipExcludedOnUpload,
-				"max_file_upload_size":      cfg.MaxFileUploadSize,
-				"allow_registration":        cfg.AllowRegistration,
-				"oauth_enabled":             cfg.OAuthEnabled,
-				"google_client_id":          cfg.GoogleClientID,
+				"system_name":                cfg.SystemName,
+				"system_logo":                cfg.SystemLogo,
+				"system_favicon":             cfg.SystemFavicon,
+				"default_language":           cfg.DefaultLanguage,
+				"default_timezone":           cfg.DefaultTimezone,
+				"date_format":                cfg.DateFormat,
+				"download_exclude_patterns":  cfg.DownloadExcludePatterns,
+				"default_download_mode":      cfg.DefaultDownloadMode,
+				"skip_excluded_on_upload":    cfg.SkipExcludedOnUpload,
+				"max_file_upload_size":       cfg.MaxFileUploadSize,
+				"allow_registration":         cfg.AllowRegistration,
+				"require_email_verification": cfg.RequireEmailVerification,
+				"oauth_enabled":              cfg.OAuthEnabled,
+				"google_client_id":           cfg.GoogleClientID,
 			}
 
 			if h.securityService != nil {
@@ -1467,6 +1462,14 @@ func (h *AuthHandler) Verify2FACode(c *gin.Context) {
 		RespondError(c, http.StatusUnauthorized, "user_not_found", "User not found")
 		return
 	}
+	if user.IsLocked() {
+		RespondError(c, 403, "account_locked", "Account is locked")
+		return
+	}
+	if authorizeInput.GoogleLogin {
+		h.respondAccountSession(c, user, rememberLogin)
+		return
+	}
 	authorizeInput.RememberLogin = rememberLogin
 	authorizeRequest, err := h.oauthProvider.NewAuthorizeRequest(c.Request.Context(), authorizeInput)
 	if err != nil {
@@ -1725,5 +1728,106 @@ func (h *AuthHandler) UpdateNotificationSettings(c *gin.Context) {
 
 	RespondSuccess(c, gin.H{
 		"message": "Notification settings updated successfully",
+	})
+}
+
+// UpdateMonitorDataSourceRequest 更新监控数据源请求
+type UpdateMonitorDataSourceRequest struct {
+	DataSource string `json:"data_source"` // easyssh, nezha, komari
+	Endpoint   string `json:"endpoint"`    // API 端点
+	Token      string `json:"token"`       // API Token
+	SetActive  *bool  `json:"set_active"`  // 是否设为当前激活的数据源（必须显式传入）
+}
+
+// UpdateMonitorDataSource 更新监控数据源设置
+// PUT /api/v1/users/me/monitor-datasource
+func (h *AuthHandler) UpdateMonitorDataSource(c *gin.Context) {
+	// 从上下文获取用户 ID
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		RespondError(c, http.StatusUnauthorized, "unauthorized", "User ID not found")
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "invalid_user_id", "Invalid user ID")
+		return
+	}
+
+	// 解析请求
+	var req UpdateMonitorDataSourceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "invalid_request", "Invalid request body: "+err.Error())
+		return
+	}
+
+	// 验证数据源类型
+	validTypes := map[string]bool{
+		"easyssh":     true,
+		"nezha":       true,
+		"komari":      true,
+		"komari-rpc2": true,
+	}
+	if req.DataSource != "" && !validTypes[req.DataSource] {
+		RespondError(c, http.StatusBadRequest, "invalid_data_source", "Invalid data source type. Must be one of: easyssh, nezha, komari, komari-rpc2")
+		return
+	}
+
+	// 更新监控数据源设置
+	if req.SetActive == nil {
+		RespondError(c, http.StatusBadRequest, "validation_error", "set_active is required")
+		return
+	}
+
+	if err := h.authService.UpdateMonitorDataSource(
+		c.Request.Context(),
+		userID,
+		req.DataSource,
+		req.Endpoint,
+		req.Token,
+		*req.SetActive,
+	); err != nil {
+		RespondError(c, http.StatusInternalServerError, "internal_error", "Failed to update monitor data source: "+err.Error())
+		return
+	}
+
+	RespondSuccess(c, gin.H{
+		"message": "Monitor data source updated successfully",
+	})
+}
+
+func (h *AuthHandler) respondAccountSession(c *gin.Context, user *auth.User, rememberLogin bool) {
+	sessionID := uuid.New()
+	tokenResponse, oauthSession, requestID, err := h.oauthProvider.IssueTokenPair(c.Request.Context(), oauthprovider.Identity{
+		UserID: user.ID, Username: user.Username, Email: user.Email, Role: string(user.Role), SessionID: sessionID,
+	}, rememberLogin, h.oauthProvider.DefaultWebRedirectURI())
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, "token_issue_failed", "Failed to issue OAuth tokens")
+		return
+	}
+	deviceType, deviceName, ipAddress, userAgent := extractDeviceInfo(c)
+	if err := h.authService.RecordOAuthSession(c.Request.Context(), user, sessionID, requestID, &auth.SessionInfo{
+		DeviceType: deviceType, DeviceName: deviceName, IPAddress: ipAddress, UserAgent: userAgent, RememberLogin: rememberLogin,
+	}, oauthSession.GetExpiresAt(fosite.RefreshToken)); err != nil {
+		_ = h.oauthProvider.RevokeRequest(c.Request.Context(), requestID)
+		RespondError(c, http.StatusInternalServerError, "session_persistence_failed", "Failed to persist OAuth session")
+		return
+	}
+	refreshToken, _ := tokenResponse["refresh_token"].(string)
+	delete(tokenResponse, "refresh_token")
+	setAuthCookies(c, refreshToken, h.securityService, h.refreshTokenTTLSeconds, rememberLogin)
+	clearAccessTokenCookie(c, h.securityService)
+
+	accessToken, _ := tokenResponse["access_token"].(string)
+	expiresIn := h.accessTokenTTLSeconds
+	if value, ok := tokenResponse["expires_in"].(int64); ok {
+		expiresIn = int(value)
+	}
+	RespondSuccess(c, AuthSessionResponse{
+		User:        h.publicUser(c.Request.Context(), user),
+		AccessToken: accessToken,
+		TokenType:   "Bearer",
+		ExpiresIn:   expiresIn,
 	})
 }

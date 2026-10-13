@@ -50,7 +50,7 @@ type RoleForm = { key: string; name: string; description: string; parent_key: st
 const emptyUserForm: UserForm = { username: "", email: "", password: "", role: "user" }
 const emptyRoleForm: RoleForm = { key: "", name: "", description: "", parent_key: "", permission_codes: [] }
 
-export default function UsersPage() {
+export default function UsersPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { t } = useTranslation("users")
   const { t: tCommon } = useTranslation("common")
   const { ready } = useAuthReady()
@@ -61,6 +61,8 @@ export default function UsersPage() {
   const [userForm, setUserForm] = useState<UserForm>(emptyUserForm)
   const [passwordUserID, setPasswordUserID] = useState("")
   const [newPassword, setNewPassword] = useState("")
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [lockTarget, setLockTarget] = useState<{ id: string; username: string } | null>(null)
   const [lockReason, setLockReason] = useState("")
   const [lockMinutes, setLockMinutes] = useState("60")
@@ -133,13 +135,16 @@ export default function UsersPage() {
   }
 
   const saveUser = async () => {
+    if (saving) return
     if (!userForm.username || !userForm.email || !userForm.role || (userDialog === "create" && !userForm.password)) {
       toast.error(t("toastFormIncomplete"))
       return
     }
+    setSaving(true)
     try {
       if (userDialog === "create") {
         await usersApi.create(userForm)
+        setUserForm(emptyUserForm)
         toast.success(t("toastCreateSuccess"))
       } else {
         await usersApi.update(editingUserID, { username: userForm.username, email: userForm.email, role: userForm.role })
@@ -149,7 +154,7 @@ export default function UsersPage() {
       await loadData()
     } catch (error) {
       toast.error(getErrorMessage(error, userDialog === "create" ? t("toastCreateFailed") : t("toastUpdateFailed")))
-    }
+    } finally { setSaving(false) }
   }
 
   const deleteUser = async (id: string, username: string) => {
@@ -164,7 +169,8 @@ export default function UsersPage() {
   }
 
   const changePassword = async () => {
-    if (!newPassword) return
+    if (!newPassword || passwordSaving) return
+    setPasswordSaving(true)
     try {
       await usersApi.changePassword(passwordUserID, { new_password: newPassword })
       toast.success(t("toastPasswordChangeSuccess"))
@@ -172,7 +178,7 @@ export default function UsersPage() {
       setNewPassword("")
     } catch (error) {
       toast.error(getErrorMessage(error, t("toastPasswordChangeFailed")))
-    }
+    } finally { setPasswordSaving(false) }
   }
 
   const lockUser = async () => {
@@ -315,7 +321,7 @@ export default function UsersPage() {
 
   return (
     <>
-      <PageHeader title={t("pageTitle")} />
+      {!embedded && <PageHeader title={t("pageTitle")} />}
       <DashboardPageContent>
       {confirmDialog}
       <p className="text-sm text-muted-foreground">{t("rbacPageDescription")}</p>
@@ -391,9 +397,10 @@ export default function UsersPage() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={userDialog !== null} onOpenChange={(open) => !open && setUserDialog(null)}><DialogContent><DialogHeader><DialogTitle>{userDialog === "create" ? t("dialogCreateTitle") : t("dialogEditTitle")}</DialogTitle></DialogHeader><div className="space-y-3"><Label>{t("fieldUsername")}</Label><Input value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} /><Label>{t("fieldEmail")}</Label><Input type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} />{userDialog === "create" && <><Label>{t("fieldPassword")}</Label><Input type="password" value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} /></>}<Label>{t("fieldRole")}</Label><Select value={userForm.role} onValueChange={(role) => setUserForm({ ...userForm, role })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{roles.map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>)}</SelectContent></Select></div><DialogFooter><Button variant="outline" onClick={() => setUserDialog(null)}>{t("dialogCancel")}</Button><Button onClick={() => void saveUser()}>{t("dialogCreateSubmit")}</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={userDialog !== null} onOpenChange={(open) => !open && setUserDialog(null)}><DialogContent><DialogHeader><DialogTitle>{userDialog === "create" ? t("dialogCreateTitle") : t("dialogEditTitle")}</DialogTitle></DialogHeader><div className="space-y-3"><Label>{t("fieldUsername")}</Label><Input value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} /><Label>{t("fieldEmail")}</Label><Input type="email" value={userForm.email} onChange={(event) => setUserForm({ ...userForm, email: event.target.value })} />{userDialog === "create" && <><Label>{t("fieldPassword")}</Label><Input type="password" value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} /></>}<Label>{t("fieldRole")}</Label><Select value={userForm.role} onValueChange={(role) => setUserForm({ ...userForm, role })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{roles.map((role) => <SelectItem key={role.key} value={role.key}>{role.name}</SelectItem>)}</SelectContent></Select></div><DialogFooter><Button variant="outline" onClick={() => setUserDialog(null)}>{t("dialogCancel")}</Button><Button disabled={saving} onClick={() => void saveUser()}>{t("dialogCreateSubmit")}</Button></DialogFooter></DialogContent></Dialog>
 
-      <Dialog open={Boolean(passwordUserID)} onOpenChange={(open) => !open && setPasswordUserID("")}><DialogContent><DialogHeader><DialogTitle>{t("dialogPasswordTitle")}</DialogTitle></DialogHeader><Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><DialogFooter><Button variant="outline" onClick={() => setPasswordUserID("")}>{t("dialogCancel")}</Button><Button onClick={() => void changePassword()}>{t("dialogPasswordSubmit")}</Button></DialogFooter></DialogContent></Dialog>
+
+      <Dialog open={Boolean(passwordUserID)} onOpenChange={(open) => !open && setPasswordUserID("")}><DialogContent><DialogHeader><DialogTitle>{t("dialogPasswordTitle")}</DialogTitle></DialogHeader><Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /><DialogFooter><Button variant="outline" onClick={() => setPasswordUserID("")}>{t("dialogCancel")}</Button><Button disabled={passwordSaving} onClick={() => void changePassword()}>{t("dialogPasswordSubmit")}</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={Boolean(lockTarget)} onOpenChange={(open) => !open && setLockTarget(null)}><DialogContent><DialogHeader><DialogTitle>{t("dialogLockTitle")}</DialogTitle><DialogDescription>{lockTarget?.username}</DialogDescription></DialogHeader><Label>{t("fieldLockDuration")}</Label><Input type="number" min={1} value={lockMinutes} onChange={(event) => setLockMinutes(event.target.value)} /><Label>{t("fieldLockReason")}</Label><Input value={lockReason} onChange={(event) => setLockReason(event.target.value)} /><DialogFooter><Button variant="outline" onClick={() => setLockTarget(null)}>{t("dialogCancel")}</Button><Button variant="destructive" onClick={() => void lockUser()}>{t("dialogLockSubmit")}</Button></DialogFooter></DialogContent></Dialog>
 

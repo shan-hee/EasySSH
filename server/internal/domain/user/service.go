@@ -163,6 +163,7 @@ func (s *service) UpdateUser(ctx context.Context, id uuid.UUID, username, email 
 			return nil, fmt.Errorf("%w: email already taken", ErrUserAlreadyExists)
 		}
 		user.Email = email
+		user.EmailVerified = false
 	}
 
 	// 更新角色

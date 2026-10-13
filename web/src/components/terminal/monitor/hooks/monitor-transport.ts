@@ -1,4 +1,5 @@
-import { connectedSSH } from '@/lib/secure-runtime/terminal'
+import { createAuthTicket } from '@/lib/auth-ticket'
+import { getWsUrl } from '@/lib/config'
 import { monitor } from '@/lib/proto/metrics'
 import type {
   WorkspaceMonitorApi,
@@ -35,9 +36,6 @@ type WebSocketMonitorApi = WorkspaceMonitorApi & {
 }
 
 const transports = new Map<string, MonitorTransport>()
-const browserMonitorApi: WorkspaceMonitorApi = {
-  collectMetrics: (serverId) => connectedSSH(serverId).request<WorkspaceMonitorMetrics>('metrics'),
-}
 
 const isPollingApi = (
   monitorApi: WorkspaceMonitorApi | undefined,
@@ -224,10 +222,30 @@ const startPolling = (transport: MonitorTransport, generation: number) => {
 }
 
 const getWebSocketUrl = async (transport: MonitorTransport) => {
-  const api = transport.monitorApi as WebSocketMonitorApi | undefined
-  if (!api?.createWebSocketUrl || !api.createAuthTicket) throw new Error("监控适配器不可用")
-  const ticket = await api.createAuthTicket({ type: 'ws_monitor', server_id: transport.serverId })
-  return api.createWebSocketUrl({serverId: transport.serverId, interval: transport.interval, ticket})
+  const monitorApi = transport.monitorApi as WebSocketMonitorApi | undefined
+  const ticket = monitorApi?.createAuthTicket
+    ? await monitorApi.createAuthTicket({
+        type: 'ws_monitor',
+        server_id: transport.serverId,
+      })
+    : (await createAuthTicket({
+        type: 'ws_monitor',
+        server_id: transport.serverId,
+      })).ticket
+
+  if (monitorApi?.createWebSocketUrl) {
+    return monitorApi.createWebSocketUrl({
+      serverId: transport.serverId,
+      interval: transport.interval,
+      ticket,
+    })
+  }
+
+  const params = new URLSearchParams({
+    interval: String(transport.interval),
+    ticket,
+  })
+  return getWsUrl(`/api/v1/monitor/server/${transport.serverId}?${params.toString()}`)
 }
 
 const startWebSocket = async (transport: MonitorTransport, generation: number) => {
@@ -337,7 +355,7 @@ const destroyTransport = (transport: MonitorTransport) => {
 export const acquireMonitorTransport = ({
   serverId,
   interval,
-  monitorApi = browserMonitorApi,
+  monitorApi,
 }: MonitorTransportOptions) => {
   let transport = transports.get(serverId)
 
@@ -403,5 +421,4 @@ export const destroyAllMonitorTransports = () => {
 
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', destroyAllMonitorTransports)
-  window.addEventListener('easyssh:workspace-locked', destroyAllMonitorTransports)
 }

@@ -120,6 +120,7 @@ yarn-error.log*
 # vercel
 .vercel
 
+/server/sync-runtime/node_modules/
 
 # Local database migration source and encrypted instance archives
 /server/data1/
@@ -132,6 +133,3 @@ yarn-error.log*
 .easyssh-runtime/
 
 .easyssh-desktop-runtime/
-
-# Generated Go WASM engine and its matching Go JavaScript runtime
-/web/public/browser-ssh/

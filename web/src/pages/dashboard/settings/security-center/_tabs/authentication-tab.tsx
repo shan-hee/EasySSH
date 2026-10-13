@@ -45,6 +45,7 @@ function RegistrationSection() {
       const system = await settingsApi.getSystemConfig()
       return {
         allow_registration: system.allow_registration ?? false,
+        require_email_verification: system.require_email_verification ?? false,
         default_role: system.default_role ?? "user",
       }
     },
@@ -63,6 +64,7 @@ function RegistrationSection() {
     >
       {isLoading ? <SectionLoading /> : <>
         <FormSwitch form={form} name="allow_registration" label={t("allowRegistration")} description={t("allowRegistrationDescription")} />
+        <FormSwitch form={form} name="require_email_verification" label={t("requireEmailVerification")} description={t("requireEmailVerificationDescription")} />
         <div className="flex items-center justify-between rounded-lg border p-4">
           <div className="space-y-1">
             <Label>{t("defaultRole")}</Label>
@@ -189,7 +191,6 @@ function LoginSecuritySection() {
           <FormInput form={form} name="login_limit" label={t("loginLimit")} type="number" min={1} max={100} />
           <FormInput form={form} name="two_fa_limit" label={t("twoFALimit")} type="number" min={1} max={20} />
           <FormInput form={form} name="api_limit" label={t("apiLimit")} type="number" min={10} max={10000} />
-          <FormSwitch form={form} name="password_pwned_check_enabled" label={t("pwnedCheck")} description={t("pwnedCheckDescription")} />
         </div>
       </>}
     </SettingsSection>

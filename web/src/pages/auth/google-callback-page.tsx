@@ -1,13 +1,16 @@
 
-import { Suspense, useEffect, useRef } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "@/components/ui/sonner"
 import { useTranslation } from "react-i18next"
-import { authApi } from "@/lib/api/auth"
+import { authApi, type AuthSessionResponse } from "@/lib/api/auth"
 import { useAuthStore } from "@/stores/auth-store"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { getAuthErrorMessage } from "@/lib/auth-error"
-import { isApiError } from "@/lib/api-client"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { apiFetch, isApiError } from "@/lib/api-client"
 import {
   buildLockedLoginRedirectUrl,
   buildLoginRedirectUrl,
@@ -45,6 +48,10 @@ function GoogleAuthCallbackInner() {
   const setToken = useAuthStore((state) => state.setToken)
   const { refreshConfig } = useSystemConfig()
   const hasHandledCallback = useRef(false)
+  const [mfa, setMfa] = useState<{ token: string; next: string | null } | null>(null)
+  const [mfaCode, setMfaCode] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [mfaError, setMfaError] = useState("")
 
   useEffect(() => {
     if (hasHandledCallback.current) {
@@ -136,7 +143,7 @@ function GoogleAuthCallbackInner() {
             redirect_uri: redirectUri,
           })
 
-          await refreshConfig({ refreshAuth: true })
+          await refreshConfig({ refreshAuth: true }).catch(() => {})
           redirectBackToSettings({ google_link: "success" })
           return
         }
@@ -147,7 +154,8 @@ function GoogleAuthCallbackInner() {
           redirect_uri: redirectUri,
           remember_login: parsedState.rememberLogin === true,
         })
-        if (!response.access_token) {
+        if (response.requires_2fa && response.temp_token) { setMfa({ token: response.temp_token, next }); return }
+        if (!response.access_token || typeof response.expires_in !== "number") {
           throw new Error("Missing access_token in Google callback response")
         }
 
@@ -159,7 +167,7 @@ function GoogleAuthCallbackInner() {
           description: t("loginToastSuccessDesc"),
         })
 
-        await refreshConfig({ refreshAuth: true })
+        await refreshConfig({ refreshAuth: true }).catch(() => {})
 
         if (next) {
           navigate(next)
@@ -197,6 +205,33 @@ function GoogleAuthCallbackInner() {
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const verifyMFA = async (event: React.FormEvent) => {
+    event.preventDefault()
+    if (!mfa || busy) return
+    setBusy(true); setMfaError("")
+    try {
+      const session = await apiFetch<AuthSessionResponse>("/auth/2fa/verify", {
+        method: "POST", body: { temp_token: mfa.token, code: mfaCode.trim() },
+      })
+      setToken(session.access_token, session.expires_in)
+      resumeSessionRefresh(); beginAuthenticatedSession()
+      setMfaCode("")
+      await refreshConfig({ refreshAuth: true }).catch(() => {})
+      navigate(mfa.next || "/dashboard", { replace: true })
+    } catch (error) { setMfaError(getAuthErrorMessage(error, t, t("login2faToastFailedDesc"))) }
+    finally { setBusy(false) }
+  }
+
+  if (mfa) return <main className="flex min-h-svh items-center justify-center px-6 py-12">
+    <form className="w-full max-w-sm space-y-5" onSubmit={verifyMFA}>
+      <div className="space-y-2"><h1 className="text-2xl font-semibold tracking-tight">{t("login2faRequiredTitle")}</h1><p className="text-sm text-muted-foreground">{t("login2faRequiredDesc")}</p></div>
+      <div className="space-y-2"><Label htmlFor="google-two-step">{t("login2faCodePlaceholder")}</Label><Input id="google-two-step" autoComplete="one-time-code" value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} required autoFocus /></div>
+      {mfaError && <p role="alert" className="text-sm text-destructive">{mfaError}</p>}
+      <Button className="w-full" disabled={busy || !mfaCode.trim()}>{t(busy ? "login2faSubmitting" : "login2faSubmit")}</Button>
+      <Button className="w-full" type="button" variant="ghost" disabled={busy} onClick={() => navigate(buildLoginRedirectUrl(mfa.next), { replace: true })}>{t("passwordBackToLogin")}</Button>
+    </form>
+  </main>
 
   return (
     <div className="flex items-center justify-center min-h-screen">

@@ -16,6 +16,7 @@ export const basicInfoSchema = z.object({
 })
 
 export const registrationConfigSchema = z.object({
+  require_email_verification: z.boolean().default(false),
   allow_registration: z.boolean().default(false),
   default_role: z.string().min(2).max(64).default("user"),
 })
@@ -54,6 +55,20 @@ export const fileTransferSchema = z.object({
     .number()
     .min(1, "settingsValidation.fileUploadSizeMin")
     .max(1024, "settingsValidation.fileUploadSizeMax"),
+  transfer_storage_path: z.string().default(""),
+  transfer_retention_days: z.number().min(1).max(30).default(3),
+  transfer_max_storage_gb: z.number().min(1).max(1024).default(10),
+  transfer_max_concurrency: z.number().min(1).max(16).default(2),
+  transfer_cleanup_enabled: z.boolean().default(true),
+  sftp_max_idle_time_seconds: z.number().min(5).max(3600).default(120),
+  sftp_cleanup_interval_seconds: z.number().min(5).max(600).default(30),
+  sftp_max_life_time_minutes: z.number().min(0).max(1440).default(0),
+  sftp_conn_timeout_seconds: z.number().min(1).max(120).default(10),
+  sftp_max_sessions_per_conn: z.number().min(0).max(64).default(8),
+})
+
+export const scheduledTaskConfigSchema = z.object({
+  job_queue_max_concurrency: z.number().int().min(1).max(16),
 })
 
 // 导出类型
@@ -62,3 +77,4 @@ export type RegistrationConfigFormData = z.infer<typeof registrationConfigSchema
 export type GoogleAuthConfigFormData = z.infer<typeof googleAuthConfigSchema>
 export type OAuthProviderConfigFormData = z.infer<typeof oauthProviderConfigSchema>
 export type FileTransferFormData = z.infer<typeof fileTransferSchema>
+export type ScheduledTaskConfigFormData = z.infer<typeof scheduledTaskConfigSchema>

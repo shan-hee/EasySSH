@@ -11,7 +11,7 @@ import (
 // remote server IDs from that space, never local database primary keys.
 const ServerOrderKey = "order/00000000-0000-4000-8000-000000000001"
 
-// This version includes server ordering, not the future encrypted transport.
+// ConfigurationProtocol includes server ordering across desktop and Web.
 const ConfigurationProtocol = 4
 
 func ConfigurationRecordCount(snapshot Snapshot) int {

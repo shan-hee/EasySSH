@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"path"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -22,120 +24,360 @@ const (
 	SyncDeviceAuthScopes syncDeviceAuthContextKey = "syncDeviceAuth.Scopes"
 )
 
-// Defines values for AuthTicketRequestType.
+// Defines values for AIMessageViewRole.
 const (
-	InstanceBackupDownload AuthTicketRequestType = "instance_backup_download"
-	WsSshRelay             AuthTicketRequestType = "ws_ssh_relay"
+	AIMessageViewRoleAssistant AIMessageViewRole = "assistant"
+	AIMessageViewRoleSystem    AIMessageViewRole = "system"
+	AIMessageViewRoleTool      AIMessageViewRole = "tool"
+	AIMessageViewRoleUser      AIMessageViewRole = "user"
 )
 
-// Valid indicates whether the value is a known member of the AuthTicketRequestType enum.
-func (e AuthTicketRequestType) Valid() bool {
+// Valid indicates whether the value is a known member of the AIMessageViewRole enum.
+func (e AIMessageViewRole) Valid() bool {
 	switch e {
-	case InstanceBackupDownload:
+	case AIMessageViewRoleAssistant:
 		return true
-	case WsSshRelay:
+	case AIMessageViewRoleSystem:
+		return true
+	case AIMessageViewRoleTool:
+		return true
+	case AIMessageViewRoleUser:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for EncryptedGrantScopes.
+// Defines values for AIPermissionMode.
 const (
-	EncryptedGrantScopesAiConfig    EncryptedGrantScopes = "ai_config"
-	EncryptedGrantScopesConfig      EncryptedGrantScopes = "config"
-	EncryptedGrantScopesCredentials EncryptedGrantScopes = "credentials"
-	EncryptedGrantScopesSessions    EncryptedGrantScopes = "sessions"
+	Balanced   AIPermissionMode = "balanced"
+	Privileged AIPermissionMode = "privileged"
+	Readonly   AIPermissionMode = "readonly"
 )
 
-// Valid indicates whether the value is a known member of the EncryptedGrantScopes enum.
-func (e EncryptedGrantScopes) Valid() bool {
+// Valid indicates whether the value is a known member of the AIPermissionMode enum.
+func (e AIPermissionMode) Valid() bool {
 	switch e {
-	case EncryptedGrantScopesAiConfig:
+	case Balanced:
 		return true
-	case EncryptedGrantScopesConfig:
+	case Privileged:
 		return true
-	case EncryptedGrantScopesCredentials:
-		return true
-	case EncryptedGrantScopesSessions:
+	case Readonly:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for EncryptedHeadScope.
+// Defines values for AISDKChatRequestTrigger.
 const (
-	EncryptedHeadScopeAiConfig    EncryptedHeadScope = "ai_config"
-	EncryptedHeadScopeConfig      EncryptedHeadScope = "config"
-	EncryptedHeadScopeCredentials EncryptedHeadScope = "credentials"
-	EncryptedHeadScopeSessions    EncryptedHeadScope = "sessions"
+	RegenerateMessage AISDKChatRequestTrigger = "regenerate-message"
+	SubmitMessage     AISDKChatRequestTrigger = "submit-message"
 )
 
-// Valid indicates whether the value is a known member of the EncryptedHeadScope enum.
-func (e EncryptedHeadScope) Valid() bool {
+// Valid indicates whether the value is a known member of the AISDKChatRequestTrigger enum.
+func (e AISDKChatRequestTrigger) Valid() bool {
 	switch e {
-	case EncryptedHeadScopeAiConfig:
+	case RegenerateMessage:
 		return true
-	case EncryptedHeadScopeConfig:
-		return true
-	case EncryptedHeadScopeCredentials:
-		return true
-	case EncryptedHeadScopeSessions:
+	case SubmitMessage:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for EncryptedManifestVersion.
+// Defines values for AISessionScopeKind.
 const (
-	EncryptedManifestVersionN5 EncryptedManifestVersion = 5
+	AISessionScopeKindGlobal   AISessionScopeKind = "global"
+	AISessionScopeKindTerminal AISessionScopeKind = "terminal"
 )
 
-// Valid indicates whether the value is a known member of the EncryptedManifestVersion enum.
-func (e EncryptedManifestVersion) Valid() bool {
+// Valid indicates whether the value is a known member of the AISessionScopeKind enum.
+func (e AISessionScopeKind) Valid() bool {
 	switch e {
-	case EncryptedManifestVersionN5:
+	case AISessionScopeKindGlobal:
+		return true
+	case AISessionScopeKindTerminal:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for EncryptedObjectScope.
+// Defines values for AISessionStatus.
 const (
-	AiConfig    EncryptedObjectScope = "ai_config"
-	Config      EncryptedObjectScope = "config"
-	Credentials EncryptedObjectScope = "credentials"
-	Sessions    EncryptedObjectScope = "sessions"
+	AISessionStatusClosed              AISessionStatus = "closed"
+	AISessionStatusIdle                AISessionStatus = "idle"
+	AISessionStatusRunning             AISessionStatus = "running"
+	AISessionStatusWaitingConfirmation AISessionStatus = "waiting_confirmation"
 )
 
-// Valid indicates whether the value is a known member of the EncryptedObjectScope enum.
-func (e EncryptedObjectScope) Valid() bool {
+// Valid indicates whether the value is a known member of the AISessionStatus enum.
+func (e AISessionStatus) Valid() bool {
 	switch e {
-	case AiConfig:
+	case AISessionStatusClosed:
 		return true
-	case Config:
+	case AISessionStatusIdle:
 		return true
-	case Credentials:
+	case AISessionStatusRunning:
 		return true
-	case Sessions:
+	case AISessionStatusWaitingConfirmation:
 		return true
 	default:
 		return false
 	}
 }
 
-// Defines values for EncryptedObjectVersion.
+// Defines values for AITaskStatus.
 const (
-	EncryptedObjectVersionN5 EncryptedObjectVersion = 5
+	AITaskStatusCancelled      AITaskStatus = "cancelled"
+	AITaskStatusFailed         AITaskStatus = "failed"
+	AITaskStatusQueued         AITaskStatus = "queued"
+	AITaskStatusRunning        AITaskStatus = "running"
+	AITaskStatusSucceeded      AITaskStatus = "succeeded"
+	AITaskStatusWaitingConfirm AITaskStatus = "waiting_confirm"
 )
 
-// Valid indicates whether the value is a known member of the EncryptedObjectVersion enum.
-func (e EncryptedObjectVersion) Valid() bool {
+// Valid indicates whether the value is a known member of the AITaskStatus enum.
+func (e AITaskStatus) Valid() bool {
 	switch e {
-	case EncryptedObjectVersionN5:
+	case AITaskStatusCancelled:
+		return true
+	case AITaskStatusFailed:
+		return true
+	case AITaskStatusQueued:
+		return true
+	case AITaskStatusRunning:
+		return true
+	case AITaskStatusSucceeded:
+		return true
+	case AITaskStatusWaitingConfirm:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AITransportType.
+const (
+	AiSdkUi AITransportType = "ai_sdk_ui"
+)
+
+// Valid indicates whether the value is a known member of the AITransportType enum.
+func (e AITransportType) Valid() bool {
+	switch e {
+	case AiSdkUi:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AIUIDynamicToolPartState.
+const (
+	AIUIDynamicToolPartStateApprovalRequested AIUIDynamicToolPartState = "approval-requested"
+	AIUIDynamicToolPartStateApprovalResponded AIUIDynamicToolPartState = "approval-responded"
+	AIUIDynamicToolPartStateInputAvailable    AIUIDynamicToolPartState = "input-available"
+	AIUIDynamicToolPartStateInputStreaming    AIUIDynamicToolPartState = "input-streaming"
+	AIUIDynamicToolPartStateOutputAvailable   AIUIDynamicToolPartState = "output-available"
+	AIUIDynamicToolPartStateOutputDenied      AIUIDynamicToolPartState = "output-denied"
+	AIUIDynamicToolPartStateOutputError       AIUIDynamicToolPartState = "output-error"
+)
+
+// Valid indicates whether the value is a known member of the AIUIDynamicToolPartState enum.
+func (e AIUIDynamicToolPartState) Valid() bool {
+	switch e {
+	case AIUIDynamicToolPartStateApprovalRequested:
+		return true
+	case AIUIDynamicToolPartStateApprovalResponded:
+		return true
+	case AIUIDynamicToolPartStateInputAvailable:
+		return true
+	case AIUIDynamicToolPartStateInputStreaming:
+		return true
+	case AIUIDynamicToolPartStateOutputAvailable:
+		return true
+	case AIUIDynamicToolPartStateOutputDenied:
+		return true
+	case AIUIDynamicToolPartStateOutputError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AIUIFinishChunkFinishReason.
+const (
+	AIUIFinishChunkFinishReasonContentFilter AIUIFinishChunkFinishReason = "content-filter"
+	AIUIFinishChunkFinishReasonError         AIUIFinishChunkFinishReason = "error"
+	AIUIFinishChunkFinishReasonLength        AIUIFinishChunkFinishReason = "length"
+	AIUIFinishChunkFinishReasonOther         AIUIFinishChunkFinishReason = "other"
+	AIUIFinishChunkFinishReasonStop          AIUIFinishChunkFinishReason = "stop"
+	AIUIFinishChunkFinishReasonToolCalls     AIUIFinishChunkFinishReason = "tool-calls"
+)
+
+// Valid indicates whether the value is a known member of the AIUIFinishChunkFinishReason enum.
+func (e AIUIFinishChunkFinishReason) Valid() bool {
+	switch e {
+	case AIUIFinishChunkFinishReasonContentFilter:
+		return true
+	case AIUIFinishChunkFinishReasonError:
+		return true
+	case AIUIFinishChunkFinishReasonLength:
+		return true
+	case AIUIFinishChunkFinishReasonOther:
+		return true
+	case AIUIFinishChunkFinishReasonStop:
+		return true
+	case AIUIFinishChunkFinishReasonToolCalls:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AIUIMessageRole.
+const (
+	AIUIMessageRoleAssistant AIUIMessageRole = "assistant"
+	AIUIMessageRoleSystem    AIUIMessageRole = "system"
+	AIUIMessageRoleUser      AIUIMessageRole = "user"
+)
+
+// Valid indicates whether the value is a known member of the AIUIMessageRole enum.
+func (e AIUIMessageRole) Valid() bool {
+	switch e {
+	case AIUIMessageRoleAssistant:
+		return true
+	case AIUIMessageRoleSystem:
+		return true
+	case AIUIMessageRoleUser:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AIUIReasoningPartState.
+const (
+	AIUIReasoningPartStateDone      AIUIReasoningPartState = "done"
+	AIUIReasoningPartStateStreaming AIUIReasoningPartState = "streaming"
+)
+
+// Valid indicates whether the value is a known member of the AIUIReasoningPartState enum.
+func (e AIUIReasoningPartState) Valid() bool {
+	switch e {
+	case AIUIReasoningPartStateDone:
+		return true
+	case AIUIReasoningPartStateStreaming:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AIUITextPartState.
+const (
+	AIUITextPartStateDone      AIUITextPartState = "done"
+	AIUITextPartStateStreaming AIUITextPartState = "streaming"
+)
+
+// Valid indicates whether the value is a known member of the AIUITextPartState enum.
+func (e AIUITextPartState) Valid() bool {
+	switch e {
+	case AIUITextPartStateDone:
+		return true
+	case AIUITextPartStateStreaming:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AIUIToolPartState.
+const (
+	AIUIToolPartStateApprovalRequested AIUIToolPartState = "approval-requested"
+	AIUIToolPartStateApprovalResponded AIUIToolPartState = "approval-responded"
+	AIUIToolPartStateInputAvailable    AIUIToolPartState = "input-available"
+	AIUIToolPartStateInputStreaming    AIUIToolPartState = "input-streaming"
+	AIUIToolPartStateOutputAvailable   AIUIToolPartState = "output-available"
+	AIUIToolPartStateOutputDenied      AIUIToolPartState = "output-denied"
+	AIUIToolPartStateOutputError       AIUIToolPartState = "output-error"
+)
+
+// Valid indicates whether the value is a known member of the AIUIToolPartState enum.
+func (e AIUIToolPartState) Valid() bool {
+	switch e {
+	case AIUIToolPartStateApprovalRequested:
+		return true
+	case AIUIToolPartStateApprovalResponded:
+		return true
+	case AIUIToolPartStateInputAvailable:
+		return true
+	case AIUIToolPartStateInputStreaming:
+		return true
+	case AIUIToolPartStateOutputAvailable:
+		return true
+	case AIUIToolPartStateOutputDenied:
+		return true
+	case AIUIToolPartStateOutputError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BatchTaskExecutionMode.
+const (
+	Parallel   BatchTaskExecutionMode = "parallel"
+	Sequential BatchTaskExecutionMode = "sequential"
+)
+
+// Valid indicates whether the value is a known member of the BatchTaskExecutionMode enum.
+func (e BatchTaskExecutionMode) Valid() bool {
+	switch e {
+	case Parallel:
+		return true
+	case Sequential:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for BatchTaskType.
+const (
+	BatchTaskTypeCommand BatchTaskType = "command"
+	BatchTaskTypeScript  BatchTaskType = "script"
+)
+
+// Valid indicates whether the value is a known member of the BatchTaskType enum.
+func (e BatchTaskType) Valid() bool {
+	switch e {
+	case BatchTaskTypeCommand:
+		return true
+	case BatchTaskTypeScript:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FileInfoType.
+const (
+	Directory FileInfoType = "directory"
+	File      FileInfoType = "file"
+	Symlink   FileInfoType = "symlink"
+)
+
+// Valid indicates whether the value is a known member of the FileInfoType enum.
+func (e FileInfoType) Valid() bool {
+	switch e {
+	case Directory:
+		return true
+	case File:
+		return true
+	case Symlink:
 		return true
 	default:
 		return false
@@ -240,28 +482,28 @@ func (e InstanceBackupRecordSource) Valid() bool {
 
 // Defines values for InstanceBackupRecordStatus.
 const (
-	Checking  InstanceBackupRecordStatus = "checking"
-	Creating  InstanceBackupRecordStatus = "creating"
-	Failed    InstanceBackupRecordStatus = "failed"
-	Ready     InstanceBackupRecordStatus = "ready"
-	Restoring InstanceBackupRecordStatus = "restoring"
-	Uploading InstanceBackupRecordStatus = "uploading"
+	InstanceBackupRecordStatusChecking  InstanceBackupRecordStatus = "checking"
+	InstanceBackupRecordStatusCreating  InstanceBackupRecordStatus = "creating"
+	InstanceBackupRecordStatusFailed    InstanceBackupRecordStatus = "failed"
+	InstanceBackupRecordStatusReady     InstanceBackupRecordStatus = "ready"
+	InstanceBackupRecordStatusRestoring InstanceBackupRecordStatus = "restoring"
+	InstanceBackupRecordStatusUploading InstanceBackupRecordStatus = "uploading"
 )
 
 // Valid indicates whether the value is a known member of the InstanceBackupRecordStatus enum.
 func (e InstanceBackupRecordStatus) Valid() bool {
 	switch e {
-	case Checking:
+	case InstanceBackupRecordStatusChecking:
 		return true
-	case Creating:
+	case InstanceBackupRecordStatusCreating:
 		return true
-	case Failed:
+	case InstanceBackupRecordStatusFailed:
 		return true
-	case Ready:
+	case InstanceBackupRecordStatusReady:
 		return true
-	case Restoring:
+	case InstanceBackupRecordStatusRestoring:
 		return true
-	case Uploading:
+	case InstanceBackupRecordStatusUploading:
 		return true
 	default:
 		return false
@@ -345,25 +587,55 @@ func (e OAuthTokenRequestGrantType) Valid() bool {
 
 // Defines values for PermissionModule.
 const (
-	Audit    PermissionModule = "audit"
-	File     PermissionModule = "file"
-	Server   PermissionModule = "server"
-	System   PermissionModule = "system"
-	Terminal PermissionModule = "terminal"
+	PermissionModuleAudit    PermissionModule = "audit"
+	PermissionModuleFile     PermissionModule = "file"
+	PermissionModuleServer   PermissionModule = "server"
+	PermissionModuleSystem   PermissionModule = "system"
+	PermissionModuleTerminal PermissionModule = "terminal"
 )
 
 // Valid indicates whether the value is a known member of the PermissionModule enum.
 func (e PermissionModule) Valid() bool {
 	switch e {
-	case Audit:
+	case PermissionModuleAudit:
 		return true
-	case File:
+	case PermissionModuleFile:
 		return true
-	case Server:
+	case PermissionModuleServer:
 		return true
-	case System:
+	case PermissionModuleSystem:
 		return true
-	case Terminal:
+	case PermissionModuleTerminal:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RealtimeEventType.
+const (
+	NotificationChanged          RealtimeEventType = "notification.changed"
+	NotificationCleanupCompleted RealtimeEventType = "notification.cleanup.completed"
+	NotificationCreated          RealtimeEventType = "notification.created"
+	TaskCleanupCompleted         RealtimeEventType = "task.cleanup.completed"
+	TaskCreated                  RealtimeEventType = "task.created"
+	TaskUpdated                  RealtimeEventType = "task.updated"
+)
+
+// Valid indicates whether the value is a known member of the RealtimeEventType enum.
+func (e RealtimeEventType) Valid() bool {
+	switch e {
+	case NotificationChanged:
+		return true
+	case NotificationCleanupCompleted:
+		return true
+	case NotificationCreated:
+		return true
+	case TaskCleanupCompleted:
+		return true
+	case TaskCreated:
+		return true
+	case TaskUpdated:
 		return true
 	default:
 		return false
@@ -406,21 +678,183 @@ func (e ResourceGrantRequestSubjectType) Valid() bool {
 	}
 }
 
+// Defines values for SFTPDeletePathsResultMode.
+const (
+	Fast          SFTPDeletePathsResultMode = "fast"
+	RecursiveTask SFTPDeletePathsResultMode = "recursive_task"
+)
+
+// Valid indicates whether the value is a known member of the SFTPDeletePathsResultMode enum.
+func (e SFTPDeletePathsResultMode) Valid() bool {
+	switch e {
+	case Fast:
+		return true
+	case RecursiveTask:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SSHSessionStatus.
+const (
+	SSHSessionStatusActive     SSHSessionStatus = "active"
+	SSHSessionStatusClosed     SSHSessionStatus = "closed"
+	SSHSessionStatusConnecting SSHSessionStatus = "connecting"
+	SSHSessionStatusError      SSHSessionStatus = "error"
+)
+
+// Valid indicates whether the value is a known member of the SSHSessionStatus enum.
+func (e SSHSessionStatus) Valid() bool {
+	switch e {
+	case SSHSessionStatusActive:
+		return true
+	case SSHSessionStatusClosed:
+		return true
+	case SSHSessionStatusConnecting:
+		return true
+	case SSHSessionStatusError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScriptLanguage.
+const (
+	Bash   ScriptLanguage = "bash"
+	Nodejs ScriptLanguage = "nodejs"
+	Python ScriptLanguage = "python"
+)
+
+// Valid indicates whether the value is a known member of the ScriptLanguage enum.
+func (e ScriptLanguage) Valid() bool {
+	switch e {
+	case Bash:
+		return true
+	case Nodejs:
+		return true
+	case Python:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScriptExecutionResultResultsStatus.
+const (
+	ScriptExecutionResultResultsStatusFailed  ScriptExecutionResultResultsStatus = "failed"
+	ScriptExecutionResultResultsStatusSuccess ScriptExecutionResultResultsStatus = "success"
+)
+
+// Valid indicates whether the value is a known member of the ScriptExecutionResultResultsStatus enum.
+func (e ScriptExecutionResultResultsStatus) Valid() bool {
+	switch e {
+	case ScriptExecutionResultResultsStatusFailed:
+		return true
+	case ScriptExecutionResultResultsStatusSuccess:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScriptExecutionResultStatus.
+const (
+	ScriptExecutionResultStatusCompleted ScriptExecutionResultStatus = "completed"
+	ScriptExecutionResultStatusFailed    ScriptExecutionResultStatus = "failed"
+	ScriptExecutionResultStatusPending   ScriptExecutionResultStatus = "pending"
+	ScriptExecutionResultStatusRunning   ScriptExecutionResultStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the ScriptExecutionResultStatus enum.
+func (e ScriptExecutionResultStatus) Valid() bool {
+	switch e {
+	case ScriptExecutionResultStatusCompleted:
+		return true
+	case ScriptExecutionResultStatusFailed:
+		return true
+	case ScriptExecutionResultStatusPending:
+		return true
+	case ScriptExecutionResultStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ServerAuthMethod.
+const (
+	ServerAuthMethodKey      ServerAuthMethod = "key"
+	ServerAuthMethodPassword ServerAuthMethod = "password"
+)
+
+// Valid indicates whether the value is a known member of the ServerAuthMethod enum.
+func (e ServerAuthMethod) Valid() bool {
+	switch e {
+	case ServerAuthMethodKey:
+		return true
+	case ServerAuthMethodPassword:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ServerStatus.
+const (
+	ServerStatusError   ServerStatus = "error"
+	ServerStatusOffline ServerStatus = "offline"
+	ServerStatusOnline  ServerStatus = "online"
+)
+
+// Valid indicates whether the value is a known member of the ServerStatus enum.
+func (e ServerStatus) Valid() bool {
+	switch e {
+	case ServerStatusError:
+		return true
+	case ServerStatusOffline:
+		return true
+	case ServerStatusOnline:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ServerCreateAuthMethod.
+const (
+	ServerCreateAuthMethodKey      ServerCreateAuthMethod = "key"
+	ServerCreateAuthMethodPassword ServerCreateAuthMethod = "password"
+)
+
+// Valid indicates whether the value is a known member of the ServerCreateAuthMethod enum.
+func (e ServerCreateAuthMethod) Valid() bool {
+	switch e {
+	case ServerCreateAuthMethodKey:
+		return true
+	case ServerCreateAuthMethodPassword:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SyncAuthorizationStatusStatus.
 const (
-	Approved SyncAuthorizationStatusStatus = "approved"
-	Denied   SyncAuthorizationStatusStatus = "denied"
-	Pending  SyncAuthorizationStatusStatus = "pending"
+	SyncAuthorizationStatusStatusApproved SyncAuthorizationStatusStatus = "approved"
+	SyncAuthorizationStatusStatusDenied   SyncAuthorizationStatusStatus = "denied"
+	SyncAuthorizationStatusStatusPending  SyncAuthorizationStatusStatus = "pending"
 )
 
 // Valid indicates whether the value is a known member of the SyncAuthorizationStatusStatus enum.
 func (e SyncAuthorizationStatusStatus) Valid() bool {
 	switch e {
-	case Approved:
+	case SyncAuthorizationStatusStatusApproved:
 		return true
-	case Denied:
+	case SyncAuthorizationStatusStatusDenied:
 		return true
-	case Pending:
+	case SyncAuthorizationStatusStatusPending:
 		return true
 	default:
 		return false
@@ -429,19 +863,22 @@ func (e SyncAuthorizationStatusStatus) Valid() bool {
 
 // Defines values for SyncConflictField.
 const (
-	Connection SyncConflictField = "connection"
-	Content    SyncConflictField = "content"
-	Ref        SyncConflictField = "ref"
+	SyncConflictFieldConnection SyncConflictField = "connection"
+	SyncConflictFieldContent    SyncConflictField = "content"
+	SyncConflictFieldIds        SyncConflictField = "ids"
+	SyncConflictFieldRef        SyncConflictField = "ref"
 )
 
 // Valid indicates whether the value is a known member of the SyncConflictField enum.
 func (e SyncConflictField) Valid() bool {
 	switch e {
-	case Connection:
+	case SyncConflictFieldConnection:
 		return true
-	case Content:
+	case SyncConflictFieldContent:
 		return true
-	case Ref:
+	case SyncConflictFieldIds:
+		return true
+	case SyncConflictFieldRef:
 		return true
 	default:
 		return false
@@ -450,13 +887,223 @@ func (e SyncConflictField) Valid() bool {
 
 // Defines values for SyncIdentityProtocol.
 const (
-	N5 SyncIdentityProtocol = 5
+	N4 SyncIdentityProtocol = 4
 )
 
 // Valid indicates whether the value is a known member of the SyncIdentityProtocol enum.
 func (e SyncIdentityProtocol) Valid() bool {
 	switch e {
-	case N5:
+	case N4:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SyncResolutionField.
+const (
+	SyncResolutionFieldConnection SyncResolutionField = "connection"
+	SyncResolutionFieldContent    SyncResolutionField = "content"
+	SyncResolutionFieldIds        SyncResolutionField = "ids"
+	SyncResolutionFieldRef        SyncResolutionField = "ref"
+)
+
+// Valid indicates whether the value is a known member of the SyncResolutionField enum.
+func (e SyncResolutionField) Valid() bool {
+	switch e {
+	case SyncResolutionFieldConnection:
+		return true
+	case SyncResolutionFieldContent:
+		return true
+	case SyncResolutionFieldIds:
+		return true
+	case SyncResolutionFieldRef:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SyncVaultEntryKind.
+const (
+	SyncVaultEntryKindAiConfig   SyncVaultEntryKind = "ai_config"
+	SyncVaultEntryKindAiSession  SyncVaultEntryKind = "ai_session"
+	SyncVaultEntryKindCredential SyncVaultEntryKind = "credential"
+)
+
+// Valid indicates whether the value is a known member of the SyncVaultEntryKind enum.
+func (e SyncVaultEntryKind) Valid() bool {
+	switch e {
+	case SyncVaultEntryKindAiConfig:
+		return true
+	case SyncVaultEntryKindAiSession:
+		return true
+	case SyncVaultEntryKindCredential:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SyncVaultObjectKind.
+const (
+	SyncVaultObjectKindAiConfig   SyncVaultObjectKind = "ai_config"
+	SyncVaultObjectKindAiSession  SyncVaultObjectKind = "ai_session"
+	SyncVaultObjectKindAttachment SyncVaultObjectKind = "attachment"
+	SyncVaultObjectKindCredential SyncVaultObjectKind = "credential"
+)
+
+// Valid indicates whether the value is a known member of the SyncVaultObjectKind enum.
+func (e SyncVaultObjectKind) Valid() bool {
+	switch e {
+	case SyncVaultObjectKindAiConfig:
+		return true
+	case SyncVaultObjectKindAiSession:
+		return true
+	case SyncVaultObjectKindAttachment:
+		return true
+	case SyncVaultObjectKindCredential:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskEventLevel.
+const (
+	TaskEventLevelError   TaskEventLevel = "error"
+	TaskEventLevelInfo    TaskEventLevel = "info"
+	TaskEventLevelWarning TaskEventLevel = "warning"
+)
+
+// Valid indicates whether the value is a known member of the TaskEventLevel enum.
+func (e TaskEventLevel) Valid() bool {
+	switch e {
+	case TaskEventLevelError:
+		return true
+	case TaskEventLevelInfo:
+		return true
+	case TaskEventLevelWarning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskRunRunner.
+const (
+	TaskRunRunnerDesktop TaskRunRunner = "desktop"
+	TaskRunRunnerServer  TaskRunRunner = "server"
+)
+
+// Valid indicates whether the value is a known member of the TaskRunRunner enum.
+func (e TaskRunRunner) Valid() bool {
+	switch e {
+	case TaskRunRunnerDesktop:
+		return true
+	case TaskRunRunnerServer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskRunTriggerType.
+const (
+	TaskRunTriggerTypeApi       TaskRunTriggerType = "api"
+	TaskRunTriggerTypeManual    TaskRunTriggerType = "manual"
+	TaskRunTriggerTypeScheduled TaskRunTriggerType = "scheduled"
+	TaskRunTriggerTypeSystem    TaskRunTriggerType = "system"
+)
+
+// Valid indicates whether the value is a known member of the TaskRunTriggerType enum.
+func (e TaskRunTriggerType) Valid() bool {
+	switch e {
+	case TaskRunTriggerTypeApi:
+		return true
+	case TaskRunTriggerTypeManual:
+		return true
+	case TaskRunTriggerTypeScheduled:
+		return true
+	case TaskRunTriggerTypeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskRunStatus.
+const (
+	Canceled       TaskRunStatus = "canceled"
+	Canceling      TaskRunStatus = "canceling"
+	Failed         TaskRunStatus = "failed"
+	PartialSuccess TaskRunStatus = "partial_success"
+	Queued         TaskRunStatus = "queued"
+	Running        TaskRunStatus = "running"
+	Succeeded      TaskRunStatus = "succeeded"
+	Timeout        TaskRunStatus = "timeout"
+)
+
+// Valid indicates whether the value is a known member of the TaskRunStatus enum.
+func (e TaskRunStatus) Valid() bool {
+	switch e {
+	case Canceled:
+		return true
+	case Canceling:
+		return true
+	case Failed:
+		return true
+	case PartialSuccess:
+		return true
+	case Queued:
+		return true
+	case Running:
+		return true
+	case Succeeded:
+		return true
+	case Timeout:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TaskRunSummaryTriggerType.
+const (
+	TaskRunSummaryTriggerTypeApi       TaskRunSummaryTriggerType = "api"
+	TaskRunSummaryTriggerTypeManual    TaskRunSummaryTriggerType = "manual"
+	TaskRunSummaryTriggerTypeScheduled TaskRunSummaryTriggerType = "scheduled"
+	TaskRunSummaryTriggerTypeSystem    TaskRunSummaryTriggerType = "system"
+)
+
+// Valid indicates whether the value is a known member of the TaskRunSummaryTriggerType enum.
+func (e TaskRunSummaryTriggerType) Valid() bool {
+	switch e {
+	case TaskRunSummaryTriggerTypeApi:
+		return true
+	case TaskRunSummaryTriggerTypeManual:
+		return true
+	case TaskRunSummaryTriggerTypeScheduled:
+		return true
+	case TaskRunSummaryTriggerTypeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAiSessionsParamsScopeKind.
+const (
+	Global   GetAiSessionsParamsScopeKind = "global"
+	Terminal GetAiSessionsParamsScopeKind = "terminal"
+)
+
+// Valid indicates whether the value is a known member of the GetAiSessionsParamsScopeKind enum.
+func (e GetAiSessionsParamsScopeKind) Valid() bool {
+	switch e {
+	case Global:
+		return true
+	case Terminal:
 		return true
 	default:
 		return false
@@ -562,95 +1209,578 @@ func (e ListResourceGrantsParamsSubjectType) Valid() bool {
 	}
 }
 
-// AuthTicketRequest defines model for AuthTicketRequest.
-type AuthTicketRequest struct {
-	BackupId *string               `json:"backup_id,omitempty"`
-	ServerId *openapi_types.UUID   `json:"server_id,omitempty"`
-	Type     AuthTicketRequestType `json:"type"`
+// Defines values for GetServersParamsStatus.
+const (
+	GetServersParamsStatusError   GetServersParamsStatus = "error"
+	GetServersParamsStatusOffline GetServersParamsStatus = "offline"
+	GetServersParamsStatusOnline  GetServersParamsStatus = "online"
+)
+
+// Valid indicates whether the value is a known member of the GetServersParamsStatus enum.
+func (e GetServersParamsStatus) Valid() bool {
+	switch e {
+	case GetServersParamsStatusError:
+		return true
+	case GetServersParamsStatusOffline:
+		return true
+	case GetServersParamsStatusOnline:
+		return true
+	default:
+		return false
+	}
 }
 
-// AuthTicketRequestType defines model for AuthTicketRequest.Type.
-type AuthTicketRequestType string
+// AIMessageView defines model for AIMessageView.
+type AIMessageView struct {
+	Content   string            `json:"content"`
+	CreatedAt time.Time         `json:"created_at"`
+	Id        string            `json:"id"`
+	Role      AIMessageViewRole `json:"role"`
 
-// EncryptedDevice defines model for EncryptedDevice.
-type EncryptedDevice struct {
-	Id         string `json:"id"`
-	Name       string `json:"name"`
-	Recipient  string `json:"recipient"`
-	SigningKey []byte `json:"signing_key"`
+	// StoppedAt 用户停止本轮生成的时间；已生成的部分内容仍保留。
+	StoppedAt *time.Time `json:"stopped_at,omitempty"`
 }
 
-// EncryptedGrant defines model for EncryptedGrant.
-type EncryptedGrant struct {
-	Admin    bool                   `json:"admin"`
-	Device   EncryptedDevice        `json:"device"`
-	Envelope []byte                 `json:"envelope"`
-	Scopes   []EncryptedGrantScopes `json:"scopes"`
+// AIMessageViewRole defines model for AIMessageView.Role.
+type AIMessageViewRole string
+
+// AIPermissionMode defines model for AIPermissionMode.
+type AIPermissionMode string
+
+// AISDKChatRequest Vercel AI SDK UI DefaultChatTransport 请求体。context/model/permission_mode/scope 是 EasySSH 追加的会话能力；工具审批通过 messages 中的 approval-responded 工具片段提交。
+type AISDKChatRequest struct {
+	// Context EasySSH 附加上下文，会由服务端拼入本轮用户消息。
+	Context        *string           `json:"context,omitempty"`
+	Id             *string           `json:"id,omitempty"`
+	MessageId      *string           `json:"messageId,omitempty"`
+	Messages       *[]AIUIMessage    `json:"messages,omitempty"`
+	Model          *string           `json:"model,omitempty"`
+	PermissionMode *AIPermissionMode `json:"permission_mode,omitempty"`
+
+	// Scope AI 会话作用域。terminal 表示助手默认面向当前终端页签和服务器。
+	Scope   *AISessionScope          `json:"scope,omitempty"`
+	Trigger *AISDKChatRequestTrigger `json:"trigger,omitempty"`
 }
 
-// EncryptedGrantScopes defines model for EncryptedGrant.Scopes.
-type EncryptedGrantScopes string
+// AISDKChatRequestTrigger defines model for AISDKChatRequest.Trigger.
+type AISDKChatRequestTrigger string
 
-// EncryptedHead defines model for EncryptedHead.
-type EncryptedHead struct {
-	Document string             `json:"document"`
-	Object   string             `json:"object"`
-	Scope    EncryptedHeadScope `json:"scope"`
+// AISessionListItem defines model for AISessionListItem.
+type AISessionListItem struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// CustomTitle 是否为用户手动重命名的标题。
+	CustomTitle    bool               `json:"custom_title"`
+	Id             openapi_types.UUID `json:"id"`
+	MessageCount   int                `json:"message_count"`
+	Model          string             `json:"model"`
+	PermissionMode AIPermissionMode   `json:"permission_mode"`
+
+	// Scope AI 会话作用域。terminal 表示助手默认面向当前终端页签和服务器。
+	Scope     *AISessionScope `json:"scope,omitempty"`
+	Status    AISessionStatus `json:"status"`
+	TaskCount int             `json:"task_count"`
+
+	// Title 会话标题。未手动命名时从首条用户消息生成。
+	Title     string    `json:"title"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// EncryptedHeadScope defines model for EncryptedHead.Scope.
-type EncryptedHeadScope string
-
-// EncryptedManifest defines model for EncryptedManifest.
-type EncryptedManifest struct {
-	Devices []EncryptedGrant `json:"devices"`
-	Epochs  struct {
-		AiConfig    int64 `json:"ai_config"`
-		Config      int64 `json:"config"`
-		Credentials int64 `json:"credentials"`
-		Sessions    int64 `json:"sessions"`
-	} `json:"epochs"`
-	GenesisRoot       []byte                   `json:"genesis_root"`
-	Previous          string                   `json:"previous"`
-	PreviousSignature []byte                   `json:"previous_signature"`
-	Recovery          []byte                   `json:"recovery"`
-	RecoveryRecipient string                   `json:"recovery_recipient"`
-	Revision          int64                    `json:"revision"`
-	Root              []byte                   `json:"root"`
-	Signature         []byte                   `json:"signature"`
-	Space             string                   `json:"space"`
-	Version           EncryptedManifestVersion `json:"version"`
+// AISessionScope AI 会话作用域。terminal 表示助手默认面向当前终端页签和服务器。
+type AISessionScope struct {
+	Host              *string             `json:"host,omitempty"`
+	Kind              *AISessionScopeKind `json:"kind,omitempty"`
+	Port              *int                `json:"port,omitempty"`
+	ServerId          *openapi_types.UUID `json:"server_id,omitempty"`
+	ServerName        *string             `json:"server_name,omitempty"`
+	TerminalSessionId *string             `json:"terminal_session_id,omitempty"`
+	Username          *string             `json:"username,omitempty"`
 }
 
-// EncryptedManifestVersion defines model for EncryptedManifest.Version.
-type EncryptedManifestVersion int
+// AISessionScopeKind defines model for AISessionScope.Kind.
+type AISessionScopeKind string
 
-// EncryptedObject defines model for EncryptedObject.
-type EncryptedObject struct {
-	Author     string                 `json:"author"`
-	Ciphertext []byte                 `json:"ciphertext"`
-	Document   string                 `json:"document"`
-	Epoch      int64                  `json:"epoch"`
-	Id         string                 `json:"id"`
-	Manifest   string                 `json:"manifest"`
-	Parents    []string               `json:"parents"`
-	Scope      EncryptedObjectScope   `json:"scope"`
-	Signature  []byte                 `json:"signature"`
-	Space      string                 `json:"space"`
-	Version    EncryptedObjectVersion `json:"version"`
+// AISessionStatus defines model for AISessionStatus.
+type AISessionStatus string
+
+// AISessionView defines model for AISessionView.
+type AISessionView struct {
+	AvailableTools   []AIToolView       `json:"available_tools"`
+	CreatedAt        time.Time          `json:"created_at"`
+	DefaultTransport AITransportType    `json:"default_transport"`
+	Id               openapi_types.UUID `json:"id"`
+	Messages         []AIMessageView    `json:"messages"`
+	Model            string             `json:"model"`
+	PermissionMode   AIPermissionMode   `json:"permission_mode"`
+
+	// Scope AI 会话作用域。terminal 表示助手默认面向当前终端页签和服务器。
+	Scope      *AISessionScope `json:"scope,omitempty"`
+	Status     AISessionStatus `json:"status"`
+	Tasks      []AITaskView    `json:"tasks"`
+	UiMessages []AIUIMessage   `json:"ui_messages"`
+	UpdatedAt  time.Time       `json:"updated_at"`
 }
 
-// EncryptedObjectScope defines model for EncryptedObject.Scope.
-type EncryptedObjectScope string
+// AITaskStatus defines model for AITaskStatus.
+type AITaskStatus string
 
-// EncryptedObjectVersion defines model for EncryptedObject.Version.
-type EncryptedObjectVersion int
+// AITaskView defines model for AITaskView.
+type AITaskView struct {
+	Arguments *map[string]interface{} `json:"arguments,omitempty"`
 
-// EncryptedRelayRoute defines model for EncryptedRelayRoute.
-type EncryptedRelayRoute struct {
-	Host string             `json:"host"`
-	Id   openapi_types.UUID `json:"id"`
-	Port int                `json:"port"`
+	// AssistantMessageId 生成该工具调用的 AI SDK UI assistant message id。
+	AssistantMessageId   *string      `json:"assistant_message_id,omitempty"`
+	CreatedAt            time.Time    `json:"created_at"`
+	Dangerous            bool         `json:"dangerous"`
+	Error                *string      `json:"error,omitempty"`
+	Id                   string       `json:"id"`
+	RequiresConfirmation bool         `json:"requires_confirmation"`
+	Result               *string      `json:"result,omitempty"`
+	Status               AITaskStatus `json:"status"`
+	Summary              *string      `json:"summary,omitempty"`
+	ToolCallId           string       `json:"tool_call_id"`
+	ToolDisplayName      *string      `json:"tool_display_name,omitempty"`
+	ToolName             string       `json:"tool_name"`
+	UpdatedAt            time.Time    `json:"updated_at"`
+}
+
+// AIToolView defines model for AIToolView.
+type AIToolView struct {
+	Dangerous   bool    `json:"dangerous"`
+	Description string  `json:"description"`
+	DisplayName *string `json:"display_name,omitempty"`
+	Name        string  `json:"name"`
+}
+
+// AITransportType defines model for AITransportType.
+type AITransportType string
+
+// AIUIAbortChunk defines model for AIUIAbortChunk.
+type AIUIAbortChunk struct {
+	Reason               *string                `json:"reason,omitempty"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIDataChunk defines model for AIUIDataChunk.
+type AIUIDataChunk struct {
+	// Data AI SDK UI data part payload
+	Data                 interface{}            `json:"data"`
+	Id                   *string                `json:"id,omitempty"`
+	Transient            *bool                  `json:"transient,omitempty"`
+	Type                 string                 `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIDataPart AI SDK UI data-* part，例如 data-tool-status。
+type AIUIDataPart struct {
+	// Data Data part payload
+	Data                 interface{}            `json:"data"`
+	Id                   *string                `json:"id,omitempty"`
+	Type                 string                 `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIDynamicToolPart defines model for AIUIDynamicToolPart.
+type AIUIDynamicToolPart struct {
+	Approval             *AIUIDynamicToolPart_Approval `json:"approval,omitempty"`
+	CallProviderMetadata *map[string]interface{}       `json:"callProviderMetadata,omitempty"`
+	ErrorText            *string                       `json:"errorText,omitempty"`
+
+	// Input AI SDK UI tool input payload
+	Input interface{} `json:"input,omitempty"`
+
+	// Output AI SDK UI tool output payload
+	Output               interface{}              `json:"output,omitempty"`
+	ProviderExecuted     *bool                    `json:"providerExecuted,omitempty"`
+	State                AIUIDynamicToolPartState `json:"state"`
+	Title                *string                  `json:"title,omitempty"`
+	ToolCallId           string                   `json:"toolCallId"`
+	ToolName             string                   `json:"toolName"`
+	Type                 interface{}              `json:"type"`
+	AdditionalProperties map[string]interface{}   `json:"-"`
+}
+
+// AIUIDynamicToolPart_Approval defines model for AIUIDynamicToolPart.Approval.
+type AIUIDynamicToolPart_Approval struct {
+	Approved             *bool                  `json:"approved,omitempty"`
+	Id                   *string                `json:"id,omitempty"`
+	Reason               *string                `json:"reason,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIDynamicToolPartState defines model for AIUIDynamicToolPart.State.
+type AIUIDynamicToolPartState string
+
+// AIUIErrorChunk defines model for AIUIErrorChunk.
+type AIUIErrorChunk struct {
+	ErrorText            string                 `json:"errorText"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIFileChunk defines model for AIUIFileChunk.
+type AIUIFileChunk struct {
+	MediaType            string                 `json:"mediaType"`
+	Type                 interface{}            `json:"type"`
+	Url                  string                 `json:"url"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIFilePart defines model for AIUIFilePart.
+type AIUIFilePart struct {
+	Filename             *string                `json:"filename,omitempty"`
+	MediaType            string                 `json:"mediaType"`
+	Type                 interface{}            `json:"type"`
+	Url                  string                 `json:"url"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIFinishChunk defines model for AIUIFinishChunk.
+type AIUIFinishChunk struct {
+	FinishReason *AIUIFinishChunkFinishReason `json:"finishReason,omitempty"`
+
+	// MessageMetadata AI SDK UI message metadata
+	MessageMetadata      interface{}            `json:"messageMetadata,omitempty"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIFinishChunkFinishReason defines model for AIUIFinishChunk.FinishReason.
+type AIUIFinishChunkFinishReason string
+
+// AIUIFinishStepChunk defines model for AIUIFinishStepChunk.
+type AIUIFinishStepChunk struct {
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIMessage Vercel AI SDK UIMessage。前端直接渲染 parts，不再从 MessageView/TaskView 做本地适配。
+type AIUIMessage struct {
+	Id       string                  `json:"id"`
+	Metadata *map[string]interface{} `json:"metadata,omitempty"`
+	Parts    []AIUIMessagePart       `json:"parts"`
+	Role     AIUIMessageRole         `json:"role"`
+}
+
+// AIUIMessageRole defines model for AIUIMessage.Role.
+type AIUIMessageRole string
+
+// AIUIMessageChunk Vercel AI SDK UIMessageChunk，用于 X-Vercel-AI-UI-Message-Stream v1 SSE data 载荷。
+type AIUIMessageChunk struct {
+	union json.RawMessage
+}
+
+// AIUIMessageChunk25 defines model for .
+type AIUIMessageChunk25 struct {
+	Type                 string                 `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIMessageMetadataChunk defines model for AIUIMessageMetadataChunk.
+type AIUIMessageMetadataChunk struct {
+	// MessageMetadata AI SDK UI message metadata
+	MessageMetadata      interface{}            `json:"messageMetadata"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIMessagePart defines model for AIUIMessagePart.
+type AIUIMessagePart struct {
+	union json.RawMessage
+}
+
+// AIUIMessagePart9 defines model for .
+type AIUIMessagePart9 struct {
+	Type                 string                 `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIReasoningDeltaChunk defines model for AIUIReasoningDeltaChunk.
+type AIUIReasoningDeltaChunk struct {
+	Delta                string                 `json:"delta"`
+	Id                   string                 `json:"id"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIReasoningEndChunk defines model for AIUIReasoningEndChunk.
+type AIUIReasoningEndChunk struct {
+	Id                   string                 `json:"id"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIReasoningPart defines model for AIUIReasoningPart.
+type AIUIReasoningPart struct {
+	State                *AIUIReasoningPartState `json:"state,omitempty"`
+	Text                 string                  `json:"text"`
+	Type                 interface{}             `json:"type"`
+	AdditionalProperties map[string]interface{}  `json:"-"`
+}
+
+// AIUIReasoningPartState defines model for AIUIReasoningPart.State.
+type AIUIReasoningPartState string
+
+// AIUIReasoningStartChunk defines model for AIUIReasoningStartChunk.
+type AIUIReasoningStartChunk struct {
+	Id                   string                 `json:"id"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUISourceDocumentChunk defines model for AIUISourceDocumentChunk.
+type AIUISourceDocumentChunk struct {
+	Filename             *string                `json:"filename,omitempty"`
+	MediaType            string                 `json:"mediaType"`
+	SourceId             string                 `json:"sourceId"`
+	Title                string                 `json:"title"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUISourceDocumentPart defines model for AIUISourceDocumentPart.
+type AIUISourceDocumentPart struct {
+	Filename             *string                `json:"filename,omitempty"`
+	MediaType            string                 `json:"mediaType"`
+	SourceId             string                 `json:"sourceId"`
+	Title                string                 `json:"title"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUISourceURLChunk defines model for AIUISourceURLChunk.
+type AIUISourceURLChunk struct {
+	SourceId             string                 `json:"sourceId"`
+	Title                *string                `json:"title,omitempty"`
+	Type                 interface{}            `json:"type"`
+	Url                  string                 `json:"url"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUISourceURLPart defines model for AIUISourceURLPart.
+type AIUISourceURLPart struct {
+	SourceId             string                 `json:"sourceId"`
+	Title                *string                `json:"title,omitempty"`
+	Type                 interface{}            `json:"type"`
+	Url                  string                 `json:"url"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIStartChunk defines model for AIUIStartChunk.
+type AIUIStartChunk struct {
+	MessageId *string `json:"messageId,omitempty"`
+
+	// MessageMetadata AI SDK UI message metadata
+	MessageMetadata      interface{}            `json:"messageMetadata,omitempty"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIStartStepChunk defines model for AIUIStartStepChunk.
+type AIUIStartStepChunk struct {
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIStepStartPart defines model for AIUIStepStartPart.
+type AIUIStepStartPart struct {
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUITextDeltaChunk defines model for AIUITextDeltaChunk.
+type AIUITextDeltaChunk struct {
+	Delta                string                 `json:"delta"`
+	Id                   string                 `json:"id"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUITextEndChunk defines model for AIUITextEndChunk.
+type AIUITextEndChunk struct {
+	Id                   string                 `json:"id"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUITextPart defines model for AIUITextPart.
+type AIUITextPart struct {
+	State                *AIUITextPartState     `json:"state,omitempty"`
+	Text                 string                 `json:"text"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUITextPartState defines model for AIUITextPart.State.
+type AIUITextPartState string
+
+// AIUITextStartChunk defines model for AIUITextStartChunk.
+type AIUITextStartChunk struct {
+	Id                   string                 `json:"id"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIToolApprovalRequestChunk defines model for AIUIToolApprovalRequestChunk.
+type AIUIToolApprovalRequestChunk struct {
+	ApprovalId           string                 `json:"approvalId"`
+	ToolCallId           string                 `json:"toolCallId"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIToolInputAvailableChunk defines model for AIUIToolInputAvailableChunk.
+type AIUIToolInputAvailableChunk struct {
+	Dynamic *bool `json:"dynamic,omitempty"`
+
+	// Input AI SDK UI tool input payload
+	Input                interface{}             `json:"input"`
+	ProviderMetadata     *map[string]interface{} `json:"providerMetadata,omitempty"`
+	Title                *string                 `json:"title,omitempty"`
+	ToolCallId           string                  `json:"toolCallId"`
+	ToolName             string                  `json:"toolName"`
+	Type                 interface{}             `json:"type"`
+	AdditionalProperties map[string]interface{}  `json:"-"`
+}
+
+// AIUIToolInputDeltaChunk defines model for AIUIToolInputDeltaChunk.
+type AIUIToolInputDeltaChunk struct {
+	InputTextDelta       string                 `json:"inputTextDelta"`
+	ToolCallId           string                 `json:"toolCallId"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIToolInputErrorChunk defines model for AIUIToolInputErrorChunk.
+type AIUIToolInputErrorChunk struct {
+	Dynamic   *bool  `json:"dynamic,omitempty"`
+	ErrorText string `json:"errorText"`
+
+	// Input AI SDK UI tool input payload
+	Input                interface{}             `json:"input"`
+	ProviderMetadata     *map[string]interface{} `json:"providerMetadata,omitempty"`
+	Title                *string                 `json:"title,omitempty"`
+	ToolCallId           string                  `json:"toolCallId"`
+	ToolName             string                  `json:"toolName"`
+	Type                 interface{}             `json:"type"`
+	AdditionalProperties map[string]interface{}  `json:"-"`
+}
+
+// AIUIToolInputStartChunk defines model for AIUIToolInputStartChunk.
+type AIUIToolInputStartChunk struct {
+	Dynamic              *bool                   `json:"dynamic,omitempty"`
+	ProviderMetadata     *map[string]interface{} `json:"providerMetadata,omitempty"`
+	Title                *string                 `json:"title,omitempty"`
+	ToolCallId           string                  `json:"toolCallId"`
+	ToolName             string                  `json:"toolName"`
+	Type                 interface{}             `json:"type"`
+	AdditionalProperties map[string]interface{}  `json:"-"`
+}
+
+// AIUIToolOutputAvailableChunk defines model for AIUIToolOutputAvailableChunk.
+type AIUIToolOutputAvailableChunk struct {
+	Dynamic *bool `json:"dynamic,omitempty"`
+
+	// Output AI SDK UI tool output payload
+	Output               interface{}            `json:"output"`
+	Preliminary          *bool                  `json:"preliminary,omitempty"`
+	ToolCallId           string                 `json:"toolCallId"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIToolOutputDeniedChunk defines model for AIUIToolOutputDeniedChunk.
+type AIUIToolOutputDeniedChunk struct {
+	ToolCallId           string                 `json:"toolCallId"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIToolOutputErrorChunk defines model for AIUIToolOutputErrorChunk.
+type AIUIToolOutputErrorChunk struct {
+	Dynamic              *bool                  `json:"dynamic,omitempty"`
+	ErrorText            string                 `json:"errorText"`
+	ToolCallId           string                 `json:"toolCallId"`
+	Type                 interface{}            `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIToolPart defines model for AIUIToolPart.
+type AIUIToolPart struct {
+	Approval             *AIUIToolPart_Approval  `json:"approval,omitempty"`
+	CallProviderMetadata *map[string]interface{} `json:"callProviderMetadata,omitempty"`
+	ErrorText            *string                 `json:"errorText,omitempty"`
+
+	// Input AI SDK UI tool input payload
+	Input interface{} `json:"input,omitempty"`
+
+	// Output AI SDK UI tool output payload
+	Output               interface{}            `json:"output,omitempty"`
+	ProviderExecuted     *bool                  `json:"providerExecuted,omitempty"`
+	State                AIUIToolPartState      `json:"state"`
+	Title                *string                `json:"title,omitempty"`
+	ToolCallId           string                 `json:"toolCallId"`
+	Type                 string                 `json:"type"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIToolPart_Approval defines model for AIUIToolPart.Approval.
+type AIUIToolPart_Approval struct {
+	Approved             *bool                  `json:"approved,omitempty"`
+	Id                   *string                `json:"id,omitempty"`
+	Reason               *string                `json:"reason,omitempty"`
+	AdditionalProperties map[string]interface{} `json:"-"`
+}
+
+// AIUIToolPartState defines model for AIUIToolPart.State.
+type AIUIToolPartState string
+
+// BatchTaskExecutionMode defines model for BatchTaskExecutionMode.
+type BatchTaskExecutionMode string
+
+// BatchTaskType defines model for BatchTaskType.
+type BatchTaskType string
+
+// CreateAISessionRequest defines model for CreateAISessionRequest.
+type CreateAISessionRequest struct {
+	Model          *string           `json:"model,omitempty"`
+	PermissionMode *AIPermissionMode `json:"permission_mode,omitempty"`
+
+	// Scope AI 会话作用域。terminal 表示助手默认面向当前终端页签和服务器。
+	Scope *AISessionScope `json:"scope,omitempty"`
+}
+
+// CreateAISessionResponse defines model for CreateAISessionResponse.
+type CreateAISessionResponse struct {
+	DefaultTransport AITransportType    `json:"default_transport"`
+	Session          AISessionView      `json:"session"`
+	SessionId        openapi_types.UUID `json:"session_id"`
+}
+
+// CreateBatchTaskRequest defines model for CreateBatchTaskRequest.
+type CreateBatchTaskRequest struct {
+	Content       *string                 `json:"content,omitempty"`
+	ExecutionMode *BatchTaskExecutionMode `json:"execution_mode,omitempty"`
+	ScriptId      *openapi_types.UUID     `json:"script_id,omitempty"`
+	ServerIds     []openapi_types.UUID    `json:"server_ids"`
+	TaskName      string                  `json:"task_name"`
+	TaskType      BatchTaskType           `json:"task_type"`
+}
+
+// DockerContainerStats defines model for DockerContainerStats.
+type DockerContainerStats struct {
+	BlockRead     int64   `json:"blockRead"`
+	BlockWrite    int64   `json:"blockWrite"`
+	ContainerId   string  `json:"containerId"`
+	CpuPercent    float64 `json:"cpuPercent"`
+	MemoryLimit   int64   `json:"memoryLimit"`
+	MemoryPercent float64 `json:"memoryPercent"`
+	MemoryUsage   int64   `json:"memoryUsage"`
+	Name          string  `json:"name"`
+	NetworkIn     int64   `json:"networkIn"`
+	NetworkOut    int64   `json:"networkOut"`
+	Pids          int     `json:"pids"`
 }
 
 // Error defines model for Error.
@@ -659,6 +1789,28 @@ type Error struct {
 	Details *map[string]interface{} `json:"details,omitempty"`
 	Error   string                  `json:"error"`
 	Message *string                 `json:"message,omitempty"`
+}
+
+// FileInfo defines model for FileInfo.
+type FileInfo struct {
+	Group       *string      `json:"group,omitempty"`
+	ModifiedAt  *time.Time   `json:"modified_at,omitempty"`
+	Name        string       `json:"name"`
+	Owner       *string      `json:"owner,omitempty"`
+	Path        string       `json:"path"`
+	Permissions *string      `json:"permissions,omitempty"`
+	Size        int64        `json:"size"`
+	Type        FileInfoType `json:"type"`
+}
+
+// FileInfoType defines model for FileInfo.Type.
+type FileInfoType string
+
+// FileUploadRequest defines model for FileUploadRequest.
+type FileUploadRequest struct {
+	Overwrite  *bool              `json:"overwrite,omitempty"`
+	RemotePath string             `json:"remote_path"`
+	ServerId   openapi_types.UUID `json:"server_id"`
 }
 
 // InboxNotification defines model for InboxNotification.
@@ -771,6 +1923,12 @@ type JSONObject map[string]interface{}
 // JSONWebKeySet defines model for JSONWebKeySet.
 type JSONWebKeySet struct {
 	Keys []map[string]interface{} `json:"keys"`
+}
+
+// ListAISessionsResponse defines model for ListAISessionsResponse.
+type ListAISessionsResponse struct {
+	Items []AISessionListItem `json:"items"`
+	Total int                 `json:"total"`
 }
 
 // Log defines model for Log.
@@ -909,6 +2067,23 @@ type PermissionListResponse struct {
 // PermissionModule defines model for PermissionModule.
 type PermissionModule string
 
+// RealtimeEvent defines model for RealtimeEvent.
+type RealtimeEvent struct {
+	CreatedAt time.Time              `json:"created_at"`
+	Data      map[string]interface{} `json:"data"`
+	Id        openapi_types.UUID     `json:"id"`
+	Type      RealtimeEventType      `json:"type"`
+}
+
+// RealtimeEventType defines model for RealtimeEvent.Type.
+type RealtimeEventType string
+
+// RenameAISessionRequest defines model for RenameAISessionRequest.
+type RenameAISessionRequest struct {
+	// Title 新的会话标题，服务端会 trim 并限制长度。
+	Title string `json:"title"`
+}
+
 // ResourceGrant defines model for ResourceGrant.
 type ResourceGrant struct {
 	Id             string                   `json:"id"`
@@ -967,6 +2142,159 @@ type RoleRequest struct {
 	Name            string   `json:"name"`
 	ParentKey       *string  `json:"parent_key,omitempty"`
 	PermissionCodes []string `json:"permission_codes"`
+}
+
+// SFTPDeletePathsRequest defines model for SFTPDeletePathsRequest.
+type SFTPDeletePathsRequest struct {
+	Paths []string `json:"paths"`
+}
+
+// SFTPDeletePathsResponse defines model for SFTPDeletePathsResponse.
+type SFTPDeletePathsResponse struct {
+	Data SFTPDeletePathsResult `json:"data"`
+}
+
+// SFTPDeletePathsResult defines model for SFTPDeletePathsResult.
+type SFTPDeletePathsResult struct {
+	DeletedPaths []string                  `json:"deleted_paths"`
+	Mode         SFTPDeletePathsResultMode `json:"mode"`
+	TaskId       *openapi_types.UUID       `json:"task_id,omitempty"`
+}
+
+// SFTPDeletePathsResultMode defines model for SFTPDeletePathsResult.Mode.
+type SFTPDeletePathsResultMode string
+
+// SSHSession defines model for SSHSession.
+type SSHSession struct {
+	Id           openapi_types.UUID `json:"id"`
+	LastActivity *time.Time         `json:"last_activity,omitempty"`
+	ServerId     openapi_types.UUID `json:"server_id"`
+	ServerName   *string            `json:"server_name,omitempty"`
+	StartedAt    *time.Time         `json:"started_at,omitempty"`
+	Status       SSHSessionStatus   `json:"status"`
+}
+
+// SSHSessionStatus defines model for SSHSession.Status.
+type SSHSessionStatus string
+
+// Script defines model for Script.
+type Script struct {
+	Content     string             `json:"content"`
+	CreatedAt   *time.Time         `json:"created_at,omitempty"`
+	Description *string            `json:"description,omitempty"`
+	Id          openapi_types.UUID `json:"id"`
+	Language    *ScriptLanguage    `json:"language,omitempty"`
+	Name        string             `json:"name"`
+	UpdatedAt   *time.Time         `json:"updated_at,omitempty"`
+}
+
+// ScriptLanguage defines model for Script.Language.
+type ScriptLanguage string
+
+// ScriptExecutionRequest defines model for ScriptExecutionRequest.
+type ScriptExecutionRequest struct {
+	Parameters *map[string]interface{} `json:"parameters,omitempty"`
+	ScriptId   openapi_types.UUID      `json:"script_id"`
+	ServerIds  []openapi_types.UUID    `json:"server_ids"`
+}
+
+// ScriptExecutionResult defines model for ScriptExecutionResult.
+type ScriptExecutionResult struct {
+	ExecutionId *openapi_types.UUID `json:"execution_id,omitempty"`
+	Results     *[]struct {
+		Error      *string                             `json:"error,omitempty"`
+		ExecutedAt *time.Time                          `json:"executed_at,omitempty"`
+		ExitCode   *int                                `json:"exit_code,omitempty"`
+		Output     *string                             `json:"output,omitempty"`
+		ServerId   *openapi_types.UUID                 `json:"server_id,omitempty"`
+		ServerName *string                             `json:"server_name,omitempty"`
+		Status     *ScriptExecutionResultResultsStatus `json:"status,omitempty"`
+	} `json:"results,omitempty"`
+	Status *ScriptExecutionResultStatus `json:"status,omitempty"`
+}
+
+// ScriptExecutionResultResultsStatus defines model for ScriptExecutionResult.Results.Status.
+type ScriptExecutionResultResultsStatus string
+
+// ScriptExecutionResultStatus defines model for ScriptExecutionResult.Status.
+type ScriptExecutionResultStatus string
+
+// Server defines model for Server.
+type Server struct {
+	AuthMethod    *ServerAuthMethod  `json:"auth_method,omitempty"`
+	CreatedAt     *time.Time         `json:"created_at,omitempty"`
+	Group         *string            `json:"group,omitempty"`
+	Host          string             `json:"host"`
+	Id            openapi_types.UUID `json:"id"`
+	LastConnected *time.Time         `json:"last_connected,omitempty"`
+	Name          string             `json:"name"`
+	Os            *string            `json:"os,omitempty"`
+	Port          int                `json:"port"`
+
+	// SshKeyId 连接引用的密钥条目 ID。
+	SshKeyId  *int          `json:"ssh_key_id,omitempty"`
+	Status    *ServerStatus `json:"status,omitempty"`
+	Tags      *[]string     `json:"tags,omitempty"`
+	UpdatedAt *time.Time    `json:"updated_at,omitempty"`
+	Username  string        `json:"username"`
+}
+
+// ServerAuthMethod defines model for Server.AuthMethod.
+type ServerAuthMethod string
+
+// ServerStatus defines model for Server.Status.
+type ServerStatus string
+
+// ServerCreate defines model for ServerCreate.
+type ServerCreate struct {
+	AuthMethod ServerCreateAuthMethod `json:"auth_method"`
+	Group      *string                `json:"group,omitempty"`
+	Host       string                 `json:"host"`
+	Name       string                 `json:"name"`
+
+	// Password 可选；未保存时在连接时输入。
+	Password *string `json:"password,omitempty"`
+	Port     int     `json:"port"`
+
+	// PrivateKey 导入私钥为独立条目并建立引用；不在连接记录中保存私钥。
+	PrivateKey *string `json:"private_key,omitempty"`
+
+	// PrivateKeyPassphrase 仅用于导入私钥时校验口令，不持久化。
+	PrivateKeyPassphrase *string `json:"private_key_passphrase,omitempty"`
+
+	// SshKeyId 已保存的密钥条目 ID；0 表示连接时临时提供私钥。与非空 private_key 互斥。
+	SshKeyId *int      `json:"ssh_key_id,omitempty"`
+	Tags     *[]string `json:"tags,omitempty"`
+	Username string    `json:"username"`
+}
+
+// ServerCreateAuthMethod defines model for ServerCreate.AuthMethod.
+type ServerCreateAuthMethod string
+
+// ServerList defines model for ServerList.
+type ServerList struct {
+	Data []Server       `json:"data"`
+	Meta PaginationMeta `json:"meta"`
+}
+
+// ServerUpdate defines model for ServerUpdate.
+type ServerUpdate struct {
+	Group    *string `json:"group,omitempty"`
+	Host     *string `json:"host,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	Password *string `json:"password,omitempty"`
+	Port     *int    `json:"port,omitempty"`
+
+	// PrivateKey 导入私钥为独立条目并建立引用；不在连接记录中保存私钥。
+	PrivateKey *string `json:"private_key,omitempty"`
+
+	// PrivateKeyPassphrase 仅用于导入私钥时校验口令，不持久化。
+	PrivateKeyPassphrase *string `json:"private_key_passphrase,omitempty"`
+
+	// SshKeyId 已保存的密钥条目 ID；0 表示连接时临时提供私钥。与非空 private_key 互斥。
+	SshKeyId *int      `json:"ssh_key_id,omitempty"`
+	Tags     *[]string `json:"tags,omitempty"`
+	Username *string   `json:"username,omitempty"`
 }
 
 // SyncAuthorizationApproval defines model for SyncAuthorizationApproval.
@@ -1041,6 +2369,26 @@ type SyncIdentity struct {
 // SyncIdentityProtocol defines model for SyncIdentity.Protocol.
 type SyncIdentityProtocol int
 
+// SyncPeer defines model for SyncPeer.
+type SyncPeer struct {
+	// Changes Base64 Automerge changes since the last acknowledged heads
+	Changes *[]string `json:"changes,omitempty"`
+
+	// Document Base64 Automerge document for initial synchronization
+	Document *string   `json:"document,omitempty"`
+	Heads    *[]string `json:"heads,omitempty"`
+}
+
+// SyncResolution defines model for SyncResolution.
+type SyncResolution struct {
+	Field SyncResolutionField `json:"field"`
+	Key   string              `json:"key"`
+	Value string              `json:"value"`
+}
+
+// SyncResolutionField defines model for SyncResolution.Field.
+type SyncResolutionField string
+
 // SyncScopes defines model for SyncScopes.
 type SyncScopes struct {
 	AiConfig    bool `json:"ai_config"`
@@ -1059,6 +2407,41 @@ type SyncStatus struct {
 	SpaceId   *string        `json:"space_id,omitempty"`
 }
 
+// SyncVaultEntry defines model for SyncVaultEntry.
+type SyncVaultEntry struct {
+	Id   openapi_types.UUID `json:"id"`
+	Kind SyncVaultEntryKind `json:"kind"`
+	Name string             `json:"name"`
+}
+
+// SyncVaultEntryKind defines model for SyncVaultEntry.Kind.
+type SyncVaultEntryKind string
+
+// SyncVaultExchange defines model for SyncVaultExchange.
+type SyncVaultExchange struct {
+	Peer       SyncPeer        `json:"peer"`
+	Resolution *SyncResolution `json:"resolution,omitempty"`
+}
+
+// SyncVaultObject defines model for SyncVaultObject.
+type SyncVaultObject struct {
+	Kind       SyncVaultObjectKind `json:"kind"`
+	ResourceId openapi_types.UUID  `json:"resource_id"`
+
+	// Value JSON payload or base64 attachment; encrypted by Go at rest, HTTPS in transit
+	Value string `json:"value"`
+}
+
+// SyncVaultObjectKind defines model for SyncVaultObject.Kind.
+type SyncVaultObjectKind string
+
+// SyncVaultResult defines model for SyncVaultResult.
+type SyncVaultResult struct {
+	Conflicts []SyncConflict               `json:"conflicts"`
+	Response  SyncPeer                     `json:"response"`
+	Snapshot  map[string]map[string]string `json:"snapshot"`
+}
+
 // SyncVersionPreview Safe summary; never contains credential material or message bodies
 type SyncVersionPreview struct {
 	Deleted       *bool      `json:"deleted,omitempty"`
@@ -1071,6 +2454,183 @@ type SyncVersionPreview struct {
 	Source        *string    `json:"source,omitempty"`
 	Title         *string    `json:"title,omitempty"`
 	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}
+
+// SystemMetrics defines model for SystemMetrics.
+type SystemMetrics struct {
+	CpuUsage    *float32   `json:"cpu_usage,omitempty"`
+	DiskUsage   *float32   `json:"disk_usage,omitempty"`
+	MemoryUsage *float32   `json:"memory_usage,omitempty"`
+	NetworkIn   *int64     `json:"network_in,omitempty"`
+	NetworkOut  *int64     `json:"network_out,omitempty"`
+	Timestamp   *time.Time `json:"timestamp,omitempty"`
+	Uptime      *int64     `json:"uptime,omitempty"`
+}
+
+// TaskCleanupResponse defines model for TaskCleanupResponse.
+type TaskCleanupResponse struct {
+	Data TaskCleanupResult `json:"data"`
+}
+
+// TaskCleanupResult defines model for TaskCleanupResult.
+type TaskCleanupResult struct {
+	DeletedCount         int `json:"deleted_count"`
+	DeletedEvents        int `json:"deleted_events"`
+	DeletedNotifications int `json:"deleted_notifications"`
+	RetentionDays        int `json:"retention_days"`
+}
+
+// TaskEvent defines model for TaskEvent.
+type TaskEvent struct {
+	CreatedAt time.Time          `json:"created_at"`
+	DataJson  *string            `json:"data_json,omitempty"`
+	Id        int                `json:"id"`
+	Level     TaskEventLevel     `json:"level"`
+	Message   string             `json:"message"`
+	TaskRunId openapi_types.UUID `json:"task_run_id"`
+	UserId    openapi_types.UUID `json:"user_id"`
+}
+
+// TaskEventLevel defines model for TaskEvent.Level.
+type TaskEventLevel string
+
+// TaskRun defines model for TaskRun.
+type TaskRun struct {
+	Attempt           *int                `json:"attempt,omitempty"`
+	BytesProcessed    *int64              `json:"bytes_processed,omitempty"`
+	BytesTotal        *int64              `json:"bytes_total,omitempty"`
+	CancelRequestedAt *time.Time          `json:"cancel_requested_at,omitempty"`
+	Cancelable        bool                `json:"cancelable"`
+	CreatedAt         time.Time           `json:"created_at"`
+	DefinitionId      *openapi_types.UUID `json:"definition_id,omitempty"`
+	Description       *string             `json:"description,omitempty"`
+	ErrorCode         *string             `json:"error_code,omitempty"`
+	ErrorMessage      *string             `json:"error_message,omitempty"`
+	FailureCount      int                 `json:"failure_count"`
+	FinishedAt        *time.Time          `json:"finished_at,omitempty"`
+	Id                openapi_types.UUID  `json:"id"`
+	MaxAttempts       *int                `json:"max_attempts,omitempty"`
+	PayloadJson       *string             `json:"payload_json,omitempty"`
+	Progress          int                 `json:"progress"`
+	ProgressJson      *string             `json:"progress_json,omitempty"`
+	Resource          *string             `json:"resource,omitempty"`
+	ResultJson        *string             `json:"result_json,omitempty"`
+	RetryOfId         *openapi_types.UUID `json:"retry_of_id,omitempty"`
+	Retryable         bool                `json:"retryable"`
+	Runner            TaskRunRunner       `json:"runner"`
+	ServerId          *openapi_types.UUID `json:"server_id,omitempty"`
+	ServerName        *string             `json:"server_name,omitempty"`
+	SourceId          *string             `json:"source_id,omitempty"`
+	SourceType        *string             `json:"source_type,omitempty"`
+	Stage             *string             `json:"stage,omitempty"`
+	StartedAt         *time.Time          `json:"started_at,omitempty"`
+	Status            TaskRunStatus       `json:"status"`
+	SuccessCount      int                 `json:"success_count"`
+	TaskType          string              `json:"task_type"`
+	Title             string              `json:"title"`
+	TotalCount        int                 `json:"total_count"`
+	TriggerType       TaskRunTriggerType  `json:"trigger_type"`
+	UpdatedAt         time.Time           `json:"updated_at"`
+	UserId            openapi_types.UUID  `json:"user_id"`
+}
+
+// TaskRunRunner defines model for TaskRun.Runner.
+type TaskRunRunner string
+
+// TaskRunTriggerType defines model for TaskRun.TriggerType.
+type TaskRunTriggerType string
+
+// TaskRunDetails defines model for TaskRunDetails.
+type TaskRunDetails struct {
+	Events []TaskEvent `json:"events"`
+	Run    TaskRun     `json:"run"`
+}
+
+// TaskRunDetailsResponse defines model for TaskRunDetailsResponse.
+type TaskRunDetailsResponse struct {
+	Data TaskRunDetails `json:"data"`
+}
+
+// TaskRunList defines model for TaskRunList.
+type TaskRunList struct {
+	Page       int              `json:"page"`
+	PageSize   int              `json:"page_size"`
+	Runs       []TaskRunSummary `json:"runs"`
+	Total      int              `json:"total"`
+	TotalPages int              `json:"total_pages"`
+}
+
+// TaskRunListResponse defines model for TaskRunListResponse.
+type TaskRunListResponse struct {
+	Data TaskRunList `json:"data"`
+}
+
+// TaskRunStatus defines model for TaskRunStatus.
+type TaskRunStatus string
+
+// TaskRunSummary 任务列表摘要；输入、结果与进度明细仅由任务详情接口返回。
+type TaskRunSummary struct {
+	Attempt           int                       `json:"attempt"`
+	BytesProcessed    int64                     `json:"bytes_processed"`
+	BytesTotal        int64                     `json:"bytes_total"`
+	CancelRequestedAt *time.Time                `json:"cancel_requested_at,omitempty"`
+	Cancelable        bool                      `json:"cancelable"`
+	CreatedAt         time.Time                 `json:"created_at"`
+	DefinitionId      *openapi_types.UUID       `json:"definition_id,omitempty"`
+	ErrorCode         *string                   `json:"error_code,omitempty"`
+	ErrorMessage      *string                   `json:"error_message,omitempty"`
+	FailureCount      int                       `json:"failure_count"`
+	FinishedAt        *time.Time                `json:"finished_at,omitempty"`
+	Id                openapi_types.UUID        `json:"id"`
+	MaxAttempts       int                       `json:"max_attempts"`
+	Progress          int                       `json:"progress"`
+	Resource          *string                   `json:"resource,omitempty"`
+	RetryOfId         *openapi_types.UUID       `json:"retry_of_id,omitempty"`
+	Retryable         bool                      `json:"retryable"`
+	Runner            string                    `json:"runner"`
+	ServerId          *openapi_types.UUID       `json:"server_id,omitempty"`
+	ServerName        *string                   `json:"server_name,omitempty"`
+	SourceId          *string                   `json:"source_id,omitempty"`
+	SourceType        *string                   `json:"source_type,omitempty"`
+	Stage             *string                   `json:"stage,omitempty"`
+	StartedAt         *time.Time                `json:"started_at,omitempty"`
+	Status            TaskRunStatus             `json:"status"`
+	SuccessCount      int                       `json:"success_count"`
+	TaskType          string                    `json:"task_type"`
+	Title             string                    `json:"title"`
+	TotalCount        int                       `json:"total_count"`
+	TriggerType       TaskRunSummaryTriggerType `json:"trigger_type"`
+	UpdatedAt         time.Time                 `json:"updated_at"`
+	UserId            openapi_types.UUID        `json:"user_id"`
+}
+
+// TaskRunSummaryTriggerType defines model for TaskRunSummary.TriggerType.
+type TaskRunSummaryTriggerType string
+
+// TaskStatistics defines model for TaskStatistics.
+type TaskStatistics struct {
+	Canceled       int `json:"canceled"`
+	Canceling      int `json:"canceling"`
+	Failed         int `json:"failed"`
+	PartialSuccess int `json:"partial_success"`
+	Queued         int `json:"queued"`
+	Running        int `json:"running"`
+	Succeeded      int `json:"succeeded"`
+	Timeout        int `json:"timeout"`
+	Total          int `json:"total"`
+}
+
+// TaskStatisticsResponse defines model for TaskStatisticsResponse.
+type TaskStatisticsResponse struct {
+	Data TaskStatistics `json:"data"`
+}
+
+// UpdateBatchTaskRequest defines model for UpdateBatchTaskRequest.
+type UpdateBatchTaskRequest struct {
+	Content       *string                 `json:"content,omitempty"`
+	ExecutionMode *BatchTaskExecutionMode `json:"execution_mode,omitempty"`
+	ServerIds     *[]openapi_types.UUID   `json:"server_ids,omitempty"`
+	TaskName      *string                 `json:"task_name,omitempty"`
 }
 
 // UpdateUserNotificationSettingsRequest defines model for UpdateUserNotificationSettingsRequest.
@@ -1124,6 +2684,21 @@ type User struct {
 // ID defines model for ID.
 type ID = string
 
+// MessageID defines model for MessageID.
+type MessageID = string
+
+// ServerID defines model for ServerID.
+type ServerID = string
+
+// ServerIDCamel defines model for ServerIDCamel.
+type ServerIDCamel = string
+
+// SessionID defines model for SessionID.
+type SessionID = string
+
+// TaskID defines model for TaskID.
+type TaskID = string
+
 // JSON defines model for JSON.
 type JSON = JSONObject
 
@@ -1135,6 +2710,27 @@ type bearerAuthContextKey string
 
 // syncDeviceAuthContextKey is the context key for syncDeviceAuth security scheme
 type syncDeviceAuthContextKey string
+
+// GetAiSessionsParams defines parameters for GetAiSessions.
+type GetAiSessionsParams struct {
+	Page  *int `form:"page,omitempty" json:"page,omitempty"`
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Q 按会话标题或消息快照文本搜索。
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// ScopeKind 按 AI 会话作用域过滤，例如 terminal 表示终端页签范围。
+	ScopeKind *GetAiSessionsParamsScopeKind `form:"scope_kind,omitempty" json:"scope_kind,omitempty"`
+
+	// TerminalSessionId 终端页签会话 ID，用于恢复当前终端的 AI 会话。
+	TerminalSessionId *string `form:"terminal_session_id,omitempty" json:"terminal_session_id,omitempty"`
+
+	// ServerId 当前终端连接的服务器 ID，用于限定终端 AI 会话。
+	ServerId *string `form:"server_id,omitempty" json:"server_id,omitempty"`
+}
+
+// GetAiSessionsParamsScopeKind defines parameters for GetAiSessions.
+type GetAiSessionsParamsScopeKind string
 
 // UploadInstanceBackupMultipartBody defines parameters for UploadInstanceBackup.
 type UploadInstanceBackupMultipartBody struct {
@@ -1220,25 +2816,84 @@ type ListResourceGrantsParams struct {
 // ListResourceGrantsParamsSubjectType defines parameters for ListResourceGrants.
 type ListResourceGrantsParamsSubjectType string
 
-// SshCiphertextRelayParams defines parameters for SshCiphertextRelay.
-type SshCiphertextRelayParams struct {
-	Ticket string `form:"ticket" json:"ticket"`
+// PostScriptsJSONBody defines parameters for PostScripts.
+type PostScriptsJSONBody struct {
+	Content     string  `json:"content"`
+	Description *string `json:"description,omitempty"`
+	Language    *string `json:"language,omitempty"`
+	Name        string  `json:"name"`
 }
 
-// GetDeviceManifestsParams defines parameters for GetDeviceManifests.
-type GetDeviceManifestsParams struct {
-	After *int64 `form:"after,omitempty" json:"after,omitempty"`
+// PutScriptsIdJSONBody defines parameters for PutScriptsId.
+type PutScriptsIdJSONBody struct {
+	Content     *string `json:"content,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Language    *string `json:"language,omitempty"`
+	Name        *string `json:"name,omitempty"`
 }
 
-// GetManifestsParams defines parameters for GetManifests.
-type GetManifestsParams struct {
-	After *int64 `form:"after,omitempty" json:"after,omitempty"`
+// GetServersParams defines parameters for GetServers.
+type GetServersParams struct {
+	Page    *int `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *int `form:"per_page,omitempty" json:"per_page,omitempty"`
+
+	// Group 按组筛选
+	Group *string `form:"group,omitempty" json:"group,omitempty"`
+
+	// Status 按状态筛选
+	Status *GetServersParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// GetServersParamsStatus defines parameters for GetServers.
+type GetServersParamsStatus string
+
+// DeleteSftpServerIdDeleteJSONBody defines parameters for DeleteSftpServerIdDelete.
+type DeleteSftpServerIdDeleteJSONBody struct {
+	Path string `json:"path"`
 }
 
 // SetSyncEnabledJSONBody defines parameters for SetSyncEnabled.
 type SetSyncEnabledJSONBody struct {
 	Enabled bool `json:"enabled"`
 }
+
+// ForkSyncConversationJSONBody defines parameters for ForkSyncConversation.
+type ForkSyncConversationJSONBody struct {
+	Id  openapi_types.UUID `json:"id"`
+	Ref openapi_types.UUID `json:"ref"`
+}
+
+// GetTasksParams defines parameters for GetTasks.
+type GetTasksParams struct {
+	// Status 逗号分隔的任务状态
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// TaskType 逗号分隔的任务类型
+	TaskType *string `form:"task_type,omitempty" json:"task_type,omitempty"`
+
+	// TriggerType 逗号分隔的触发方式
+	TriggerType *string `form:"trigger_type,omitempty" json:"trigger_type,omitempty"`
+	Keyword     *string `form:"keyword,omitempty" json:"keyword,omitempty"`
+	Page        *int    `form:"page,omitempty" json:"page,omitempty"`
+	PageSize    *int    `form:"page_size,omitempty" json:"page_size,omitempty"`
+}
+
+// DeleteTasksCleanupParams defines parameters for DeleteTasksCleanup.
+type DeleteTasksCleanupParams struct {
+	RetentionDays *int `form:"retention_days,omitempty" json:"retention_days,omitempty"`
+}
+
+// PostAiSessionsJSONRequestBody defines body for PostAiSessions for application/json ContentType.
+type PostAiSessionsJSONRequestBody = CreateAISessionRequest
+
+// PatchAiSessionsSessionIdJSONRequestBody defines body for PatchAiSessionsSessionId for application/json ContentType.
+type PatchAiSessionsSessionIdJSONRequestBody = RenameAISessionRequest
+
+// PostAiSessionsSessionIdChatJSONRequestBody defines body for PostAiSessionsSessionIdChat for application/json ContentType.
+type PostAiSessionsSessionIdChatJSONRequestBody = AISDKChatRequest
+
+// PatchAiSessionsSessionIdMessagesMessageIdJSONRequestBody defines body for PatchAiSessionsSessionIdMessagesMessageId for application/json ContentType.
+type PatchAiSessionsSessionIdMessagesMessageIdJSONRequestBody = JSONObject
 
 // PostAuth2faVerifyJSONRequestBody defines body for PostAuth2faVerify for application/json ContentType.
 type PostAuth2faVerifyJSONRequestBody = JSONObject
@@ -1259,7 +2914,7 @@ type PostAuthSendPasswordResetCodeJSONRequestBody = JSONObject
 type PostAuthSendVerificationCodeJSONRequestBody = JSONObject
 
 // PostAuthTicketJSONRequestBody defines body for PostAuthTicket for application/json ContentType.
-type PostAuthTicketJSONRequestBody = AuthTicketRequest
+type PostAuthTicketJSONRequestBody = JSONObject
 
 // PostAvatarGenerateJSONRequestBody defines body for PostAvatarGenerate for application/json ContentType.
 type PostAvatarGenerateJSONRequestBody = JSONObject
@@ -1281,6 +2936,33 @@ type InspectInstanceBackupJSONRequestBody = InstanceBackupPassword
 
 // RestoreInstanceBackupJSONRequestBody defines body for RestoreInstanceBackup for application/json ContentType.
 type RestoreInstanceBackupJSONRequestBody = InstanceBackupPassword
+
+// PostBatchTasksJSONRequestBody defines body for PostBatchTasks for application/json ContentType.
+type PostBatchTasksJSONRequestBody = CreateBatchTaskRequest
+
+// PutBatchTasksIdJSONRequestBody defines body for PutBatchTasksId for application/json ContentType.
+type PutBatchTasksIdJSONRequestBody = UpdateBatchTaskRequest
+
+// PostBatchTasksIdStartJSONRequestBody defines body for PostBatchTasksIdStart for application/json ContentType.
+type PostBatchTasksIdStartJSONRequestBody = JSONObject
+
+// PostDockerServerIdContainersIdPauseJSONRequestBody defines body for PostDockerServerIdContainersIdPause for application/json ContentType.
+type PostDockerServerIdContainersIdPauseJSONRequestBody = JSONObject
+
+// PostDockerServerIdContainersIdRestartJSONRequestBody defines body for PostDockerServerIdContainersIdRestart for application/json ContentType.
+type PostDockerServerIdContainersIdRestartJSONRequestBody = JSONObject
+
+// PostDockerServerIdContainersIdStartJSONRequestBody defines body for PostDockerServerIdContainersIdStart for application/json ContentType.
+type PostDockerServerIdContainersIdStartJSONRequestBody = JSONObject
+
+// PostDockerServerIdContainersIdStopJSONRequestBody defines body for PostDockerServerIdContainersIdStop for application/json ContentType.
+type PostDockerServerIdContainersIdStopJSONRequestBody = JSONObject
+
+// PostDockerServerIdContainersIdUnpauseJSONRequestBody defines body for PostDockerServerIdContainersIdUnpause for application/json ContentType.
+type PostDockerServerIdContainersIdUnpauseJSONRequestBody = JSONObject
+
+// PostMonitoringDatasourceTestJSONRequestBody defines body for PostMonitoringDatasourceTest for application/json ContentType.
+type PostMonitoringDatasourceTestJSONRequestBody = JSONObject
 
 // SubmitOAuthAuthorizationJSONRequestBody defines body for SubmitOAuthAuthorization for application/json ContentType.
 type SubmitOAuthAuthorizationJSONRequestBody = OAuthAuthorizeRequest
@@ -1309,8 +2991,44 @@ type CreateRoleJSONRequestBody = RoleRequest
 // UpdateRoleJSONRequestBody defines body for UpdateRole for application/json ContentType.
 type UpdateRoleJSONRequestBody = RoleRequest
 
+// PostScheduledTasksJSONRequestBody defines body for PostScheduledTasks for application/json ContentType.
+type PostScheduledTasksJSONRequestBody = JSONObject
+
+// PutScheduledTasksIdJSONRequestBody defines body for PutScheduledTasksId for application/json ContentType.
+type PutScheduledTasksIdJSONRequestBody = JSONObject
+
+// PostScheduledTasksIdToggleJSONRequestBody defines body for PostScheduledTasksIdToggle for application/json ContentType.
+type PostScheduledTasksIdToggleJSONRequestBody = JSONObject
+
+// PostScheduledTasksIdTriggerJSONRequestBody defines body for PostScheduledTasksIdTrigger for application/json ContentType.
+type PostScheduledTasksIdTriggerJSONRequestBody = JSONObject
+
+// PostScriptsJSONRequestBody defines body for PostScripts for application/json ContentType.
+type PostScriptsJSONRequestBody PostScriptsJSONBody
+
+// PutScriptsIdJSONRequestBody defines body for PutScriptsId for application/json ContentType.
+type PutScriptsIdJSONRequestBody PutScriptsIdJSONBody
+
+// PostScriptsIdExecuteJSONRequestBody defines body for PostScriptsIdExecute for application/json ContentType.
+type PostScriptsIdExecuteJSONRequestBody = JSONObject
+
+// PostServersJSONRequestBody defines body for PostServers for application/json ContentType.
+type PostServersJSONRequestBody = ServerCreate
+
+// PatchServersReorderJSONRequestBody defines body for PatchServersReorder for application/json ContentType.
+type PatchServersReorderJSONRequestBody = JSONObject
+
+// PutServersIdJSONRequestBody defines body for PutServersId for application/json ContentType.
+type PutServersIdJSONRequestBody = ServerUpdate
+
 // PostSettingsAccessControlJSONRequestBody defines body for PostSettingsAccessControl for application/json ContentType.
 type PostSettingsAccessControlJSONRequestBody = JSONObject
+
+// PostSettingsAiSystemJSONRequestBody defines body for PostSettingsAiSystem for application/json ContentType.
+type PostSettingsAiSystemJSONRequestBody = JSONObject
+
+// PostSettingsAiSystemModelsJSONRequestBody defines body for PostSettingsAiSystemModels for application/json ContentType.
+type PostSettingsAiSystemModelsJSONRequestBody = JSONObject
 
 // PostSettingsCorsJSONRequestBody defines body for PostSettingsCors for application/json ContentType.
 type PostSettingsCorsJSONRequestBody = JSONObject
@@ -1351,6 +3069,9 @@ type PatchSettingsSystemOAuthProviderJSONRequestBody = JSONObject
 // PatchSettingsSystemRegistrationJSONRequestBody defines body for PatchSettingsSystemRegistration for application/json ContentType.
 type PatchSettingsSystemRegistrationJSONRequestBody = JSONObject
 
+// PatchSettingsSystemScheduledTasksJSONRequestBody defines body for PatchSettingsSystemScheduledTasks for application/json ContentType.
+type PatchSettingsSystemScheduledTasksJSONRequestBody = JSONObject
+
 // PostSettingsWebSecurityJSONRequestBody defines body for PostSettingsWebSecurity for application/json ContentType.
 type PostSettingsWebSecurityJSONRequestBody = JSONObject
 
@@ -1368,6 +3089,57 @@ type PostSettingsWecomTestJSONRequestBody = JSONObject
 
 // PostSettingsWorkspaceJSONRequestBody defines body for PostSettingsWorkspace for application/json ContentType.
 type PostSettingsWorkspaceJSONRequestBody = JSONObject
+
+// PostSftpTransferJSONRequestBody defines body for PostSftpTransfer for application/json ContentType.
+type PostSftpTransferJSONRequestBody = JSONObject
+
+// PostSftpTransferDirectJSONRequestBody defines body for PostSftpTransferDirect for application/json ContentType.
+type PostSftpTransferDirectJSONRequestBody = JSONObject
+
+// PostSftpTransferTaskIdCancelJSONRequestBody defines body for PostSftpTransferTaskIdCancel for application/json ContentType.
+type PostSftpTransferTaskIdCancelJSONRequestBody = JSONObject
+
+// PostSftpUploadTaskJSONRequestBody defines body for PostSftpUploadTask for application/json ContentType.
+type PostSftpUploadTaskJSONRequestBody = JSONObject
+
+// PostSftpUploadTasksTaskIdCancelJSONRequestBody defines body for PostSftpUploadTasksTaskIdCancel for application/json ContentType.
+type PostSftpUploadTasksTaskIdCancelJSONRequestBody = JSONObject
+
+// PostSftpServerIdAuthJSONRequestBody defines body for PostSftpServerIdAuth for application/json ContentType.
+type PostSftpServerIdAuthJSONRequestBody = JSONObject
+
+// PostSftpServerIdBatchDeleteJSONRequestBody defines body for PostSftpServerIdBatchDelete for application/json ContentType.
+type PostSftpServerIdBatchDeleteJSONRequestBody = JSONObject
+
+// PostSftpServerIdBatchDownloadJSONRequestBody defines body for PostSftpServerIdBatchDownload for application/json ContentType.
+type PostSftpServerIdBatchDownloadJSONRequestBody = JSONObject
+
+// PostSftpServerIdChmodJSONRequestBody defines body for PostSftpServerIdChmod for application/json ContentType.
+type PostSftpServerIdChmodJSONRequestBody = JSONObject
+
+// PostSftpServerIdCloseJSONRequestBody defines body for PostSftpServerIdClose for application/json ContentType.
+type PostSftpServerIdCloseJSONRequestBody = JSONObject
+
+// DeleteSftpServerIdDeleteJSONRequestBody defines body for DeleteSftpServerIdDelete for application/json ContentType.
+type DeleteSftpServerIdDeleteJSONRequestBody DeleteSftpServerIdDeleteJSONBody
+
+// PostSftpServerIdDeletePathsJSONRequestBody defines body for PostSftpServerIdDeletePaths for application/json ContentType.
+type PostSftpServerIdDeletePathsJSONRequestBody = SFTPDeletePathsRequest
+
+// PostSftpServerIdMkdirJSONRequestBody defines body for PostSftpServerIdMkdir for application/json ContentType.
+type PostSftpServerIdMkdirJSONRequestBody = JSONObject
+
+// PostSftpServerIdRenameJSONRequestBody defines body for PostSftpServerIdRename for application/json ContentType.
+type PostSftpServerIdRenameJSONRequestBody = JSONObject
+
+// PostSftpServerIdWriteJSONRequestBody defines body for PostSftpServerIdWrite for application/json ContentType.
+type PostSftpServerIdWriteJSONRequestBody = JSONObject
+
+// PostSshKeysGenerateJSONRequestBody defines body for PostSshKeysGenerate for application/json ContentType.
+type PostSshKeysGenerateJSONRequestBody = JSONObject
+
+// PostSshKeysImportJSONRequestBody defines body for PostSshKeysImport for application/json ContentType.
+type PostSshKeysImportJSONRequestBody = JSONObject
 
 // ApproveSyncAuthorizationJSONRequestBody defines body for ApproveSyncAuthorization for application/json ContentType.
 type ApproveSyncAuthorizationJSONRequestBody = SyncAuthorizationApproval
@@ -1387,26 +3159,32 @@ type PollSyncAuthorizationJSONRequestBody = SyncAuthorizationDeviceCode
 // StartSyncAuthorizationJSONRequestBody defines body for StartSyncAuthorization for application/json ContentType.
 type StartSyncAuthorizationJSONRequestBody = SyncAuthorizationStart
 
-// PostDeviceManifestsJSONRequestBody defines body for PostDeviceManifests for application/json ContentType.
-type PostDeviceManifestsJSONRequestBody = EncryptedManifest
+// ExchangeSyncChangesJSONRequestBody defines body for ExchangeSyncChanges for application/json ContentType.
+type ExchangeSyncChangesJSONRequestBody = SyncPeer
 
-// PostDeviceObjectsJSONRequestBody defines body for PostDeviceObjects for application/json ContentType.
-type PostDeviceObjectsJSONRequestBody = EncryptedObject
+// ExchangeSyncVaultDocumentJSONRequestBody defines body for ExchangeSyncVaultDocument for application/json ContentType.
+type ExchangeSyncVaultDocumentJSONRequestBody = SyncVaultExchange
 
-// PostDeviceRoutesJSONRequestBody defines body for PostDeviceRoutes for application/json ContentType.
-type PostDeviceRoutesJSONRequestBody = EncryptedRelayRoute
+// PutSyncVaultObjectJSONRequestBody defines body for PutSyncVaultObject for application/json ContentType.
+type PutSyncVaultObjectJSONRequestBody = SyncVaultObject
 
-// PostManifestsJSONRequestBody defines body for PostManifests for application/json ContentType.
-type PostManifestsJSONRequestBody = EncryptedManifest
-
-// PostObjectsJSONRequestBody defines body for PostObjects for application/json ContentType.
-type PostObjectsJSONRequestBody = EncryptedObject
-
-// PostRoutesJSONRequestBody defines body for PostRoutes for application/json ContentType.
-type PostRoutesJSONRequestBody = EncryptedRelayRoute
+// ResolveSyncConflictJSONRequestBody defines body for ResolveSyncConflict for application/json ContentType.
+type ResolveSyncConflictJSONRequestBody = SyncResolution
 
 // SetSyncEnabledJSONRequestBody defines body for SetSyncEnabled for application/json ContentType.
 type SetSyncEnabledJSONRequestBody SetSyncEnabledJSONBody
+
+// ForkSyncConversationJSONRequestBody defines body for ForkSyncConversation for application/json ContentType.
+type ForkSyncConversationJSONRequestBody ForkSyncConversationJSONBody
+
+// PostTransferJobsSftpDownloadJSONRequestBody defines body for PostTransferJobsSftpDownload for application/json ContentType.
+type PostTransferJobsSftpDownloadJSONRequestBody = JSONObject
+
+// PostTransferJobsSftpUploadJSONRequestBody defines body for PostTransferJobsSftpUpload for application/json ContentType.
+type PostTransferJobsSftpUploadJSONRequestBody = JSONObject
+
+// PostTransferJobsIdCancelJSONRequestBody defines body for PostTransferJobsIdCancel for application/json ContentType.
+type PostTransferJobsIdCancelJSONRequestBody = JSONObject
 
 // PostUsersJSONRequestBody defines body for PostUsers for application/json ContentType.
 type PostUsersJSONRequestBody = JSONObject
@@ -1419,6 +3197,15 @@ type PostUsersMe2faDisableJSONRequestBody = JSONObject
 
 // PostUsersMe2faEnableJSONRequestBody defines body for PostUsersMe2faEnable for application/json ContentType.
 type PostUsersMe2faEnableJSONRequestBody = JSONObject
+
+// PutUsersMeAiConfigJSONRequestBody defines body for PutUsersMeAiConfig for application/json ContentType.
+type PutUsersMeAiConfigJSONRequestBody = JSONObject
+
+// PostUsersMeAiConfigModelsJSONRequestBody defines body for PostUsersMeAiConfigModels for application/json ContentType.
+type PostUsersMeAiConfigModelsJSONRequestBody = JSONObject
+
+// PutUsersMeMonitorDatasourceJSONRequestBody defines body for PutUsersMeMonitorDatasource for application/json ContentType.
+type PutUsersMeMonitorDatasourceJSONRequestBody = JSONObject
 
 // PutUsersMeNotificationsJSONRequestBody defines body for PutUsersMeNotifications for application/json ContentType.
 type PutUsersMeNotificationsJSONRequestBody = UpdateUserNotificationSettingsRequest
@@ -1444,178 +3231,5139 @@ type PostUsersIdPasswordJSONRequestBody = JSONObject
 // PostUsersIdUnlockJSONRequestBody defines body for PostUsersIdUnlock for application/json ContentType.
 type PostUsersIdUnlockJSONRequestBody = JSONObject
 
+// Getter for additional properties for AIUIAbortChunk. Returns the specified
+// element and whether it was found
+func (a AIUIAbortChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIAbortChunk
+func (a *AIUIAbortChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIAbortChunk to handle AdditionalProperties
+func (a *AIUIAbortChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["reason"]; found {
+		err = json.Unmarshal(raw, &a.Reason)
+		if err != nil {
+			return fmt.Errorf("error reading 'reason': %w", err)
+		}
+		delete(object, "reason")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIAbortChunk to handle AdditionalProperties
+func (a AIUIAbortChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Reason != nil {
+		object["reason"], err = json.Marshal(a.Reason)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'reason': %w", err)
+		}
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIDataChunk. Returns the specified
+// element and whether it was found
+func (a AIUIDataChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIDataChunk
+func (a *AIUIDataChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIDataChunk to handle AdditionalProperties
+func (a *AIUIDataChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["data"]; found {
+		err = json.Unmarshal(raw, &a.Data)
+		if err != nil {
+			return fmt.Errorf("error reading 'data': %w", err)
+		}
+		delete(object, "data")
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["transient"]; found {
+		err = json.Unmarshal(raw, &a.Transient)
+		if err != nil {
+			return fmt.Errorf("error reading 'transient': %w", err)
+		}
+		delete(object, "transient")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIDataChunk to handle AdditionalProperties
+func (a AIUIDataChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["data"], err = json.Marshal(a.Data)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'data': %w", err)
+	}
+
+	if a.Id != nil {
+		object["id"], err = json.Marshal(a.Id)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'id': %w", err)
+		}
+	}
+
+	if a.Transient != nil {
+		object["transient"], err = json.Marshal(a.Transient)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'transient': %w", err)
+		}
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIDataPart. Returns the specified
+// element and whether it was found
+func (a AIUIDataPart) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIDataPart
+func (a *AIUIDataPart) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIDataPart to handle AdditionalProperties
+func (a *AIUIDataPart) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["data"]; found {
+		err = json.Unmarshal(raw, &a.Data)
+		if err != nil {
+			return fmt.Errorf("error reading 'data': %w", err)
+		}
+		delete(object, "data")
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIDataPart to handle AdditionalProperties
+func (a AIUIDataPart) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["data"], err = json.Marshal(a.Data)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'data': %w", err)
+	}
+
+	if a.Id != nil {
+		object["id"], err = json.Marshal(a.Id)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'id': %w", err)
+		}
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIDynamicToolPart. Returns the specified
+// element and whether it was found
+func (a AIUIDynamicToolPart) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIDynamicToolPart
+func (a *AIUIDynamicToolPart) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIDynamicToolPart to handle AdditionalProperties
+func (a *AIUIDynamicToolPart) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["approval"]; found {
+		err = json.Unmarshal(raw, &a.Approval)
+		if err != nil {
+			return fmt.Errorf("error reading 'approval': %w", err)
+		}
+		delete(object, "approval")
+	}
+
+	if raw, found := object["callProviderMetadata"]; found {
+		err = json.Unmarshal(raw, &a.CallProviderMetadata)
+		if err != nil {
+			return fmt.Errorf("error reading 'callProviderMetadata': %w", err)
+		}
+		delete(object, "callProviderMetadata")
+	}
+
+	if raw, found := object["errorText"]; found {
+		err = json.Unmarshal(raw, &a.ErrorText)
+		if err != nil {
+			return fmt.Errorf("error reading 'errorText': %w", err)
+		}
+		delete(object, "errorText")
+	}
+
+	if raw, found := object["input"]; found {
+		err = json.Unmarshal(raw, &a.Input)
+		if err != nil {
+			return fmt.Errorf("error reading 'input': %w", err)
+		}
+		delete(object, "input")
+	}
+
+	if raw, found := object["output"]; found {
+		err = json.Unmarshal(raw, &a.Output)
+		if err != nil {
+			return fmt.Errorf("error reading 'output': %w", err)
+		}
+		delete(object, "output")
+	}
+
+	if raw, found := object["providerExecuted"]; found {
+		err = json.Unmarshal(raw, &a.ProviderExecuted)
+		if err != nil {
+			return fmt.Errorf("error reading 'providerExecuted': %w", err)
+		}
+		delete(object, "providerExecuted")
+	}
+
+	if raw, found := object["state"]; found {
+		err = json.Unmarshal(raw, &a.State)
+		if err != nil {
+			return fmt.Errorf("error reading 'state': %w", err)
+		}
+		delete(object, "state")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["toolName"]; found {
+		err = json.Unmarshal(raw, &a.ToolName)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolName': %w", err)
+		}
+		delete(object, "toolName")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIDynamicToolPart to handle AdditionalProperties
+func (a AIUIDynamicToolPart) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Approval != nil {
+		object["approval"], err = json.Marshal(a.Approval)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'approval': %w", err)
+		}
+	}
+
+	if a.CallProviderMetadata != nil {
+		object["callProviderMetadata"], err = json.Marshal(a.CallProviderMetadata)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'callProviderMetadata': %w", err)
+		}
+	}
+
+	if a.ErrorText != nil {
+		object["errorText"], err = json.Marshal(a.ErrorText)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'errorText': %w", err)
+		}
+	}
+
+	object["input"], err = json.Marshal(a.Input)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'input': %w", err)
+	}
+
+	object["output"], err = json.Marshal(a.Output)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'output': %w", err)
+	}
+
+	if a.ProviderExecuted != nil {
+		object["providerExecuted"], err = json.Marshal(a.ProviderExecuted)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'providerExecuted': %w", err)
+		}
+	}
+
+	object["state"], err = json.Marshal(a.State)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'state': %w", err)
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["toolName"], err = json.Marshal(a.ToolName)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolName': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIDynamicToolPart_Approval. Returns the specified
+// element and whether it was found
+func (a AIUIDynamicToolPart_Approval) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIDynamicToolPart_Approval
+func (a *AIUIDynamicToolPart_Approval) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIDynamicToolPart_Approval to handle AdditionalProperties
+func (a *AIUIDynamicToolPart_Approval) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["approved"]; found {
+		err = json.Unmarshal(raw, &a.Approved)
+		if err != nil {
+			return fmt.Errorf("error reading 'approved': %w", err)
+		}
+		delete(object, "approved")
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["reason"]; found {
+		err = json.Unmarshal(raw, &a.Reason)
+		if err != nil {
+			return fmt.Errorf("error reading 'reason': %w", err)
+		}
+		delete(object, "reason")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIDynamicToolPart_Approval to handle AdditionalProperties
+func (a AIUIDynamicToolPart_Approval) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Approved != nil {
+		object["approved"], err = json.Marshal(a.Approved)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'approved': %w", err)
+		}
+	}
+
+	if a.Id != nil {
+		object["id"], err = json.Marshal(a.Id)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'id': %w", err)
+		}
+	}
+
+	if a.Reason != nil {
+		object["reason"], err = json.Marshal(a.Reason)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'reason': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIErrorChunk. Returns the specified
+// element and whether it was found
+func (a AIUIErrorChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIErrorChunk
+func (a *AIUIErrorChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIErrorChunk to handle AdditionalProperties
+func (a *AIUIErrorChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["errorText"]; found {
+		err = json.Unmarshal(raw, &a.ErrorText)
+		if err != nil {
+			return fmt.Errorf("error reading 'errorText': %w", err)
+		}
+		delete(object, "errorText")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIErrorChunk to handle AdditionalProperties
+func (a AIUIErrorChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["errorText"], err = json.Marshal(a.ErrorText)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'errorText': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIFileChunk. Returns the specified
+// element and whether it was found
+func (a AIUIFileChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIFileChunk
+func (a *AIUIFileChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIFileChunk to handle AdditionalProperties
+func (a *AIUIFileChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["mediaType"]; found {
+		err = json.Unmarshal(raw, &a.MediaType)
+		if err != nil {
+			return fmt.Errorf("error reading 'mediaType': %w", err)
+		}
+		delete(object, "mediaType")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if raw, found := object["url"]; found {
+		err = json.Unmarshal(raw, &a.Url)
+		if err != nil {
+			return fmt.Errorf("error reading 'url': %w", err)
+		}
+		delete(object, "url")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIFileChunk to handle AdditionalProperties
+func (a AIUIFileChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["mediaType"], err = json.Marshal(a.MediaType)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'mediaType': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	object["url"], err = json.Marshal(a.Url)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'url': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIFilePart. Returns the specified
+// element and whether it was found
+func (a AIUIFilePart) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIFilePart
+func (a *AIUIFilePart) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIFilePart to handle AdditionalProperties
+func (a *AIUIFilePart) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["filename"]; found {
+		err = json.Unmarshal(raw, &a.Filename)
+		if err != nil {
+			return fmt.Errorf("error reading 'filename': %w", err)
+		}
+		delete(object, "filename")
+	}
+
+	if raw, found := object["mediaType"]; found {
+		err = json.Unmarshal(raw, &a.MediaType)
+		if err != nil {
+			return fmt.Errorf("error reading 'mediaType': %w", err)
+		}
+		delete(object, "mediaType")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if raw, found := object["url"]; found {
+		err = json.Unmarshal(raw, &a.Url)
+		if err != nil {
+			return fmt.Errorf("error reading 'url': %w", err)
+		}
+		delete(object, "url")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIFilePart to handle AdditionalProperties
+func (a AIUIFilePart) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Filename != nil {
+		object["filename"], err = json.Marshal(a.Filename)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'filename': %w", err)
+		}
+	}
+
+	object["mediaType"], err = json.Marshal(a.MediaType)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'mediaType': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	object["url"], err = json.Marshal(a.Url)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'url': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIFinishChunk. Returns the specified
+// element and whether it was found
+func (a AIUIFinishChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIFinishChunk
+func (a *AIUIFinishChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIFinishChunk to handle AdditionalProperties
+func (a *AIUIFinishChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["finishReason"]; found {
+		err = json.Unmarshal(raw, &a.FinishReason)
+		if err != nil {
+			return fmt.Errorf("error reading 'finishReason': %w", err)
+		}
+		delete(object, "finishReason")
+	}
+
+	if raw, found := object["messageMetadata"]; found {
+		err = json.Unmarshal(raw, &a.MessageMetadata)
+		if err != nil {
+			return fmt.Errorf("error reading 'messageMetadata': %w", err)
+		}
+		delete(object, "messageMetadata")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIFinishChunk to handle AdditionalProperties
+func (a AIUIFinishChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.FinishReason != nil {
+		object["finishReason"], err = json.Marshal(a.FinishReason)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'finishReason': %w", err)
+		}
+	}
+
+	object["messageMetadata"], err = json.Marshal(a.MessageMetadata)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'messageMetadata': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIFinishStepChunk. Returns the specified
+// element and whether it was found
+func (a AIUIFinishStepChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIFinishStepChunk
+func (a *AIUIFinishStepChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIFinishStepChunk to handle AdditionalProperties
+func (a *AIUIFinishStepChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIFinishStepChunk to handle AdditionalProperties
+func (a AIUIFinishStepChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIMessageChunk25. Returns the specified
+// element and whether it was found
+func (a AIUIMessageChunk25) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIMessageChunk25
+func (a *AIUIMessageChunk25) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIMessageChunk25 to handle AdditionalProperties
+func (a *AIUIMessageChunk25) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIMessageChunk25 to handle AdditionalProperties
+func (a AIUIMessageChunk25) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIMessageMetadataChunk. Returns the specified
+// element and whether it was found
+func (a AIUIMessageMetadataChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIMessageMetadataChunk
+func (a *AIUIMessageMetadataChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIMessageMetadataChunk to handle AdditionalProperties
+func (a *AIUIMessageMetadataChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["messageMetadata"]; found {
+		err = json.Unmarshal(raw, &a.MessageMetadata)
+		if err != nil {
+			return fmt.Errorf("error reading 'messageMetadata': %w", err)
+		}
+		delete(object, "messageMetadata")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIMessageMetadataChunk to handle AdditionalProperties
+func (a AIUIMessageMetadataChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["messageMetadata"], err = json.Marshal(a.MessageMetadata)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'messageMetadata': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIMessagePart9. Returns the specified
+// element and whether it was found
+func (a AIUIMessagePart9) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIMessagePart9
+func (a *AIUIMessagePart9) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIMessagePart9 to handle AdditionalProperties
+func (a *AIUIMessagePart9) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIMessagePart9 to handle AdditionalProperties
+func (a AIUIMessagePart9) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIReasoningDeltaChunk. Returns the specified
+// element and whether it was found
+func (a AIUIReasoningDeltaChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIReasoningDeltaChunk
+func (a *AIUIReasoningDeltaChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIReasoningDeltaChunk to handle AdditionalProperties
+func (a *AIUIReasoningDeltaChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["delta"]; found {
+		err = json.Unmarshal(raw, &a.Delta)
+		if err != nil {
+			return fmt.Errorf("error reading 'delta': %w", err)
+		}
+		delete(object, "delta")
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIReasoningDeltaChunk to handle AdditionalProperties
+func (a AIUIReasoningDeltaChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["delta"], err = json.Marshal(a.Delta)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'delta': %w", err)
+	}
+
+	object["id"], err = json.Marshal(a.Id)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'id': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIReasoningEndChunk. Returns the specified
+// element and whether it was found
+func (a AIUIReasoningEndChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIReasoningEndChunk
+func (a *AIUIReasoningEndChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIReasoningEndChunk to handle AdditionalProperties
+func (a *AIUIReasoningEndChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIReasoningEndChunk to handle AdditionalProperties
+func (a AIUIReasoningEndChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["id"], err = json.Marshal(a.Id)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'id': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIReasoningPart. Returns the specified
+// element and whether it was found
+func (a AIUIReasoningPart) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIReasoningPart
+func (a *AIUIReasoningPart) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIReasoningPart to handle AdditionalProperties
+func (a *AIUIReasoningPart) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["state"]; found {
+		err = json.Unmarshal(raw, &a.State)
+		if err != nil {
+			return fmt.Errorf("error reading 'state': %w", err)
+		}
+		delete(object, "state")
+	}
+
+	if raw, found := object["text"]; found {
+		err = json.Unmarshal(raw, &a.Text)
+		if err != nil {
+			return fmt.Errorf("error reading 'text': %w", err)
+		}
+		delete(object, "text")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIReasoningPart to handle AdditionalProperties
+func (a AIUIReasoningPart) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.State != nil {
+		object["state"], err = json.Marshal(a.State)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'state': %w", err)
+		}
+	}
+
+	object["text"], err = json.Marshal(a.Text)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'text': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIReasoningStartChunk. Returns the specified
+// element and whether it was found
+func (a AIUIReasoningStartChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIReasoningStartChunk
+func (a *AIUIReasoningStartChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIReasoningStartChunk to handle AdditionalProperties
+func (a *AIUIReasoningStartChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIReasoningStartChunk to handle AdditionalProperties
+func (a AIUIReasoningStartChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["id"], err = json.Marshal(a.Id)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'id': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUISourceDocumentChunk. Returns the specified
+// element and whether it was found
+func (a AIUISourceDocumentChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUISourceDocumentChunk
+func (a *AIUISourceDocumentChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUISourceDocumentChunk to handle AdditionalProperties
+func (a *AIUISourceDocumentChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["filename"]; found {
+		err = json.Unmarshal(raw, &a.Filename)
+		if err != nil {
+			return fmt.Errorf("error reading 'filename': %w", err)
+		}
+		delete(object, "filename")
+	}
+
+	if raw, found := object["mediaType"]; found {
+		err = json.Unmarshal(raw, &a.MediaType)
+		if err != nil {
+			return fmt.Errorf("error reading 'mediaType': %w", err)
+		}
+		delete(object, "mediaType")
+	}
+
+	if raw, found := object["sourceId"]; found {
+		err = json.Unmarshal(raw, &a.SourceId)
+		if err != nil {
+			return fmt.Errorf("error reading 'sourceId': %w", err)
+		}
+		delete(object, "sourceId")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUISourceDocumentChunk to handle AdditionalProperties
+func (a AIUISourceDocumentChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Filename != nil {
+		object["filename"], err = json.Marshal(a.Filename)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'filename': %w", err)
+		}
+	}
+
+	object["mediaType"], err = json.Marshal(a.MediaType)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'mediaType': %w", err)
+	}
+
+	object["sourceId"], err = json.Marshal(a.SourceId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'sourceId': %w", err)
+	}
+
+	object["title"], err = json.Marshal(a.Title)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'title': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUISourceDocumentPart. Returns the specified
+// element and whether it was found
+func (a AIUISourceDocumentPart) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUISourceDocumentPart
+func (a *AIUISourceDocumentPart) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUISourceDocumentPart to handle AdditionalProperties
+func (a *AIUISourceDocumentPart) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["filename"]; found {
+		err = json.Unmarshal(raw, &a.Filename)
+		if err != nil {
+			return fmt.Errorf("error reading 'filename': %w", err)
+		}
+		delete(object, "filename")
+	}
+
+	if raw, found := object["mediaType"]; found {
+		err = json.Unmarshal(raw, &a.MediaType)
+		if err != nil {
+			return fmt.Errorf("error reading 'mediaType': %w", err)
+		}
+		delete(object, "mediaType")
+	}
+
+	if raw, found := object["sourceId"]; found {
+		err = json.Unmarshal(raw, &a.SourceId)
+		if err != nil {
+			return fmt.Errorf("error reading 'sourceId': %w", err)
+		}
+		delete(object, "sourceId")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUISourceDocumentPart to handle AdditionalProperties
+func (a AIUISourceDocumentPart) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Filename != nil {
+		object["filename"], err = json.Marshal(a.Filename)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'filename': %w", err)
+		}
+	}
+
+	object["mediaType"], err = json.Marshal(a.MediaType)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'mediaType': %w", err)
+	}
+
+	object["sourceId"], err = json.Marshal(a.SourceId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'sourceId': %w", err)
+	}
+
+	object["title"], err = json.Marshal(a.Title)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'title': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUISourceURLChunk. Returns the specified
+// element and whether it was found
+func (a AIUISourceURLChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUISourceURLChunk
+func (a *AIUISourceURLChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUISourceURLChunk to handle AdditionalProperties
+func (a *AIUISourceURLChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["sourceId"]; found {
+		err = json.Unmarshal(raw, &a.SourceId)
+		if err != nil {
+			return fmt.Errorf("error reading 'sourceId': %w", err)
+		}
+		delete(object, "sourceId")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if raw, found := object["url"]; found {
+		err = json.Unmarshal(raw, &a.Url)
+		if err != nil {
+			return fmt.Errorf("error reading 'url': %w", err)
+		}
+		delete(object, "url")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUISourceURLChunk to handle AdditionalProperties
+func (a AIUISourceURLChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["sourceId"], err = json.Marshal(a.SourceId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'sourceId': %w", err)
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	object["url"], err = json.Marshal(a.Url)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'url': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUISourceURLPart. Returns the specified
+// element and whether it was found
+func (a AIUISourceURLPart) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUISourceURLPart
+func (a *AIUISourceURLPart) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUISourceURLPart to handle AdditionalProperties
+func (a *AIUISourceURLPart) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["sourceId"]; found {
+		err = json.Unmarshal(raw, &a.SourceId)
+		if err != nil {
+			return fmt.Errorf("error reading 'sourceId': %w", err)
+		}
+		delete(object, "sourceId")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if raw, found := object["url"]; found {
+		err = json.Unmarshal(raw, &a.Url)
+		if err != nil {
+			return fmt.Errorf("error reading 'url': %w", err)
+		}
+		delete(object, "url")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUISourceURLPart to handle AdditionalProperties
+func (a AIUISourceURLPart) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["sourceId"], err = json.Marshal(a.SourceId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'sourceId': %w", err)
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	object["url"], err = json.Marshal(a.Url)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'url': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIStartChunk. Returns the specified
+// element and whether it was found
+func (a AIUIStartChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIStartChunk
+func (a *AIUIStartChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIStartChunk to handle AdditionalProperties
+func (a *AIUIStartChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["messageId"]; found {
+		err = json.Unmarshal(raw, &a.MessageId)
+		if err != nil {
+			return fmt.Errorf("error reading 'messageId': %w", err)
+		}
+		delete(object, "messageId")
+	}
+
+	if raw, found := object["messageMetadata"]; found {
+		err = json.Unmarshal(raw, &a.MessageMetadata)
+		if err != nil {
+			return fmt.Errorf("error reading 'messageMetadata': %w", err)
+		}
+		delete(object, "messageMetadata")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIStartChunk to handle AdditionalProperties
+func (a AIUIStartChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.MessageId != nil {
+		object["messageId"], err = json.Marshal(a.MessageId)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'messageId': %w", err)
+		}
+	}
+
+	object["messageMetadata"], err = json.Marshal(a.MessageMetadata)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'messageMetadata': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIStartStepChunk. Returns the specified
+// element and whether it was found
+func (a AIUIStartStepChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIStartStepChunk
+func (a *AIUIStartStepChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIStartStepChunk to handle AdditionalProperties
+func (a *AIUIStartStepChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIStartStepChunk to handle AdditionalProperties
+func (a AIUIStartStepChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIStepStartPart. Returns the specified
+// element and whether it was found
+func (a AIUIStepStartPart) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIStepStartPart
+func (a *AIUIStepStartPart) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIStepStartPart to handle AdditionalProperties
+func (a *AIUIStepStartPart) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIStepStartPart to handle AdditionalProperties
+func (a AIUIStepStartPart) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUITextDeltaChunk. Returns the specified
+// element and whether it was found
+func (a AIUITextDeltaChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUITextDeltaChunk
+func (a *AIUITextDeltaChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUITextDeltaChunk to handle AdditionalProperties
+func (a *AIUITextDeltaChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["delta"]; found {
+		err = json.Unmarshal(raw, &a.Delta)
+		if err != nil {
+			return fmt.Errorf("error reading 'delta': %w", err)
+		}
+		delete(object, "delta")
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUITextDeltaChunk to handle AdditionalProperties
+func (a AIUITextDeltaChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["delta"], err = json.Marshal(a.Delta)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'delta': %w", err)
+	}
+
+	object["id"], err = json.Marshal(a.Id)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'id': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUITextEndChunk. Returns the specified
+// element and whether it was found
+func (a AIUITextEndChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUITextEndChunk
+func (a *AIUITextEndChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUITextEndChunk to handle AdditionalProperties
+func (a *AIUITextEndChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUITextEndChunk to handle AdditionalProperties
+func (a AIUITextEndChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["id"], err = json.Marshal(a.Id)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'id': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUITextPart. Returns the specified
+// element and whether it was found
+func (a AIUITextPart) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUITextPart
+func (a *AIUITextPart) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUITextPart to handle AdditionalProperties
+func (a *AIUITextPart) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["state"]; found {
+		err = json.Unmarshal(raw, &a.State)
+		if err != nil {
+			return fmt.Errorf("error reading 'state': %w", err)
+		}
+		delete(object, "state")
+	}
+
+	if raw, found := object["text"]; found {
+		err = json.Unmarshal(raw, &a.Text)
+		if err != nil {
+			return fmt.Errorf("error reading 'text': %w", err)
+		}
+		delete(object, "text")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUITextPart to handle AdditionalProperties
+func (a AIUITextPart) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.State != nil {
+		object["state"], err = json.Marshal(a.State)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'state': %w", err)
+		}
+	}
+
+	object["text"], err = json.Marshal(a.Text)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'text': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUITextStartChunk. Returns the specified
+// element and whether it was found
+func (a AIUITextStartChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUITextStartChunk
+func (a *AIUITextStartChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUITextStartChunk to handle AdditionalProperties
+func (a *AIUITextStartChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUITextStartChunk to handle AdditionalProperties
+func (a AIUITextStartChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["id"], err = json.Marshal(a.Id)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'id': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolApprovalRequestChunk. Returns the specified
+// element and whether it was found
+func (a AIUIToolApprovalRequestChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolApprovalRequestChunk
+func (a *AIUIToolApprovalRequestChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolApprovalRequestChunk to handle AdditionalProperties
+func (a *AIUIToolApprovalRequestChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["approvalId"]; found {
+		err = json.Unmarshal(raw, &a.ApprovalId)
+		if err != nil {
+			return fmt.Errorf("error reading 'approvalId': %w", err)
+		}
+		delete(object, "approvalId")
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolApprovalRequestChunk to handle AdditionalProperties
+func (a AIUIToolApprovalRequestChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["approvalId"], err = json.Marshal(a.ApprovalId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'approvalId': %w", err)
+	}
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolInputAvailableChunk. Returns the specified
+// element and whether it was found
+func (a AIUIToolInputAvailableChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolInputAvailableChunk
+func (a *AIUIToolInputAvailableChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolInputAvailableChunk to handle AdditionalProperties
+func (a *AIUIToolInputAvailableChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["dynamic"]; found {
+		err = json.Unmarshal(raw, &a.Dynamic)
+		if err != nil {
+			return fmt.Errorf("error reading 'dynamic': %w", err)
+		}
+		delete(object, "dynamic")
+	}
+
+	if raw, found := object["input"]; found {
+		err = json.Unmarshal(raw, &a.Input)
+		if err != nil {
+			return fmt.Errorf("error reading 'input': %w", err)
+		}
+		delete(object, "input")
+	}
+
+	if raw, found := object["providerMetadata"]; found {
+		err = json.Unmarshal(raw, &a.ProviderMetadata)
+		if err != nil {
+			return fmt.Errorf("error reading 'providerMetadata': %w", err)
+		}
+		delete(object, "providerMetadata")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["toolName"]; found {
+		err = json.Unmarshal(raw, &a.ToolName)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolName': %w", err)
+		}
+		delete(object, "toolName")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolInputAvailableChunk to handle AdditionalProperties
+func (a AIUIToolInputAvailableChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Dynamic != nil {
+		object["dynamic"], err = json.Marshal(a.Dynamic)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'dynamic': %w", err)
+		}
+	}
+
+	object["input"], err = json.Marshal(a.Input)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'input': %w", err)
+	}
+
+	if a.ProviderMetadata != nil {
+		object["providerMetadata"], err = json.Marshal(a.ProviderMetadata)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'providerMetadata': %w", err)
+		}
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["toolName"], err = json.Marshal(a.ToolName)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolName': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolInputDeltaChunk. Returns the specified
+// element and whether it was found
+func (a AIUIToolInputDeltaChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolInputDeltaChunk
+func (a *AIUIToolInputDeltaChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolInputDeltaChunk to handle AdditionalProperties
+func (a *AIUIToolInputDeltaChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["inputTextDelta"]; found {
+		err = json.Unmarshal(raw, &a.InputTextDelta)
+		if err != nil {
+			return fmt.Errorf("error reading 'inputTextDelta': %w", err)
+		}
+		delete(object, "inputTextDelta")
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolInputDeltaChunk to handle AdditionalProperties
+func (a AIUIToolInputDeltaChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["inputTextDelta"], err = json.Marshal(a.InputTextDelta)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'inputTextDelta': %w", err)
+	}
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolInputErrorChunk. Returns the specified
+// element and whether it was found
+func (a AIUIToolInputErrorChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolInputErrorChunk
+func (a *AIUIToolInputErrorChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolInputErrorChunk to handle AdditionalProperties
+func (a *AIUIToolInputErrorChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["dynamic"]; found {
+		err = json.Unmarshal(raw, &a.Dynamic)
+		if err != nil {
+			return fmt.Errorf("error reading 'dynamic': %w", err)
+		}
+		delete(object, "dynamic")
+	}
+
+	if raw, found := object["errorText"]; found {
+		err = json.Unmarshal(raw, &a.ErrorText)
+		if err != nil {
+			return fmt.Errorf("error reading 'errorText': %w", err)
+		}
+		delete(object, "errorText")
+	}
+
+	if raw, found := object["input"]; found {
+		err = json.Unmarshal(raw, &a.Input)
+		if err != nil {
+			return fmt.Errorf("error reading 'input': %w", err)
+		}
+		delete(object, "input")
+	}
+
+	if raw, found := object["providerMetadata"]; found {
+		err = json.Unmarshal(raw, &a.ProviderMetadata)
+		if err != nil {
+			return fmt.Errorf("error reading 'providerMetadata': %w", err)
+		}
+		delete(object, "providerMetadata")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["toolName"]; found {
+		err = json.Unmarshal(raw, &a.ToolName)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolName': %w", err)
+		}
+		delete(object, "toolName")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolInputErrorChunk to handle AdditionalProperties
+func (a AIUIToolInputErrorChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Dynamic != nil {
+		object["dynamic"], err = json.Marshal(a.Dynamic)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'dynamic': %w", err)
+		}
+	}
+
+	object["errorText"], err = json.Marshal(a.ErrorText)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'errorText': %w", err)
+	}
+
+	object["input"], err = json.Marshal(a.Input)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'input': %w", err)
+	}
+
+	if a.ProviderMetadata != nil {
+		object["providerMetadata"], err = json.Marshal(a.ProviderMetadata)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'providerMetadata': %w", err)
+		}
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["toolName"], err = json.Marshal(a.ToolName)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolName': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolInputStartChunk. Returns the specified
+// element and whether it was found
+func (a AIUIToolInputStartChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolInputStartChunk
+func (a *AIUIToolInputStartChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolInputStartChunk to handle AdditionalProperties
+func (a *AIUIToolInputStartChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["dynamic"]; found {
+		err = json.Unmarshal(raw, &a.Dynamic)
+		if err != nil {
+			return fmt.Errorf("error reading 'dynamic': %w", err)
+		}
+		delete(object, "dynamic")
+	}
+
+	if raw, found := object["providerMetadata"]; found {
+		err = json.Unmarshal(raw, &a.ProviderMetadata)
+		if err != nil {
+			return fmt.Errorf("error reading 'providerMetadata': %w", err)
+		}
+		delete(object, "providerMetadata")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["toolName"]; found {
+		err = json.Unmarshal(raw, &a.ToolName)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolName': %w", err)
+		}
+		delete(object, "toolName")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolInputStartChunk to handle AdditionalProperties
+func (a AIUIToolInputStartChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Dynamic != nil {
+		object["dynamic"], err = json.Marshal(a.Dynamic)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'dynamic': %w", err)
+		}
+	}
+
+	if a.ProviderMetadata != nil {
+		object["providerMetadata"], err = json.Marshal(a.ProviderMetadata)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'providerMetadata': %w", err)
+		}
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["toolName"], err = json.Marshal(a.ToolName)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolName': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolOutputAvailableChunk. Returns the specified
+// element and whether it was found
+func (a AIUIToolOutputAvailableChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolOutputAvailableChunk
+func (a *AIUIToolOutputAvailableChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolOutputAvailableChunk to handle AdditionalProperties
+func (a *AIUIToolOutputAvailableChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["dynamic"]; found {
+		err = json.Unmarshal(raw, &a.Dynamic)
+		if err != nil {
+			return fmt.Errorf("error reading 'dynamic': %w", err)
+		}
+		delete(object, "dynamic")
+	}
+
+	if raw, found := object["output"]; found {
+		err = json.Unmarshal(raw, &a.Output)
+		if err != nil {
+			return fmt.Errorf("error reading 'output': %w", err)
+		}
+		delete(object, "output")
+	}
+
+	if raw, found := object["preliminary"]; found {
+		err = json.Unmarshal(raw, &a.Preliminary)
+		if err != nil {
+			return fmt.Errorf("error reading 'preliminary': %w", err)
+		}
+		delete(object, "preliminary")
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolOutputAvailableChunk to handle AdditionalProperties
+func (a AIUIToolOutputAvailableChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Dynamic != nil {
+		object["dynamic"], err = json.Marshal(a.Dynamic)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'dynamic': %w", err)
+		}
+	}
+
+	object["output"], err = json.Marshal(a.Output)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'output': %w", err)
+	}
+
+	if a.Preliminary != nil {
+		object["preliminary"], err = json.Marshal(a.Preliminary)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'preliminary': %w", err)
+		}
+	}
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolOutputDeniedChunk. Returns the specified
+// element and whether it was found
+func (a AIUIToolOutputDeniedChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolOutputDeniedChunk
+func (a *AIUIToolOutputDeniedChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolOutputDeniedChunk to handle AdditionalProperties
+func (a *AIUIToolOutputDeniedChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolOutputDeniedChunk to handle AdditionalProperties
+func (a AIUIToolOutputDeniedChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolOutputErrorChunk. Returns the specified
+// element and whether it was found
+func (a AIUIToolOutputErrorChunk) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolOutputErrorChunk
+func (a *AIUIToolOutputErrorChunk) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolOutputErrorChunk to handle AdditionalProperties
+func (a *AIUIToolOutputErrorChunk) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["dynamic"]; found {
+		err = json.Unmarshal(raw, &a.Dynamic)
+		if err != nil {
+			return fmt.Errorf("error reading 'dynamic': %w", err)
+		}
+		delete(object, "dynamic")
+	}
+
+	if raw, found := object["errorText"]; found {
+		err = json.Unmarshal(raw, &a.ErrorText)
+		if err != nil {
+			return fmt.Errorf("error reading 'errorText': %w", err)
+		}
+		delete(object, "errorText")
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolOutputErrorChunk to handle AdditionalProperties
+func (a AIUIToolOutputErrorChunk) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Dynamic != nil {
+		object["dynamic"], err = json.Marshal(a.Dynamic)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'dynamic': %w", err)
+		}
+	}
+
+	object["errorText"], err = json.Marshal(a.ErrorText)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'errorText': %w", err)
+	}
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolPart. Returns the specified
+// element and whether it was found
+func (a AIUIToolPart) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolPart
+func (a *AIUIToolPart) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolPart to handle AdditionalProperties
+func (a *AIUIToolPart) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["approval"]; found {
+		err = json.Unmarshal(raw, &a.Approval)
+		if err != nil {
+			return fmt.Errorf("error reading 'approval': %w", err)
+		}
+		delete(object, "approval")
+	}
+
+	if raw, found := object["callProviderMetadata"]; found {
+		err = json.Unmarshal(raw, &a.CallProviderMetadata)
+		if err != nil {
+			return fmt.Errorf("error reading 'callProviderMetadata': %w", err)
+		}
+		delete(object, "callProviderMetadata")
+	}
+
+	if raw, found := object["errorText"]; found {
+		err = json.Unmarshal(raw, &a.ErrorText)
+		if err != nil {
+			return fmt.Errorf("error reading 'errorText': %w", err)
+		}
+		delete(object, "errorText")
+	}
+
+	if raw, found := object["input"]; found {
+		err = json.Unmarshal(raw, &a.Input)
+		if err != nil {
+			return fmt.Errorf("error reading 'input': %w", err)
+		}
+		delete(object, "input")
+	}
+
+	if raw, found := object["output"]; found {
+		err = json.Unmarshal(raw, &a.Output)
+		if err != nil {
+			return fmt.Errorf("error reading 'output': %w", err)
+		}
+		delete(object, "output")
+	}
+
+	if raw, found := object["providerExecuted"]; found {
+		err = json.Unmarshal(raw, &a.ProviderExecuted)
+		if err != nil {
+			return fmt.Errorf("error reading 'providerExecuted': %w", err)
+		}
+		delete(object, "providerExecuted")
+	}
+
+	if raw, found := object["state"]; found {
+		err = json.Unmarshal(raw, &a.State)
+		if err != nil {
+			return fmt.Errorf("error reading 'state': %w", err)
+		}
+		delete(object, "state")
+	}
+
+	if raw, found := object["title"]; found {
+		err = json.Unmarshal(raw, &a.Title)
+		if err != nil {
+			return fmt.Errorf("error reading 'title': %w", err)
+		}
+		delete(object, "title")
+	}
+
+	if raw, found := object["toolCallId"]; found {
+		err = json.Unmarshal(raw, &a.ToolCallId)
+		if err != nil {
+			return fmt.Errorf("error reading 'toolCallId': %w", err)
+		}
+		delete(object, "toolCallId")
+	}
+
+	if raw, found := object["type"]; found {
+		err = json.Unmarshal(raw, &a.Type)
+		if err != nil {
+			return fmt.Errorf("error reading 'type': %w", err)
+		}
+		delete(object, "type")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolPart to handle AdditionalProperties
+func (a AIUIToolPart) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Approval != nil {
+		object["approval"], err = json.Marshal(a.Approval)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'approval': %w", err)
+		}
+	}
+
+	if a.CallProviderMetadata != nil {
+		object["callProviderMetadata"], err = json.Marshal(a.CallProviderMetadata)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'callProviderMetadata': %w", err)
+		}
+	}
+
+	if a.ErrorText != nil {
+		object["errorText"], err = json.Marshal(a.ErrorText)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'errorText': %w", err)
+		}
+	}
+
+	object["input"], err = json.Marshal(a.Input)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'input': %w", err)
+	}
+
+	object["output"], err = json.Marshal(a.Output)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'output': %w", err)
+	}
+
+	if a.ProviderExecuted != nil {
+		object["providerExecuted"], err = json.Marshal(a.ProviderExecuted)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'providerExecuted': %w", err)
+		}
+	}
+
+	object["state"], err = json.Marshal(a.State)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'state': %w", err)
+	}
+
+	if a.Title != nil {
+		object["title"], err = json.Marshal(a.Title)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'title': %w", err)
+		}
+	}
+
+	object["toolCallId"], err = json.Marshal(a.ToolCallId)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'toolCallId': %w", err)
+	}
+
+	object["type"], err = json.Marshal(a.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'type': %w", err)
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// Getter for additional properties for AIUIToolPart_Approval. Returns the specified
+// element and whether it was found
+func (a AIUIToolPart_Approval) Get(fieldName string) (value interface{}, found bool) {
+	if a.AdditionalProperties != nil {
+		value, found = a.AdditionalProperties[fieldName]
+	}
+	return
+}
+
+// Setter for additional properties for AIUIToolPart_Approval
+func (a *AIUIToolPart_Approval) Set(fieldName string, value interface{}) {
+	if a.AdditionalProperties == nil {
+		a.AdditionalProperties = make(map[string]interface{})
+	}
+	a.AdditionalProperties[fieldName] = value
+}
+
+// Override default JSON handling for AIUIToolPart_Approval to handle AdditionalProperties
+func (a *AIUIToolPart_Approval) UnmarshalJSON(b []byte) error {
+	object := make(map[string]json.RawMessage)
+	err := json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["approved"]; found {
+		err = json.Unmarshal(raw, &a.Approved)
+		if err != nil {
+			return fmt.Errorf("error reading 'approved': %w", err)
+		}
+		delete(object, "approved")
+	}
+
+	if raw, found := object["id"]; found {
+		err = json.Unmarshal(raw, &a.Id)
+		if err != nil {
+			return fmt.Errorf("error reading 'id': %w", err)
+		}
+		delete(object, "id")
+	}
+
+	if raw, found := object["reason"]; found {
+		err = json.Unmarshal(raw, &a.Reason)
+		if err != nil {
+			return fmt.Errorf("error reading 'reason': %w", err)
+		}
+		delete(object, "reason")
+	}
+
+	if len(object) != 0 {
+		a.AdditionalProperties = make(map[string]interface{})
+		for fieldName, fieldBuf := range object {
+			var fieldVal interface{}
+			err := json.Unmarshal(fieldBuf, &fieldVal)
+			if err != nil {
+				return fmt.Errorf("error unmarshaling field %s: %w", fieldName, err)
+			}
+			a.AdditionalProperties[fieldName] = fieldVal
+		}
+	}
+	return nil
+}
+
+// Override default JSON handling for AIUIToolPart_Approval to handle AdditionalProperties
+func (a AIUIToolPart_Approval) MarshalJSON() ([]byte, error) {
+	var err error
+	object := make(map[string]json.RawMessage)
+
+	if a.Approved != nil {
+		object["approved"], err = json.Marshal(a.Approved)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'approved': %w", err)
+		}
+	}
+
+	if a.Id != nil {
+		object["id"], err = json.Marshal(a.Id)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'id': %w", err)
+		}
+	}
+
+	if a.Reason != nil {
+		object["reason"], err = json.Marshal(a.Reason)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'reason': %w", err)
+		}
+	}
+
+	for fieldName, field := range a.AdditionalProperties {
+		object[fieldName], err = json.Marshal(field)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling '%s': %w", fieldName, err)
+		}
+	}
+	return json.Marshal(object)
+}
+
+// AsAIUIStartChunk returns the union data inside the AIUIMessageChunk as a AIUIStartChunk
+func (t AIUIMessageChunk) AsAIUIStartChunk() (AIUIStartChunk, error) {
+	var body AIUIStartChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIStartChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIStartChunk
+func (t *AIUIMessageChunk) FromAIUIStartChunk(v AIUIStartChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIStartChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIStartChunk
+func (t *AIUIMessageChunk) MergeAIUIStartChunk(v AIUIStartChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUITextStartChunk returns the union data inside the AIUIMessageChunk as a AIUITextStartChunk
+func (t AIUIMessageChunk) AsAIUITextStartChunk() (AIUITextStartChunk, error) {
+	var body AIUITextStartChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUITextStartChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUITextStartChunk
+func (t *AIUIMessageChunk) FromAIUITextStartChunk(v AIUITextStartChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUITextStartChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUITextStartChunk
+func (t *AIUIMessageChunk) MergeAIUITextStartChunk(v AIUITextStartChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUITextDeltaChunk returns the union data inside the AIUIMessageChunk as a AIUITextDeltaChunk
+func (t AIUIMessageChunk) AsAIUITextDeltaChunk() (AIUITextDeltaChunk, error) {
+	var body AIUITextDeltaChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUITextDeltaChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUITextDeltaChunk
+func (t *AIUIMessageChunk) FromAIUITextDeltaChunk(v AIUITextDeltaChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUITextDeltaChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUITextDeltaChunk
+func (t *AIUIMessageChunk) MergeAIUITextDeltaChunk(v AIUITextDeltaChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUITextEndChunk returns the union data inside the AIUIMessageChunk as a AIUITextEndChunk
+func (t AIUIMessageChunk) AsAIUITextEndChunk() (AIUITextEndChunk, error) {
+	var body AIUITextEndChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUITextEndChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUITextEndChunk
+func (t *AIUIMessageChunk) FromAIUITextEndChunk(v AIUITextEndChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUITextEndChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUITextEndChunk
+func (t *AIUIMessageChunk) MergeAIUITextEndChunk(v AIUITextEndChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIReasoningStartChunk returns the union data inside the AIUIMessageChunk as a AIUIReasoningStartChunk
+func (t AIUIMessageChunk) AsAIUIReasoningStartChunk() (AIUIReasoningStartChunk, error) {
+	var body AIUIReasoningStartChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIReasoningStartChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIReasoningStartChunk
+func (t *AIUIMessageChunk) FromAIUIReasoningStartChunk(v AIUIReasoningStartChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIReasoningStartChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIReasoningStartChunk
+func (t *AIUIMessageChunk) MergeAIUIReasoningStartChunk(v AIUIReasoningStartChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIReasoningDeltaChunk returns the union data inside the AIUIMessageChunk as a AIUIReasoningDeltaChunk
+func (t AIUIMessageChunk) AsAIUIReasoningDeltaChunk() (AIUIReasoningDeltaChunk, error) {
+	var body AIUIReasoningDeltaChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIReasoningDeltaChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIReasoningDeltaChunk
+func (t *AIUIMessageChunk) FromAIUIReasoningDeltaChunk(v AIUIReasoningDeltaChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIReasoningDeltaChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIReasoningDeltaChunk
+func (t *AIUIMessageChunk) MergeAIUIReasoningDeltaChunk(v AIUIReasoningDeltaChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIReasoningEndChunk returns the union data inside the AIUIMessageChunk as a AIUIReasoningEndChunk
+func (t AIUIMessageChunk) AsAIUIReasoningEndChunk() (AIUIReasoningEndChunk, error) {
+	var body AIUIReasoningEndChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIReasoningEndChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIReasoningEndChunk
+func (t *AIUIMessageChunk) FromAIUIReasoningEndChunk(v AIUIReasoningEndChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIReasoningEndChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIReasoningEndChunk
+func (t *AIUIMessageChunk) MergeAIUIReasoningEndChunk(v AIUIReasoningEndChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIToolInputStartChunk returns the union data inside the AIUIMessageChunk as a AIUIToolInputStartChunk
+func (t AIUIMessageChunk) AsAIUIToolInputStartChunk() (AIUIToolInputStartChunk, error) {
+	var body AIUIToolInputStartChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIToolInputStartChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIToolInputStartChunk
+func (t *AIUIMessageChunk) FromAIUIToolInputStartChunk(v AIUIToolInputStartChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIToolInputStartChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIToolInputStartChunk
+func (t *AIUIMessageChunk) MergeAIUIToolInputStartChunk(v AIUIToolInputStartChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIToolInputDeltaChunk returns the union data inside the AIUIMessageChunk as a AIUIToolInputDeltaChunk
+func (t AIUIMessageChunk) AsAIUIToolInputDeltaChunk() (AIUIToolInputDeltaChunk, error) {
+	var body AIUIToolInputDeltaChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIToolInputDeltaChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIToolInputDeltaChunk
+func (t *AIUIMessageChunk) FromAIUIToolInputDeltaChunk(v AIUIToolInputDeltaChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIToolInputDeltaChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIToolInputDeltaChunk
+func (t *AIUIMessageChunk) MergeAIUIToolInputDeltaChunk(v AIUIToolInputDeltaChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIToolInputAvailableChunk returns the union data inside the AIUIMessageChunk as a AIUIToolInputAvailableChunk
+func (t AIUIMessageChunk) AsAIUIToolInputAvailableChunk() (AIUIToolInputAvailableChunk, error) {
+	var body AIUIToolInputAvailableChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIToolInputAvailableChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIToolInputAvailableChunk
+func (t *AIUIMessageChunk) FromAIUIToolInputAvailableChunk(v AIUIToolInputAvailableChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIToolInputAvailableChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIToolInputAvailableChunk
+func (t *AIUIMessageChunk) MergeAIUIToolInputAvailableChunk(v AIUIToolInputAvailableChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIToolInputErrorChunk returns the union data inside the AIUIMessageChunk as a AIUIToolInputErrorChunk
+func (t AIUIMessageChunk) AsAIUIToolInputErrorChunk() (AIUIToolInputErrorChunk, error) {
+	var body AIUIToolInputErrorChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIToolInputErrorChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIToolInputErrorChunk
+func (t *AIUIMessageChunk) FromAIUIToolInputErrorChunk(v AIUIToolInputErrorChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIToolInputErrorChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIToolInputErrorChunk
+func (t *AIUIMessageChunk) MergeAIUIToolInputErrorChunk(v AIUIToolInputErrorChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIToolApprovalRequestChunk returns the union data inside the AIUIMessageChunk as a AIUIToolApprovalRequestChunk
+func (t AIUIMessageChunk) AsAIUIToolApprovalRequestChunk() (AIUIToolApprovalRequestChunk, error) {
+	var body AIUIToolApprovalRequestChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIToolApprovalRequestChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIToolApprovalRequestChunk
+func (t *AIUIMessageChunk) FromAIUIToolApprovalRequestChunk(v AIUIToolApprovalRequestChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIToolApprovalRequestChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIToolApprovalRequestChunk
+func (t *AIUIMessageChunk) MergeAIUIToolApprovalRequestChunk(v AIUIToolApprovalRequestChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIToolOutputAvailableChunk returns the union data inside the AIUIMessageChunk as a AIUIToolOutputAvailableChunk
+func (t AIUIMessageChunk) AsAIUIToolOutputAvailableChunk() (AIUIToolOutputAvailableChunk, error) {
+	var body AIUIToolOutputAvailableChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIToolOutputAvailableChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIToolOutputAvailableChunk
+func (t *AIUIMessageChunk) FromAIUIToolOutputAvailableChunk(v AIUIToolOutputAvailableChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIToolOutputAvailableChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIToolOutputAvailableChunk
+func (t *AIUIMessageChunk) MergeAIUIToolOutputAvailableChunk(v AIUIToolOutputAvailableChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIToolOutputErrorChunk returns the union data inside the AIUIMessageChunk as a AIUIToolOutputErrorChunk
+func (t AIUIMessageChunk) AsAIUIToolOutputErrorChunk() (AIUIToolOutputErrorChunk, error) {
+	var body AIUIToolOutputErrorChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIToolOutputErrorChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIToolOutputErrorChunk
+func (t *AIUIMessageChunk) FromAIUIToolOutputErrorChunk(v AIUIToolOutputErrorChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIToolOutputErrorChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIToolOutputErrorChunk
+func (t *AIUIMessageChunk) MergeAIUIToolOutputErrorChunk(v AIUIToolOutputErrorChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIToolOutputDeniedChunk returns the union data inside the AIUIMessageChunk as a AIUIToolOutputDeniedChunk
+func (t AIUIMessageChunk) AsAIUIToolOutputDeniedChunk() (AIUIToolOutputDeniedChunk, error) {
+	var body AIUIToolOutputDeniedChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIToolOutputDeniedChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIToolOutputDeniedChunk
+func (t *AIUIMessageChunk) FromAIUIToolOutputDeniedChunk(v AIUIToolOutputDeniedChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIToolOutputDeniedChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIToolOutputDeniedChunk
+func (t *AIUIMessageChunk) MergeAIUIToolOutputDeniedChunk(v AIUIToolOutputDeniedChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUISourceURLChunk returns the union data inside the AIUIMessageChunk as a AIUISourceURLChunk
+func (t AIUIMessageChunk) AsAIUISourceURLChunk() (AIUISourceURLChunk, error) {
+	var body AIUISourceURLChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUISourceURLChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUISourceURLChunk
+func (t *AIUIMessageChunk) FromAIUISourceURLChunk(v AIUISourceURLChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUISourceURLChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUISourceURLChunk
+func (t *AIUIMessageChunk) MergeAIUISourceURLChunk(v AIUISourceURLChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUISourceDocumentChunk returns the union data inside the AIUIMessageChunk as a AIUISourceDocumentChunk
+func (t AIUIMessageChunk) AsAIUISourceDocumentChunk() (AIUISourceDocumentChunk, error) {
+	var body AIUISourceDocumentChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUISourceDocumentChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUISourceDocumentChunk
+func (t *AIUIMessageChunk) FromAIUISourceDocumentChunk(v AIUISourceDocumentChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUISourceDocumentChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUISourceDocumentChunk
+func (t *AIUIMessageChunk) MergeAIUISourceDocumentChunk(v AIUISourceDocumentChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIFileChunk returns the union data inside the AIUIMessageChunk as a AIUIFileChunk
+func (t AIUIMessageChunk) AsAIUIFileChunk() (AIUIFileChunk, error) {
+	var body AIUIFileChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIFileChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIFileChunk
+func (t *AIUIMessageChunk) FromAIUIFileChunk(v AIUIFileChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIFileChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIFileChunk
+func (t *AIUIMessageChunk) MergeAIUIFileChunk(v AIUIFileChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIDataChunk returns the union data inside the AIUIMessageChunk as a AIUIDataChunk
+func (t AIUIMessageChunk) AsAIUIDataChunk() (AIUIDataChunk, error) {
+	var body AIUIDataChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIDataChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIDataChunk
+func (t *AIUIMessageChunk) FromAIUIDataChunk(v AIUIDataChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIDataChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIDataChunk
+func (t *AIUIMessageChunk) MergeAIUIDataChunk(v AIUIDataChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIErrorChunk returns the union data inside the AIUIMessageChunk as a AIUIErrorChunk
+func (t AIUIMessageChunk) AsAIUIErrorChunk() (AIUIErrorChunk, error) {
+	var body AIUIErrorChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIErrorChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIErrorChunk
+func (t *AIUIMessageChunk) FromAIUIErrorChunk(v AIUIErrorChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIErrorChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIErrorChunk
+func (t *AIUIMessageChunk) MergeAIUIErrorChunk(v AIUIErrorChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIStartStepChunk returns the union data inside the AIUIMessageChunk as a AIUIStartStepChunk
+func (t AIUIMessageChunk) AsAIUIStartStepChunk() (AIUIStartStepChunk, error) {
+	var body AIUIStartStepChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIStartStepChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIStartStepChunk
+func (t *AIUIMessageChunk) FromAIUIStartStepChunk(v AIUIStartStepChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIStartStepChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIStartStepChunk
+func (t *AIUIMessageChunk) MergeAIUIStartStepChunk(v AIUIStartStepChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIFinishStepChunk returns the union data inside the AIUIMessageChunk as a AIUIFinishStepChunk
+func (t AIUIMessageChunk) AsAIUIFinishStepChunk() (AIUIFinishStepChunk, error) {
+	var body AIUIFinishStepChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIFinishStepChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIFinishStepChunk
+func (t *AIUIMessageChunk) FromAIUIFinishStepChunk(v AIUIFinishStepChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIFinishStepChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIFinishStepChunk
+func (t *AIUIMessageChunk) MergeAIUIFinishStepChunk(v AIUIFinishStepChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIFinishChunk returns the union data inside the AIUIMessageChunk as a AIUIFinishChunk
+func (t AIUIMessageChunk) AsAIUIFinishChunk() (AIUIFinishChunk, error) {
+	var body AIUIFinishChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIFinishChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIFinishChunk
+func (t *AIUIMessageChunk) FromAIUIFinishChunk(v AIUIFinishChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIFinishChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIFinishChunk
+func (t *AIUIMessageChunk) MergeAIUIFinishChunk(v AIUIFinishChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIAbortChunk returns the union data inside the AIUIMessageChunk as a AIUIAbortChunk
+func (t AIUIMessageChunk) AsAIUIAbortChunk() (AIUIAbortChunk, error) {
+	var body AIUIAbortChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIAbortChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIAbortChunk
+func (t *AIUIMessageChunk) FromAIUIAbortChunk(v AIUIAbortChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIAbortChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIAbortChunk
+func (t *AIUIMessageChunk) MergeAIUIAbortChunk(v AIUIAbortChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIMessageMetadataChunk returns the union data inside the AIUIMessageChunk as a AIUIMessageMetadataChunk
+func (t AIUIMessageChunk) AsAIUIMessageMetadataChunk() (AIUIMessageMetadataChunk, error) {
+	var body AIUIMessageMetadataChunk
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIMessageMetadataChunk overwrites any union data inside the AIUIMessageChunk as the provided AIUIMessageMetadataChunk
+func (t *AIUIMessageChunk) FromAIUIMessageMetadataChunk(v AIUIMessageMetadataChunk) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIMessageMetadataChunk performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIMessageMetadataChunk
+func (t *AIUIMessageChunk) MergeAIUIMessageMetadataChunk(v AIUIMessageMetadataChunk) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIMessageChunk25 returns the union data inside the AIUIMessageChunk as a AIUIMessageChunk25
+func (t AIUIMessageChunk) AsAIUIMessageChunk25() (AIUIMessageChunk25, error) {
+	var body AIUIMessageChunk25
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIMessageChunk25 overwrites any union data inside the AIUIMessageChunk as the provided AIUIMessageChunk25
+func (t *AIUIMessageChunk) FromAIUIMessageChunk25(v AIUIMessageChunk25) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIMessageChunk25 performs a merge with any union data inside the AIUIMessageChunk, using the provided AIUIMessageChunk25
+func (t *AIUIMessageChunk) MergeAIUIMessageChunk25(v AIUIMessageChunk25) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AIUIMessageChunk) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AIUIMessageChunk) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsAIUITextPart returns the union data inside the AIUIMessagePart as a AIUITextPart
+func (t AIUIMessagePart) AsAIUITextPart() (AIUITextPart, error) {
+	var body AIUITextPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUITextPart overwrites any union data inside the AIUIMessagePart as the provided AIUITextPart
+func (t *AIUIMessagePart) FromAIUITextPart(v AIUITextPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUITextPart performs a merge with any union data inside the AIUIMessagePart, using the provided AIUITextPart
+func (t *AIUIMessagePart) MergeAIUITextPart(v AIUITextPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIReasoningPart returns the union data inside the AIUIMessagePart as a AIUIReasoningPart
+func (t AIUIMessagePart) AsAIUIReasoningPart() (AIUIReasoningPart, error) {
+	var body AIUIReasoningPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIReasoningPart overwrites any union data inside the AIUIMessagePart as the provided AIUIReasoningPart
+func (t *AIUIMessagePart) FromAIUIReasoningPart(v AIUIReasoningPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIReasoningPart performs a merge with any union data inside the AIUIMessagePart, using the provided AIUIReasoningPart
+func (t *AIUIMessagePart) MergeAIUIReasoningPart(v AIUIReasoningPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIToolPart returns the union data inside the AIUIMessagePart as a AIUIToolPart
+func (t AIUIMessagePart) AsAIUIToolPart() (AIUIToolPart, error) {
+	var body AIUIToolPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIToolPart overwrites any union data inside the AIUIMessagePart as the provided AIUIToolPart
+func (t *AIUIMessagePart) FromAIUIToolPart(v AIUIToolPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIToolPart performs a merge with any union data inside the AIUIMessagePart, using the provided AIUIToolPart
+func (t *AIUIMessagePart) MergeAIUIToolPart(v AIUIToolPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIDynamicToolPart returns the union data inside the AIUIMessagePart as a AIUIDynamicToolPart
+func (t AIUIMessagePart) AsAIUIDynamicToolPart() (AIUIDynamicToolPart, error) {
+	var body AIUIDynamicToolPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIDynamicToolPart overwrites any union data inside the AIUIMessagePart as the provided AIUIDynamicToolPart
+func (t *AIUIMessagePart) FromAIUIDynamicToolPart(v AIUIDynamicToolPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIDynamicToolPart performs a merge with any union data inside the AIUIMessagePart, using the provided AIUIDynamicToolPart
+func (t *AIUIMessagePart) MergeAIUIDynamicToolPart(v AIUIDynamicToolPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIDataPart returns the union data inside the AIUIMessagePart as a AIUIDataPart
+func (t AIUIMessagePart) AsAIUIDataPart() (AIUIDataPart, error) {
+	var body AIUIDataPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIDataPart overwrites any union data inside the AIUIMessagePart as the provided AIUIDataPart
+func (t *AIUIMessagePart) FromAIUIDataPart(v AIUIDataPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIDataPart performs a merge with any union data inside the AIUIMessagePart, using the provided AIUIDataPart
+func (t *AIUIMessagePart) MergeAIUIDataPart(v AIUIDataPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIStepStartPart returns the union data inside the AIUIMessagePart as a AIUIStepStartPart
+func (t AIUIMessagePart) AsAIUIStepStartPart() (AIUIStepStartPart, error) {
+	var body AIUIStepStartPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIStepStartPart overwrites any union data inside the AIUIMessagePart as the provided AIUIStepStartPart
+func (t *AIUIMessagePart) FromAIUIStepStartPart(v AIUIStepStartPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIStepStartPart performs a merge with any union data inside the AIUIMessagePart, using the provided AIUIStepStartPart
+func (t *AIUIMessagePart) MergeAIUIStepStartPart(v AIUIStepStartPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIFilePart returns the union data inside the AIUIMessagePart as a AIUIFilePart
+func (t AIUIMessagePart) AsAIUIFilePart() (AIUIFilePart, error) {
+	var body AIUIFilePart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIFilePart overwrites any union data inside the AIUIMessagePart as the provided AIUIFilePart
+func (t *AIUIMessagePart) FromAIUIFilePart(v AIUIFilePart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIFilePart performs a merge with any union data inside the AIUIMessagePart, using the provided AIUIFilePart
+func (t *AIUIMessagePart) MergeAIUIFilePart(v AIUIFilePart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUISourceURLPart returns the union data inside the AIUIMessagePart as a AIUISourceURLPart
+func (t AIUIMessagePart) AsAIUISourceURLPart() (AIUISourceURLPart, error) {
+	var body AIUISourceURLPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUISourceURLPart overwrites any union data inside the AIUIMessagePart as the provided AIUISourceURLPart
+func (t *AIUIMessagePart) FromAIUISourceURLPart(v AIUISourceURLPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUISourceURLPart performs a merge with any union data inside the AIUIMessagePart, using the provided AIUISourceURLPart
+func (t *AIUIMessagePart) MergeAIUISourceURLPart(v AIUISourceURLPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUISourceDocumentPart returns the union data inside the AIUIMessagePart as a AIUISourceDocumentPart
+func (t AIUIMessagePart) AsAIUISourceDocumentPart() (AIUISourceDocumentPart, error) {
+	var body AIUISourceDocumentPart
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUISourceDocumentPart overwrites any union data inside the AIUIMessagePart as the provided AIUISourceDocumentPart
+func (t *AIUIMessagePart) FromAIUISourceDocumentPart(v AIUISourceDocumentPart) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUISourceDocumentPart performs a merge with any union data inside the AIUIMessagePart, using the provided AIUISourceDocumentPart
+func (t *AIUIMessagePart) MergeAIUISourceDocumentPart(v AIUISourceDocumentPart) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAIUIMessagePart9 returns the union data inside the AIUIMessagePart as a AIUIMessagePart9
+func (t AIUIMessagePart) AsAIUIMessagePart9() (AIUIMessagePart9, error) {
+	var body AIUIMessagePart9
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAIUIMessagePart9 overwrites any union data inside the AIUIMessagePart as the provided AIUIMessagePart9
+func (t *AIUIMessagePart) FromAIUIMessagePart9(v AIUIMessagePart9) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAIUIMessagePart9 performs a merge with any union data inside the AIUIMessagePart, using the provided AIUIMessagePart9
+func (t *AIUIMessagePart) MergeAIUIMessagePart9(v AIUIMessagePart9) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AIUIMessagePart) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AIUIMessagePart) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"AP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

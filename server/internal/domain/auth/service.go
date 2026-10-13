@@ -38,7 +38,7 @@ type AuthenticateResult struct {
 // Service 认证服务接口
 type Service interface {
 	// Register 注册新用户（username 自动生成）
-	Register(ctx context.Context, email, password string, role UserRole) (*User, error)
+	Register(ctx context.Context, email, password string, role UserRole, emailVerified bool) (*User, error)
 
 	// AuthenticateUser 验证邮箱和密码，返回用户（不创建会话或令牌）
 	AuthenticateUser(ctx context.Context, email, password string) (*User, error)
@@ -121,6 +121,9 @@ type Service interface {
 
 	// Monitor Data Source settings
 
+	// UpdateMonitorDataSource 更新监控数据源设置
+	// setActive: 是否将此数据源设为当前激活的数据源
+	UpdateMonitorDataSource(ctx context.Context, userID uuid.UUID, dataSource, endpoint, token string, setActive bool) error
 }
 
 // authService 认证服务实现
@@ -182,7 +185,7 @@ func (s *authService) SetLoginDetectionService(loginDetectionService LoginDetect
 	s.loginDetectionService = loginDetectionService
 }
 
-func (s *authService) Register(ctx context.Context, email, password string, role UserRole) (*User, error) {
+func (s *authService) Register(ctx context.Context, email, password string, role UserRole, emailVerified bool) (*User, error) {
 	// 参数验证
 	if email == "" || password == "" {
 		return nil, errors.New("email and password are required")
@@ -206,10 +209,11 @@ func (s *authService) Register(ctx context.Context, email, password string, role
 
 	// 创建用户
 	user := &User{
-		Username: username,
-		Email:    email,
-		Role:     role,
-		Avatar:   avatar,
+		Username:      username,
+		Email:         email,
+		EmailVerified: emailVerified,
+		Role:          role,
+		Avatar:        avatar,
 	}
 
 	// 设置密码（bcrypt 加密）
@@ -469,13 +473,14 @@ func (s *authService) RegisterOAuthUser(ctx context.Context, username, email, av
 
 	// 创建用户（OAuth 用户不需要密码）
 	user := &User{
-		ID:        uuid.New(),
-		Username:  username,
-		Email:     email,
-		Password:  "", // OAuth 用户不设置密码
-		Role:      role,
-		Avatar:    avatar,
-		GoogleSub: &googleSub,
+		ID:            uuid.New(),
+		Username:      username,
+		Email:         email,
+		Password:      "", // OAuth 用户不设置密码
+		Role:          role,
+		Avatar:        avatar,
+		GoogleSub:     &googleSub,
+		EmailVerified: true,
 	}
 
 	if err := s.repo.Create(ctx, user); err != nil {
@@ -601,8 +606,9 @@ func (s *authService) UpdateProfile(ctx context.Context, userID uuid.UUID, usern
 	}
 
 	// 更新邮箱（仅当非空时）
-	if email != "" {
+	if email != "" && email != user.Email {
 		user.Email = email
+		user.EmailVerified = true
 	}
 
 	// 更新头像（\x00 表示不更新，空字符串表示移除，其他值表示设置新头像）
@@ -1102,6 +1108,66 @@ func (s *authService) UpdateNotificationSettings(ctx context.Context, userID uui
 	}
 	if taskExternal != nil {
 		user.NotifyTaskExternal = *taskExternal
+	}
+
+	return s.repo.Update(ctx, user)
+}
+
+// UpdateMonitorDataSource 更新监控数据源设置
+// dataSource: 要更新的数据源类型 (easyssh/nezha/komari)
+// endpoint: API 端点地址（仅 nezha/komari 有效）
+// token: API Token（仅 nezha/komari 有效）
+// setActive: 是否将此数据源设为当前激活的数据源
+func (s *authService) UpdateMonitorDataSource(ctx context.Context, userID uuid.UUID, dataSource, endpoint, token string, setActive bool) error {
+	// 查找用户
+	user, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// 验证数据源类型
+	dsType := MonitorDataSourceType(dataSource)
+	switch dsType {
+	case MonitorDataSourceEasySSH:
+		// EasySSH 无需额外配置，只需设置为当前数据源
+		if setActive {
+			user.MonitorDataSource = dataSource
+		}
+
+	case MonitorDataSourceNezha:
+		// 更新 Nezha 配置
+		if endpoint != "" {
+			user.NezhaAPIEndpoint = endpoint
+		}
+		if token != "" {
+			encrypted, err := s.encryptUserSecret(user.ID, "nezha_api_token", token)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt Nezha token: %w", err)
+			}
+			user.NezhaAPIToken = encrypted
+		}
+		if setActive {
+			user.MonitorDataSource = dataSource
+		}
+
+	case MonitorDataSourceKomari:
+		// 更新 Komari 配置
+		if endpoint != "" {
+			user.KomariAPIEndpoint = endpoint
+		}
+		if token != "" {
+			encrypted, err := s.encryptUserSecret(user.ID, "komari_api_token", token)
+			if err != nil {
+				return fmt.Errorf("failed to encrypt Komari token: %w", err)
+			}
+			user.KomariAPIToken = encrypted
+		}
+		if setActive {
+			user.MonitorDataSource = dataSource
+		}
+
+	default:
+		return fmt.Errorf("invalid data source type: %s", dataSource)
 	}
 
 	return s.repo.Update(ctx, user)

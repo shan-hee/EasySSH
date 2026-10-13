@@ -1,5 +1,4 @@
 {
-  "browserSSHAction": "Browser SSH preview",
   "connectionConfigTitle": "Connection configs",
   "errorServerNotFound": "Server not found",
   "errorServerOffline": "Server is offline, unable to connect",
@@ -201,5 +200,6 @@
   "dockerImageGroupImagesCount": "{count} images",
   "dockerNotComposeWarning": "Non-Compose Container",
   "dockerNotComposeHint": "This container was not created via Docker Compose. Only image pull will be executed, manual restart required",
-  "retry": "Retry"
+  "retry": "Retry",
+  "browserSSHAction": "Browser SSH preview"
 }

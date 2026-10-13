@@ -104,10 +104,9 @@ func (r *repository) SaveLoginSession(ctx context.Context, config *SecurityConfi
 
 func (r *repository) SaveLoginSecurity(ctx context.Context, config *SecurityConfig) error {
 	return r.update(ctx, map[string]any{
-		"login_limit":                  config.LoginLimit,
-		"api_limit":                    config.APILimit,
-		"two_fa_limit":                 config.TwoFALimit,
-		"password_pwned_check_enabled": config.PasswordPwnedCheckEnabled,
+		"login_limit":  config.LoginLimit,
+		"api_limit":    config.APILimit,
+		"two_fa_limit": config.TwoFALimit,
 	})
 }
 

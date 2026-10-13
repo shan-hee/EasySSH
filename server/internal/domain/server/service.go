@@ -1,0 +1,352 @@
+package server
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"strconv"
+	"time"
+
+	"github.com/easyssh/server/internal/domain/sshkey"
+	"github.com/easyssh/server/internal/pkg/geoip"
+	"github.com/easyssh/shared/secretcrypto"
+	"github.com/google/uuid"
+)
+
+// Service 服务器服务接口
+type Service interface {
+	// Create 创建服务器
+	Create(ctx context.Context, userID uuid.UUID, req *CreateServerRequest) (*Server, error)
+
+	// GetByID 根据 ID 获取服务器
+	GetByID(ctx context.Context, userID, serverID uuid.UUID) (*Server, error)
+
+	// List 获取用户的服务器列表
+	List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Server, int64, error)
+
+	// Update 更新服务器信息
+	Update(ctx context.Context, userID, serverID uuid.UUID, req *UpdateServerRequest) (*Server, error)
+
+	// Delete 删除服务器
+	Delete(ctx context.Context, userID, serverID uuid.UUID) error
+
+	// Search 搜索服务器
+	Search(ctx context.Context, userID uuid.UUID, query, group string, limit, offset int) ([]*Server, int64, error)
+
+	// FindByGroup 根据分组查找服务器
+	FindByGroup(ctx context.Context, userID uuid.UUID, group string, limit, offset int) ([]*Server, int64, error)
+
+	// GetStatistics 获取统计信息
+	GetStatistics(ctx context.Context, userID uuid.UUID) (*ServerStatistics, error)
+
+	// ReorderServers 批量更新服务器排序顺序
+	ReorderServers(ctx context.Context, userID uuid.UUID, serverIDs []uuid.UUID) error
+}
+
+// CreateServerRequest 创建服务器请求
+type CreateServerRequest struct {
+	Name                 string     `json:"name"`
+	Host                 string     `json:"host" binding:"required"`
+	Port                 int        `json:"port"`
+	Username             string     `json:"username" binding:"required"`
+	AuthMethod           AuthMethod `json:"auth_method" binding:"required"`
+	Password             string     `json:"password"`
+	PrivateKey           string     `json:"private_key"`
+	SSHKeyID             *uint      `json:"ssh_key_id"`
+	PrivateKeyPassphrase string     `json:"private_key_passphrase"`
+	Group                string     `json:"group"`
+	Tags                 []string   `json:"tags"`
+	Description          string     `json:"description"`
+}
+
+// UpdateServerRequest 更新服务器请求
+type UpdateServerRequest struct {
+	Name                         *string     `json:"name"`
+	Host                         *string     `json:"host"`
+	Port                         *int        `json:"port"`
+	Username                     *string     `json:"username"`
+	AuthMethod                   *AuthMethod `json:"auth_method"`
+	Password                     *string     `json:"password"`
+	PrivateKey                   *string     `json:"private_key"`
+	SSHKeyID                     *uint       `json:"ssh_key_id"`
+	PrivateKeyPassphrase         string      `json:"private_key_passphrase"`
+	Group                        *string     `json:"group"`
+	Tags                         *[]string   `json:"tags"`
+	Description                  *string     `json:"description"`
+	VerifiedConnectionCredential bool        `json:"verified_connection_credential"`
+}
+
+// ServerStatistics 服务器统计
+type ServerStatistics struct {
+	Total   int64            `json:"total"`
+	Online  int64            `json:"online"`
+	Offline int64            `json:"offline"`
+	ByGroup map[string]int64 `json:"by_group"`
+	ByTag   map[string]int64 `json:"by_tag"`
+}
+
+// serverService 服务器服务实现
+type serverService struct {
+	repo        Repository
+	encryptor   *crypto.Encryptor
+	geoipClient *geoip.Client
+	keys        sshkey.Service
+}
+
+// NewService 创建服务器服务
+func NewService(repo Repository, encryptor *crypto.Encryptor, geoipClient *geoip.Client, keys sshkey.Service) Service {
+	return &serverService{
+		repo:        repo,
+		encryptor:   encryptor,
+		geoipClient: geoipClient,
+		keys:        keys,
+	}
+}
+
+func (s *serverService) Create(ctx context.Context, userID uuid.UUID, req *CreateServerRequest) (*Server, error) {
+	// 参数验证
+	if req.Host == "" || req.Username == "" {
+		return nil, errors.New("host and username are required")
+	}
+
+	if req.Port == 0 {
+		req.Port = 22
+	}
+
+	if !req.AuthMethod.IsValid() {
+		return nil, fmt.Errorf("unsupported auth method: %s", req.AuthMethod)
+	}
+
+	// 创建服务器
+	server := &Server{
+		ID:          uuid.New(),
+		UserID:      userID,
+		Name:        req.Name,
+		Host:        req.Host,
+		Port:        req.Port,
+		Username:    req.Username,
+		AuthMethod:  req.AuthMethod,
+		Group:       req.Group,
+		Tags:        req.Tags,
+		Description: req.Description,
+		Status:      StatusOffline, // 新建服务器默认为离线状态
+	}
+
+	// 加密密码
+	if req.Password != "" {
+		encrypted, err := s.encryptor.EncryptWithAAD(req.Password, server.CredentialAAD("password"))
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt password: %w", err)
+		}
+		server.Password = encrypted
+	}
+
+	if err := s.assignKey(server, req.SSHKeyID, &req.PrivateKey, req.PrivateKeyPassphrase); err != nil {
+		return nil, err
+	}
+
+	// 查询 IP 地理位置；查询失败不影响创建。
+	s.updateServerLocation(ctx, server)
+
+	// 保存到数据库
+	if err := s.repo.Create(ctx, server); err != nil {
+		return nil, err
+	}
+
+	return server, nil
+}
+
+func (s *serverService) GetByID(ctx context.Context, userID, serverID uuid.UUID) (*Server, error) {
+	return s.repo.FindByUserIDAndID(ctx, userID, serverID)
+}
+
+func (s *serverService) List(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Server, int64, error) {
+	return s.repo.FindByUserID(ctx, userID, limit, offset)
+}
+
+func (s *serverService) Update(ctx context.Context, userID, serverID uuid.UUID, req *UpdateServerRequest) (*Server, error) {
+	// 查找服务器并验证权限
+	server, err := s.repo.FindByUserIDAndID(ctx, userID, serverID)
+	if err != nil {
+		return nil, err
+	}
+
+	hostChanged := req.Host != nil && *req.Host != server.Host
+	endpointConfigChanged :=
+		hostChanged ||
+			(req.Port != nil && *req.Port != server.Port) ||
+			(req.Username != nil && *req.Username != server.Username)
+	authConfigChanged :=
+		(req.AuthMethod != nil && *req.AuthMethod != server.AuthMethod) ||
+			req.Password != nil ||
+			req.PrivateKey != nil || req.SSHKeyID != nil
+
+	// 更新字段
+	if req.Name != nil {
+		server.Name = *req.Name
+	}
+	if req.Host != nil {
+		server.Host = *req.Host
+	}
+	if req.Port != nil {
+		server.Port = *req.Port
+	}
+	if req.Username != nil {
+		server.Username = *req.Username
+	}
+	if req.AuthMethod != nil {
+		if !req.AuthMethod.IsValid() {
+			return nil, fmt.Errorf("unsupported auth method: %s", *req.AuthMethod)
+		}
+		server.AuthMethod = *req.AuthMethod
+	}
+	if req.Group != nil {
+		server.Group = *req.Group
+	}
+	if req.Tags != nil {
+		server.Tags = *req.Tags
+	}
+	if req.Description != nil {
+		server.Description = *req.Description
+	}
+
+	// 更新密码
+	if req.Password != nil {
+		if *req.Password == "" {
+			server.Password = ""
+		} else {
+			encrypted, err := s.encryptor.EncryptWithAAD(*req.Password, server.CredentialAAD("password"))
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt password: %w", err)
+			}
+			server.Password = encrypted
+		}
+	}
+
+	if err := s.assignKey(server, req.SSHKeyID, req.PrivateKey, req.PrivateKeyPassphrase); err != nil {
+		return nil, err
+	}
+
+	// 主机改变后旧位置即失效；普通编辑不重复消耗在线查询额度。
+	if hostChanged {
+		server.Country = ""
+		server.CountryCode = ""
+		server.Region = ""
+		server.City = ""
+	}
+	if hostChanged || server.CountryCode == "" {
+		s.updateServerLocation(ctx, server)
+	}
+
+	if endpointConfigChanged || (authConfigChanged && !req.VerifiedConnectionCredential) {
+		server.Status = StatusOffline
+	}
+	if endpointConfigChanged || authConfigChanged {
+		server.OS = ""
+	}
+
+	// 保存更新
+	if err := s.repo.Update(ctx, server); err != nil {
+		return nil, err
+	}
+
+	return server, nil
+}
+
+func (s *serverService) Delete(ctx context.Context, userID, serverID uuid.UUID) error {
+	// 验证权限
+	if _, err := s.repo.FindByUserIDAndID(ctx, userID, serverID); err != nil {
+		return err
+	}
+
+	return s.repo.Delete(ctx, serverID)
+}
+
+func (s *serverService) Search(ctx context.Context, userID uuid.UUID, query, group string, limit, offset int) ([]*Server, int64, error) {
+	return s.repo.Search(ctx, userID, query, group, limit, offset)
+}
+
+func (s *serverService) FindByGroup(ctx context.Context, userID uuid.UUID, group string, limit, offset int) ([]*Server, int64, error) {
+	return s.repo.FindByGroup(ctx, userID, group, limit, offset)
+}
+
+func (s *serverService) GetStatistics(ctx context.Context, userID uuid.UUID) (*ServerStatistics, error) {
+	return s.repo.GetStatistics(ctx, userID)
+}
+
+// ReorderServers 批量更新服务器排序顺序
+// serverIDs: 按照新顺序排列的服务器 ID 数组
+func (s *serverService) ReorderServers(ctx context.Context, userID uuid.UUID, serverIDs []uuid.UUID) error {
+	if len(serverIDs) == 0 {
+		return errors.New("server IDs cannot be empty")
+	}
+
+	return s.repo.Reorder(ctx, userID, serverIDs)
+}
+
+// Helper function to check TCP connectivity
+func checkTCPConnection(host string, port int, timeout time.Duration) error {
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	return nil
+}
+
+// updateServerLocation 查询并更新服务器的地理位置信息
+func (s *serverService) updateServerLocation(ctx context.Context, server *Server) {
+	loc, err := s.geoipClient.Lookup(ctx, server.Host)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to look up server location", "server_id", server.ID, "error", err)
+		return
+	}
+
+	server.Country = loc.Country
+	server.CountryCode = loc.CountryCode
+	server.Region = loc.Region
+	server.City = loc.City
+}
+
+// Private key material is an import command, never a field of a saved connection.
+func (s *serverService) assignKey(srv *Server, keyID *uint, material *string, passphrase string) error {
+	if !srv.AuthMethod.RequiresPrivateKey() {
+		srv.SSHKeyID = nil
+		srv.SSHKey = nil
+		return nil
+	}
+	if keyID != nil && material != nil && *material != "" {
+		return errors.New("choose a saved SSH key or import a key, not both")
+	}
+	if keyID != nil {
+		if *keyID == 0 {
+			srv.SSHKeyID = nil
+			srv.SSHKey = nil
+			return nil
+		}
+		key, err := s.keys.GetKey(*keyID, srv.UserID)
+		if err != nil {
+			return fmt.Errorf("SSH key is not available to this user: %w", err)
+		}
+		srv.SSHKeyID, srv.SSHKey = &key.ID, key
+		return nil
+	}
+	if material == nil {
+		return nil
+	}
+	if *material == "" {
+		srv.SSHKeyID = nil
+		srv.SSHKey = nil
+		return nil
+	}
+	key, err := s.keys.ImportKeyPair(&sshkey.ImportSSHKeyRequest{Name: srv.Host, PrivateKey: *material, Passphrase: passphrase}, srv.UserID)
+	if err != nil {
+		return err
+	}
+	srv.SSHKeyID = &key.ID
+	srv.SSHKey, err = s.keys.GetKey(key.ID, srv.UserID)
+	return err
+}

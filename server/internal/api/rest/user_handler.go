@@ -37,7 +37,7 @@ type ListUsersRequest struct {
 type CreateUserRequest struct {
 	Username string        `json:"username" binding:"required,min=3,max=50"`
 	Email    string        `json:"email" binding:"required,email"`
-	Password string        `json:"password" binding:"required,min=6"`
+	Password string        `json:"password" binding:"required,min=9"`
 	Role     auth.UserRole `json:"role" binding:"required,min=2,max=64"`
 }
 
@@ -51,7 +51,7 @@ type UpdateUserRequest struct {
 
 // ChangeUserPasswordRequest 修改用户密码请求（管理员用）
 type ChangeUserPasswordRequest struct {
-	NewPassword string `json:"new_password" binding:"required,min=6"`
+	NewPassword string `json:"new_password" binding:"required,min=9"`
 }
 
 // LockUserRequest 锁定用户请求

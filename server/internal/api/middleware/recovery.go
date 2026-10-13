@@ -37,7 +37,7 @@ func Recovery() gin.HandlerFunc {
 				slog.ErrorContext(c.Request.Context(), "panic recovered",
 					"request_id", requestID,
 					"method", c.Request.Method,
-					"path", safeRequestURI(c.Request.URL),
+					"path", c.Request.URL.RequestURI(),
 					"panic", err,
 					"stack", string(debug.Stack()),
 				)

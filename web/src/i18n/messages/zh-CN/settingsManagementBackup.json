@@ -2,7 +2,7 @@
   "syncTab": "设备同步",
   "syncDesktopTitle": "连接同步空间",
   "syncServerTitle": "同步设备管理",
-  "syncDesktopDescription": "绑定一个远端账户，在本地保存配置并离线使用。各账户的数据归属独立保留。",
+  "syncDesktopDescription": "连接账号后，按所选范围同步本机数据。",
   "syncServerDescription": "管理当前账户的同步设备。桌面端通过浏览器登录并授权后，仅同步此账户拥有的配置。",
   "syncEnabled": "已启用",
   "syncPaused": "已暂停",
@@ -30,7 +30,6 @@
   "syncConflictHint": "并发修改会保留多个版本。选择一个版本继续同步；AI 会话可先将其他版本另存，分别继续聊天。凭据只显示摘要，不显示秘密。",
   "syncConnectionField": "连接参数",
   "syncContentField": "脚本内容",
-  "syncOrderField": "服务器自定义顺序",
   "syncUseVersion": "采用版本 {number}",
   "syncLoginExpired": "授权已过期，请重新登录。",
   "syncLoginWaiting": "请在已打开的浏览器中登录并确认授权。",
@@ -150,5 +149,9 @@
   "instanceDesktopRollbackConfirm": "EasySSH 将关闭并重新打开上一实例。当前连接和进行中操作会中断；当前实例及其密钥仍会保留，新增数据不会合并到上一实例。是否继续？",
   "instanceDesktopRestartWaiting": "正在切换实例，EasySSH 将自动关闭并重新打开。",
   "instanceDesktopRestartSucceeded": "实例已切换成功，请核对恢复后的数据。",
-  "instanceDesktopRestartRolledBack": "上次切换未完成或启动校验失败，已返回原实例。数据及密钥已保留，具体原因可查阅启动器日志。"
+  "instanceDesktopRestartRolledBack": "上次切换未完成或启动校验失败，已返回原实例。数据及密钥已保留，具体原因可查阅启动器日志。",
+  "syncOrderField": "服务器自定义顺序",
+  "syncMasterPassword": "密码",
+  "syncUnlock": "解锁同步",
+  "syncServerOrderField": "服务器排序"
 }

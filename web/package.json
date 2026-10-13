@@ -10,9 +10,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build:ssh": "node ../scripts/build-browser-ssh.mjs",
-    "build:ui": "tsc --noEmit && vite build",
-    "build": "pnpm build:ssh && pnpm build:ui",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "node --import tsx --test \"test/**/*.test.{ts,tsx}\"",
     "lint": "eslint .",

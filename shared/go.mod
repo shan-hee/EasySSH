@@ -11,7 +11,6 @@ require (
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
 	github.com/openai/openai-go/v3 v3.43.0
-	github.com/pkg/sftp v1.13.6
 	github.com/pressly/goose/v3 v3.24.1
 	golang.org/x/crypto v0.55.0
 	golang.org/x/sys v0.47.0
@@ -31,7 +30,6 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect
-	github.com/kr/fs v0.1.0 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect

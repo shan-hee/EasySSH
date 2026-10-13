@@ -1,6 +1,6 @@
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { Archive, Bot, Cable, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Workflow } from "lucide-react"
+import { Archive, Bot, Cable, Clock3, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Workflow } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { cn } from "@/lib/utils"
@@ -13,6 +13,7 @@ import { WorkspaceTab } from "./settings/security-center/_tabs/workspace-tab"
 import { BackupRestoreTab } from "@/components/settings/backup-restore-tab"
 import { NotificationConfigWrapper } from "./settings/integrations/_tabs/notification-config-wrapper"
 import { AIConfigWrapper } from "./settings/integrations/_tabs/ai-config-wrapper"
+import { ScheduledTasksTab } from "./settings/system-config/_tabs/scheduled-tasks-tab"
 
 interface SettingsItem {
   id: string
@@ -37,6 +38,9 @@ const groups: SettingsGroup[] = [
   ] },
   { id: "workspace", nameKey: "groupWorkspace", items: [
     { id: "workspace", nameKey: "itemWorkspace", icon: Workflow, component: WorkspaceTab },
+  ] },
+  { id: "automation", nameKey: "groupAutomation", items: [
+    { id: "scheduled-tasks", nameKey: "itemScheduledTasks", icon: Clock3, component: ScheduledTasksTab },
   ] },
   { id: "network", nameKey: "groupNetwork", items: [
     { id: "network", nameKey: "itemNetworkDeployment", icon: Globe, component: NetworkSecurityTab },

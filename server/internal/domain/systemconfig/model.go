@@ -28,10 +28,16 @@ type SystemConfig struct {
 	DefaultDownloadMode     string `gorm:"size:20;not null;default:'fast'" json:"default_download_mode"`
 	SkipExcludedOnUpload    bool   `gorm:"not null;default:true" json:"skip_excluded_on_upload"`
 	MaxFileUploadSize       int    `gorm:"not null;default:100" json:"max_file_upload_size"` // MB
+	TransferStoragePath     string `gorm:"type:text" json:"transfer_storage_path"`
+	TransferRetentionDays   int    `gorm:"not null;default:3" json:"transfer_retention_days"`
+	TransferMaxStorageGB    int    `gorm:"not null;default:10" json:"transfer_max_storage_gb"`
+	TransferMaxConcurrency  int    `gorm:"not null;default:2" json:"transfer_max_concurrency"`
+	TransferCleanupEnabled  bool   `gorm:"not null;default:true" json:"transfer_cleanup_enabled"`
 
 	// 注册配置
-	AllowRegistration bool   `gorm:"not null;default:false" json:"allow_registration"`
-	DefaultRole       string `gorm:"size:64;not null;default:'user'" json:"default_role"`
+	RequireEmailVerification bool   `gorm:"not null;default:false" json:"require_email_verification"`
+	AllowRegistration        bool   `gorm:"not null;default:false" json:"allow_registration"`
+	DefaultRole              string `gorm:"size:64;not null;default:'user'" json:"default_role"`
 
 	// OAuth 配置
 	OAuthEnabled       bool   `gorm:"column:oauth_enabled;not null;default:false" json:"oauth_enabled"`
@@ -46,8 +52,14 @@ type SystemConfig struct {
 	ExternalOAuthRedirectURIs    string `gorm:"column:external_oauth_redirect_uris;type:text" json:"external_oauth_redirect_uris"`
 
 	// 连接运行参数（启动时读取，修改后重启生效）
+	SFTPMaxIdleTimeSeconds     int `gorm:"not null;default:120" json:"sftp_max_idle_time_seconds"`
+	SFTPCleanupIntervalSeconds int `gorm:"not null;default:30" json:"sftp_cleanup_interval_seconds"`
+	SFTPMaxLifeTimeMinutes     int `gorm:"not null;default:0" json:"sftp_max_life_time_minutes"`
+	SFTPConnTimeoutSeconds     int `gorm:"not null;default:10" json:"sftp_conn_timeout_seconds"`
+	SFTPMaxSessionsPerConn     int `gorm:"not null;default:8" json:"sftp_max_sessions_per_conn"`
 
 	// 后台任务队列（运行时动态生效）
+	JobQueueMaxConcurrency int `gorm:"not null;default:2" json:"job_queue_max_concurrency"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
@@ -186,4 +198,55 @@ venv
 dist
 build
 target`
+}
+
+// DefaultTransferStoragePath 为空表示使用运行时数据目录下的 transfers 子目录。
+func DefaultTransferStoragePath() string {
+	return ""
+}
+
+func DefaultTransferRetentionDays() int {
+	return 3
+}
+
+func DefaultTransferMaxStorageGB() int {
+	return 10
+}
+
+func DefaultTransferMaxConcurrency() int {
+	return 2
+}
+
+func DefaultJobQueueMaxConcurrency() int {
+	return 2
+}
+
+func (c *SystemConfig) ApplyTransferDefaults() {
+	if c == nil {
+		return
+	}
+	if c.TransferRetentionDays <= 0 {
+		c.TransferRetentionDays = DefaultTransferRetentionDays()
+	}
+	if c.TransferMaxStorageGB <= 0 {
+		c.TransferMaxStorageGB = DefaultTransferMaxStorageGB()
+	}
+	if c.TransferMaxConcurrency <= 0 {
+		c.TransferMaxConcurrency = DefaultTransferMaxConcurrency()
+	}
+	if c.SFTPMaxIdleTimeSeconds <= 0 {
+		c.SFTPMaxIdleTimeSeconds = 120
+	}
+	if c.SFTPCleanupIntervalSeconds <= 0 {
+		c.SFTPCleanupIntervalSeconds = 30
+	}
+	if c.SFTPConnTimeoutSeconds <= 0 {
+		c.SFTPConnTimeoutSeconds = 10
+	}
+}
+
+func (c *SystemConfig) ApplyJobQueueDefaults() {
+	if c != nil && c.JobQueueMaxConcurrency <= 0 {
+		c.JobQueueMaxConcurrency = DefaultJobQueueMaxConcurrency()
+	}
 }

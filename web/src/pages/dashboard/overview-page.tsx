@@ -245,7 +245,7 @@ export default function DashboardPage() {
                   {t("orbitTodayCommands")}
                 </p>
                 <p className="mt-1 text-lg font-medium tabular-nums tracking-[-0.03em] text-foreground/78">
-                  {overview?.stats.today_commands != null ? (
+                  {overview ? (
                     <CountingNumber number={overview.stats.today_commands} />
                   ) : "—"}
                 </p>

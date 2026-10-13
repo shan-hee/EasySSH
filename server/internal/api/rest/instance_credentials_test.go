@@ -32,11 +32,18 @@ func TestInstanceCredentialVerification(t *testing.T) {
 		row                      map[string]any
 	}{
 		{"system_config", "google_client_secret", "", crypto.SecretAAD("system_config", "system", "google_client_secret"), nil},
+		{"ai_config", "system_api_key", "", crypto.SecretAAD("ai_config", "system", "system_api_key"), nil},
 		{"notification_config", "smtp_config", "password", crypto.SecretAAD("notification_config", "smtp", "password"), nil},
 		{"notification_config", "webhook_config", "secret", crypto.SecretAAD("notification_config", "webhook", "secret"), nil},
 		{"notification_config", "ding_talk_config", "secret", crypto.SecretAAD("notification_config", "dingtalk", "secret"), nil},
+		{"users", "nezha_api_token", "", crypto.SecretAAD("users", "owner", "nezha_api_token"), nil},
+		{"users", "komari_api_token", "", crypto.SecretAAD("users", "owner", "komari_api_token"), nil},
 		{"users", "two_factor_secret", "", crypto.SecretAAD("users", "owner", "two_factor_secret"), nil},
+		{"servers", "password", "", []byte("easyssh:servers:owner:server:password"), map[string]any{"id": "server", "user_id": "owner", "host": "example.test", "username": "root", "auth_method": "password"}},
+		{"ssh_keys", "private_key", "", []byte("easyssh:ssh_keys:owner:fingerprint:private_key"), map[string]any{"user_id": "owner", "fingerprint": "fingerprint", "name": "fixture", "algorithm": "ed25519", "public_key": "fixture"}},
+		{"user_ai_config", "custom_api_key", "", crypto.SecretAAD("user_ai_config", "owner", "custom_api_key"), map[string]any{"user_id": "owner"}},
 		{"oauth_signing_keys", "encrypted_private_pem", "", []byte("oauth-signing-key:key"), map[string]any{"id": "key"}},
+		{"sync_vault_objects", "ciphertext", "", []byte("easyssh:sync-vault:owner:object"), map[string]any{"user_id": "owner", "id": "object", "kind": "ai_config", "resource_id": "config"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.table+"/"+tc.column, func(t *testing.T) {
@@ -51,7 +58,7 @@ func TestInstanceCredentialVerification(t *testing.T) {
 			t.Cleanup(func() { raw.Close() })
 			raw.SetMaxOpenConns(1)
 			ctx := context.Background()
-			if err := dbmigration.Up(ctx, raw, "server", "sqlite"); err != nil {
+			if err := dbmigration.Initialize(ctx, raw, "server", "sqlite"); err != nil {
 				t.Fatal(err)
 			}
 			if err := VerifyStoredCredentials(ctx, db, encryptor); err != nil {

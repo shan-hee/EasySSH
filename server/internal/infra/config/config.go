@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -27,11 +26,9 @@ type Config struct {
 // ServerConfig 服务器配置
 type ServerConfig struct {
 	Port          int
-	Env           string         // development, production
-	EncryptionKey string         // 加密密钥（Base64 编码的 32 字节 AES 密钥）
-	WebDevPort    int            // 前端开发端口（从 WEB_PORT 读取）
-	RelayNetworks []netip.Prefix // Empty disables browser SSH relay destinations.
-	RelayPorts    []int
+	Env           string // development, production
+	EncryptionKey string // 加密密钥（Base64 编码的 32 字节 AES 密钥）
+	WebDevPort    int    // 前端开发端口（从 WEB_PORT 读取）
 }
 
 // DatabaseConfig 数据库配置
@@ -46,17 +43,15 @@ type DatabaseConfig struct {
 }
 
 type environmentConfig struct {
-	Environment    string   `env:"ENV" envDefault:"development"`
-	EncryptionKey  string   `env:"ENCRYPTION_KEY"`
-	WebDevPort     int      `env:"WEB_PORT" envDefault:"3000"`
-	DatabaseDriver string   `env:"DB_DRIVER" envDefault:"sqlite"`
-	DatabaseDSN    string   `env:"DB_DSN" envDefault:"./data/easyssh.db"`
-	DBMaxIdleConns int      `env:"DB_MAX_IDLE_CONNS" envDefault:"10"`
-	DBMaxOpenConns int      `env:"DB_MAX_OPEN_CONNS" envDefault:"100"`
-	DBMaxLifetime  int      `env:"DB_CONN_MAX_LIFETIME" envDefault:"60"`
-	DBMaxIdleTime  int      `env:"DB_CONN_MAX_IDLE_TIME" envDefault:"10"`
-	RelayNetworks  []string `env:"SSH_RELAY_NETWORKS" envSeparator:","`
-	RelayPorts     []int    `env:"SSH_RELAY_PORTS" envDefault:"22" envSeparator:","`
+	Environment    string `env:"ENV" envDefault:"development"`
+	EncryptionKey  string `env:"ENCRYPTION_KEY"`
+	WebDevPort     int    `env:"WEB_PORT" envDefault:"3000"`
+	DatabaseDriver string `env:"DB_DRIVER" envDefault:"sqlite"`
+	DatabaseDSN    string `env:"DB_DSN" envDefault:"./data/easyssh.db"`
+	DBMaxIdleConns int    `env:"DB_MAX_IDLE_CONNS" envDefault:"10"`
+	DBMaxOpenConns int    `env:"DB_MAX_OPEN_CONNS" envDefault:"100"`
+	DBMaxLifetime  int    `env:"DB_CONN_MAX_LIFETIME" envDefault:"60"`
+	DBMaxIdleTime  int    `env:"DB_CONN_MAX_IDLE_TIME" envDefault:"10"`
 }
 
 // Load 从环境变量加载配置
@@ -64,14 +59,6 @@ func Load() (*Config, error) {
 	var values environmentConfig
 	if err := env.Parse(&values); err != nil {
 		return nil, fmt.Errorf("failed to parse environment configuration: %w", err)
-	}
-	var relayNetworks []netip.Prefix
-	for _, value := range values.RelayNetworks {
-		prefix, err := netip.ParsePrefix(strings.TrimSpace(value))
-		if err != nil {
-			return nil, fmt.Errorf("invalid SSH_RELAY_NETWORKS entry: %w", err)
-		}
-		relayNetworks = append(relayNetworks, prefix.Masked())
 	}
 
 	databaseDSN := expandEnvRefs(values.DatabaseDSN)
@@ -86,8 +73,6 @@ func Load() (*Config, error) {
 			Env:           values.Environment,
 			EncryptionKey: encryptionKey,
 			WebDevPort:    values.WebDevPort,
-			RelayNetworks: relayNetworks,
-			RelayPorts:    values.RelayPorts,
 		},
 		Database: DatabaseConfig{
 			Driver:          values.DatabaseDriver,
@@ -148,11 +133,6 @@ func (c *Config) applyEnvironmentDefaults() {
 
 // Validate 验证配置
 func (c *Config) Validate() error {
-	for _, port := range c.Server.RelayPorts {
-		if port < 1 || port > 65535 {
-			return fmt.Errorf("SSH_RELAY_PORTS must contain ports between 1 and 65535")
-		}
-	}
 	// 服务器配置验证
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("server port must be between 1 and 65535")

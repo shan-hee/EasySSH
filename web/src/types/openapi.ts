@@ -174,6 +174,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sync/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** resolveSyncConflict */
+        post: operations["resolveSyncConflict"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sync/device": {
         parameters: {
             query?: never;
@@ -185,6 +202,97 @@ export interface paths {
         get: operations["getSyncDeviceIdentity"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/vault/fork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy a retained conversation version without executing historical tasks */
+        post: operations["forkSyncConversation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device/vault": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the authenticated owner's authorized supplementary documents */
+        get: operations["listSyncVaultDocuments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device/vault/objects/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** Download an authorized payload directly to desktop Go */
+        get: operations["getSyncVaultObject"];
+        put?: never;
+        /** Upload an immutable payload for encrypted persistence */
+        post: operations["putSyncVaultObject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device/vault/documents/{kind}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "credential" | "ai_config" | "ai_session";
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Merge a document containing random payload references */
+        post: operations["exchangeSyncVaultDocument"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/device/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** exchangeSyncChanges */
+        post: operations["exchangeSyncChanges"];
         delete?: never;
         options?: never;
         head?: never;
@@ -357,6 +465,154 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取 AI 配置状态 */
+        get: operations["getAiConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询 AI 会话列表
+         * @description 返回当前用户的 AI 会话快照列表，按 updated_at 倒序排列。用于会话列表抽屉、历史恢复和后续多会话入口。
+         */
+        get: operations["getAiSessions"];
+        put?: never;
+        /** 创建临时 AI 会话 */
+        post: operations["postAiSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/sessions/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 恢复最近活跃 AI 会话
+         * @description 返回当前用户最近一个未关闭的 AI 会话快照。Dashboard 和 Terminal 会用它在刷新或打开面板后恢复会话。
+         */
+        get: operations["getAiSessionsLatest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取指定 AI 会话快照
+         * @description 从内存 runtime 或 ai_sessions 持久化快照恢复指定会话，用于会话列表点击切换。
+         */
+        get: operations["getAiSessionsSessionId"];
+        put?: never;
+        post?: never;
+        /**
+         * 删除 AI 会话
+         * @description 从会话列表移除指定会话快照，并停止对应运行中 runtime。
+         */
+        delete: operations["deleteAiSessionsSessionId"];
+        options?: never;
+        head?: never;
+        /** 重命名 AI 会话 */
+        patch: operations["patchAiSessionsSessionId"];
+        trace?: never;
+    };
+    "/ai/sessions/{session_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 中断 AI 会话当前回复
+         * @description 取消当前模型回复或工具执行，将会话恢复为空闲状态，但保留会话快照与历史记录。
+         */
+        post: operations["postAiSessionsSessionIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/sessions/{session_id}/chat/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 恢复现有 AI 会话的输出流
+         * @description 只订阅现有会话，不提交用户消息、不启动生成或执行工具。
+         *     首帧为 transient data-session-snapshot，data 为完整 AISessionView；客户端替换消息列表。
+         *     运行期间合并更新、持续发送最新快照，每 15 秒发送 SSE 注释心跳。
+         *     会话完成或等待审批时发送最终快照及 [DONE]，客户端无需重放历史增量。
+         */
+        get: operations["getAiSessionsSessionIdChatStream"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ai/sessions/{session_id}/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * AI SDK UI 标准聊天流
+         * @description 接收 Vercel AI SDK UI `DefaultChatTransport` 请求体，并返回 `UIMessageChunk` SSE。
+         *     响应头包含 `X-Vercel-AI-UI-Message-Stream: v1`，每个 `data:` 载荷都是一个 AI SDK UIMessageChunk JSON 对象，流结束时发送 `data: [DONE]`。
+         *     EasySSH 的 context/model/permission_mode/scope/approval 字段是标准 UI 协议外的附加能力。
+         */
+        post: operations["postAiSessionsSessionIdChat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/permissions": {
         parameters: {
             query?: never;
@@ -439,6 +695,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/servers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取服务器列表 */
+        get: operations["getServers"];
+        put?: never;
+        /** 创建服务器 */
+        post: operations["postServers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/servers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取服务器详情 */
+        get: operations["getServersId"];
+        /** 更新服务器 */
+        put: operations["putServersId"];
+        post?: never;
+        /** 删除服务器 */
+        delete: operations["deleteServersId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取活动 SSH 会话列表 */
+        get: operations["getSshSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh/sessions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSshSessionsId"];
+        put?: never;
+        post?: never;
+        /** 关闭 SSH 会话 */
+        delete: operations["deleteSshSessionsId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/stream": {
         parameters: {
             query?: never;
@@ -453,6 +780,111 @@ export interface paths {
         get: operations["getEventsStream"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取当前用户的任务运行记录 */
+        get: operations["getTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 清理当前用户保留期外的已结束任务运行记录
+         * @description 手动按统一保留天数清理终态任务。系统默认每天自动清理一次：成功和已取消任务保留 90 天，失败、部分成功和超时任务保留 180 天；排队中、运行中和取消中的任务永久保留且禁止清理。任务事件、结果日志和关联通知随任务记录一并清理。
+         */
+        delete: operations["deleteTasksCleanup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取当前用户的任务统计 */
+        get: operations["getTasksStatistics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取任务详情及事件时间线 */
+        get: operations["getTasksId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 请求取消正在排队或运行的任务 */
+        post: operations["postTasksIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/tasks/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 重新触发可重试的计划任务 */
+        post: operations["postTasksIdRetry"];
         delete?: never;
         options?: never;
         head?: never;
@@ -539,6 +971,83 @@ export interface paths {
         post?: never;
         /** 清理当前用户的已读通知 */
         delete: operations["deleteNotificationsRead"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 同步删除单个普通文件
+         * @description 目录删除必须使用 delete-paths，由后端决定快速完成或创建递归任务。
+         */
+        delete: operations["deleteSftpServerIdDelete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/delete-paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 快速删除一个或多个 SFTP 路径
+         * @description 路径必须为绝对路径。接口先建立 SSH 连接并同步执行服务器端 rm；成功时直接返回且不创建任务，连接或认证失败时同步报错，只有连接成功但命令执行失败时才创建 SFTP 递归删除任务。
+         */
+        post: operations["postSftpServerIdDeletePaths"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取脚本列表 */
+        get: operations["getScripts"];
+        put?: never;
+        /** 创建脚本 */
+        post: operations["postScripts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取脚本详情 */
+        get: operations["getScriptsId"];
+        /** 更新脚本 */
+        put: operations["putScriptsId"];
+        post?: never;
+        /** 删除脚本 */
+        delete: operations["deleteScriptsId"];
         options?: never;
         head?: never;
         patch?: never;
@@ -766,6 +1275,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ai/sessions/{session_id}/messages/{message_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteAiSessionsSessionIdMessagesMessageId"];
+        options?: never;
+        head?: never;
+        patch: operations["patchAiSessionsSessionIdMessagesMessageId"];
+        trace?: never;
+    };
     "/auth/2fa/verify": {
         parameters: {
             query?: never;
@@ -926,6 +1451,310 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/batch-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBatchTasks"];
+        put?: never;
+        post: operations["postBatchTasks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/batch-tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBatchTasksId"];
+        put: operations["putBatchTasksId"];
+        post?: never;
+        delete: operations["deleteBatchTasksId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/batch-tasks/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postBatchTasksIdStart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/batch-tasks/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getBatchTasksStatistics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDashboardOverview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDockerServerIdContainers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers/{id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDockerContainerStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteDockerServerIdContainersId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers/{id}/check-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDockerServerIdContainersIdCheckUpdate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDockerServerIdContainersIdLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers/{id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postDockerServerIdContainersIdPause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers/{id}/restart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postDockerServerIdContainersIdRestart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers/{id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postDockerServerIdContainersIdStart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers/{id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postDockerServerIdContainersIdStop"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/containers/{id}/unpause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postDockerServerIdContainersIdUnpause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDockerServerIdImages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDockerServerIdResources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDockerServerIdStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/docker/{serverId}/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getDockerServerIdSystem"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/logs/{id}": {
         parameters: {
             query?: never;
@@ -974,6 +1803,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/monitor/server/{server_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMonitorServerServerId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/datasource/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postMonitoringDatasourceTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/monitoring/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMonitoringResources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/oauth/google/verify": {
         parameters: {
             query?: never;
@@ -984,6 +1861,54 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["postOauthGoogleVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/operation-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getOperationRecords"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/operation-records/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getOperationRecordsId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/operation-records/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getOperationRecordsStatistics"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1014,6 +1939,134 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getRuntime"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scheduled-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getScheduledTasks"];
+        put?: never;
+        post: operations["postScheduledTasks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scheduled-tasks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getScheduledTasksId"];
+        put: operations["putScheduledTasksId"];
+        post?: never;
+        delete: operations["deleteScheduledTasksId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scheduled-tasks/{id}/toggle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postScheduledTasksIdToggle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scheduled-tasks/{id}/trigger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postScheduledTasksIdTrigger"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scheduled-tasks/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getScheduledTasksStatistics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scripts/{id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postScriptsIdExecute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/servers/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchServersReorder"];
+        trace?: never;
+    };
+    "/servers/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getServersStatistics"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1080,6 +2133,38 @@ export interface paths {
         get: operations["getSettingsLoginSecurity"];
         put?: never;
         post: operations["postSettingsLoginSecurity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/ai/system": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSettingsAiSystem"];
+        put?: never;
+        post: operations["postSettingsAiSystem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/ai/system/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSettingsAiSystemModels"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1278,6 +2363,22 @@ export interface paths {
         patch: operations["patchSettingsSystemOAuthProvider"];
         trace?: never;
     };
+    "/settings/system/scheduled-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSettingsSystemScheduledTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchSettingsSystemScheduledTasks"];
+        trace?: never;
+    };
     "/settings/workspace": {
         parameters: {
             query?: never;
@@ -1352,6 +2453,614 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["postSettingsWecomTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpServerIdAuth"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/auth/ws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpServerIdAuthWs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/batch-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpServerIdBatchDelete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/batch-download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpServerIdBatchDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/chmod": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpServerIdChmod"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpServerIdClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/disk-usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpServerIdDiskUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpServerIdDownload"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/list": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpServerIdList"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/mkdir": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpServerIdMkdir"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpServerIdRead"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpServerIdRename"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/stat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpServerIdStat"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/upload/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpServerIdUploadStream"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/{server_id}/write": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpServerIdWrite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/pool/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpPoolStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpTransfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/transfer/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpTransferTaskIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/transfer/direct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpTransferDirect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/transfer/ws/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpTransferWsTaskId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/upload/task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpUploadTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/upload/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpUploadTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/upload/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpUploadTasksTaskId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/upload/tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSftpUploadTasksTaskIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sftp/upload/ws/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSftpUploadWsTaskId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSshKeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh-keys/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["deleteSshKeysId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh-keys/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSshKeysGenerate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh-keys/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postSshKeysImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSshStatistics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ssh/terminal/{server_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSshTerminalServerId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transfer-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTransferJobs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transfer-jobs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTransferJobsId"];
+        put?: never;
+        post?: never;
+        delete: operations["deleteTransferJobsId"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transfer-jobs/{id}/artifact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTransferJobsIdArtifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transfer-jobs/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postTransferJobsIdCancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transfer-jobs/sftp/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postTransferJobsSftpDownload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transfer-jobs/sftp/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postTransferJobsSftpUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/transfer-jobs/statistics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getTransferJobsStatistics"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1486,6 +3195,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/users/me/ai-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getUsersMeAiConfig"];
+        put: operations["putUsersMeAiConfig"];
+        post?: never;
+        delete: operations["deleteUsersMeAiConfig"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/ai-config/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postUsersMeAiConfigModels"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/me/monitor-datasource": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["putUsersMeMonitorDatasource"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/me/oauth/google/link": {
         parameters: {
             query?: never;
@@ -1582,207 +3339,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/sync/manifests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 客户端加密同步：/sync/manifests */
-        get: operations["getManifests"];
-        put?: never;
-        /** 客户端加密同步：/sync/manifests */
-        post: operations["postManifests"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sync/heads": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 客户端加密同步：/sync/heads */
-        get: operations["getHeads"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sync/objects/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 客户端加密同步：/sync/objects/{id} */
-        get: operations["getObjectsId"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sync/objects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 客户端加密同步：/sync/objects */
-        post: operations["postObjects"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sync/routes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 客户端加密同步：/sync/routes */
-        post: operations["postRoutes"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sync/device/manifests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 客户端加密同步：/sync/device/manifests */
-        get: operations["getDeviceManifests"];
-        put?: never;
-        /** 客户端加密同步：/sync/device/manifests */
-        post: operations["postDeviceManifests"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sync/device/heads": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 客户端加密同步：/sync/device/heads */
-        get: operations["getDeviceHeads"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sync/device/objects/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 客户端加密同步：/sync/device/objects/{id} */
-        get: operations["getDeviceObjectsId"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sync/device/objects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 客户端加密同步：/sync/device/objects */
-        post: operations["postDeviceObjects"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/sync/device/routes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** 客户端加密同步：/sync/device/routes */
-        post: operations["postDeviceRoutes"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/ssh/relay/{server_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** 仅转发 SSH 协议字节流 */
-        get: operations["sshCiphertextRelay"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SyncPeer: {
+            /** @description Base64 Automerge document for initial synchronization */
+            document?: string;
+            /** @description Base64 Automerge changes since the last acknowledged heads */
+            changes?: string[];
+            heads?: string[];
+        };
         SyncConflict: {
             previews?: {
                 [key: string]: components["schemas"]["SyncVersionPreview"];
             };
             key: string;
             /** @enum {string} */
-            field: "connection" | "content" | "ref";
+            field: "connection" | "content" | "ref" | "ids";
             values: string[];
+        };
+        SyncResolution: {
+            key: string;
+            /** @enum {string} */
+            field: "connection" | "content" | "ref" | "ids";
+            value: string;
         };
         SyncScopes: {
             credentials: boolean;
@@ -1803,6 +3384,34 @@ export interface components {
             fingerprint?: string;
             provider?: string;
             has_api_key?: boolean;
+        };
+        SyncVaultEntry: {
+            /** @enum {string} */
+            kind: "credential" | "ai_config" | "ai_session";
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        SyncVaultObject: {
+            /** @enum {string} */
+            kind: "credential" | "ai_config" | "ai_session" | "attachment";
+            /** Format: uuid */
+            resource_id: string;
+            /** @description JSON payload or base64 attachment; encrypted by Go at rest, HTTPS in transit */
+            value: string;
+        };
+        SyncVaultExchange: {
+            peer: components["schemas"]["SyncPeer"];
+            resolution?: components["schemas"]["SyncResolution"];
+        };
+        SyncVaultResult: {
+            response: components["schemas"]["SyncPeer"];
+            snapshot: {
+                [key: string]: {
+                    [key: string]: string;
+                };
+            };
+            conflicts: components["schemas"]["SyncConflict"][];
         };
         SyncDevice: {
             scopes: components["schemas"]["SyncScopes"];
@@ -1859,7 +3468,7 @@ export interface components {
             user_id: string;
             account_name: string;
             /** @enum {integer} */
-            protocol: 5;
+            protocol: 4;
             grants: components["schemas"]["SyncScopes"];
         };
         Error: {
@@ -2037,6 +3646,151 @@ export interface components {
             /** Format: date-time */
             updated_at?: string;
         };
+        /** @enum {string} */
+        TaskRunStatus: "queued" | "running" | "succeeded" | "failed" | "partial_success" | "canceling" | "canceled" | "timeout";
+        TaskRun: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            /** Format: uuid */
+            definition_id?: string;
+            /** Format: uuid */
+            retry_of_id?: string;
+            /** @example scheduled_task */
+            source_type?: string;
+            source_id?: string;
+            /** @example sftp_recursive_delete */
+            task_type: string;
+            title: string;
+            description?: string;
+            /** @enum {string} */
+            trigger_type: "manual" | "scheduled" | "system" | "api";
+            /** @enum {string} */
+            runner: "server" | "desktop";
+            status: components["schemas"]["TaskRunStatus"];
+            stage?: string;
+            /** Format: uuid */
+            server_id?: string;
+            server_name?: string;
+            resource?: string;
+            payload_json?: string;
+            result_json?: string;
+            progress: number;
+            total_count: number;
+            success_count: number;
+            failure_count: number;
+            /** Format: int64 */
+            bytes_total?: number;
+            /** Format: int64 */
+            bytes_processed?: number;
+            progress_json?: string;
+            cancelable: boolean;
+            retryable: boolean;
+            attempt?: number;
+            max_attempts?: number;
+            error_code?: string;
+            error_message?: string;
+            /** Format: date-time */
+            cancel_requested_at?: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TaskEvent: {
+            id: number;
+            /** Format: uuid */
+            task_run_id: string;
+            /** Format: uuid */
+            user_id: string;
+            /** @enum {string} */
+            level: "info" | "warning" | "error";
+            message: string;
+            data_json?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description 任务列表摘要；输入、结果与进度明细仅由任务详情接口返回。 */
+        TaskRunSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            user_id: string;
+            /** Format: uuid */
+            definition_id?: string;
+            /** Format: uuid */
+            retry_of_id?: string;
+            source_type?: string;
+            source_id?: string;
+            task_type: string;
+            title: string;
+            /** @enum {string} */
+            trigger_type: "manual" | "scheduled" | "system" | "api";
+            runner: string;
+            status: components["schemas"]["TaskRunStatus"];
+            stage?: string;
+            /** Format: uuid */
+            server_id?: string;
+            server_name?: string;
+            resource?: string;
+            progress: number;
+            total_count: number;
+            success_count: number;
+            failure_count: number;
+            /** Format: int64 */
+            bytes_total: number;
+            /** Format: int64 */
+            bytes_processed: number;
+            cancelable: boolean;
+            retryable: boolean;
+            attempt: number;
+            max_attempts: number;
+            error_code?: string;
+            error_message?: string;
+            /** Format: date-time */
+            cancel_requested_at?: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            finished_at?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        TaskRunList: {
+            runs: components["schemas"]["TaskRunSummary"][];
+            total: number;
+            page: number;
+            page_size: number;
+            total_pages: number;
+        };
+        TaskRunDetails: {
+            run: components["schemas"]["TaskRun"];
+            events: components["schemas"]["TaskEvent"][];
+        };
+        TaskStatistics: {
+            total: number;
+            queued: number;
+            running: number;
+            canceling: number;
+            succeeded: number;
+            failed: number;
+            partial_success: number;
+            canceled: number;
+            timeout: number;
+        };
+        TaskCleanupResult: {
+            deleted_count: number;
+            deleted_events: number;
+            deleted_notifications: number;
+            retention_days: number;
+        };
         InboxNotification: {
             /** Format: uuid */
             id: string;
@@ -2065,6 +3819,42 @@ export interface components {
             page_size: number;
             total_pages: number;
         };
+        SFTPDeletePathsRequest: {
+            paths: string[];
+        };
+        SFTPDeletePathsResult: {
+            /** @enum {string} */
+            mode: "fast" | "recursive_task";
+            deleted_paths: string[];
+            /** Format: uuid */
+            task_id?: string;
+        };
+        SFTPDeletePathsResponse: {
+            data: components["schemas"]["SFTPDeletePathsResult"];
+        };
+        RealtimeEvent: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            type: "task.created" | "task.updated" | "task.cleanup.completed" | "notification.created" | "notification.changed" | "notification.cleanup.completed";
+            data: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            created_at: string;
+        };
+        TaskRunListResponse: {
+            data: components["schemas"]["TaskRunList"];
+        };
+        TaskRunDetailsResponse: {
+            data: components["schemas"]["TaskRunDetails"];
+        };
+        TaskStatisticsResponse: {
+            data: components["schemas"]["TaskStatistics"];
+        };
+        TaskCleanupResponse: {
+            data: components["schemas"]["TaskCleanupResult"];
+        };
         InboxNotificationListResponse: {
             data: components["schemas"]["InboxNotificationList"];
         };
@@ -2080,6 +3870,731 @@ export interface components {
             task_failure?: boolean;
             task_partial?: boolean;
             task_external?: boolean;
+        };
+        Server: {
+            /**
+             * Format: uuid
+             * @example 550e8400-e29b-41d4-a716-446655440001
+             */
+            id: string;
+            /** @example Production Server */
+            name: string;
+            /** @example 192.168.1.100 */
+            host: string;
+            /** @example 22 */
+            port: number;
+            /** @example root */
+            username: string;
+            /** @description 连接引用的密钥条目 ID。 */
+            ssh_key_id?: number | null;
+            /**
+             * @example key
+             * @enum {string}
+             */
+            auth_method?: "password" | "key";
+            /** @example production */
+            group?: string;
+            /**
+             * @example [
+             *       "web",
+             *       "nginx",
+             *       "docker"
+             *     ]
+             */
+            tags?: string[];
+            /**
+             * @example online
+             * @enum {string}
+             */
+            status?: "online" | "offline" | "error";
+            /** @example Ubuntu 22.04.3 LTS */
+            os?: string;
+            /** Format: date-time */
+            last_connected?: string;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        /**
+         * @example balanced
+         * @enum {string}
+         */
+        AIPermissionMode: "readonly" | "balanced" | "privileged";
+        /**
+         * @example ai_sdk_ui
+         * @enum {string}
+         */
+        AITransportType: "ai_sdk_ui";
+        /**
+         * @example idle
+         * @enum {string}
+         */
+        AISessionStatus: "idle" | "running" | "waiting_confirmation" | "closed";
+        /**
+         * @example waiting_confirm
+         * @enum {string}
+         */
+        AITaskStatus: "queued" | "waiting_confirm" | "running" | "succeeded" | "failed" | "cancelled";
+        AIToolView: {
+            name: string;
+            display_name?: string;
+            description: string;
+            dangerous: boolean;
+        };
+        AIMessageView: {
+            id: string;
+            /** @enum {string} */
+            role: "user" | "assistant" | "system" | "tool";
+            content: string;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description 用户停止本轮生成的时间；已生成的部分内容仍保留。
+             */
+            stopped_at?: string;
+        };
+        /** @description Vercel AI SDK UIMessage。前端直接渲染 parts，不再从 MessageView/TaskView 做本地适配。 */
+        AIUIMessage: {
+            id: string;
+            /** @enum {string} */
+            role: "system" | "user" | "assistant";
+            metadata?: {
+                [key: string]: unknown;
+            };
+            parts: components["schemas"]["AIUIMessagePart"][];
+        };
+        AIUIMessagePart: components["schemas"]["AIUITextPart"] | components["schemas"]["AIUIReasoningPart"] | components["schemas"]["AIUIToolPart"] | components["schemas"]["AIUIDynamicToolPart"] | components["schemas"]["AIUIDataPart"] | components["schemas"]["AIUIStepStartPart"] | components["schemas"]["AIUIFilePart"] | components["schemas"]["AIUISourceURLPart"] | components["schemas"]["AIUISourceDocumentPart"] | ({
+            type: string;
+        } & {
+            [key: string]: unknown;
+        });
+        AIUITextPart: {
+            /** @enum {unknown} */
+            type: "text";
+            text: string;
+            /** @enum {string} */
+            state?: "streaming" | "done";
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIReasoningPart: {
+            /** @enum {unknown} */
+            type: "reasoning";
+            text: string;
+            /** @enum {string} */
+            state?: "streaming" | "done";
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIDynamicToolPart: {
+            /** @enum {unknown} */
+            type: "dynamic-tool";
+            toolName: string;
+            toolCallId: string;
+            title?: string;
+            providerExecuted?: boolean;
+            callProviderMetadata?: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            state: "input-streaming" | "input-available" | "approval-requested" | "approval-responded" | "output-available" | "output-error" | "output-denied";
+            /** @description AI SDK UI tool input payload */
+            input?: unknown;
+            /** @description AI SDK UI tool output payload */
+            output?: unknown;
+            errorText?: string;
+            approval?: {
+                id?: string;
+                approved?: boolean;
+                reason?: string;
+            } & {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIToolPart: {
+            type: string;
+            toolCallId: string;
+            title?: string;
+            providerExecuted?: boolean;
+            callProviderMetadata?: {
+                [key: string]: unknown;
+            };
+            /** @enum {string} */
+            state: "input-streaming" | "input-available" | "approval-requested" | "approval-responded" | "output-available" | "output-error" | "output-denied";
+            /** @description AI SDK UI tool input payload */
+            input?: unknown;
+            /** @description AI SDK UI tool output payload */
+            output?: unknown;
+            errorText?: string;
+            approval?: {
+                id?: string;
+                approved?: boolean;
+                reason?: string;
+            } & {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /** @description AI SDK UI data-* part，例如 data-tool-status。 */
+        AIUIDataPart: {
+            type: string;
+            id?: string;
+            /** @description Data part payload */
+            data: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIStepStartPart: {
+            /** @enum {unknown} */
+            type: "step-start";
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIFilePart: {
+            /** @enum {unknown} */
+            type: "file";
+            mediaType: string;
+            filename?: string;
+            url: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUISourceURLPart: {
+            /** @enum {unknown} */
+            type: "source-url";
+            sourceId: string;
+            url: string;
+            title?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUISourceDocumentPart: {
+            /** @enum {unknown} */
+            type: "source-document";
+            sourceId: string;
+            mediaType: string;
+            title: string;
+            filename?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AITaskView: {
+            id: string;
+            /** @description 生成该工具调用的 AI SDK UI assistant message id。 */
+            assistant_message_id?: string;
+            tool_call_id: string;
+            tool_name: string;
+            tool_display_name?: string;
+            summary?: string;
+            status: components["schemas"]["AITaskStatus"];
+            dangerous: boolean;
+            requires_confirmation: boolean;
+            arguments?: {
+                [key: string]: unknown;
+            };
+            result?: string;
+            error?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description AI 会话作用域。terminal 表示助手默认面向当前终端页签和服务器。 */
+        AISessionScope: {
+            /** @enum {string} */
+            kind?: "global" | "terminal";
+            terminal_session_id?: string;
+            /** Format: uuid */
+            server_id?: string;
+            server_name?: string;
+            host?: string;
+            port?: number;
+            username?: string;
+        };
+        AISessionView: {
+            /** Format: uuid */
+            id: string;
+            model: string;
+            permission_mode: components["schemas"]["AIPermissionMode"];
+            scope?: components["schemas"]["AISessionScope"];
+            status: components["schemas"]["AISessionStatus"];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            messages: components["schemas"]["AIMessageView"][];
+            tasks: components["schemas"]["AITaskView"][];
+            ui_messages: components["schemas"]["AIUIMessage"][];
+            available_tools: components["schemas"]["AIToolView"][];
+            default_transport: components["schemas"]["AITransportType"];
+        };
+        CreateAISessionRequest: {
+            model?: string;
+            permission_mode?: components["schemas"]["AIPermissionMode"];
+            scope?: components["schemas"]["AISessionScope"];
+        };
+        CreateAISessionResponse: {
+            /** Format: uuid */
+            session_id: string;
+            session: components["schemas"]["AISessionView"];
+            default_transport: components["schemas"]["AITransportType"];
+        };
+        AISessionListItem: {
+            /** Format: uuid */
+            id: string;
+            model: string;
+            permission_mode: components["schemas"]["AIPermissionMode"];
+            status: components["schemas"]["AISessionStatus"];
+            scope?: components["schemas"]["AISessionScope"];
+            /** @description 会话标题。未手动命名时从首条用户消息生成。 */
+            title: string;
+            /** @description 是否为用户手动重命名的标题。 */
+            custom_title: boolean;
+            message_count: number;
+            task_count: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ListAISessionsResponse: {
+            items: components["schemas"]["AISessionListItem"][];
+            total: number;
+        };
+        RenameAISessionRequest: {
+            /** @description 新的会话标题，服务端会 trim 并限制长度。 */
+            title: string;
+        };
+        /** @description Vercel AI SDK UI DefaultChatTransport 请求体。context/model/permission_mode/scope 是 EasySSH 追加的会话能力；工具审批通过 messages 中的 approval-responded 工具片段提交。 */
+        AISDKChatRequest: {
+            id?: string;
+            messages?: components["schemas"]["AIUIMessage"][];
+            /** @enum {string} */
+            trigger?: "submit-message" | "regenerate-message";
+            messageId?: string;
+            /** @description EasySSH 附加上下文，会由服务端拼入本轮用户消息。 */
+            context?: string;
+            model?: string;
+            permission_mode?: components["schemas"]["AIPermissionMode"];
+            scope?: components["schemas"]["AISessionScope"];
+        };
+        /** @description Vercel AI SDK UIMessageChunk，用于 X-Vercel-AI-UI-Message-Stream v1 SSE data 载荷。 */
+        AIUIMessageChunk: components["schemas"]["AIUIStartChunk"] | components["schemas"]["AIUITextStartChunk"] | components["schemas"]["AIUITextDeltaChunk"] | components["schemas"]["AIUITextEndChunk"] | components["schemas"]["AIUIReasoningStartChunk"] | components["schemas"]["AIUIReasoningDeltaChunk"] | components["schemas"]["AIUIReasoningEndChunk"] | components["schemas"]["AIUIToolInputStartChunk"] | components["schemas"]["AIUIToolInputDeltaChunk"] | components["schemas"]["AIUIToolInputAvailableChunk"] | components["schemas"]["AIUIToolInputErrorChunk"] | components["schemas"]["AIUIToolApprovalRequestChunk"] | components["schemas"]["AIUIToolOutputAvailableChunk"] | components["schemas"]["AIUIToolOutputErrorChunk"] | components["schemas"]["AIUIToolOutputDeniedChunk"] | components["schemas"]["AIUISourceURLChunk"] | components["schemas"]["AIUISourceDocumentChunk"] | components["schemas"]["AIUIFileChunk"] | components["schemas"]["AIUIDataChunk"] | components["schemas"]["AIUIErrorChunk"] | components["schemas"]["AIUIStartStepChunk"] | components["schemas"]["AIUIFinishStepChunk"] | components["schemas"]["AIUIFinishChunk"] | components["schemas"]["AIUIAbortChunk"] | components["schemas"]["AIUIMessageMetadataChunk"] | ({
+            type: string;
+        } & {
+            [key: string]: unknown;
+        });
+        AIUIStartChunk: {
+            /** @enum {unknown} */
+            type: "start";
+            messageId?: string;
+            /** @description AI SDK UI message metadata */
+            messageMetadata?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUITextStartChunk: {
+            /** @enum {unknown} */
+            type: "text-start";
+            id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUITextDeltaChunk: {
+            /** @enum {unknown} */
+            type: "text-delta";
+            id: string;
+            delta: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUITextEndChunk: {
+            /** @enum {unknown} */
+            type: "text-end";
+            id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIReasoningStartChunk: {
+            /** @enum {unknown} */
+            type: "reasoning-start";
+            id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIReasoningDeltaChunk: {
+            /** @enum {unknown} */
+            type: "reasoning-delta";
+            id: string;
+            delta: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIReasoningEndChunk: {
+            /** @enum {unknown} */
+            type: "reasoning-end";
+            id: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIToolInputStartChunk: {
+            /** @enum {unknown} */
+            type: "tool-input-start";
+            toolCallId: string;
+            toolName: string;
+            dynamic?: boolean;
+            title?: string;
+            providerMetadata?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIToolInputDeltaChunk: {
+            /** @enum {unknown} */
+            type: "tool-input-delta";
+            toolCallId: string;
+            inputTextDelta: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIToolInputAvailableChunk: {
+            /** @enum {unknown} */
+            type: "tool-input-available";
+            toolCallId: string;
+            toolName: string;
+            /** @description AI SDK UI tool input payload */
+            input: unknown;
+            dynamic?: boolean;
+            title?: string;
+            providerMetadata?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIToolInputErrorChunk: {
+            /** @enum {unknown} */
+            type: "tool-input-error";
+            toolCallId: string;
+            toolName: string;
+            /** @description AI SDK UI tool input payload */
+            input: unknown;
+            errorText: string;
+            dynamic?: boolean;
+            title?: string;
+            providerMetadata?: {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIToolApprovalRequestChunk: {
+            /** @enum {unknown} */
+            type: "tool-approval-request";
+            approvalId: string;
+            toolCallId: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIToolOutputAvailableChunk: {
+            /** @enum {unknown} */
+            type: "tool-output-available";
+            toolCallId: string;
+            /** @description AI SDK UI tool output payload */
+            output: unknown;
+            dynamic?: boolean;
+            preliminary?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIToolOutputErrorChunk: {
+            /** @enum {unknown} */
+            type: "tool-output-error";
+            toolCallId: string;
+            errorText: string;
+            dynamic?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIToolOutputDeniedChunk: {
+            /** @enum {unknown} */
+            type: "tool-output-denied";
+            toolCallId: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUISourceURLChunk: {
+            /** @enum {unknown} */
+            type: "source-url";
+            sourceId: string;
+            url: string;
+            title?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUISourceDocumentChunk: {
+            /** @enum {unknown} */
+            type: "source-document";
+            sourceId: string;
+            mediaType: string;
+            title: string;
+            filename?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIFileChunk: {
+            /** @enum {unknown} */
+            type: "file";
+            url: string;
+            mediaType: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIDataChunk: {
+            type: string;
+            id?: string;
+            /** @description AI SDK UI data part payload */
+            data: unknown;
+            transient?: boolean;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIErrorChunk: {
+            /** @enum {unknown} */
+            type: "error";
+            errorText: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIStartStepChunk: {
+            /** @enum {unknown} */
+            type: "start-step";
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIFinishStepChunk: {
+            /** @enum {unknown} */
+            type: "finish-step";
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIFinishChunk: {
+            /** @enum {unknown} */
+            type: "finish";
+            /** @enum {string} */
+            finishReason?: "stop" | "length" | "content-filter" | "tool-calls" | "error" | "other";
+            /** @description AI SDK UI message metadata */
+            messageMetadata?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIAbortChunk: {
+            /** @enum {unknown} */
+            type: "abort";
+            reason?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        AIUIMessageMetadataChunk: {
+            /** @enum {unknown} */
+            type: "message-metadata";
+            /** @description AI SDK UI message metadata */
+            messageMetadata: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        ServerCreate: {
+            /** @example Production Server */
+            name: string;
+            /** @example 192.168.1.100 */
+            host: string;
+            /** @example 22 */
+            port: number;
+            /** @example root */
+            username: string;
+            /** @enum {string} */
+            auth_method: "password" | "key";
+            /**
+             * Format: password
+             * @description 可选；未保存时在连接时输入。
+             */
+            password?: string;
+            /** @description 已保存的密钥条目 ID；0 表示连接时临时提供私钥。与非空 private_key 互斥。 */
+            ssh_key_id?: number;
+            /**
+             * Format: password
+             * @description 仅用于导入私钥时校验口令，不持久化。
+             */
+            private_key_passphrase?: string;
+            /** @description 导入私钥为独立条目并建立引用；不在连接记录中保存私钥。 */
+            private_key?: string;
+            /** @example production */
+            group?: string;
+            tags?: string[];
+        };
+        ServerUpdate: {
+            name?: string;
+            host?: string;
+            port?: number;
+            username?: string;
+            /** Format: password */
+            password?: string;
+            /** @description 已保存的密钥条目 ID；0 表示连接时临时提供私钥。与非空 private_key 互斥。 */
+            ssh_key_id?: number;
+            /**
+             * Format: password
+             * @description 仅用于导入私钥时校验口令，不持久化。
+             */
+            private_key_passphrase?: string;
+            /** @description 导入私钥为独立条目并建立引用；不在连接记录中保存私钥。 */
+            private_key?: string;
+            group?: string;
+            tags?: string[];
+        };
+        ServerList: {
+            data: components["schemas"]["Server"][];
+            meta: components["schemas"]["PaginationMeta"];
+        };
+        SSHSession: {
+            /**
+             * Format: uuid
+             * @example 550e8400-e29b-41d4-a716-446655440002
+             */
+            id: string;
+            /** Format: uuid */
+            server_id: string;
+            /** @example Production Server */
+            server_name?: string;
+            /**
+             * @example active
+             * @enum {string}
+             */
+            status: "connecting" | "active" | "closed" | "error";
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            last_activity?: string;
+        };
+        FileInfo: {
+            /** @example document.pdf */
+            name: string;
+            /** @example /home/user/documents/document.pdf */
+            path: string;
+            /**
+             * @example file
+             * @enum {string}
+             */
+            type: "file" | "directory" | "symlink";
+            /**
+             * Format: int64
+             * @example 1048576
+             */
+            size: number;
+            /** @example -rw-r--r-- */
+            permissions?: string;
+            /** @example root */
+            owner?: string;
+            /** @example root */
+            group?: string;
+            /** Format: date-time */
+            modified_at?: string;
+        };
+        FileUploadRequest: {
+            /** Format: uuid */
+            server_id: string;
+            /** @example /home/user/uploads/ */
+            remote_path: string;
+            /** @default false */
+            overwrite: boolean;
+        };
+        Script: {
+            /** Format: uuid */
+            id: string;
+            /** @example Deploy Script */
+            name: string;
+            /** @example Automated deployment script */
+            description?: string;
+            /**
+             * @example #!/bin/bash
+             *     cd /var/www
+             *     git pull
+             */
+            content: string;
+            /**
+             * @default bash
+             * @enum {string}
+             */
+            language: "bash" | "python" | "nodejs";
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        ScriptExecutionRequest: {
+            /** Format: uuid */
+            script_id: string;
+            server_ids: string[];
+            parameters?: {
+                [key: string]: unknown;
+            };
+        };
+        ScriptExecutionResult: {
+            /** Format: uuid */
+            execution_id?: string;
+            /** @enum {string} */
+            status?: "pending" | "running" | "completed" | "failed";
+            results?: {
+                /** Format: uuid */
+                server_id?: string;
+                server_name?: string;
+                /** @enum {string} */
+                status?: "success" | "failed";
+                output?: string;
+                error?: string;
+                exit_code?: number;
+                /** Format: date-time */
+                executed_at?: string;
+            }[];
+        };
+        SystemMetrics: {
+            /**
+             * Format: float
+             * @example 45.2
+             */
+            cpu_usage?: number;
+            /**
+             * Format: float
+             * @example 68.5
+             */
+            memory_usage?: number;
+            /**
+             * Format: float
+             * @example 72.1
+             */
+            disk_usage?: number;
+            /**
+             * Format: int64
+             * @example 1048576
+             */
+            network_in?: number;
+            /**
+             * Format: int64
+             * @example 2097152
+             */
+            network_out?: number;
+            /**
+             * Format: int64
+             * @example 86400
+             */
+            uptime?: number;
+            /** Format: date-time */
+            timestamp?: string;
         };
         Log: {
             /** Format: uuid */
@@ -2098,6 +4613,46 @@ export interface components {
             };
             /** Format: date-time */
             created_at?: string;
+        };
+        DockerContainerStats: {
+            containerId: string;
+            name: string;
+            /** Format: double */
+            cpuPercent: number;
+            /** Format: int64 */
+            memoryUsage: number;
+            /** Format: int64 */
+            memoryLimit: number;
+            /** Format: double */
+            memoryPercent: number;
+            /** Format: int64 */
+            networkIn: number;
+            /** Format: int64 */
+            networkOut: number;
+            /** Format: int64 */
+            blockRead: number;
+            /** Format: int64 */
+            blockWrite: number;
+            pids: number;
+        };
+        /** @enum {string} */
+        BatchTaskType: "command" | "script";
+        /** @enum {string} */
+        BatchTaskExecutionMode: "parallel" | "sequential";
+        CreateBatchTaskRequest: {
+            task_name: string;
+            task_type: components["schemas"]["BatchTaskType"];
+            content?: string;
+            /** Format: uuid */
+            script_id?: string | null;
+            server_ids: string[];
+            execution_mode?: components["schemas"]["BatchTaskExecutionMode"];
+        };
+        UpdateBatchTaskRequest: {
+            task_name?: string;
+            content?: string;
+            server_ids?: string[];
+            execution_mode?: components["schemas"]["BatchTaskExecutionMode"];
         };
         /** @enum {string} */
         PermissionModule: "server" | "file" | "terminal" | "audit" | "system";
@@ -2219,87 +4774,6 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
-        EncryptedDevice: {
-            id: string;
-            /** Format: byte */
-            signing_key: string;
-            recipient: string;
-            name: string;
-        };
-        EncryptedGrant: {
-            device: components["schemas"]["EncryptedDevice"];
-            scopes: ("config" | "credentials" | "ai_config" | "sessions")[];
-            admin: boolean;
-            /** Format: byte */
-            envelope: string;
-        };
-        EncryptedManifest: {
-            /** @enum {integer} */
-            version: 5;
-            space: string;
-            /** Format: byte */
-            genesis_root: string;
-            /** Format: byte */
-            root: string;
-            /** Format: int64 */
-            revision: number;
-            previous: string;
-            epochs: {
-                /** Format: int64 */
-                config: number;
-                /** Format: int64 */
-                credentials: number;
-                /** Format: int64 */
-                ai_config: number;
-                /** Format: int64 */
-                sessions: number;
-            };
-            devices: components["schemas"]["EncryptedGrant"][];
-            recovery_recipient: string;
-            /** Format: byte */
-            recovery: string;
-            /** Format: byte */
-            signature: string;
-            /** Format: byte */
-            previous_signature: string;
-        };
-        EncryptedObject: {
-            /** @enum {integer} */
-            version: 5;
-            space: string;
-            manifest: string;
-            /** @enum {string} */
-            scope: "config" | "credentials" | "ai_config" | "sessions";
-            /** Format: int64 */
-            epoch: number;
-            document: string;
-            id: string;
-            parents: string[];
-            author: string;
-            /** Format: byte */
-            ciphertext: string;
-            /** Format: byte */
-            signature: string;
-        };
-        EncryptedHead: {
-            /** @enum {string} */
-            scope: "config" | "credentials" | "ai_config" | "sessions";
-            document: string;
-            object: string;
-        };
-        EncryptedRelayRoute: {
-            /** Format: uuid */
-            id: string;
-            host: string;
-            port: number;
-        };
-        AuthTicketRequest: {
-            /** @enum {string} */
-            type: "ws_ssh_relay" | "instance_backup_download";
-            /** Format: uuid */
-            server_id?: string;
-            backup_id?: string;
-        };
     };
     responses: {
         /** @description 请求失败 */
@@ -2339,6 +4813,11 @@ export interface components {
     };
     parameters: {
         ID: string;
+        ServerID: string;
+        ServerIDCamel: string;
+        SessionID: string;
+        TaskID: string;
+        MessageID: string;
     };
     requestBodies: never;
     headers: never;
@@ -2604,6 +5083,40 @@ export interface operations {
             };
         };
     };
+    resolveSyncConflict: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncResolution"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authentication, authorization, validation or synchronization error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
     getSyncDeviceIdentity: {
         parameters: {
             query?: never;
@@ -2620,6 +5133,178 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SyncIdentity"];
+                };
+            };
+            /** @description Authentication, authorization, validation or synchronization error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        error?: string;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
+    forkSyncConversation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    id: string;
+                    /** Format: uuid */
+                    ref: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Copied conversation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listSyncVaultDocuments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sync documents */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncVaultEntry"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSyncVaultObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Payload, never cached */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        value: string;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putSyncVaultObject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncVaultObject"];
+            };
+        };
+        responses: {
+            /** @description Object saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        saved: boolean;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exchangeSyncVaultDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: "credential" | "ai_config" | "ai_session";
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncVaultExchange"];
+            };
+        };
+        responses: {
+            /** @description Merged reference document and retained conflicts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncVaultResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    exchangeSyncChanges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncPeer"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncPeer"];
                 };
             };
             /** @description Authentication, authorization, validation or synchronization error */
@@ -2926,6 +5611,326 @@ export interface operations {
             };
         };
     };
+    getAiConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 返回当前用户可用的 AI 配置状态 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        configured?: boolean;
+                        provider?: string;
+                        model?: string;
+                        models?: string[];
+                        has_key?: boolean;
+                        message?: string;
+                    };
+                };
+            };
+        };
+    };
+    getAiSessions: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+                /** @description 按会话标题或消息快照文本搜索。 */
+                q?: string;
+                /** @description 按 AI 会话作用域过滤，例如 terminal 表示终端页签范围。 */
+                scope_kind?: "global" | "terminal";
+                /** @description 终端页签会话 ID，用于恢复当前终端的 AI 会话。 */
+                terminal_session_id?: string;
+                /** @description 当前终端连接的服务器 ID，用于限定终端 AI 会话。 */
+                server_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListAISessionsResponse"];
+                };
+            };
+        };
+    };
+    postAiSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAISessionRequest"];
+            };
+        };
+        responses: {
+            /** @description 会话创建成功 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateAISessionResponse"];
+                };
+            };
+        };
+    };
+    getAiSessionsLatest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 最近未关闭会话 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateAISessionResponse"];
+                };
+            };
+            /** @description 没有可恢复会话 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAiSessionsSessionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话快照 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateAISessionResponse"];
+                };
+            };
+            /** @description 会话不存在或已关闭 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteAiSessionsSessionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 会话不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchAiSessionsSessionId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameAISessionRequest"];
+            };
+        };
+        responses: {
+            /** @description 已重命名 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        updated?: boolean;
+                    };
+                };
+            };
+            /** @description 会话不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postAiSessionsSessionIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已中断 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        cancelled?: boolean;
+                    };
+                };
+            };
+            /** @description 会话不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAiSessionsSessionIdChatStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话快照 SSE 流 */
+            200: {
+                headers: {
+                    "X-Vercel-AI-UI-Message-Stream"?: "v1";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["AIUIMessageChunk"];
+                };
+            };
+            /** @description 会话不存在或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postAiSessionsSessionIdChat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISDKChatRequest"];
+            };
+        };
+        responses: {
+            /** @description AI SDK UI message stream */
+            200: {
+                headers: {
+                    /** @description AI SDK UI message stream version */
+                    "X-Vercel-AI-UI-Message-Stream"?: "v1";
+                    [name: string]: unknown;
+                };
+                content: {
+                    /** @description SSE data 载荷为 AIUIMessageChunk JSON；结束帧为 [DONE]。 */
+                    "text/event-stream": components["schemas"]["AIUIMessageChunk"];
+                };
+            };
+            /** @description 会话不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 会话当前不可接受新消息 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     listPermissions: {
         parameters: {
             query?: {
@@ -3132,6 +6137,200 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    getServers: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+                /** @description 按组筛选 */
+                group?: string;
+                /** @description 按状态筛选 */
+                status?: "online" | "offline" | "error";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功获取服务器列表 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerList"];
+                };
+            };
+        };
+    };
+    postServers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerCreate"];
+            };
+        };
+        responses: {
+            /** @description 服务器创建成功 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Server"];
+                };
+            };
+            /** @description 请求参数错误 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getServersId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Server"];
+                };
+            };
+            /** @description 服务器不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    putServersId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerUpdate"];
+            };
+        };
+        responses: {
+            /** @description 更新成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Server"];
+                };
+            };
+        };
+    };
+    deleteServersId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 删除成功，无响应体 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getSshSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SSHSession"][];
+                };
+            };
+        };
+    };
+    getSshSessionsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    deleteSshSessionsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 会话已关闭 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
+            };
+        };
+    };
     getEventsStream: {
         parameters: {
             query?: never;
@@ -3153,6 +6352,194 @@ export interface operations {
                      *     data: {"id":"92d459d5-3d5d-4e27-8e33-d326f99ebbf4","type":"task.updated","data":{"task_id":"f65f87df-dd77-46e4-9535-24f192a596da"},"created_at":"2026-07-10T12:00:00Z"}
                      */
                     "text/event-stream": string;
+                };
+            };
+        };
+    };
+    getTasks: {
+        parameters: {
+            query?: {
+                /** @description 逗号分隔的任务状态 */
+                status?: string;
+                /** @description 逗号分隔的任务类型 */
+                task_type?: string;
+                /** @description 逗号分隔的触发方式 */
+                trigger_type?: string;
+                keyword?: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 任务运行记录 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRunListResponse"];
+                };
+            };
+        };
+    };
+    deleteTasksCleanup: {
+        parameters: {
+            query?: {
+                retention_days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 清理结果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskCleanupResponse"];
+                };
+            };
+            /** @description 保留天数无效 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTasksStatistics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 任务统计 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskStatisticsResponse"];
+                };
+            };
+        };
+    };
+    getTasksId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 任务详情 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskRunDetailsResponse"];
+                };
+            };
+            /** @description 任务不存在或不属于当前用户 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postTasksIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已取消排队任务，或已向运行中任务提交取消请求 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        status: components["schemas"]["TaskRunStatus"];
+                    };
+                };
+            };
+            /** @description 当前任务不可取消 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postTasksIdRetry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已重新提交任务 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: uuid
+                         * @description 新任务运行 ID；相同重试请求返回同一个 ID。
+                         */
+                        id: string;
+                        /** Format: uuid */
+                        definition_id: string;
+                        /** Format: uuid */
+                        retry_of_id: string;
+                    };
+                };
+            };
+            /** @description 任务不可重试 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };
@@ -3255,6 +6642,227 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    deleteSftpServerIdDelete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    path: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 删除成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FileInfo"];
+                };
+            };
+            /** @description 目标是目录，必须改用 delete-paths */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postSftpServerIdDeletePaths: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SFTPDeletePathsRequest"];
+            };
+        };
+        responses: {
+            /** @description 快速删除已同步完成，mode 为 fast */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SFTPDeletePathsResponse"];
+                };
+            };
+            /** @description 快速删除不可用，递归删除任务已进入统一任务中心，mode 为 recursive_task */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SFTPDeletePathsResponse"];
+                };
+            };
+            /** @description 路径不合法 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 需要补充服务器凭据或私钥口令 */
+            428: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description SSH 连接或认证失败 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getScripts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Script"][];
+                };
+            };
+        };
+    };
+    postScripts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    description?: string;
+                    content: string;
+                    language?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 创建成功 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Script"];
+                };
+            };
+        };
+    };
+    getScriptsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Script"];
+                };
+            };
+        };
+    };
+    putScriptsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    description?: string;
+                    content?: string;
+                    language?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 更新成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Script"];
+                };
+            };
+        };
+    };
+    deleteScriptsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 删除成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
+                };
             };
         };
     };
@@ -3756,6 +7364,42 @@ export interface operations {
             };
         };
     };
+    deleteAiSessionsSessionIdMessagesMessageId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    patchAiSessionsSessionIdMessagesMessageId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
     postAuth2faVerify: {
         parameters: {
             query?: never;
@@ -3891,9 +7535,9 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: {
             content: {
-                "application/json": components["schemas"]["AuthTicketRequest"];
+                "application/json": components["schemas"]["JSONObject"];
             };
         };
         responses: {
@@ -3913,6 +7557,377 @@ export interface operations {
                 "application/json": components["schemas"]["JSONObject"];
             };
         };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getBatchTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postBatchTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBatchTaskRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getBatchTasksId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    putBatchTasksId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBatchTaskRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    deleteBatchTasksId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postBatchTasksIdStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getBatchTasksStatistics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getDashboardOverview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getDockerServerIdContainers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getDockerContainerStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 单个容器的即时资源统计 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DockerContainerStats"];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    deleteDockerServerIdContainersId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getDockerServerIdContainersIdCheckUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getDockerServerIdContainersIdLogs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postDockerServerIdContainersIdPause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postDockerServerIdContainersIdRestart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postDockerServerIdContainersIdStart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postDockerServerIdContainersIdStop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postDockerServerIdContainersIdUnpause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getDockerServerIdImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getDockerServerIdResources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getDockerServerIdStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getDockerServerIdSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             200: components["responses"]["JSON"];
             400: components["responses"]["Error"];
@@ -3959,6 +7974,51 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
+    getMonitorServerServerId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postMonitoringDatasourceTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getMonitoringResources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
     postOauthGoogleVerify: {
         parameters: {
             query?: never;
@@ -3971,6 +8031,47 @@ export interface operations {
                 "application/json": components["schemas"]["JSONObject"];
             };
         };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getOperationRecords: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getOperationRecordsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getOperationRecordsStatistics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             200: components["responses"]["JSON"];
             400: components["responses"]["Error"];
@@ -4002,6 +8103,197 @@ export interface operations {
         };
     };
     getRuntime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getScheduledTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postScheduledTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getScheduledTasksId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    putScheduledTasksId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    deleteScheduledTasksId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postScheduledTasksIdToggle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postScheduledTasksIdTrigger: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            /** @description 任务已进入持久化队列 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        message: string;
+                        /** Format: uuid */
+                        task_run_id: string;
+                    };
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    getScheduledTasksStatistics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postScriptsIdExecute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    patchServersReorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getServersStatistics: {
         parameters: {
             query?: never;
             header?: never;
@@ -4118,6 +8410,53 @@ export interface operations {
         };
     };
     postSettingsLoginSecurity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSettingsAiSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSettingsAiSystem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSettingsAiSystemModels: {
         parameters: {
             query?: never;
             header?: never;
@@ -4386,6 +8725,36 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
+    getSettingsSystemScheduledTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    patchSettingsSystemScheduledTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
     getSettingsWorkspace: {
         parameters: {
             query?: never;
@@ -4505,6 +8874,696 @@ export interface operations {
                 "application/json": components["schemas"]["JSONObject"];
             };
         };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpServerIdAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpServerIdAuthWs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebSocket 协议升级 */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postSftpServerIdBatchDelete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpServerIdBatchDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            /** @description 文件流 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+        };
+    };
+    postSftpServerIdChmod: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpServerIdClose: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpServerIdDiskUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpServerIdDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 文件流 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+        };
+    };
+    getSftpServerIdList: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpServerIdMkdir: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpServerIdRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpServerIdRename: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpServerIdStat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpServerIdUploadStream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description 事件流 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+        };
+    };
+    postSftpServerIdWrite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpPoolStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpTransfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpTransferTaskIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpTransferDirect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpTransferWsTaskId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebSocket 协议升级 */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    postSftpUploadTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpUploadTasks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpUploadTasksTaskId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSftpUploadTasksTaskIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSftpUploadWsTaskId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebSocket 协议升级 */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getSshKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    deleteSshKeysId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSshKeysGenerate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postSshKeysImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSshStatistics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getSshTerminalServerId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                server_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description WebSocket 协议升级 */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getTransferJobs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getTransferJobsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    deleteTransferJobsId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getTransferJobsIdArtifact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 文件流 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+        };
+    };
+    postTransferJobsIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postTransferJobsSftpDownload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            /** @description 文件流 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+        };
+    };
+    postTransferJobsSftpUpload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    getTransferJobsStatistics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             200: components["responses"]["JSON"];
             400: components["responses"]["Error"];
@@ -4676,6 +9735,83 @@ export interface operations {
             400: components["responses"]["Error"];
         };
     };
+    getUsersMeAiConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    putUsersMeAiConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    deleteUsersMeAiConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    postUsersMeAiConfigModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
+    putUsersMeMonitorDatasource: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["JSONObject"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+        };
+    };
     postUsersMeOauthGoogleLink: {
         parameters: {
             query?: never;
@@ -4779,647 +9915,6 @@ export interface operations {
         responses: {
             200: components["responses"]["JSON"];
             400: components["responses"]["Error"];
-        };
-    };
-    getManifests: {
-        parameters: {
-            query?: {
-                after?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EncryptedManifest"][];
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    postManifests: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EncryptedManifest"];
-            };
-        };
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        hash: string;
-                    };
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    getHeads: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EncryptedHead"][];
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    getObjectsId: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EncryptedObject"];
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    postObjects: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EncryptedObject"];
-            };
-        };
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        id: string;
-                    };
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    postRoutes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EncryptedRelayRoute"];
-            };
-        };
-        responses: {
-            /** @description 成功 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    getDeviceManifests: {
-        parameters: {
-            query?: {
-                after?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EncryptedManifest"][];
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    postDeviceManifests: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EncryptedManifest"];
-            };
-        };
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        hash: string;
-                    };
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    getDeviceHeads: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EncryptedHead"][];
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    getDeviceObjectsId: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EncryptedObject"];
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    postDeviceObjects: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EncryptedObject"];
-            };
-        };
-        responses: {
-            /** @description 成功 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        id: string;
-                    };
-                };
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    postDeviceRoutes: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EncryptedRelayRoute"];
-            };
-        };
-        responses: {
-            /** @description 成功 */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 格式无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未认证 */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 未授权 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description 签名、版本或配额冲突 */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    sshCiphertextRelay: {
-        parameters: {
-            query: {
-                ticket: string;
-            };
-            header?: never;
-            path: {
-                server_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Switching protocols */
-            101: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Origin、权限或中继目标不允许 */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
         };
     };
 }

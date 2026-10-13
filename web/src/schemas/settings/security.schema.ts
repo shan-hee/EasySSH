@@ -21,7 +21,6 @@ export const loginSecuritySchema = z.object({
   login_limit: z.number().min(1).max(100),
   api_limit: z.number().min(10).max(10000),
   two_fa_limit: z.number().min(1).max(20),
-  password_pwned_check_enabled: z.boolean(),
 })
 
 export const webSecuritySchema = z.object({

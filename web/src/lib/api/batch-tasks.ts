@@ -1,3 +1,4 @@
+import { apiFetch } from "@/lib/api-client"
 import type {
   BatchTask,
   BatchTaskStatistics,
@@ -20,38 +21,69 @@ export const batchTasksApi = {
   /**
    * 获取批量任务列表
    */
-  async list(_params?: ListBatchTasksParams): Promise<ListBatchTasksResponse> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
+  async list(params?: ListBatchTasksParams): Promise<ListBatchTasksResponse> {
+    const queryParams = new URLSearchParams()
+    if (params?.page) queryParams.append("page", params.page.toString())
+    if (params?.limit) queryParams.append("limit", params.limit.toString())
+    if (params?.status) queryParams.append("status", params.status)
+    if (params?.task_type) queryParams.append("task_type", params.task_type)
+
+    const url = `/batch-tasks${queryParams.toString() ? `?${queryParams}` : ""}`
+    return apiFetch<ListBatchTasksResponse>(url)
+  },
 
   /**
    * 创建批量任务
    */
-  async create(_data: CreateBatchTaskRequest): Promise<BatchTask> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
+  async create(data: CreateBatchTaskRequest): Promise<BatchTask> {
+    return apiFetch<BatchTask>(`/batch-tasks`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    })
+  },
 
   /**
    * 获取批量任务详情
    */
-  async getById(_id: string): Promise<BatchTask> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
+  async getById(id: string): Promise<BatchTask> {
+    return apiFetch<BatchTask>(`/batch-tasks/${id}`)
+  },
 
   /**
    * 更新批量任务
    */
   async update(
-    _id: string,
-    _data: UpdateBatchTaskRequest
-  ): Promise<BatchTask> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
+    id: string,
+    data: UpdateBatchTaskRequest
+  ): Promise<BatchTask> {
+    return apiFetch<BatchTask>(`/batch-tasks/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    })
+  },
 
   /**
    * 删除批量任务
    */
-  async delete(_id: string): Promise<{ message: string }> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
+  async delete(id: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>(`/batch-tasks/${id}`, {
+      method: "DELETE",
+    })
+  },
 
   /**
    * 获取批量任务统计信息
    */
-  async getStatistics(): Promise<BatchTaskStatistics> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
+  async getStatistics(): Promise<BatchTaskStatistics> {
+    return apiFetch<BatchTaskStatistics>(`/batch-tasks/statistics`)
+  },
 
   /**
    * 启动批量任务
    */
-  async start(_id: string): Promise<{ message: string }> { throw new Error("浏览器不提供服务端后台任务；请使用当前连接内的操作") },
+  async start(id: string): Promise<{ message: string }> {
+    return apiFetch<{ message: string }>(`/batch-tasks/${id}/start`, {
+      method: "POST",
+    })
+  },
 }

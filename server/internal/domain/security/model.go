@@ -14,7 +14,7 @@ type SecurityConfig struct {
 	// 会话管理
 	SessionTimeout  int  `gorm:"not null;default:30" json:"session_timeout"`  // 会话超时时间（分钟）
 	MaxTabs         int  `gorm:"not null;default:10" json:"max_tabs"`         // 最大标签页数
-	InactiveMinutes int  `gorm:"not null;default:15" json:"inactive_minutes"` // 非活动断开提醒��间（分钟）
+	InactiveMinutes int  `gorm:"not null;default:15" json:"inactive_minutes"` // 非活动断开提醒时间（分钟）
 	RememberLogin   bool `gorm:"not null;default:true" json:"remember_login"` // 是否允许记住登录状态
 	Hibernate       bool `gorm:"not null;default:true" json:"hibernate"`      // 是否启用后台标签页休眠
 
@@ -26,13 +26,12 @@ type SecurityConfig struct {
 	CORSConfig string `gorm:"type:text" json:"cors_config"` // JSON: CORSConfig
 
 	// Web 部署与浏览器安全
-	TrustedProxies            string `gorm:"type:text;not null;default:'127.0.0.1'" json:"trusted_proxies"`
-	CookieSecureMode          string `gorm:"size:16;not null;default:'auto'" json:"cookie_secure_mode"`
-	CookieDomain              string `gorm:"size:255" json:"cookie_domain"`
-	CookieSameSite            string `gorm:"size:16;not null;default:'lax'" json:"cookie_same_site"`
-	CSRFTrustedOrigins        string `gorm:"type:text" json:"csrf_trusted_origins"`
-	ContentSecurityPolicy     string `gorm:"type:text" json:"content_security_policy"`
-	PasswordPwnedCheckEnabled bool   `gorm:"not null;default:false" json:"password_pwned_check_enabled"`
+	TrustedProxies        string `gorm:"type:text;not null;default:'127.0.0.1'" json:"trusted_proxies"`
+	CookieSecureMode      string `gorm:"size:16;not null;default:'auto'" json:"cookie_secure_mode"`
+	CookieDomain          string `gorm:"size:255" json:"cookie_domain"`
+	CookieSameSite        string `gorm:"size:16;not null;default:'lax'" json:"cookie_same_site"`
+	CSRFTrustedOrigins    string `gorm:"type:text" json:"csrf_trusted_origins"`
+	ContentSecurityPolicy string `gorm:"type:text" json:"content_security_policy"`
 
 	// 速率限制
 	LoginLimit int `gorm:"not null;default:5" json:"login_limit"`  // 登录接口速率限制（次/分钟/IP）

@@ -592,13 +592,13 @@ function TerminalPageContent() {
         <TerminalComponent
           sessions={sessions}
           extraSessions={sftpTabSessions}
-          extraNewSessionActions={[...(canUseSftpCapability ? [{
+          extraNewSessionActions={canUseSftpCapability ? [{
             id: "new-sftp-session",
             label: "SFTP+",
             ariaLabel: t("sftpPickerActionLabel"),
             title: t("sftpPickerActionLabel"),
             onCreate: handleOpenSftpPicker,
-          }] : [])]}
+          }] : []}
           renderExtraSessionContent={renderSftpTabContent}
           onOpenSftpSession={async (session, path) => {
               if (!session.serverId) return

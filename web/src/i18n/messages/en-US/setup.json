@@ -51,5 +51,16 @@
   "initFailedGeneric": "Initialization failed. Please try again.",
   "completedTitle": "Initialization completed!",
   "completedDescriptionLine1": "Administrator account has been created successfully.",
-  "completedDescriptionLine2": "Redirecting to dashboard..."
+  "completedDescriptionLine2": "Redirecting to dashboard...",
+  "title": "Create an administrator",
+  "description": "Set up your account to start using EasySSH.",
+  "username": "Username",
+  "email": "Email",
+  "password": "Password",
+  "confirmPassword": "Confirm password",
+  "passwordHint": "Used to sign in. At least 9 characters, up to 72 bytes.",
+  "passwordMismatch": "The passwords do not match.",
+  "passwordLength": "Use at least 9 characters for your password.",
+  "continue": "Create administrator",
+  "failed": "Unable to complete setup. Please try again."
 }

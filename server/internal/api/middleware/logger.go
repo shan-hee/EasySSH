@@ -2,22 +2,10 @@ package middleware
 
 import (
 	"log/slog"
-	"net/url"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
-
-// Keep one-time connection tickets out of both access and recovery logs.
-func safeRequestURI(raw *url.URL) string {
-	safeURL := *raw
-	if safeURL.Query().Has("ticket") {
-		query := safeURL.Query()
-		query.Set("ticket", "[redacted]")
-		safeURL.RawQuery = query.Encode()
-	}
-	return safeURL.RequestURI()
-}
 
 // Logger 日志中间件
 func Logger() gin.HandlerFunc {
@@ -29,7 +17,13 @@ func Logger() gin.HandlerFunc {
 		c.Next()
 
 		// 过滤健康检查和ping请求，避免日志污染
-		reqURI := safeRequestURI(c.Request.URL)
+		safeURL := *c.Request.URL
+		if safeURL.Query().Has("ticket") {
+			query := safeURL.Query()
+			query.Set("ticket", "[redacted]")
+			safeURL.RawQuery = query.Encode()
+		}
+		reqURI := safeURL.RequestURI()
 		if reqURI == "/api/v1/ping" || reqURI == "/api/v1/health" {
 			return
 		}
