@@ -142,8 +142,8 @@ return (<>
               </Select>
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-custom">
-              <div className="space-y-6 p-6">
-                <h3 className="text-lg font-semibold">
+              <div className={activeSection === "about" ? "flex min-h-full flex-col gap-6 p-6" : "space-y-6 p-6"}>
+                <h3 className="shrink-0 text-lg font-semibold">
                   {getSectionLabel(activeSection)}
                 </h3>
 <React.Suspense key={activeSection} fallback={<SettingsLoading />}>
