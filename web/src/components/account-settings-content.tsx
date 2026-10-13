@@ -21,6 +21,7 @@ import { AccountProfile } from "@/components/settings/account-profile"
 import { AccountSSHKeys } from "@/components/settings/account-ssh-keys"
 import { AccountNotifications } from "@/components/settings/account-notifications"
 import { AccountAbout } from "@/components/settings/account-about"
+import { SettingsLoading } from "@/components/settings/settings-loading"
 type SettingsSection = "sync" | "profile" | "security" | "notifications" | "sshKeys" | "devices" | "about"
 
 const settingsNavItems: { id: SettingsSection; icon: typeof User }[] = [
@@ -145,6 +146,7 @@ return (<>
                 <h3 className="text-lg font-semibold">
                   {getSectionLabel(activeSection)}
                 </h3>
+<React.Suspense key={activeSection} fallback={<SettingsLoading />}>
 {open && <>
 {activeSection === "profile" && <AccountProfile />}
 {activeSection === "security" && <AccountSecurity />}
@@ -154,6 +156,7 @@ return (<>
 {activeSection === "sync" && <SyncPanel adapter={webSyncAdapter} desktopMode={false} />}
 {activeSection === "about" && <AccountAbout />}
 </>}
+</React.Suspense>
               </div>
             </div>
           </main>

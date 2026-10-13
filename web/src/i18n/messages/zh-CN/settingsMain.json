@@ -17,5 +17,6 @@
   "itemNetworkDeployment": "Web 与部署",
   "itemAIConfig": "AI 配置",
   "itemNotificationConfig": "通知配置",
-  "itemBackup": "备份与恢复"
+  "itemBackup": "备份与恢复",
+  "itemUsers": "用户与权限"
 }

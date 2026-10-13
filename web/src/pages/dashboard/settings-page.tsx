@@ -1,6 +1,7 @@
+import { Suspense } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { Archive, Bot, Cable, Clock3, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Workflow } from "lucide-react"
+import { Archive, Bot, Cable, Clock3, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Users, Workflow } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { cn } from "@/lib/utils"
@@ -11,9 +12,11 @@ import { AccessControlTab } from "./settings/security-center/_tabs/access-contro
 import { NetworkSecurityTab } from "./settings/security-center/_tabs/network-security-tab"
 import { WorkspaceTab } from "./settings/security-center/_tabs/workspace-tab"
 import { BackupRestoreTab } from "@/components/settings/backup-restore-tab"
+import { SettingsLoading } from "@/components/settings/settings-loading"
 import { NotificationConfigWrapper } from "./settings/integrations/_tabs/notification-config-wrapper"
 import { AIConfigWrapper } from "./settings/integrations/_tabs/ai-config-wrapper"
 import { ScheduledTasksTab } from "./settings/system-config/_tabs/scheduled-tasks-tab"
+import { UserManagementContent } from "./settings/management/_tabs/user-management-content"
 
 interface SettingsItem {
   id: string
@@ -33,6 +36,7 @@ const groups: SettingsGroup[] = [
     { id: "basic", nameKey: "itemBasic", icon: Settings, component: BasicTab },
   ] },
   { id: "identity", nameKey: "groupIdentity", items: [
+    { id: "users", nameKey: "itemUsers", icon: Users, component: UserManagementContent },
     { id: "authentication", nameKey: "itemAuthentication", icon: Fingerprint, component: AuthenticationTab },
     { id: "access-control", nameKey: "itemAccessControl", icon: Shield, component: AccessControlTab },
   ] },
@@ -121,7 +125,9 @@ function SettingsContent() {
           <div className="shrink-0 border-b px-4 py-3">
             <h1 className="flex items-center gap-2 text-base font-semibold"><ActiveIcon className="h-4 w-4" />{t(activeItem.nameKey)}</h1>
           </div>
-          <ActiveComponent />
+          <Suspense key={activeSection} fallback={<SettingsLoading />}>
+            <ActiveComponent />
+          </Suspense>
         </main>
       </DashboardPageContent>
     </>

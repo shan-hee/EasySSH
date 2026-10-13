@@ -1,4 +1,4 @@
-
+import { useTranslation } from "react-i18next"
 import { EmailNotificationTab } from "./email-notification-tab"
 import { WebhookNotificationTab } from "./webhook-notification-tab"
 import { DingTalkNotificationTab } from "./dingtalk-notification-tab"
@@ -10,6 +10,14 @@ import { SettingsLoading } from "@/components/settings/settings-loading"
 import { SettingsFormActions } from "@/components/settings/settings-form-actions"
 
 export function NotificationConfigWrapper() {
+  // Load all notification sections together before rendering their forms.
+  useTranslation([
+    "settingsCommon",
+    "settingsIntegrationsEmail",
+    "settingsIntegrationsWebhook",
+    "settingsIntegrationsDingTalk",
+    "settingsIntegrationsWeCom",
+  ])
   const { form, isLoading, isSaving, handleSave } = useSettingsForm({
     cacheKey: "notifications",
     schema: notificationConfigSchema,
