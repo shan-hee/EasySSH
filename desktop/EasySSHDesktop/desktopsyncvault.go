@@ -280,8 +280,8 @@ type DesktopVaultSave struct {
 }
 
 func (s *DesktopSyncService) SaveVault(input DesktopVaultSave) (bool, error) {
-	if len(input.Document) > 8<<20 {
-		return false, errors.New("conversation sync history too large")
+	if len(input.Document) > syncdata.MaxDocumentBytes {
+		return false, errors.New("conversation sync history exceeds 32 MiB")
 	}
 	db, err := s.database()
 	if err != nil {

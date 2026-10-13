@@ -1,12 +1,52 @@
 package main
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
 	"github.com/easyssh/shared/syncdata"
 	"github.com/google/uuid"
 )
+
+func TestReauthorizationRetainsOnlyPreviouslyEnabledAndStillGrantedScopes(t *testing.T) {
+	s := newDesktopSyncTestService(t)
+	instance, owner := uuid.New(), uuid.New()
+	space := uuid.NewSHA1(instance, []byte(owner.String())).String()
+	grants := syncdata.SyncScopes{Credentials: true, AIConfig: true, Sessions: true}
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/sync/device/disconnect" {
+			_, _ = w.Write([]byte(`{"disconnected":true}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"space_id": space, "instance_id": instance, "user_id": owner, "account_name": "account", "protocol": syncdata.ConfigurationProtocol, "grants": grants})
+	}))
+	defer remote.Close()
+	token := "ess_sync_" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	if err := s.connect(remote.URL, token); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetScopes(syncdata.SyncScopes{Credentials: true, Sessions: true}); err != nil {
+		t.Fatal(err)
+	}
+	if revoked, err := s.Disconnect(); err != nil || !revoked {
+		t.Fatalf("disconnect: %v %v", revoked, err)
+	}
+	grants.Credentials = false
+	if err := s.connect(remote.URL, token); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Scopes != (syncdata.SyncScopes{Sessions: true}) {
+		t.Fatalf("reauthorization changed enabled scopes incorrectly: %+v", state.Scopes)
+	}
+}
 
 func TestDesktopSyncOrderPreservesUnenrolledServerSlots(t *testing.T) {
 	s := newDesktopSyncTestService(t)

@@ -27,7 +27,7 @@
   "syncRevoke": "Revoke",
   "syncRevokeConfirm": "This device will no longer be able to sync. Data already synced to the device will remain there. Continue?",
   "syncConflicts": "Changes to review",
-  "syncConflictHint": "Concurrent edits retain multiple versions. Choose a version to continue syncing. Save other conversation versions separately to continue each branch. Credential previews never display secrets.",
+  "syncConflictHint": "Conflicting fields keep their current local values until you choose a version. New records with unresolved conflicts are not added locally. You can save other conversation versions separately. Credential previews never display secrets.",
   "syncConnectionField": "Connection parameters",
   "syncContentField": "Script content",
   "syncUseVersion": "Use version {number}",

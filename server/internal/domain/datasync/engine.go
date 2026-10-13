@@ -31,10 +31,12 @@ type Resolution struct {
 	Value string `json:"value"`
 }
 type EngineInput struct {
-	Document   string            `json:"document"`
-	Current    syncdata.Snapshot `json:"current"`
-	Peer       Peer              `json:"peer"`
-	Resolution *Resolution       `json:"resolution,omitempty"`
+	Inspect       bool              `json:"inspect,omitempty"`
+	Configuration bool              `json:"configuration,omitempty"`
+	Document      string            `json:"document"`
+	Current       syncdata.Snapshot `json:"current"`
+	Peer          Peer              `json:"peer"`
+	Resolution    *Resolution       `json:"resolution,omitempty"`
 }
 type EngineResult struct {
 	Document  string            `json:"document"`
@@ -73,7 +75,7 @@ func (e *Engine) Run(ctx context.Context, input EngineInput) (EngineResult, erro
 				path = filepath.Join(filepath.Dir(exe), "sync-runtime", "engine.mjs")
 			}
 		}
-		cmd := exec.Command("node", "--max-old-space-size=128", path)
+		cmd := exec.Command("node", "--max-old-space-size=512", path)
 		cmd.Stderr = os.Stderr
 		stdin, err := cmd.StdinPipe()
 		if err != nil {
@@ -90,7 +92,7 @@ func (e *Engine) Run(ctx context.Context, input EngineInput) (EngineResult, erro
 		e.cmd = cmd
 		e.input = stdin
 		e.output = bufio.NewScanner(stdout)
-		e.output.Buffer(make([]byte, 4096), 32<<20)
+		e.output.Buffer(make([]byte, 4096), syncdata.MaxRuntimeMessageBytes)
 	}
 	type response struct {
 		Result EngineResult `json:"result"`
@@ -127,8 +129,8 @@ func (e *Engine) Run(ctx context.Context, input EngineInput) (EngineResult, erro
 	if result.Error != "" {
 		return EngineResult{}, errors.New(result.Error)
 	}
-	if len(result.Result.Document) > 8<<20 {
-		return EngineResult{}, errors.New("sync history exceeds the 8 MiB limit")
+	if len(result.Result.Document) > syncdata.MaxDocumentBytes {
+		return EngineResult{}, errors.New("sync history exceeds the 32 MiB limit")
 	}
 	if err := syncdata.Validate(result.Result.Snapshot); err != nil {
 		return EngineResult{}, err

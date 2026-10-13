@@ -109,12 +109,15 @@ func (h *SyncHandler) Status(c *gin.Context) {
 		c.JSON(200, gin.H{"can_sync": false, "enabled": enabled, "devices": devices, "conflicts": []any{}})
 		return
 	}
-	instance, err := h.service.InstanceID(c.Request.Context())
-	if err != nil {
+	var instance datasync.Instance
+	if err := h.service.DB.WithContext(c.Request.Context()).Limit(1).Find(&instance, "id = ?", 1).Error; err != nil {
 		RespondError(c, 500, "sync_identity_failed", err.Error())
 		return
 	}
-	spaceID := uuid.NewSHA1(instance, []byte(owner.String())).String()
+	spaceID := ""
+	if instance.UUID != uuid.Nil {
+		spaceID = uuid.NewSHA1(instance.UUID, []byte(owner.String())).String()
+	}
 	c.Header("Cache-Control", "no-store")
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
@@ -122,7 +125,7 @@ func (h *SyncHandler) Status(c *gin.Context) {
 		c.JSON(200, gin.H{"can_sync": true, "enabled": false, "space_id": spaceID, "devices": devices, "conflicts": []any{}})
 		return
 	}
-	result, err := h.service.Exchange(ctx, owner, datasync.Peer{}, nil)
+	result, records, err := h.service.InspectConfiguration(ctx, owner)
 	if err != nil {
 		c.JSON(200, gin.H{"can_sync": true, "enabled": enabled, "space_id": spaceID, "devices": devices, "conflicts": []any{}, "error": err.Error()})
 		return
@@ -139,7 +142,7 @@ func (h *SyncHandler) Status(c *gin.Context) {
 	for _, conflict := range vaultConflicts {
 		conflicts = append(conflicts, conflict)
 	}
-	c.JSON(200, gin.H{"can_sync": true, "enabled": enabled, "space_id": spaceID, "devices": devices, "conflicts": conflicts, "records": syncdata.ConfigurationRecordCount(result.Snapshot)})
+	c.JSON(200, gin.H{"can_sync": true, "enabled": enabled, "space_id": spaceID, "devices": devices, "conflicts": conflicts, "records": records})
 }
 func (h *SyncHandler) RevokeDevice(c *gin.Context) {
 	owner, ok := requireCurrentUserID(c)
@@ -157,7 +160,7 @@ func (h *SyncHandler) Exchange(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 12<<20)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, syncdata.MaxExchangeRequestBytes)
 	var peer datasync.Peer
 	if err := c.ShouldBindJSON(&peer); err != nil {
 		RespondError(c, 400, "invalid_sync_payload", "Invalid or oversized sync payload")

@@ -7,6 +7,7 @@ const engine = createEngine(A)
 function handle(request) {
   let doc = engine.load(request.document)
   try {
+    if (request.inspect) return { document: request.document, ...engine.project(doc) }
     doc = engine.reconcile(doc, request.current)
     const peer = request.peer || {}
     doc = engine.receive(doc, peer)
@@ -20,7 +21,10 @@ function handle(request) {
     } catch {
       response = engine.outgoing(doc, [])
     }
-    return { document: engine.save(doc), ...engine.project(doc), response }
+    const projection = request.configuration
+      ? engine.projectConfiguration(doc, request.current)
+      : engine.project(doc)
+    return { document: engine.save(doc), ...projection, response }
   } finally {
     engine.free(doc)
   }

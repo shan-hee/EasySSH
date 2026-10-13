@@ -62,7 +62,7 @@ async function synchronizeConfiguration() {
         ),
       ) as SyncPeer
       doc = engine.receive(doc, response)
-      const projected = engine.projectDocument(doc)
+      const projected = engine.projectConfiguration(doc, state.snapshot)
       const applied = await call<boolean>("Save", {
         revision: state.revision + 1,
         hash: state.hash,
@@ -315,7 +315,7 @@ export const desktopSyncAdapter: SyncAdapter = {
       const saved = await call<boolean>("Save", {
         ...state,
         document: engine.saveDocument(doc),
-        snapshot: engine.projectDocument(doc).snapshot,
+        snapshot: engine.projectConfiguration(doc, state.snapshot).snapshot,
       })
       if (!saved) throw new Error("Local data changed; refresh and retry")
       window.dispatchEvent(new Event("easyssh:sync-applied"))

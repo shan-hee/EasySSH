@@ -21,6 +21,14 @@ type SyncScopes struct {
 	Sessions    bool `json:"sessions"`
 }
 
+func (s SyncScopes) Intersect(grants SyncScopes) SyncScopes {
+	return SyncScopes{
+		Credentials: s.Credentials && grants.Credentials,
+		AIConfig:    s.AIConfig && grants.AIConfig,
+		Sessions:    s.Sessions && grants.Sessions,
+	}
+}
+
 func (s SyncScopes) Allows(kind string) bool {
 	switch kind {
 	case "credential":

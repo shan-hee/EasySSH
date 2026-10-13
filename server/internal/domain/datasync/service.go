@@ -115,6 +115,27 @@ func nonNil(tags []string) []string {
 	return tags
 }
 
+// InspectConfiguration reads persisted conflicts without reconciling or applying
+// business data. Merely viewing settings must not create a sync state or revision.
+func (s *Service) InspectConfiguration(ctx context.Context, owner uuid.UUID) (EngineResult, int64, error) {
+	var state State
+	if err := s.DB.WithContext(ctx).Where("user_id = ?", owner).Limit(1).Find(&state).Error; err != nil {
+		return EngineResult{}, 0, err
+	}
+	var servers, scripts int64
+	if err := s.DB.WithContext(ctx).Model(&servermodel.Server{}).Where("user_id = ?", owner).Count(&servers).Error; err != nil {
+		return EngineResult{}, 0, err
+	}
+	if err := s.DB.WithContext(ctx).Model(&script.Script{}).Where("user_id = ?", owner).Count(&scripts).Error; err != nil {
+		return EngineResult{}, 0, err
+	}
+	if state.Document == "" {
+		return EngineResult{}, servers + scripts, nil
+	}
+	result, err := s.Engine.Run(ctx, EngineInput{Document: string(state.Document), Inspect: true})
+	return result, servers + scripts, err
+}
+
 func (s *Service) Exchange(ctx context.Context, owner uuid.UUID, peer Peer, resolution *Resolution) (EngineResult, error) {
 	var result EngineResult
 	var changedConnections []uuid.UUID
@@ -134,7 +155,7 @@ func (s *Service) Exchange(ctx context.Context, owner uuid.UUID, peer Peer, reso
 		if err != nil {
 			return err
 		}
-		result, err = s.Engine.Run(ctx, EngineInput{Document: string(state.Document), Current: current, Peer: peer, Resolution: resolution})
+		result, err = s.Engine.Run(ctx, EngineInput{Document: string(state.Document), Current: current, Peer: peer, Resolution: resolution, Configuration: true})
 		if err != nil {
 			return err
 		}
@@ -250,7 +271,7 @@ func apply(tx *gorm.DB, owner uuid.UUID, before, after syncdata.Snapshot) error 
 		return err
 	}
 	for index, id := range order {
-		if err := tx.Model(&servermodel.Server{}).Where("user_id = ? AND id = ?", owner, id).UpdateColumn("sort_order", index).Error; err != nil {
+		if err := tx.Model(&servermodel.Server{}).Where("user_id = ? AND id = ? AND (sort_order IS NULL OR sort_order <> ?)", owner, id, index).UpdateColumn("sort_order", index).Error; err != nil {
 			return err
 		}
 	}

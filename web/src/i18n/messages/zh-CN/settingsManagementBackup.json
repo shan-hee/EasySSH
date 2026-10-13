@@ -27,7 +27,7 @@
   "syncRevoke": "撤销",
   "syncRevokeConfirm": "撤销后，此设备将无法继续同步。已同步到设备的本地数据会保留。是否继续？",
   "syncConflicts": "需要确认的修改",
-  "syncConflictHint": "并发修改会保留多个版本。选择一个版本继续同步；AI 会话可先将其他版本另存，分别继续聊天。凭据只显示摘要，不显示秘密。",
+  "syncConflictHint": "并发修改会保留多个版本。冲突字段保持本机当前值，选择版本后才应用；首次接收且存在冲突的记录暂不加入本机。AI 会话可先另存其他版本。凭据仅显示摘要。",
   "syncConnectionField": "连接参数",
   "syncContentField": "脚本内容",
   "syncUseVersion": "采用版本 {number}",

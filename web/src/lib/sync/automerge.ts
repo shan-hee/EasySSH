@@ -16,6 +16,7 @@ export const freeDocument = engine.free
 export const loadDocument = engine.load
 export const saveDocument = engine.save
 export const projectDocument = engine.project
+export const projectConfiguration = engine.projectConfiguration
 export const reconcileDocument = engine.reconcile
 export const outgoing = engine.outgoing
 export const receive = engine.receive

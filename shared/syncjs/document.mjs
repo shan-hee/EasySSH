@@ -1,5 +1,6 @@
 // Shared by desktop clients and the server sync worker.
 export function createEngine(A) {
+  const orderKey = "order/00000000-0000-4000-8000-000000000001"
   const decode = (value) => Uint8Array.from(atob(value), (c) => c.charCodeAt(0))
   const encode = (value) => {
     let text = ""
@@ -58,10 +59,43 @@ export function createEngine(A) {
       }
       snapshot[key] = fields
     }
-    return { snapshot, conflicts }
+    // A membership change is not a different ordering decision. Compare the
+    // effective order of live servers, ignoring removed IDs and deterministically
+    // appending additions absent from an older ordering version.
+    const members = Object.keys(snapshot).filter((key) => key.startsWith("server/")).map((key) => key.slice(7))
+    const meaningful = conflicts.filter((conflict) => {
+      if (conflict.key !== orderKey || conflict.field !== "ids") return true
+      const seen = new Set()
+      conflict.values = conflict.values.filter((value) => {
+        const remaining = new Set(members)
+        const ids = JSON.parse(value)
+        if (!Array.isArray(ids)) throw new Error("Invalid server order")
+        const ordered = ids.filter((id) => remaining.delete(id))
+        ordered.push(...[...remaining].sort())
+        const signature = JSON.stringify(ordered)
+        if (seen.has(signature)) return false
+        seen.add(signature)
+        return true
+      })
+      return conflict.values.length > 1
+    })
+    return { snapshot, conflicts: meaningful }
   }
   function reconcile(doc, current) {
-    const previous = project(doc).snapshot
+    const projected = project(doc)
+    const previous = projected.snapshot
+    const blocked = new Map()
+    for (const conflict of projected.conflicts) {
+      if (conflict.field === "ref") continue
+      if (!blocked.has(conflict.key)) blocked.set(conflict.key, new Set())
+      blocked.get(conflict.key).add(conflict.field)
+    }
+    // No order record means the implicit empty baseline. A fresh replica must
+    // not publish an empty ordering decision before receiving its first data.
+    if (!doc.records[orderKey] && current[orderKey]?.ids === "[]") {
+      current = { ...current }
+      delete current[orderKey]
+    }
     // The container for a given UUID has the same creation operation on every
     // replica. Concurrent first writes then conflict on fields, not whole maps.
     for (const key of Object.keys(current)) {
@@ -86,13 +120,15 @@ export function createEngine(A) {
     }
     return A.change(doc, (d) => {
       for (const key of Object.keys(previous))
-        if (!(key in current)) d.records[key].$deleted = new A.ImmutableString("true")
+        if (!(key in current) && !blocked.has(key)) d.records[key].$deleted = new A.ImmutableString("true")
       for (const [key, record] of Object.entries(current)) {
         if (!previous[key]) d.records[key].$deleted = new A.ImmutableString("false")
         for (const field of Object.keys(previous[key] || {}))
-          if (!(field in record)) delete d.records[key][field]
+          if (!(field in record) && !blocked.get(key)?.has(field)) delete d.records[key][field]
         // Immutable strings keep connection bundles and scripts atomic.
         for (const [field, value] of Object.entries(record)) {
+          // A retained business value is not an explicit conflict resolution.
+          if (blocked.get(key)?.has(field)) continue
           if (previous[key]?.[field] === value) continue
           // Membership changes alter the projection, not the ordering decision.
           // Keep unresolved concurrent orders when storage matches the winner.
@@ -107,6 +143,19 @@ export function createEngine(A) {
         }
       }
     })
+  }
+  function projectConfiguration(doc, current) {
+    const { snapshot, conflicts } = project(doc)
+    for (const conflict of conflicts) {
+      if (!current[conflict.key]) {
+        // A new conflicting record has no confirmed local version to apply.
+        delete snapshot[conflict.key]
+      } else if (snapshot[conflict.key]) {
+        snapshot[conflict.key][conflict.field] = current[conflict.key][conflict.field]
+      }
+    }
+    snapshot[orderKey] ??= { ids: "[]" }
+    return { snapshot, conflicts }
   }
   function outgoing(doc, remoteHeads) {
     if (!remoteHeads.length) return { document: save(doc), heads: A.getHeads(doc) }
@@ -142,5 +191,5 @@ export function createEngine(A) {
       d.records[key][field] = new A.ImmutableString(value)
     })
   }
-  return { load, save, project, reconcile, outgoing, receive, resolve, free: A.free }
+  return { load, save, project, projectConfiguration, reconcile, outgoing, receive, resolve, free: A.free }
 }

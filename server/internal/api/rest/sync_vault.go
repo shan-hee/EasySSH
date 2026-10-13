@@ -80,7 +80,7 @@ func (h *SyncHandler) VaultExchange(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 12<<20)
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, syncdata.MaxExchangeRequestBytes)
 	var input struct {
 		Peer       datasync.Peer        `json:"peer"`
 		Resolution *datasync.Resolution `json:"resolution"`

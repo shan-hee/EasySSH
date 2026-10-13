@@ -185,11 +185,11 @@ func syncRequest(serverURL, token, path string, payload []byte) ([]byte, error) 
 		return nil, err
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, (16<<20)+1))
+	data, err := io.ReadAll(io.LimitReader(response.Body, syncdata.MaxExchangeResponseBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(data) > 16<<20 {
+	if len(data) > syncdata.MaxExchangeResponseBytes {
 		return nil, errors.New("sync response is too large")
 	}
 	if response.StatusCode != 200 {
@@ -269,7 +269,15 @@ func (s *DesktopSyncService) connect(serverURL, token string) error {
 	if err != nil {
 		return err
 	}
-	if _, err = tx.Exec(`UPDATE desktop_sync_spaces SET scopes='{}' WHERE id=?`, identity.SpaceID); err != nil {
+	var rawScopes string
+	if err = tx.QueryRow(`SELECT scopes FROM desktop_sync_spaces WHERE id=?`, identity.SpaceID).Scan(&rawScopes); err != nil {
+		return err
+	}
+	var scopes syncdata.SyncScopes
+	if err = json.Unmarshal([]byte(rawScopes), &scopes); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE desktop_sync_spaces SET scopes=? WHERE id=?`, syncdata.JSON(scopes.Intersect(identity.Grants)), identity.SpaceID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -323,7 +331,7 @@ func (s *DesktopSyncService) Disconnect() (bool, error) {
 	return revokeErr == nil, nil
 }
 func (s *DesktopSyncService) Exchange(payload string, revision int64) (string, error) {
-	if len(payload) > 12<<20 {
+	if len(payload) > syncdata.MaxExchangeRequestBytes {
 		return "", errors.New("sync payload is too large")
 	}
 	db, err := s.database()
@@ -352,8 +360,8 @@ type DesktopSyncSave struct {
 
 // Compare-and-swap protects edits made by another Wails call during network IO.
 func (s *DesktopSyncService) Save(input DesktopSyncSave) (bool, error) {
-	if len(input.Document) > 8<<20 {
-		return false, errors.New("sync history exceeds 8 MiB")
+	if len(input.Document) > syncdata.MaxDocumentBytes {
+		return false, errors.New("sync history exceeds 32 MiB")
 	}
 	if input.Snapshot != nil {
 		for key := range input.Snapshot {
@@ -507,7 +515,7 @@ func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapsho
 		return err
 	}
 	for index, id := range ordered {
-		if _, err := tx.Exec("UPDATE desktop_servers SET sort_order=? WHERE id=?", index, id); err != nil {
+		if _, err := tx.Exec("UPDATE desktop_servers SET sort_order=? WHERE id=? AND (sort_order IS NULL OR sort_order<>?)", index, id, index); err != nil {
 			return err
 		}
 	}

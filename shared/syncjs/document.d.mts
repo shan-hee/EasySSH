@@ -7,6 +7,7 @@ export function createEngine(automerge: unknown): {
   load(value: string): SyncDoc
   save(doc: SyncDoc): string
   project(doc: SyncDoc): { snapshot: SyncSnapshot; conflicts: SyncConflict[] }
+  projectConfiguration(doc: SyncDoc, current: SyncSnapshot): { snapshot: SyncSnapshot; conflicts: SyncConflict[] }
   reconcile(doc: SyncDoc, current: SyncSnapshot): SyncDoc
   outgoing(doc: SyncDoc, heads: string[]): SyncPeer
   receive(doc: SyncDoc, peer: SyncPeer): SyncDoc
