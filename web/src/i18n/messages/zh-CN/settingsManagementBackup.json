@@ -2,7 +2,7 @@
   "syncTab": "设备同步",
   "syncDesktopTitle": "连接同步空间",
   "syncServerTitle": "同步设备管理",
-  "syncDesktopDescription": "连接账号后，按所选范围同步本机数据。",
+  "syncDesktopDescription": "连接账号后，按所选范围在启动、网络恢复或数据修改后同步，也可手动同步。切换窗口不会触发同步；其他设备的更新将在下次同步时获取。",
   "syncServerDescription": "管理当前账户的同步设备。桌面端通过浏览器登录并授权后，仅同步此账户拥有的配置。",
   "syncEnabled": "已启用",
   "syncPaused": "已暂停",

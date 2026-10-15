@@ -1,5 +1,6 @@
 import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
 import { Events } from "@wailsio/runtime"
+import { requestDesktopSync } from "./desktop-sync"
 import type {
   AgentSessionScope,
   AgentSessionStatus,
@@ -64,6 +65,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
       getUserAIConfig: async () => DesktopAIService.GetUserAIConfig(),
       saveUserAIConfig: async (config: SaveUserAIConfigRequest) => {
         await DesktopAIService.SaveUserAIConfig(config)
+        requestDesktopSync()
       },
       probeModels: async (config) => DesktopAIService.ProbeAIModels(
         new DesktopAIModelsProbeRequest(config),
@@ -142,6 +144,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
       },
       deleteSession: async (sessionId: string) => {
         await DesktopAIService.DeleteSession(sessionId)
+        requestDesktopSync()
       },
     },
     servers: {
@@ -162,9 +165,11 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
     })),
     renameAISession: async (sessionId: string, title: string) => {
       await DesktopAIService.RenameSession(sessionId, title)
+      requestDesktopSync()
     },
     deleteAISession: async (sessionId: string) => {
       await DesktopAIService.DeleteSession(sessionId)
+      requestDesktopSync()
     },
   }
 }

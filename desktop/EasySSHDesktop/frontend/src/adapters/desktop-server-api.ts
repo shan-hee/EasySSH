@@ -16,6 +16,7 @@ import {
   type DesktopServerInput,
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import { DESKTOP_LOCAL_DATA_USER_ID } from "./desktop-local-identity"
+import { requestDesktopSync } from "./desktop-sync"
 import { Call } from "@wailsio/runtime"
 
 const desktopAuthMethodMap: Record<AuthMethod, DesktopServerAuthMethod> = {
@@ -121,7 +122,9 @@ export function createDesktopServerApi(): ServerConnectionConfigsApi {
       }
     },
     async create(input) {
-      return mapDesktopServer(await DesktopServerService.Create(mapServerInput(input)))
+      const server = await DesktopServerService.Create(mapServerInput(input))
+      requestDesktopSync()
+      return mapDesktopServer(server)
     },
     async update(id, input) {
       const current = await DesktopServerService.GetById(id)
@@ -145,13 +148,17 @@ export function createDesktopServerApi(): ServerConnectionConfigsApi {
         mergedInput.private_key = input.private_key ?? ""
       }
 
-      return mapDesktopServer(await DesktopServerService.Update(id, mapServerInput(mergedInput)))
+      const server = await DesktopServerService.Update(id, mapServerInput(mergedInput))
+      requestDesktopSync()
+      return mapDesktopServer(server)
     },
     async delete(id) {
       await DesktopServerService.Delete(id)
+      requestDesktopSync()
     },
     async reorder(serverIds) {
       await DesktopServerService.Reorder(serverIds)
+      requestDesktopSync()
     },
   }
 }
@@ -185,6 +192,7 @@ export async function saveDesktopVerifiedCredential({
 
   input.private_key_passphrase = privateKeyPassphrase
   await DesktopServerService.Update(serverId, mapServerInput(input))
+  requestDesktopSync()
 }
 
 export async function markDesktopServerConnected(serverId: string): Promise<void> {

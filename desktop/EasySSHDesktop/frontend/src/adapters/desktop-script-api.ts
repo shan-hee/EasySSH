@@ -19,6 +19,7 @@ import type {
 } from "../../bindings/github.com/easyssh/easyssh-desktop"
 import * as DesktopScriptService from "../../bindings/github.com/easyssh/easyssh-desktop/desktopscriptservice"
 import { DESKTOP_LOCAL_DATA_USER_ID } from "./desktop-local-identity"
+import { requestDesktopSync } from "./desktop-sync"
 
 function mapDesktopScript(script: DesktopScript): Script {
   return {
@@ -100,6 +101,7 @@ async function updateDesktopScript(id: string, input: UpdateScriptRequest): Prom
     tags: input.tags ?? current.tags ?? [],
   }))
 
+  requestDesktopSync()
   return mapDesktopScript(updated)
 }
 
@@ -124,11 +126,14 @@ export function createDesktopScriptAdapters(serverApi: ServerConnectionConfigsAp
         }
       },
       async create(input: CreateScriptRequest): Promise<Script> {
-        return mapDesktopScript(await DesktopScriptService.Create(toDesktopScriptInput(input)))
+        const script = await DesktopScriptService.Create(toDesktopScriptInput(input))
+        requestDesktopSync()
+        return mapDesktopScript(script)
       },
       update: updateDesktopScript,
       async delete(id: string): Promise<void> {
         await DesktopScriptService.Delete(id)
+        requestDesktopSync()
       },
       async execute(id: string): Promise<void> {
         await DesktopScriptService.Execute(id)

@@ -1,4 +1,4 @@
-import { Browser, Call } from "@wailsio/runtime"
+import { Browser, Call, Events } from "@wailsio/runtime"
 import type {
   SyncAdapter,
   SyncStatus,
@@ -28,6 +28,19 @@ const call = <T>(method: string, ...args: unknown[]): Promise<T> =>
 let active: Promise<void> | null = null
 let lastError = ""
 let changingAccount = false
+let syncPending = false
+let syncTimer: number | undefined
+
+// Coalesce successful local edits without making local saves wait for the network.
+export function requestDesktopSync() {
+  if (changingAccount) return
+  syncPending = true
+  window.clearTimeout(syncTimer)
+  if (active) return
+  syncTimer = window.setTimeout(() => {
+    void syncNow().catch(() => {})
+  }, 500)
+}
 
 export function isDesktopSyncRunning() {
   return active !== null
@@ -167,6 +180,9 @@ async function synchronize() {
 function syncNow(): Promise<void> {
   if (changingAccount) return Promise.resolve()
   if (!active) {
+    window.clearTimeout(syncTimer)
+    syncTimer = undefined
+    syncPending = false
     active = synchronize()
       .catch((error) => {
         lastError = error instanceof Error ? error.message : String(error)
@@ -175,6 +191,8 @@ function syncNow(): Promise<void> {
       .finally(() => {
         active = null
         notifySyncStatus()
+        // An edit made during the exchange must get its own round.
+        if (syncPending) requestDesktopSync()
       })
     notifySyncStatus()
   }
@@ -271,6 +289,8 @@ export const desktopSyncAdapter: SyncAdapter = {
   },
   async disconnect() {
     changingAccount = true
+    window.clearTimeout(syncTimer)
+    syncPending = false
     try {
       if (active) await active.catch(() => {})
       const revoked = await call<boolean>("Disconnect")
@@ -326,16 +346,20 @@ export const desktopSyncAdapter: SyncAdapter = {
   },
 }
 export function startDesktopSync(): () => void {
-  const run = () => {
-    void syncNow().catch(() => {})
-  }
-  const timer = window.setInterval(run, 15000)
-  window.addEventListener("online", run)
-  window.addEventListener("focus", run)
-  run()
+  // Persisted session snapshots signal completed edits/turns; streaming deltas
+  // and running snapshots must not trigger a sync on every token or tool call.
+  const unsubscribe = Events.On("easyssh:desktop-ai:session-event", (event) => {
+    const data = event.data as { type?: string; session?: { status?: string } } | undefined
+    if (data?.type === "session" && (data.session?.status === "idle" || data.session?.status === "closed")) {
+      requestDesktopSync()
+    }
+  })
+  window.addEventListener("online", requestDesktopSync)
+  requestDesktopSync()
   return () => {
-    window.clearInterval(timer)
-    window.removeEventListener("online", run)
-    window.removeEventListener("focus", run)
+    window.clearTimeout(syncTimer)
+    syncPending = false
+    window.removeEventListener("online", requestDesktopSync)
+    unsubscribe()
   }
 }

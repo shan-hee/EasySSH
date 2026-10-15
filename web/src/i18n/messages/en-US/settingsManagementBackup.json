@@ -2,7 +2,7 @@
   "syncTab": "Device sync",
   "syncDesktopTitle": "Connect a sync space",
   "syncServerTitle": "Manage sync devices",
-  "syncDesktopDescription": "Connect an account and synchronize selected local data.",
+  "syncDesktopDescription": "Connect an account to sync selected data on startup, after reconnecting or editing data, or manually. Switching windows does not trigger sync; updates from other devices arrive on the next sync.",
   "syncServerDescription": "Manage devices authorized to sync configurations owned by your current account. Sign in and approve access in a browser from the desktop app.",
   "syncEnabled": "Enabled",
   "syncPaused": "Paused",
