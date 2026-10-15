@@ -1,8 +1,8 @@
 name: Release
 
 # 发版唯一入口：推送 v* 标签
-# 流程：版本校验 → 自动化测试 → 镜像 (linux/amd64) + 桌面端 (Windows amd64) → 创建 GitHub Release
-# 需要其他架构时在 Actions 页面手动运行 docker-build / desktop-build 并选择平台
+# 流程：版本校验 → 自动化测试 → 镜像 (linux/amd64 + linux/arm64) + 桌面端 (Windows amd64) → 创建 GitHub Release
+# 需要其他桌面端架构时在 Actions 页面手动运行 desktop-build 并选择平台
 on:
   push:
     tags:
@@ -102,7 +102,7 @@ jobs:
     uses: ./.github/workflows/docker-build.yml
     with:
       version: ${{ needs.validate.outputs.version }}
-      platforms: 'linux/amd64'
+      platforms: 'linux/amd64,linux/arm64'
       update-latest: true
     secrets: inherit
     permissions:
@@ -176,7 +176,7 @@ jobs:
             echo "docker pull shanhee/easyssh:latest"
             echo '```'
             echo ""
-            echo "**支持架构:** \`linux/amd64\`（需要 arm64 时在 Actions 页面手动运行 Build EasySSH Docker Image 选择平台）"
+            echo "**支持架构:** \`linux/amd64\`、\`linux/arm64\`（Docker 根据主机架构自动选择镜像）"
             echo ""
             echo "## 💻 桌面端"
             echo ""
