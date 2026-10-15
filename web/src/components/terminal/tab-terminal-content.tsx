@@ -602,7 +602,7 @@ function TabTerminalContentComponent({
           />
         )}
 
-        {/* 加载动画覆盖层 - 覆盖整个页签内容 */}
+        {/* 加载动画居中显示，背景遮罩仅在中央区域柔和渐隐 */}
         {shouldRenderBody && effectiveIsLoading && isTerminalSession && (
           <div className="absolute inset-0 z-[60]">
             <ConnectionLoader

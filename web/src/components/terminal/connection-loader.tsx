@@ -102,7 +102,7 @@ export function ConnectionLoader({
       <motion.div
         className={cn(
           "absolute inset-0 flex items-center justify-center px-5 py-10",
-          transparentBackground ? "bg-background/25 backdrop-blur-sm" : "bg-background",
+          !transparentBackground && "bg-background",
         )}
         initial={false}
         animate={isExiting
@@ -118,20 +118,30 @@ export function ConnectionLoader({
       >
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
+          className={cn(
+            "pointer-events-none absolute left-1/2 top-1/2 h-[min(100%,36rem)] w-[min(100%,40rem)] -translate-x-1/2 -translate-y-1/2",
+            transparentBackground && "bg-background/25 backdrop-blur-sm",
+          )}
           style={{
-            background: "radial-gradient(circle at 50% 46%, color-mix(in oklab, var(--connection-accent) 10%, transparent), transparent 48%)",
+            // Feather only the decorative surface so the connection content stays crisp.
+            maskImage: "radial-gradient(ellipse closest-side at center, black 28%, rgb(0 0 0 / 85%) 45%, rgb(0 0 0 / 35%) 68%, transparent 100%)",
+            WebkitMaskImage: "radial-gradient(ellipse closest-side at center, black 28%, rgb(0 0 0 / 85%) 45%, rgb(0 0 0 / 35%) 68%, transparent 100%)",
           }}
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 opacity-[0.035]"
-          style={{
-            backgroundImage: "linear-gradient(to right, var(--foreground) 1px, transparent 1px), linear-gradient(to bottom, var(--foreground) 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-            maskImage: "radial-gradient(circle at center, black, transparent 72%)",
-          }}
-        />
+        >
+          <div
+            className="absolute inset-0"
+            style={{
+              background: "radial-gradient(ellipse closest-side at center, color-mix(in oklab, var(--connection-accent) 10%, transparent), transparent)",
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.035]"
+            style={{
+              backgroundImage: "linear-gradient(to right, var(--foreground) 1px, transparent 1px), linear-gradient(to bottom, var(--foreground) 1px, transparent 1px)",
+              backgroundSize: "32px 32px",
+            }}
+          />
+        </div>
 
         <div className="relative z-10 flex w-full max-w-xl flex-col items-center">
           <div className="flex h-14 w-full items-center justify-center" aria-hidden="true">
