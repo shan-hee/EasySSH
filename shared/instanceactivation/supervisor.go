@@ -377,6 +377,9 @@ func (s *supervisor) awaitReady(ctx context.Context, child *childProcess, servin
 			return errors.New("instance startup timed out")
 		case err := <-child.done:
 			child.done <- err // retain completion for stopChild
+			if err != nil {
+				return fmt.Errorf("instance exited before becoming ready: %w", err)
+			}
 			return errors.New("instance exited before becoming ready")
 		case <-ticker.C:
 			s.mu.Lock()
@@ -417,7 +420,9 @@ func RunWithOptions(directory string, original Target, rootKey, backupDirectory 
 		}
 		defer file.Close()
 		previous := log.Writer()
-		log.SetOutput(file)
+		// Keep child startup failures visible to the invoking terminal as well
+		// as the persistent launcher log.
+		log.SetOutput(io.MultiWriter(file, previous))
 		defer log.SetOutput(previous)
 	}
 	defer func() {
