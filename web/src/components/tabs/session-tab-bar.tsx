@@ -226,15 +226,14 @@ function SortableTab({
       onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
       onDoubleClick={() => onDoubleClick(s.id)}
       className={cn(
-        "group relative flex items-center gap-2 h-8 pl-3 transition-colors duration-100 ease-out touch-none select-none rounded-lg border backdrop-blur-sm cursor-grab active:cursor-grabbing",
+        "group relative flex items-center gap-2 h-8 pl-3 transition-colors duration-100 ease-out touch-none select-none cursor-grab active:cursor-grabbing",
         canClose || s.pinned ? "pr-8" : "pr-3",
         active
-          ? "border-border bg-card/90 text-foreground shadow-sm"
-          : "border-border/50 bg-card/35 text-muted-foreground opacity-75 hover:border-border hover:bg-card/65 hover:text-foreground hover:opacity-100",
-        s.pinned && "ring-1 ring-blue-500/20",
-        isDetached && "ring-1 ring-primary/35",
+          ? "text-foreground"
+          : "text-muted-foreground opacity-75 hover:text-foreground hover:opacity-100",
+        isDetached && "italic",
         isDragging && "cursor-grabbing transition-none",
-        isCrossSessionFileDragOver && "border-primary/60 bg-primary/10 text-primary opacity-100 ring-1 ring-primary/40"
+        isCrossSessionFileDragOver && "text-primary opacity-100"
       )}
     >
       {/* 状态指示点 */}
@@ -242,11 +241,13 @@ function SortableTab({
 
       {s.type === "sftp" ? <FolderOpen className="h-3 w-3 shrink-0" aria-label="SFTP" /> : s.type === "terminal" ? <TerminalIcon className="h-3 w-3 shrink-0" aria-label="SSH" /> : null}
       <span className={cn(
-        "max-w-32 truncate text-xs font-medium transition-colors",
-        active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+        "max-w-32 truncate text-xs text-inherit transition-colors",
+        active ? "font-semibold" : "font-medium"
       )}>
         {s.serverName}
       </span>
+
+      <span aria-hidden="true" className="pointer-events-none absolute -right-1 top-1/2 -translate-y-1/2 select-none text-sm font-normal not-italic text-muted-foreground/50">|</span>
 
       {/* 固定图标 */}
       {s.pinned && (
@@ -303,25 +304,26 @@ function StaticTab(props: SortableTabProps) {
       onDoubleClick={() => onDoubleClick(s.id)}
       ref={fileDropRef}
       className={cn(
-        "group relative flex items-center gap-2 h-8 pl-3 transition-all duration-200 ease-out select-none rounded-lg border backdrop-blur-sm",
+        "group relative flex items-center gap-2 h-8 pl-3 transition-colors duration-200 ease-out select-none",
         canClose || s.pinned ? "pr-8" : "pr-3",
         active
-          ? "border-border bg-card/90 text-foreground shadow-sm"
-          : "border-border/50 bg-card/35 text-muted-foreground opacity-75 hover:border-border hover:bg-card/65 hover:text-foreground hover:opacity-100",
-        s.pinned && "ring-1 ring-blue-500/20",
-        isDetached && "ring-1 ring-primary/35",
-        isCrossSessionFileDragOver && "border-primary/60 bg-primary/10 text-primary opacity-100 ring-1 ring-primary/40"
+          ? "text-foreground"
+          : "text-muted-foreground opacity-75 hover:text-foreground hover:opacity-100",
+        isDetached && "italic",
+        isCrossSessionFileDragOver && "text-primary opacity-100"
       )}
     >
       <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", statusColor)} />
 
       {s.type === "sftp" ? <FolderOpen className="h-3 w-3 shrink-0" aria-label="SFTP" /> : s.type === "terminal" ? <TerminalIcon className="h-3 w-3 shrink-0" aria-label="SSH" /> : null}
       <span className={cn(
-        "max-w-32 truncate text-xs font-medium transition-colors",
-        active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground"
+        "max-w-32 truncate text-xs text-inherit transition-colors",
+        active ? "font-semibold" : "font-medium"
       )}>
         {s.serverName}
       </span>
+
+      <span aria-hidden="true" className="pointer-events-none absolute -right-1 top-1/2 -translate-y-1/2 select-none text-sm font-normal not-italic text-muted-foreground/50">|</span>
 
       {s.pinned && (
         <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-blue-400" />
@@ -550,10 +552,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
     >
       {draggedSession ? (
         <div className={cn(
-          "group relative flex h-8 items-center gap-2 rounded-lg border pl-3 text-foreground shadow-lg transition-none select-none",
-          "border-border bg-card",
-          (canCloseSession?.(draggedSession) ?? !draggedSession.pinned) || draggedSession.pinned ? "pr-8" : "pr-3",
-          draggedSession.pinned && "ring-1 ring-blue-500/20"
+          "group relative flex h-8 items-center gap-2 pl-3 text-foreground transition-none select-none",
+          (canCloseSession?.(draggedSession) ?? !draggedSession.pinned) || draggedSession.pinned ? "pr-8" : "pr-3"
         )}>
           <div className={cn(
             "h-1.5 w-1.5 flex-shrink-0 rounded-full",
@@ -777,7 +777,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
       {/* 页签栏（现代化设计） */}
       <div ref={tabBarRef} data-terminal-tab-bar className={
-        "w-full min-w-0 bg-background/65 text-foreground backdrop-blur-md transition-colors [--wails-draggable:drag]"
+        "w-full min-w-0 text-foreground transition-colors [--wails-draggable:drag]"
       } onDragOver={handleSplitPaneDragOver} onDrop={handleSplitPaneDrop}>
         <div className={cn(
           "flex h-10 min-w-0 items-center gap-0 overflow-hidden [--wails-draggable:drag]",

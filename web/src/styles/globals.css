@@ -274,10 +274,6 @@
   background-color: transparent;
 }
 
-[data-terminal-background-enabled="true"] [data-terminal-tab-bar] {
-  background-color: color-mix(in oklab, var(--background) 28%, transparent);
-}
-
 [data-terminal-background-enabled="true"] .easyssh-dockview {
   --dv-group-view-background-color: transparent;
 }
@@ -345,15 +341,6 @@
   --terminal-glass-edge-shadow: inherit;
   --terminal-glass-shadow: inherit;
   --terminal-glass-text-shadow: inherit;
-}
-
-/* Navigation uses a soft shadow without an extra top-edge highlight. */
-.terminal-workspace-glass [data-terminal-tab-bar] {
-  background-color: var(--terminal-glass-panel);
-  background-image: var(--terminal-glass-sheen);
-  box-shadow: 0 4px 16px rgb(0 0 0 / 4%);
-  -webkit-backdrop-filter: blur(28px) saturate(1.1);
-  backdrop-filter: blur(28px) saturate(1.1);
 }
 
 .terminal-workspace-glass :is([data-slot="card"], .bg-card, .bg-table) {
