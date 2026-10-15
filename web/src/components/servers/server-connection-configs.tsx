@@ -710,7 +710,6 @@ export function ServerConnectionConfigs({
  return (
  <>
  <div data-server-connection-configs className={"h-full flex flex-col overflow-hidden relative transition-colors bg-background text-foreground"}>
- <div className={"absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-border to-transparent"} />
 
  <div className="flex min-h-0 flex-1 flex-col items-center px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
  <div className={cn("flex min-h-0 w-full flex-1 flex-col gap-3 transition-[max-width] duration-200", viewMode === "grid" ? "max-w-6xl" : "max-w-3xl")}>
