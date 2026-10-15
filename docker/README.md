@@ -100,6 +100,8 @@ docker compose -f docker-compose.dev.yml up -d --build
 - 在 GitHub Actions 页面手动运行 `Build EasySSH Docker Image`，可指定版本号、是否更新 `latest`、构建平台（默认同时构建 `linux/amd64` 和 `linux/arm64`，也可选择单一架构；用于紧急重建镜像，不会创建 Release）。
 - 在 GitHub Actions 页面手动运行 `Build EasySSH Desktop`，可选择 Windows 架构（amd64 / arm64），产物以 artifact 形式上传。
 
+Docker 多架构构建时，前端在构建机原生架构上打包，各目标架构共用静态产物；Go 同样在原生架构上通过 `TARGETOS` / `TARGETARCH` 交叉编译。前后端构建独立执行，最终镜像直接从各自构建阶段复制产物，避免 ARM64 的前端打包和 Go 编译经过 QEMU。同步运行时依赖和最终运行镜像仍按目标架构生成。
+
 如需更换 Docker Hub 账号或镜像名，需要同步修改 `.github/workflows/docker-build.yml` 中的 `DOCKER_IMAGE` 和登录用户名。
 
 ## 数据备份

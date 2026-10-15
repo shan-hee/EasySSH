@@ -5,8 +5,8 @@
 # 多阶段构建：Vite 前端静态构建 + Go 后端
 # ============================================
 
-# Stage 1: 构建前端（React + Vite）
-FROM node:24-alpine AS frontend-builder
+# Stage 1: 在构建机原生架构上打包前端，静态产物由各目标架构共用
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
 
 WORKDIR /app/web
 
@@ -35,8 +35,8 @@ COPY server/sync-runtime/package.json server/sync-runtime/package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY server/sync-runtime/engine.mjs ./
 
-# Stage 2: 构建后端（Go）
-FROM golang:1.25-alpine AS backend-builder
+# Stage 2: 在构建机原生架构上交叉编译 Go，避免通过 QEMU 执行编译器
+FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
 
 WORKDIR /app/server
 
@@ -49,18 +49,18 @@ COPY server/go.mod server/go.sum ./
 RUN --mount=type=cache,id=easyssh-go-mod,target=/go/pkg/mod \
     go mod download && go mod verify
 
-# 复制后端源码，并把前端静态产物注入到 static 目录
+# 后端编译不依赖前端静态产物，两个构建阶段可独立执行
 COPY shared/ /app/shared/
 COPY server/ ./
-COPY --from=frontend-builder /app/web/dist ./static
 
-# 构建后端可执行文件（默认 amd64，可通过 TARGETARCH 覆盖）
+# BuildKit 根据目标平台提供 GOOS/GOARCH；CGO=0 支持跨架构构建
+ARG TARGETOS
 ARG TARGETARCH
 RUN --mount=type=cache,id=easyssh-go-mod,target=/go/pkg/mod \
     --mount=type=cache,id=easyssh-go-build,target=/root/.cache/go-build \
     CGO_ENABLED=0 \
-    GOOS=linux \
-    GOARCH=${TARGETARCH:-amd64} \
+    GOOS=$TARGETOS \
+    GOARCH=$TARGETARCH \
     go build -trimpath -buildvcs=false -ldflags="-s -w" -o easyssh-api ./cmd/api
 
 # Stage 3: 运行时镜像
@@ -93,7 +93,7 @@ ENV TZ=Asia/Shanghai \
 COPY --from=sync-runtime-builder --chown=appuser:appuser /app/server/sync-runtime ./server/sync-runtime
 COPY --chown=appuser:appuser shared/syncjs/ ./shared/syncjs/
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./
-COPY --from=backend-builder --chown=appuser:appuser /app/server/static ./static
+COPY --from=frontend-builder --chown=appuser:appuser /app/web/dist ./static
 COPY --from=frontend-builder --chown=appuser:appuser /app/VERSION ./VERSION
 
 USER appuser
