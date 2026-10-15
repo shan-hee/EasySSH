@@ -42,7 +42,10 @@ func replaceFile(source, destination string) error {
 }
 
 func startChild(cmd *exec.Cmd, allowDetachedHelpers bool) (*childProcess, error) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
+	// Suppress the console without overriding the GUI's first ShowWindow call.
+	// HideWindow sets STARTF_USESHOWWINDOW/SW_HIDE, which keeps the desktop
+	// hidden on startup until a second ShowWindow call (such as a tray click).
+	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NO_WINDOW}
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
 		return nil, err
