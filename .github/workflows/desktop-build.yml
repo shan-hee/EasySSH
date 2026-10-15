@@ -32,7 +32,7 @@ jobs:
         working-directory: desktop/EasySSHDesktop
     steps:
       - name: 📥 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # wails3 generate bindings 按宿主 (Linux) 平台分析 Go 代码，需要 gtk/webkit 头文件，
       # 即使最终构建目标是 Windows
@@ -42,19 +42,19 @@ jobs:
           sudo apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev
 
       - name: 🔧 设置 Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: desktop/EasySSHDesktop/go.mod
           cache-dependency-path: desktop/EasySSHDesktop/go.sum
 
       # 桌面端前端与共享 web workspace 统一使用 pnpm
       - name: 🔧 设置 pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v5
         with:
           package_json_file: web/package.json
 
       - name: 🔧 设置 Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
@@ -86,7 +86,7 @@ jobs:
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: 📤 上传构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.artifact.outputs.artifact_name }}
           path: desktop/EasySSHDesktop/bin/${{ steps.artifact.outputs.zip_name }}
