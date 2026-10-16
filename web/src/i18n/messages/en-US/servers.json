@@ -48,6 +48,7 @@
   "formPrivateKeyLabel": "Private key",
   "formPrivateKeyPlaceholder": "Paste private key content or import from file",
   "formPrivateKeyWarning": "No common private key markers detected. Please make sure the content is correct.",
+  "formPrivateKeyPublicKeyWarning": "This is an SSH public key. Select the private key file containing BEGIN … PRIVATE KEY, not the .pub public key file.",
   "formAdvancedTitle": "Advanced settings",
   "formAdvancedDescription": "Configure tags, jump host and connection options.",
   "formTagsLabel": "Tags",

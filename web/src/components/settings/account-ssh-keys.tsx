@@ -4,7 +4,7 @@ import { PrivateKeyInput } from "@/components/servers/private-key-input"
 
 import * as React from "react"
 
-import { Key, Loader2, X, Copy } from "lucide-react"
+import { Key, Loader2, X, Copy, Eye } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,9 +26,17 @@ import { useTranslation } from "react-i18next"
 
 import { getErrorMessage } from "@/lib/error-utils"
 
-export function AccountSSHKeys() {
+type SSHKeyManagerApi = sshKeysApi.SSHKeyApi & {
+  generate?: typeof sshKeysApi.generateSSHKey
+}
+
+const webSSHKeyManagerApi: SSHKeyManagerApi = {
+  ...sshKeysApi.sshKeyApi,
+  generate: sshKeysApi.generateSSHKey,
+}
+
+export function AccountSSHKeys({ api = webSSHKeyManagerApi }: { api?: SSHKeyManagerApi }) {
 const { t: tAccount } = useTranslation("accountSettings")
-const { t: tCommon } = useTranslation("common")
 const { t: tServers } = useTranslation("servers")
 const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
 const { user } = useClientAuth()
@@ -40,7 +48,7 @@ const effectiveLocale = getEffectiveLocale(user, config), effectiveTimezone = ge
   const [generateDialogOpen, setGenerateDialogOpen] = React.useState(false)
   const [importDialogOpen, setImportDialogOpen] = React.useState(false)
   const [viewKeyDialogOpen, setViewKeyDialogOpen] = React.useState(false)
-  const [selectedKey, setSelectedKey] = React.useState<sshKeysApi.SSHKeyWithPrivateKey | null>(null)
+  const [selectedKey, setSelectedKey] = React.useState<sshKeysApi.SSHKey | sshKeysApi.SSHKeyWithPrivateKey | null>(null)
   const [generateForm, setGenerateForm] = React.useState({
     name: "",
     algorithm: "ed25519" as "rsa" | "ed25519",
@@ -55,20 +63,21 @@ const effectiveLocale = getEffectiveLocale(user, config), effectiveTimezone = ge
   const [importLoading, setImportLoading] = React.useState(false)
 
   // 加载SSH密钥列表
-  const loadSSHKeys = React.useCallback(async () => {
-    setSshKeysLoading(true)
+  const loadSSHKeys = React.useCallback(async (background = false) => {
+    if (!background) setSshKeysLoading(true)
     try {
-      const keys = await sshKeysApi.getSSHKeys()
+      const keys = await api.list()
       setSshKeys(keys)
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, tAccount("sshKeysLoadFailed")))
     } finally {
-      setSshKeysLoading(false)
+      if (!background) setSshKeysLoading(false)
     }
-  }, [tAccount])
+  }, [api, tAccount])
 
   // 生成SSH密钥
   const handleGenerateKey = React.useCallback(async () => {
+    if (!api.generate) return
     if (!generateForm.name.trim()) {
       toast.error(tAccount("sshKeyToastNameRequired"))
       return
@@ -76,7 +85,7 @@ const effectiveLocale = getEffectiveLocale(user, config), effectiveTimezone = ge
 
     setGenerateLoading(true)
     try {
-      const newKey = await sshKeysApi.generateSSHKey(generateForm)
+      const newKey = await api.generate(generateForm)
       toast.success(tAccount("sshKeyToastGenerateSuccess"))
       setSelectedKey(newKey)
       setViewKeyDialogOpen(true)
@@ -88,7 +97,7 @@ const effectiveLocale = getEffectiveLocale(user, config), effectiveTimezone = ge
     } finally {
       setGenerateLoading(false)
     }
-  }, [generateForm, loadSSHKeys, tAccount])
+  }, [api, generateForm, loadSSHKeys, tAccount])
 
   // 导入SSH密钥
   const handleImportKey = React.useCallback(async () => {
@@ -103,7 +112,7 @@ const effectiveLocale = getEffectiveLocale(user, config), effectiveTimezone = ge
 
     setImportLoading(true)
     try {
-      await sshKeysApi.importSSHKey(importForm)
+      await api.import(importForm)
       toast.success(tAccount("sshKeyToastImportSuccess"))
       setImportDialogOpen(false)
       setImportForm({ name: "", private_key: "", passphrase: "" })
@@ -113,7 +122,7 @@ const effectiveLocale = getEffectiveLocale(user, config), effectiveTimezone = ge
     } finally {
       setImportLoading(false)
     }
-  }, [importForm, loadSSHKeys, tAccount])
+  }, [api, importForm, loadSSHKeys, tAccount])
 
   // 删除SSH密钥
   const handleDeleteKey = React.useCallback(async (keyId: number, keyName: string) => {
@@ -126,13 +135,13 @@ const effectiveLocale = getEffectiveLocale(user, config), effectiveTimezone = ge
     }
 
     try {
-      await sshKeysApi.deleteSSHKey(keyId)
+      await api.delete(keyId)
       toast.success(tAccount("sshKeyToastDeleteSuccess"))
       loadSSHKeys() // 刷新列表
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, tAccount("sshKeyToastDeleteFailed")))
     }
-  }, [loadSSHKeys, requestConfirm, tAccount])
+  }, [api, loadSSHKeys, requestConfirm, tAccount])
 
   // 复制到剪贴板
   const handleCopyToClipboard = React.useCallback(async (text: string, label: string) => {
@@ -145,10 +154,18 @@ const effectiveLocale = getEffectiveLocale(user, config), effectiveTimezone = ge
   }, [tAccount])
 
 React.useEffect(() => { void loadSSHKeys() }, [loadSSHKeys])
+React.useEffect(() => {
+  const refresh = (event: Event) => {
+    if (event instanceof CustomEvent && event.detail?.serversChanged === false) return
+    void loadSSHKeys(true)
+  }
+  window.addEventListener("easyssh:sync-applied", refresh)
+  return () => window.removeEventListener("easyssh:sync-applied", refresh)
+}, [loadSSHKeys])
 return (<>{confirmDialog}<div className="space-y-4">
                     <div className="rounded-lg border p-4">
-                      <div className="flex justify-between items-center mb-3">
-                        <div>
+                      <div className="flex flex-wrap justify-between items-center gap-3 mb-3">
+                        <div className="min-w-0">
                           <h4 className="font-medium">
                             {tAccount("sshSectionTitle")}
                           </h4>
@@ -157,13 +174,13 @@ return (<>{confirmDialog}<div className="space-y-4">
                           </p>
                         </div>
                         <div className="flex gap-2">
-                          <Button
+                          {api.generate && <Button
                             variant="outline"
                             size="sm"
                             onClick={() => setGenerateDialogOpen(true)}
                           >
                             {tAccount("sshGenerateButton")}
-                          </Button>
+                          </Button>}
                           <Button
                             variant="outline"
                             size="sm"
@@ -185,14 +202,14 @@ return (<>{confirmDialog}<div className="space-y-4">
                             {tAccount("sshEmptyTitle")}
                           </p>
                           <p className="text-xs">
-                            {tAccount("sshEmptyDescription")}
+                            {tAccount(api.generate ? "sshEmptyDescription" : "sshEmptyImportDescription")}
                           </p>
                         </div>
                       ) : (
                         <div className="space-y-2">
                           {sshKeys.map((key) => (
                             <div key={key.id} className="p-3 bg-background rounded border">
-                              <div className="flex justify-between items-start">
+                              <div className="flex flex-wrap justify-between items-start gap-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1">
                                     <p className="text-sm font-medium">{key.name}</p>
@@ -215,7 +232,10 @@ return (<>{confirmDialog}<div className="space-y-4">
                                     })}
                                   </p>
                                 </div>
-                                <div className="flex gap-1">
+                                <div className="flex shrink-0 gap-1">
+                                  <Button variant="ghost" size="sm" aria-label={tAccount("sshViewDialogTitle")} title={tAccount("sshViewDialogTitle")} onClick={() => { setSelectedKey(key); setViewKeyDialogOpen(true) }}>
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -227,10 +247,13 @@ return (<>{confirmDialog}<div className="space-y-4">
                                     }
                                   >
                                     <Copy className="h-4 w-4" />
+                                    {tAccount("sshCopyPublicKeyButton")}
                                   </Button>
                                   <Button
                                     variant="ghost"
                                     size="sm"
+                                    aria-label={tAccount("sshDeleteKeyButton")}
+                                    title={tAccount("sshDeleteKeyButton")}
                                     onClick={() => handleDeleteKey(key.id, key.name)}
                                   >
                                     <X className="h-4 w-4" />
@@ -245,7 +268,7 @@ return (<>{confirmDialog}<div className="space-y-4">
 
                     {/* 生成密钥对话框 */}
                     <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
-                      <DialogContent className="sm:max-w-md">
+                      <DialogContent className="min-w-0 grid-cols-[minmax(0,1fr)] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
                         <DialogTitle>{tAccount("sshGenerateDialogTitle")}</DialogTitle>
                         <DialogDescription>
                           {tAccount("sshGenerateDialogDescription")}
@@ -339,7 +362,7 @@ return (<>{confirmDialog}<div className="space-y-4">
 
                     {/* 导入密钥对话框 */}
                     <Dialog open={importDialogOpen} onOpenChange={open => { if (importLoading) return; setImportDialogOpen(open); if (!open) setImportForm({ name: "", private_key: "", passphrase: "" }) }}>
-                      <DialogContent className="sm:max-w-md">
+                      <DialogContent className="min-w-0 grid-cols-[minmax(0,1fr)] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
                         <DialogTitle>{tAccount("sshImportDialogTitle")}</DialogTitle>
                         <DialogDescription>
                           {tAccount("sshImportDialogDescription")}
@@ -396,15 +419,20 @@ return (<>{confirmDialog}<div className="space-y-4">
                       </DialogContent>
                     </Dialog>
 
-                    {/* 查看密钥对话框（首次生成/导入后显示） */}
-                    <Dialog open={viewKeyDialogOpen} onOpenChange={setViewKeyDialogOpen}>
-                      <DialogContent className="sm:max-w-2xl">
+                    {/* 已有密钥展示公钥；新生成密钥同时展示一次性私钥。 */}
+                    <Dialog open={viewKeyDialogOpen} onOpenChange={open => { setViewKeyDialogOpen(open); if (!open) setSelectedKey(null) }}>
+                      <DialogContent className="min-w-0 grid-cols-[minmax(0,1fr)] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
                         <DialogTitle>{tAccount("sshViewDialogTitle")}</DialogTitle>
                         <DialogDescription>
-                          {tAccount("sshViewDialogDescription")}
+                          {tAccount(selectedKey && "private_key" in selectedKey ? "sshViewDialogDescription" : "sshPublicKeyDescription")}
                         </DialogDescription>
                         {selectedKey && (
                           <div className="space-y-4">
+                            <div className="min-w-0 space-y-1">
+                              <p className="break-words font-medium">{selectedKey.name}</p>
+                              <p className="text-xs text-muted-foreground">{selectedKey.algorithm.toUpperCase()}{selectedKey.key_size ? ` ${selectedKey.key_size}` : ""}</p>
+                              <p className="break-all font-mono text-xs text-muted-foreground">{selectedKey.fingerprint}</p>
+                            </div>
                             <div className="space-y-2">
                               <div className="flex justify-between items-center">
                                 <Label>{tAccount("sshViewPublicKeyLabel")}</Label>
@@ -423,12 +451,12 @@ return (<>{confirmDialog}<div className="space-y-4">
                                 </Button>
                               </div>
                               <Textarea
-                                className="min-h-[80px] font-mono text-xs md:text-xs"
+                                className="min-w-0 field-sizing-fixed min-h-[80px] font-mono text-xs md:text-xs"
                                 value={selectedKey.public_key}
                                 readOnly
                               />
                             </div>
-                            <div className="space-y-2">
+                            {"private_key" in selectedKey && <><div className="space-y-2">
                               <div className="flex justify-between items-center">
                                 <Label>{tAccount("sshViewPrivateKeyLabel")}</Label>
                                 <Button
@@ -446,7 +474,7 @@ return (<>{confirmDialog}<div className="space-y-4">
                                 </Button>
                               </div>
                               <Textarea
-                                className="min-h-[200px] font-mono text-xs md:text-xs"
+                                className="min-w-0 field-sizing-fixed min-h-[200px] font-mono text-xs md:text-xs"
                                 value={selectedKey.private_key}
                                 readOnly
                               />
@@ -455,7 +483,7 @@ return (<>{confirmDialog}<div className="space-y-4">
                               <p className="text-sm text-amber-800 dark:text-amber-200">
                                 {tAccount("sshViewPrivateKeyWarning")}
                               </p>
-                            </div>
+                            </div></>}
                             <div className="flex justify-end">
                               <Button
                                 onClick={() => {
@@ -463,7 +491,7 @@ return (<>{confirmDialog}<div className="space-y-4">
                                   setSelectedKey(null)
                                 }}
                               >
-                                {tAccount("sshViewIHaveSavedButton")}
+                                {tAccount("private_key" in selectedKey ? "sshViewIHaveSavedButton" : "sshViewCloseButton")}
                               </Button>
                             </div>
                           </div>

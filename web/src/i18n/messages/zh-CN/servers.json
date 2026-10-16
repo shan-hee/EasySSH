@@ -48,6 +48,7 @@
   "formPrivateKeyLabel": "私钥",
   "formPrivateKeyPlaceholder": "粘贴或从文件导入私钥内容",
   "formPrivateKeyWarning": "未检测到常见私钥标识，请确认内容是否正确",
+  "formPrivateKeyPublicKeyWarning": "当前内容是 SSH 公钥，此处需要私钥。请选择包含 BEGIN … PRIVATE KEY 的私钥文件，而非 .pub 公钥文件。",
   "formPrivateKeyFileButton": "选择文件",
   "formPrivateKeyFileAria": "选择私钥文件",
   "formAdvancedTitle": "高级设置",

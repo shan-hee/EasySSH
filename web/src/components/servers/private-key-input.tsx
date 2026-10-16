@@ -47,7 +47,9 @@ export function PrivateKeyInput({
   const { t: tServers } = useTranslation("servers")
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [dragActive, setDragActive] = React.useState(false)
-  const [warning, setWarning] = React.useState<string | null>(null)
+  const warning = !value.trim() || likelyPrivateKey(value)
+    ? null
+    : tServers(/^(?:ssh-|ecdsa-sha2-|sk-)/.test(value.trim()) ? "formPrivateKeyPublicKeyWarning" : "formPrivateKeyWarning")
 
   const labelText = label ?? tServers("formPrivateKeyLabel")
   const placeholderText =
@@ -58,11 +60,6 @@ export function PrivateKeyInput({
     reader.onload = () => {
       const text = String(reader.result ?? "")
       onChange(text)
-      setWarning(
-        likelyPrivateKey(text)
-          ? null
-          : tServers("formPrivateKeyWarning")
-      )
     }
     reader.readAsText(file)
   }
@@ -99,7 +96,7 @@ export function PrivateKeyInput({
   }
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("min-w-0 space-y-2", className)}>
       <div className="flex items-center justify-between">
         <Label htmlFor={id}>
           {labelText}
@@ -131,7 +128,7 @@ export function PrivateKeyInput({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         className={cn(
-          "rounded-md border transition-colors",
+          "min-w-0 rounded-md border transition-colors",
           dragActive ? "ring-2 ring-primary border-ring" : "border-input"
         )}
       >
@@ -145,18 +142,9 @@ export function PrivateKeyInput({
           onChange={(e) => {
             const text = e.target.value
             onChange(text)
-            if (text.length === 0) {
-              setWarning(null)
-            } else {
-              setWarning(
-                likelyPrivateKey(text)
-                  ? null
-                  : tServers("formPrivateKeyWarning")
-              )
-            }
           }}
           rows={8}
-          className="font-mono text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="min-w-0 max-w-full field-sizing-fixed resize-y font-mono text-sm border-0 focus-visible:ring-0 focus-visible:ring-offset-0"
         />
       </div>
 

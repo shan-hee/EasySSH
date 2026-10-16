@@ -9,7 +9,7 @@ export { TerminalSftpTabContent } from "../../../src/components/terminal/termina
 export { SftpServerPickerDialog } from "../../../src/components/sftp/sftp-server-picker-dialog"
 export { ServerConnectionConfigs } from "../../../src/components/servers/server-connection-configs"
 export { BackupRestoreTab, LogsClient, ScriptsPage } from "./desktop-components"
-export { Activity, ArchiveRestore, ArrowLeft, Bell, Bot, Check, CheckCheck, ChevronDown, CircleCheck, Clipboard, Cloud, Download, ExternalLink, FileText, FolderOpen, Globe, Info, Languages, ListChecks, Loader2, Menu, Minus, Monitor, RefreshCw, RotateCw, Settings2, SlidersHorizontal, Square, Terminal, Trash2, TriangleAlert, Unplug, X, XCircle } from "lucide-react"
+export { Activity, ArchiveRestore, ArrowLeft, Bell, Bot, Check, CheckCheck, ChevronDown, CircleCheck, Clipboard, Cloud, Download, ExternalLink, FileText, FolderOpen, Globe, Info, KeyRound, Languages, ListChecks, Loader2, Menu, Minus, Monitor, RefreshCw, RotateCw, Settings2, SlidersHorizontal, Square, Terminal, Trash2, TriangleAlert, Unplug, X, XCircle } from "lucide-react"
 export type { BackupRestoreTabProps, LogsClientProps, ScriptsPageProps } from "./desktop-components"
 export type { ScriptsPageAdapters } from "../../../src/components/dashboard/scripts/scripts-page"
 export type { InstanceBackupAdapter } from "../../../src/components/settings/instance-backup-panel"

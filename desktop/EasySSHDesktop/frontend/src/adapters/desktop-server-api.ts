@@ -18,6 +18,23 @@ import {
 import { DESKTOP_LOCAL_DATA_USER_ID } from "./desktop-local-identity"
 import { requestDesktopSync } from "./desktop-sync"
 import { Call } from "@wailsio/runtime"
+import type { SSHKeyApi } from "@/lib/api/ssh-keys"
+
+export const desktopSSHKeyApi: SSHKeyApi = {
+  list: () => DesktopServerService.ListSSHKeys(),
+  async import(input) {
+    const key = await DesktopServerService.ImportSSHKey({
+      ...input,
+      passphrase: input.passphrase ?? "",
+    })
+    requestDesktopSync()
+    return key
+  },
+  async delete(id) {
+    await DesktopServerService.DeleteSSHKey(id)
+    requestDesktopSync()
+  },
+}
 
 const desktopAuthMethodMap: Record<AuthMethod, DesktopServerAuthMethod> = {
   password: DesktopServerAuthMethod.DesktopServerAuthPassword,
@@ -99,11 +116,7 @@ export function mapServerInput(input: Parameters<ServerConnectionConfigsApi["cre
 
 export function createDesktopServerApi(): ServerConnectionConfigsApi {
   return {
-    sshKeys: {
-      list: () => Call.ByName("main.DesktopServerService.ListSSHKeys"),
-      import: input => Call.ByName("main.DesktopServerService.ImportSSHKey", input),
-      delete: id => Call.ByName("main.DesktopServerService.DeleteSSHKey", id),
-    },
+    sshKeys: desktopSSHKeyApi,
     getStatistics: () => Call.ByName("main.DesktopServerService.GetStatistics"),
     async getById(id) { return mapDesktopServer(await DesktopServerService.GetById(id)) },
     async list(params) {

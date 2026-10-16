@@ -50,14 +50,30 @@ function notifySyncStatus() {
   window.dispatchEvent(new Event("easyssh:sync-status-changed"))
 }
 
+// Go maps and Automerge records enumerate fields in different orders. Compare
+// their contents, including the effective order after deleted/new server IDs.
+function snapshotSignature(snapshot: SyncSnapshot, serversOnly = false) {
+  return JSON.stringify(Object.keys(snapshot).sort()
+    .filter(key => !serversOnly || key.startsWith("server/") || key.startsWith("order/"))
+    .map(key => {
+      const record = snapshot[key]
+      if (key.startsWith("order/")) {
+        const remaining = new Set(Object.keys(snapshot).filter(id => id.startsWith("server/")).map(id => id.slice(7)))
+        const ids = (JSON.parse(record.ids) as string[]).filter(id => remaining.delete(id))
+        return [key, [...ids, ...[...remaining].sort()]]
+      }
+      return [key, Object.keys(record).sort().map(field => [field, record[field]])]
+    }))
+}
+
 async function synchronizeConfiguration() {
   // Lazy loading keeps WASM off the startup path for users without sync.
   let state = await call<LocalState>("Load")
-  if (!state.enabled || !state.space_id) return
+  if (!state.enabled || !state.space_id) return { changed: false, serversChanged: false }
   const engine = await import("@/lib/sync/automerge")
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt) state = await call<LocalState>("Load")
-    if (!state.enabled) return
+    if (!state.enabled) return { changed: false, serversChanged: false }
     let doc = engine.loadDocument(state.document)
     try {
       doc = engine.reconcileDocument(doc, state.snapshot)
@@ -84,9 +100,10 @@ async function synchronizeConfiguration() {
         snapshot: projected.snapshot,
       })
       if (!applied) continue
-      if (JSON.stringify(state.snapshot) !== JSON.stringify(projected.snapshot))
-        window.dispatchEvent(new Event("easyssh:sync-applied"))
-      return
+      return {
+        changed: snapshotSignature(state.snapshot) !== snapshotSignature(projected.snapshot),
+        serversChanged: snapshotSignature(state.snapshot, true) !== snapshotSignature(projected.snapshot, true),
+      }
     } finally {
       engine.freeDocument(doc)
     }
@@ -142,12 +159,7 @@ async function synchronizeVault(entry: VaultEntry) {
         }))
       )
         continue
-      if (
-        JSON.stringify(state.snapshot) !== JSON.stringify(projected.snapshot) &&
-        !projected.conflicts.length
-      )
-        window.dispatchEvent(new Event("easyssh:sync-applied"))
-      return
+      return snapshotSignature(state.snapshot) !== snapshotSignature(projected.snapshot) && !projected.conflicts.length
     } finally {
       engine.freeDocument(doc)
     }
@@ -157,24 +169,35 @@ async function synchronizeVault(entry: VaultEntry) {
 async function synchronize() {
   const initial = await call<LocalState>("Load")
   if (!initial.enabled || !initial.space_id) return
-  await synchronizeConfiguration()
-  const binding = await call<LocalState>("Load")
-  if (!binding.enabled || binding.space_id !== initial.space_id)
-    throw new Error("Sync account changed")
-  const entries = await call<VaultEntry[]>("VaultList")
-  const errors: string[] = []
-  for (const entry of entries) {
-    try {
-      await synchronizeVault(entry)
-    } catch (error) {
-      errors.push(
-        `${entry.name || entry.kind}: ${error instanceof Error ? error.message : String(error)}`,
-      )
+  const changes = await synchronizeConfiguration()
+  try {
+    const binding = await call<LocalState>("Load")
+    if (!binding.enabled || binding.space_id !== initial.space_id)
+      throw new Error("Sync account changed")
+    const entries = await call<VaultEntry[]>("VaultList")
+    const errors: string[] = []
+    for (const entry of entries) {
+      try {
+        if (await synchronizeVault(entry)) {
+          changes.changed = true
+          if (entry.kind === "credential") changes.serversChanged = true
+        }
+      } catch (error) {
+        errors.push(
+          `${entry.name || entry.kind}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
     }
+    if (errors.length) throw new Error(errors.join("\n"))
+    await call("MarkSynced", binding.space_id, binding.revision)
+    lastError = ""
+  } finally {
+    // Publish once after configuration and credentials are available, including
+    // successful changes when another vault entry fails later in this round.
+    if (changes.changed) window.dispatchEvent(new CustomEvent("easyssh:sync-applied", {
+      detail: { serversChanged: changes.serversChanged },
+    }))
   }
-  if (errors.length) throw new Error(errors.join("\n"))
-  await call("MarkSynced", binding.space_id, binding.revision)
-  lastError = ""
 }
 
 function syncNow(): Promise<void> {

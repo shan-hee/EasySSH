@@ -57,6 +57,9 @@ const DesktopSyncView = lazy(() => import("./shell/desktop-sync-view").then(
 const DesktopScriptsView = lazy(() => import("./shell/desktop-scripts-view").then(
   module => ({ default: module.DesktopScriptsView }),
 ))
+const DesktopSSHKeysView = lazy(() => import("./shell/desktop-ssh-keys-view").then(
+  module => ({ default: module.DesktopSSHKeysView }),
+))
 const DesktopTaskCenterView = lazy(() => import("./shell/desktop-task-center-view").then(
   module => ({ default: module.DesktopTaskCenterView }),
 ))
@@ -639,6 +642,7 @@ function App() {
   }, [])
 
   const handleOpenSync = useCallback(() => setActiveView("sync"), [])
+  const handleOpenSSHKeys = useCallback(() => setActiveView("ssh-keys"), [])
 
   const handleReturnToTerminal = useCallback(() => {
     setRequestedTaskRunID(null)
@@ -685,6 +689,7 @@ function App() {
       onToggleAiAssistant={handleToggleAiAssistant}
       onLocaleChange={handleLocaleChange}
       onOpenScripts={handleOpenScripts}
+      onOpenSSHKeys={handleOpenSSHKeys}
       onOpenTasks={handleOpenTasks}
       onOpenActivityLogs={handleOpenActivityLogs}
       onOpenBackupRestore={handleOpenBackupRestore}
@@ -714,6 +719,13 @@ function App() {
       <SshWorkspace adapters={adapters} capabilities={capabilities} layout="desktop">
         <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
+            {activeView === "ssh-keys" && (
+              <section className="absolute inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden">
+                <Suspense fallback={<PageLoading />}>
+                  <DesktopSSHKeysView locale={locale} onReturnToTerminal={handleReturnToTerminal} headerActions={windowActions} />
+                </Suspense>
+              </section>
+            )}
             <section
               className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
               data-active={activeView === "terminal"}

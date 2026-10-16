@@ -24,6 +24,7 @@ export function useServerConnectionList({ api, ready, search, group, busy }: {
   const loadingMoreRef = useRef(false)
   const failedRequestRef = useRef<"reload" | "more">("reload")
   const statisticsSequenceRef = useRef(0)
+  const pendingSyncRefreshRef = useRef(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setQuery(search.trim()), 260)
@@ -49,29 +50,38 @@ export function useServerConnectionList({ api, ready, search, group, busy }: {
     return () => { statisticsSequenceRef.current += 1 }
   }, [ready, refreshStatistics])
 
-  const fetchPage = useCallback(async (page: number, replace: boolean) => {
+  const fetchPage = useCallback(async (page: number, replace: boolean, background = false) => {
     const sequence = replace ? ++sequenceRef.current : sequenceRef.current
     if (replace) {
-      setLoading(true)
+      if (!background) setLoading(true)
       setLoadingMore(false)
-      loadingMoreRef.current = false
-      setHasMore(false)
+      loadingMoreRef.current = background
+      if (!background) setHasMore(false)
     } else {
       loadingMoreRef.current = true
       setLoadingMore(true)
     }
     setError(null)
     try {
-      const response = await api.list({
-        page, limit: PAGE_SIZE, search: query, group: group === "all" ? undefined : group,
-      })
-      if (sequence !== sequenceRef.current) return
+      // Refresh every already loaded page without clearing the visible list.
+      let response: Awaited<ReturnType<typeof api.list>>
+      const refreshed: Server[] = []
+      let loadedPage = background ? 1 : page
+      do {
+        response = await api.list({
+          page: loadedPage, limit: PAGE_SIZE, search: query, group: group === "all" ? undefined : group,
+        })
+        if (sequence !== sequenceRef.current) return
+        refreshed.push(...response.data)
+        if (!background || loadedPage >= page || !response.data.length || loadedPage * PAGE_SIZE >= response.total) break
+        loadedPage += 1
+      } while (true)
       setServers(current => {
-        if (replace) return response.data
+        if (replace) return refreshed
         const ids = new Set(current.map(server => server.id))
         return [...current, ...response.data.filter(server => !ids.has(server.id))]
       })
-      offsetRef.current = page * PAGE_SIZE
+      offsetRef.current = loadedPage * PAGE_SIZE
       setHasMore(response.data.length > 0 && offsetRef.current < response.total)
     } catch (error) {
       if (sequence !== sequenceRef.current) return
@@ -95,10 +105,20 @@ export function useServerConnectionList({ api, ready, search, group, busy }: {
 
   useEffect(() => {
     if (!ready) return
-    const refresh = () => { void reload(); void refreshStatistics() }
+    const refresh = (event?: Event) => {
+      if (event instanceof CustomEvent && event.detail?.serversChanged === false) return
+      if (busy) {
+        pendingSyncRefreshRef.current = true
+        return
+      }
+      pendingSyncRefreshRef.current = false
+      void fetchPage(Math.max(1, Math.ceil(offsetRef.current / PAGE_SIZE)), true, true)
+      void refreshStatistics()
+    }
+    if (pendingSyncRefreshRef.current && !busy) refresh()
     window.addEventListener("easyssh:sync-applied", refresh)
     return () => window.removeEventListener("easyssh:sync-applied", refresh)
-  }, [ready, reload, refreshStatistics])
+  }, [ready, busy, fetchPage, refreshStatistics])
 
   const loadMore = useCallback(async () => {
     if (!ready || busy || loading || loadingMoreRef.current || !hasMore || search.trim() !== query) return

@@ -24,6 +24,7 @@ import {
   FolderOpen,
   Globe,
   Info,
+  KeyRound,
   ListChecks,
   Loader2,
   Menu,
@@ -44,7 +45,7 @@ import { DesktopInlineUpdateAction } from "./desktop-inline-update-action"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
 
-export type DesktopView = "terminal" | "ai" | "scripts" | "tasks" | "activity-logs" | "backup-restore" | "sync"
+export type DesktopView = "terminal" | "ai" | "scripts" | "ssh-keys" | "tasks" | "activity-logs" | "backup-restore" | "sync"
 
 const windowActionErrorMessage = "Failed to run window action:"
 const githubLabel = "GitHub"
@@ -174,12 +175,14 @@ function DesktopAboutVersionValue({ version }: { version: string }) {
 function DesktopSettingsMenu({
   runtime,
   onOpenScripts,
+  onOpenSSHKeys,
   onOpenTasks,
   onOpenActivityLogs,
   onOpenBackupRestore,
 }: {
   runtime: DesktopRuntimeBindingInfo | null
   onOpenScripts: () => void
+  onOpenSSHKeys: () => void
   onOpenTasks: (taskID?: string) => void
   onOpenActivityLogs: () => void
   onOpenBackupRestore: () => void
@@ -215,6 +218,10 @@ function DesktopSettingsMenu({
           <DropdownMenuItem onSelect={onOpenScripts}>
             <FileText className="h-4 w-4" />
             <span>{t("scriptLibraryLabel")}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onOpenSSHKeys}>
+            <KeyRound className="h-4 w-4" />
+            <span>{t("keyPairsLabel")}</span>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onOpenTasks()}>
             <ListChecks className="h-4 w-4" />
@@ -261,6 +268,7 @@ export function DesktopWindowActions({
   onToggleAiAssistant,
   onLocaleChange,
   onOpenScripts,
+  onOpenSSHKeys,
   onOpenTasks,
   onOpenActivityLogs,
   onOpenBackupRestore,
@@ -272,6 +280,7 @@ export function DesktopWindowActions({
   onToggleAiAssistant: () => void
   onLocaleChange: (locale: Locale) => void
   onOpenScripts: () => void
+  onOpenSSHKeys: () => void
   onOpenTasks: (taskID?: string) => void
   onOpenActivityLogs: () => void
   onOpenBackupRestore: () => void
@@ -309,6 +318,7 @@ export function DesktopWindowActions({
       <DesktopSettingsMenu
         runtime={runtime}
         onOpenScripts={onOpenScripts}
+        onOpenSSHKeys={onOpenSSHKeys}
         onOpenTasks={onOpenTasks}
         onOpenActivityLogs={onOpenActivityLogs}
         onOpenBackupRestore={onOpenBackupRestore}
