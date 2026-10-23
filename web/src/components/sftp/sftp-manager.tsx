@@ -1,6 +1,6 @@
 import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 
-import { useRef, useMemo, useCallback, useEffect, type ChangeEvent } from "react"
+import { useRef, useMemo, useCallback, useEffect, type ChangeEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { SftpSessionProvider } from "@/contexts/sftp-session-context"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -71,6 +71,7 @@ export interface SftpManagerProps {
   onRenameSession?: (newLabel: string) => void
   onToggleFullscreen?: () => void
   terminalPathActions?: SftpTerminalPathActions
+  toolbarActions?: ReactNode
   // 传输任务管理(从外部传入)
   transferTasks?: WorkspaceTransferTask[]
   backgroundTransferJobs?: TransferJob[]
@@ -127,6 +128,7 @@ export function SftpManager(props: SftpManagerProps) {
     onRenameSession,
     onToggleFullscreen,
     terminalPathActions,
+    toolbarActions,
     transferTasks,
     backgroundTransferJobs,
     onClearCompletedTransfers,
@@ -386,6 +388,7 @@ export function SftpManager(props: SftpManagerProps) {
         onNavigateForward={onNavigateForward}
         canNavigateForward={canNavigateForward}
         terminalPathActions={editorState.isOpen ? undefined : terminalPathActions}
+        toolbarActions={toolbarActions}
         showTransferTasks={showTransferTasks}
         transferTasks={effectiveTransferTasks}
         backgroundTransferJobs={backgroundTransferJobs}

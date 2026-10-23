@@ -1,5 +1,6 @@
 import type { OptionalServerConnectionInfo, ServerConnectionInfo } from "./types"
 import type { AuthMethod } from "../../../../src/lib/server-types"
+import type { SystemInfoApi } from "../../../../src/lib/system-info"
 import type { ListScriptsParams, ListScriptsResponse } from "../../../../src/lib/script-types"
 import type {
   BatchDeleteResponse,
@@ -383,6 +384,7 @@ export interface WorkspaceDockerApi {
 }
 
 export interface SshWorkspaceApiClient {
+  systemInfo?: SystemInfoApi
   scripts?: {
     list: (params?: ListScriptsParams) => Promise<ListScriptsResponse>
     execute: (id: string) => Promise<void>

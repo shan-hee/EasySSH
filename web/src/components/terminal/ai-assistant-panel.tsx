@@ -47,6 +47,8 @@ import type { TerminalSession } from "./types"
 import { TerminalAIContextPicker } from "./terminal-ai-context-picker"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { PageLoading } from "@/components/page-loading"
+import { PanelPositionControl } from "./panel-position-control"
+import type { TerminalPanelPosition } from "@/stores/tab-ui-store"
 import { PreloadedAgentThread as AgentThread } from "@/lib/ai-assistant-preload"
 
 const ANIMATION_DELAY = 160
@@ -57,6 +59,9 @@ const MIN_PANEL_WIDTH = 320
 const MAX_PANEL_WIDTH = 720
 
 interface AiAssistantPanelProps {
+  position: TerminalPanelPosition
+  onPositionChange: (position: TerminalPanelPosition) => void
+  layoutStyle?: CSSProperties
   isOpen: boolean
   onClose: () => void
   terminalSession: TerminalSession
@@ -142,6 +147,9 @@ function assertDesktopAIAdapters(layout: string | undefined, adapters?: AIAssist
 }
 
 export function AiAssistantPanel({
+  position,
+  onPositionChange,
+  layoutStyle,
   isOpen,
   onClose,
   terminalSession,
@@ -524,7 +532,7 @@ export function AiAssistantPanel({
       return
     }
 
-    const deltaX = dragStartXRef.current - event.clientX
+    const deltaX = (dragStartXRef.current - event.clientX) * (position === "left" ? -1 : 1)
     const nextWidth = Math.min(
       MAX_PANEL_WIDTH,
       Math.max(MIN_PANEL_WIDTH, dragStartWidthRef.current + deltaX)
@@ -540,7 +548,7 @@ export function AiAssistantPanel({
       setPanelWidth(pendingPanelWidthRef.current)
       resizeFrameRef.current = null
     })
-  }, [isResizing])
+  }, [isResizing, position])
 
   const handleResizeEnd = useCallback((event: PointerEvent<HTMLDivElement>) => {
     if (!isResizing) {
@@ -829,12 +837,13 @@ export function AiAssistantPanel({
   ), [continueRun, tAI, terminalContextText, activeModel, permissionMode])
 
   const toolbar = (
-    <div className="terminal-ai-glass-toolbar relative z-[1] flex min-h-10 shrink-0 items-center justify-between gap-3 px-3 text-foreground">
+    <div className="terminal-ai-glass-toolbar relative z-[1] flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-1 px-3 text-foreground">
       <div className="min-w-0">
         <span className="truncate text-sm font-medium">{tAI("terminalPanelTitle")}</span>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
+        <div className="hidden md:block"><PanelPositionControl position={position} onChange={onPositionChange} /></div>
         <AISessionHistoryPopover
           activeSessionId={sessionId}
           history={history}
@@ -883,17 +892,18 @@ export function AiAssistantPanel({
         "md:relative md:inset-auto md:translate-x-0",
         isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
         isOpen
-          ? "translate-x-0 md:w-[var(--terminal-ai-panel-width)] md:max-w-[55vw]"
+          ? position === "bottom" ? "translate-x-0 md:w-full" : "translate-x-0 md:w-[var(--terminal-ai-panel-width)] md:max-w-[var(--terminal-side-max-width)]"
           : "translate-x-full md:w-0 md:max-w-[0px]"
       )}
       style={{
         pointerEvents: isOpen ? "auto" : "none",
         "--terminal-ai-panel-width": `${panelWidth}px`,
+        ...layoutStyle,
       } as CSSProperties}
       inert={!isOpen}
       aria-hidden={!isOpen}
     >
-      <div className="relative flex h-full min-h-0 w-full shrink-0 flex-col md:w-[min(var(--terminal-ai-panel-width),55vw)]">
+      <div className="relative flex h-full min-h-0 w-full shrink-0 flex-col">
       {confirmDialog}
       {backgroundColor && (
         <div
@@ -917,13 +927,14 @@ export function AiAssistantPanel({
         )}
         aria-hidden={!isOpen}
       >
-        <div
+        {position !== "bottom" && <div
           role="separator"
           aria-orientation="vertical"
           aria-label={tAI("resizePanel")}
           title={tAI("resizePanel")}
           className={cn(
-            "absolute inset-y-0 left-0 z-10 hidden w-3 -translate-x-1 cursor-col-resize touch-none md:block",
+            "absolute inset-y-0 z-10 hidden w-3 cursor-col-resize touch-none md:block",
+            position === "left" ? "right-0 translate-x-1" : "left-0 -translate-x-1",
             "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent after:transition-colors",
             "hover:after:bg-primary/50",
             isResizing && "after:bg-primary"
@@ -932,7 +943,7 @@ export function AiAssistantPanel({
           onPointerMove={handleResizeMove}
           onPointerUp={handleResizeEnd}
           onPointerCancel={handleResizeEnd}
-        />
+        />}
 
         <Suspense fallback={<PageLoading className="min-h-0" delay={0} />}>
         {hasMountedThread ? <AgentThread

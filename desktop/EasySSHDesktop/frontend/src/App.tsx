@@ -35,6 +35,7 @@ import { createDesktopServerApi, markDesktopServerConnected, saveDesktopVerified
 import { createDesktopDockerApi } from "./adapters/desktop-docker-api"
 import { createDesktopMonitorApi } from "./adapters/desktop-monitor-api"
 import { createDesktopScriptAdapters } from "./adapters/desktop-script-api"
+import { desktopSystemInfoApi } from "./adapters/desktop-system-info"
 import { createDesktopSftpApi } from "./adapters/desktop-sftp-api"
 import { DesktopProviders } from "./shell/desktop-providers"
 import { DesktopWindowActions, type DesktopView } from "./shell/desktop-titlebar"
@@ -249,6 +250,7 @@ function App() {
     monitor: monitorApi,
     docker: dockerApi,
     scripts: scriptAdapters.scripts,
+    systemInfo: desktopSystemInfoApi,
     terminal: {
       ...(desktopTerminalGatewayReady || !runtimeLoaded ? {} : { WebSocketCtor: terminalSocket }),
       createWebSocketUrl: ({ serverId, cols, rows, ticket }) => {

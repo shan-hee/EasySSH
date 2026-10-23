@@ -6,11 +6,16 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export type TerminalPanelPosition = "left" | "right" | "bottom"
+
 interface TabUIState {
   isMonitorOpen: boolean
   isMobileMonitorOpen: boolean
   isFileManagerOpen: boolean
   isAiInputOpen: boolean
+  monitorPosition: TerminalPanelPosition
+  fileManagerPosition: TerminalPanelPosition
+  aiPosition: TerminalPanelPosition
 }
 
 interface TabUIStoreState {
@@ -35,6 +40,9 @@ const DEFAULT_TAB_STATE: TabUIState = {
   isMobileMonitorOpen: false,
   isFileManagerOpen: false,
   isAiInputOpen: false,
+  monitorPosition: "left",
+  fileManagerPosition: "right",
+  aiPosition: "right",
 }
 
 const normalizeTabState = (state?: Partial<TabUIState>) => ({

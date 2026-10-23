@@ -1,4 +1,4 @@
-import { useContext } from "react"
+import { useContext, type ReactNode } from "react"
 import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
 import {
@@ -45,6 +45,7 @@ export interface SftpWorkspaceToolbarProps {
   canNavigateForward?: boolean
 
   terminalPathActions?: SftpTerminalPathActions
+  toolbarActions?: ReactNode
   showTransferTasks: boolean
   transferTasks: WorkspaceTransferTask[]
   backgroundTransferJobs?: TransferJob[]
@@ -73,6 +74,7 @@ export function SftpWorkspaceToolbar({
   onNavigateForward,
   canNavigateForward,
   terminalPathActions,
+  toolbarActions,
   showTransferTasks,
   transferTasks,
   backgroundTransferJobs,
@@ -418,7 +420,7 @@ export function SftpWorkspaceToolbar({
         )}
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         {onCreateBackgroundUpload && (
           <Button
             variant="ghost"
@@ -460,6 +462,8 @@ export function SftpWorkspaceToolbar({
             )}
           </Button>
         )}
+
+        {toolbarActions}
 
         {workspaceToolbar?.kind !== "sftp" && <Button
           variant="ghost"

@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 interface SystemInfoProps {
   data: SystemInfoType;
   density?: MonitorPanelDensity;
+  headerActions?: React.ReactNode;
 }
 
 /**
@@ -97,7 +98,7 @@ const InfoRow = React.memo(function InfoRow({
 /**
  * 系统信息组件
  */
-export const SystemInfo: React.FC<SystemInfoProps> = React.memo(({ data, density = "full" }) => {
+export const SystemInfo: React.FC<SystemInfoProps> = React.memo(({ data, density = "full", headerActions }) => {
   const { t } = useTranslation("terminalMonitor");
   const rows = React.useMemo(() => {
     if (density === "mini") {
@@ -128,8 +129,9 @@ export const SystemInfo: React.FC<SystemInfoProps> = React.memo(({ data, density
   return (
     <div className="space-y-1">
       {/* 模块标题 - 高度 28px */}
-      <div className={cn("flex items-center", density === "full" ? "h-7" : "h-6")}>
+      <div className={cn("flex items-center justify-between gap-1", density === "full" ? "h-7" : "h-6")}>
         <span className="text-xs font-semibold">{t("systemInfoTitle")}</span>
+        {headerActions}
       </div>
 
       <div className="space-y-0">

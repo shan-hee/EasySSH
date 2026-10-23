@@ -3,6 +3,8 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { X, GripVertical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { TerminalSftpPanel } from "@/components/terminal/terminal-sftp-panel"
+import { PanelPositionControl } from "./panel-position-control"
+import type { TerminalPanelPosition } from "@/stores/tab-ui-store"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import type { SshWorkspacePreferenceAdapter, WorkspaceTransferTask } from "@/lib/session/workspace"
@@ -34,6 +36,9 @@ function readPanelWidthPreference(
 }
 
 export interface FileManagerPanelProps {
+  position: TerminalPanelPosition
+  onPositionChange: (position: TerminalPanelPosition) => void
+  layoutStyle?: React.CSSProperties
   keyboardActive?: boolean
   isOpen: boolean
   onClose: () => void
@@ -80,6 +85,9 @@ export interface FileManagerPanelProps {
 }
 
 export function FileManagerPanel({
+  position,
+  onPositionChange,
+  layoutStyle,
   keyboardActive = true,
   isOpen,
   onClose,
@@ -147,14 +155,14 @@ export function FileManagerPanel({
   const handleResizeMove = useCallback((e: MouseEvent) => {
     if (!isResizing) return
 
-    const deltaX = resizeStartX.current - e.clientX
+    const deltaX = (resizeStartX.current - e.clientX) * (position === "left" ? -1 : 1)
     const maxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth * MAX_PANEL_VIEWPORT_RATIO))
     const newWidth = Math.min(
       Math.max(MIN_PANEL_WIDTH, resizeStartWidth.current + deltaX),
       maxWidth
     )
     setWidth(newWidth)
-  }, [isResizing])
+  }, [isResizing, position])
 
   const handleResizeEnd = useCallback(() => {
     setIsResizing(false)
@@ -194,20 +202,22 @@ export function FileManagerPanel({
         "md:relative md:inset-auto md:translate-x-0",
         isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
         isOpen
-          ? "translate-x-0 md:w-[var(--terminal-sftp-panel-width)] md:max-w-[70vw]"
+          ? position === "bottom" ? "translate-x-0 md:w-full" : "translate-x-0 md:w-[var(--terminal-sftp-panel-width)] md:max-w-[var(--terminal-side-max-width)]"
           : "translate-x-full md:w-0 md:max-w-0",
       )}
       style={{
         pointerEvents: isOpen ? "auto" : "none",
         "--terminal-sftp-panel-width": `${width}px`,
+        ...layoutStyle,
       } as React.CSSProperties}
       data-terminal-panel
       aria-hidden={!isOpen}
       inert={!isOpen}
     >
-      <div
+      {position !== "bottom" && <div
         className={cn(
-          "group absolute inset-y-0 left-0 z-10 hidden w-3 -translate-x-1 cursor-col-resize bg-transparent transition-colors hover:bg-blue-500/50 md:block",
+          "group absolute inset-y-0 z-10 hidden w-3 cursor-col-resize bg-transparent transition-colors hover:bg-blue-500/50 md:block",
+          position === "left" ? "right-0 translate-x-1" : "left-0 -translate-x-1",
           isResizing && "bg-blue-500/50",
         )}
         onMouseDown={handleResizeStart}
@@ -220,9 +230,9 @@ export function FileManagerPanel({
         >
           <GripVertical className="h-4 w-4" />
         </div>
-      </div>
+      </div>}
 
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden text-foreground shadow-2xl md:w-[min(var(--terminal-sftp-panel-width),70vw)] md:flex-none md:shrink-0 md:shadow-none">
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden text-foreground shadow-2xl md:shadow-none">
         {backgroundColor && (
           <div
             aria-hidden="true"
@@ -235,10 +245,11 @@ export function FileManagerPanel({
           className="terminal-sftp-glass-surface pointer-events-none absolute inset-0 z-0"
         />
 
-        <div className="relative z-[1] min-w-0 flex-1 overflow-hidden">
+        <div className="relative z-[1] min-h-0 min-w-0 flex-1 overflow-hidden">
           {sftpProps.isConnected ? (
             <TerminalSftpPanel
               {...sftpProps}
+              toolbarActions={<div className="hidden md:block"><PanelPositionControl position={position} onChange={onPositionChange} /></div>}
               keyboardShortcutsEnabled={isOpen && keyboardActive}
               isFullscreen={false}
               onDisconnect={onClose}

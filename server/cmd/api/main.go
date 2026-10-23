@@ -520,6 +520,7 @@ func main() {
 	aiSessionHandler := rest.NewAISessionHandler(aiRuntimeManager)
 	// Docker 处理器（复用监控连接池）
 	dockerHandler := rest.NewDockerHandler(monitorConnectionPool)
+	systemInfoHandler := rest.NewSystemInfoHandler(monitorConnectionPool)
 	// 其他处理器
 	sshKeyHandler := rest.NewSSHKeyHandler(sshKeyService)
 	avatarHandler := rest.NewAvatarHandler()
@@ -777,6 +778,11 @@ func main() {
 			sshRoutes.DELETE("/sessions/:id", middleware.RequirePermission(permissionService, "terminal:execute"), sshHandler.CloseSession) // 关闭会话
 			sshRoutes.GET("/statistics", middleware.RequirePermission(permissionService, "terminal:execute"), sshHandler.GetStatistics)     // 统计信息
 		}
+
+		systemRoutes := v1.Group("/system/:serverId")
+		systemRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		systemRoutes.Use(middleware.RequireResourcePermission(permissionService, "server:connect", "server", middleware.PathResourceID("serverId")))
+		systemRoutes.GET("/:kind", middleware.RequireResourcePermission(permissionService, "terminal:execute", "server", middleware.PathResourceID("serverId")), systemInfoHandler.Snapshot)
 
 		// Docker 路由（需要认证）
 		dockerRoutes := v1.Group("/docker/:serverId")

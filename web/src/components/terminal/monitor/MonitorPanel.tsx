@@ -1,6 +1,6 @@
 /**
  * 系统监控主面板组件
- * 固定宽度 280px，高度跟随父容器
+ * 跟随停靠区域尺寸，底部停靠时横向展示图表
  * 整合所有监控子组件,实现紧凑美观的布局
  * 使用 WebSocket + Protobuf 二进制传输获取真实监控数据
  */
@@ -56,6 +56,8 @@ const DENSITY_LAYOUT: Record<MonitorPanelDensity, {
 interface MonitorPanelProps {
   className?: string;
   isLive?: boolean;
+  horizontal?: boolean;
+  headerActions?: React.ReactNode;
 }
 
 /**
@@ -73,6 +75,8 @@ interface MonitorPanelProps {
 const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
   className,
   isLive = true,
+  horizontal = false,
+  headerActions,
 }) => {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [panelHeight, setPanelHeight] = useState<number | null>(null);
@@ -98,11 +102,12 @@ const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
   const displayMetrics = isLive ? metrics : frozenSnapshotRef.current.metrics;
   const displayHistory = isLive ? liveHistory : frozenSnapshotRef.current.history;
   const density = useMemo<MonitorPanelDensity>(() => {
+    if (horizontal) return "compact";
     if (panelHeight === null) return "full";
     if (panelHeight < MINI_HEIGHT_THRESHOLD) return "mini";
     if (panelHeight < COMPACT_HEIGHT_THRESHOLD) return "compact";
     return "full";
-  }, [panelHeight]);
+  }, [horizontal, panelHeight]);
   const layout = DENSITY_LAYOUT[density];
 
   useEffect(() => {
@@ -148,12 +153,12 @@ const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
 
   const panelContent = useMemo(() => {
     if (!formattedMetrics) {
-      return <MonitorSkeleton density={density} />;
+      return <MonitorSkeleton density={density} headerActions={headerActions} />;
     }
 
     return (
       <>
-        <SystemInfo data={formattedMetrics.systemInfo} density={density} />
+        <SystemInfo data={formattedMetrics.systemInfo} density={density} headerActions={headerActions} />
 
         <CPUChart
           data={formattedMetrics.cpuHistory}
@@ -184,21 +189,21 @@ const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
         />
       </>
     );
-  }, [formattedMetrics, density, layout]);
+  }, [formattedMetrics, density, layout, headerActions]);
 
   return (
     <div
       ref={panelRef}
       data-monitor-density={density}
       className={cn(
-        "w-[280px] h-full min-h-0 flex-shrink-0 overflow-hidden",
+        "w-full h-full min-h-0 min-w-0 overflow-hidden",
         className
       )}
     >
       <div
         className={cn(
           "h-full min-h-0 overflow-y-auto monitor-panel-scrollbar",
-          layout.contentClassName
+          horizontal ? "grid grid-cols-[repeat(5,minmax(200px,1fr))] items-start gap-4 overflow-x-auto px-3 py-2" : layout.contentClassName
         )}
       >
         {panelContent}

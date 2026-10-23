@@ -2608,6 +2608,38 @@ components:
             additionalProperties: true
 
 paths:
+  /system/{serverId}/{kind}:
+    get:
+      operationId: getServerSystemSnapshot
+      summary: 获取服务器的进程、监听端口或 systemd 服务列表
+      tags: [monitor]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: serverId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [processes, ports, services]
+      responses:
+        '200':
+          $ref: '#/components/responses/JSON'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '502':
+          $ref: '#/components/responses/Error'
+
   /sync/authorization/start:
     post:
       operationId: startSyncAuthorization

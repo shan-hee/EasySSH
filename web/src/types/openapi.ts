@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/system/{serverId}/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 获取服务器的进程、监听端口或 systemd 服务列表 */
+        get: operations["getServerSystemSnapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sync/authorization/start": {
         parameters: {
             query?: never;
@@ -4825,6 +4842,25 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getServerSystemSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                serverId: string;
+                kind: "processes" | "ports" | "services";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JSON"];
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            502: components["responses"]["Error"];
+        };
+    };
     startSyncAuthorization: {
         parameters: {
             query?: never;

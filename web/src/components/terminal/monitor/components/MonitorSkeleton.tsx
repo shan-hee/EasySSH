@@ -5,6 +5,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from "react-i18next";
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import type { MonitorPanelDensity } from '../types/metrics';
@@ -12,10 +13,13 @@ import type { MonitorPanelDensity } from '../types/metrics';
 /**
  * 系统信息骨架
  */
-const SystemInfoSkeleton: React.FC<{ density: MonitorPanelDensity }> = ({ density }) => (
+const SystemInfoSkeleton: React.FC<{ density: MonitorPanelDensity; headerActions?: React.ReactNode }> = ({ density, headerActions }) => {
+  const { t } = useTranslation("terminalMonitor");
+  return (
   <div className="space-y-1">
-    <div className={cn("flex items-center", density === "full" ? "h-7" : "h-6")}>
-      <Skeleton className="h-3 w-16" />
+    <div className={cn("flex items-center justify-between gap-1", density === "full" ? "h-7" : "h-6")}>
+      {headerActions ? <span className="text-xs font-semibold">{t("systemInfoTitle")}</span> : <Skeleton className="h-3 w-16" />}
+      {headerActions}
     </div>
     <div className="space-y-0">
       {Array.from({ length: density === "full" ? 6 : density === "compact" ? 3 : 2 }).map((_, i) => (
@@ -26,7 +30,8 @@ const SystemInfoSkeleton: React.FC<{ density: MonitorPanelDensity }> = ({ densit
       ))}
     </div>
   </div>
-);
+  );
+};
 
 /**
  * CPU/网络 曲线图骨架（Area/Line Chart）
@@ -194,13 +199,14 @@ const BarChartSkeleton: React.FC<{ density: MonitorPanelDensity }> = ({ density 
 /**
  * 监控面板完整骨架屏
  */
-export const MonitorSkeleton: React.FC<{ density?: MonitorPanelDensity }> = ({
+export const MonitorSkeleton: React.FC<{ density?: MonitorPanelDensity; headerActions?: React.ReactNode }> = ({
   density = "full",
+  headerActions,
 }) => {
   if (density === "mini") {
     return (
       <div className="space-y-3">
-        <SystemInfoSkeleton density={density} />
+        <SystemInfoSkeleton density={density} headerActions={headerActions} />
         <MiniMetricSkeleton />
         <MiniMetricSkeleton />
         <MiniMetricSkeleton twoColumns />
@@ -213,7 +219,7 @@ export const MonitorSkeleton: React.FC<{ density?: MonitorPanelDensity }> = ({
     <div className={cn("w-full", density === "compact" ? "space-y-2" : "space-y-1.5")}>
       {/* 系统信息骨架 - 148px */}
       <div>
-        <SystemInfoSkeleton density={density} />
+        <SystemInfoSkeleton density={density} headerActions={headerActions} />
       </div>
 
       {/* CPU 曲线图骨架 - 134px */}

@@ -23,6 +23,8 @@ import { FileManagerPanel } from './file-manager-panel'
 import type { AIAssistantWorkspaceAdapters } from '@/components/ai-agent/ai-assistant-workspace-view'
 import { DockerPopover } from './docker'
 import { ScriptLibraryPopover } from './script-library-popover'
+import { SystemToolsPopover } from './system-tools-popover'
+import { PanelPositionControl } from './panel-position-control'
 import { useSftpSession } from '@/hooks/useSftpSession'
 import { cn } from '@/lib/utils'
 import { useTabUIStore } from '@/stores/tab-ui-store'
@@ -51,8 +53,6 @@ const loadMonitorPanel = () => (
   import("./monitor/MonitorPanel").then((module) => ({ default: module.MonitorPanel }))
 )
 const MonitorPanel = React.lazy(loadMonitorPanel)
-
-const monitorFallback = <div className="h-full w-[280px] px-3 py-1.5"><MonitorSkeleton /></div>
 
 const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
 const DEFAULT_TERMINAL_SFTP_INITIAL_PATH = '/root'
@@ -519,6 +519,41 @@ function TabTerminalContentComponent({
   const shouldRenderBody = chrome !== "toolbar"
   const shouldRenderSurface = surface !== "transparent"
 
+  // CSS grid placement changes without reparenting panels or remounting the terminal.
+  const panelPositions = {
+    monitor: tabState.monitorPosition,
+    files: tabState.fileManagerPosition,
+    ai: tabState.aiPosition,
+  }
+  const monitorHeaderActions = isDesktopLayout ? (
+    <PanelPositionControl position={tabState.monitorPosition} onChange={(monitorPosition) => setTabState(session.id, { monitorPosition })} />
+  ) : undefined
+  const monitorFallback = <div className="h-full w-full px-3 py-1.5"><MonitorSkeleton headerActions={monitorHeaderActions} /></div>
+  type PanelKey = keyof typeof panelPositions
+  const visiblePanels = ([
+    ...(shouldReserveInlineMonitor ? ["monitor" as const] : []),
+    ...(canUseFileManager ? ["files" as const] : []),
+    ...(canUseAi ? ["ai" as const] : []),
+  ])
+  const leftPanels = visiblePanels.filter((key) => panelPositions[key] === "left")
+  const rightPanels = visiblePanels.filter((key) => panelPositions[key] === "right")
+  const bottomPanels = visiblePanels.filter((key) => panelPositions[key] === "bottom")
+  const terminalColumn = leftPanels.length + 1
+  const panelGridStyle: React.CSSProperties = isDesktopLayout ? {
+    containerType: "inline-size",
+    gridTemplateColumns: [...leftPanels.map(() => "auto"), "minmax(0, 1fr)", ...rightPanels.map(() => "auto")].join(" "),
+    gridTemplateRows: ["minmax(0, 1fr)", ...bottomPanels.map(() => `minmax(0, ${Math.min(40, 60 / bottomPanels.length)}%)`)].join(" "),
+    "--terminal-side-max-width": `${60 / Math.max(1, leftPanels.length + rightPanels.length)}cqw`,
+  } as React.CSSProperties : { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr)" }
+  const panelPlacement = (key: PanelKey): React.CSSProperties | undefined => {
+    if (!isDesktopLayout) return undefined
+    if (!visiblePanels.includes(key)) return { display: "none" }
+    const bottomIndex = bottomPanels.indexOf(key)
+    if (bottomIndex >= 0) return { gridColumn: "1 / -1", gridRow: bottomIndex + 2 }
+    const leftIndex = leftPanels.indexOf(key)
+    return { gridColumn: leftIndex >= 0 ? leftIndex + 1 : terminalColumn + 1 + rightPanels.indexOf(key), gridRow: 1 }
+  }
+
   const canHandleInternalBack = isActive && (
     canUseFileManager ||
     canUseAi ||
@@ -623,11 +658,10 @@ function TabTerminalContentComponent({
           </div>
         )}
 
-        <div data-terminal-layout className={cn(
-          "relative z-10 flex min-h-0 min-w-0",
+        <div className={cn(
+          "relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden",
           shouldRenderBody ? "flex-1" : "shrink-0"
         )}>
-          <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {shouldReserveToolbar && (
             <SessionWorkspaceToolbar kind="terminal">
             <div
@@ -635,7 +669,7 @@ function TabTerminalContentComponent({
             >
               {/* 左侧工具图标组 */}
               {shouldRenderToolbarActions && (
-                <div className="flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5">
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-3 py-1.5">
                 {canUseSftpCapability && (
                   <Button
                     variant="ghost"
@@ -669,6 +703,18 @@ function TabTerminalContentComponent({
                     onFocusTerminal={() => terminalInputApiRef.current?.focus()}
                   />
                 )}
+
+                {isActive && (["processes", "ports", "services"] as const).map((kind) => (
+                  <SystemToolsPopover
+                    key={kind}
+                    kind={kind}
+                    serverId={session.serverId ?? ''}
+                    sessionLabel={connectionLoaderServerName ?? ''}
+                    canExecute={hasReadyServer && hasTerminalInputApi}
+                    onExecute={(command) => handleApplyScript(command, true)}
+                    onFocusTerminal={() => terminalInputApiRef.current?.focus()}
+                  />
+                ))}
 
                 {canShowLatency && <NetworkLatencyPopover sessionId={session.id} />}
 
@@ -719,32 +765,33 @@ function TabTerminalContentComponent({
             </SessionWorkspaceToolbar>
           )}
 
-          {/* 内容区域：监控面板 + 终端 */}
+          {/* All docked panels share one grid; placement preserves component state. */}
           {shouldRenderBody && (
-          <div className="flex-1 min-h-0 min-w-0 relative flex overflow-hidden">
-            {/* 监控面板 - 左侧固定 280px */}
+          <div data-terminal-layout className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={panelGridStyle}>
+            {/* 监控面板 */}
             {isTerminalSession && isDesktopLayout && (
               <div
                 data-terminal-panel
                 className={cn(
-                  'overflow-hidden text-foreground transition-[width,opacity,transform] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
-                  shouldReserveInlineMonitor
-                    ? 'h-full min-h-0 w-[280px] opacity-100 translate-x-0'
-                    : 'w-0 opacity-0 -translate-x-4'
+                  'flex h-full min-h-0 min-w-0 flex-col overflow-hidden text-foreground',
+                  tabState.monitorPosition === "bottom" ? 'w-full' : 'w-[280px] max-w-[var(--terminal-side-max-width)]',
                 )}
+                style={panelPlacement("monitor")}
                 inert={!shouldReserveInlineMonitor}
                 aria-hidden={!shouldReserveInlineMonitor}
               >
-                {shouldMountInlineMonitor && (
-                  <React.Suspense fallback={monitorFallback}>
-                    <MonitorPanel className="h-full min-h-0" isLive={isActive && shouldReserveInlineMonitor} />
-                  </React.Suspense>
-                )}
+                <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                  {shouldMountInlineMonitor && (
+                    <React.Suspense fallback={monitorFallback}>
+                      <MonitorPanel headerActions={monitorHeaderActions} horizontal={tabState.monitorPosition === "bottom"} isLive={isActive && shouldReserveInlineMonitor} />
+                    </React.Suspense>
+                  )}
+                </div>
               </div>
             )}
 
             {/* 终端区域 */}
-            <div className="flex-1 min-w-0 relative overflow-hidden">
+            <div className="relative min-h-0 min-w-0 overflow-hidden" style={{ gridColumn: isDesktopLayout ? terminalColumn : 1, gridRow: 1 }}>
               {isTerminalSession ? (
                 <WebTerminal
                   key={`web-terminal-${session.id}`}
@@ -808,12 +855,11 @@ function TabTerminalContentComponent({
                 </React.Suspense>
               </div>
             )}
-          </div>
-          )}
-          </div>
-
           {isFileManagerSessionActive && (
             <FileManagerPanel
+              position={tabState.fileManagerPosition}
+              onPositionChange={(fileManagerPosition) => setTabState(session.id, { fileManagerPosition })}
+              layoutStyle={panelPlacement("files")}
               keyboardActive={keyboardActive}
               isOpen={canUseFileManager}
               onClose={() => setTabState(session.id, { isFileManagerOpen: false })}
@@ -859,7 +905,8 @@ function TabTerminalContentComponent({
               <aside
                 data-terminal-panel
                 aria-label={tTerminal("ariaAiAssistant")}
-                className="absolute inset-0 z-40 flex min-h-0 w-full shrink-0 flex-col bg-background text-foreground md:relative md:inset-auto md:w-[420px] md:max-w-[55vw]"
+                style={panelPlacement("ai")}
+                className={cn("absolute inset-0 z-40 flex min-h-0 w-full flex-col bg-background text-foreground md:relative md:inset-auto", tabState.aiPosition !== "bottom" && "md:w-[420px] md:max-w-[var(--terminal-side-max-width)]")}
               >
                 <div className="flex items-center justify-between border-b px-3 py-2">
                   <span className="text-sm">{tTerminal("ariaAiAssistant")}</span>
@@ -876,6 +923,9 @@ function TabTerminalContentComponent({
               </aside>
             ) : null}>
               <AiAssistantPanel
+                position={tabState.aiPosition}
+                onPositionChange={(aiPosition) => setTabState(session.id, { aiPosition })}
+                layoutStyle={panelPlacement("ai")}
                 isOpen={canUseAi}
                 onClose={() => setTabState(session.id, { isAiInputOpen: false })}
                 terminalSession={session}
@@ -884,7 +934,8 @@ function TabTerminalContentComponent({
               />
             </React.Suspense>
           )}
-
+          </div>
+          )}
         </div>
       </div>
     </MonitorWebSocketProvider>
