@@ -22,6 +22,7 @@ import {
 import { FileManagerPanel } from './file-manager-panel'
 import type { AIAssistantWorkspaceAdapters } from '@/components/ai-agent/ai-assistant-workspace-view'
 import { DockerPopover } from './docker'
+import { ScriptLibraryPopover } from './script-library-popover'
 import { useSftpSession } from '@/hooks/useSftpSession'
 import { cn } from '@/lib/utils'
 import { useTabUIStore } from '@/stores/tab-ui-store'
@@ -365,6 +366,11 @@ function TabTerminalContentComponent({
   const handleExecuteTerminalCommand = React.useCallback((command: string) => {
     terminalInputApiRef.current?.executeCommand(command)
   }, [])
+  const handleApplyScript = React.useCallback((content: string, execute: boolean) => {
+    if (!isActive || !isTerminalReady || !terminalInputApiRef.current) return false
+    terminalInputApiRef.current.applyScript(content, execute)
+    return true
+  }, [isActive, isTerminalReady])
   const toggleMonitor = () => {
     setTabState(
       session.id,
@@ -654,6 +660,15 @@ function TabTerminalContentComponent({
                 >
                   <Search className="h-3.5 w-3.5" />
                 </Button>
+
+                {isActive && (
+                  <ScriptLibraryPopover
+                    canExecute={isTerminalReady && hasTerminalInputApi}
+                    sessionLabel={connectionLoaderServerName ?? ''}
+                    onApplyScript={handleApplyScript}
+                    onFocusTerminal={() => terminalInputApiRef.current?.focus()}
+                  />
+                )}
 
                 {canShowLatency && <NetworkLatencyPopover sessionId={session.id} />}
 

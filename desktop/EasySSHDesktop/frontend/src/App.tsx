@@ -248,6 +248,7 @@ function App() {
     },
     monitor: monitorApi,
     docker: dockerApi,
+    scripts: scriptAdapters.scripts,
     terminal: {
       ...(desktopTerminalGatewayReady || !runtimeLoaded ? {} : { WebSocketCtor: terminalSocket }),
       createWebSocketUrl: ({ serverId, cols, rows, ticket }) => {
@@ -268,7 +269,7 @@ function App() {
         await saveDesktopVerifiedCredential({ serverId, authMethod, secret, password, privateKey, privateKeyPassphrase })
       },
     },
-  }), [desktopGatewayToken, desktopGatewayWsBaseUrl, desktopTerminalGatewayReady, dockerApi, monitorApi, runtimeLoaded, sftpApi, terminalSocket])
+  }), [desktopGatewayToken, desktopGatewayWsBaseUrl, desktopTerminalGatewayReady, dockerApi, monitorApi, runtimeLoaded, scriptAdapters.scripts, sftpApi, terminalSocket])
 
   const handleLocaleChange = useCallback((nextLocale: Locale) => {
     if (nextLocale === locale) {

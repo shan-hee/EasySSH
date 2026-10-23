@@ -461,6 +461,8 @@ export function useTerminalCompletionController({
   }, [effectiveCompletionEnabled, providerRemoteHistoryEnabled, providerScriptEnabled])
 
   const resetCompletionState = useCallback(() => {
+    // 同一事件内可能连续注入脚本和回车，立即清除引用，避免回车选中旧补全。
+    completionStateRef.current = emptyCompletionState
     setCompletionState(emptyCompletionState)
   }, [])
 

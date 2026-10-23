@@ -12,6 +12,7 @@ export interface TerminalContainerApiElement extends HTMLDivElement {
 export interface TerminalInputApi {
   insertText: (text: string) => void
   executeCommand: (command: string) => void
+  applyScript: (content: string, execute: boolean) => void
   focus: () => void
   toggleSearch: () => void
 }
@@ -56,6 +57,16 @@ export function useTerminalContainerApi({
     executeCommand: (command) => {
       terminal?.input(`${command}\r`, true)
       terminal?.focus()
+    },
+    applyScript: (content, execute) => {
+      if (!terminal || !content.trim()) return
+      // 移到行尾再清空输入，避免脚本拼接到尚未提交的命令上。
+      terminal.input("\x05", true)
+      terminal.input("\x15", true)
+      // 交给 xterm 处理换行和 bracketed paste，保留多行脚本内容。
+      terminal.paste(content.replace(/\r\n?/g, "\n").trimEnd())
+      if (execute) terminal.input("\r", true)
+      terminal.focus()
     },
     focus: () => terminal?.focus(),
     toggleSearch: onToggleSearch,

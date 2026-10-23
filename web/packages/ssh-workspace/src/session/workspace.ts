@@ -1,5 +1,6 @@
 import type { OptionalServerConnectionInfo, ServerConnectionInfo } from "./types"
 import type { AuthMethod } from "../../../../src/lib/server-types"
+import type { ListScriptsParams, ListScriptsResponse } from "../../../../src/lib/script-types"
 import type {
   BatchDeleteResponse,
   DirectTransferOptions,
@@ -382,6 +383,10 @@ export interface WorkspaceDockerApi {
 }
 
 export interface SshWorkspaceApiClient {
+  scripts?: {
+    list: (params?: ListScriptsParams) => Promise<ListScriptsResponse>
+    execute: (id: string) => Promise<void>
+  }
   sftp?: {
     listDirectory: (serverId: string, path?: string) => Promise<DirectoryListResponse>
     authenticate?: (
