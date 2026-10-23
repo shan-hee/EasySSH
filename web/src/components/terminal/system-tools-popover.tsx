@@ -125,7 +125,7 @@ export function SystemToolsPopover({ kind, serverId, sessionLabel, canExecute, o
     <>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant="ghost" size="icon" className={cn("h-7 w-7 rounded-md", open && "bg-accent text-accent-foreground")} title={t(`systemTool_${kind}`)} aria-label={t(`systemTool_${kind}`)}>
+          <Button variant="ghost" size="icon" className={cn("size-6 rounded-md", open && "bg-accent text-accent-foreground")} title={t(`systemTool_${kind}`)} aria-label={t(`systemTool_${kind}`)}>
             <Icon className="size-3.5" />
           </Button>
         </PopoverTrigger>

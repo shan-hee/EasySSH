@@ -20,6 +20,10 @@
 }
 .easyssh-dockview .dv-groupview { border-radius: 8px; overflow: hidden; }
 
+.easyssh-dockview .dv-groupview:has([data-terminal-toolbar]) {
+  --dv-tabs-and-actions-container-height: 32px;
+}
+
 /* Drop feedback follows the pointer immediately; only neighbouring tabs ease aside. */
 .easyssh-dockview .dv-drop-target-container,
 .easyssh-dockview .dv-drop-target {

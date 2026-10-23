@@ -665,35 +665,64 @@ function TabTerminalContentComponent({
           {shouldReserveToolbar && (
             <SessionWorkspaceToolbar kind="terminal">
             <div
-              className="flex min-h-10 items-stretch text-sm text-foreground transition-colors"
+              data-terminal-toolbar
+              className="flex min-h-8 items-stretch text-sm text-foreground transition-colors"
             >
               {/* 左侧工具图标组 */}
               {shouldRenderToolbarActions && (
-                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto px-3 py-1.5">
+                <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-3 py-1">
                 {canUseSftpCapability && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
+                    className="size-6 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
                     aria-label={tTerminal("ariaFileManager")}
                     title={tTerminal("titleFileManagerWithShortcut")}
                     onClick={() => setTabState(session.id, { isFileManagerOpen: !isFileManagerOpen })}
                   >
-                    <FolderOpen className="h-3.5 w-3.5" />
+                    <FolderOpen className="size-3.5" />
                   </Button>
                 )}
 
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
+                  className="size-6 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
                   aria-label={tSettings("findShortcut")}
                   title={settings.findShortcut ? `${tSettings("findShortcut")} (${settings.findShortcut})` : tSettings("findShortcut")}
                   disabled={!hasTerminalInputApi}
                   onClick={() => terminalInputApiRef.current?.toggleSearch()}
                 >
-                  <Search className="h-3.5 w-3.5" />
+                  <Search className="size-3.5" />
                 </Button>
+
+                {canShowLatency && <NetworkLatencyPopover sessionId={session.id} />}
+
+                {canUseMonitorCapability && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      "size-6 rounded-md transition-colors hover:bg-accent/80 hover:text-accent-foreground",
+                      isMonitorButtonActive
+                        ? "bg-accent text-accent-foreground"
+                        : "text-foreground"
+                    )}
+                    aria-label={tTerminal("ariaMonitor")}
+                    title={tTerminal("titleMonitor")}
+                    onClick={toggleMonitor}
+                  >
+                    <Activity className="size-3.5" />
+                  </Button>
+                )}
+
+                {canUseDockerCapability && isActive && (
+                  <DockerPopover
+                    serverId={session.serverId ?? ''}
+                    sessionId={session.id}
+                    isConnected={hasReadyServer}
+                  />
+                )}
 
                 {isActive && (
                   <ScriptLibraryPopover
@@ -716,39 +745,11 @@ function TabTerminalContentComponent({
                   />
                 ))}
 
-                {canShowLatency && <NetworkLatencyPopover sessionId={session.id} />}
-
-                {canUseMonitorCapability && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "h-7 w-7 rounded-md transition-colors hover:bg-accent/80 hover:text-accent-foreground",
-                      isMonitorButtonActive
-                        ? "bg-accent text-accent-foreground"
-                        : "text-foreground"
-                    )}
-                    aria-label={tTerminal("ariaMonitor")}
-                    title={tTerminal("titleMonitor")}
-                    onClick={toggleMonitor}
-                  >
-                    <Activity className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-
-                {canUseDockerCapability && isActive && (
-                  <DockerPopover
-                    serverId={session.serverId ?? ''}
-                    sessionId={session.id}
-                    isConnected={hasReadyServer}
-                  />
-                )}
-
                 {canUseAiCapability && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
+                    className="size-6 rounded-md transition-colors text-foreground hover:bg-accent/80 hover:text-accent-foreground"
                     aria-label={tTerminal("ariaAiAssistant")}
                     title={tTerminal("titleAiAssistantWithShortcut")}
                     onPointerEnter={() => { void loadAiAssistantPanel().catch((error) => console.error('Failed to preload AI panel:', error)) }}
@@ -756,7 +757,7 @@ function TabTerminalContentComponent({
                     onFocus={() => { void loadAiAssistantPanel().catch((error) => console.error('Failed to preload AI panel:', error)) }}
                     onClick={() => setTabState(session.id, { isAiInputOpen: !isAiInputOpen })}
                   >
-                    <Bot className="h-3.5 w-3.5" />
+                    <Bot className="size-3.5" />
                   </Button>
                 )}
                 </div>

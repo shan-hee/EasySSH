@@ -98,13 +98,13 @@ export function ScriptLibraryPopover({
           variant="ghost"
           size="icon"
           className={cn(
-            "h-7 w-7 rounded-md text-foreground transition-colors hover:bg-accent/80 hover:text-accent-foreground",
+            "size-6 rounded-md text-foreground transition-colors hover:bg-accent/80 hover:text-accent-foreground",
             open && "bg-accent text-accent-foreground",
           )}
           aria-label={t("scriptLibraryTitle")}
           title={t("scriptLibraryTitle")}
         >
-          <FileCode2 className="h-3.5 w-3.5" />
+          <FileCode2 className="size-3.5" />
         </Button>
       </PopoverTrigger>
       <PopoverContent

@@ -128,15 +128,15 @@ export function NetworkLatencyPopover({ sessionId }: NetworkLatencyPopoverProps)
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 rounded-md transition-colors flex items-center gap-2 px-2.5 text-foreground hover:bg-accent hover:text-accent-foreground"
+          className="h-6 rounded-md transition-colors flex items-center gap-1 px-1.5 has-[>svg]:px-1.5 text-foreground hover:bg-accent hover:text-accent-foreground"
           aria-label={t("latencyAriaLabel")}
         >
-          <Globe className="h-3.5 w-3.5 shrink-0" />
-          <div className="flex flex-col items-start leading-none text-left min-w-[3rem]">
-            <span className="text-[9px] uppercase font-semibold text-muted-foreground">
+          <Globe className="size-3.5 shrink-0" />
+          <div className="flex flex-col items-start leading-none text-left min-w-[2rem]">
+            <span className="text-[9px] leading-[10px] uppercase font-semibold text-muted-foreground">
               RTT
             </span>
-            <span className={`text-xs tabular-nums font-medium ${status.textColor}`}>
+            <span className={`text-[11px] leading-3 tabular-nums font-medium ${status.textColor}`}>
               {formatTotalLatency()}
             </span>
           </div>

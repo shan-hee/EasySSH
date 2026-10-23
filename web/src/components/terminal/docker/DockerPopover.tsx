@@ -280,15 +280,15 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 rounded-md transition-colors flex items-center gap-2 px-2.5 text-foreground hover:bg-accent hover:text-accent-foreground"
+          className="h-6 rounded-md transition-colors flex items-center gap-1.5 px-2 has-[>svg]:px-2 text-foreground hover:bg-accent hover:text-accent-foreground"
           aria-label={t('ariaDocker')}
         >
-          <DockerIcon className="shrink-0" />
+          <DockerIcon className="size-3.5 shrink-0" />
           <div className="flex flex-col items-start leading-none text-left min-w-[3rem]">
-            <span className="text-[9px] uppercase font-semibold text-muted-foreground">
+            <span className="text-[9px] leading-[10px] uppercase font-semibold text-muted-foreground">
               DOCKER
             </span>
-            <span className={cn('text-xs tabular-nums font-medium', getStatusColor())}>
+            <span className={cn('text-[11px] leading-3 tabular-nums font-medium', getStatusColor())}>
               {isConnected && hasToolbarStats
                 ? (dockerInstalled ? `${runningCount}/${totalCount}` : 'N/A')
                 : '--/--'}
