@@ -119,26 +119,20 @@ export function ConnectionLoader({
         <div
           aria-hidden="true"
           className={cn(
-            "pointer-events-none absolute left-1/2 top-1/2 h-[min(100%,36rem)] w-[min(100%,40rem)] -translate-x-1/2 -translate-y-1/2",
-            transparentBackground && "bg-background/25 backdrop-blur-sm",
+            "pointer-events-none absolute left-1/2 top-1/2 h-[min(100%,24rem)] w-[min(100%,44rem)] -translate-x-1/2 -translate-y-1/2",
+            transparentBackground && "bg-background/15 backdrop-blur-sm",
           )}
           style={{
-            // Feather only the decorative surface so the connection content stays crisp.
-            maskImage: "radial-gradient(ellipse closest-side at center, black 28%, rgb(0 0 0 / 85%) 45%, rgb(0 0 0 / 35%) 68%, transparent 100%)",
-            WebkitMaskImage: "radial-gradient(ellipse closest-side at center, black 28%, rgb(0 0 0 / 85%) 45%, rgb(0 0 0 / 35%) 68%, transparent 100%)",
+            // Fade the subtle texture continuously without a solid central patch.
+            maskImage: "radial-gradient(ellipse closest-side at center, black 0%, rgb(0 0 0 / 45%) 45%, transparent 100%)",
+            WebkitMaskImage: "radial-gradient(ellipse closest-side at center, black 0%, rgb(0 0 0 / 45%) 45%, transparent 100%)",
           }}
         >
           <div
-            className="absolute inset-0"
-            style={{
-              background: "radial-gradient(ellipse closest-side at center, color-mix(in oklab, var(--connection-accent) 10%, transparent), transparent)",
-            }}
-          />
-          <div
-            className="absolute inset-0 opacity-[0.035]"
+            className="absolute inset-0 opacity-[0.025]"
             style={{
               backgroundImage: "linear-gradient(to right, var(--foreground) 1px, transparent 1px), linear-gradient(to bottom, var(--foreground) 1px, transparent 1px)",
-              backgroundSize: "32px 32px",
+              backgroundSize: "40px 40px",
             }}
           />
         </div>

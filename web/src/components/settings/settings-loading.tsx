@@ -1,12 +1,14 @@
+import { useTranslation } from "react-i18next"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useDelayedLoading } from "@/hooks/use-delayed-loading"
 
 export function SettingsLoading() {
   const visible = useDelayedLoading(true)
+  const { t } = useTranslation("common")
 
   return (
     <div className="min-h-52 space-y-5 p-4" role="status" aria-busy="true">
-      <span className="sr-only">加载配置中...</span>
+      <span className="sr-only">{t("loading")}</span>
       {visible ? (
         <>
           <div className="space-y-2">

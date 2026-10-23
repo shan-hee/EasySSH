@@ -1,39 +1,14 @@
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import { X, GripVertical } from "lucide-react"
+import { useEffect } from "react"
+import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { TerminalSftpPanel } from "@/components/terminal/terminal-sftp-panel"
 import { PanelPositionControl } from "./panel-position-control"
 import type { TerminalPanelPosition } from "@/stores/tab-ui-store"
-import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
-import type { SshWorkspacePreferenceAdapter, WorkspaceTransferTask } from "@/lib/session/workspace"
+import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
-
-const DEFAULT_PANEL_WIDTH = 600
-const MIN_PANEL_WIDTH = 400
-const MAX_PANEL_VIEWPORT_RATIO = 0.7
-const FILE_MANAGER_PANEL_WIDTH_PREFERENCE_KEY = "file-manager-panel-width"
-
-function readPanelWidthPreference(
-  preferences: SshWorkspacePreferenceAdapter | undefined,
-  key: string,
-  fallback: number,
-) {
-  let rawValue: string | null | undefined
-  try {
-    rawValue = preferences?.getString(key)
-  } catch {
-    rawValue = null
-  }
-
-  const parsedValue = rawValue ? Number.parseInt(rawValue, 10) : Number.NaN
-
-  return Number.isFinite(parsedValue)
-    ? Math.max(MIN_PANEL_WIDTH, parsedValue)
-    : fallback
-}
 
 export interface FileManagerPanelProps {
   position: TerminalPanelPosition
@@ -80,8 +55,6 @@ export interface FileManagerPanelProps {
   onClearCompletedTransfers?: () => void
   onCancelTransfer?: (taskId: string) => void
   backgroundColor?: string
-  widthPreferenceKey?: string
-  defaultWidth?: number
 }
 
 export function FileManagerPanel({
@@ -97,30 +70,9 @@ export function FileManagerPanel({
   backgroundColor,
   onInsertTerminalText,
   onExecuteTerminalCommand,
-  widthPreferenceKey = FILE_MANAGER_PANEL_WIDTH_PREFERENCE_KEY,
-  defaultWidth = DEFAULT_PANEL_WIDTH,
   ...sftpProps
 }: FileManagerPanelProps) {
-  const workspace = useOptionalSshWorkspace()
   const tSftp = useWorkspaceSftpTranslator()
-  const preferences = workspace?.adapters.preferences
-  const [width, setWidth] = useState(() => readPanelWidthPreference(
-    preferences,
-    widthPreferenceKey,
-    defaultWidth,
-  ))
-  const [isResizing, setIsResizing] = useState(false)
-  const resizeStartX = useRef(0)
-  const resizeStartWidth = useRef(0)
-
-  // 保存宽度到 Workspace preferences
-  useEffect(() => {
-    if (isResizing) {
-      return
-    }
-
-    void preferences?.setString(widthPreferenceKey, width.toString())
-  }, [isResizing, preferences, width, widthPreferenceKey])
 
   // 快捷键支持 (Ctrl/Cmd + E)
   useEffect(() => {
@@ -144,94 +96,22 @@ export function FileManagerPanel({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isOpen, keyboardActive, onClose])
 
-  // 调整大小处理
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    setIsResizing(true)
-    resizeStartX.current = e.clientX
-    resizeStartWidth.current = width
-  }, [width])
-
-  const handleResizeMove = useCallback((e: MouseEvent) => {
-    if (!isResizing) return
-
-    const deltaX = (resizeStartX.current - e.clientX) * (position === "left" ? -1 : 1)
-    const maxWidth = Math.max(MIN_PANEL_WIDTH, Math.floor(window.innerWidth * MAX_PANEL_VIEWPORT_RATIO))
-    const newWidth = Math.min(
-      Math.max(MIN_PANEL_WIDTH, resizeStartWidth.current + deltaX),
-      maxWidth
-    )
-    setWidth(newWidth)
-  }, [isResizing, position])
-
-  const handleResizeEnd = useCallback(() => {
-    setIsResizing(false)
-  }, [])
-
-  useEffect(() => {
-    if (!isResizing) {
-      return
-    }
-
-    const previousCursor = document.body.style.cursor
-    const previousUserSelect = document.body.style.userSelect
-    document.body.style.cursor = 'col-resize'
-    document.body.style.userSelect = 'none'
-
-    return () => {
-      document.body.style.cursor = previousCursor
-      document.body.style.userSelect = previousUserSelect
-    }
-  }, [isResizing])
-
-  useEffect(() => {
-    if (isResizing) {
-      window.addEventListener('mousemove', handleResizeMove)
-      window.addEventListener('mouseup', handleResizeEnd)
-      return () => {
-        window.removeEventListener('mousemove', handleResizeMove)
-        window.removeEventListener('mouseup', handleResizeEnd)
-      }
-    }
-  }, [isResizing, handleResizeMove, handleResizeEnd])
-
   return (
     <aside
       className={cn(
-        "terminal-sftp-glass absolute inset-0 z-50 flex h-full min-h-0 w-full shrink-0 overflow-hidden text-foreground",
+        "terminal-sftp-glass absolute inset-0 z-50 flex h-full min-h-0 min-w-0 w-full shrink-0 overflow-hidden text-foreground",
         "md:relative md:inset-auto md:translate-x-0",
-        isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-        isOpen
-          ? position === "bottom" ? "translate-x-0 md:w-full" : "translate-x-0 md:w-[var(--terminal-sftp-panel-width)] md:max-w-[var(--terminal-side-max-width)]"
-          : "translate-x-full md:w-0 md:max-w-0",
+        "transition-transform duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        isOpen ? "translate-x-0" : "translate-x-full",
       )}
       style={{
         pointerEvents: isOpen ? "auto" : "none",
-        "--terminal-sftp-panel-width": `${width}px`,
         ...layoutStyle,
       } as React.CSSProperties}
       data-terminal-panel
       aria-hidden={!isOpen}
       inert={!isOpen}
     >
-      {position !== "bottom" && <div
-        className={cn(
-          "group absolute inset-y-0 z-10 hidden w-3 cursor-col-resize bg-transparent transition-colors hover:bg-blue-500/50 md:block",
-          position === "left" ? "right-0 translate-x-1" : "left-0 -translate-x-1",
-          isResizing && "bg-blue-500/50",
-        )}
-        onMouseDown={handleResizeStart}
-      >
-        <div
-          className={cn(
-            "absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100",
-            isResizing && "opacity-100",
-          )}
-        >
-          <GripVertical className="h-4 w-4" />
-        </div>
-      </div>}
-
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden text-foreground shadow-2xl md:shadow-none">
         {backgroundColor && (
           <div

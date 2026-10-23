@@ -16,8 +16,8 @@ import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-polic
 import { Button } from "@/components/ui/button"
 import { AppLoadingScreen } from "@/components/app-loading"
 import { cn } from "@/lib/utils"
-import { FadeIn } from "@/components/motion/fade-in"
-import { motionTransitions } from "@/lib/motion"
+import { useQueryClient } from "@tanstack/react-query"
+import { preloadDashboardRoute } from "@/lib/dashboard-route-preload"
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -40,8 +40,6 @@ function MobileSidebarRouteCloser() {
 }
 
 function DashboardRouteOutlet({ usesViewportWorkspace }: { usesViewportWorkspace: boolean }) {
-  const { pathname } = useLocation()
-
   if (usesViewportWorkspace) {
     return (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -51,13 +49,9 @@ function DashboardRouteOutlet({ usesViewportWorkspace }: { usesViewportWorkspace
   }
 
   return (
-    <FadeIn
-      key={pathname}
-      transition={motionTransitions.fade}
-      className="flex min-h-full w-full min-w-0 flex-1 flex-col"
-    >
+    <div className="flex min-h-full w-full min-w-0 flex-1 flex-col">
       <Outlet />
-    </FadeIn>
+    </div>
   )
 }
 
@@ -69,7 +63,8 @@ export default function DashboardLayout() {
   const navigate = useNavigate()
   const pageScrollRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation("common")
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
+  const queryClient = useQueryClient()
   const { authStatus, error, isLoading, refreshConfig } = useSystemConfig()
   const { runtime, isLoading: isRuntimeLoading } = useRuntime()
   const user = authStatus?.is_authenticated ? authStatus.user : null
@@ -77,6 +72,12 @@ export default function DashboardLayout() {
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   )
   const usesPageManagedScroll = usesViewportWorkspace || pathname === "/dashboard/settings"
+  useEffect(() => {
+    if (!user || !runtime || !isRouteAllowed(runtime, pathname, user.permissions || [], runtime.principal.role === "owner")) return
+    // Data requests start without waiting for the lazy page or its translations.
+    void preloadDashboardRoute(`${pathname}${search}`, queryClient, "navigation")
+  }, [pathname, search, queryClient, runtime, user])
+
   useLayoutEffect(() => {
     if (pageScrollRef.current) {
       pageScrollRef.current.scrollTop = 0

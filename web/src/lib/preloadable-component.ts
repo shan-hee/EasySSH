@@ -17,5 +17,5 @@ export function createPreloadableComponent<Props extends object>(
     resource.read()
   }
 
-  return { Component, preload }
+  return { Component, preload, reset: resource.reset }
 }

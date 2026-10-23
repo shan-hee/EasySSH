@@ -1,4 +1,5 @@
 {
+  "resizeDockedPanel": "Resize {panel} panel",
   "panelPosition": "Panel position",
   "panelPosition_left": "Dock left",
   "panelPosition_right": "Dock right",

@@ -1,4 +1,5 @@
 {
+  "resizeDockedPanel": "调整{panel}面板大小",
   "panelPosition": "面板位置",
   "panelPosition_left": "停靠左侧",
   "panelPosition_right": "停靠右侧",

@@ -12,47 +12,41 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { preloadDashboardRoute } from "@/lib/dashboard-route-preload"
+import { useIntentPreload } from "@/hooks/use-intent-preload"
 
-export function NavMain({
-  items,
-  label = "Core",
-}: {
-  label?: string
-  items: {
-    title: string
-    url: string
-    icon?: LucideIcon
-    isActive?: boolean
-  }[]
-}) {
-  const { pathname } = useLocation()
+interface NavigationItem {
+  title: string
+  url: string
+  icon?: LucideIcon
+  isActive?: boolean
+}
+
+function NavigationLink({ item, active }: { item: NavigationItem; active: boolean }) {
   const queryClient = useQueryClient()
+  const preloadHandlers = useIntentPreload(intent => { void preloadDashboardRoute(item.url, queryClient, intent) })
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
+        <Link to={item.url} {...preloadHandlers}>
+          {item.icon && <item.icon />}
+          <span>{item.title}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
+}
 
+export function NavMain({ items, label = "Core" }: { label?: string; items: NavigationItem[] }) {
+  const { pathname } = useLocation()
   return (
     <SidebarGroup>
       <SidebarGroupLabel>{label}</SidebarGroupLabel>
       <SidebarMenu>
-        {items.map((item) => {
-          const active = pathname === item.url || (
-            item.url !== "/dashboard" && pathname?.startsWith(`${item.url}/`)
-          )
-
-          return (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
-                <Link
-                  to={item.url}
-                  onPointerEnter={() => void preloadDashboardRoute(item.url, queryClient)}
-                  onPointerDown={() => void preloadDashboardRoute(item.url, queryClient)}
-                  onFocus={() => void preloadDashboardRoute(item.url, queryClient)}
-                >
-                  {item.icon && <item.icon />}
-                  <span>{item.title}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )
-        })}
+        {items.map(item => (
+          <NavigationLink key={item.url} item={item} active={pathname === item.url || (
+            item.url !== "/dashboard" && pathname.startsWith(`${item.url}/`)
+          )} />
+        ))}
       </SidebarMenu>
     </SidebarGroup>
   )

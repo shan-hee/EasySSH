@@ -21,17 +21,17 @@ interface PageHeaderTargets {
 const PageHeaderContext = React.createContext<PageHeaderTargets | null>(null)
 
 const routeTitles = [
-  { path: "/dashboard/settings/management", namespace: "settingsManagement", key: "pageTitle" },
-  { path: "/dashboard/ai-assistant", namespace: "nav", key: "aiAssistant" },
-  { path: "/dashboard/terminal", namespace: "nav", key: "terminal" },
-  { path: "/dashboard/users", namespace: "users", key: "pageTitle" },
-  { path: "/dashboard/logs", namespace: "logsAudit", key: "logsPageTitle" },
-  { path: "/dashboard/operation-logs", namespace: "operationLogs", key: "pageTitle" },
-  { path: "/dashboard/scripts", namespace: "scripts", key: "pageTitle" },
-  { path: "/dashboard/tasks", namespace: "taskCenter", key: "title" },
-  { path: "/dashboard/settings", namespace: "settingsMain", key: "pageTitle" },
-  { path: "/dashboard/error", namespace: "errors", key: "defaultTitle" },
-  { path: "/dashboard", namespace: "dashboard", key: "title", exact: true },
+  { path: "/dashboard/settings/management", navKey: "userManagement", namespace: "settingsManagement", key: "pageTitle" },
+  { path: "/dashboard/ai-assistant", navKey: "aiAssistant", namespace: "nav", key: "aiAssistant" },
+  { path: "/dashboard/terminal", navKey: "terminal", namespace: "nav", key: "terminal" },
+  { path: "/dashboard/users", navKey: "userManagement", namespace: "users", key: "pageTitle" },
+  { path: "/dashboard/logs", navKey: "logs", namespace: "logsAudit", key: "logsPageTitle" },
+  { path: "/dashboard/operation-logs", navKey: "operationLogs", namespace: "operationLogs", key: "pageTitle" },
+  { path: "/dashboard/scripts", navKey: "scripts", namespace: "scripts", key: "pageTitle" },
+  { path: "/dashboard/tasks", navKey: "tasks", namespace: "taskCenter", key: "title" },
+  { path: "/dashboard/settings", navKey: "systemSettings", namespace: "settingsMain", key: "pageTitle" },
+  { path: "/dashboard/error", navKey: "console", namespace: "errors", key: "defaultTitle" },
+  { path: "/dashboard", navKey: "console", namespace: "dashboard", key: "title", exact: true },
 ] as const
 
 export function PageHeaderHost({ children }: React.PropsWithChildren) {
@@ -42,7 +42,7 @@ export function PageHeaderHost({ children }: React.PropsWithChildren) {
       : pathname === item.path || pathname.startsWith(`${item.path}/`)
   ))
   const { t: tNav } = useTranslation("nav")
-  const { t } = useTranslation(route?.namespace ?? "nav")
+  const { t, ready } = useTranslation(route?.namespace ?? "nav", { useSuspense: false })
   const [titleTarget, setTitleTarget] = React.useState<HTMLDivElement | null>(null)
   const [contentTarget, setContentTarget] = React.useState<HTMLDivElement | null>(null)
   const [hasPageTitle, setHasPageTitle] = React.useState(false)
@@ -56,7 +56,7 @@ export function PageHeaderHost({ children }: React.PropsWithChildren) {
       setHasPageTitle(titleRegistrations.current > 0)
     }
   }, [])
-  const routeTitle = route ? t(route.key) : ""
+  const routeTitle = route ? (ready ? t(route.key) : tNav(route.navKey)) : ""
   const targets = React.useMemo(
     () => ({ title: titleTarget, content: contentTarget, registerTitle }),
     [contentTarget, registerTitle, titleTarget],
@@ -64,7 +64,7 @@ export function PageHeaderHost({ children }: React.PropsWithChildren) {
 
   return (
     <PageHeaderContext.Provider value={targets}>
-      <header className="z-30 flex h-16 shrink-0 items-center gap-2 bg-background/80 backdrop-blur transition-none supports-[backdrop-filter]:bg-background/60 group-data-[ready=true]/sidebar-wrapper:transition-[height] group-data-[ready=true]/sidebar-wrapper:duration-200 group-data-[ready=true]/sidebar-wrapper:ease-in-out group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+      <header data-slot="page-header" className="z-30 flex h-16 shrink-0 items-center gap-2 bg-transparent transition-none group-data-[ready=true]/sidebar-wrapper:transition-[height] group-data-[ready=true]/sidebar-wrapper:duration-200 group-data-[ready=true]/sidebar-wrapper:ease-in-out group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
         <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
           <SidebarTrigger
             className="-ml-1 md:hidden"

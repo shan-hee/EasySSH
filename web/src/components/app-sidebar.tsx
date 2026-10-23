@@ -34,7 +34,6 @@ export const AppSidebar = React.memo(function AppSidebar({
   const { config } = useSystemConfig()
   const { runtime } = useRuntime()
   const { t: tNav } = useTranslation("nav")
-  const { t: tAI } = useTranslation("aiAssistant")
   const { pathname } = useLocation()
   const reduceMotion = useReducedMotion()
   const aiSidebar = useAISidebarHost()
@@ -125,7 +124,7 @@ export const AppSidebar = React.memo(function AppSidebar({
                   <SidebarMenuItem>
                     <SidebarMenuButton
                       asChild
-                      tooltip={tAI("backToMainMenu")}
+                      tooltip={tNav("backToMainMenu")}
                       className="text-xs font-medium text-sidebar-foreground/70"
                     >
                       <Link
@@ -136,7 +135,7 @@ export const AppSidebar = React.memo(function AppSidebar({
                         }
                       >
                         <ArrowLeft />
-                        <span>{tAI("backToMainMenu")}</span>
+                        <span>{tNav("backToMainMenu")}</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

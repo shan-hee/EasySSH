@@ -12,9 +12,8 @@
     radial-gradient(circle at 18% 18%, color-mix(in oklab, var(--primary) 6%, transparent), transparent 30%),
     linear-gradient(145deg, color-mix(in oklab, var(--card) 65%, var(--background)) 0%, var(--background) 100%);
   border: 1px solid var(--border);
-  box-shadow:
-    inset 0 1px color-mix(in oklab, var(--foreground) 5%, transparent),
-    0 24px 80px color-mix(in oklab, var(--foreground) 8%, transparent);
+  /* Keep depth inside the card so the scroll boundary cannot clip an outer shadow. */
+  box-shadow: inset 0 1px color-mix(in oklab, var(--foreground) 5%, transparent);
 }
 
 .dashboard-orbit::before {

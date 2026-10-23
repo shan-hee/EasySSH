@@ -9,15 +9,15 @@ type NetworkInformation = {
   rtt?: number
 }
 
-export function preloadDashboardRoute(url: string, queryClient?: QueryClient) {
-  // CPU 空闲不代表网络空闲；弱网下让带宽优先用于当前页面。
+export function preloadDashboardRoute(url: string, queryClient?: QueryClient, intent: "hover" | "navigation" = "hover") {
+  // Only speculative work yields on slow networks; an actual navigation starts immediately.
   const connection = typeof navigator === "undefined"
     ? undefined
     : (navigator as Navigator & { connection?: NetworkInformation }).connection
-  if (connection?.saveData ||
+  if (intent === "hover" && (connection?.saveData ||
     (connection?.effectiveType && connection.effectiveType !== "4g") ||
     (connection?.downlink !== undefined && connection.downlink < 1.5) ||
-    (connection?.rtt !== undefined && connection.rtt > 300)) {
+    (connection?.rtt !== undefined && connection.rtt > 300))) {
     return Promise.resolve()
   }
 
@@ -30,5 +30,5 @@ export function preloadDashboardRoute(url: string, queryClient?: QueryClient) {
     ? route.prefetchData(queryClient, url)
     : Promise.resolve()
 
-  return Promise.allSettled([route.load(), dataPreload]).then(() => undefined)
+  return Promise.allSettled([route.load(), route.preloadContent?.(url), dataPreload]).then(() => undefined)
 }

@@ -1,18 +1,18 @@
-// Keep dependencies used by different lazy entries separate: visiting the terminal
-// must not pull in the editor, charts or AI. Split large graphs at module boundaries.
-// maxSize is a pre-minification budget; single upstream modules can exceed it.
+// Split at feature boundaries first. The runtime is needed everywhere; splitting it
+// by every lazy entry adds requests without deferring useful work.
 export const chunkOutput = {
-  // Monaco has cyclic module graphs. Preserve initialization order when splitting
-  // them, otherwise an editor constructor can run before its dependencies initialize.
+  // Monaco's cyclic modules must retain their initialization order.
   strictExecutionOrder: true,
   codeSplitting: {
-    maxSize: 450_000,
     groups: [
-      { name: "react", test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/, entriesAware: true },
-      { name: "monaco", test: /[\\/]node_modules[\\/]monaco-editor[\\/]/, entriesAware: true },
-      { name: "charts", test: /[\\/]node_modules[\\/](echarts|zrender)[\\/]/, entriesAware: true },
-      { name: "dockview", test: /[\\/]node_modules[\\/](dockview|dockview-core)[\\/]/, entriesAware: true },
-      { name: "syntax-cpp", test: /[\\/]@shikijs[\\/]langs[\\/]dist[\\/]cpp(-macro)?\.mjs$/, entriesAware: true },
+      { name: "react", test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 10 },
+      // Coalesce tiny icon subgroups, while keeping feature-only icons demand-loaded.
+      { name: "icons", test: /[\\/]node_modules[\\/]lucide-react[\\/]/, entriesAware: true, entriesAwareMergeThreshold: 16_000 },
+      // Size budgets apply only to heavy feature graphs, not the common runtime.
+      { name: "monaco", test: /[\\/]node_modules[\\/]monaco-editor[\\/]/, entriesAware: true, maxSize: 450_000 },
+      { name: "charts", test: /[\\/]node_modules[\\/](echarts|zrender)[\\/]/, entriesAware: true, maxSize: 450_000 },
+      { name: "dockview", test: /[\\/]node_modules[\\/](dockview|dockview-core)[\\/]/, entriesAware: true, maxSize: 450_000 },
+      { name: "syntax-cpp", test: /[\\/]@shikijs[\\/]langs[\\/]dist[\\/]cpp(-macro)?\.mjs$/, entriesAware: true, maxSize: 450_000 },
     ],
   },
 }

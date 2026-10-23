@@ -18,9 +18,8 @@ import {
 import { DESKTOP_LOCAL_DATA_USER_ID } from "./desktop-local-identity"
 import { requestDesktopSync } from "./desktop-sync"
 import { Call } from "@wailsio/runtime"
-import type { SSHKeyApi } from "@/lib/api/ssh-keys"
 
-export const desktopSSHKeyApi: SSHKeyApi = {
+export const desktopSSHKeyApi: ServerConnectionConfigsApi["sshKeys"] = {
   list: () => DesktopServerService.ListSSHKeys(),
   async import(input) {
     const key = await DesktopServerService.ImportSSHKey({

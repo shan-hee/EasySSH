@@ -226,14 +226,14 @@ function SortableTab({
       onAuxClick={(e) => onAuxClick(e, s.id, s.pinned)}
       onDoubleClick={() => onDoubleClick(s.id)}
       className={cn(
-        "group relative flex items-center gap-2 h-8 pl-3 transition-colors duration-100 ease-out touch-none select-none cursor-grab active:cursor-grabbing",
+        "group relative flex items-center gap-2 h-8 rounded-md pl-3 transition-colors duration-100 ease-out touch-none select-none cursor-grab active:cursor-grabbing",
         canClose || s.pinned ? "pr-8" : "pr-3",
         active
-          ? "text-foreground"
-          : "text-muted-foreground opacity-75 hover:text-foreground hover:opacity-100",
+          ? "bg-accent/70 text-foreground"
+          : "text-muted-foreground hover:bg-accent/40 hover:text-foreground",
         isDetached && "italic",
         isDragging && "cursor-grabbing transition-none",
-        isCrossSessionFileDragOver && "text-primary opacity-100"
+        isCrossSessionFileDragOver && "bg-primary/10 text-primary"
       )}
     >
       {/* 状态指示点 */}
@@ -246,8 +246,6 @@ function SortableTab({
       )}>
         {s.serverName}
       </span>
-
-      <span aria-hidden="true" className="pointer-events-none absolute -right-1 top-1/2 -translate-y-1/2 select-none text-sm font-normal not-italic text-muted-foreground/50">|</span>
 
       {/* 固定图标 */}
       {s.pinned && (
@@ -304,13 +302,13 @@ function StaticTab(props: SortableTabProps) {
       onDoubleClick={() => onDoubleClick(s.id)}
       ref={fileDropRef}
       className={cn(
-        "group relative flex items-center gap-2 h-8 pl-3 transition-colors duration-200 ease-out select-none",
+        "group relative flex items-center gap-2 h-8 rounded-md pl-3 transition-colors duration-200 ease-out select-none",
         canClose || s.pinned ? "pr-8" : "pr-3",
         active
-          ? "text-foreground"
-          : "text-muted-foreground opacity-75 hover:text-foreground hover:opacity-100",
+          ? "bg-accent/70 text-foreground"
+          : "text-muted-foreground hover:bg-accent/40 hover:text-foreground",
         isDetached && "italic",
-        isCrossSessionFileDragOver && "text-primary opacity-100"
+        isCrossSessionFileDragOver && "bg-primary/10 text-primary"
       )}
     >
       <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", statusColor)} />
@@ -322,8 +320,6 @@ function StaticTab(props: SortableTabProps) {
       )}>
         {s.serverName}
       </span>
-
-      <span aria-hidden="true" className="pointer-events-none absolute -right-1 top-1/2 -translate-y-1/2 select-none text-sm font-normal not-italic text-muted-foreground/50">|</span>
 
       {s.pinned && (
         <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-blue-400" />
@@ -528,8 +524,6 @@ export function SessionTabBar(props: SessionTabBarProps) {
     onTabDragCancel?.()
   }
 
-  // 去除状态图标，使用激活标签文字颜色表示状态
-
   const onAuxClick = (e: React.MouseEvent, id: string, pinned?: boolean) => {
     // 中键关闭
     const session = sessions.find((s) => s.id === id)
@@ -552,7 +546,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
     >
       {draggedSession ? (
         <div className={cn(
-          "group relative flex h-8 items-center gap-2 pl-3 text-foreground transition-none select-none",
+          "group relative flex h-8 items-center gap-2 rounded-md bg-accent/70 pl-3 text-foreground transition-none select-none",
           (canCloseSession?.(draggedSession) ?? !draggedSession.pinned) || draggedSession.pinned ? "pr-8" : "pr-3"
         )}>
           <div className={cn(

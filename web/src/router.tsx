@@ -2,6 +2,9 @@ import { lazy, Suspense, type ComponentType, type LazyExoticComponent, type Reac
 import { Navigate, Route, Routes } from "react-router-dom"
 import { AppLoadingScreen } from "@/components/app-loading"
 import { PageLoading } from "@/components/page-loading"
+import { RoutePending } from "@/components/route-pending"
+import { preloadNamespaces } from "@/i18n"
+import { preloadDashboardRoute } from "@/lib/dashboard-route-preload"
 import AuthTransition from "@/layouts/auth-transition"
 import HomePage from "@/pages/home-page"
 import { dashboardRouteRegistry } from "@/lib/dashboard-route-registry"
@@ -9,7 +12,15 @@ import { ResourceBoundary } from "@/components/resource-boundary"
 
 const SyncAuthorizePage = lazy(() => import("@/pages/dashboard/sync-authorize-page"))
 const AuthLayout = lazy(() => import("@/layouts/auth-layout"))
-const DashboardLayout = lazy(() => import("@/layouts/dashboard-layout"))
+const DashboardLayout = lazy(async () => {
+  // Download the requested page while the shell and authentication are preparing.
+  void preloadDashboardRoute(`${window.location.pathname}${window.location.search}`, undefined, "navigation")
+  const [module] = await Promise.all([
+    import("@/layouts/dashboard-layout"),
+    preloadNamespaces(["common", "nav", "dashboard", "headerActions"]),
+  ])
+  return module
+})
 const SetupPage = lazy(() => import("@/pages/setup-page"))
 const GoogleAuthCallbackPage = lazy(() => import("@/pages/auth/google-callback-page"))
 const LoginPage = lazy(() => import("@/pages/auth/login-page"))
@@ -21,10 +32,6 @@ type RoutableComponent = ComponentType | LazyExoticComponent<ComponentType>
 
 function RouteFallback() {
   return <AppLoadingScreen />
-}
-
-function DashboardRouteFallback() {
-  return <PageLoading className="min-h-[520px] bg-transparent" />
 }
 
 function lazyElement(
@@ -43,7 +50,7 @@ function lazyElement(
 function lazyDashboardElement(Page: ComponentType, reset: () => void, url: string) {
   return (
     <ResourceBoundary key={url} onRetry={reset}>
-      <Suspense fallback={<DashboardRouteFallback />}><Page /></Suspense>
+      <Suspense fallback={<RoutePending />}><Page /></Suspense>
     </ResourceBoundary>
   )
 }
@@ -65,7 +72,7 @@ export function AppRouter() {
         path="/dashboard"
         element={lazyElement(DashboardLayout)}
       >
-        <Route path="sync-authorize" element={lazyElement(SyncAuthorizePage, <DashboardRouteFallback />)} />
+        <Route path="sync-authorize" element={lazyElement(SyncAuthorizePage, <RoutePending />)} />
         {dashboardRouteRegistry.map(({ Page, index, path, url, reset }) => (
           index ? (
             <Route key={url} index element={lazyDashboardElement(Page, reset, url)} />
@@ -77,7 +84,7 @@ export function AppRouter() {
         <Route
           path="error"
           element={
-            <Suspense fallback={<DashboardRouteFallback />}>
+            <Suspense fallback={<RoutePending />}>
               <DashboardError error={new Error("Dashboard error")} reset={() => {}} />
             </Suspense>
           }

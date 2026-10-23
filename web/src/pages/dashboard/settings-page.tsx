@@ -5,24 +5,15 @@ import { Archive, Bot, Cable, Clock3, Fingerprint, Globe, HardDrive, Mail, Setti
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { cn } from "@/lib/utils"
-import { BasicTab } from "./settings/system-config/_tabs/basic-tab"
-import { FileTransferTab } from "./settings/system-config/_tabs/file-transfer-tab"
-import { AuthenticationTab } from "./settings/security-center/_tabs/authentication-tab"
-import { AccessControlTab } from "./settings/security-center/_tabs/access-control-tab"
-import { NetworkSecurityTab } from "./settings/security-center/_tabs/network-security-tab"
-import { WorkspaceTab } from "./settings/security-center/_tabs/workspace-tab"
-import { BackupRestoreTab } from "@/components/settings/backup-restore-tab"
 import { SettingsLoading } from "@/components/settings/settings-loading"
-import { NotificationConfigWrapper } from "./settings/integrations/_tabs/notification-config-wrapper"
-import { AIConfigWrapper } from "./settings/integrations/_tabs/ai-config-wrapper"
-import { ScheduledTasksTab } from "./settings/system-config/_tabs/scheduled-tasks-tab"
-import { UserManagementContent } from "./settings/management/_tabs/user-management-content"
+import { settingsSections, type SettingsSectionId } from "@/lib/settings-section-registry"
+import { ResourceBoundary } from "@/components/resource-boundary"
+import { useIntentPreload } from "@/hooks/use-intent-preload"
 
 interface SettingsItem {
-  id: string
+  id: SettingsSectionId
   nameKey: string
   icon: React.ElementType
-  component: React.ComponentType
 }
 
 interface SettingsGroup {
@@ -33,29 +24,29 @@ interface SettingsGroup {
 
 const groups: SettingsGroup[] = [
   { id: "general", nameKey: "groupGeneral", items: [
-    { id: "basic", nameKey: "itemBasic", icon: Settings, component: BasicTab },
+    { id: "basic", nameKey: "itemBasic", icon: Settings },
   ] },
   { id: "identity", nameKey: "groupIdentity", items: [
-    { id: "users", nameKey: "itemUsers", icon: Users, component: UserManagementContent },
-    { id: "authentication", nameKey: "itemAuthentication", icon: Fingerprint, component: AuthenticationTab },
-    { id: "access-control", nameKey: "itemAccessControl", icon: Shield, component: AccessControlTab },
+    { id: "users", nameKey: "itemUsers", icon: Users },
+    { id: "authentication", nameKey: "itemAuthentication", icon: Fingerprint },
+    { id: "access-control", nameKey: "itemAccessControl", icon: Shield },
   ] },
   { id: "workspace", nameKey: "groupWorkspace", items: [
-    { id: "workspace", nameKey: "itemWorkspace", icon: Workflow, component: WorkspaceTab },
+    { id: "workspace", nameKey: "itemWorkspace", icon: Workflow },
   ] },
   { id: "automation", nameKey: "groupAutomation", items: [
-    { id: "scheduled-tasks", nameKey: "itemScheduledTasks", icon: Clock3, component: ScheduledTasksTab },
+    { id: "scheduled-tasks", nameKey: "itemScheduledTasks", icon: Clock3 },
   ] },
   { id: "network", nameKey: "groupNetwork", items: [
-    { id: "network", nameKey: "itemNetworkDeployment", icon: Globe, component: NetworkSecurityTab },
-    { id: "file-transfer", nameKey: "itemFileTransfer", icon: Cable, component: FileTransferTab },
+    { id: "network", nameKey: "itemNetworkDeployment", icon: Globe },
+    { id: "file-transfer", nameKey: "itemFileTransfer", icon: Cable },
   ] },
   { id: "integrations", nameKey: "groupIntegrations", items: [
-    { id: "ai-config", nameKey: "itemAIConfig", icon: Bot, component: AIConfigWrapper },
-    { id: "notification-config", nameKey: "itemNotificationConfig", icon: Mail, component: NotificationConfigWrapper },
+    { id: "ai-config", nameKey: "itemAIConfig", icon: Bot },
+    { id: "notification-config", nameKey: "itemNotificationConfig", icon: Mail },
   ] },
   { id: "data", nameKey: "groupData", items: [
-    { id: "backup", nameKey: "itemBackup", icon: Archive, component: BackupRestoreTab },
+    { id: "backup", nameKey: "itemBackup", icon: Archive },
   ] },
 ]
 
@@ -63,10 +54,12 @@ const items = groups.flatMap((group) => group.items)
 
 function NavigationButton({ item, active, onClick }: { item: SettingsItem; active: boolean; onClick: () => void }) {
   const { t } = useTranslation("settingsMain")
+  const preloadHandlers = useIntentPreload(() => { void settingsSections[item.id].preload().catch(() => undefined) })
   return (
     <button
       type="button"
-      onClick={onClick}
+      {...preloadHandlers}
+      onClick={() => { preloadHandlers.onClick(); onClick() }}
       className={cn(
         "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
         active ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -86,7 +79,8 @@ function SettingsContent() {
   const requestedSection = searchParams.get("section") || "basic"
   const activeSection = items.some((item) => item.id === requestedSection) ? requestedSection : "basic"
   const activeItem = items.find((item) => item.id === activeSection) ?? items[0]
-  const ActiveComponent = activeItem.component
+  const activeResource = settingsSections[activeItem.id]
+  const ActiveComponent = activeResource.Component
   const ActiveIcon = activeItem.icon
 
   const selectSection = (section: string) => {
@@ -125,9 +119,11 @@ function SettingsContent() {
           <div className="shrink-0 border-b px-4 py-3">
             <h1 className="flex items-center gap-2 text-base font-semibold"><ActiveIcon className="h-4 w-4" />{t(activeItem.nameKey)}</h1>
           </div>
-          <Suspense key={activeSection} fallback={<SettingsLoading />}>
-            <ActiveComponent />
-          </Suspense>
+          <ResourceBoundary key={activeSection} onRetry={activeResource.reset}>
+            <Suspense fallback={<SettingsLoading />}>
+              <ActiveComponent />
+            </Suspense>
+          </ResourceBoundary>
         </main>
       </DashboardPageContent>
     </>

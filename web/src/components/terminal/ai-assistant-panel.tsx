@@ -1,6 +1,6 @@
 import type { AgentServerReference } from "@/lib/ai-agent-types"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
-import { Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent, type PointerEvent } from "react"
+import { Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent } from "react"
 import { Link } from "react-router-dom"
 import {
   Loader2,
@@ -53,10 +53,6 @@ import { PreloadedAgentThread as AgentThread } from "@/lib/ai-assistant-preload"
 
 const ANIMATION_DELAY = 160
 const PANEL_OPEN_SETTLE_DELAY = 180
-const PANEL_WIDTH_STORAGE_KEY = "easyssh:terminal-ai-assistant:panel-width"
-const DEFAULT_PANEL_WIDTH = 420
-const MIN_PANEL_WIDTH = 320
-const MAX_PANEL_WIDTH = 720
 
 interface AiAssistantPanelProps {
   position: TerminalPanelPosition
@@ -159,7 +155,6 @@ export function AiAssistantPanel({
   const { t: tAI } = useTranslation("aiAssistant")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const workspace = useOptionalSshWorkspace()
-  const preferences = workspace?.adapters.preferences
   const canUseWebSettingsFallback = workspace?.layout !== "desktop"
   assertDesktopAIAdapters(workspace?.layout, adapters)
   const controller = useAIAssistantController({
@@ -231,20 +226,12 @@ export function AiAssistantPanel({
   const [contextReferences, setContextReferences] = useState<ComposerContextReference[]>([])
   const [configOpen, setConfigOpen] = useState(false)
   const [sessionCreating, setSessionCreating] = useState(false)
-  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_WIDTH)
-  const [isResizing, setIsResizing] = useState(false)
   const [isOpenSettled, setIsOpenSettled] = useState(false)
   const [hasMountedThread, setHasMountedThread] = useState(false)
 
   const inputRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const panelRef = useRef<HTMLElement>(null)
   const sessionCreatingRef = useRef(false)
-  const dragStartXRef = useRef(0)
-  const dragStartWidthRef = useRef(DEFAULT_PANEL_WIDTH)
-  const [panelWidthStorageReady, setPanelWidthStorageReady] = useState(false)
-  const resizeFrameRef = useRef<number | null>(null)
-  const pendingPanelWidthRef = useRef(DEFAULT_PANEL_WIDTH)
   const restoreAttemptKeyRef = useRef<string | null>(null)
 
   const terminalScope = useMemo<AgentSessionScope>(() => ({
@@ -465,108 +452,6 @@ export function AiAssistantPanel({
       window.removeEventListener("keydown", handleEscClose)
     }
   }, [isOpen, onClose])
-
-  useEffect(() => {
-    try {
-      const storedValue = preferences?.getString(PANEL_WIDTH_STORAGE_KEY)
-      const nextWidth = storedValue ? Number(storedValue) : DEFAULT_PANEL_WIDTH
-
-      if (Number.isFinite(nextWidth)) {
-        setPanelWidth(Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, nextWidth)))
-      }
-    } catch {
-      // ignore unavailable storage
-    } finally {
-      setPanelWidthStorageReady(true)
-    }
-  }, [preferences])
-
-  useEffect(() => {
-    if (!panelWidthStorageReady) {
-      return
-    }
-    if (isResizing) {
-      return
-    }
-
-    void preferences?.setString(PANEL_WIDTH_STORAGE_KEY, String(panelWidth))
-  }, [isResizing, panelWidth, panelWidthStorageReady, preferences])
-
-  useEffect(() => {
-    if (!isResizing) {
-      return
-    }
-
-    document.body.style.cursor = "col-resize"
-    document.body.style.userSelect = "none"
-
-    return () => {
-      document.body.style.cursor = ""
-      document.body.style.userSelect = ""
-    }
-  }, [isResizing])
-
-  useEffect(() => {
-    return () => {
-      if (resizeFrameRef.current !== null) {
-        window.cancelAnimationFrame(resizeFrameRef.current)
-      }
-    }
-  }, [])
-
-  const handleResizeStart = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    if (!isOpen) {
-      return
-    }
-
-    event.preventDefault()
-    event.currentTarget.setPointerCapture(event.pointerId)
-    dragStartXRef.current = event.clientX
-    dragStartWidthRef.current = panelRef.current?.getBoundingClientRect().width || panelWidth
-    pendingPanelWidthRef.current = dragStartWidthRef.current
-    setIsResizing(true)
-  }, [isOpen, panelWidth])
-
-  const handleResizeMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    if (!isResizing) {
-      return
-    }
-
-    const deltaX = (dragStartXRef.current - event.clientX) * (position === "left" ? -1 : 1)
-    const nextWidth = Math.min(
-      MAX_PANEL_WIDTH,
-      Math.max(MIN_PANEL_WIDTH, dragStartWidthRef.current + deltaX)
-    )
-
-    pendingPanelWidthRef.current = nextWidth
-
-    if (resizeFrameRef.current !== null) {
-      return
-    }
-
-    resizeFrameRef.current = window.requestAnimationFrame(() => {
-      setPanelWidth(pendingPanelWidthRef.current)
-      resizeFrameRef.current = null
-    })
-  }, [isResizing, position])
-
-  const handleResizeEnd = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    if (!isResizing) {
-      return
-    }
-
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId)
-    } catch {
-      // ignore missing capture
-    }
-    if (resizeFrameRef.current !== null) {
-      window.cancelAnimationFrame(resizeFrameRef.current)
-      resizeFrameRef.current = null
-    }
-    setPanelWidth(pendingPanelWidthRef.current)
-    setIsResizing(false)
-  }, [isResizing])
 
   const focusComposer = useCallback(() => {
     requestAnimationFrame(() => {
@@ -883,21 +768,17 @@ export function AiAssistantPanel({
   return (
     <AssistantRuntimeProvider runtime={agentSession.runtime}>
     <aside
-      ref={panelRef}
       data-terminal-panel
       role="complementary"
       aria-label={tAI("panelAriaPanelLabel")}
       className={cn(
-        "terminal-ai-glass absolute inset-0 z-40 flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden text-foreground",
+        "terminal-ai-glass absolute inset-0 z-40 flex h-full min-h-0 min-w-0 w-full shrink-0 flex-col overflow-hidden text-foreground",
         "md:relative md:inset-auto md:translate-x-0",
-        isResizing ? "transition-none" : "transition-[transform,width,max-width] duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-        isOpen
-          ? position === "bottom" ? "translate-x-0 md:w-full" : "translate-x-0 md:w-[var(--terminal-ai-panel-width)] md:max-w-[var(--terminal-side-max-width)]"
-          : "translate-x-full md:w-0 md:max-w-[0px]"
+        "transition-transform duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        isOpen ? "translate-x-0" : "translate-x-full"
       )}
       style={{
         pointerEvents: isOpen ? "auto" : "none",
-        "--terminal-ai-panel-width": `${panelWidth}px`,
         ...layoutStyle,
       } as CSSProperties}
       inert={!isOpen}
@@ -927,24 +808,6 @@ export function AiAssistantPanel({
         )}
         aria-hidden={!isOpen}
       >
-        {position !== "bottom" && <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={tAI("resizePanel")}
-          title={tAI("resizePanel")}
-          className={cn(
-            "absolute inset-y-0 z-10 hidden w-3 cursor-col-resize touch-none md:block",
-            position === "left" ? "right-0 translate-x-1" : "left-0 -translate-x-1",
-            "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent after:transition-colors",
-            "hover:after:bg-primary/50",
-            isResizing && "after:bg-primary"
-          )}
-          onPointerDown={handleResizeStart}
-          onPointerMove={handleResizeMove}
-          onPointerUp={handleResizeEnd}
-          onPointerCancel={handleResizeEnd}
-        />}
-
         <Suspense fallback={<PageLoading className="min-h-0" delay={0} />}>
         {hasMountedThread ? <AgentThread
           key={sessionId ?? "new"}

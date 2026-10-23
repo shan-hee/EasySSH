@@ -25,6 +25,7 @@ import { DockerPopover } from './docker'
 import { ScriptLibraryPopover } from './script-library-popover'
 import { SystemToolsPopover } from './system-tools-popover'
 import { PanelPositionControl } from './panel-position-control'
+import { useTerminalPanelLayout } from './use-terminal-panel-layout'
 import { useSftpSession } from '@/hooks/useSftpSession'
 import { cn } from '@/lib/utils'
 import { useTabUIStore } from '@/stores/tab-ui-store'
@@ -529,30 +530,17 @@ function TabTerminalContentComponent({
     <PanelPositionControl position={tabState.monitorPosition} onChange={(monitorPosition) => setTabState(session.id, { monitorPosition })} />
   ) : undefined
   const monitorFallback = <div className="h-full w-full px-3 py-1.5"><MonitorSkeleton headerActions={monitorHeaderActions} /></div>
-  type PanelKey = keyof typeof panelPositions
   const visiblePanels = ([
     ...(shouldReserveInlineMonitor ? ["monitor" as const] : []),
     ...(canUseFileManager ? ["files" as const] : []),
     ...(canUseAi ? ["ai" as const] : []),
   ])
-  const leftPanels = visiblePanels.filter((key) => panelPositions[key] === "left")
-  const rightPanels = visiblePanels.filter((key) => panelPositions[key] === "right")
-  const bottomPanels = visiblePanels.filter((key) => panelPositions[key] === "bottom")
-  const terminalColumn = leftPanels.length + 1
-  const panelGridStyle: React.CSSProperties = isDesktopLayout ? {
-    containerType: "inline-size",
-    gridTemplateColumns: [...leftPanels.map(() => "auto"), "minmax(0, 1fr)", ...rightPanels.map(() => "auto")].join(" "),
-    gridTemplateRows: ["minmax(0, 1fr)", ...bottomPanels.map(() => `minmax(0, ${Math.min(40, 60 / bottomPanels.length)}%)`)].join(" "),
-    "--terminal-side-max-width": `${60 / Math.max(1, leftPanels.length + rightPanels.length)}cqw`,
-  } as React.CSSProperties : { gridTemplateColumns: "minmax(0, 1fr)", gridTemplateRows: "minmax(0, 1fr)" }
-  const panelPlacement = (key: PanelKey): React.CSSProperties | undefined => {
-    if (!isDesktopLayout) return undefined
-    if (!visiblePanels.includes(key)) return { display: "none" }
-    const bottomIndex = bottomPanels.indexOf(key)
-    if (bottomIndex >= 0) return { gridColumn: "1 / -1", gridRow: bottomIndex + 2 }
-    const leftIndex = leftPanels.indexOf(key)
-    return { gridColumn: leftIndex >= 0 ? leftIndex + 1 : terminalColumn + 1 + rightPanels.indexOf(key), gridRow: 1 }
-  }
+  const { layoutRef, gridStyle: panelGridStyle, placement: panelPlacement, terminalColumn, handles: panelResizeHandles } = useTerminalPanelLayout({
+    enabled: isDesktopLayout && shouldRenderBody,
+    positions: panelPositions,
+    visiblePanels,
+    preferences: workspace?.adapters.preferences,
+  })
 
   const canHandleInternalBack = isActive && (
     canUseFileManager ||
@@ -768,15 +756,12 @@ function TabTerminalContentComponent({
 
           {/* All docked panels share one grid; placement preserves component state. */}
           {shouldRenderBody && (
-          <div data-terminal-layout className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={panelGridStyle}>
+          <div ref={layoutRef} data-terminal-layout className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={panelGridStyle}>
             {/* 监控面板 */}
             {isTerminalSession && isDesktopLayout && (
               <div
                 data-terminal-panel
-                className={cn(
-                  'flex h-full min-h-0 min-w-0 flex-col overflow-hidden text-foreground',
-                  tabState.monitorPosition === "bottom" ? 'w-full' : 'w-[280px] max-w-[var(--terminal-side-max-width)]',
-                )}
+                className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden text-foreground"
                 style={panelPlacement("monitor")}
                 inert={!shouldReserveInlineMonitor}
                 aria-hidden={!shouldReserveInlineMonitor}
@@ -907,7 +892,7 @@ function TabTerminalContentComponent({
                 data-terminal-panel
                 aria-label={tTerminal("ariaAiAssistant")}
                 style={panelPlacement("ai")}
-                className={cn("absolute inset-0 z-40 flex min-h-0 w-full flex-col bg-background text-foreground md:relative md:inset-auto", tabState.aiPosition !== "bottom" && "md:w-[420px] md:max-w-[var(--terminal-side-max-width)]")}
+                className="absolute inset-0 z-40 flex min-h-0 min-w-0 w-full flex-col bg-background text-foreground md:relative md:inset-auto"
               >
                 <div className="flex items-center justify-between border-b px-3 py-2">
                   <span className="text-sm">{tTerminal("ariaAiAssistant")}</span>
@@ -935,6 +920,7 @@ function TabTerminalContentComponent({
               />
             </React.Suspense>
           )}
+          {panelResizeHandles}
           </div>
           )}
         </div>
