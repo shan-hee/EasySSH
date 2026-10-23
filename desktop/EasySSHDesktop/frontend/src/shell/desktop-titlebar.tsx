@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Browser, Window } from "@wailsio/runtime"
 import { Button } from "@/components/ui/button"
 import {
@@ -44,8 +44,8 @@ import { desktopUpdateApi, type DesktopUpdateCheckResult } from "../adapters/des
 import { DesktopInlineUpdateAction } from "./desktop-inline-update-action"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
-
-export type DesktopView = "terminal" | "ai" | "scripts" | "ssh-keys" | "tasks" | "activity-logs" | "backup-restore" | "sync"
+import { useIntentPreload } from "@/hooks/use-intent-preload"
+import { preloadDesktopView, type DesktopContentView, type DesktopView } from "./desktop-view-registry"
 
 const windowActionErrorMessage = "Failed to run window action:"
 const githubLabel = "GitHub"
@@ -172,6 +172,15 @@ function DesktopAboutVersionValue({ version }: { version: string }) {
   )
 }
 
+function DesktopViewMenuItem({ view, onSelect, children }: {
+  view: DesktopContentView
+  onSelect: () => void
+  children: ReactNode
+}) {
+  const preloadHandlers = useIntentPreload(() => preloadDesktopView(view))
+  return <DropdownMenuItem {...preloadHandlers} onSelect={onSelect}>{children}</DropdownMenuItem>
+}
+
 function DesktopSettingsMenu({
   runtime,
   onOpenScripts,
@@ -215,30 +224,30 @@ function DesktopSettingsMenu({
         <DropdownMenuContent align="end" className="w-[196px] [--wails-draggable:no-drag] [&_[data-slot=dropdown-menu-item]]:cursor-default">
           <DropdownMenuLabel>{t("settingsLabel")}</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={onOpenScripts}>
+          <DesktopViewMenuItem view="scripts" onSelect={onOpenScripts}>
             <FileText className="h-4 w-4" />
             <span>{t("scriptLibraryLabel")}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onOpenSSHKeys}>
+          </DesktopViewMenuItem>
+          <DesktopViewMenuItem view="ssh-keys" onSelect={onOpenSSHKeys}>
             <KeyRound className="h-4 w-4" />
             <span>{t("keyPairsLabel")}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onOpenTasks()}>
+          </DesktopViewMenuItem>
+          <DesktopViewMenuItem view="tasks" onSelect={() => onOpenTasks()}>
             <ListChecks className="h-4 w-4" />
             <span>{t("taskManagementLabel")}</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onOpenActivityLogs}>
+          </DesktopViewMenuItem>
+          <DesktopViewMenuItem view="activity-logs" onSelect={onOpenActivityLogs}>
             <Activity className="h-4 w-4" />
             <span>{t("activityLogLabel")}</span>
-          </DropdownMenuItem>
+          </DesktopViewMenuItem>
           <DropdownMenuItem onSelect={() => setProxyOpen(true)}>
             <Globe className="h-4 w-4" />
             <span>{t("networkProxyLabel")}</span>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onOpenBackupRestore}>
+          <DesktopViewMenuItem view="backup-restore" onSelect={onOpenBackupRestore}>
             <ArchiveRestore className="h-4 w-4" />
             <span>{t("backupRestoreLabel")}</span>
-          </DropdownMenuItem>
+          </DesktopViewMenuItem>
           <DropdownMenuItem onSelect={handleOpenDataDir}>
             <FolderOpen className="h-4 w-4" />
             <span>{t("openDataDirLabel")}</span>
@@ -287,6 +296,7 @@ export function DesktopWindowActions({
   onOpenSync: () => void
 }) {
   const { t } = useTranslation("desktop")
+  const aiPreloadHandlers = useIntentPreload(() => preloadDesktopView("ai"))
   const handleMinimize = useCallback(() => {
     runWindowAction(() => Window.Minimise())
   }, [])
@@ -309,6 +319,7 @@ export function DesktopWindowActions({
           className={toolbarIconButtonClassName}
           aria-label={t("aiAssistantLabel")}
           title={t("aiAssistantLabel")}
+          {...aiPreloadHandlers}
           onClick={onToggleAiAssistant}
         >
           <Bot className="h-4 w-4" />

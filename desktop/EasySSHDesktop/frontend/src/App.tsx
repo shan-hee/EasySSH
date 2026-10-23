@@ -1,7 +1,7 @@
 import { startDesktopSync } from "./adapters/desktop-sync"
 import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { PageLoading } from "@/components/page-loading"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { RoutePending } from "@/components/route-pending"
 import { useTranslation } from "react-i18next"
 import {
   DEFAULT_SYSTEM_CONFIG,
@@ -38,32 +38,21 @@ import { createDesktopScriptAdapters } from "./adapters/desktop-script-api"
 import { desktopSystemInfoApi } from "./adapters/desktop-system-info"
 import { createDesktopSftpApi } from "./adapters/desktop-sftp-api"
 import { DesktopProviders } from "./shell/desktop-providers"
-import { DesktopWindowActions, type DesktopView } from "./shell/desktop-titlebar"
+import { DesktopWindowActions } from "./shell/desktop-titlebar"
+import { DesktopPageHeader } from "./shell/desktop-page-header"
+import { DesktopViewBoundary } from "./shell/desktop-view-boundary"
+import { desktopViews, preloadDesktopView, type DesktopView } from "./shell/desktop-view-registry"
 import { DesktopUpdateFailureDialog } from "./shell/desktop-update-failure-dialog"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
 import { useFileTransfer, type FileTransferSftpApi } from "@/hooks/useFileTransfer"
 
-const DesktopAIAssistantView = lazy(() => import("./shell/desktop-ai-assistant-view").then(
-  module => ({ default: module.DesktopAIAssistantView }),
-))
-const DesktopActivityLogsView = lazy(() => import("./shell/desktop-activity-logs-view").then(
-  module => ({ default: module.DesktopActivityLogsView }),
-))
-const DesktopBackupRestoreView = lazy(() => import("./shell/desktop-backup-restore-view").then(
-  module => ({ default: module.DesktopBackupRestoreView }),
-))
-const DesktopSyncView = lazy(() => import("./shell/desktop-sync-view").then(
-  module => ({ default: module.DesktopSyncView }),
-))
-const DesktopScriptsView = lazy(() => import("./shell/desktop-scripts-view").then(
-  module => ({ default: module.DesktopScriptsView }),
-))
-const DesktopSSHKeysView = lazy(() => import("./shell/desktop-ssh-keys-view").then(
-  module => ({ default: module.DesktopSSHKeysView }),
-))
-const DesktopTaskCenterView = lazy(() => import("./shell/desktop-task-center-view").then(
-  module => ({ default: module.DesktopTaskCenterView }),
-))
+const DesktopAIAssistantView = desktopViews.ai.Component
+const DesktopActivityLogsView = desktopViews["activity-logs"].Component
+const DesktopBackupRestoreView = desktopViews["backup-restore"].Component
+const DesktopSyncView = desktopViews.sync.Component
+const DesktopScriptsView = desktopViews.scripts.Component
+const DesktopSSHKeysView = desktopViews["ssh-keys"].Component
+const DesktopTaskCenterView = desktopViews.tasks.Component
 
 const defaultMaxTabs = 50
 
@@ -619,33 +608,44 @@ function App() {
   }, [handleCloseSession])
 
   const handleToggleAiAssistant = useCallback(() => {
+    preloadDesktopView("ai")
     setAiAssistantMounted(true)
     setActiveView((current) => (current === "ai" ? "terminal" : "ai"))
   }, [])
 
   const handleOpenScripts = useCallback(() => {
+    preloadDesktopView("scripts")
     setScriptsMounted(true)
     setActiveView("scripts")
   }, [])
 
   const handleOpenTasks = useCallback((taskID?: string) => {
+    preloadDesktopView("tasks")
     setTasksMounted(true)
     setRequestedTaskRunID(taskID || null)
     setActiveView("tasks")
   }, [])
 
   const handleOpenActivityLogs = useCallback(() => {
+    preloadDesktopView("activity-logs")
     setActivityLogsMounted(true)
     setActiveView("activity-logs")
   }, [])
 
   const handleOpenBackupRestore = useCallback(() => {
+    preloadDesktopView("backup-restore")
     setBackupRestoreMounted(true)
     setActiveView("backup-restore")
   }, [])
 
-  const handleOpenSync = useCallback(() => setActiveView("sync"), [])
-  const handleOpenSSHKeys = useCallback(() => setActiveView("ssh-keys"), [])
+  const handleOpenSync = useCallback(() => {
+    preloadDesktopView("sync")
+    setActiveView("sync")
+  }, [])
+  const handleOpenSSHKeys = useCallback(() => {
+    preloadDesktopView("ssh-keys")
+    setActiveView("ssh-keys")
+  }, [])
 
   const handleReturnToTerminal = useCallback(() => {
     setRequestedTaskRunID(null)
@@ -704,13 +704,11 @@ function App() {
     return (
       <DesktopProviders>
         <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
-          <header className="flex h-10 shrink-0 items-stretch border-b border-border/60 bg-background/65 [--wails-draggable:drag]">
+          <header className="flex h-10 shrink-0 items-stretch border-b border-border/60 bg-transparent [--wails-draggable:drag]">
             <div className="min-w-0 flex-1 [--wails-draggable:drag]" />
             {windowActions}
           </header>
-          <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
-            {tCommon("loading")}
-          </div>
+          <RoutePending />
         </main>
         <DesktopUpdateFailureDialog />
       </DesktopProviders>
@@ -721,12 +719,15 @@ function App() {
     <DesktopProviders aiAssistantActive={activeView === "ai"}>
       <SshWorkspace adapters={adapters} capabilities={capabilities} layout="desktop">
         <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
+          {activeView !== "terminal" && (
+            <DesktopPageHeader view={activeView} onReturnToTerminal={handleReturnToTerminal} actions={windowActions} />
+          )}
           <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
             {activeView === "ssh-keys" && (
               <section className="absolute inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden">
-                <Suspense fallback={<PageLoading />}>
-                  <DesktopSSHKeysView locale={locale} onReturnToTerminal={handleReturnToTerminal} headerActions={windowActions} />
-                </Suspense>
+                <DesktopViewBoundary view="ssh-keys">
+                  <DesktopSSHKeysView locale={locale} />
+                </DesktopViewBoundary>
               </section>
             )}
             <section
@@ -793,15 +794,13 @@ function App() {
               inert={activeView !== "ai"}
             >
               {aiAssistantMounted ? (
-                <Suspense fallback={<PageLoading />}>
+                <DesktopViewBoundary view="ai">
                   <DesktopAIAssistantView
                     active={activeView === "ai"}
                     adapters={aiAssistantAdapters}
                     locale={locale}
-                    onReturnToTerminal={handleReturnToTerminal}
-                    headerActions={activeView === "ai" ? windowActions : undefined}
                   />
-                </Suspense>
+                </DesktopViewBoundary>
               ) : null}
             </section>
             <section
@@ -810,14 +809,12 @@ function App() {
               aria-hidden={activeView !== "scripts"}
             >
               {scriptsMounted ? (
-                <Suspense fallback={<PageLoading />}>
+                <DesktopViewBoundary view="scripts">
                   <DesktopScriptsView
                     adapters={scriptAdapters}
                     locale={locale}
-                    onReturnToTerminal={handleReturnToTerminal}
-                    headerActions={activeView === "scripts" ? windowActions : undefined}
                   />
-                </Suspense>
+                </DesktopViewBoundary>
               ) : null}
             </section>
             <section
@@ -826,15 +823,13 @@ function App() {
               aria-hidden={activeView !== "tasks"}
             >
               {tasksMounted ? (
-                <Suspense fallback={<PageLoading />}>
+                <DesktopViewBoundary view="tasks">
                   <DesktopTaskCenterView
                     locale={locale}
                     requestedRunID={requestedTaskRunID}
                     onClearRequestedRun={() => setRequestedTaskRunID(null)}
-                    onReturnToTerminal={handleReturnToTerminal}
-                    headerActions={activeView === "tasks" ? windowActions : undefined}
                   />
-                </Suspense>
+                </DesktopViewBoundary>
               ) : null}
             </section>
             <section
@@ -843,13 +838,11 @@ function App() {
               aria-hidden={activeView !== "activity-logs"}
             >
               {activityLogsMounted ? (
-                <Suspense fallback={<PageLoading />}>
+                <DesktopViewBoundary view="activity-logs">
                   <DesktopActivityLogsView
                     locale={locale}
-                    onReturnToTerminal={handleReturnToTerminal}
-                    headerActions={activeView === "activity-logs" ? windowActions : undefined}
                   />
-                </Suspense>
+                </DesktopViewBoundary>
               ) : null}
             </section>
             <section
@@ -858,20 +851,18 @@ function App() {
               aria-hidden={activeView !== "backup-restore"}
             >
               {backupRestoreMounted ? (
-                <Suspense fallback={<PageLoading />}>
+                <DesktopViewBoundary view="backup-restore">
                   <DesktopBackupRestoreView
                     locale={locale}
-                    onReturnToTerminal={handleReturnToTerminal}
-                    headerActions={activeView === "backup-restore" ? windowActions : undefined}
                   />
-                </Suspense>
+                </DesktopViewBoundary>
               ) : null}
             </section>
             {activeView === "sync" && (
               <section className="absolute inset-0 flex min-h-0 min-w-0 overflow-hidden">
-                <Suspense fallback={<PageLoading />}>
-                  <DesktopSyncView locale={locale} onReturnToTerminal={handleReturnToTerminal} headerActions={windowActions} />
-                </Suspense>
+                <DesktopViewBoundary view="sync">
+                  <DesktopSyncView locale={locale} />
+                </DesktopViewBoundary>
               </section>
             )}
           </div>

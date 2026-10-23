@@ -5,10 +5,13 @@ import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import type { SyncStatus } from "@/lib/sync/types"
 import { cn } from "@/lib/utils"
+import { useIntentPreload } from "@/hooks/use-intent-preload"
+import { preloadDesktopView } from "./desktop-view-registry"
 import { desktopSyncAdapter, isDesktopSyncRunning } from "../adapters/desktop-sync"
 
 export function DesktopSyncAction({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { t } = useTranslation("desktop")
+  const preloadHandlers = useIntentPreload(() => preloadDesktopView("sync"))
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [loadError, setLoadError] = useState("")
   const [syncing, setSyncing] = useState(isDesktopSyncRunning)
@@ -107,7 +110,7 @@ export function DesktopSyncAction({ onOpenSettings }: { onOpenSettings: () => vo
           {status?.account_name && <div className="truncate px-2 py-1 text-xs text-muted-foreground" title={status.account_name}>{status.account_name}</div>}
           {status?.last_sync && <div className="px-2 py-1 text-xs text-muted-foreground">{t("syncLastTimeLabel", { time: new Date(status.last_sync).toLocaleString() })}</div>}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={onOpenSettings}>
+          <DropdownMenuItem {...preloadHandlers} onSelect={onOpenSettings}>
             <Settings2 className="size-4" />{t("syncSettingsLabel")}
           </DropdownMenuItem>
         </DropdownMenuContent>

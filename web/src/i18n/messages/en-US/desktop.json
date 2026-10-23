@@ -1,4 +1,6 @@
 {
+  "collapseSidebarLabel": "Collapse sidebar",
+  "expandSidebarLabel": "Expand sidebar",
   "settingsLabel": "Settings",
   "aiAssistantLabel": "AI Assistant",
   "scriptLibraryLabel": "Script Library",

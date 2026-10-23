@@ -1,4 +1,6 @@
 {
+  "collapseSidebarLabel": "收起侧栏",
+  "expandSidebarLabel": "展开侧栏",
   "settingsLabel": "设置",
   "aiAssistantLabel": "AI 助手",
   "scriptLibraryLabel": "脚本库",
