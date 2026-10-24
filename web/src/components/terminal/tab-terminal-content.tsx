@@ -7,7 +7,6 @@ import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-too
  */
 
 import React, { useEffect, useMemo, useState } from 'react'
-import { AnimatePresence } from 'motion/react'
 import { MonitorWebSocketProvider } from './monitor/contexts/MonitorWebSocketContext'
 import { MonitorSkeleton } from './monitor/components/MonitorSkeleton'
 import { Button } from '@/components/ui/button'
@@ -600,18 +599,16 @@ function TabTerminalContentComponent({
           />
         )}
 
-        {/* 保留首次动画，否则循环光线会停在 opacity: 0 的末帧；退出仅影响覆盖层。 */}
-        <AnimatePresence custom={session.connectionPhase}>
-          {shouldRenderBody && effectiveIsLoading && isTerminalSession && (
-            <div key="connection-loader" className="pointer-events-none absolute inset-0 z-[60]">
-              <ConnectionLoader
-                transparentBackground={hasWorkspaceBackground}
-                serverName={connectionLoaderServerName}
-                message={tTerminal(getConnectionLoaderMessageKey(session.connectionPhase))}
-              />
-            </div>
-          )}
-        </AnimatePresence>
+        {/* 业务阶段结束就直接卸载，避免首次挂载时退出动画滞留；终端始终独立挂载。 */}
+        {shouldRenderBody && effectiveIsLoading && isTerminalSession && (
+          <div className="pointer-events-none absolute inset-0 z-[60]">
+            <ConnectionLoader
+              transparentBackground={hasWorkspaceBackground}
+              serverName={connectionLoaderServerName}
+              message={tTerminal(getConnectionLoaderMessageKey(session.connectionPhase))}
+            />
+          </div>
+        )}
 
         <div className={cn(
           "relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden",

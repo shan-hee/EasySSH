@@ -1,19 +1,13 @@
 import type { CSSProperties } from "react"
-import { AnimatePresence, motion, useIsPresent, usePresenceData, useReducedMotion } from "motion/react"
+import { motion, useReducedMotion } from "motion/react"
 import {
-  Check,
-  CircleX,
   Server as ServerIcon,
   SquareTerminal,
-  Unplug,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { motionDurations, motionEase } from "@/lib/motion"
 import { cn } from "@/lib/utils"
-import type { TerminalConnectionPhase } from "./types"
-
-type ConnectionLoaderOutcome = "success" | "error" | "neutral"
 
 interface ConnectionLoaderProps {
   serverName?: string
@@ -25,28 +19,6 @@ type ConnectionLoaderStyle = CSSProperties & {
   "--connection-accent": string
 }
 
-const getOutcomeAccent = (outcome: ConnectionLoaderOutcome) => {
-  switch (outcome) {
-    case "success":
-      return "var(--status-connected)"
-    case "error":
-      return "var(--status-danger)"
-    default:
-      return "var(--muted-foreground)"
-  }
-}
-
-const getOutcomeIcon = (outcome: ConnectionLoaderOutcome) => {
-  switch (outcome) {
-    case "success":
-      return Check
-    case "error":
-      return CircleX
-    default:
-      return Unplug
-  }
-}
-
 export function ConnectionLoader({
   serverName,
   message,
@@ -54,20 +26,9 @@ export function ConnectionLoader({
 }: ConnectionLoaderProps) {
   const { t } = useTranslation("terminal")
   const shouldReduceMotion = useReducedMotion()
-  // Presence 仅控制视觉退出；连接就绪与工具栏可用性不等待动画完成。
-  const isExiting = !useIsPresent()
-  const phase = usePresenceData() as TerminalConnectionPhase | undefined
-  const outcome: ConnectionLoaderOutcome = phase === "ready" ? "success" : phase === "failed" ? "error" : "neutral"
-  const displayMessage = isExiting
-    ? t(outcome === "success" ? "connectionLoaderSuccess" : outcome === "error" ? "connectionLoaderFailed" : "connectionLoaderClosed")
-    : message ?? t("connectionLoaderConnecting")
-  const accentColor = isExiting
-    ? getOutcomeAccent(outcome)
-    : "var(--primary)"
-  const OutcomeIcon = getOutcomeIcon(outcome)
-
+  const displayMessage = message ?? t("connectionLoaderConnecting")
   const loaderStyle: ConnectionLoaderStyle = {
-    "--connection-accent": accentColor,
+    "--connection-accent": "var(--primary)",
   }
 
   return (
@@ -77,21 +38,14 @@ export function ConnectionLoader({
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      aria-busy={!isExiting}
+      aria-busy="true"
       aria-label={`${displayMessage}: ${serverName ?? t("connectionLoaderServerFallback")}`}
     >
-      <motion.div
+      <div
         className={cn(
           "absolute inset-0 flex items-center justify-center px-5 py-10",
           !transparentBackground && "bg-background",
         )}
-        initial={false}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: shouldReduceMotion ? 1 : 1.01 }}
-        transition={{
-          duration: shouldReduceMotion ? 0 : motionDurations.state,
-          ease: motionEase,
-        }}
       >
         <div
           aria-hidden="true"
@@ -128,21 +82,17 @@ export function ConnectionLoader({
                 style={{
                   background: "linear-gradient(90deg, transparent, var(--connection-accent))",
                 }}
-                animate={isExiting
-                  ? { x: "400%", opacity: outcome === "success" ? 1 : 0.45 }
-                  : shouldReduceMotion
-                    ? { x: "200%", opacity: 0.7 }
-                    : { x: ["0%", "400%"], opacity: [0, 1, 1, 0] }}
-                transition={isExiting
-                  ? { duration: shouldReduceMotion ? 0 : motionDurations.state, ease: motionEase }
-                  : shouldReduceMotion
-                    ? { duration: 0 }
-                    : {
-                        duration: 1.35,
-                        ease: "linear",
-                        repeat: Infinity,
-                        times: [0, 0.14, 0.82, 1],
-                      }}
+                animate={shouldReduceMotion
+                  ? { x: "200%", opacity: 0.7 }
+                  : { x: ["0%", "400%"], opacity: [0, 1, 1, 0] }}
+                transition={shouldReduceMotion
+                  ? { duration: 0 }
+                  : {
+                      duration: 1.35,
+                      ease: "linear",
+                      repeat: Infinity,
+                      times: [0, 0.14, 0.82, 1],
+                    }}
               >
                 <span
                   className="absolute right-0 top-1/2 size-1.5 -translate-y-1/2 rounded-full"
@@ -158,54 +108,33 @@ export function ConnectionLoader({
               <motion.span
                 className="pointer-events-none absolute inset-0 rounded-2xl border"
                 style={{ borderColor: "var(--connection-accent)" }}
-                animate={isExiting
-                  ? { opacity: [0.55, 0], scale: [1, 1.22] }
-                  : shouldReduceMotion
-                    ? { opacity: 0.3, scale: 1 }
-                    : { opacity: [0.15, 0.5, 0.15], scale: [1, 1.08, 1] }}
-                transition={isExiting
-                  ? { duration: shouldReduceMotion ? 0 : motionDurations.layout, ease: motionEase }
-                  : shouldReduceMotion
-                    ? { duration: 0 }
-                    : { duration: 1.8, ease: "easeInOut", repeat: Infinity }}
+                animate={shouldReduceMotion
+                  ? { opacity: 0.3, scale: 1 }
+                  : { opacity: [0.15, 0.5, 0.15], scale: [1, 1.08, 1] }}
+                transition={shouldReduceMotion
+                  ? { duration: 0 }
+                  : { duration: 1.8, ease: "easeInOut", repeat: Infinity }}
               />
-              <AnimatePresence mode="sync" initial={false}>
-                <motion.span
-                  key={isExiting ? outcome : "connecting"}
-                  className="absolute inset-0 flex items-center justify-center"
-                  initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.8 }}
-                  transition={{ duration: shouldReduceMotion ? 0 : motionDurations.press, ease: motionEase }}
-                  style={isExiting ? { color: "var(--connection-accent)" } : undefined}
-                >
-                  {isExiting
-                    ? <OutcomeIcon className="size-5 sm:size-6" strokeWidth={1.8} />
-                    : <ServerIcon className="size-5 sm:size-6" strokeWidth={1.7} />}
-                </motion.span>
-              </AnimatePresence>
+              <ServerIcon className="size-5 sm:size-6" strokeWidth={1.7} />
             </div>
           </div>
 
           <div className="relative mt-8 h-12 w-full text-center">
-            <AnimatePresence mode="sync" initial={false}>
-              <motion.p
-                key={displayMessage}
-                className="absolute inset-x-0 top-0 truncate text-sm font-medium tracking-wide text-foreground"
-                initial={shouldReduceMotion ? false : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-                transition={{ duration: shouldReduceMotion ? 0 : motionDurations.press, ease: motionEase }}
-              >
-                {displayMessage}
-              </motion.p>
-            </AnimatePresence>
+            <motion.p
+              key={displayMessage}
+              className="absolute inset-x-0 top-0 truncate text-sm font-medium tracking-wide text-foreground"
+              initial={shouldReduceMotion ? false : { opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: shouldReduceMotion ? 0 : motionDurations.press, ease: motionEase }}
+            >
+              {displayMessage}
+            </motion.p>
             <p className="absolute inset-x-0 top-7 truncate font-mono text-xs text-muted-foreground">
               {serverName ?? t("connectionLoaderServerFallback")}
             </p>
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   )
 }
