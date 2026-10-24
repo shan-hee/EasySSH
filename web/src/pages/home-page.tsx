@@ -22,7 +22,7 @@ export default function Home() {
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md space-y-4 text-center">
           <p className="text-muted-foreground">{t("authStatusUnavailable")}</p>
-          <Button onClick={() => void refreshConfig({ refreshAuth: true })}>
+          <Button onClick={() => void refreshConfig({ refreshAuth: true }).catch(() => undefined)}>
             {t("retry")}
           </Button>
         </div>

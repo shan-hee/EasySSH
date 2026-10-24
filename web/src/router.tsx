@@ -1,97 +1,77 @@
-import { lazy, Suspense, type ComponentType, type LazyExoticComponent, type ReactNode } from "react"
-import { Navigate, Route, Routes } from "react-router-dom"
+import type { ComponentType } from "react"
+import { createBrowserRouter, Navigate, type LoaderFunctionArgs, type RouteObject } from "react-router-dom"
+import { App } from "@/app"
 import { AppLoadingScreen } from "@/components/app-loading"
-import { PageLoading } from "@/components/page-loading"
-import { RoutePending } from "@/components/route-pending"
-import { preloadNamespaces } from "@/i18n"
-import { preloadDashboardRoute } from "@/lib/dashboard-route-preload"
-import AuthTransition from "@/layouts/auth-transition"
+import { RouteErrorBoundary } from "@/components/route-error-boundary"
+import { ThemeProvider } from "@/components/theme-provider"
+import { InstanceRestartPage } from "@/pages/instance-restart-page"
 import HomePage from "@/pages/home-page"
+import AuthTransition from "@/layouts/auth-transition"
+import { preloadNamespaces } from "@/i18n"
+import { createQueryClient } from "@/lib/query-client"
 import { dashboardRouteRegistry } from "@/lib/dashboard-route-registry"
-import { ResourceBoundary } from "@/components/resource-boundary"
+import { createDashboardPageLoader, requireDashboardAccess } from "@/lib/dashboard-route-loader"
 
-const SyncAuthorizePage = lazy(() => import("@/pages/dashboard/sync-authorize-page"))
-const AuthLayout = lazy(() => import("@/layouts/auth-layout"))
-const DashboardLayout = lazy(async () => {
-  // Download the requested page while the shell and authentication are preparing.
-  void preloadDashboardRoute(`${window.location.pathname}${window.location.search}`, undefined, "navigation")
-  const [module] = await Promise.all([
-    import("@/layouts/dashboard-layout"),
-    preloadNamespaces(["common", "nav", "dashboard", "headerActions"]),
-  ])
-  return module
-})
-const SetupPage = lazy(() => import("@/pages/setup-page"))
-const GoogleAuthCallbackPage = lazy(() => import("@/pages/auth/google-callback-page"))
-const LoginPage = lazy(() => import("@/pages/auth/login-page"))
-const RegisterPage = lazy(() => import("@/pages/auth/register-page"))
-const ForgotPasswordPage = lazy(() => import("@/pages/auth/forgot-password-page"))
-const DashboardError = lazy(() => import("@/pages/dashboard/dashboard-error"))
+const queryClient = createQueryClient()
 
-type RoutableComponent = ComponentType | LazyExoticComponent<ComponentType>
-
-function RouteFallback() {
-  return <AppLoadingScreen />
+function lazyPage(load: () => Promise<{ default: ComponentType }>, namespaces: string[] = [], authTransition = false) {
+  return async () => {
+    const [module] = await Promise.all([load(), preloadNamespaces(["common", ...namespaces])])
+    const Page = module.default
+    return { Component: authTransition ? () => <AuthTransition><Page /></AuthTransition> : Page }
+  }
 }
 
-function lazyElement(
-  Page: RoutableComponent,
-  fallback: ReactNode = <RouteFallback />,
-) {
-  return (
-    <ResourceBoundary>
-      <Suspense fallback={fallback}>
-        <Page />
-      </Suspense>
-    </ResourceBoundary>
-  )
+async function dashboardLoader({ request }: LoaderFunctionArgs) {
+  await requireDashboardAccess(queryClient, request)
+  return null
 }
 
-function lazyDashboardElement(Page: ComponentType, reset: () => void, url: string) {
-  return (
-    <ResourceBoundary key={url} onRetry={reset}>
-      <Suspense fallback={<RoutePending />}><Page /></Suspense>
-    </ResourceBoundary>
-  )
-}
+const dashboardRoutes: RouteObject[] = dashboardRouteRegistry.map((route): RouteObject => ({
+  ...(route.index ? { index: true } : { path: route.path }),
+  lazy: lazyPage(route.load, route.namespaces),
+  loader: createDashboardPageLoader(queryClient, route),
+  ErrorBoundary: RouteErrorBoundary,
+}))
 
-export function AppRouter() {
-  return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/setup" element={lazyElement(SetupPage)} />
-      <Route path="/auth/google/callback" element={lazyElement(GoogleAuthCallbackPage)} />
-
-      <Route element={lazyElement(AuthLayout)}>
-        <Route path="/login" element={<AuthTransition>{lazyElement(LoginPage, <PageLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
-        <Route path="/register" element={<AuthTransition>{lazyElement(RegisterPage, <PageLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
-        <Route path="/forgot-password" element={<AuthTransition>{lazyElement(ForgotPasswordPage, <PageLoading className="min-h-[400px] bg-transparent" />)}</AuthTransition>} />
-      </Route>
-
-      <Route
-        path="/dashboard"
-        element={lazyElement(DashboardLayout)}
-      >
-        <Route path="sync-authorize" element={lazyElement(SyncAuthorizePage, <RoutePending />)} />
-        {dashboardRouteRegistry.map(({ Page, index, path, url, reset }) => (
-          index ? (
-            <Route key={url} index element={lazyDashboardElement(Page, reset, url)} />
-          ) : (
-            <Route key={url} path={path} element={lazyDashboardElement(Page, reset, url)} />
-          )
-        ))}
-        <Route path="sftp" element={<Navigate to="/dashboard/terminal?sftpPicker=1" replace />} />
-        <Route
-          path="error"
-          element={
-            <Suspense fallback={<RoutePending />}>
-              <DashboardError error={new Error("Dashboard error")} reset={() => {}} />
-            </Suspense>
-          }
-        />
-      </Route>
-
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  )
-}
+export const router = createBrowserRouter([
+  {
+    path: "/instance-restart",
+    element: <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange><InstanceRestartPage /></ThemeProvider>,
+    ErrorBoundary: RouteErrorBoundary,
+  },
+  {
+    element: <App queryClient={queryClient} />,
+    HydrateFallback: AppLoadingScreen,
+    ErrorBoundary: RouteErrorBoundary,
+    children: [
+      { index: true, Component: HomePage },
+      { path: "setup", lazy: lazyPage(() => import("@/pages/setup-page"), ["setup", "auth"]) },
+      { path: "auth/google/callback", lazy: lazyPage(() => import("@/pages/auth/google-callback-page"), ["auth"]) },
+      {
+        lazy: lazyPage(() => import("@/layouts/auth-layout"), ["auth"]),
+        children: [
+          { path: "login", lazy: lazyPage(() => import("@/pages/auth/login-page"), ["auth"], true) },
+          { path: "register", lazy: lazyPage(() => import("@/pages/auth/register-page"), ["auth"], true) },
+          { path: "forgot-password", lazy: lazyPage(() => import("@/pages/auth/forgot-password-page"), ["auth"], true) },
+        ],
+      },
+      {
+        path: "dashboard",
+        lazy: lazyPage(() => import("@/layouts/dashboard-layout"), ["nav", "dashboard", "headerActions"]),
+        loader: dashboardLoader,
+        ErrorBoundary: RouteErrorBoundary,
+        children: [
+          ...dashboardRoutes,
+          { path: "sync-authorize", loader: dashboardLoader, lazy: lazyPage(() => import("@/pages/dashboard/sync-authorize-page"), ["settingsManagementBackup"]), ErrorBoundary: RouteErrorBoundary },
+          { path: "sftp", element: <Navigate to="/dashboard/terminal?sftpPicker=1" replace /> },
+          { path: "error", lazy: async () => {
+            const [{ default: DashboardError }] = await Promise.all([import("@/pages/dashboard/dashboard-error"), preloadNamespaces(["errors"])])
+            return { Component: () => <DashboardError error={new Error("Dashboard error")} reset={() => window.location.reload()} /> }
+          } },
+        ],
+      },
+      { path: "*", element: <Navigate to="/" replace /> },
+    ],
+  },
+])

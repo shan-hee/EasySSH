@@ -1,3 +1,9 @@
+import { authStatusQueryKey } from "@/lib/auth-status-query"
+import type { AuthStatusResponse } from "@/lib/api/auth"
+import { runtimeInfoQueryKey } from "@/shell/runtime/use-runtime-info"
+import type { RuntimeInfo } from "@/shell/runtime/types"
+import { isRouteAllowed } from "@/shell/navigation/route-policy"
+import { preloadNamespaces } from "@/i18n"
 import type { QueryClient } from "@tanstack/react-query"
 
 import { getDashboardRouteDefinition } from "@/lib/dashboard-route-registry"
@@ -26,9 +32,12 @@ export function preloadDashboardRoute(url: string, queryClient?: QueryClient, in
     return Promise.resolve()
   }
 
-  const dataPreload = queryClient && route.prefetchData
-    ? route.prefetchData(queryClient, url)
+  const auth = queryClient?.getQueryData<AuthStatusResponse>(authStatusQueryKey)
+  const runtime = queryClient?.getQueryData<RuntimeInfo>(runtimeInfoQueryKey)
+  const allowed = auth?.is_authenticated && runtime && isRouteAllowed(runtime, route.url, auth.user?.permissions ?? [], runtime.principal.role === "owner")
+  const dataPreload = allowed && queryClient && route.loadData
+    ? route.loadData(queryClient, url)
     : Promise.resolve()
 
-  return Promise.allSettled([route.load(), route.preloadContent?.(url), dataPreload]).then(() => undefined)
+  return Promise.allSettled([route.load(), preloadNamespaces(["common", ...route.namespaces]), route.preloadContent?.(url), dataPreload]).then(() => undefined)
 }

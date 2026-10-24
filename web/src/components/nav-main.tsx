@@ -1,7 +1,7 @@
 
 import type { LucideIcon } from "lucide-react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Link } from "react-router-dom"
+import { NavLink } from "react-router-dom"
 import { useLocation } from "react-router-dom"
 
 import {
@@ -27,10 +27,12 @@ function NavigationLink({ item, active }: { item: NavigationItem; active: boolea
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild tooltip={item.title} isActive={active}>
-        <Link to={item.url} {...preloadHandlers}>
-          {item.icon && <item.icon />}
-          <span>{item.title}</span>
-        </Link>
+        <NavLink to={item.url} end={item.url === "/dashboard"} {...preloadHandlers}>
+          {({ isPending }) => <>
+            {item.icon && <item.icon className={isPending ? "animate-pulse motion-reduce:animate-none" : undefined} />}
+            <span aria-busy={isPending}>{item.title}</span>
+          </>}
+        </NavLink>
       </SidebarMenuButton>
     </SidebarMenuItem>
   )

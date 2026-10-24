@@ -11,13 +11,11 @@ import { ClientAuthProvider } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
 import { getAuthRedirectDecision, getCurrentBrowserPath } from "@/lib/auth-redirect"
-import { useRuntime } from "@/shell/runtime/runtime-provider"
+import { RuntimeProvider, useRuntime } from "@/shell/runtime/runtime-provider"
 import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-policy"
 import { Button } from "@/components/ui/button"
 import { AppLoadingScreen } from "@/components/app-loading"
 import { cn } from "@/lib/utils"
-import { useQueryClient } from "@tanstack/react-query"
-import { preloadDashboardRoute } from "@/lib/dashboard-route-preload"
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -57,14 +55,13 @@ function DashboardRouteOutlet({ usesViewportWorkspace }: { usesViewportWorkspace
 
 /**
  * Dashboard 布局 - Client Component
- * 乐观渲染模式：先渲染界面，后台静默验证认证状态
+ * 路由 loader 完成首次鉴权；此处继续响应登录状态和权限的后续变化。
  */
-export default function DashboardLayout() {
+function DashboardLayoutContent() {
   const navigate = useNavigate()
   const pageScrollRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation("common")
-  const { pathname, search } = useLocation()
-  const queryClient = useQueryClient()
+  const { pathname } = useLocation()
   const { authStatus, error, isLoading, refreshConfig } = useSystemConfig()
   const { runtime, isLoading: isRuntimeLoading } = useRuntime()
   const user = authStatus?.is_authenticated ? authStatus.user : null
@@ -72,12 +69,6 @@ export default function DashboardLayout() {
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   )
   const usesPageManagedScroll = usesViewportWorkspace || pathname === "/dashboard/settings"
-  useEffect(() => {
-    if (!user || !runtime || !isRouteAllowed(runtime, pathname, user.permissions || [], runtime.principal.role === "owner")) return
-    // Data requests start without waiting for the lazy page or its translations.
-    void preloadDashboardRoute(`${pathname}${search}`, queryClient, "navigation")
-  }, [pathname, search, queryClient, runtime, user])
-
   useLayoutEffect(() => {
     if (pageScrollRef.current) {
       pageScrollRef.current.scrollTop = 0
@@ -123,7 +114,7 @@ export default function DashboardLayout() {
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md space-y-4 text-center">
           <p className="text-muted-foreground">{t("authStatusUnavailable")}</p>
-          <Button onClick={() => void refreshConfig({ refreshAuth: true })}>{t("retry")}</Button>
+          <Button onClick={() => void refreshConfig({ refreshAuth: true }).catch(() => undefined)}>{t("retry")}</Button>
         </div>
       </div>
     )
@@ -160,4 +151,8 @@ export default function DashboardLayout() {
       </DashboardI18nProvider>
     </ClientAuthProvider></MotionConfig>
   )
+}
+
+export default function DashboardLayout() {
+  return <RuntimeProvider><DashboardLayoutContent /></RuntimeProvider>
 }

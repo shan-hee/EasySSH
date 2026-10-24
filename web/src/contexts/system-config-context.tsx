@@ -1,14 +1,15 @@
 
-import { createContext, useCallback, useContext, useState, useEffect, type ReactNode } from "react"
+import { createContext, useCallback, useContext, type ReactNode } from "react"
 import { useLocation } from "react-router-dom"
 import type { SystemConfig } from "@/lib/api/settings"
-import { authApi, type AuthStatusResponse, type User } from "@/lib/api/auth"
+import { type AuthStatusResponse, type User } from "@/lib/api/auth"
 import {
   DEFAULT_BRAND_ICON,
   DEFAULT_BRAND_LOGO,
   DEFAULT_BRAND_NAME,
 } from "@/lib/brand"
-import { useAuthStore } from "@/stores/auth-store"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { authStatusQueryKey, authStatusQueryOptions, shouldRestoreAuthSession } from "@/lib/auth-status-query"
 
 /**
  * 系统配置 Context
@@ -26,24 +27,6 @@ interface SystemConfigContextType {
 }
 
 const SystemConfigContext = createContext<SystemConfigContextType | undefined>(undefined)
-
-let initialAuthStatusPromise: Promise<AuthStatusResponse> | null = null
-
-function getInitialAuthStatus(refresh: boolean) {
-  if (initialAuthStatusPromise) {
-    return initialAuthStatusPromise
-  }
-
-  const request = authApi.checkStatus({ refresh })
-  initialAuthStatusPromise = request
-  const clearPendingRequest = () => {
-    if (initialAuthStatusPromise === request) {
-      initialAuthStatusPromise = null
-    }
-  }
-  void request.then(clearPendingRequest, clearPendingRequest)
-  return request
-}
 
 interface SystemConfigProviderProps {
   children: ReactNode
@@ -79,102 +62,38 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   external_oauth_provider_enabled: false,
 }
 
-export function shouldRestoreAuthSession(pathname: string): boolean {
-  return (
-    pathname === "/" ||
-    pathname === "/login" ||
-    pathname === "/dashboard" ||
-    pathname.startsWith("/dashboard/")
-  )
-}
-
-/**
- * 系统配置提供者组件
- * 在应用启动时自动加载系统配置并提供给所有子组件
- */
+/** 认证状态与路由加载器共享缓存，刷新配置时保留已显示的内容。 */
 export function SystemConfigProvider({ children }: SystemConfigProviderProps) {
   const { pathname } = useLocation()
-  const [config, setConfig] = useState<SystemConfig | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
-  const [authStatus, setAuthStatus] = useState<AuthStatusResponse | null>(null)
-  const clearToken = useAuthStore((state) => state.clearToken)
-
-  const loadConfig = async (options: { refreshAuth?: boolean; initial?: boolean } = {}) => {
-    try {
-      setIsLoading(true)
-      setError(null)
-
-      // 仅通过 /auth/status 获取系统配置和认证状态（开发版约定始终返回 system_config）
-      const shouldRefreshAuth = options.refreshAuth ?? false
-      const status = options.initial
-        ? await getInitialAuthStatus(shouldRefreshAuth)
-        : await authApi.checkStatus({ refresh: shouldRefreshAuth })
-      setAuthStatus(status)
-      if (!status.is_authenticated) {
-        clearToken()
-      }
-
-      if (!status.system_config) {
-        // 按当前开发版约定，system_config 应始终存在
-        throw new Error("system_config is missing in /auth/status response")
-      }
-
-      setConfig(status.system_config)
-    } catch (err) {
-      console.error("Failed to load system config:", err)
-      setError(err instanceof Error ? err : new Error("Unknown error"))
-
-      // 请求失败时，使用本地默认配置兜底
-      setConfig(DEFAULT_SYSTEM_CONFIG)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const queryClient = useQueryClient()
+  const query = useQuery(authStatusQueryOptions(shouldRestoreAuthSession(pathname)))
+  const authStatus = query.data ?? null
+  const config = authStatus?.system_config ?? (query.isError ? DEFAULT_SYSTEM_CONFIG : null)
 
   const refreshConfig = async (options: { refreshAuth?: boolean } = {}) => {
-    await loadConfig(options)
+    await queryClient.fetchQuery({ ...authStatusQueryOptions(options.refreshAuth ?? false), staleTime: 0 })
   }
 
   const markLoggedOut = useCallback(() => {
-    const systemConfig = config ?? authStatus?.system_config ?? DEFAULT_SYSTEM_CONFIG
-    setConfig(systemConfig)
-    setAuthStatus({
-      need_init: authStatus?.need_init ?? false,
+    // 丢弃前一个账号的业务数据，也取消尚未完成的预取。
+    void queryClient.cancelQueries()
+    queryClient.removeQueries({ predicate: (entry) => entry.queryKey[0] !== authStatusQueryKey[0] })
+    queryClient.setQueryData<AuthStatusResponse>(authStatusQueryKey, (current) => ({
+      need_init: current?.need_init ?? false,
       is_authenticated: false,
-      system_config: systemConfig,
-      access_token_ttl_seconds: authStatus?.access_token_ttl_seconds ?? 0,
-    })
-    setError(null)
-    setIsLoading(false)
-  }, [
-    authStatus?.access_token_ttl_seconds,
-    authStatus?.need_init,
-    authStatus?.system_config,
-    config,
-  ])
+      system_config: current?.system_config ?? DEFAULT_SYSTEM_CONFIG,
+      access_token_ttl_seconds: 0,
+    }))
+  }, [queryClient])
 
   const updateAuthUser = useCallback((user: User) => {
-    setAuthStatus((current) => {
-      if (!current?.is_authenticated) {
-        return current
-      }
-      return {
-        ...current,
-        user,
-      }
-    })
-  }, [])
-
-  useEffect(() => {
-    void loadConfig({ refreshAuth: shouldRestoreAuthSession(pathname), initial: true })
-    // 初始加载时按入口路径决定是否尝试 refresh cookie 恢复会话。
-    // 后续路由跳转由登录/登出流程显式调用 refreshConfig 控制。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    queryClient.setQueryData<AuthStatusResponse>(authStatusQueryKey, (current) => (
+      current?.is_authenticated ? { ...current, user } : current
+    ))
+  }, [queryClient])
 
   return (
-    <SystemConfigContext.Provider value={{ config, isLoading, error, refreshConfig, markLoggedOut, updateAuthUser, authStatus }}>
+    <SystemConfigContext.Provider value={{ config, isLoading: query.isPending, error: query.error, refreshConfig, markLoggedOut, updateAuthUser, authStatus }}>
       {children}
     </SystemConfigContext.Provider>
   )

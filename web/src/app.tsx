@@ -1,30 +1,24 @@
-import { AppRouter } from "@/router"
+import type { QueryClient } from "@tanstack/react-query"
+import { NavigationProgress } from "@/components/navigation-progress"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { SystemConfigProvider } from "@/contexts/system-config-context"
 import { DynamicHeadUpdater } from "@/components/dynamic-head-updater"
 import { QueryProvider } from "@/providers/query-provider"
 import { SessionRefreshProvider } from "@/providers/session-refresh-provider"
-import { RuntimeProvider } from "@/shell/runtime/runtime-provider"
-import { useLocation } from "react-router-dom"
-import { InstanceRestartPage } from "@/pages/instance-restart-page"
+import { Outlet } from "react-router-dom"
 
-export function App() {
-  const location = useLocation()
-  if (location.pathname === "/instance-restart") {
-    return <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange><InstanceRestartPage /></ThemeProvider>
-  }
+export function App({ queryClient }: { queryClient: QueryClient }) {
   return (
     <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange>
-      <QueryProvider>
-        <RuntimeProvider>
-          <SystemConfigProvider>
-            <SessionRefreshProvider>
-              <DynamicHeadUpdater />
-              <AppRouter />
-            </SessionRefreshProvider>
-          </SystemConfigProvider>
-        </RuntimeProvider>
+      <QueryProvider client={queryClient}>
+        <SystemConfigProvider>
+          <SessionRefreshProvider>
+            <DynamicHeadUpdater />
+            <NavigationProgress />
+            <Outlet />
+          </SessionRefreshProvider>
+        </SystemConfigProvider>
       </QueryProvider>
       <Toaster richColors position="bottom-right" />
     </ThemeProvider>

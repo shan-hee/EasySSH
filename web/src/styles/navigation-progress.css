@@ -1,0 +1,16 @@
+@import "nprogress/nprogress.css";
+
+#nprogress .bar {
+  background: var(--primary);
+}
+
+#nprogress .peg {
+  box-shadow: 0 0 10px var(--primary), 0 0 5px var(--primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #nprogress,
+  #nprogress .bar {
+    transition: none !important;
+  }
+}
