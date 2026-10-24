@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, type CSSProperties } from "react"
-import { AnimatePresence, motion, useReducedMotion } from "motion/react"
+import type { CSSProperties } from "react"
+import { AnimatePresence, motion, useIsPresent, usePresenceData, useReducedMotion } from "motion/react"
 import {
   Check,
   CircleX,
@@ -11,19 +11,14 @@ import { useTranslation } from "react-i18next"
 
 import { motionDurations, motionEase } from "@/lib/motion"
 import { cn } from "@/lib/utils"
+import type { TerminalConnectionPhase } from "./types"
 
-type LoaderState = "entering" | "loading" | "exiting"
-
-export type ConnectionLoaderOutcome = "success" | "error" | "neutral"
+type ConnectionLoaderOutcome = "success" | "error" | "neutral"
 
 interface ConnectionLoaderProps {
   serverName?: string
   message?: string
-  exitMessage?: string
-  state?: LoaderState
-  outcome?: ConnectionLoaderOutcome
   transparentBackground?: boolean
-  onAnimationComplete?: () => void
 }
 
 type ConnectionLoaderStyle = CSSProperties & {
@@ -55,35 +50,21 @@ const getOutcomeIcon = (outcome: ConnectionLoaderOutcome) => {
 export function ConnectionLoader({
   serverName,
   message,
-  exitMessage,
-  state = "loading",
-  outcome = "success",
   transparentBackground = false,
-  onAnimationComplete,
 }: ConnectionLoaderProps) {
   const { t } = useTranslation("terminal")
   const shouldReduceMotion = useReducedMotion()
-  const exitCompletedRef = useRef(false)
-  const isExiting = state === "exiting"
+  // Presence 仅控制视觉退出；连接就绪与工具栏可用性不等待动画完成。
+  const isExiting = !useIsPresent()
+  const phase = usePresenceData() as TerminalConnectionPhase | undefined
+  const outcome: ConnectionLoaderOutcome = phase === "ready" ? "success" : phase === "failed" ? "error" : "neutral"
   const displayMessage = isExiting
-    ? exitMessage ?? t("connectionLoaderSuccess")
+    ? t(outcome === "success" ? "connectionLoaderSuccess" : outcome === "error" ? "connectionLoaderFailed" : "connectionLoaderClosed")
     : message ?? t("connectionLoaderConnecting")
   const accentColor = isExiting
     ? getOutcomeAccent(outcome)
     : "var(--primary)"
   const OutcomeIcon = getOutcomeIcon(outcome)
-
-  const completeExit = useCallback(() => {
-    if (exitCompletedRef.current) return
-    exitCompletedRef.current = true
-    onAnimationComplete?.()
-  }, [onAnimationComplete])
-
-  useEffect(() => {
-    if (!isExiting) {
-      exitCompletedRef.current = false
-    }
-  }, [isExiting])
 
   const loaderStyle: ConnectionLoaderStyle = {
     "--connection-accent": accentColor,
@@ -105,15 +86,11 @@ export function ConnectionLoader({
           !transparentBackground && "bg-background",
         )}
         initial={false}
-        animate={isExiting
-          ? { opacity: 0, scale: shouldReduceMotion ? 1 : 1.01 }
-          : { opacity: 1, scale: 1 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: shouldReduceMotion ? 1 : 1.01 }}
         transition={{
           duration: shouldReduceMotion ? 0 : motionDurations.state,
           ease: motionEase,
-        }}
-        onAnimationComplete={() => {
-          if (isExiting) completeExit()
         }}
       >
         <div

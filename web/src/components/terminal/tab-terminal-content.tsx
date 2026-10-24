@@ -7,6 +7,7 @@ import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-too
  */
 
 import React, { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence } from 'motion/react'
 import { MonitorWebSocketProvider } from './monitor/contexts/MonitorWebSocketContext'
 import { MonitorSkeleton } from './monitor/components/MonitorSkeleton'
 import { Button } from '@/components/ui/button'
@@ -15,10 +16,7 @@ import { PageLoading } from '@/components/page-loading'
 import { loadAiAssistantPanel, PreloadedAiAssistantPanel as AiAssistantPanel } from '@/lib/ai-assistant-preload'
 import { NetworkLatencyPopover } from './network-latency-popover'
 import { WebTerminal } from './web-terminal'
-import {
-  ConnectionLoader,
-  type ConnectionLoaderOutcome,
-} from './connection-loader'
+import { ConnectionLoader } from './connection-loader'
 import { FileManagerPanel } from './file-manager-panel'
 import type { AIAssistantWorkspaceAdapters } from '@/components/ai-agent/ai-assistant-workspace-view'
 import { DockerPopover } from './docker'
@@ -66,9 +64,6 @@ type ConnectionLoaderMessageKey =
   | "connectionLoaderSsh"
   | "connectionLoaderAuthenticating"
   | "connectionLoaderReconnecting"
-  | "connectionLoaderSuccess"
-  | "connectionLoaderFailed"
-  | "connectionLoaderClosed"
 
 type InternalBackHandler = {
   handle: () => boolean | Promise<boolean>
@@ -100,28 +95,6 @@ const getConnectionLoaderMessageKey = (
   return "connectionLoaderConnecting"
 }
 
-const getConnectionLoaderExitMessageKey = (
-  phase: TerminalConnectionPhase
-): ConnectionLoaderMessageKey => {
-  if (phase === "failed") {
-    return "connectionLoaderFailed"
-  }
-
-  if (phase === "closed" || phase === "idle") {
-    return "connectionLoaderClosed"
-  }
-
-  return "connectionLoaderSuccess"
-}
-
-const getConnectionLoaderOutcome = (
-  phase: TerminalConnectionPhase
-): ConnectionLoaderOutcome => {
-  if (phase === "failed") return "error"
-  if (phase === "closed" || phase === "idle") return "neutral"
-  return "success"
-}
-
 interface TabTerminalContentProps {
   session: TerminalSession
   isActive: boolean
@@ -130,8 +103,6 @@ interface TabTerminalContentProps {
   chrome?: "full" | "toolbar" | "content"
   surface?: "normal" | "transparent"
   effectiveIsLoading: boolean
-  loaderState: "entering" | "loading" | "exiting"
-  onAnimationComplete: (sessionId: string) => void
   onCommand: (sessionId: string, command: string) => void
   onConnectionPhaseChange?: (sessionId: string, phase: TerminalConnectionPhase) => void
   onAuthCancelled?: (sessionId: string) => void
@@ -157,8 +128,6 @@ function TabTerminalContentComponent({
   chrome = "full",
   surface = "normal",
   effectiveIsLoading,
-  loaderState,
-  onAnimationComplete,
   onCommand,
   onConnectionPhaseChange,
   onAuthCancelled,
@@ -631,20 +600,18 @@ function TabTerminalContentComponent({
           />
         )}
 
-        {/* 加载动画居中显示，背景遮罩仅在中央区域柔和渐隐 */}
-        {shouldRenderBody && effectiveIsLoading && isTerminalSession && (
-          <div className="absolute inset-0 z-[60]">
-            <ConnectionLoader
-              transparentBackground={hasWorkspaceBackground}
-              serverName={connectionLoaderServerName}
-              message={tTerminal(getConnectionLoaderMessageKey(session.connectionPhase))}
-              exitMessage={tTerminal(getConnectionLoaderExitMessageKey(session.connectionPhase))}
-              state={loaderState}
-              outcome={getConnectionLoaderOutcome(session.connectionPhase)}
-              onAnimationComplete={() => onAnimationComplete(session.id)}
-            />
-          </div>
-        )}
+        {/* 保留首次动画，否则循环光线会停在 opacity: 0 的末帧；退出仅影响覆盖层。 */}
+        <AnimatePresence custom={session.connectionPhase}>
+          {shouldRenderBody && effectiveIsLoading && isTerminalSession && (
+            <div key="connection-loader" className="pointer-events-none absolute inset-0 z-[60]">
+              <ConnectionLoader
+                transparentBackground={hasWorkspaceBackground}
+                serverName={connectionLoaderServerName}
+                message={tTerminal(getConnectionLoaderMessageKey(session.connectionPhase))}
+              />
+            </div>
+          )}
+        </AnimatePresence>
 
         <div className={cn(
           "relative z-10 flex min-h-0 min-w-0 flex-col overflow-hidden",

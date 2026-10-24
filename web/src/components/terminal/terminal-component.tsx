@@ -1,7 +1,7 @@
 import { resolveTerminalInactiveMinutes } from "./terminal-settings"
 import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
-import { Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react"
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ConnectionLoader } from "./connection-loader"
 import {
   SessionTabBar,
@@ -47,12 +47,6 @@ import {
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import { PreloadedTabTerminalContent as TabTerminalContent } from "@/lib/terminal-preload"
 
-type LoaderState = "entering" | "loading" | "exiting"
-
-type LoaderAction =
-  | { type: "sync"; sessions: TerminalSession[]; visibleSessionIds: ReadonlySet<string> }
-  | { type: "animation-complete"; sessionId: string }
-
 export interface TerminalExtraSessionRenderOptions {
   chrome?: "full" | "toolbar" | "content"
   surface?: "normal" | "transparent"
@@ -73,76 +67,6 @@ export interface TerminalExtraSessionPathHistory {
   currentPath: string
   pathBackStack: string[]
   pathForwardStack: string[]
-}
-
-const reduceLoaderStates = (
-  state: Record<string, LoaderState>,
-  action: LoaderAction
-): Record<string, LoaderState> => {
-  switch (action.type) {
-    case "animation-complete": {
-      if (!state[action.sessionId]) {
-        return state
-      }
-
-      const next = { ...state }
-      delete next[action.sessionId]
-      return next
-    }
-    case "sync": {
-      let changed = false
-      const next = { ...state }
-      const sessionIds = new Set(action.sessions.map((session) => session.id))
-
-      Object.keys(next).forEach((sessionId) => {
-        if (!sessionIds.has(sessionId)) {
-          delete next[sessionId]
-          changed = true
-        }
-      })
-
-      action.sessions.forEach((session) => {
-        const shouldShow = shouldShowConnectionLoader(session)
-        const currentState = next[session.id]
-        const isVisible = action.visibleSessionIds.has(session.id)
-
-        if (shouldShow) {
-          if (!isVisible) {
-            if (currentState !== "loading") {
-              next[session.id] = "loading"
-              changed = true
-            }
-            return
-          }
-
-          if (!currentState || currentState === "exiting") {
-            next[session.id] = "entering"
-            changed = true
-          }
-          return
-        }
-
-        if (!currentState) {
-          return
-        }
-
-        if (!isVisible) {
-          delete next[session.id]
-          changed = true
-          return
-        }
-
-        if (currentState !== "exiting") {
-          next[session.id] = "exiting"
-          changed = true
-        }
-      })
-
-      return changed ? next : state
-    }
-    default:
-      return state
-  }
 }
 
 const TAB_SWITCH_CLEANUP_DELAY_MS = 120
@@ -433,7 +357,6 @@ export function TerminalComponent({
   const [activeSession, setActiveSession] = useState<string>(
     externalActiveExtraSessionId ?? externalActiveSessionId ?? ""
   )
-  const [loaderStates, dispatchLoaderStates] = useReducer(reduceLoaderStates, {})
   const [internalSettingsOpen, setInternalSettingsOpen] = useState(false)
   const isSettingsOpen = settingsDialogOpen ?? internalSettingsOpen
   const setIsSettingsOpen = useCallback((open: boolean) => {
@@ -685,7 +608,6 @@ export function TerminalComponent({
 
   const {
     dockview,
-    splitLayout,
     setSplitLayout,
     tabDropSide,
     tabDropTargetId,
@@ -1230,45 +1152,6 @@ export function TerminalComponent({
     cleanupSessionsAfterTabSwitch(removedSessionIds)
   }
 
-  const handleAnimationComplete = useCallback((sessionId: string) => {
-    dispatchLoaderStates({ type: "animation-complete", sessionId })
-  }, [])
-
-  const visibleLoaderSessionIds = useMemo(() => {
-    const visibleIds = new Set<string>()
-
-    if (isMultiSessionGrid && splitLayout) {
-      workspaceSessionIds.forEach((sessionId) => {
-        if (visibleSessionIdSet.has(sessionId) && sessionIdSet.has(sessionId)) {
-          visibleIds.add(sessionId)
-        }
-      })
-      return visibleIds
-    }
-
-    if (activeTerminalSession) {
-      visibleIds.add(activeTerminalSession.id)
-    }
-
-    return visibleIds
-  }, [
-    activeTerminalSession,
-    isMultiSessionGrid,
-    sessionIdSet,
-    splitLayout,
-    workspaceSessionIds,
-    visibleSessionIdSet,
-  ])
-
-  // Loader 只跟随连接 phase，不再依赖额外的 onLoadingChange 回调。
-  useEffect(() => {
-    dispatchLoaderStates({
-      type: "sync",
-      sessions,
-      visibleSessionIds: visibleLoaderSessionIds,
-    })
-  }, [sessions, visibleLoaderSessionIds])
-
   const handleConnectFromHome = useCallback((server: Server) => {
     const sessionId = onStartConnection(server)
     if (sessionId) {
@@ -1282,11 +1165,7 @@ export function TerminalComponent({
     isVisible: boolean,
     surface: "normal" | "transparent" = "normal"
   ) => {
-    const sessionLoaderState = loaderStates[session.id]
-    const sessionIsLoading = !!(
-      isVisible &&
-      (shouldShowConnectionLoader(session) || sessionLoaderState)
-    )
+    const sessionIsLoading = isVisible && shouldShowConnectionLoader(session)
 
     return (
       <Suspense key={`terminal-content-${session.id}`} fallback={chrome !== "toolbar" ? (
@@ -1304,8 +1183,6 @@ export function TerminalComponent({
           chrome={chrome}
           surface={surface}
           effectiveIsLoading={sessionIsLoading}
-          loaderState={sessionLoaderState || "entering"}
-          onAnimationComplete={handleAnimationComplete}
           onCommand={handleCommand}
           onConnectionPhaseChange={onConnectionPhaseChange}
           onAuthCancelled={onAuthCancelled}
@@ -1328,13 +1205,11 @@ export function TerminalComponent({
     clearCrossSessionCompletedTransfers,
     crossSessionTransferTasks,
     handleInternalBackAvailabilityChange,
-    handleAnimationComplete,
     handleCommand,
     handleInternalBackHandlerChange,
     handleCancelCrossSessionTransfer,
     handleSftpPathChange,
     aiAssistantAdapters,
-    loaderStates,
     onAuthCancelled,
     onConnectionPhaseChange,
     settings,
