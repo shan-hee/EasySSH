@@ -1,3 +1,3 @@
 package main
 
-const desktopBundledVersion = "1.0.60"
+const desktopBundledVersion = "1.0.61"
