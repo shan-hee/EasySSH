@@ -7,6 +7,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as systeminfo$0 from "../shared/systeminfo/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 export function Create(input: $models.DesktopServerInput): $CancellablePromise<$models.DesktopServer> {
@@ -78,6 +82,12 @@ export function Reorder(serverIds: string[]): $CancellablePromise<void> {
     return $Call.ByID(2548844453, serverIds);
 }
 
+export function SystemSnapshot(serverID: string, kind: string): $CancellablePromise<systeminfo$0.Snapshot> {
+    return $Call.ByID(521632919, serverID, kind).then(($result: any) => {
+        return $$createType6($result);
+    });
+}
+
 export function Update(id: string, input: $models.DesktopServerInput): $CancellablePromise<$models.DesktopServer> {
     return $Call.ByID(3462321783, id, input).then(($result: any) => {
         return $$createType0($result);
@@ -91,3 +101,4 @@ const $$createType2 = $Create.Map($Create.Any, $Create.Any);
 const $$createType3 = $models.DesktopSSHKey.createFrom;
 const $$createType4 = $models.DesktopServerListResult.createFrom;
 const $$createType5 = $Create.Array($$createType3);
+const $$createType6 = systeminfo$0.Snapshot.createFrom;
