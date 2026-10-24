@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +18,26 @@ func (m *Manager) WithSyncSession(owner uuid.UUID, id string, fn func() error) e
 		}
 		if s.processing || s.activeToolRuns > 0 || s.status == SessionStatusWaitingConfirmation {
 			return ErrSessionBusy
+		}
+	}
+	if s == nil && m.store != nil {
+		snapshot, err := m.store.Get(context.Background(), owner, id)
+		if err != nil && !errors.Is(err, ErrSessionNotFound) {
+			return err
+		}
+		if err == nil {
+			if snapshot.Status == SessionStatusWaitingConfirmation {
+				return ErrSessionBusy
+			}
+			// A persisted running session without a runtime has no active run
+			// after restart. Apply the same recovery as opening that session,
+			// under m.mu so a new run cannot start before the exchange finishes.
+			if snapshot.Status == SessionStatusRunning {
+				normalizeRestoredSnapshot(snapshot)
+				if err := m.store.Save(context.Background(), *snapshot); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	// Flush the in-memory revision while holding the same lock as edits. An

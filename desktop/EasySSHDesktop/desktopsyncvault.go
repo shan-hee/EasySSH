@@ -90,6 +90,10 @@ func (s *DesktopSyncService) VaultList() ([]DesktopVaultEntry, error) {
 	if err = json.Unmarshal(data, &remote); err != nil {
 		return nil, err
 	}
+	names := make(map[string]string, len(remote))
+	for _, entry := range remote {
+		names[entry.Kind+"/"+entry.ID] = entry.Name
+	}
 	db, err := s.database()
 	if err != nil {
 		return nil, err
@@ -135,7 +139,7 @@ func (s *DesktopSyncService) VaultList() ([]DesktopVaultEntry, error) {
 			return nil, err
 		}
 	}
-	rows, err := db.Query(`SELECT kind,remote_id,local_id FROM desktop_sync_vault v WHERE space_id=? AND (kind<>'credential' OR EXISTS(SELECT 1 FROM desktop_servers s WHERE s.id=v.local_id)) ORDER BY kind,remote_id`, state.SpaceID)
+	rows, err := db.Query(`SELECT kind,remote_id,COALESCE((SELECT title FROM desktop_ai_sessions a WHERE v.kind='ai_session' AND a.id=v.local_id),'') FROM desktop_sync_vault v WHERE space_id=? AND (kind<>'credential' OR EXISTS(SELECT 1 FROM desktop_servers s WHERE s.id=v.local_id)) ORDER BY kind,remote_id`, state.SpaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -143,9 +147,11 @@ func (s *DesktopSyncService) VaultList() ([]DesktopVaultEntry, error) {
 	result := []DesktopVaultEntry{}
 	for rows.Next() {
 		var entry DesktopVaultEntry
-		var localID string
-		if err = rows.Scan(&entry.Kind, &entry.ID, &localID); err != nil {
+		if err = rows.Scan(&entry.Kind, &entry.ID, &entry.Name); err != nil {
 			return nil, err
+		}
+		if entry.Name == "" {
+			entry.Name = names[entry.Kind+"/"+entry.ID]
 		}
 		if state.Scopes.Allows(entry.Kind) {
 			result = append(result, entry)

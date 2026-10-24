@@ -31,6 +31,26 @@ let changingAccount = false
 let syncPending = false
 let syncTimer: number | undefined
 
+function syncErrorMessage(error: unknown): string {
+  let message = error instanceof Error ? error.message : String(error)
+  // The desktop bridge can encode its RuntimeError envelope in the message.
+  try {
+    const detail: unknown = JSON.parse(message)
+    if (detail && typeof detail === "object" && "message" in detail && typeof detail.message === "string") {
+      message = detail.message
+    }
+  } catch {
+    // Plain error messages need no decoding.
+  }
+  if (message === "sync HTTP 409: sync_failed conversation is busy" || message === "sync HTTP 409: sync_failed ai session is busy") {
+    return "服务端 AI 会话正在运行或等待确认，请在服务端处理该会话后重试同步"
+  }
+  if (message === "conversation is busy" || message === "AI is busy; retry after the current operation") {
+    return "本地 AI 会话正在运行或等待确认，请处理该会话后重试同步"
+  }
+  return message
+}
+
 // Coalesce successful local edits without making local saves wait for the network.
 export function requestDesktopSync() {
   if (changingAccount) return
@@ -184,7 +204,7 @@ async function synchronize() {
         }
       } catch (error) {
         errors.push(
-          `${entry.name || entry.kind}: ${error instanceof Error ? error.message : String(error)}`,
+          `${entry.kind === "ai_session" ? `AI 会话「${entry.name || entry.id}」` : entry.name || entry.kind}: ${syncErrorMessage(error)}`,
         )
       }
     }
@@ -208,7 +228,7 @@ function syncNow(): Promise<void> {
     syncPending = false
     active = synchronize()
       .catch((error) => {
-        lastError = error instanceof Error ? error.message : String(error)
+        lastError = syncErrorMessage(error)
         throw error
       })
       .finally(() => {
