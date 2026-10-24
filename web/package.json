@@ -110,7 +110,7 @@
     "streamdown": "^2.7.0",
     "tailwind-merge": "^3.6.0",
     "tw-shimmer": "^0.4.12",
-    "zod": "^4.4.3",
+    "zod": "^4.6.6",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

@@ -51,7 +51,7 @@
 - **国际化**：i18next + react-i18next
 
 ### 后端
-- **语言**：Go 1.25
+- **语言**：Go 1.26.10
 - **框架**：Gin 1.12.0 + GORM 1.30.0
 - **数据库**：SQLite（默认）/ PostgreSQL / MySQL
 - **SSH/SFTP**：golang.org/x/crypto + pkg/sftp 1.13.6
@@ -125,7 +125,7 @@ Docker Hub 镜像发布由 GitHub Actions 执行，推送前需要配置仓库 s
 
 **前置要求**：
 - Node.js 24+ / pnpm 11+
-- Go 1.25+
+- Go 1.26.10+
 - 默认无需单独数据库服务；如需外部数据库，可使用 PostgreSQL 或 MySQL
 
 **一键启动**：

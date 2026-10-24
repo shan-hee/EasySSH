@@ -15,7 +15,7 @@
 
 FROM node:24-bookworm AS node-runtime
 
-FROM golang:1.26-bookworm
+FROM golang:1.26.10-bookworm
 
 ARG TARGETARCH
 ARG GARBLE_VERSION=v0.16.0

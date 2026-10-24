@@ -36,7 +36,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY server/sync-runtime/engine.mjs ./
 
 # Stage 2: 在构建机原生架构上交叉编译 Go，避免通过 QEMU 执行编译器
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS backend-builder
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS backend-builder
 
 WORKDIR /app/server
 

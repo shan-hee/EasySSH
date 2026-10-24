@@ -87,13 +87,16 @@ command_exists() {
 
 # 检查必需的工具
 if ! command_exists go; then
-    echo -e "${RED}❌ 错误: Go 未安装，请先安装 Go 1.25+${NC}"
+    echo -e "${RED}❌ 错误: Go 未安装，请先安装 Go 1.26.10+${NC}"
     exit 1
 fi
 
-GO_MINOR=$(go env GOVERSION 2>/dev/null | sed -E 's/^go[0-9]+\.([0-9]+).*/\1/')
-if [[ -z "$GO_MINOR" || "$GO_MINOR" -lt 25 ]]; then
-    echo -e "${RED}❌ 错误: 当前 Go 版本过低，请升级到 Go 1.25+${NC}"
+# 在模块目录读取实际工具链版本，让 Go 按 go.mod 选择安全补丁版本。
+GO_VERSION=$(cd server && go env GOVERSION 2>/dev/null) || GO_VERSION=""
+if [[ ! "$GO_VERSION" =~ ^go([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] ||
+   (( BASH_REMATCH[1] < 1 || (BASH_REMATCH[1] == 1 &&
+      (BASH_REMATCH[2] < 26 || (BASH_REMATCH[2] == 26 && BASH_REMATCH[3] < 10))) )); then
+    echo -e "${RED}❌ 错误: 当前 Go 工具链不可用或版本过低，请安装 Go 1.26.10+${NC}"
     exit 1
 fi
 
