@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
-import type { WorkspaceActivityLogItem } from "@/lib/session/workspace"
+import type { SshWorkspaceActivityLogAdapter, WorkspaceActivityLogItem } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
 
 type ActivityLogStatus = WorkspaceActivityLogItem["status"]
@@ -43,10 +43,26 @@ function getStatusLabel(t: (key: string) => string, status: ActivityLogStatus) {
 }
 
 export function ActivityLogPane({ compact = false }: { compact?: boolean }) {
-  const { t } = useTranslation("logsAudit")
   const workspace = useOptionalSshWorkspace()
   const adapter = workspace?.adapters.activityLog
-  const enabled = workspace?.capabilities.activityLog !== false && !!adapter
+
+  // 未启用的入口不挂载内容，也不请求其翻译资源。
+  if (workspace?.capabilities.activityLog === false || !adapter) {
+    return null
+  }
+
+  return (
+    <React.Suspense fallback={null}>
+      <ActivityLogPaneContent compact={compact} adapter={adapter} />
+    </React.Suspense>
+  )
+}
+
+function ActivityLogPaneContent({ compact, adapter }: {
+  compact: boolean
+  adapter: SshWorkspaceActivityLogAdapter
+}) {
+  const { t } = useTranslation("logsAudit")
   const [open, setOpen] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
   const [items, setItems] = React.useState<WorkspaceActivityLogItem[]>([])
@@ -64,9 +80,6 @@ export function ActivityLogPane({ compact = false }: { compact?: boolean }) {
   }), [t])
 
   const loadItems = React.useCallback(async () => {
-    if (!adapter) {
-      return
-    }
     try {
       setLoading(true)
       const result = await adapter.list({ page: 1, limit: 8 })
@@ -81,10 +94,6 @@ export function ActivityLogPane({ compact = false }: { compact?: boolean }) {
       void loadItems()
     }
   }, [loadItems, open])
-
-  if (!enabled) {
-    return null
-  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

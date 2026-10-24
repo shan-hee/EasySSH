@@ -102,7 +102,7 @@ export function PageHeader({ title, titleActions, children }: PageHeaderProps) {
     <>
       {targets.title
         ? createPortal(
-            <>
+            <React.Suspense fallback={null}>
               <h1 className="truncate text-sm font-semibold text-foreground md:text-base">
                 {title}
               </h1>
@@ -111,15 +111,19 @@ export function PageHeader({ title, titleActions, children }: PageHeaderProps) {
                   {titleActions}
                 </div>
               ) : null}
-            </>,
+            </React.Suspense>,
             targets.title,
           )
         : null}
       {targets.content && children
         ? createPortal(
-            <div className="flex min-w-0 items-center gap-2 overflow-x-auto scrollbar-none">
-              {children}
-            </div>,
+            // Portal 内的异步内容不能挂起 PageHeaderHost，否则宿主 ref 的清理与恢复
+            // 会反复移除、挂载 Portal，并重新执行其中组件的布局 effect。
+            <React.Suspense fallback={null}>
+              <div className="flex min-w-0 items-center gap-2 overflow-x-auto scrollbar-none">
+                {children}
+              </div>
+            </React.Suspense>,
             targets.content,
           )
         : null}

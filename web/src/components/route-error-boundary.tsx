@@ -7,7 +7,7 @@ export function RouteErrorBoundary() {
   const english = document.documentElement.lang === "en-US"
   return (
     <div role="alert" className="flex min-h-64 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      <p>{english ? "Unable to load this page. Check your connection and try again." : "页面加载失败，请检查网络后重试。"}</p>
+      <p>{english ? "Something went wrong while displaying this page. Please try again." : "页面显示时发生错误，请重试。"}</p>
       {import.meta.env.DEV && error instanceof Error && <p className="text-sm text-muted-foreground">{error.message}</p>}
       <div className="flex gap-3">
         <button className="rounded-md border px-4 py-2" disabled={revalidator.state !== "idle"} onClick={() => void revalidator.revalidate()}>
