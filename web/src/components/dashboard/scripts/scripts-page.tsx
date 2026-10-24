@@ -4,7 +4,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
-import { useDelayedLoading } from "@/hooks/use-delayed-loading"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -176,7 +175,6 @@ const servers: Server[] = useMemo(
   [serversQuery.data?.data],
 )
 const loadingServers = serversQuery.isFetching && servers.length === 0
-const showServerSkeleton = useDelayedLoading(loadingServers)
 const loadServers = useCallback(async () => {
   await refetchServers()
 }, [refetchServers])
@@ -867,7 +865,7 @@ placeholder={t("fieldDescriptionPlaceholder")}
 
          {/* 服务器列表 */}
          <ScrollArea className="h-[240px] rounded-md border bg-muted/30">
-           {loadingServers && showServerSkeleton ? (
+           {loadingServers ? (
              <div className="p-2 space-y-1">
                {Array.from({ length: 4 }).map((_, i) => (
                  <div key={i} className="flex items-center gap-3 p-2.5 rounded-md border border-transparent">

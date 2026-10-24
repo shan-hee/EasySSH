@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react"
+import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 
 export interface LoadingSpinnerProps {
@@ -11,7 +11,7 @@ export interface LoadingSpinnerProps {
    */
   size?: "sm" | "md" | "lg" | "xl"
   /**
-   * 显示在圆环下方的文字；无文字加载使用 ui/spinner 的分段式图标。
+   * 显示在指示器下方的文字。
    */
   label: string
   /**
@@ -32,8 +32,8 @@ const sizeMap = {
 }
 
 /**
- * LoadingSpinner - 带文字的 Lucide 圆环加载指示器。
- * 无文字场景使用 Spinner，保持两种明确的公共加载样式。
+ * LoadingSpinner - 为统一 Spinner 添加尺寸和文字。
+ * 无文字场景直接使用同一个 Spinner。
  *
  * @example
  * // 页面级加载
@@ -53,7 +53,7 @@ export function LoadingSpinner({
 }: LoadingSpinnerProps) {
   return (
     <div className={cn("flex flex-col items-center gap-4", className)}>
-      <Loader2 aria-hidden="true" className={cn(sizeMap[size], "animate-spin text-muted-foreground")} />
+      <Spinner aria-hidden="true" className={cn(sizeMap[size], "text-muted-foreground")} />
       <p className={cn("text-sm text-muted-foreground", labelClassName)}>
         {label}
       </p>

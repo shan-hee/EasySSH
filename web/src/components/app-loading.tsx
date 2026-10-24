@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react"
 
 import { Spinner } from "@/components/ui/spinner"
-import { useDelayedLoading } from "@/hooks/use-delayed-loading"
+import { motion, useReducedMotion } from "motion/react"
 import { cn } from "@/lib/utils"
 
 interface AppLoadingProps extends ComponentProps<"div"> {
@@ -20,7 +20,7 @@ export function AppLoadingScreen({
   label = "Loading",
   ...props
 }: AppLoadingProps) {
-  const visible = useDelayedLoading(true, delay)
+  const reducedMotion = useReducedMotion()
 
   return (
     <div
@@ -30,14 +30,14 @@ export function AppLoadingScreen({
       aria-label={label}
       {...props}
     >
-      {visible ? (
-        <div
-          className="inline-flex items-center justify-center animate-in fade-in zoom-in-95 duration-150 motion-reduce:animate-none"
-          aria-hidden="true"
-        >
-          <Spinner className="size-5 text-muted-foreground" />
-        </div>
-      ) : null}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: delay / 1000, duration: reducedMotion ? 0 : 0.1 }}
+        aria-hidden="true"
+      >
+        <Spinner className="size-5 text-muted-foreground" />
+      </motion.div>
     </div>
   )
 }

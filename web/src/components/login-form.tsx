@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner"
 
 import { useEffect, useState, useCallback, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
@@ -492,7 +493,7 @@ export function LoginForm({
                         <>
                           <span className="mr-2">{tAuth("login2faSubmitting")}</span>
                           {/* spinner 文案已在上方 label 中体现 */}
-                          <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                          <Spinner aria-hidden="true" />
                         </>
                       ) : (
                         tAuth("login2faSubmit")
@@ -681,7 +682,7 @@ export function LoginForm({
                     {isLoading ? (
                         <>
                           <span className="mr-2">{tAuth("loginSubmitting")}</span>
-                        <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                        <Spinner aria-hidden="true" />
                       </>
                       ) : (
                       tAuth("loginSubmit")

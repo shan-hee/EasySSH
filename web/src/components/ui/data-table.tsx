@@ -27,7 +27,6 @@ import { resolveColumnClass } from "@/components/ui/column-meta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useDelayedLoading } from "@/hooks/use-delayed-loading"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
 
@@ -176,7 +175,6 @@ export function DataTable<TData, TValue = unknown>({
   const [internalPageSize, setInternalPageSize] = React.useState(pageSizeProp ?? 20)
   const [inputPage, setInputPage] = React.useState("")
   const scrollContainerRef = React.useRef<HTMLDivElement>(null)
-  const showLoading = useDelayedLoading(loading)
 
   const currentPage = currentPageProp ?? internalCurrentPage
   const pageSize = pageSizeProp ?? internalPageSize
@@ -375,7 +373,7 @@ export function DataTable<TData, TValue = unknown>({
               )}
             </TableBody>
           </Table>
-          {loading && showLoading && (
+          {loading && (
             <div className="absolute inset-0 bg-background/95 backdrop-blur-sm p-4 space-y-3 overflow-hidden">
               {Array.from({ length: Math.min(pageSize, 10) }).map((_, i) => (
                 <div
