@@ -65,6 +65,18 @@ jobs:
       - name: 📥 检出代码
         uses: actions/checkout@v5
 
+      - name: 🔎 校验扫描平台
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+        run: |
+          case "$PLATFORMS" in
+            linux/amd64|linux/arm64|linux/amd64,linux/arm64) ;;
+            *)
+              echo "::error::构建平台必须为 linux/amd64、linux/arm64 或 linux/amd64,linux/arm64，确保每个发布架构都经过安全扫描"
+              exit 1
+              ;;
+          esac
+
       - name: 📖 解析版本号
         id: version
         env:
@@ -126,7 +138,6 @@ jobs:
 
       - name: 🔍 Trivy 扫描 amd64 (生成报告)
         if: contains(inputs.platforms, 'linux/amd64')
-        continue-on-error: true
         uses: aquasecurity/trivy-action@master
         env:
           TRIVY_PLATFORM: linux/amd64
@@ -136,10 +147,11 @@ jobs:
           output: 'trivy-results-amd64.sarif'
           severity: 'CRITICAL,HIGH'
           limit-severities-for-sarif: true
+          ignore-unfixed: false
+          exit-code: '0'
 
       - name: Upload amd64 Trivy results to GitHub Security
         if: contains(inputs.platforms, 'linux/amd64')
-        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results-amd64.sarif'
@@ -159,7 +171,6 @@ jobs:
 
       - name: 🔍 Trivy 扫描 arm64 (生成报告)
         if: contains(inputs.platforms, 'linux/arm64')
-        continue-on-error: true
         uses: aquasecurity/trivy-action@master
         env:
           TRIVY_PLATFORM: linux/arm64
@@ -169,10 +180,11 @@ jobs:
           output: 'trivy-results-arm64.sarif'
           severity: 'CRITICAL,HIGH'
           limit-severities-for-sarif: true
+          ignore-unfixed: false
+          exit-code: '0'
 
       - name: Upload arm64 Trivy results to GitHub Security
         if: contains(inputs.platforms, 'linux/arm64')
-        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results-arm64.sarif'

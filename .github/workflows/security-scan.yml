@@ -1,0 +1,58 @@
+name: Dependency Security Scan
+
+# main 的依赖报告独立更新；标签发布的镜像报告不能代替默认分支扫描。
+# 仅读取依赖文件，不安装项目依赖、不构建镜像、不运行测试。
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 每天北京时间 09:23，用最新漏洞库重新检查未变更的依赖。
+    - cron: '23 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: dependency-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: 🔍 依赖安全扫描
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v5
+
+      - name: 🔍 Trivy 扫描依赖 (生成报告)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln'
+          format: 'sarif'
+          output: 'trivy-dependencies.sarif'
+          severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: true
+          ignore-unfixed: false
+          exit-code: '0'
+
+      - name: 📤 上传依赖报告到 GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: 'trivy-dependencies.sarif'
+          category: 'trivy-dependencies'
+
+      - name: 📊 生成扫描摘要
+        run: |
+          {
+            echo '## 依赖安全报告已更新'
+            echo ''
+            echo '已扫描仓库中的依赖文件并上传 HIGH、CRITICAL 漏洞报告，包括尚无修复版本的漏洞。'
+            echo '本工作流负责报告更新，成功不代表没有漏洞；请查看 Security → Code scanning。'
+            echo '发布镜像仍须通过 docker-build.yml 中逐架构的漏洞门禁。'
+          } >> "$GITHUB_STEP_SUMMARY"
