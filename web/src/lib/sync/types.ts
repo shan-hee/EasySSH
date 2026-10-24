@@ -31,6 +31,7 @@ export type SyncStatus = {
   can_sync?: boolean
   connected: boolean
   enabled: boolean
+  syncing?: boolean
   server_url?: string
   space_id?: string
   last_sync?: string

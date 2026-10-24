@@ -10,7 +10,7 @@ export function DesktopSyncView({ locale }: {
     <DesktopWebViewShell locale={locale}>
       <div className="flex min-h-0 flex-1 flex-col">
         <DesktopPageContent>
-          <div className="min-w-0 p-4"><SyncPanel adapter={desktopSyncAdapter} desktopMode /></div>
+          <div className="mx-auto w-full min-w-0 max-w-5xl p-4 sm:p-6"><SyncPanel adapter={desktopSyncAdapter} desktopMode /></div>
         </DesktopPageContent>
       </div>
     </DesktopWebViewShell>

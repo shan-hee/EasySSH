@@ -257,6 +257,7 @@ export const desktopSyncAdapter: SyncAdapter = {
     return {
       connected: !!state.space_id,
       enabled: state.enabled,
+      syncing: isDesktopSyncRunning(),
       server_url: state.server_url,
       space_id: state.space_id,
       account_name: state.account_name,
@@ -304,31 +305,40 @@ export const desktopSyncAdapter: SyncAdapter = {
     for (const key of keys.filter((key) => key.startsWith("ai_session/")))
       await call("EnrollSession", spaceID, key.slice("ai_session/".length))
     window.dispatchEvent(new Event("easyssh:sync-applied"))
-    await syncNow()
+    requestDesktopSync()
   },
   async setScopes(scopes) {
     if (active) await active.catch(() => {})
     await call("SetScopes", scopes)
+    lastError = ""
     window.dispatchEvent(new Event("easyssh:sync-applied"))
-    await syncNow()
+    notifySyncStatus()
+    requestDesktopSync()
   },
   async enrollAIConfig(spaceID) {
     if (active) await active.catch(() => {})
     await call("EnrollAIConfig", spaceID)
     window.dispatchEvent(new Event("easyssh:sync-applied"))
-    await syncNow()
+    requestDesktopSync()
   },
   async forkSession(key, ref) {
     if (active) await active.catch(() => {})
     const state = await call<LocalState>("Load")
     await call("ForkVaultSession", state.space_id, key, ref)
     window.dispatchEvent(new Event("easyssh:sync-applied"))
-    await syncNow()
+    requestDesktopSync()
   },
   async setEnabled(enabled) {
+    if (active) await active.catch(() => {})
     await call("SetEnabled", enabled)
+    lastError = ""
+    if (!enabled) {
+      window.clearTimeout(syncTimer)
+      syncTimer = undefined
+      syncPending = false
+    }
     notifySyncStatus()
-    if (enabled) await syncNow()
+    if (enabled) requestDesktopSync()
   },
   async disconnect() {
     changingAccount = true
@@ -368,7 +378,7 @@ export const desktopSyncAdapter: SyncAdapter = {
         engine.freeDocument(doc)
       }
       window.dispatchEvent(new Event("easyssh:sync-applied"))
-      await syncNow()
+      requestDesktopSync()
       return
     }
     const state = await call<LocalState>("Load")
@@ -385,7 +395,7 @@ export const desktopSyncAdapter: SyncAdapter = {
     } finally {
       engine.freeDocument(doc)
     }
-    await syncNow()
+    requestDesktopSync()
   },
 }
 export function startDesktopSync(): () => void {
