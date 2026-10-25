@@ -11,7 +11,6 @@ function section(load: () => Promise<{ default: ComponentType }>, namespaces: st
 
 export const settingsSections = {
   basic: section(() => import("@/pages/dashboard/settings/system-config/_tabs/basic-tab").then(m => ({ default: m.BasicTab })), ["settingsSystemBasic"]),
-  users: section(() => import("@/pages/dashboard/settings/management/_tabs/user-management-content").then(m => ({ default: m.UserManagementContent })), ["users"]),
   authentication: section(() => import("@/pages/dashboard/settings/security-center/_tabs/authentication-tab").then(m => ({ default: m.AuthenticationTab })), ["settingsAuthentication"]),
   "access-control": section(() => import("@/pages/dashboard/settings/security-center/_tabs/access-control-tab").then(m => ({ default: m.AccessControlTab })), ["settingsSecurityAccess"]),
   workspace: section(() => import("@/pages/dashboard/settings/security-center/_tabs/workspace-tab").then(m => ({ default: m.WorkspaceTab })), ["settingsWorkspace"]),

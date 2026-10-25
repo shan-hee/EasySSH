@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { Archive, Bot, Cable, Clock3, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Users, Workflow } from "lucide-react"
+import { Archive, Bot, Cable, Clock3, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Workflow } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { cn } from "@/lib/utils"
@@ -27,7 +27,6 @@ const groups: SettingsGroup[] = [
     { id: "basic", nameKey: "itemBasic", icon: Settings },
   ] },
   { id: "identity", nameKey: "groupIdentity", items: [
-    { id: "users", nameKey: "itemUsers", icon: Users },
     { id: "authentication", nameKey: "itemAuthentication", icon: Fingerprint },
     { id: "access-control", nameKey: "itemAccessControl", icon: Shield },
   ] },

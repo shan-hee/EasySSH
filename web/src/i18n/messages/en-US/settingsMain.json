@@ -17,6 +17,5 @@
   "itemNetworkDeployment": "Web & deployment",
   "itemAIConfig": "AI config",
   "itemNotificationConfig": "Notification config",
-  "itemBackup": "Backup & restore",
-  "itemUsers": "Users & permissions"
+  "itemBackup": "Backup & restore"
 }
