@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/easyssh/shared/aichatui"
@@ -65,7 +66,8 @@ func (s *DesktopSyncService) captureLocalVault(tx *sql.Tx, v DesktopVaultState) 
 		p.AIConfig = &c
 	case "ai_session":
 		var title, model, messages, tasks, created, status, updated string
-		err := tx.QueryRow(`SELECT title,model,messages_json,tasks_json,created_at,status,updated_at FROM desktop_ai_sessions WHERE id=?`, v.LocalID).Scan(&title, &model, &messages, &tasks, &created, &status, &updated)
+		var customTitle int
+		err := tx.QueryRow(`SELECT title,custom_title,model,messages_json,tasks_json,created_at,status,updated_at FROM desktop_ai_sessions WHERE id=?`, v.LocalID).Scan(&title, &customTitle, &model, &messages, &tasks, &created, &status, &updated)
 		if err == sql.ErrNoRows {
 			if v.ObservedRef != "" {
 				p.Deleted = true
@@ -80,7 +82,11 @@ func (s *DesktopSyncService) captureLocalVault(tx *sql.Tx, v DesktopVaultState) 
 			return nil, errors.New("conversation is busy")
 		}
 		p.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updated)
-		c := &syncdata.Conversation{Title: title, Model: model}
+		// An empty sync title means automatic naming on both clients.
+		if customTitle != 1 {
+			title = ""
+		}
+		c := &syncdata.Conversation{Title: strings.TrimSpace(title), Model: model}
 		c.CreatedAt, _ = time.Parse(time.RFC3339Nano, created)
 		if err = json.Unmarshal([]byte(messages), &c.Messages); err != nil {
 			return nil, err
@@ -182,7 +188,12 @@ func (s *DesktopSyncService) applyLocalVault(tx *sql.Tx, v DesktopVaultState, p 
 		if err := syncdata.HydrateAttachments(c, func(id string) (string, error) { return localObject(tx, v.SpaceID, id) }); err != nil {
 			return err
 		}
+		title := strings.TrimSpace(c.Title)
+		customTitle := title != ""
 		for i := range c.Messages {
+			if title == "" && c.Messages[i].Role == "user" {
+				title = aichatui.SessionTitleFromContent(c.Messages[i].Content)
+			}
 			refs := []aichatui.ServerReference{}
 			for _, ref := range c.Messages[i].ServerReferences {
 				var localID string
@@ -200,7 +211,7 @@ func (s *DesktopSyncService) applyLocalVault(tx *sql.Tx, v DesktopVaultState, p 
 		if c.CreatedAt.IsZero() {
 			created = now
 		}
-		_, err := tx.Exec(`INSERT INTO desktop_ai_sessions(id,config_space_id,title,custom_title,model,permission_mode,scope_json,status,messages_json,tasks_json,created_at,updated_at) VALUES(?,?,?,1,?,'readonly','{}','idle',?,?,?,?) ON CONFLICT(id) DO UPDATE SET config_space_id=excluded.config_space_id,title=excluded.title,custom_title=1,model=excluded.model,permission_mode='readonly',scope_json='{}',status='idle',messages_json=excluded.messages_json,tasks_json=excluded.tasks_json,updated_at=excluded.updated_at`, v.LocalID, v.SpaceID, c.Title, c.Model, syncdata.JSON(c.Messages), syncdata.JSON(c.Tasks), created, now)
+		_, err := tx.Exec(`INSERT INTO desktop_ai_sessions(id,config_space_id,title,custom_title,model,permission_mode,scope_json,status,messages_json,tasks_json,created_at,updated_at) VALUES(?,?,?,?,?,'readonly','{}','idle',?,?,?,?) ON CONFLICT(id) DO UPDATE SET config_space_id=excluded.config_space_id,title=excluded.title,custom_title=excluded.custom_title,model=excluded.model,permission_mode='readonly',scope_json='{}',status='idle',messages_json=excluded.messages_json,tasks_json=excluded.tasks_json,updated_at=excluded.updated_at`, v.LocalID, v.SpaceID, title, boolToInt(customTitle), c.Model, syncdata.JSON(c.Messages), syncdata.JSON(c.Tasks), created, now)
 		return err
 	}
 	return errors.New("unknown sync payload kind")

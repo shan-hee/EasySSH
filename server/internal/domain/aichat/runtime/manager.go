@@ -1834,14 +1834,11 @@ func sessionListItemFromSnapshot(snapshot SessionSnapshot) SessionListItem {
 			if message.Role != "user" {
 				continue
 			}
-			content := strings.TrimSpace(message.Content)
+			content := aichatui.SessionTitleFromContent(message.Content)
 			if content == "" {
 				continue
 			}
 			title = content
-			if runes := []rune(title); len(runes) > 40 {
-				title = string(runes[:40]) + "…"
-			}
 			break
 		}
 	}

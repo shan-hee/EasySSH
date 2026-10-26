@@ -66,6 +66,7 @@ type AIConfig struct {
 // Conversation contains presentation history, not executable tool calls or grants.
 // Parent relationships and unchanged message IDs preserve the selected branch.
 type Conversation struct {
+	// Title is the custom title; empty means derive it from the user messages.
 	Title     string                 `json:"title"`
 	Model     string                 `json:"model"`
 	CreatedAt time.Time              `json:"created_at"`

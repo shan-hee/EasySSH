@@ -56,7 +56,7 @@ export function createAISessionListItem(response: CreateSessionResponse, title: 
 
 export function getDefaultAISessionTitle(session: SessionView, fallback: string) {
   const firstUserMessage = session.messages
-    .find((message) => message.role === "user")
+    .find((message) => message.role === "user" && message.content.trim())
     ?.content.trim()
   if (!firstUserMessage) {
     return fallback

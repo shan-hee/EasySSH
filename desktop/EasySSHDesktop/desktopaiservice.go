@@ -539,7 +539,8 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 	}
 	querySQL := fmt.Sprintf(`
 		SELECT id, title, custom_title, model, permission_mode, scope_json, status,
-			json_array_length(messages_json), json_array_length(tasks_json), created_at, updated_at
+			json_array_length(messages_json), json_array_length(tasks_json), created_at, updated_at,
+			CASE WHEN trim(title) = '' THEN messages_json ELSE '[]' END
 		FROM desktop_ai_sessions
 		WHERE %s
 		ORDER BY updated_at DESC, created_at DESC, id DESC
@@ -553,12 +554,16 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 
 	items := make([]DesktopAISessionListItem, 0)
 	for rows.Next() {
-		var id, title, model, permissionMode, scopeJSON, status, createdAt, updatedAt string
+		var id, title, model, permissionMode, scopeJSON, status, createdAt, updatedAt, titleMessagesJSON string
 		var customTitle, messageCount, taskCount int
-		if err := rows.Scan(&id, &title, &customTitle, &model, &permissionMode, &scopeJSON, &status, &messageCount, &taskCount, &createdAt, &updatedAt); err != nil {
+		if err := rows.Scan(&id, &title, &customTitle, &model, &permissionMode, &scopeJSON, &status, &messageCount, &taskCount, &createdAt, &updatedAt, &titleMessagesJSON); err != nil {
 			return DesktopAIListSessionsResult{}, err
 		}
 		title = strings.TrimSpace(title)
+		if title == "" {
+			customTitle = 0
+			title = defaultDesktopAISessionTitle(decodeDesktopAIMessages(titleMessagesJSON))
+		}
 		if title == "" {
 			title = "New session"
 		}
@@ -740,7 +745,7 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	}
 	record.Messages = append(record.Messages, userMessage)
 	if record.Title == "" {
-		record.Title = makeDesktopAITitle(content)
+		record.Title = defaultDesktopAISessionTitle(record.Messages)
 	}
 	return s.completeDesktopAITurn(ctx, record, config, input.Context, model)
 }
@@ -1523,7 +1528,8 @@ func (s *DesktopAIService) loadSession(id string) (desktopAISessionRecord, error
 	if err != nil {
 		return desktopAISessionRecord{}, err
 	}
-	record.CustomTitle = customTitle == 1
+	record.Title = strings.TrimSpace(record.Title)
+	record.CustomTitle = customTitle == 1 && record.Title != ""
 	record.PermissionMode = normalizeDesktopAIPermission(DesktopAIPermissionMode(permissionMode))
 	record.Scope = decodeDesktopAIScope(scopeJSON)
 	record.Status = s.activeDesktopAISessionStatus(record.ID, DesktopAISessionStatus(status))
@@ -1532,6 +1538,9 @@ func (s *DesktopAIService) loadSession(id string) (desktopAISessionRecord, error
 	}
 	record.Messages = decodeDesktopAIMessages(messagesJSON)
 	record.Tasks = decodeDesktopAITasks(tasksJSON)
+	if !record.CustomTitle {
+		record.Title = defaultDesktopAISessionTitle(record.Messages)
+	}
 	return record, nil
 }
 
@@ -2687,22 +2696,10 @@ func desktopAISystemPrompt(permission DesktopAIPermissionMode) string {
 func defaultDesktopAISessionTitle(messages []DesktopAIMessageView) string {
 	for _, message := range messages {
 		if message.Role == "user" && strings.TrimSpace(message.Content) != "" {
-			return makeDesktopAITitle(message.Content)
+			return aichatui.SessionTitleFromContent(message.Content)
 		}
 	}
 	return ""
-}
-
-func makeDesktopAITitle(content string) string {
-	title := strings.Join(strings.Fields(content), " ")
-	if len([]rune(title)) > 36 {
-		runes := []rune(title)
-		title = string(runes[:36])
-	}
-	if strings.TrimSpace(title) == "" {
-		return "New session"
-	}
-	return title
 }
 
 func normalizeDesktopAIPermission(permission DesktopAIPermissionMode) DesktopAIPermissionMode {
