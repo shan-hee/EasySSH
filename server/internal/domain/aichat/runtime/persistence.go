@@ -155,6 +155,7 @@ func (s *gormSessionStore) GetLatestActive(ctx context.Context, userID uuid.UUID
 	var record AISessionRecord
 	if err := s.db.WithContext(ctx).
 		Where("user_id = ? AND status <> ?", userID, string(SessionStatusClosed)).
+		Where("message_views NOT IN ?", []string{"[]", "null"}).
 		Order("updated_at DESC").
 		First(&record).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -174,7 +175,9 @@ func (s *gormSessionStore) List(ctx context.Context, userID uuid.UUID, queryText
 		offset = 0
 	}
 
-	query := s.db.WithContext(ctx).Model(&AISessionRecord{}).Where("user_id = ?", userID)
+	query := s.db.WithContext(ctx).Model(&AISessionRecord{}).
+		Where("user_id = ?", userID).
+		Where("message_views NOT IN ?", []string{"[]", "null"})
 	if queryText != "" {
 		like := "%" + strings.ToLower(queryText) + "%"
 		if s.db.Dialector.Name() == "mysql" {

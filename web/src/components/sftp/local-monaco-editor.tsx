@@ -25,3 +25,5 @@ self.MonacoEnvironment = {
 loader.config({ monaco })
 
 export default Editor
+
+export { DiffEditor } from "@monaco-editor/react"

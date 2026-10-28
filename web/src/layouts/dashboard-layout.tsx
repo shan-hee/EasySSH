@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react"
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { MotionConfig } from "motion/react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -16,6 +16,8 @@ import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-polic
 import { Button } from "@/components/ui/button"
 import { AppLoadingScreen } from "@/components/app-loading"
 import { cn } from "@/lib/utils"
+
+const AIAssistantPage = lazy(() => import("@/pages/dashboard/ai-assistant-page"))
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -38,18 +40,30 @@ function MobileSidebarRouteCloser() {
 }
 
 function DashboardRouteOutlet({ usesViewportWorkspace }: { usesViewportWorkspace: boolean }) {
-  if (usesViewportWorkspace) {
-    return (
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <Outlet />
-      </div>
-    )
-  }
+  const { pathname } = useLocation()
+  const aiActive = pathname.replace(/\/$/, "") === "/dashboard/ai-assistant"
+  const [aiVisited, setAIVisited] = useState(aiActive)
+  useEffect(() => {
+    if (aiActive) setAIVisited(true)
+  }, [aiActive])
 
   return (
-    <div className="flex min-h-full w-full min-w-0 flex-1 flex-col">
-      <Outlet />
-    </div>
+    <>
+      {(aiVisited || aiActive) && (
+        <div className={cn("min-h-0 min-w-0 flex-1 flex-col overflow-hidden", aiActive ? "flex" : "hidden")}>
+          <Suspense fallback={null}>
+            <AIAssistantPage active={aiActive} />
+          </Suspense>
+        </div>
+      )}
+      {!aiActive && (
+        <div className={usesViewportWorkspace
+          ? "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          : "flex min-h-full w-full min-w-0 flex-1 flex-col"}>
+          <Outlet />
+        </div>
+      )}
+    </>
   )
 }
 

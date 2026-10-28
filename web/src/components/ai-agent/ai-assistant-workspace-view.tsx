@@ -1,3 +1,4 @@
+import { AgentWorkspaceProvider, AgentWorkspacePanel, AgentWorkspaceToolbar } from "./agent-workspace-panel"
 import { AISessionSidebar } from "./ai-session-sidebar"
 import { AISidebarContent, useAISidebarHost } from "./ai-sidebar-host"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
@@ -22,6 +23,7 @@ import { Button } from "@/components/ui/button"
 import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
 import { ErrorState } from "@/components/assistant-ui/elements/error-state"
 import { AgentComposer, AgentComposerInput, AgentComposerSubmit, AgentComposerToolbar, AgentComposerTools, AgentComposerAttachButton, AgentComposerDictation } from "@/components/ai-agent/agent-composer"
+import { AgentReasoningSelector } from "./agent-reasoning-selector"
 import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
 import { modelSelectorTriggerVariants } from "@/components/assistant-ui/elements/model-selector"
 import { EmptyState, EmptyStateGreeting } from "@/components/assistant-ui/elements/empty-state"
@@ -30,19 +32,23 @@ import type { AgentServerReference } from "@/lib/ai-agent-types"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { AgentSessionAdapter } from "@/hooks/use-agent-session"
 import type { AIConfigAdapter } from "@/hooks/use-ai-config"
-import { useSetAgentComposerDraft } from "@/hooks/use-agent-composer-draft"
+import { useSetAgentComposerDraft, useSessionDraftState } from "@/hooks/use-agent-composer-draft"
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAuthReady } from "@/hooks/use-auth-ready"
-import { useAISessionHistory } from "@/hooks/use-ai-session-history"
+import { getDefaultAISessionTitle, useAISessionHistory } from "@/hooks/use-ai-session-history"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { serversApi, type Server as ManagedServer } from "@/lib/api"
-import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type CreateSessionResponse, type PermissionMode } from "@/lib/api/ai-agent"
+import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type PermissionMode } from "@/lib/api/ai-agent"
 import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
 import type { ServerListResponse } from "@/lib/api/servers"
 import { mergeServerReferences, parseServerReferenceText } from "@/lib/ai-agent/server-mentions"
 import { getServerDisplayName } from "@/lib/server-utils"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
+
+// Both columns use the workspace width, so the message scrollbar cannot make
+// the transcript narrower than the composer on small screens.
+const conversationColumnClass = "mx-auto w-[min(50rem,calc(100cqw-2rem))] @min-[30rem]:w-[min(50rem,calc(100cqw-6rem))] max-w-none"
 
 export interface AIAssistantWorkspaceAdapters {
   aiConfig?: AIConfigAdapter
@@ -126,6 +132,9 @@ export function AIAssistantWorkspaceView({
     restoreLatestSession,
     restoreSession,
     startNewSession,
+    startDraftSession,
+    recoverComposerDraft,
+    forgetComposerDraft,
     sendMessage,
     updateMessage: updateUserMessage,
     regenerateMessage,
@@ -136,7 +145,7 @@ export function AIAssistantWorkspaceView({
   } = agentSession
 
   const setDraft = useSetAgentComposerDraft(agentSession.runtime)
-  const [serverReferences, setServerReferences] = useState<AgentServerReference[]>([])
+  const [serverReferences, setServerReferences, forgetServerReferences] = useSessionDraftState<AgentServerReference[]>(sessionId, [])
   const [availableServers, setAvailableServers] = useState<ManagedServer[]>([])
   const [serversLoading, setServersLoading] = useState(false)
   const handleServerReferenceSelected = useCallback((item: { id: string }) => {
@@ -149,7 +158,7 @@ export function AIAssistantWorkspaceView({
       port: server.port,
       username: server.username,
     }]))
-  }, [availableServers])
+  }, [availableServers, setServerReferences])
 
   const attachmentLimitNotice = useCallback(() => {
     toast.info(t("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
@@ -164,11 +173,12 @@ export function AIAssistantWorkspaceView({
     loading: attachmentsLoading,
     addFiles: addAttachmentFiles,
     remove: removeAttachment,
-    clear: clearAttachments,
+    forget: forgetAttachments,
     detach: detachAttachments,
     restore: restoreAttachments,
     release: releaseAttachments,
   } = useComposerAttachments({
+    sessionId,
     onLimit: attachmentLimitNotice,
     onRejected: attachmentRejectedNotice,
   })
@@ -189,7 +199,6 @@ export function AIAssistantWorkspaceView({
   })
   const {
     forget: forgetHistorySession,
-    prepend: prependHistorySession,
     syncSession: syncHistorySession,
     setOpen: setHistoryOpen,
   } = history
@@ -255,11 +264,11 @@ export function AIAssistantWorkspaceView({
   const isConfigChecking = !ready || isLoading
   const showConfigAction = ready && !isLoading && !isConfigured
   const modelSelectDisabled = isConfigChecking || !isConfigured || models.length === 0
-  const serverReferenceDisabled = !ready || isLoading || !isConfigured
-  const attachmentDisabled = attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || !ready || isLoading || !isConfigured
+  const serverReferenceDisabled = !ready || isLoading || !isConfigured || sessionCreating || agentSession.transport === "connecting"
+  const attachmentDisabled = attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || serverReferenceDisabled
 
   const hasTimeline = uiMessages.length > 0
-  const createSessionDisabled = !ready || isLoading || !isConfigured || sessionCreating
+  const createSessionDisabled = !ready || isLoading || !isConfigured || sessionCreating || attachmentsLoading
 
   const buildMessageContext = useCallback(
     () => buildAgentMessageContext({
@@ -269,10 +278,6 @@ export function AIAssistantWorkspaceView({
     }),
     [attachments, t]
   )
-
-  const prependSessionListItem = useCallback((response: CreateSessionResponse) => {
-    prependHistorySession(response, t("newSession"))
-  }, [prependHistorySession, t])
 
   useEffect(() => {
     if (!session?.id) {
@@ -304,7 +309,7 @@ export function AIAssistantWorkspaceView({
     if (attachmentsLoading) {
       blockReasons.push("attachments_loading")
     }
-    if (sessionCreatingRef.current) {
+    if (sessionCreatingRef.current || agentSession.transport === "connecting") {
       blockReasons.push("session_creating")
     }
     if (isChatRequestActive) {
@@ -337,66 +342,69 @@ export function AIAssistantWorkspaceView({
     setServerReferences([])
     setDraft("")
     let createdSessionId: string | null = null
+    let submittedSessionId = sessionId
+    const recoverDraft = () => {
+      recoverComposerDraft(submittedSessionId, messageText)
+      restoreAttachments(submittedAttachments, submittedSessionId)
+      setServerReferences((current) => mergeServerReferences(submittedReferences, current), submittedSessionId)
+    }
 
-    if (!sessionId || session?.status === "closed") {
-      sessionCreatingRef.current = true
-      setSessionCreating(true)
-
-      const response: CreateSessionResponse | null = await (async () => {
-        try {
-          return await startNewSession({
-            model: selectedModel || undefined,
-            permissionMode,
-            scope: submittedScope,
-          })
-        } finally {
-          sessionCreatingRef.current = false
-          setSessionCreating(false)
-        }
-      })()
-
-      if (!response) {
-        setDraft((current) => current || messageText)
-        restoreAttachments(submittedAttachments)
-        setServerReferences((current) => mergeServerReferences(submittedReferences, current))
+    sessionCreatingRef.current = true
+    setSessionCreating(true)
+    let preparing = true
+    try {
+      let imageAttachments
+      try {
+        imageAttachments = await toAgentImageAttachments(submittedAttachments)
+      } catch {
+        recoverDraft()
+        toast.error(t("attachmentReadFailed"))
         return
       }
-      createdSessionId = response.session_id
-      prependSessionListItem(response)
-    }
 
-    let imageAttachments
-    try {
-      imageAttachments = await toAgentImageAttachments(submittedAttachments)
-    } catch {
+      if (!sessionId || session?.status === "closed") {
+        const response = await startNewSession({
+          model: selectedModel || undefined,
+          permissionMode,
+          scope: submittedScope,
+        })
+        if (!response) {
+          recoverDraft()
+          return
+        }
+        createdSessionId = response.session_id
+        submittedSessionId = response.session_id
+      }
+
+      const sending = sendMessage(
+        normalizedDraft || t("contextOnlyPrompt"),
+        contextText,
+        selectedModel || undefined,
+        permissionMode,
+        submittedScope,
+        imageAttachments,
+        submittedReferences,
+      )
+      // sendMessage installs the outgoing message synchronously. Navigation can
+      // resume while the reply streams; recovery still targets this draft.
+      sessionCreatingRef.current = false
+      setSessionCreating(false)
+      preparing = false
+      const sendResult = await sending
+      if (sendResult !== "failed") {
+        releaseAttachments(submittedAttachments)
+        return
+      }
       if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
         forgetHistorySession(createdSessionId)
+        submittedSessionId = null
       }
-      setDraft((current) => current || messageText)
-      restoreAttachments(submittedAttachments)
-      setServerReferences((current) => mergeServerReferences(submittedReferences, current))
-      toast.error(t("attachmentReadFailed"))
-      return
-    }
-
-    const sendResult = await sendMessage(
-      normalizedDraft || t("contextOnlyPrompt"),
-      contextText,
-      selectedModel || undefined,
-      permissionMode,
-      submittedScope,
-      imageAttachments,
-      submittedReferences,
-    )
-    if (sendResult === "failed") {
-      if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
-        forgetHistorySession(createdSessionId)
+      recoverDraft()
+    } finally {
+      if (preparing) {
+        sessionCreatingRef.current = false
+        setSessionCreating(false)
       }
-      setDraft((current) => current || messageText)
-      restoreAttachments(submittedAttachments)
-      setServerReferences((current) => mergeServerReferences(submittedReferences, current))
-    } else {
-      releaseAttachments(submittedAttachments)
     }
   }
 
@@ -459,22 +467,11 @@ export function AIAssistantWorkspaceView({
         })
         if (!confirmed) return
       }
-      const response = await startNewSession({
-        model: selectedModel || undefined,
-        permissionMode,
-        scope: { kind: "global" },
-        findEmptySession: () => history.findEmptySession({ kind: "global" }),
-      })
-
-      if (response) {
-        setDraft("")
-        setServerReferences([])
-        clearAttachments()
-        history.setOpen(false)
-        history.setSearch("")
-        sidebar?.closeMobile()
-        requestAnimationFrame(() => inputRef.current?.focus())
-      }
+      await startDraftSession({ kind: "global" })
+      history.setOpen(false)
+      history.setSearch("")
+      sidebar?.closeMobile()
+      requestAnimationFrame(() => inputRef.current?.focus())
     } finally {
       sessionCreatingRef.current = false
       setSessionCreating(false)
@@ -482,7 +479,7 @@ export function AIAssistantWorkspaceView({
   }
 
   const handleRestoreSession = async (targetSessionId: string) => {
-    if (!targetSessionId || sessionCreatingRef.current || history.renamingId) {
+    if (!targetSessionId || sessionCreatingRef.current || attachmentsLoading || history.renamingId) {
       return
     }
 
@@ -497,7 +494,6 @@ export function AIAssistantWorkspaceView({
 
     const restored = await restoreSession(targetSessionId)
     if (restored) {
-      setServerReferences([])
       history.setOpen(false)
       sidebar?.closeMobile()
       requestAnimationFrame(() => {
@@ -521,8 +517,11 @@ export function AIAssistantWorkspaceView({
 
     const removed = await history.remove(targetSessionId)
     if (removed) {
+      forgetComposerDraft(targetSessionId)
+      forgetAttachments(targetSessionId)
+      forgetServerReferences(targetSessionId)
       if (targetSessionId === sessionId) {
-        detachSession()
+        detachSession(targetSessionId)
       }
       toast.success("会话已删除")
     } else {
@@ -533,10 +532,12 @@ export function AIAssistantWorkspaceView({
   const handleAttachmentSelection = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     event.target.value = ""
+    if (sessionCreatingRef.current) return
     await addAttachmentFiles(files)
   }, [addAttachmentFiles])
 
   const handleAttachmentPaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+    if (sessionCreatingRef.current) return
     const files = Array.from(event.clipboardData.items)
       .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
@@ -547,6 +548,10 @@ export function AIAssistantWorkspaceView({
     event.preventDefault()
     void addAttachmentFiles(files)
   }, [addAttachmentFiles])
+
+  const historyItem = history.items.find((item) => item.id === sessionId)
+  const sessionTitle = historyItem?.custom_title ? historyItem.title
+    : session?.title || (session ? getDefaultAISessionTitle(session, t("newSession")) : t("newSession"))
 
   const actionButtonClass = "size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-accent"
 
@@ -606,6 +611,7 @@ export function AIAssistantWorkspaceView({
   )
   return (
     <AssistantRuntimeProvider runtime={agentSession.runtime}>
+    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} messages={session?.messages} scope={session?.scope} active={active} loadFile={adapters?.aiSession?.getTaskFile} saveFile={adapters?.aiSession?.saveTaskFile} approve={async (id, approved) => { await agentSession.respondToToolApproval({ id, approved }) }} stop={cancelSession}>
     {sidebar && active && <AISidebarContent>
       <AssistantRuntimeProvider runtime={agentSession.runtime}>
       <AISessionSidebar
@@ -613,12 +619,15 @@ export function AIAssistantWorkspaceView({
         onCreate={handleCreateNewSession} onRestore={handleRestoreSession} onDelete={handleDeleteSession}
         creating={sessionCreating} createDisabled={createSessionDisabled}
         configuration={configuration} t={t}
+        listSessions={adapters?.listAISessions}
       />
       </AssistantRuntimeProvider>
     </AISidebarContent>}
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="@container flex min-h-0 flex-1 flex-col overflow-hidden">
       {confirmDialog}
-      {!hidePageHeader && <PageHeader title={t("pageTitle")} />}
+      {active && !hidePageHeader && <PageHeader title={sessionTitle} />}
+
+      <div className="flex shrink-0 justify-end px-3"><AgentWorkspaceToolbar /></div>
 
       {(!sidebar || onReturnToTerminal) && <div className="shrink-0 px-4 pb-1 md:px-4">
         <div className="flex h-9 items-center justify-between gap-2">
@@ -645,7 +654,7 @@ export function AIAssistantWorkspaceView({
       </div>}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
-        <div className={cn("flex min-h-0 flex-1 min-w-0 flex-col pb-4 md:pb-6", hasTimeline ? "overflow-hidden" : "overflow-y-auto")}>
+        <div className={cn("@container flex min-h-0 flex-1 min-w-0 flex-col pb-4 md:pb-6", hasTimeline ? "overflow-hidden" : "overflow-y-auto")}>
           <div className={cn("flex flex-1 flex-col", hasTimeline ? "min-h-0" : "min-h-fit py-8")}>
             <div className={hasTimeline ? "min-h-0 flex-1 overflow-hidden" : "hidden"}>
               {hasTimeline && (
@@ -661,27 +670,28 @@ export function AIAssistantWorkspaceView({
                   onDeleteUserMessage={handleDeleteUserMessage}
                   assistantLoadingState={assistantLoadingState}
                   className="h-full w-full"
-                  contentClassName="mx-auto max-w-5xl px-4 py-6 md:px-6"
+                  contentClassName={cn(conversationColumnClass, "px-0 py-6 [&_[data-slot=aui_assistant-message-content]]:px-0")}
+                  viewportClassName="[scrollbar-gutter:stable_both-edges]"
                 />
               )}
             </div>
 
-            <div className={cn("w-full shrink-0 px-4 md:px-6", hasTimeline ? "pt-4" : "my-auto")}>
+            <div className={cn("w-full shrink-0", hasTimeline ? "pt-4" : "my-auto")}>
               {agentSession.reconnecting && (
-                <div role="status" className="mx-auto mb-3 flex max-w-5xl items-center gap-2 text-sm text-muted-foreground">
+                <div role="status" className={cn(conversationColumnClass, "mb-3 flex items-center gap-2 text-sm text-muted-foreground")}>
                   <Loader2 className="size-4 shrink-0 animate-spin" />
                   {t("auiReconnecting")}
                 </div>
               )}
               {error && (
-                <ErrorState detail={error} className="mx-auto mb-3 max-w-5xl" action={
+                <ErrorState detail={error} className={cn(conversationColumnClass, "mb-3")} action={
                   <TooltipIconButton type="button" className="-my-1 size-7 shrink-0" onClick={clearError} tooltip={t("cancel")}>
                     <X className="size-3.5" />
                   </TooltipIconButton>
                 } />
               )}
 
-              <EmptyState className="mx-auto block w-full max-w-3xl">
+              <EmptyState className={cn(conversationColumnClass, "block")}>
                 {!hasTimeline && <EmptyStateGreeting className="mb-8 text-3xl font-semibold">{t("auiWelcomeGreeting")}</EmptyStateGreeting>}
                 <input
                   ref={fileInputRef}
@@ -702,16 +712,16 @@ export function AIAssistantWorkspaceView({
                   />
                   <AgentComposerInput
                     ref={inputRef}
+                    disabled={sessionCreating || agentSession.transport === "connecting"}
                     directivePluginProps={{ onDirectiveSelect: handleServerReferenceSelected }}
                     onPaste={handleAttachmentPaste}
                     placeholder={hasTimeline ? t("composerPlaceholder") : t("inputPlaceholderWithMention")}
                   />
                   <ServerReferencePicker servers={availableServers} references={serverReferences} onChange={setServerReferences} loading={serversLoading} disabled={serverReferenceDisabled} />
 
-                  <AgentComposerToolbar className="gap-2">
+                  <AgentComposerToolbar className="flex-wrap gap-2">
                     <AgentComposerTools className="min-w-0 flex-wrap">
                       <AgentComposerAttachButton onClick={() => fileInputRef.current?.click()} disabled={attachmentDisabled} aria-busy={attachmentsLoading} title={t("attachFile")} />
-                      <AgentModelSelector models={models} value={selectedModel} onValueChange={setSelectedModel} disabled={modelSelectDisabled} />
 
                       <Select
                         value={permissionMode}
@@ -754,9 +764,11 @@ export function AIAssistantWorkspaceView({
                       )}
                     </AgentComposerTools>
 
-                    <div className="ml-auto flex items-center gap-2">
+                    <div className="ml-auto flex min-w-0 items-center gap-1">
+                      <AgentReasoningSelector value={agentSession.reasoningEffort} onValueChange={agentSession.setReasoningEffort} disabled={modelSelectDisabled} />
+                      <AgentModelSelector models={models} value={selectedModel} onValueChange={setSelectedModel} disabled={modelSelectDisabled} />
                       <AgentComposerDictation disabled={isConfigChecking || !isConfigured || isAssistantActive} />
-                      <AgentComposerSubmit running={isAssistantActive} hasContent={attachments.length > 0} onCancel={cancelSession} />
+                      <AgentComposerSubmit running={isAssistantActive} hasContent={attachments.length > 0 || serverReferences.length > 0} disabled={sessionCreating || attachmentsLoading || agentSession.transport === "connecting"} onCancel={cancelSession} />
                     </div>
                   </AgentComposerToolbar>
                 </AgentComposer>
@@ -769,8 +781,10 @@ export function AIAssistantWorkspaceView({
             </div>
           </div>
         </div>
+        <AgentWorkspacePanel />
       </div>
     </div>
+    </AgentWorkspaceProvider>
     </AssistantRuntimeProvider>
   )
 }

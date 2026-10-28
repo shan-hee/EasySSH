@@ -116,6 +116,11 @@ func metadataWithCostEstimate(metadata ProviderMetadata, usage Usage, pricing Pr
 }
 
 func validateTurnRequest(config Config, req TurnRequest) error {
+	switch req.ReasoningEffort {
+	case "", "low", "medium", "high", "xhigh", "max":
+	default:
+		return NewLimitError("invalid_reasoning_effort", "Unsupported reasoning effort")
+	}
 	if strings.TrimSpace(config.APIKey) == "" {
 		return NewLimitError("api_key_required", "AI API key is required")
 	}

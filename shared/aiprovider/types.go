@@ -170,9 +170,10 @@ type Event struct {
 }
 
 type TurnRequest struct {
-	Messages []Message
-	Model    string
-	Tools    []ToolSpec
+	ReasoningEffort string
+	Messages        []Message
+	Model           string
+	Tools           []ToolSpec
 }
 
 type TurnResult struct {

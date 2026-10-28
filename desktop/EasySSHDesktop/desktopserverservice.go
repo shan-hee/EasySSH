@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/easyssh/shared/aiworkspace"
 	"github.com/easyssh/shared/sshutil"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"golang.org/x/crypto/ssh"
@@ -705,10 +706,13 @@ func (s *DesktopServerService) ExecuteCommandContext(ctx context.Context, input 
 		err    error
 	}
 
+	liveOutput := aiworkspace.NewOutput(ctx)
+	session.Stdout, session.Stderr = liveOutput, liveOutput
 	done := make(chan commandResponse, 1)
 	go func() {
-		output, err := session.CombinedOutput(command)
-		done <- commandResponse{output: output, err: err}
+		err := session.Run(command)
+		liveOutput.Flush()
+		done <- commandResponse{output: []byte(liveOutput.String()), err: err}
 	}()
 
 	var output []byte
@@ -731,7 +735,7 @@ func (s *DesktopServerService) ExecuteCommandContext(ctx context.Context, input 
 		return DesktopServerCommandResult{
 			ServerID:    serverID,
 			Command:     command,
-			Output:      "operation cancelled",
+			Output:      liveOutput.String() + "\noperation cancelled",
 			ExitCode:    130,
 			DurationMs:  completed.Sub(started).Milliseconds(),
 			StartedAt:   started.Format(time.RFC3339Nano),
@@ -743,7 +747,7 @@ func (s *DesktopServerService) ExecuteCommandContext(ctx context.Context, input 
 		return DesktopServerCommandResult{
 			ServerID:    serverID,
 			Command:     command,
-			Output:      "command timed out",
+			Output:      liveOutput.String() + "\ncommand timed out",
 			ExitCode:    124,
 			DurationMs:  completed.Sub(started).Milliseconds(),
 			StartedAt:   started.Format(time.RFC3339Nano),

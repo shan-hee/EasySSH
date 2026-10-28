@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/aichat/provider"
 	"github.com/easyssh/server/internal/domain/aichat/registry"
+	"github.com/easyssh/shared/aichatui"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -72,7 +72,7 @@ func (s *memorySessionStore) List(ctx context.Context, userID uuid.UUID, query s
 		if snapshot.UserID != userID {
 			continue
 		}
-		if query != "" && !strings.Contains(strings.ToLower(sessionListItemFromSnapshot(snapshot).Title), strings.ToLower(query)) {
+		if query != "" && !aichatui.SessionMatchesSearch(snapshot.Title, snapshot.MessageViews, query) {
 			continue
 		}
 		snapshots = append(snapshots, snapshot)

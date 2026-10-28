@@ -6,6 +6,7 @@ import { ThinkingIndicator } from "@/components/assistant-ui/elements/thinking-i
 import { ErrorState } from "@/components/assistant-ui/elements/error-state"
 import { Timeline } from "@/components/assistant-ui/elements/timeline"
 import { ServerReferencePicker } from "./server-reference-picker"
+import { AgentWorkspaceToolLink } from "./agent-workspace-panel"
 import { AgentComposerInput } from "./agent-composer"
 import { parseServerReferenceText, readServerReferences, serializeServerReferenceText, splitServerReferenceText } from "@/lib/ai-agent/server-mentions"
 import type { Server as ManagedServer } from "@/lib/api"
@@ -77,6 +78,7 @@ function AgentTool(part: ToolCallMessagePartProps) {
           </p>
         </div>
       )}
+      <AgentWorkspaceToolLink taskId={text(metadata.taskId)} toolCallId={part.toolCallId} />
       <Timeline
         events={[
           ...(text(metadata.createdAt)
@@ -168,6 +170,7 @@ export const AgentThread = memo(function AgentThread({
   emptyDescription?: string
   className?: string
   contentClassName?: string
+  viewportClassName?: string
 }) {
   const context = useMemo(() => ({ tText, scope, referenceServers, referenceServersLoading, onUpdateUserMessage }), [tText, scope, referenceServers, referenceServersLoading, onUpdateUserMessage])
   const loadingText = assistantLoadingState

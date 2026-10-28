@@ -15,6 +15,7 @@ import (
 	"github.com/easyssh/shared/aichatui"
 	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/aitooloutput"
+	"github.com/easyssh/shared/aiworkspace"
 	"github.com/google/uuid"
 )
 
@@ -58,15 +59,16 @@ type Manager struct {
 }
 
 type session struct {
-	id             string
-	userID         uuid.UUID
-	model          string
-	title          string
-	permissionMode string
-	scope          SessionScope
-	status         SessionStatus
-	createdAt      time.Time
-	updatedAt      time.Time
+	reasoningEffort string
+	id              string
+	userID          uuid.UUID
+	model           string
+	title           string
+	permissionMode  string
+	scope           SessionScope
+	status          SessionStatus
+	createdAt       time.Time
+	updatedAt       time.Time
 
 	messages       []provider.Message
 	messageViews   []MessageView
@@ -162,42 +164,16 @@ func (m *Manager) ListSessions(ctx context.Context, userID uuid.UUID, query stri
 	filterScope := normalizeSessionScopeFromVariadic(scope)
 	query = strings.ToLower(strings.TrimSpace(query))
 	if m.store != nil && filterScope.Kind == "" {
-		storeLimit := limit
-		if storeLimit <= 0 || storeLimit > 100 {
-			storeLimit = 100
-		}
-
-		snapshots, _, err := m.store.List(ctx, userID, query, storeLimit, 0)
+		// The store owns filtering and pagination across all saved conversations.
+		snapshots, total, err := m.store.List(ctx, userID, query, limit, offset)
 		if err != nil {
 			return nil, 0, err
 		}
-
-		itemByID := make(map[string]SessionListItem, len(snapshots))
+		items := make([]SessionListItem, 0, len(snapshots))
 		for _, snapshot := range snapshots {
-			item := sessionListItemFromSnapshot(snapshot)
-			itemByID[item.ID] = item
+			items = append(items, sessionListItemFromSnapshot(snapshot, query))
 		}
-
-		m.mu.RLock()
-		for _, s := range m.sessions {
-			if s.userID != userID {
-				continue
-			}
-			item := sessionListItemFromSnapshot(m.snapshotForPersistenceLocked(s))
-			if query != "" && !sessionListItemMatchesQuery(item, query) {
-				delete(itemByID, item.ID)
-				continue
-			}
-			itemByID[item.ID] = item
-		}
-		m.mu.RUnlock()
-
-		items := make([]SessionListItem, 0, len(itemByID))
-		for _, item := range itemByID {
-			items = append(items, item)
-		}
-
-		return paginateSessionListItems(items, limit, offset), int64(len(items)), nil
+		return items, total, nil
 	}
 
 	m.mu.RLock()
@@ -211,21 +187,17 @@ func (m *Manager) ListSessions(ctx context.Context, userID uuid.UUID, query stri
 		if !sessionMatchesScope(s, filterScope) {
 			continue
 		}
-		item := sessionListItemFromSnapshot(m.snapshotForPersistenceLocked(s))
-		if query != "" && !sessionListItemMatchesQuery(item, query) {
+		snapshot := m.snapshotForPersistenceLocked(s)
+		if len(snapshot.MessageViews) == 0 {
 			continue
 		}
-		items = append(items, item)
+		if !aichatui.SessionMatchesSearch(snapshot.Title, snapshot.MessageViews, query) {
+			continue
+		}
+		items = append(items, sessionListItemFromSnapshot(snapshot, query))
 	}
 
 	return paginateSessionListItems(items, limit, offset), int64(len(items)), nil
-}
-
-func sessionListItemMatchesQuery(item SessionListItem, query string) bool {
-	if query == "" {
-		return true
-	}
-	return strings.Contains(strings.ToLower(item.Title), query)
 }
 
 func paginateSessionListItems(items []SessionListItem, limit, offset int) []SessionListItem {
@@ -585,6 +557,7 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, userID uuid.UU
 		ServerReferences: refs,
 		CreatedAt:        now,
 	})
+	s.reasoningEffort = input.ReasoningEffort
 	s.pendingContext = contextText
 	s.status = SessionStatusRunning
 	s.processing = true
@@ -661,6 +634,7 @@ func (m *Manager) RegenerateAfterUserMessage(ctx context.Context, userID uuid.UU
 		s.scope = scope
 	}
 	s.truncateAfterMessageIndex(messageIndex + 1)
+	s.reasoningEffort = input.ReasoningEffort
 	s.pendingContext = contextText
 	s.status = SessionStatusRunning
 	s.processing = true
@@ -880,6 +854,7 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 			m.mu.RUnlock()
 			return
 		}
+		reasoningEffort := s.reasoningEffort
 		contextText := strings.TrimSpace(s.pendingContext)
 		promptContent := systemPrompt
 		if contextText != "" {
@@ -902,9 +877,10 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		s.streamingMessageID = assistantMessageID
 		m.mu.Unlock()
 		result, err := m.factory.StreamTurn(ctx, config, provider.TurnRequest{
-			Model:    model,
-			Messages: reqMessages,
-			Tools:    tools,
+			ReasoningEffort: reasoningEffort,
+			Model:           model,
+			Messages:        reqMessages,
+			Tools:           tools,
 		}, func(evt provider.Event) error {
 			switch evt.Type {
 			case provider.EventTextDelta:
@@ -962,7 +938,7 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 			return
 		}
 
-		autoTasks, pendingConfirm := m.materializeTasks(s, assistantMessageID, result.ToolCalls, runID)
+		autoTasks, pendingConfirm := m.materializeTasks(ctx, s, assistantMessageID, result.ToolCalls, runID)
 		for _, taskID := range autoTasks {
 			m.executeTask(ctx, s, taskID)
 			if errors.Is(ctx.Err(), context.Canceled) {
@@ -1110,7 +1086,22 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 	m.saveSnapshot(context.Background(), snapshot)
 	m.emitTaskEvent(s, EventTaskUpdated, view)
 
-	result, err := task.spec.Executor(ctx, s.userID, task.toolCall.Arguments)
+	executionCtx := aiworkspace.WithFile(ctx, view.Artifact)
+	executionCtx = aiworkspace.WithProgress(executionCtx, func(output string) {
+		m.mu.Lock()
+		active, exists := s.tasks[taskID]
+		if !exists || active.view.Status != TaskStatusRunning || ctx.Err() != nil {
+			m.mu.Unlock()
+			return
+		}
+		active.view.CommandOutput = output
+		active.view.UpdatedAt = time.Now()
+		s.updatedAt = active.view.UpdatedAt
+		progress := active.view.Public()
+		m.mu.Unlock()
+		m.emitTaskEvent(s, EventTaskUpdated, progress)
+	})
+	result, err := task.spec.Executor(executionCtx, s.userID, task.toolCall.Arguments)
 
 	m.mu.Lock()
 	task, ok = s.tasks[taskID]
@@ -1119,9 +1110,20 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 		return
 	}
 
+	if result.Artifact != nil {
+		task.view.Artifact = result.Artifact
+		summary := result.Artifact.FileSummary
+		task.view.File = &summary
+	}
+	if result.CommandOutput != "" {
+		task.view.CommandOutput = result.CommandOutput
+	}
 	now := time.Now()
 	if task.view.Status == TaskStatusCancelled || ctx.Err() != nil {
 		task.view.Status = TaskStatusCancelled
+		if result.CommandOutput != "" {
+			task.view.Result = result.Content
+		}
 		if task.view.Result == "" {
 			task.view.Result = "操作已取消。"
 		}
@@ -1256,7 +1258,7 @@ func (m *Manager) cancelActiveTasksLocked(s *session, now time.Time) []TaskView 
 	return cancelled
 }
 
-func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCalls []registry.ToolCall, runID string) ([]string, bool) {
+func (m *Manager) materializeTasks(ctx context.Context, s *session, assistantMessageID string, toolCalls []registry.ToolCall, runID string) ([]string, bool) {
 	autoTasks := make([]string, 0, len(toolCalls))
 	pendingConfirm := false
 
@@ -1282,9 +1284,36 @@ func (m *Manager) materializeTasks(s *session, assistantMessageID string, toolCa
 			UpdatedAt:            now,
 		}
 
+		if ok && !spec.SupportsMode(s.permissionMode) {
+			ok = false
+			view.Error = "当前权限不允许执行该工具"
+		}
+		if ok && spec.Prepare != nil {
+			m.mu.RLock()
+			validation := validateTaskServerReference(s, spec, tc.Arguments)
+			m.mu.RUnlock()
+			var file *aiworkspace.FileArtifact
+			var prepareErr error
+			if validation != "" {
+				prepareErr = errors.New(validation)
+			} else {
+				file, prepareErr = spec.Prepare(ctx, s.userID, tc.Arguments)
+			}
+			if prepareErr != nil {
+				ok = false
+				view.Error = prepareErr.Error()
+			} else if file != nil {
+				view.Artifact = file
+				summary := file.FileSummary
+				view.File = &summary
+			}
+		}
+
 		if !ok {
 			view.Status = TaskStatusFailed
-			view.Error = fmt.Sprintf("未知工具: %s", tc.Name)
+			if view.Error == "" {
+				view.Error = fmt.Sprintf("未知工具: %s", tc.Name)
+			}
 			view.Result = view.Error
 
 			m.mu.Lock()
@@ -1561,11 +1590,12 @@ func (m *Manager) snapshotSessionLocked(s *session) SessionView {
 	tasks := make([]TaskView, 0, len(s.taskOrder))
 	for _, taskID := range s.taskOrder {
 		if task, ok := s.tasks[taskID]; ok {
-			tasks = append(tasks, task.view)
+			tasks = append(tasks, task.view.Public())
 		}
 	}
 
 	return SessionView{
+		Title:            s.title,
 		ID:               s.id,
 		Model:            s.model,
 		PermissionMode:   s.permissionMode,
@@ -1582,6 +1612,7 @@ func (m *Manager) snapshotSessionLocked(s *session) SessionView {
 }
 
 func (m *Manager) emitTaskEvent(s *session, eventType EventType, task TaskView) {
+	task = task.Public()
 	m.emitEvent(s, Event{
 		ID:        uuid.NewString(),
 		Type:      eventType,
@@ -1825,7 +1856,7 @@ func (m *Manager) saveSnapshot(ctx context.Context, snapshot SessionSnapshot) {
 	_ = m.store.Save(ctx, snapshot)
 }
 
-func sessionListItemFromSnapshot(snapshot SessionSnapshot) SessionListItem {
+func sessionListItemFromSnapshot(snapshot SessionSnapshot, query string) SessionListItem {
 	title := strings.TrimSpace(snapshot.Title)
 	customTitle := title != ""
 	if title == "" {
@@ -1844,6 +1875,7 @@ func sessionListItemFromSnapshot(snapshot SessionSnapshot) SessionListItem {
 	}
 
 	return SessionListItem{
+		Preview:        aichatui.SessionSearchPreview(snapshot.MessageViews, query),
 		ID:             snapshot.ID,
 		Model:          snapshot.Model,
 		PermissionMode: snapshot.PermissionMode,
@@ -2115,7 +2147,8 @@ func (m *Manager) visibleToolsForSession(s *session) []registry.ToolSpec {
 func (m *Manager) visibleToolsForSessionLocked(s *session) []registry.ToolSpec {
 	tools := m.registry.VisibleForMode(s.permissionMode)
 	resultReader, _ := m.sessionToolSpec(s, aitooloutput.ReadResultTool)
-	tools = append(tools, resultReader)
+	artifactTool, _ := m.sessionToolSpec(s, aiworkspace.CreateTool)
+	tools = append(tools, resultReader, artifactTool)
 	scope := normalizeSessionScope(s.scope)
 	if scope.Kind != "terminal" || scope.ServerID == "" {
 		return tools

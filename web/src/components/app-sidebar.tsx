@@ -88,7 +88,7 @@ export const AppSidebar = React.memo(function AppSidebar({
       <SidebarHeader>
         <TeamSwitcher teams={teamsData} />
       </SidebarHeader>
-      <SidebarContent className="relative overflow-hidden gap-0">
+      <SidebarContent className="relative overflow-hidden gap-0 [scrollbar-gutter:auto]">
         <motion.div
           initial={false}
           animate={{ x: showAI ? "-100%" : "0%" }}

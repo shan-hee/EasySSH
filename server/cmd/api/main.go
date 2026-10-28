@@ -1096,6 +1096,7 @@ func main() {
 			aiChatRoutes.GET("/sessions/latest", aiSessionHandler.GetLatestSession)
 			aiChatRoutes.POST("/sessions", aiSessionHandler.CreateSession)
 			aiChatRoutes.GET("/sessions/:session_id", aiSessionHandler.GetSession)
+			aiChatRoutes.GET("/sessions/:session_id/tasks/:task_id/file", aiSessionHandler.GetTaskFile)
 			aiChatRoutes.PATCH("/sessions/:session_id", aiSessionHandler.RenameSession)
 			aiChatRoutes.POST("/sessions/:session_id/chat", aiSessionHandler.Chat)
 			aiChatRoutes.GET("/sessions/:session_id/chat/stream", aiSessionHandler.ResumeChat)

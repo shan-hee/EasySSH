@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/easyssh/shared/aiworkspace"
 	"github.com/google/uuid"
 )
 
@@ -23,13 +24,18 @@ type ToolCall struct {
 }
 
 type ExecutionResult struct {
-	Content string `json:"content"`
-	IsError bool   `json:"is_error,omitempty"`
+	CommandOutput string                    `json:"command_output,omitempty"`
+	Artifact      *aiworkspace.FileArtifact `json:"artifact,omitempty"`
+	Content       string                    `json:"content"`
+	IsError       bool                      `json:"is_error,omitempty"`
 }
 
 type ToolExecutor func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (ExecutionResult, error)
 
+type ToolPreparer func(context.Context, uuid.UUID, json.RawMessage) (*aiworkspace.FileArtifact, error)
+
 type ToolSpec struct {
+	Prepare         ToolPreparer           `json:"-"`
 	Name            string                 `json:"name"`
 	DisplayName     string                 `json:"display_name,omitempty"`
 	Description     string                 `json:"description"`

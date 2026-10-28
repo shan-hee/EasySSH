@@ -356,6 +356,7 @@ export class DesktopAIProviderMetadata {
 }
 
 export class DesktopAIRegenerateMessageInput {
+    "reasoning_effort"?: string;
     "session_id": string;
     "message_id": string;
     "context"?: string;
@@ -389,6 +390,7 @@ export class DesktopAIRegenerateMessageInput {
 }
 
 export class DesktopAISendMessageInput {
+    "reasoning_effort"?: string;
     "server_references"?: aichatui$0.ServerReference[];
     "session_id": string;
     "content": string;
@@ -432,6 +434,7 @@ export class DesktopAISendMessageInput {
 }
 
 export class DesktopAISessionListItem {
+    "preview"?: string;
     "id": string;
     "model": string;
     "permission_mode": DesktopAIPermissionMode;
@@ -530,6 +533,7 @@ export enum DesktopAISessionStatus {
 };
 
 export class DesktopAISessionView {
+    "title"?: string;
     "id": string;
     "model": string;
     "permission_mode": DesktopAIPermissionMode;
@@ -626,6 +630,8 @@ export enum DesktopAITaskStatus {
 };
 
 export class DesktopAITaskView {
+    "file"?: { name: string; media_type: string; size: number; path?: string; server_id?: string; kind: "generated" | "read" | "modified" };
+    "command_output"?: string;
     "id": string;
     "assistant_message_id"?: string;
     "tool_call_id": string;
@@ -686,6 +692,7 @@ export class DesktopAITaskView {
 }
 
 export class DesktopAIToolApprovalInput {
+    "reasoning_effort"?: string;
     "session_id": string;
     "id": string;
     "approved": boolean | null;

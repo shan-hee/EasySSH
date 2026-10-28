@@ -19,6 +19,7 @@ import (
 	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/aiprovider"
 	"github.com/easyssh/shared/aitooloutput"
+	"github.com/easyssh/shared/aiworkspace"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	_ "modernc.org/sqlite"
 )
@@ -162,24 +163,28 @@ type DesktopAIMessageView struct {
 }
 
 type DesktopAITaskView struct {
-	ID                   string              `json:"id"`
-	AssistantMessageID   string              `json:"assistant_message_id,omitempty"`
-	ToolCallID           string              `json:"tool_call_id"`
-	ToolName             string              `json:"tool_name"`
-	ToolDisplayName      string              `json:"tool_display_name,omitempty"`
-	Summary              string              `json:"summary,omitempty"`
-	Status               DesktopAITaskStatus `json:"status"`
-	Dangerous            bool                `json:"dangerous"`
-	RequiresConfirmation bool                `json:"requires_confirmation"`
-	Arguments            map[string]any      `json:"arguments,omitempty"`
-	Result               string              `json:"result,omitempty"`
-	Error                string              `json:"error,omitempty"`
-	CreatedAt            string              `json:"created_at"`
-	UpdatedAt            string              `json:"updated_at"`
-	CustomTitle          bool                `json:"custom_title,omitempty"`
+	File                 *aiworkspace.FileSummary  `json:"file,omitempty"`
+	Artifact             *aiworkspace.FileArtifact `json:"artifact,omitempty"`
+	CommandOutput        string                    `json:"command_output,omitempty"`
+	ID                   string                    `json:"id"`
+	AssistantMessageID   string                    `json:"assistant_message_id,omitempty"`
+	ToolCallID           string                    `json:"tool_call_id"`
+	ToolName             string                    `json:"tool_name"`
+	ToolDisplayName      string                    `json:"tool_display_name,omitempty"`
+	Summary              string                    `json:"summary,omitempty"`
+	Status               DesktopAITaskStatus       `json:"status"`
+	Dangerous            bool                      `json:"dangerous"`
+	RequiresConfirmation bool                      `json:"requires_confirmation"`
+	Arguments            map[string]any            `json:"arguments,omitempty"`
+	Result               string                    `json:"result,omitempty"`
+	Error                string                    `json:"error,omitempty"`
+	CreatedAt            string                    `json:"created_at"`
+	UpdatedAt            string                    `json:"updated_at"`
+	CustomTitle          bool                      `json:"custom_title,omitempty"`
 }
 
 type DesktopAISessionView struct {
+	Title            string                  `json:"title,omitempty"`
 	ID               string                  `json:"id"`
 	Model            string                  `json:"model"`
 	PermissionMode   DesktopAIPermissionMode `json:"permission_mode"`
@@ -195,6 +200,7 @@ type DesktopAISessionView struct {
 }
 
 type DesktopAISessionListItem struct {
+	Preview        string                  `json:"preview,omitempty"`
 	ID             string                  `json:"id"`
 	Model          string                  `json:"model"`
 	PermissionMode DesktopAIPermissionMode `json:"permission_mode"`
@@ -235,6 +241,7 @@ type DesktopAICreateSessionResponse struct {
 }
 
 type DesktopAISendMessageInput struct {
+	ReasoningEffort  string                     `json:"reasoning_effort,omitempty"`
 	ServerReferences []aichatui.ServerReference `json:"server_references,omitempty"`
 	SessionID        string                     `json:"session_id"`
 	Content          string                     `json:"content"`
@@ -253,22 +260,25 @@ type DesktopAIUpdateMessageInput struct {
 }
 
 type DesktopAIRegenerateMessageInput struct {
-	SessionID      string                  `json:"session_id"`
-	MessageID      string                  `json:"message_id"`
-	Context        string                  `json:"context,omitempty"`
-	Model          string                  `json:"model,omitempty"`
-	PermissionMode DesktopAIPermissionMode `json:"permission_mode,omitempty"`
-	Scope          *DesktopAISessionScope  `json:"scope,omitempty"`
+	ReasoningEffort string                  `json:"reasoning_effort,omitempty"`
+	SessionID       string                  `json:"session_id"`
+	MessageID       string                  `json:"message_id"`
+	Context         string                  `json:"context,omitempty"`
+	Model           string                  `json:"model,omitempty"`
+	PermissionMode  DesktopAIPermissionMode `json:"permission_mode,omitempty"`
+	Scope           *DesktopAISessionScope  `json:"scope,omitempty"`
 }
 
 type DesktopAIToolApprovalInput struct {
-	SessionID string `json:"session_id"`
-	ID        string `json:"id"`
-	Approved  *bool  `json:"approved"`
-	Reason    string `json:"reason,omitempty"`
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	SessionID       string `json:"session_id"`
+	ID              string `json:"id"`
+	Approved        *bool  `json:"approved"`
+	Reason          string `json:"reason,omitempty"`
 }
 
 type DesktopAISessionEvent struct {
+	Task      *DesktopAITaskView    `json:"task,omitempty"`
 	SessionID string                `json:"session_id"`
 	Type      string                `json:"type"`
 	Session   *DesktopAISessionView `json:"session,omitempty"`
@@ -301,9 +311,10 @@ type desktopAISessionRecord struct {
 }
 
 type desktopAIActiveRequest struct {
-	Cancel context.CancelFunc
-	Done   chan struct{}
-	finish sync.Once
+	CommandOutputs map[string]string
+	Cancel         context.CancelFunc
+	Done           chan struct{}
+	finish         sync.Once
 }
 
 type desktopAIToolSpec struct {
@@ -317,15 +328,18 @@ type desktopAIToolSpec struct {
 }
 
 type desktopAIToolResult struct {
-	Content string
-	IsError bool
+	Artifact      *aiworkspace.FileArtifact
+	CommandOutput string
+	Content       string
+	IsError       bool
 }
 
 type desktopAIConfirmedToolRun struct {
-	Context context.Context
-	Cancel  context.CancelFunc
-	Request *desktopAIActiveRequest
-	Active  int
+	ReasoningEffort string
+	Context         context.Context
+	Cancel          context.CancelFunc
+	Request         *desktopAIActiveRequest
+	Active          int
 }
 
 type DesktopAIService struct {
@@ -540,7 +554,7 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 	querySQL := fmt.Sprintf(`
 		SELECT id, title, custom_title, model, permission_mode, scope_json, status,
 			json_array_length(messages_json), json_array_length(tasks_json), created_at, updated_at,
-			CASE WHEN trim(title) = '' THEN messages_json ELSE '[]' END
+			messages_json
 		FROM desktop_ai_sessions
 		WHERE %s
 		ORDER BY updated_at DESC, created_at DESC, id DESC
@@ -554,20 +568,22 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 
 	items := make([]DesktopAISessionListItem, 0)
 	for rows.Next() {
-		var id, title, model, permissionMode, scopeJSON, status, createdAt, updatedAt, titleMessagesJSON string
+		var id, title, model, permissionMode, scopeJSON, status, createdAt, updatedAt, messagesJSON string
 		var customTitle, messageCount, taskCount int
-		if err := rows.Scan(&id, &title, &customTitle, &model, &permissionMode, &scopeJSON, &status, &messageCount, &taskCount, &createdAt, &updatedAt, &titleMessagesJSON); err != nil {
+		if err := rows.Scan(&id, &title, &customTitle, &model, &permissionMode, &scopeJSON, &status, &messageCount, &taskCount, &createdAt, &updatedAt, &messagesJSON); err != nil {
 			return DesktopAIListSessionsResult{}, err
 		}
+		messages := decodeDesktopAIMessages(messagesJSON)
 		title = strings.TrimSpace(title)
 		if title == "" {
 			customTitle = 0
-			title = defaultDesktopAISessionTitle(decodeDesktopAIMessages(titleMessagesJSON))
+			title = defaultDesktopAISessionTitle(messages)
 		}
 		if title == "" {
 			title = "New session"
 		}
 		items = append(items, DesktopAISessionListItem{
+			Preview:        aichatui.SessionSearchPreview(toAichatUIMessages(messages), params.Q),
 			ID:             id,
 			Model:          model,
 			PermissionMode: DesktopAIPermissionMode(permissionMode),
@@ -747,17 +763,17 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	if record.Title == "" {
 		record.Title = defaultDesktopAISessionTitle(record.Messages)
 	}
-	return s.completeDesktopAITurn(ctx, record, config, input.Context, model)
+	return s.completeDesktopAITurn(ctx, record, config, input.Context, model, input.ReasoningEffort)
 }
 
-func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record desktopAISessionRecord, config desktopAIConfigRecord, contextText string, model string) (DesktopAICreateSessionResponse, error) {
+func (s *DesktopAIService) completeDesktopAITurn(ctx context.Context, record desktopAISessionRecord, config desktopAIConfigRecord, contextText string, model string, reasoningEffort string) (DesktopAICreateSessionResponse, error) {
 	sessionID := record.ID
 	requestContext, request := s.beginAIRequest(ctx, sessionID)
 	defer s.finishAIRequest(sessionID, request)
-	return s.completeDesktopAITurnWithContext(requestContext, record, config, contextText, model)
+	return s.completeDesktopAITurnWithContext(requestContext, record, config, contextText, model, reasoningEffort)
 }
 
-func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext context.Context, record desktopAISessionRecord, config desktopAIConfigRecord, contextText string, model string) (DesktopAICreateSessionResponse, error) {
+func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext context.Context, record desktopAISessionRecord, config desktopAIConfigRecord, contextText string, model string, reasoningEffort string) (DesktopAICreateSessionResponse, error) {
 	if err := s.refreshRunServerReferences(requestContext, &record); err != nil {
 		return s.failDesktopAITurn(record, err)
 	}
@@ -773,7 +789,7 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		assistantStartedAt := time.Now().UTC().Format(time.RFC3339Nano)
 		var assistantContentBuilder strings.Builder
 		var assistantReasoningBuilder strings.Builder
-		turnResult, err := s.completeChat(requestContext, config, record, contextText, model, func(event aiprovider.Event) error {
+		turnResult, err := s.completeChat(requestContext, config, record, contextText, model, reasoningEffort, func(event aiprovider.Event) error {
 			switch event.Type {
 			case aiprovider.EventTextDelta:
 				assistantContentBuilder.WriteString(event.Delta)
@@ -842,7 +858,7 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 			}, nil
 		}
 
-		tasks, autoTaskIDs, pendingConfirm := s.materializeDesktopAITasks(record, assistantMessageID, turnResult.ToolCalls)
+		tasks, autoTaskIDs, pendingConfirm := s.materializeDesktopAITasks(requestContext, record, assistantMessageID, turnResult.ToolCalls)
 		record.Tasks = append(record.Tasks, tasks...)
 		record.Status = DesktopAISessionRunning
 		if err := s.saveSession(record); err != nil {
@@ -942,9 +958,10 @@ func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input Desk
 		turnContext, cancelTurn := context.WithCancel(context.Background())
 		requestContext, request := s.beginAIRequest(turnContext, sessionID)
 		run = &desktopAIConfirmedToolRun{
-			Context: requestContext,
-			Cancel:  cancelTurn,
-			Request: request,
+			ReasoningEffort: input.ReasoningEffort,
+			Context:         requestContext,
+			Cancel:          cancelTurn,
+			Request:         request,
 		}
 		s.confirmedRuns[sessionID] = run
 	}
@@ -989,7 +1006,7 @@ func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input Desk
 	s.sessionMu.Unlock()
 
 	s.emitAISessionSnapshot(record)
-	go s.resolveDesktopConfirmedTask(sessionID, taskID, approved, taskName, taskArguments, run)
+	go s.resolveDesktopConfirmedTask(sessionID, taskID, approved, run)
 
 	return DesktopAICreateSessionResponse{
 		SessionID:        view.ID,
@@ -1002,8 +1019,6 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 	sessionID string,
 	taskID string,
 	approved bool,
-	toolName string,
-	arguments map[string]any,
 	run *desktopAIConfirmedToolRun,
 ) {
 	desktopAISyncMu.RLock()
@@ -1011,7 +1026,14 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 	var result desktopAIToolResult
 	var executeErr error
 	if approved && run.Context.Err() == nil {
-		result, executeErr = s.executeDesktopAITool(run.Context, toolName, arguments)
+		record, err := s.loadSession(sessionID)
+		if err != nil {
+			executeErr = err
+		} else if index := desktopAIFindTaskIndex(record.Tasks, taskID); index < 0 {
+			executeErr = errors.New("AI task not found")
+		} else {
+			result, executeErr = s.executeWorkspaceTool(run.Context, sessionID, record.Tasks[index])
+		}
 	}
 
 	s.sessionMu.Lock()
@@ -1029,6 +1051,12 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 	taskIndex := desktopAIFindTaskIndex(record.Tasks, taskID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if taskIndex >= 0 && approved && record.Tasks[taskIndex].Status != DesktopAITaskCancelled {
+		record.Tasks[taskIndex].CommandOutput = result.CommandOutput
+		if result.Artifact != nil {
+			record.Tasks[taskIndex].Artifact = result.Artifact
+			summary := result.Artifact.FileSummary
+			record.Tasks[taskIndex].File = &summary
+		}
 		switch {
 		case run.Context.Err() != nil:
 			record.Tasks[taskIndex].Status = DesktopAITaskCancelled
@@ -1104,7 +1132,7 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 		return
 	}
 	record.Model = model
-	if _, err = s.completeDesktopAITurnWithContext(run.Context, record, config, "", model); err != nil {
+	if _, err = s.completeDesktopAITurnWithContext(run.Context, record, config, "", model, run.ReasoningEffort); err != nil {
 		s.emitAISessionEvent(DesktopAISessionEvent{SessionID: sessionID, Type: "error", Error: err.Error()})
 	}
 }
@@ -1297,7 +1325,7 @@ func (s *DesktopAIService) RegenerateMessage(ctx context.Context, input DesktopA
 		record.Title = defaultDesktopAISessionTitle(record.Messages)
 	}
 
-	return s.completeDesktopAITurn(ctx, record, config, input.Context, model)
+	return s.completeDesktopAITurn(ctx, record, config, input.Context, model, input.ReasoningEffort)
 }
 
 func (s *DesktopAIService) DeleteMessage(sessionID string, messageID string) (DesktopAICreateSessionResponse, error) {
@@ -1538,6 +1566,15 @@ func (s *DesktopAIService) loadSession(id string) (desktopAISessionRecord, error
 	}
 	record.Messages = decodeDesktopAIMessages(messagesJSON)
 	record.Tasks = decodeDesktopAITasks(tasksJSON)
+	s.mu.Lock()
+	if request := s.activeRequests[id]; request != nil {
+		for index := range record.Tasks {
+			if output, ok := request.CommandOutputs[record.Tasks[index].ID]; ok {
+				record.Tasks[index].CommandOutput = output
+			}
+		}
+	}
+	s.mu.Unlock()
 	if !record.CustomTitle {
 		record.Title = defaultDesktopAISessionTitle(record.Messages)
 	}
@@ -1587,7 +1624,7 @@ func (s *DesktopAIService) saveSession(record desktopAISessionRecord) error {
 
 func (s *DesktopAIService) beginAIRequest(parent context.Context, sessionID string) (context.Context, *desktopAIActiveRequest) {
 	requestContext, cancel := context.WithCancel(parent)
-	request := &desktopAIActiveRequest{Cancel: cancel, Done: make(chan struct{})}
+	request := &desktopAIActiveRequest{Cancel: cancel, Done: make(chan struct{}), CommandOutputs: map[string]string{}}
 
 	s.mu.Lock()
 	if s.activeRequests == nil {
@@ -1642,7 +1679,7 @@ func (s *DesktopAIService) activeDesktopAISessionStatus(sessionID string, status
 	return status
 }
 
-func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAIConfigRecord, record desktopAISessionRecord, contextText string, model string, onEvent func(aiprovider.Event) error) (aiprovider.TurnResult, error) {
+func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAIConfigRecord, record desktopAISessionRecord, contextText string, model string, reasoningEffort string, onEvent func(aiprovider.Event) error) (aiprovider.TurnResult, error) {
 	factory := aiprovider.NewFactory()
 	result, err := factory.StreamTurn(ctx, aiprovider.Config{
 		Provider: config.CustomProvider,
@@ -1650,9 +1687,10 @@ func (s *DesktopAIService) completeChat(ctx context.Context, config desktopAICon
 		Endpoint: strings.TrimSpace(config.CustomEndpoint),
 		Model:    model,
 	}, aiprovider.TurnRequest{
-		Model:    model,
-		Messages: desktopAIProviderMessages(record, contextText),
-		Tools:    desktopAIProviderToolSpecs(desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)),
+		ReasoningEffort: reasoningEffort,
+		Model:           model,
+		Messages:        desktopAIProviderMessages(record, contextText),
+		Tools:           desktopAIProviderToolSpecs(desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)),
 	}, func(event aiprovider.Event) error {
 		if onEvent != nil {
 			return onEvent(event)
@@ -1787,7 +1825,7 @@ func desktopAIEncodeArguments(args map[string]any) json.RawMessage {
 	return json.RawMessage(data)
 }
 
-func (s *DesktopAIService) materializeDesktopAITasks(record desktopAISessionRecord, assistantMessageID string, toolCalls []aiprovider.ToolCall) ([]DesktopAITaskView, []string, bool) {
+func (s *DesktopAIService) materializeDesktopAITasks(ctx context.Context, record desktopAISessionRecord, assistantMessageID string, toolCalls []aiprovider.ToolCall) ([]DesktopAITaskView, []string, bool) {
 	tasks := make([]DesktopAITaskView, 0, len(toolCalls))
 	autoTaskIDs := make([]string, 0, len(toolCalls))
 	pendingConfirm := false
@@ -1825,6 +1863,20 @@ func (s *DesktopAIService) materializeDesktopAITasks(record desktopAISessionReco
 			tasks = append(tasks, task)
 			continue
 		}
+		if toolCall.Name == "write_file" {
+			file, err := s.prepareDesktopWrite(ctx, args)
+			if err != nil {
+				task.Status = DesktopAITaskFailed
+				task.Error = err.Error()
+				task.Result = task.Error
+				tasks = append(tasks, task)
+				continue
+			}
+			task.Artifact = file
+			summary := file.FileSummary
+			task.File = &summary
+		}
+
 		if task.RequiresConfirmation {
 			task.Status = DesktopAITaskWaitingConfirm
 			pendingConfirm = true
@@ -1895,8 +1947,15 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 	if record.Tasks[taskIndex].ToolName == aitooloutput.ReadResultTool {
 		result = desktopAIReadToolResult(record, record.Tasks[taskIndex].Arguments)
 	} else {
-		result, err = s.executeDesktopAITool(ctx, record.Tasks[taskIndex].ToolName, record.Tasks[taskIndex].Arguments)
+		result, err = s.executeWorkspaceTool(ctx, record.ID, record.Tasks[taskIndex])
 	}
+	record.Tasks[taskIndex].CommandOutput = result.CommandOutput
+	if result.Artifact != nil {
+		record.Tasks[taskIndex].Artifact = result.Artifact
+		summary := result.Artifact.FileSummary
+		record.Tasks[taskIndex].File = &summary
+	}
+
 	now = time.Now().UTC().Format(time.RFC3339Nano)
 	if ctx.Err() != nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		cancelDesktopAIActiveTasks(&record, now)
@@ -1925,6 +1984,8 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 
 func (s *DesktopAIService) executeDesktopAITool(ctx context.Context, toolName string, args map[string]any) (desktopAIToolResult, error) {
 	switch toolName {
+	case aiworkspace.CreateTool:
+		return createDesktopArtifact(args)
 	case "list_servers":
 		return s.executeDesktopAIListServers(ctx, args)
 	case "get_server_info":
@@ -2056,9 +2117,12 @@ func (s *DesktopAIService) executeDesktopAICommand(ctx context.Context, args map
 	if result.ExitCode != 0 {
 		failed := desktopAIToolJSON("命令执行失败", payload)
 		failed.IsError = true
+		failed.CommandOutput = output
 		return failed, nil
 	}
-	return desktopAIToolJSON("命令执行成功", payload), nil
+	success := desktopAIToolJSON("命令执行成功", payload)
+	success.CommandOutput = output
+	return success, nil
 }
 
 func (s *DesktopAIService) executeDesktopAIListDirectory(ctx context.Context, args map[string]any) (desktopAIToolResult, error) {
@@ -2131,7 +2195,12 @@ func (s *DesktopAIService) executeDesktopAIReadFile(ctx context.Context, args ma
 		output += fmt.Sprintf("\n\n... (文件已截断，仅显示前 %d 行)", maxLines)
 	}
 	output = aitooloutput.Truncate(output, aitooloutput.StoredTextBytes)
-	return desktopAIToolResult{Content: fmt.Sprintf("文件内容 (%s):\n```\n%s\n```", remotePath, output)}, nil
+	result := desktopAIToolResult{Content: fmt.Sprintf("文件内容 (%s):\n```\n%s\n```", remotePath, output)}
+	if file, err := aiworkspace.NewFile(remotePath, content, "utf8"); err == nil {
+		file.Kind, file.Path, file.ServerID = "read", remotePath, serverID
+		result.Artifact = file
+	}
+	return result, nil
 }
 
 func (s *DesktopAIService) executeDesktopAIWriteFile(ctx context.Context, args map[string]any) (desktopAIToolResult, error) {
@@ -2144,11 +2213,33 @@ func (s *DesktopAIService) executeDesktopAIWriteFile(ctx context.Context, args m
 	if serverID == "" || remotePath == "" {
 		return desktopAIToolError("server_id and path are required"), nil
 	}
+	prepared := aiworkspace.PreparedFile(ctx)
+	before, readErr := s.sftpService.ReadFileContext(ctx, DesktopSFTPPathInput{ServerID: serverID, Path: remotePath})
+	exists := !errors.Is(readErr, os.ErrNotExist)
+	if readErr != nil && exists {
+		return desktopAIToolResult{}, readErr
+	}
+	if err := prepared.CheckBaseline(before, exists); err != nil {
+		return desktopAIToolResult{}, err
+	}
+	if prepared.Content != content || prepared.Path != remotePath || prepared.ServerID != serverID {
+		return desktopAIToolResult{}, errors.New("prepared file does not match this operation")
+	}
+
 	info, err := s.sftpService.WriteFileContext(ctx, DesktopSFTPWriteFileInput{ServerID: serverID, Path: remotePath, Content: content})
 	if err != nil {
 		return desktopAIToolError("写入文件失败: " + err.Error()), nil
 	}
-	return desktopAIToolJSON("文件已写入", info), nil
+	actual, err := s.sftpService.ReadFileContext(ctx, DesktopSFTPPathInput{ServerID: serverID, Path: remotePath})
+	if err != nil {
+		return desktopAIToolResult{}, fmt.Errorf("文件已写入，但无法核对结果: %w", err)
+	}
+	if actual != content {
+		return desktopAIToolResult{}, errors.New("文件写入后内容不一致，请重新读取核对")
+	}
+	result := desktopAIToolJSON("文件已写入", info)
+	result.Artifact = prepared
+	return result, nil
 }
 
 func (s *DesktopAIService) executeDesktopAICreateDirectory(ctx context.Context, args map[string]any) (desktopAIToolResult, error) {
@@ -2235,7 +2326,7 @@ func normalizeDesktopAIListParams(params DesktopAIListSessionsParams) DesktopAIL
 
 func buildDesktopAIWhere(params DesktopAIListSessionsParams) (string, []any) {
 	params = normalizeDesktopAIListParams(params)
-	clauses := []string{"1 = 1"}
+	clauses := []string{"json_array_length(messages_json) > 0"}
 	args := make([]any, 0)
 
 	if params.ScopeKind != "" {
@@ -2287,8 +2378,18 @@ func normalizeDesktopAISessionScope(scope *DesktopAISessionScope) *DesktopAISess
 }
 
 func (record desktopAISessionRecord) toView() DesktopAISessionView {
+	var title string
+	if record.CustomTitle {
+		title = record.Title
+	}
 	uiMessages := desktopAIUIMessages(record.Messages, record.Tasks)
+	publicTasks := append([]DesktopAITaskView{}, record.Tasks...)
+	for i := range publicTasks {
+		publicTasks[i].Artifact = nil
+		publicTasks[i].Arguments = aiworkspace.PublicArguments(publicTasks[i].ToolName, publicTasks[i].Arguments)
+	}
 	return DesktopAISessionView{
+		Title:            title,
 		ID:               record.ID,
 		Model:            record.Model,
 		PermissionMode:   normalizeDesktopAIPermission(record.PermissionMode),
@@ -2297,7 +2398,7 @@ func (record desktopAISessionRecord) toView() DesktopAISessionView {
 		CreatedAt:        record.CreatedAt,
 		UpdatedAt:        record.UpdatedAt,
 		Messages:         record.Messages,
-		Tasks:            record.Tasks,
+		Tasks:            publicTasks,
 		UIMessages:       uiMessages,
 		AvailableTools:   desktopAIToolViews(desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)),
 		DefaultTransport: "ai_sdk_ui",
@@ -2306,6 +2407,9 @@ func (record desktopAISessionRecord) toView() DesktopAISessionView {
 
 func desktopAIAllToolSpecs() []desktopAIToolSpec {
 	return []desktopAIToolSpec{
+		{Name: aiworkspace.CreateTool, DisplayName: "生成文件", Description: aiworkspace.CreateDescription,
+			Parameters: aiworkspace.CreateParameters(), ConfirmStrategy: desktopAIConfirmNone,
+			SupportedModes: []DesktopAIPermissionMode{DesktopAIPermissionReadonly, DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged}},
 		{
 			Name: aitooloutput.ReadResultTool, DisplayName: "查看执行结果", Description: aitooloutput.ReadResultDescription,
 			Parameters: aitooloutput.ReadResultParameters(), ConfirmStrategy: desktopAIConfirmNone,
@@ -2384,7 +2488,7 @@ func desktopAIAllToolSpecs() []desktopAIToolSpec {
 		{
 			Name:        "write_file",
 			DisplayName: "写入文件",
-			Description: "向服务器上的文件写入内容。如果文件存在会被覆盖。",
+			Description: "向服务器写入最多 2 MiB 的 UTF-8 文本。修改文件优先使用此工具：记录真实原文件和提议内容供用户查看对比，执行前核对原内容，变化时停止写入。会话文件使用 create_artifact。",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -2658,6 +2762,7 @@ func toAichatUITasks(tasks []DesktopAITaskView) []aichatui.TaskView {
 	result := make([]aichatui.TaskView, 0, len(tasks))
 	for _, task := range tasks {
 		result = append(result, aichatui.TaskView{
+			File: task.File, Artifact: task.Artifact, CommandOutput: task.CommandOutput,
 			ID:                   task.ID,
 			AssistantMessageID:   task.AssistantMessageID,
 			ToolCallID:           task.ToolCallID,

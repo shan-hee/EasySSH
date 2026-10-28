@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/easyssh/shared/aiworkspace"
 	"github.com/google/uuid"
 )
 
@@ -16,9 +17,11 @@ type ToolCall struct {
 
 // ToolResult 工具执行结果
 type ToolResult struct {
-	ToolCallID string `json:"tool_call_id"`
-	Content    string `json:"content"`
-	IsError    bool   `json:"is_error,omitempty"`
+	CommandOutput string                    `json:"command_output,omitempty"`
+	Artifact      *aiworkspace.FileArtifact `json:"artifact,omitempty"`
+	ToolCallID    string                    `json:"tool_call_id"`
+	Content       string                    `json:"content"`
+	IsError       bool                      `json:"is_error,omitempty"`
 }
 
 // ToolExecutor 工具执行器接口

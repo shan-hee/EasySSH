@@ -100,6 +100,7 @@ type UIMessage = aichatui.UIMessage
 type Attachment = provider.Attachment
 
 type SessionListItem struct {
+	Preview        string        `json:"preview,omitempty"`
 	ID             string        `json:"id"`
 	Model          string        `json:"model"`
 	PermissionMode string        `json:"permission_mode"`
@@ -124,6 +125,7 @@ type SessionScope struct {
 }
 
 type SessionView struct {
+	Title            string        `json:"title,omitempty"`
 	ID               string        `json:"id"`
 	Model            string        `json:"model"`
 	PermissionMode   string        `json:"permission_mode"`
@@ -159,6 +161,7 @@ type CreateSessionInput struct {
 }
 
 type SendUserMessageInput struct {
+	ReasoningEffort  string
 	ServerReferences []aichatui.ServerReference
 	MessageID        string
 	Content          string

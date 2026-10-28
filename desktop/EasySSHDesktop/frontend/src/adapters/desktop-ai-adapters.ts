@@ -1,7 +1,8 @@
 import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
-import { Events } from "@wailsio/runtime"
+import { Call, Events } from "@wailsio/runtime"
 import { requestDesktopSync } from "./desktop-sync"
 import type {
+  AgentFileArtifact,
   AgentSessionScope,
   AgentSessionStatus,
   AgentTaskStatus,
@@ -51,6 +52,7 @@ type DesktopAISessionEvent = {
   type?: string
   session?: DesktopAISessionView
   ui_message?: DesktopAIUIMessage
+  task?: DesktopAITaskView
   error?: string
 }
 
@@ -72,6 +74,8 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
       ),
     },
     aiSession: {
+      getTaskFile: (sessionId, taskId) => Call.ByName("main.DesktopAIService.GetTaskFile", sessionId, taskId) as Promise<AgentFileArtifact>,
+      saveTaskFile: (sessionId, taskId) => Call.ByName("main.DesktopAIService.SaveTaskFile", sessionId, taskId) as Promise<void>,
       getSession: async (sessionId: string) => fromDesktopSessionResponse(await DesktopAIService.GetSession(sessionId)),
       getLatestSession: async (scope?: AgentSessionScope) => {
         const response = await DesktopAIService.GetLatestSession(toDesktopSessionScope(scope))
@@ -86,6 +90,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
       ),
       sendMessage: async (input) => fromDesktopSessionResponse(
         await DesktopAIService.SendMessage(new DesktopAISendMessageInput({
+          reasoning_effort: input.reasoning_effort,
           session_id: input.session_id,
           content: input.content,
           server_references: input.server_references?.map((ref) => new ServerReference(ref)),
@@ -106,6 +111,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
       ),
       regenerateMessage: async (input) => fromDesktopSessionResponse(
         await DesktopAIService.RegenerateMessage(new DesktopAIRegenerateMessageInput({
+          reasoning_effort: input.reasoning_effort,
           session_id: input.session_id,
           message_id: input.message_id,
           context: input.context,
@@ -128,11 +134,13 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           type: data.type,
           session: data.session ? fromDesktopSession(data.session) : undefined,
           ui_message: data.ui_message,
+          task: data.task ? fromDesktopTask(data.task) : undefined,
           error: data.error,
         })
       }),
       respondToToolApproval: async (input) => fromDesktopSessionResponse(
         await DesktopAIService.RespondToToolApproval(new DesktopAIToolApprovalInput({
+          reasoning_effort: input.reasoning_effort,
           session_id: input.session_id,
           id: input.id,
           approved: input.approved,
@@ -250,6 +258,7 @@ function fromDesktopSessionResponse(response: DesktopAICreateSessionResponse): C
 
 function fromDesktopSession(session: DesktopAISessionView): SessionView {
   return {
+    title: session.title,
     id: session.id,
     model: session.model,
     permission_mode: fromDesktopPermissionMode(session.permission_mode),
@@ -274,6 +283,7 @@ function fromDesktopSessionListResult(result: DesktopAIListSessionsResult): List
 
 function fromDesktopSessionListItem(item: DesktopAISessionListItem): SessionListItem {
   return {
+    preview: item.preview,
     id: item.id,
     model: item.model,
     permission_mode: fromDesktopPermissionMode(item.permission_mode),
@@ -308,6 +318,8 @@ function fromDesktopTask(task: DesktopAITaskView): TaskView {
 
   return {
     id: task.id,
+    file: task.file,
+    command_output: task.command_output,
     assistant_message_id: desktopTask.assistant_message_id,
     tool_call_id: task.tool_call_id,
     tool_name: task.tool_name,

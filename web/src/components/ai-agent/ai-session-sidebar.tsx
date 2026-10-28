@@ -1,9 +1,9 @@
-import { useRef, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import type { TFunction } from "i18next"
 import { Loader2, Plus, Search } from "lucide-react"
-import { ThreadListSearch } from "@/components/assistant-ui/elements/thread-list-search"
-import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
-import { SidebarMenuButton, useSidebar } from "@/components/ui/sidebar"
+import { SidebarMenuButton } from "@/components/ui/sidebar"
+import { AISessionSearch } from "./ai-session-search"
+import type { listAISessions } from "@/lib/api/ai-agent"
 import { AISessionHistoryList } from "./ai-session-history-list"
 import { useAISidebarNavigation } from "./ai-sidebar-host"
 import type { AISessionHistoryState } from "@/hooks/use-ai-session-history"
@@ -17,6 +17,7 @@ export function AISessionSidebar({
   creating,
   createDisabled,
   configuration,
+  listSessions,
   t,
 }: {
   history: AISessionHistoryState
@@ -27,41 +28,31 @@ export function AISessionSidebar({
   creating: boolean
   createDisabled: boolean
   configuration: ReactNode
+  listSessions?: typeof listAISessions
   t: TFunction<"aiAssistant">
 }) {
-  const { setOpen } = useSidebar()
   const navigation = useAISidebarNavigation()
-  const searchRef = useRef<HTMLInputElement>(null)
+  const [searchOpen, setSearchOpen] = useState(false)
   return (
     <section aria-label={t("pageTitle")} className="flex min-h-0 flex-1 flex-col gap-2 px-2 pb-2">
-      <div className="shrink-0 group-data-[collapsible=icon]:hidden">
-        <ThreadListSearch
-          ref={searchRef}
-          value={history.search}
-          onValueChange={history.setSearch}
-          aria-label={t("searchPlaceholder")}
-          placeholder={t("searchPlaceholder")}
-          disabled={Boolean(history.renamingId) || Boolean(history.actionLoadingId)}
-          className="bg-sidebar shadow-none"
-        />
-      </div>
-      <TooltipIconButton
+      <SidebarMenuButton
         tooltip={t("searchPlaceholder")}
-        className="hidden size-8 shrink-0 group-data-[collapsible=icon]:inline-flex"
-        onClick={() => {
-          setOpen(true)
-          requestAnimationFrame(() => searchRef.current?.focus())
-        }}
+        aria-label={t("searchPlaceholder")}
+        disabled={Boolean(history.renamingId) || Boolean(history.actionLoadingId)}
+        onClick={() => setSearchOpen(true)}
+        className="h-9 shrink-0 text-muted-foreground"
       >
         <Search className="size-4" />
-      </TooltipIconButton>
+        <span>{t("searchPlaceholder")}</span>
+      </SidebarMenuButton>
+      {searchOpen && <AISessionSearch open={searchOpen} onOpenChange={setSearchOpen} onSelect={onRestore} listSessions={listSessions} />}
       <div className="flex w-full shrink-0 items-center gap-1 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-start">
         <SidebarMenuButton
           tooltip={t("newSession")}
           aria-label={t("newSession")}
           disabled={createDisabled}
           onClick={() => void onCreate()}
-          className="h-9 flex-1 border border-sidebar-border group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center"
+          className="h-9 flex-1 group-data-[collapsible=icon]:flex-none group-data-[collapsible=icon]:justify-center"
         >
           {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
           <span className="group-data-[collapsible=icon]:hidden">{t("newSession")}</span>
@@ -76,7 +67,7 @@ export function AISessionSidebar({
         onRestore={onRestore}
         t={t}
         compact
-        className="flex-1 group-data-[collapsible=icon]:hidden"
+        className="-mx-2 flex-1 px-2 group-data-[collapsible=icon]:hidden"
       />
     </section>
   )

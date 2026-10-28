@@ -9,27 +9,31 @@ import {
 } from "./attachments"
 
 export function useComposerAttachments({
+  sessionId,
   onLimit,
   onRejected,
 }: {
+  sessionId: string | null
   onLimit?: (limit: number) => void
   onRejected?: (file: File, reason: "total-size" | "read") => void
-} = {}) {
-  const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
+}) {
+  const drafts = useRef(new Map<string | null, ComposerAttachment[]>())
+  const [, render] = useState(0)
   const [loading, setLoading] = useState(false)
-  const attachmentsRef = useRef(attachments)
   const addQueueRef = useRef<Promise<void>>(Promise.resolve())
-
-  useEffect(() => {
-    attachmentsRef.current = attachments
-  }, [attachments])
+  const update = useCallback((id: string | null, items: ComposerAttachment[]) => {
+    if (items.length) drafts.current.set(id, items)
+    else drafts.current.delete(id)
+    render((revision) => revision + 1)
+  }, [])
 
   useEffect(() => () => {
-    attachmentsRef.current.forEach(releaseComposerAttachment)
+    drafts.current.forEach((items) => items.forEach(releaseComposerAttachment))
+    drafts.current.clear()
   }, [])
 
   const processFiles = useCallback(async (files: File[]) => {
-    const current = attachmentsRef.current
+    const current = drafts.current.get(sessionId) ?? []
     const remainingSlots = MAX_COMPOSER_ATTACHMENTS - current.length
     if (files.length === 0 || remainingSlots <= 0) {
       if (files.length > 0) onLimit?.(MAX_COMPOSER_ATTACHMENTS)
@@ -64,18 +68,14 @@ export function useComposerAttachments({
           return null
         }
       }))
-      setAttachments((existing) => {
-        const next = [
-          ...existing,
-          ...created.filter((attachment): attachment is ComposerAttachment => attachment !== null),
-        ]
-        attachmentsRef.current = next
-        return next
-      })
+      update(sessionId, [
+        ...(drafts.current.get(sessionId) ?? []),
+        ...created.filter((attachment): attachment is ComposerAttachment => attachment !== null),
+      ])
     } finally {
       setLoading(false)
     }
-  }, [onLimit, onRejected])
+  }, [onLimit, onRejected, sessionId, update])
 
   const addFiles = useCallback((files: File[]) => {
     const operation = addQueueRef.current.then(() => processFiles(files))
@@ -84,48 +84,38 @@ export function useComposerAttachments({
   }, [processFiles])
 
   const remove = useCallback((attachmentId: string) => {
-    setAttachments((current) => {
-      const target = current.find((attachment) => attachment.id === attachmentId)
-      if (target) releaseComposerAttachment(target)
-      const next = current.filter((attachment) => attachment.id !== attachmentId)
-      attachmentsRef.current = next
-      return next
-    })
-  }, [])
+    const current = drafts.current.get(sessionId) ?? []
+    const target = current.find((attachment) => attachment.id === attachmentId)
+    if (target) releaseComposerAttachment(target)
+    update(sessionId, current.filter((attachment) => attachment.id !== attachmentId))
+  }, [sessionId, update])
 
-  const clear = useCallback(() => {
-    setAttachments((current) => {
-      current.forEach(releaseComposerAttachment)
-      attachmentsRef.current = []
-      return []
-    })
-  }, [])
+  const forget = useCallback((id: string) => {
+    drafts.current.get(id)?.forEach(releaseComposerAttachment)
+    update(id, [])
+  }, [update])
 
   const detach = useCallback(() => {
-    const current = attachmentsRef.current
-    attachmentsRef.current = []
-    setAttachments([])
+    const current = drafts.current.get(sessionId) ?? []
+    update(sessionId, [])
     return current
-  }, [])
+  }, [sessionId, update])
 
-  const restore = useCallback((items: ComposerAttachment[]) => {
-    setAttachments((current) => {
-      current.forEach(releaseComposerAttachment)
-      attachmentsRef.current = items
-      return items
-    })
-  }, [])
+  const restore = useCallback((items: ComposerAttachment[], targetId = sessionId) => {
+    // A failed send must not discard files added while the request was running.
+    update(targetId, [...items, ...(drafts.current.get(targetId) ?? [])])
+  }, [sessionId, update])
 
   const release = useCallback((items: ComposerAttachment[]) => {
     items.forEach(releaseComposerAttachment)
   }, [])
 
   return {
-    attachments,
+    attachments: drafts.current.get(sessionId) ?? [],
     loading,
     addFiles,
     remove,
-    clear,
+    forget,
     detach,
     restore,
     release,

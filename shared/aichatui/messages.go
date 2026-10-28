@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/easyssh/shared/aiworkspace"
 )
 
 type TaskStatus string
@@ -65,20 +67,30 @@ type ProviderMetadata struct {
 }
 
 type TaskView struct {
-	ID                   string                 `json:"id"`
-	AssistantMessageID   string                 `json:"assistant_message_id,omitempty"`
-	ToolCallID           string                 `json:"tool_call_id"`
-	ToolName             string                 `json:"tool_name"`
-	ToolDisplayName      string                 `json:"tool_display_name,omitempty"`
-	Summary              string                 `json:"summary,omitempty"`
-	Status               TaskStatus             `json:"status"`
-	Dangerous            bool                   `json:"dangerous"`
-	RequiresConfirmation bool                   `json:"requires_confirmation"`
-	Arguments            map[string]interface{} `json:"arguments,omitempty"`
-	Result               string                 `json:"result,omitempty"`
-	Error                string                 `json:"error,omitempty"`
-	CreatedAt            time.Time              `json:"created_at"`
-	UpdatedAt            time.Time              `json:"updated_at"`
+	File                 *aiworkspace.FileSummary  `json:"file,omitempty"`
+	Artifact             *aiworkspace.FileArtifact `json:"artifact,omitempty"`
+	CommandOutput        string                    `json:"command_output,omitempty"`
+	ID                   string                    `json:"id"`
+	AssistantMessageID   string                    `json:"assistant_message_id,omitempty"`
+	ToolCallID           string                    `json:"tool_call_id"`
+	ToolName             string                    `json:"tool_name"`
+	ToolDisplayName      string                    `json:"tool_display_name,omitempty"`
+	Summary              string                    `json:"summary,omitempty"`
+	Status               TaskStatus                `json:"status"`
+	Dangerous            bool                      `json:"dangerous"`
+	RequiresConfirmation bool                      `json:"requires_confirmation"`
+	Arguments            map[string]interface{}    `json:"arguments,omitempty"`
+	Result               string                    `json:"result,omitempty"`
+	Error                string                    `json:"error,omitempty"`
+	CreatedAt            time.Time                 `json:"created_at"`
+	UpdatedAt            time.Time                 `json:"updated_at"`
+}
+
+// Public removes file bodies from session and streaming payloads.
+func (t TaskView) Public() TaskView {
+	t.Artifact = nil
+	t.Arguments = aiworkspace.PublicArguments(t.ToolName, t.Arguments)
+	return t
 }
 
 type UIMessage struct {
@@ -297,6 +309,7 @@ func TaskMessage(task TaskView) UIMessage {
 			"updatedAt":            task.UpdatedAt,
 			"taskId":               task.ID,
 			"taskStatus":           task.Status,
+			"file":                 task.File,
 			"dangerous":            task.Dangerous,
 			"requiresConfirmation": task.RequiresConfirmation,
 			"displayName":          task.ToolDisplayName,
@@ -312,6 +325,7 @@ func TaskMessagePtr(task TaskView) *UIMessage {
 }
 
 func TaskPart(task TaskView) map[string]interface{} {
+	task = task.Public()
 	part := map[string]interface{}{
 		"type":             "dynamic-tool",
 		"toolName":         task.ToolName,
@@ -326,6 +340,7 @@ func TaskPart(task TaskView) map[string]interface{} {
 				"taskId":               task.ID,
 				"assistantMessageId":   task.AssistantMessageID,
 				"taskStatus":           task.Status,
+				"file":                 task.File,
 				"dangerous":            task.Dangerous,
 				"requiresConfirmation": task.RequiresConfirmation,
 				"displayName":          task.ToolDisplayName,

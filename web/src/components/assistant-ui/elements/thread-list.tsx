@@ -20,14 +20,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { TooltipIconButton } from "./tooltip-icon-button"
-import { field, mono } from "./surfaces"
+import { field } from "./surfaces"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
 export interface ThreadItem {
   id: string
   title: string
   updatedAt: string
-  description?: string
 }
 
 interface ThreadListEditing {
@@ -120,7 +120,7 @@ export function ThreadList({
                   key={thread.id}
                   data-active={active || undefined}
                   className={cn(
-                    "group flex w-full items-center gap-1 rounded-xl px-2 py-1 transition-colors",
+                    "group/thread relative flex w-full items-center gap-1 rounded-xl px-2 py-1 transition-colors",
                     active ? field : "hover:bg-foreground/[0.03]",
                   )}
                 >
@@ -174,40 +174,36 @@ export function ThreadList({
                     </form>
                   ) : (
                     <>
-                      <button
-                        type="button"
-                        data-thread-id={thread.id}
-                        title={thread.title}
-                        aria-current={active || undefined}
-                        disabled={busy || Boolean(editing.id)}
-                        onClick={() => void onSelect(thread.id)}
-                        className="min-w-0 flex-1 rounded-lg px-1 py-1 text-start text-[13.5px] outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
-                      >
-                        <span className="block truncate">{thread.title}</span>
-                        <span
-                          className={cn(
-                            mono,
-                            "mt-0.5 flex items-center justify-between gap-2 text-muted-foreground",
-                          )}
-                        >
-                          <span className="truncate">{thread.description}</span>
-                          <time dateTime={thread.updatedAt} className="shrink-0">
-                            {new Date(thread.updatedAt).toLocaleString(i18n.language, {
-                              month: "2-digit",
-                              day: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            data-thread-id={thread.id}
+                            aria-current={active || undefined}
+                            disabled={busy || Boolean(editing.id)}
+                            onClick={() => void onSelect(thread.id)}
+                            className="min-w-0 flex-1 rounded-lg px-1 py-1 text-start text-[13.5px] outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
+                          >
+                            <span className="block truncate">{thread.title}</span>
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="right" align="start" className="max-w-80 space-y-1">
+                          <p className="break-words font-medium">{thread.title}</p>
+                          <time dateTime={thread.updatedAt} className="block text-xs opacity-70">
+                            {new Date(thread.updatedAt).toLocaleString(i18n.language)}
                           </time>
-                        </span>
-                      </button>
+                        </TooltipContent>
+                      </Tooltip>
                       {compact ? (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <TooltipIconButton
                               tooltip={t("moreActions")}
                               disabled={busy || Boolean(editing.id)}
-                              className="size-7 shrink-0"
+                              className={cn(
+                                "absolute right-1 top-1/2 size-7 -translate-y-1/2 bg-sidebar shadow-[-6px_0_8px_var(--sidebar)] transition-opacity group-hover/thread:opacity-100 group-hover/thread:pointer-events-auto group-focus-within/thread:opacity-100 group-focus-within/thread:pointer-events-auto data-[state=open]:opacity-100 data-[state=open]:pointer-events-auto",
+                                busyId !== thread.id && "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:pointer-events-none",
+                              )}
                             >
                               {busyId === thread.id ? (
                                 <Loader2Icon className="size-3.5 animate-spin" />

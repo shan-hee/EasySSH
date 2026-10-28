@@ -20,6 +20,9 @@ func streamOpenAIResponses(ctx context.Context, config Config, req TurnRequest, 
 		ParallelToolCalls: param.NewOpt(true),
 		Store:             param.NewOpt(false),
 	}
+	if req.ReasoningEffort != "" {
+		params.Reasoning = shared.ReasoningParam{Effort: shared.ReasoningEffort(req.ReasoningEffort)}
+	}
 	if len(req.Tools) > 0 {
 		params.Tools = openAIResponseTools(req.Tools)
 	}

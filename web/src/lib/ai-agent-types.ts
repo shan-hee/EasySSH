@@ -9,6 +9,8 @@ export interface AIConfigStatus {
   message?: string
 }
 
+export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh" | "max"
+
 export type PermissionMode = "readonly" | "balanced" | "privileged"
 export type AgentSessionStatus = "idle" | "running" | "waiting_confirmation" | "closed"
 export type AgentTaskStatus = "queued" | "waiting_confirm" | "running" | "succeeded" | "failed" | "cancelled"
@@ -74,7 +76,26 @@ export interface MessageView {
   stopped_at?: string
 }
 
+export interface AgentFileSummary {
+  name: string
+  media_type: string
+  size: number
+  path?: string
+  server_id?: string
+  kind: "generated" | "read" | "modified"
+}
+
+export interface AgentFileArtifact extends AgentFileSummary {
+  content: string
+  encoding: "utf8" | "base64"
+  before?: string
+  existed: boolean
+  baseline_hash?: string
+}
+
 export interface TaskView {
+  file?: AgentFileSummary
+  command_output?: string
   id: string
   assistant_message_id?: string
   tool_call_id: string
@@ -93,6 +114,7 @@ export interface TaskView {
 }
 
 export interface SessionListItem {
+  preview?: string
   id: string
   model: string
   permission_mode: PermissionMode
@@ -117,6 +139,8 @@ export interface AgentSessionScope {
 }
 
 export interface SessionView {
+  /** User-defined title; omitted until the session is renamed. */
+  title?: string
   id: string
   model: string
   permission_mode: PermissionMode

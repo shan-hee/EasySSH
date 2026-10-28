@@ -43,9 +43,10 @@ type Factory struct {
 }
 
 type TurnRequest struct {
-	Messages []Message
-	Model    string
-	Tools    []registry.ToolSpec
+	ReasoningEffort string
+	Messages        []Message
+	Model           string
+	Tools           []registry.ToolSpec
 }
 
 type TurnResult struct {
@@ -70,9 +71,10 @@ func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest
 
 func toSharedTurnRequest(req TurnRequest) aiprovider.TurnRequest {
 	return aiprovider.TurnRequest{
-		Messages: toSharedMessages(req.Messages),
-		Model:    req.Model,
-		Tools:    toSharedToolSpecs(req.Tools),
+		ReasoningEffort: req.ReasoningEffort,
+		Messages:        toSharedMessages(req.Messages),
+		Model:           req.Model,
+		Tools:           toSharedToolSpecs(req.Tools),
 	}
 }
 

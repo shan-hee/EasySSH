@@ -6,10 +6,25 @@ import (
 
 	"github.com/easyssh/server/internal/domain/aichat/registry"
 	"github.com/easyssh/shared/aitooloutput"
+	"github.com/easyssh/shared/aiworkspace"
 	"github.com/google/uuid"
 )
 
 func (m *Manager) sessionToolSpec(s *session, name string) (registry.ToolSpec, bool) {
+	if name == aiworkspace.CreateTool {
+		return registry.ToolSpec{Name: name, DisplayName: "生成文件", Description: aiworkspace.CreateDescription,
+			Parameters: aiworkspace.CreateParameters(), ConfirmStrategy: registry.ConfirmNone,
+			Executor: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (registry.ExecutionResult, error) {
+				if err := ctx.Err(); err != nil {
+					return registry.ExecutionResult{}, err
+				}
+				file, err := aiworkspace.Create(raw)
+				if err != nil {
+					return registry.ExecutionResult{}, err
+				}
+				return registry.ExecutionResult{Content: "文件已生成，可在文件面板预览和下载：" + file.Name, Artifact: file}, nil
+			}}, true
+	}
 	if name != aitooloutput.ReadResultTool {
 		return m.registry.Get(name)
 	}
@@ -46,4 +61,19 @@ func (m *Manager) sessionToolSpec(s *session, name string) (registry.ToolSpec, b
 			return registry.ExecutionResult{Content: page}, nil
 		},
 	}, true
+}
+
+func (m *Manager) GetTaskFile(userID uuid.UUID, sessionID, taskID string) (*aiworkspace.FileArtifact, error) {
+	s, err := m.getOrRestoreSession(context.Background(), userID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	task, ok := s.tasks[taskID]
+	if !ok || task.view.Artifact == nil {
+		return nil, ErrTaskNotFound
+	}
+	file := *task.view.Artifact
+	return &file, nil
 }

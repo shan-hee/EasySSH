@@ -27,6 +27,21 @@ func streamAnthropic(ctx context.Context, config Config, req TurnRequest, onEven
 		Messages:  messages,
 		System:    system,
 	}
+	if req.ReasoningEffort != "" {
+		effort := modelInfo.Capabilities.Effort
+		supported := map[string]bool{
+			"low":    effort.Low.Supported,
+			"medium": effort.Medium.Supported,
+			"high":   effort.High.Supported,
+			"xhigh":  effort.Xhigh.Supported,
+			"max":    effort.Max.Supported,
+		}
+		if !effort.Supported || !supported[req.ReasoningEffort] {
+			return TurnResult{}, NewLimitError("reasoning_unsupported", "This model does not support the selected reasoning effort")
+		}
+		// Native effort also works without enabling extended-thinking mode.
+		params.OutputConfig.Effort = anthropic.OutputConfigEffort(req.ReasoningEffort)
+	}
 	if len(req.Tools) > 0 {
 		params.Tools, err = anthropicTools(req.Tools)
 		if err != nil {

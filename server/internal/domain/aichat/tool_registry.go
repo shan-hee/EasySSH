@@ -24,8 +24,10 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 				return registry.ExecutionResult{}, err
 			}
 			return registry.ExecutionResult{
-				Content: result.Content,
-				IsError: result.IsError,
+				CommandOutput: result.CommandOutput,
+				Content:       result.Content,
+				Artifact:      result.Artifact,
+				IsError:       result.IsError,
 			}, nil
 		}
 	}
@@ -139,7 +141,7 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 		{
 			Name:        "write_file",
 			DisplayName: "写入文件",
-			Description: "向服务器上的文件写入内容。如果文件存在会被覆盖。",
+			Description: "向服务器写入最多 2 MiB 的 UTF-8 文本。修改文件优先使用此工具：记录真实原文件和提议内容供用户查看对比，执行前核对原内容，变化时停止写入。会话文件使用 create_artifact。",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -162,6 +164,7 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 			ConfirmStrategy: registry.ConfirmUser,
 			SupportedModes:  []string{"balanced", "privileged"},
 			Executor:        exec(s.executeWriteFile, "write_file"),
+			Prepare:         s.prepareWriteFile,
 		},
 		{
 			Name:        "create_directory",

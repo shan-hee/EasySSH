@@ -72,11 +72,12 @@ export function syncAISessionHistoryItems(
   fallbackTitle: string,
   search: string,
 ) {
+  if (session.messages.length === 0) return items.filter((item) => item.id !== session.id)
   const existing = items.find((item) => item.id === session.id)
   const title = existing?.custom_title
     ? existing.title
-    : getDefaultAISessionTitle(session, fallbackTitle)
-  const next = createSessionListItemFromSession(session, title, existing?.custom_title ?? false)
+    : session.title?.trim() || getDefaultAISessionTitle(session, fallbackTitle)
+  const next = createSessionListItemFromSession(session, title, existing?.custom_title || Boolean(session.title?.trim()))
   const query = search.trim().toLocaleLowerCase()
   if (query && !next.title.toLocaleLowerCase().includes(query)) {
     return items.filter((item) => item.id !== session.id)
@@ -238,34 +239,6 @@ export function useAISessionHistory({
     [loadMore, reload],
   )
 
-  const prepend = useCallback(
-    (response: CreateSessionResponse, title: string) => {
-      if (search.trim()) {
-        return
-      }
-      setItems((current) => [
-        createAISessionListItem(response, title),
-        ...current.filter((item) => item.id !== response.session_id),
-      ])
-    },
-    [search],
-  )
-
-  const findEmptySession = useCallback(
-    async (targetScope: AgentSessionScope) => {
-      // Search the actual scoped history, independently of the visible search or page.
-      for (let page = 1; ; page++) {
-        const response = await listSessions({ page, limit: SESSION_LIST_LIMIT, scope: targetScope })
-        const empty = response.items.find(
-          (item) => item.status === "idle" && item.message_count === 0 && item.task_count === 0,
-        )
-        if (empty) return empty.id
-        if (response.items.length === 0 || page * SESSION_LIST_LIMIT >= response.total) return null
-      }
-    },
-    [listSessions],
-  )
-
   const syncSession = useCallback(
     (session: SessionView, fallbackTitle: string) => {
       if (removedIdsRef.current.has(session.id)) return
@@ -409,8 +382,6 @@ export function useAISessionHistory({
     submitRename,
     remove,
     forget,
-    prepend,
-    findEmptySession,
     syncSession,
     reload,
     retry,

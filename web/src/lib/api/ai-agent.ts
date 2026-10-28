@@ -1,5 +1,5 @@
 import { apiFetch } from "@/lib/api-client"
-import type { AgentSessionScope, CreateSessionInput, CreateSessionResponse, ListSessionsResponse, UpdateMessageInput } from "@/lib/ai-agent-types"
+import type { AgentFileArtifact, AgentSessionScope, CreateSessionInput, CreateSessionResponse, ListSessionsResponse, UpdateMessageInput } from "@/lib/ai-agent-types"
 
 export type {
   AgentSessionScope,
@@ -100,4 +100,8 @@ export async function deleteAIMessage(sessionId: string, messageId: string): Pro
   return apiFetch<CreateSessionResponse>(`/ai/sessions/${sessionId}/messages/${messageId}`, {
     method: "DELETE",
   })
+}
+
+export function getAITaskFile(sessionId: string, taskId: string): Promise<AgentFileArtifact> {
+  return apiFetch<AgentFileArtifact>(`/ai/sessions/${encodeURIComponent(sessionId)}/tasks/${encodeURIComponent(taskId)}/file`)
 }

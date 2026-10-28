@@ -23,7 +23,7 @@ export const ThreadListSearch = forwardRef<
       type="search"
       value={value}
       onChange={(event) => onValueChange(event.target.value)}
-      className={cn("h-8 ps-8 text-sm", className)}
+      className={cn("h-8 border-0 ps-8 text-sm shadow-none", className)}
       {...props}
     />
   </div>

@@ -90,7 +90,6 @@ export function AISessionHistoryList({
             id: item.id,
             title: item.title,
             updatedAt: item.updated_at,
-            description: t("sidebarMessageCount", { count: item.message_count }),
           }))}
           onSelect={onRestore}
           onDelete={onDelete}

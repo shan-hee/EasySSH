@@ -41,6 +41,7 @@ type ListAISessionsResponse struct {
 }
 
 type AISDKChatRequest struct {
+	ReasoningEffort  string                     `json:"reasoning_effort,omitempty" binding:"omitempty,oneof=low medium high xhigh max"`
 	ServerReferences []aichatui.ServerReference `json:"server_references,omitempty"`
 	ID               string                     `json:"id,omitempty"`
 	Messages         []runtime.UIMessage        `json:"messages,omitempty"`
@@ -118,6 +119,20 @@ func (h *AISessionHandler) GetSession(c *gin.Context) {
 		Session:          view,
 		DefaultTransport: view.DefaultTransport,
 	})
+}
+
+func (h *AISessionHandler) GetTaskFile(c *gin.Context) {
+	userID, err := getUserIDFromContext(c)
+	if err != nil {
+		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+		return
+	}
+	file, err := h.manager.GetTaskFile(userID, c.Param("session_id"), c.Param("task_id"))
+	if err != nil {
+		h.respondRuntimeError(c, err)
+		return
+	}
+	RespondSuccess(c, file)
 }
 
 func (h *AISessionHandler) GetLatestSession(c *gin.Context) {
@@ -223,6 +238,7 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			userID,
 			sessionID,
 			runtime.SendUserMessageInput{
+				ReasoningEffort:  req.ReasoningEffort,
 				MessageID:        req.MessageID,
 				Content:          action.content,
 				Attachments:      action.attachments,
@@ -243,10 +259,11 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			sessionID,
 			action.messageID,
 			runtime.SendUserMessageInput{
-				Context:        req.Context,
-				Model:          req.Model,
-				PermissionMode: req.PermissionMode,
-				Scope:          req.Scope,
+				ReasoningEffort: req.ReasoningEffort,
+				Context:         req.Context,
+				Model:           req.Model,
+				PermissionMode:  req.PermissionMode,
+				Scope:           req.Scope,
 			},
 		); err != nil {
 			h.respondRuntimeError(c, err)
@@ -705,6 +722,9 @@ func (s *aiSDKUIMessageStreamer) writeRuntimeEvent(event runtime.Event) (bool, e
 		}
 	case runtime.EventTaskCreated, runtime.EventTaskUpdated, runtime.EventConfirmationRequested, runtime.EventConfirmationResolved:
 		if event.Task != nil {
+			if err := s.writeChunk(map[string]interface{}{"type": "data-workspace-task", "data": map[string]interface{}{"session_id": event.SessionID, "task": event.Task}, "transient": true}); err != nil {
+				return false, err
+			}
 			if err := s.writeTask(*event.Task); err != nil {
 				return false, err
 			}

@@ -23,6 +23,7 @@ func streamOpenAIChat(ctx context.Context, config Config, req TurnRequest, onEve
 			IncludeUsage: param.NewOpt(true),
 		},
 	}
+	params.ReasoningEffort = shared.ReasoningEffort(req.ReasoningEffort)
 	if len(req.Tools) > 0 {
 		params.Tools = openAIChatTools(req.Tools)
 	}

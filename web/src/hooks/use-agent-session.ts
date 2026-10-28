@@ -24,14 +24,19 @@ import {
 } from "@/lib/api/ai-agent"
 import { getApiUrl } from "@/lib/api-client"
 import { useAgentFeedback } from "@/hooks/use-agent-feedback"
+import { useAgentComposerDrafts } from "@/hooks/use-agent-composer-draft"
 import { isSessionView, useAISessionRecovery } from "@/hooks/use-ai-session-recovery"
 import { fetchAIChatStream, isRecoverableAIStreamError } from "@/lib/ai-agent/stream-transport"
 import { resolveOutgoingUserMessageId } from "@/lib/ai-agent/message-transport"
+
+import type { AgentFileArtifact, ReasoningEffort } from "@/lib/ai-agent-types"
 
 type TransportState = "idle" | "connecting" | "ai_sdk_ui"
 const TARGET_SESSION_ID_BODY_KEY = "__easyssh_target_session_id"
 
 export interface AgentSessionAdapter {
+  getTaskFile: (sessionId: string, taskId: string) => Promise<AgentFileArtifact>
+  saveTaskFile: (sessionId: string, taskId: string) => Promise<void>
   getSession: (sessionId: string) => Promise<CreateSessionResponse>
   getLatestSession: (scope?: AgentSessionScope) => Promise<CreateSessionResponse | null>
   createSession: (input: {
@@ -41,6 +46,7 @@ export interface AgentSessionAdapter {
   }) => Promise<CreateSessionResponse>
   sendMessage: (input: {
     session_id: string
+    reasoning_effort?: Exclude<ReasoningEffort, "auto">
     content: string
     server_references: AgentServerReference[]
     context?: string
@@ -57,6 +63,7 @@ export interface AgentSessionAdapter {
   }) => Promise<CreateSessionResponse>
   regenerateMessage: (input: {
     session_id: string
+    reasoning_effort?: Exclude<ReasoningEffort, "auto">
     message_id: string
     context?: string
     model?: string
@@ -72,10 +79,12 @@ export interface AgentSessionAdapter {
     type?: string
     session?: SessionView
     ui_message?: UIMessage
+    task?: TaskView
     error?: string
   }) => void) => () => void
   respondToToolApproval: (input: {
     session_id: string
+    reasoning_effort?: Exclude<ReasoningEffort, "auto">
     id: string
     approved: boolean
     reason?: string
@@ -124,14 +133,6 @@ function getSessionScopeKey(scope?: AgentSessionScope) {
     scope?.terminal_session_id?.trim() ?? "",
     scope?.server_id?.trim() ?? "",
   ].join(":")
-}
-
-function isReusableEmptySession(session: SessionView, scope?: AgentSessionScope) {
-  return session.status === "idle"
-    && session.messages.length === 0
-    && session.ui_messages.length === 0
-    && session.tasks.length === 0
-    && getSessionScopeKey(session.scope) === getSessionScopeKey(scope)
 }
 
 function mergeUIMessage(messages: UIMessage[], nextMessage: UIMessage) {
@@ -214,6 +215,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   const dictation = useMemo(() => WebSpeechDictationAdapter.isSupported()
     ? new WebSpeechDictationAdapter({ language: i18n.resolvedLanguage || i18n.language })
     : undefined, [i18n.language, i18n.resolvedLanguage])
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("auto")
+  const requestReasoningEffort = reasoningEffort === "auto" ? undefined : reasoningEffort
   const [session, setSession] = useState<SessionView | null>(null)
   const [transport, setTransport] = useState<TransportState>("idle")
   const [error, setError] = useState<string | null>(null)
@@ -336,6 +339,19 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
   }, [adapter, refreshSessionSnapshot])
 
+  const updateWorkspaceTask = useCallback((targetSessionId: string, task: TaskView) => {
+    const current = sessionRef.current
+    if (!current || current.id !== targetSessionId || closingSessionIdRef.current === targetSessionId) return
+    const previous = current.tasks.find((item) => item.id === task.id)
+    // A final/cancel snapshot can arrive before an already queued progress event.
+    if (previous && ["succeeded", "failed", "cancelled"].includes(previous.status)
+      && ["queued", "waiting_confirm", "running"].includes(task.status)) return
+    snapshotRevisionRef.current++
+    const next = { ...current, tasks: [...current.tasks.filter((item) => item.id !== task.id), task] }
+    sessionRef.current = next
+    setSession(next)
+  }, [])
+
   const chat = useChat<UIMessage>({
     id: chatId,
     messages: [],
@@ -351,6 +367,10 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
     },
     onData(dataPart) {
+      if (dataPart.type === "data-workspace-task") {
+        const value = dataPart.data as { session_id?: string; task?: TaskView }
+        if (value?.session_id && value.task?.id) updateWorkspaceTask(value.session_id, value.task)
+      }
       if (dataPart.type === "data-session" && isSessionView(dataPart.data) && dataPart.data.id === sessionRef.current?.id) {
         commitSessionSnapshot(dataPart.data, { syncMessages: false })
       }
@@ -419,6 +439,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         return
       }
 
+      if (event.task) updateWorkspaceTask(activeSession.id, event.task)
+
       if (event.error) {
         setError(event.error)
       }
@@ -440,7 +462,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         setTransport("ai_sdk_ui")
       }
     })
-  }, [adapter, setChatMessages])
+  }, [adapter, setChatMessages, updateWorkspaceTask])
 
   const pushLocalError = useCallback((message: string) => {
     setError(message)
@@ -468,12 +490,14 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
 
     lastRestoreKeyRef.current = restoreKey
+    const revision = ++sessionRevisionRef.current
     setTransport("connecting")
 
     try {
       const response = adapter
         ? await adapter.getLatestSession(scope)
         : await getLatestAISession(scope)
+      if (revision !== sessionRevisionRef.current) return false
       if (!response) {
         setTransport("idle")
         return false
@@ -482,6 +506,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       applySessionResponse(response)
       return true
     } catch (restoreError) {
+      if (revision !== sessionRevisionRef.current) return false
       setTransport("idle")
       const message = toErrorMessage(restoreError)
       pushLocalError(message)
@@ -495,7 +520,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
 
     resetRecovery()
-    sessionRevisionRef.current++
+    const revision = ++sessionRevisionRef.current
     setTransport("connecting")
 
     try {
@@ -506,9 +531,11 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       const response = adapter
         ? await adapter.getSession(targetSessionId)
         : await getAISession(targetSessionId)
+      if (revision !== sessionRevisionRef.current) return false
       applySessionResponse(response)
       return true
     } catch (restoreError) {
+      if (revision !== sessionRevisionRef.current) return false
       setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
       const message = toErrorMessage(restoreError)
       if (!input.silent) {
@@ -522,7 +549,6 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     model?: string
     permissionMode?: PermissionMode
     scope?: AgentSessionScope
-    findEmptySession?: () => Promise<string | null>
   }) => {
     resetRecovery()
     sessionRevisionRef.current++
@@ -548,23 +574,6 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
 
     try {
-      if (input.findEmptySession) {
-        if (currentSession && isReusableEmptySession(currentSession, input.scope)) {
-          setTransport("ai_sdk_ui")
-          return { session_id: currentSession.id, session: currentSession, default_transport: "ai_sdk_ui" } satisfies CreateSessionResponse
-        }
-        const emptySessionId = await input.findEmptySession()
-        if (emptySessionId) {
-          const existing = adapter
-            ? await adapter.getSession(emptySessionId)
-            : await getAISession(emptySessionId)
-          // History counters can change; verify the full snapshot before reusing it.
-          if (isReusableEmptySession(existing.session, input.scope)) {
-            applySessionResponse(existing)
-            return existing
-          }
-        }
-      }
       const createInput = {
         model: input.model,
         permission_mode: input.permissionMode,
@@ -644,11 +653,12 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           server_references: serverReferences,
           context: contextText,
           model,
+          reasoning_effort: requestReasoningEffort,
           permission_mode: permissionMode,
           scope,
           attachments,
         })
-        applySessionResponse(response)
+        if (sessionRef.current?.id === activeSessionId) applySessionResponse(response)
         return "sent" as const
       }
 
@@ -657,6 +667,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           [TARGET_SESSION_ID_BODY_KEY]: activeSessionId,
           context: contextText,
           model,
+          reasoning_effort: requestReasoningEffort,
           permission_mode: permissionMode,
           scope,
           attachments,
@@ -670,15 +681,29 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       return "sent" as const
     } catch (sendError) {
       const message = toErrorMessage(sendError)
-      pushLocalError(message)
-      const refreshed = await refreshSessionSnapshot(activeSessionId)
+      let refreshed: SessionView | null = null
+      if (sessionRef.current?.id === activeSessionId) {
+        pushLocalError(message)
+        refreshed = await refreshSessionSnapshot(activeSessionId)
+      } else {
+        // An old request must neither overwrite the selected conversation nor
+        // restore an already accepted message as an unsent draft.
+        try {
+          const response = adapter
+            ? await adapter.getSession(activeSessionId)
+            : await getAISession(activeSessionId)
+          refreshed = response.session
+        } catch {
+          // Keep the submitted content as a draft when acceptance is unknown.
+        }
+      }
       const accepted = Boolean(refreshed && (
         refreshed.messages.some((item) => item.id === outgoingMessageId)
         || refreshed.messages.length > previousMessageCount
       ))
       return accepted ? "accepted" as const : "failed" as const
     }
-  }, [adapter, applySessionResponse, chat, commitSessionSnapshot, pushLocalError, refreshSessionSnapshot, resetRecovery, setChatMessages])
+  }, [requestReasoningEffort, adapter, applySessionResponse, chat, commitSessionSnapshot, pushLocalError, refreshSessionSnapshot, resetRecovery, setChatMessages])
 
   const regenerateAfterUpdate = useCallback(async (
     activeSessionId: string,
@@ -707,6 +732,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           message_id: messageId,
           context: input.contextText,
           model: input.model,
+          reasoning_effort: requestReasoningEffort,
           permission_mode: input.permissionMode,
           scope: input.scope,
         })
@@ -720,6 +746,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           mode: "regenerate",
           context: input.contextText,
           model: input.model,
+          reasoning_effort: requestReasoningEffort,
           permission_mode: input.permissionMode,
           scope: input.scope,
         },
@@ -732,7 +759,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       void refreshSessionSnapshot(activeSessionId)
       return false
     }
-  }, [adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot, resetRecovery])
+  }, [requestReasoningEffort, adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot, resetRecovery])
 
   const continuationRef = useRef(false)
   const continueRun = useCallback(async (messageId: string, prompt: string, input: {
@@ -863,6 +890,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           id,
           approved,
           reason,
+          reasoning_effort: requestReasoningEffort,
         })
         if (sessionRef.current?.id === activeSessionId) applySessionResponse(response)
         return
@@ -892,7 +920,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     } finally {
       approvalSubmissionRef.current = false
     }
-  }, [adapter, applySessionResponse, chat, needsRecovery, pushLocalError, reconnecting, refreshSessionSnapshot, resetRecovery, setChatMessages])
+  }, [requestReasoningEffort, adapter, applySessionResponse, chat, needsRecovery, pushLocalError, reconnecting, refreshSessionSnapshot, resetRecovery, setChatMessages])
 
   const cancelSession = useCallback(async () => {
     const activeSessionId = sessionRef.current?.id
@@ -915,10 +943,12 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
   }, [adapter, chat, pushLocalError, refreshSessionSnapshot, stopRecovery])
 
-  const detachSession = useCallback(() => {
+  const detachSession = useCallback((targetSessionId?: string) => {
+    if (targetSessionId && sessionRef.current?.id !== targetSessionId) return
     resetRecovery()
     sessionRevisionRef.current++
     closingSessionIdRef.current = sessionRef.current?.id ?? null
+    lastRestoreKeyRef.current = getSessionScopeKey(sessionRef.current?.scope)
     setSession(null)
     sessionRef.current = null
     setError(null)
@@ -926,6 +956,13 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     syncedMessagesKeyRef.current = null
     setTransport("idle")
   }, [chat, resetRecovery])
+
+  const startDraftSession = useCallback(async (scope?: AgentSessionScope) => {
+    if (sessionRef.current?.status === "running") await cancelSession()
+    if (!adapter) await chat.stop()
+    detachSession()
+    lastRestoreKeyRef.current = getSessionScopeKey(scope)
+  }, [adapter, cancelSession, chat, detachSession])
 
   const discardSessionIfEmpty = useCallback(async (targetSessionId: string) => {
     if (!targetSessionId) {
@@ -977,13 +1014,15 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   const { messages: runtimeMessages, feedback } = useAgentFeedback(sessionId, uiMessages)
   const runtime = useAISDKRuntime({
     ...chat,
-    id: sessionId ?? chat.id,
+    // One composer runtime, with explicitly managed drafts per conversation.
+    id: chat.id,
     messages: runtimeMessages,
     error: needsRecovery && !recoveryBlocked ? undefined : chat.error,
     status: !recoveryBlocked && (needsRecovery || (session?.status === "running" && chat.status === "ready")) ? "streaming" : chat.status,
     addToolApprovalResponse: respondToToolApproval,
     stop: cancelSession,
   }, { joinStrategy: "none", cancelPendingToolCallsOnSend: false, adapters: { dictation, speech, feedback } })
+  const composerDrafts = useAgentComposerDrafts(runtime, sessionId)
 
   return {
     session,
@@ -994,6 +1033,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     tasks,
     pendingApprovalCount,
     runtime,
+    respondToToolApproval,
     availableTools,
     error,
     reconnecting,
@@ -1002,7 +1042,12 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     restoreLatestSession,
     restoreSession,
     startNewSession,
+    startDraftSession,
+    recoverComposerDraft: composerDrafts.recover,
+    forgetComposerDraft: composerDrafts.forget,
     sendMessage,
+    reasoningEffort,
+    setReasoningEffort,
     updateMessage,
     regenerateMessage,
     continueRun,

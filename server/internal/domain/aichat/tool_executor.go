@@ -12,6 +12,7 @@ import (
 	"github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/shared/aitooloutput"
+	"github.com/easyssh/shared/aiworkspace"
 	sharedmonitoring "github.com/easyssh/shared/monitoring"
 	"github.com/easyssh/shared/secretcrypto"
 	"github.com/easyssh/shared/sftputil"
@@ -249,6 +250,7 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 	}
 
 	output := aitooloutput.Truncate(aitooloutput.Sanitize(commandResult.Output), aitooloutput.StoredTextBytes)
+	result.CommandOutput = output
 
 	payload := map[string]interface{}{
 		"server_id":    serverID.String(),
@@ -373,31 +375,21 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, userID uuid.U
 	}
 	defer client.Release()
 
-	info, err := client.GetFileInfo(args.Path)
-	if err != nil {
-		result.Content = fmt.Sprintf("获取文件信息失败: %v", err)
-		result.IsError = true
-		return result, nil
-	}
-	if info.IsDir {
-		result.Content = "读取文件失败: cannot read a directory"
-		result.IsError = true
-		return result, nil
-	}
-	if info.Size > sftputil.MaxTextFileBytes {
-		result.Content = fmt.Sprintf("读取文件失败: file is too large to edit: %d bytes", info.Size)
+	content, exists, err := readPreviewFile(client.Client, args.Path)
+	if err != nil || !exists {
+		result.Content = "读取文件失败: file does not exist"
+		if err != nil {
+			result.Content = fmt.Sprintf("读取文件失败: %v", err)
+		}
 		result.IsError = true
 		return result, nil
 	}
 
-	// 读取文件
-	content, err := client.ReadFile(args.Path)
-	if err != nil {
-		result.Content = fmt.Sprintf("读取文件失败: %v", err)
-		result.IsError = true
-		return result, nil
+	// Store the complete bounded snapshot separately from the model's excerpt.
+	if file, fileErr := aiworkspace.NewFile(args.Path, string(content), "utf8"); fileErr == nil {
+		file.Kind, file.Path, file.ServerID = "read", args.Path, args.ServerID
+		result.Artifact = file
 	}
-
 	// 限制行数
 	lines := strings.Split(aitooloutput.Sanitize(string(content)), "\n")
 	truncated := false
@@ -447,6 +439,18 @@ func (s *ToolExecutorService) executeWriteFile(ctx context.Context, userID uuid.
 	}
 	defer client.Release()
 
+	prepared := aiworkspace.PreparedFile(ctx)
+	before, exists, readErr := readPreviewFile(client.Client, args.Path)
+	if readErr != nil {
+		return nil, readErr
+	}
+	if err := prepared.CheckBaseline(before, exists); err != nil {
+		return nil, err
+	}
+	if prepared.Content != args.Content || prepared.Path != args.Path || prepared.ServerID != args.ServerID {
+		return nil, fmt.Errorf("prepared file does not match this operation")
+	}
+
 	// 写入文件
 	if err := client.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {
 		result.Content = fmt.Sprintf("写入文件失败: %v", err)
@@ -460,6 +464,15 @@ func (s *ToolExecutorService) executeWriteFile(ctx context.Context, userID uuid.
 		result.IsError = true
 		return result, nil
 	}
+
+	actual, existsAfter, verifyErr := readPreviewFile(client.Client, args.Path)
+	if verifyErr != nil {
+		return nil, fmt.Errorf("文件已写入，但无法核对写入结果: %w", verifyErr)
+	}
+	if !existsAfter || actual != args.Content {
+		return nil, fmt.Errorf("文件写入后内容不一致，请重新读取核对")
+	}
+	result.Artifact = prepared
 
 	result.Content = aiToolJSON("文件已写入", info)
 	return result, nil

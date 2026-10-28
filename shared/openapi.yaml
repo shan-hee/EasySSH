@@ -1376,6 +1376,46 @@ components:
           type: string
       additionalProperties: true
 
+    AIFileSummary:
+      type: object
+      required: [name, media_type, size, kind]
+      properties:
+        name:
+          type: string
+        media_type:
+          type: string
+        size:
+          type: integer
+          description: 解码后的文件字节数，最多 2 MiB。
+        path:
+          type: string
+        server_id:
+          type: string
+        kind:
+          type: string
+          enum: [generated, read, modified]
+
+    AIFileArtifact:
+      allOf:
+        - $ref: '#/components/schemas/AIFileSummary'
+        - type: object
+          required: [content, encoding, existed]
+          properties:
+            content:
+              type: string
+              description: 此次任务生成、读取或提议写入的完整文件快照。
+            encoding:
+              type: string
+              enum: [utf8, base64]
+            before:
+              type: string
+              description: 修改前的文本快照；新建服务器文件时为空字符串。
+            existed:
+              type: boolean
+            baseline_hash:
+              type: string
+              description: 修改前文本的 SHA-256，用于写入前核对。
+
     AITaskView:
       type: object
       required:
@@ -1388,6 +1428,11 @@ components:
         - created_at
         - updated_at
       properties:
+        file:
+          $ref: '#/components/schemas/AIFileSummary'
+        command_output:
+          type: string
+          description: 命令 stdout/stderr 合并后的实时尾部文本，最多保留 48 KiB 加截断提示。
         id:
           type: string
         assistant_message_id:
@@ -1457,6 +1502,9 @@ components:
         - available_tools
         - default_transport
       properties:
+        title:
+          type: string
+          description: 用户自定义标题；未重命名时省略。
         id:
           type: string
           format: uuid
@@ -1519,6 +1567,9 @@ components:
       type: object
       required: [id, model, permission_mode, status, title, custom_title, message_count, task_count, created_at, updated_at]
       properties:
+        preview:
+          type: string
+          description: 命中正文片段，无正文命中时返回最近一条消息摘要；空会话省略。
         id:
           type: string
           format: uuid
@@ -1588,6 +1639,10 @@ components:
           description: EasySSH 附加上下文，会由服务端拼入本轮用户消息。
         model:
           type: string
+        reasoning_effort:
+          type: string
+          enum: [low, medium, high, xhigh, max]
+          description: 本轮思考强度；省略时使用模型默认值。
         permission_mode:
           $ref: '#/components/schemas/AIPermissionMode'
         scope:
@@ -3562,6 +3617,34 @@ paths:
           description: 已删除
         '404':
           description: 会话不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ai/sessions/{session_id}/tasks/{task_id}/file:
+    get:
+      operationId: getAiSessionsSessionIdTasksTaskIdFile
+      tags:
+        - ai
+      summary: 获取 AI 任务的文件快照
+      description: 仅会话所属用户可读取。返回任务当时保存的文件内容与修改前快照，不重新读取远程文件。待审批时返回提议内容，不代表已写入。
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SessionID'
+        - $ref: '#/components/parameters/TaskID'
+      responses:
+        '200':
+          description: 文件快照
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIFileArtifact'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          description: 会话、任务或文件快照不存在
           content:
             application/json:
               schema:

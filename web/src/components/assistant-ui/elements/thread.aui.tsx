@@ -17,6 +17,7 @@ import {
 } from "@/components/assistant-ui/elements/reasoning.aui"
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui"
 import { ToolTimeline } from "./tool-timeline"
+import { ThreadNavigator, type ThreadNavigationEntry } from "./thread-navigator"
 import { MessagePair } from "./message-pair"
 import { MessageTimestamp } from "./timeline"
 import { StoppedRun } from "./stopped-run"
@@ -63,6 +64,7 @@ import {
 import {
   createContext,
   useContext,
+  useLayoutEffect,
   useState,
   useRef,
   useMemo,
@@ -96,6 +98,7 @@ export type ThreadProps = {
   components?: ThreadComponents
   className?: string
   contentClassName?: string
+  viewportClassName?: string
   emptyDescription?: string
   loadingText?: string
   compact?: boolean
@@ -115,7 +118,9 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
   const count = messages.length
   const hasInlineLoadingIndicator = !components.AssistantMessage && messages.at(-1)?.role === "assistant"
   const [visibleCount, setVisibleCount] = useState(MESSAGE_BATCH)
-  const pairs = useMemo(() => {
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const [navigationTarget, setNavigationTarget] = useState<string | null>(null)
+  const allPairs = useMemo(() => {
     const groups: { id: string; indices: number[] }[] = []
     messages.forEach((message, index) => {
       if (message.role === "system") return
@@ -123,12 +128,31 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
         groups.push({ id: message.id, indices: [] })
       groups[groups.length - 1]!.indices.push(index)
     })
-    return groups.filter(
-      (group) => group.indices[group.indices.length - 1]! >= Math.max(0, count - visibleCount)
-    )
-  }, [count, messages, visibleCount])
+    return groups
+  }, [messages])
+  const pairs = allPairs.filter((group) => group.indices[group.indices.length - 1]! >= Math.max(0, count - visibleCount))
+  const navigationEntries = useMemo(() => allPairs.map((pair): ThreadNavigationEntry => {
+    const text = (index: number) => messages[index]!.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n").trim()
+    return {
+      id: pair.id,
+      index: pair.indices[0]!,
+      title: text(pair.indices[0]!) || t("messageWithoutText"),
+      preview: pair.indices.slice(1).map(text).filter(Boolean).join("\n").slice(0, 400),
+    }
+  }), [allPairs, messages, t])
+  useLayoutEffect(() => {
+    if (!navigationTarget) return
+    const viewport = viewportRef.current
+    const target = Array.from(viewport?.querySelectorAll<HTMLElement>("[data-message-anchor]") ?? []).find((node) => node.dataset.messageAnchor === navigationTarget)
+    if (!viewport || !target) return
+    viewport.scrollTo({
+      top: viewport.scrollTop + target.getBoundingClientRect().top - viewport.getBoundingClientRect().top - 20,
+      behavior: "instant",
+    })
+    setNavigationTarget(null)
+  }, [navigationTarget, visibleCount])
   const hidden = pairs[0]?.indices[0] ?? 0
-  const { className, contentClassName, loadingText, compact } = options
+  const { className, contentClassName, viewportClassName, loadingText, compact } = options
   const { Welcome = ThreadWelcome } = components
   return (
     <ThreadOptionsContext.Provider value={options}>
@@ -136,7 +160,7 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
         <ThreadPrimitive.ViewportProvider>
           <ThreadPrimitive.Root
             className={cn(
-              "aui-root aui-thread-root relative flex min-h-0 min-w-0 flex-1 flex-col",
+              "aui-root aui-thread-root @container/thread relative flex min-h-0 min-w-0 flex-1 flex-col",
               compact && "text-xs",
               className
             )}
@@ -149,8 +173,9 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
             }
           >
             <ThreadPrimitive.Viewport
-              autoScroll
-              className="scrollbar-custom relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
+              ref={viewportRef}
+              autoScroll={navigationTarget === null}
+              className={cn("scrollbar-custom relative flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]", viewportClassName)}
             >
               <div
                 role="log"
@@ -173,7 +198,7 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
                 )}
                 {count === 0 && !loadingText && <Welcome />}
                 {pairs.map((pair, index) => (
-                  <MessagePair key={pair.id}>
+                  <MessagePair key={pair.id} data-message-anchor={pair.id}>
                     {pair.indices.map((messageIndex) => (
                       <ThreadPrimitive.MessageByIndex
                         key={messages[messageIndex]!.id}
@@ -191,6 +216,10 @@ export const Thread: FC<ThreadProps> = ({ components = {}, ...options }) => {
                 )}
               </div>
             </ThreadPrimitive.Viewport>
+            {!compact && <ThreadNavigator entries={navigationEntries} viewportRef={viewportRef} renderedStart={hidden} onNavigate={(entry) => {
+              setVisibleCount((current) => Math.max(current, count - entry.index))
+              setNavigationTarget(entry.id)
+            }} />}
             <ThreadScrollToBottom />
           </ThreadPrimitive.Root>
         </ThreadPrimitive.ViewportProvider>

@@ -565,6 +565,26 @@ export interface paths {
         patch: operations["patchAiSessionsSessionId"];
         trace?: never;
     };
+    "/ai/sessions/{session_id}/tasks/{task_id}/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取 AI 任务的文件快照
+         * @description 仅会话所属用户可读取。返回任务当时保存的文件内容与修改前快照，不重新读取远程文件。待审批时返回提议内容，不代表已写入。
+         */
+        get: operations["getAiSessionsSessionIdTasksTaskIdFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ai/sessions/{session_id}/cancel": {
         parameters: {
             query?: never;
@@ -4100,7 +4120,31 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        AIFileSummary: {
+            name: string;
+            media_type: string;
+            /** @description 解码后的文件字节数，最多 2 MiB。 */
+            size: number;
+            path?: string;
+            server_id?: string;
+            /** @enum {string} */
+            kind: "generated" | "read" | "modified";
+        };
+        AIFileArtifact: components["schemas"]["AIFileSummary"] & {
+            /** @description 此次任务生成、读取或提议写入的完整文件快照。 */
+            content: string;
+            /** @enum {string} */
+            encoding: "utf8" | "base64";
+            /** @description 修改前的文本快照；新建服务器文件时为空字符串。 */
+            before?: string;
+            existed: boolean;
+            /** @description 修改前文本的 SHA-256，用于写入前核对。 */
+            baseline_hash?: string;
+        };
         AITaskView: {
+            file?: components["schemas"]["AIFileSummary"];
+            /** @description 命令 stdout/stderr 合并后的实时尾部文本，最多保留 48 KiB 加截断提示。 */
+            command_output?: string;
             id: string;
             /** @description 生成该工具调用的 AI SDK UI assistant message id。 */
             assistant_message_id?: string;
@@ -4134,6 +4178,8 @@ export interface components {
             username?: string;
         };
         AISessionView: {
+            /** @description 用户自定义标题；未重命名时省略。 */
+            title?: string;
             /** Format: uuid */
             id: string;
             model: string;
@@ -4162,6 +4208,8 @@ export interface components {
             default_transport: components["schemas"]["AITransportType"];
         };
         AISessionListItem: {
+            /** @description 命中正文片段，无正文命中时返回最近一条消息摘要；空会话省略。 */
+            preview?: string;
             /** Format: uuid */
             id: string;
             model: string;
@@ -4197,6 +4245,11 @@ export interface components {
             /** @description EasySSH 附加上下文，会由服务端拼入本轮用户消息。 */
             context?: string;
             model?: string;
+            /**
+             * @description 本轮思考强度；省略时使用模型默认值。
+             * @enum {string}
+             */
+            reasoning_effort?: "low" | "medium" | "high" | "xhigh" | "max";
             permission_mode?: components["schemas"]["AIPermissionMode"];
             scope?: components["schemas"]["AISessionScope"];
         };
@@ -5845,6 +5898,39 @@ export interface operations {
                 };
             };
             /** @description 会话不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAiSessionsSessionIdTasksTaskIdFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionID"];
+                task_id: components["parameters"]["TaskID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 文件快照 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIFileArtifact"];
+                };
+            };
+            401: components["responses"]["Error"];
+            /** @description 会话、任务或文件快照不存在 */
             404: {
                 headers: {
                     [name: string]: unknown;

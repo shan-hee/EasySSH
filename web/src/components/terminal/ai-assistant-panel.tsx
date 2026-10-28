@@ -1,3 +1,4 @@
+import { AgentWorkspaceProvider, AgentWorkspacePanel, AgentWorkspaceToolbar } from "@/components/ai-agent/agent-workspace-panel"
 import type { AgentServerReference } from "@/lib/ai-agent-types"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
 import { Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent } from "react"
@@ -28,10 +29,11 @@ import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-ic
 import { ErrorState } from "@/components/assistant-ui/elements/error-state"
 import { toast } from "@/components/ui/sonner"
 import { AgentComposer, AgentComposerInput, AgentComposerSubmit, AgentComposerToolbar, AgentComposerTools, AgentComposerAttachButton, AgentComposerDictation } from "@/components/ai-agent/agent-composer"
+import { AgentReasoningSelector } from "@/components/ai-agent/agent-reasoning-selector"
 import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
 import { modelSelectorTriggerVariants } from "@/components/assistant-ui/elements/model-selector"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useSetAgentComposerDraft } from "@/hooks/use-agent-composer-draft"
+import { useSetAgentComposerDraft, useSessionDraftState } from "@/hooks/use-agent-composer-draft"
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAISessionHistory } from "@/hooks/use-ai-session-history"
 import {
@@ -188,6 +190,9 @@ export function AiAssistantPanel({
     canSend: canSendToSession,
     restoreSession,
     startNewSession,
+    startDraftSession,
+    recoverComposerDraft,
+    forgetComposerDraft,
     sendMessage,
     updateMessage: updateUserMessage,
     regenerateMessage,
@@ -215,15 +220,16 @@ export function AiAssistantPanel({
     loading: attachmentsLoading,
     addFiles: addAttachmentFiles,
     remove: removeAttachment,
-    clear: clearAttachments,
+    forget: forgetAttachments,
     detach: detachAttachments,
     restore: restoreAttachments,
     release: releaseAttachments,
   } = useComposerAttachments({
+    sessionId,
     onLimit: attachmentLimitNotice,
     onRejected: attachmentRejectedNotice,
   })
-  const [contextReferences, setContextReferences] = useState<ComposerContextReference[]>([])
+  const [contextReferences, setContextReferences, forgetContextReferences] = useSessionDraftState<ComposerContextReference[]>(sessionId, [])
   const [configOpen, setConfigOpen] = useState(false)
   const [sessionCreating, setSessionCreating] = useState(false)
   const [isOpenSettled, setIsOpenSettled] = useState(false)
@@ -263,12 +269,10 @@ export function AiAssistantPanel({
   const {
     actionLoadingId: historyActionLoadingId,
     forget: forgetHistorySession,
-    prepend: prependHistorySession,
     remove: removeHistorySession,
     renamingId: historyRenamingId,
     setOpen: setHistoryOpen,
     syncSession: syncHistorySession,
-    findEmptySession: findEmptyHistorySession,
   } = history
 
   useEffect(() => {
@@ -346,7 +350,7 @@ export function AiAssistantPanel({
     !sessionCreating && !attachmentsLoading &&
     !isChatRequestActive &&
     (canSendToSession || (!session && transport === "idle") || session?.status === "closed")
-  const createSessionDisabled = !isConfigured || isConfigLoading || sessionCreating
+  const createSessionDisabled = !isConfigured || isConfigLoading || sessionCreating || attachmentsLoading
   useEffect(() => {
     if (!isOpen) {
       setHistoryOpen(false)
@@ -472,44 +476,29 @@ export function AiAssistantPanel({
         })
         if (!confirmed) return
       }
-      const response = await startNewSession({
-        model: activeModel,
-        permissionMode,
-        scope: terminalScope,
-        findEmptySession: () => findEmptyHistorySession(terminalScope),
-      })
-
-      if (response) {
-        setInput("")
-        clearAttachments()
-        setContextReferences([])
-        storeTerminalAISessionId(terminalSession.id, response.session_id)
-        setHistoryOpen(false)
-        focusComposer()
-      }
+      await startDraftSession(terminalScope)
+      restoreAttemptKeyRef.current = terminalSession.id
+      removeStoredTerminalAISessionId(terminalSession.id)
+      setHistoryOpen(false)
+      focusComposer()
     } finally {
       sessionCreatingRef.current = false
       setSessionCreating(false)
     }
   }, [
-    activeModel,
-    clearAttachments,
     createSessionDisabled,
     focusComposer,
-    findEmptyHistorySession,
-    permissionMode,
     requestConfirm,
     setHistoryOpen,
-    setInput,
     isAssistantActive,
-    startNewSession,
+    startDraftSession,
     terminalScope,
     terminalSession.id,
     tAI,
   ])
 
   const handleRestoreSession = useCallback(async (targetSessionId: string) => {
-    if (!targetSessionId || sessionCreatingRef.current || historyRenamingId) {
+    if (!targetSessionId || sessionCreatingRef.current || attachmentsLoading || historyRenamingId) {
       return
     }
 
@@ -525,7 +514,7 @@ export function AiAssistantPanel({
       setHistoryOpen(false)
       focusComposer()
     }
-  }, [focusComposer, historyRenamingId, restoreSession, sessionId, setHistoryOpen, terminalSession.id])
+  }, [attachmentsLoading, focusComposer, historyRenamingId, restoreSession, sessionId, setHistoryOpen, terminalSession.id])
 
   const handleDeleteSession = useCallback(async (targetSessionId: string) => {
     if (!targetSessionId || historyActionLoadingId) {
@@ -542,13 +531,19 @@ export function AiAssistantPanel({
 
     const removed = await removeHistorySession(targetSessionId)
     if (removed) {
+      forgetComposerDraft(targetSessionId)
+      forgetAttachments(targetSessionId)
+      forgetContextReferences(targetSessionId)
       removeStoredTerminalAISessionId(terminalSession.id, targetSessionId)
       if (targetSessionId === sessionId) {
-        detachSession()
+        detachSession(targetSessionId)
       }
     }
   }, [
     detachSession,
+    forgetComposerDraft,
+    forgetAttachments,
+    forgetContextReferences,
     historyActionLoadingId,
     removeHistorySession,
     requestConfirm,
@@ -599,10 +594,12 @@ export function AiAssistantPanel({
   const handleAttachmentSelection = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     event.target.value = ""
+    if (sessionCreatingRef.current) return
     void addAttachmentFiles(files)
   }, [addAttachmentFiles])
 
   const handleAttachmentPaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+    if (sessionCreatingRef.current) return
     const files = Array.from(event.clipboardData.items)
       .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
       .map((item) => item.getAsFile())
@@ -616,7 +613,7 @@ export function AiAssistantPanel({
 
   const handleSubmit = useCallback(async (messageText: string) => {
     const normalizedInput = messageText.trim()
-    if ((!normalizedInput && attachments.length === 0 && contextReferences.length === 0) || !isConfigured || isConfigLoading || sessionCreatingRef.current) {
+    if ((!normalizedInput && attachments.length === 0 && contextReferences.length === 0) || !isConfigured || isConfigLoading || sessionCreatingRef.current || attachmentsLoading || transport === "connecting") {
       return
     }
 
@@ -626,72 +623,73 @@ export function AiAssistantPanel({
 
     const submittedAttachments = detachAttachments()
     const submittedReferences = contextReferences
-    setInput("")
     setContextReferences([])
+    setInput("")
     let createdSessionId: string | null = null
+    let submittedSessionId = sessionId
+    const recoverDraft = () => {
+      recoverComposerDraft(submittedSessionId, messageText)
+      restoreAttachments(submittedAttachments, submittedSessionId)
+      setContextReferences((current) => [...submittedReferences, ...current], submittedSessionId)
+    }
 
-    if (!session || session.status === "closed") {
-      sessionCreatingRef.current = true
-      setSessionCreating(true)
-
-      const response = await (async () => {
-        try {
-          return await startNewSession({
-            model: activeModel,
-            permissionMode,
-            scope: terminalScope,
-          })
-        } finally {
-          sessionCreatingRef.current = false
-          setSessionCreating(false)
-        }
-      })()
-
-      if (!response) {
-        setInput((current) => current || messageText)
-        restoreAttachments(submittedAttachments)
-        setContextReferences(submittedReferences)
+    sessionCreatingRef.current = true
+    setSessionCreating(true)
+    let preparing = true
+    try {
+      let imageAttachments
+      try {
+        imageAttachments = await toAgentImageAttachments(submittedAttachments)
+      } catch {
+        recoverDraft()
+        toast.error(tAI("attachmentReadFailed"))
         return
       }
 
-      storeTerminalAISessionId(terminalSession.id, response.session_id)
-      createdSessionId = response.session_id
-      prependHistorySession(response, tAI("newSession"))
-    }
+      if (!sessionId || session?.status === "closed") {
+        const response = await startNewSession({
+          model: activeModel,
+          permissionMode,
+          scope: terminalScope,
+        })
+        if (!response) {
+          recoverDraft()
+          return
+        }
+        createdSessionId = response.session_id
+        submittedSessionId = response.session_id
+        storeTerminalAISessionId(terminalSession.id, response.session_id)
+      }
 
-    let imageAttachments
-    try {
-      imageAttachments = await toAgentImageAttachments(submittedAttachments)
-    } catch {
+      const sending = sendMessage(
+        normalizedInput || tAI("contextOnlyPrompt"),
+        outboundContextText,
+        activeModel,
+        permissionMode,
+        terminalScope,
+        imageAttachments,
+      )
+      // sendMessage installs the outgoing message synchronously. Navigation can
+      // resume while the reply streams; recovery still targets this draft.
+      sessionCreatingRef.current = false
+      setSessionCreating(false)
+      preparing = false
+      const sendResult = await sending
+      if (sendResult !== "failed") {
+        releaseAttachments(submittedAttachments)
+        return
+      }
       if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
         forgetHistorySession(createdSessionId)
+        submittedSessionId = null
         removeStoredTerminalAISessionId(terminalSession.id, createdSessionId)
       }
-      setInput((current) => current || messageText)
-      restoreAttachments(submittedAttachments)
-      setContextReferences(submittedReferences)
-      toast.error(tAI("attachmentReadFailed"))
-      return
-    }
-
-    const sendResult = await sendMessage(
-      normalizedInput || tAI("contextOnlyPrompt"),
-      outboundContextText,
-      activeModel,
-      permissionMode,
-      terminalScope,
-      imageAttachments
-    )
-    if (sendResult === "failed") {
-      if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
-        forgetHistorySession(createdSessionId)
-        removeStoredTerminalAISessionId(terminalSession.id, createdSessionId)
+      recoverDraft()
+    } finally {
+      if (preparing) {
+        sessionCreatingRef.current = false
+        setSessionCreating(false)
       }
-      setInput((current) => current || messageText)
-      restoreAttachments(submittedAttachments)
-      setContextReferences(submittedReferences)
-    } else {
-      releaseAttachments(submittedAttachments)
     }
   }, [
     activeModel,
@@ -704,7 +702,11 @@ export function AiAssistantPanel({
     isConfigLoading,
     isConfigured,
     isChatRequestActive,
-    prependHistorySession,
+    recoverComposerDraft,
+    sessionId,
+    transport,
+    attachmentsLoading,
+    setContextReferences,
     outboundContextText,
     permissionMode,
     releaseAttachments,
@@ -728,6 +730,7 @@ export function AiAssistantPanel({
       </div>
 
       <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
+        <AgentWorkspaceToolbar />
         <div className="hidden md:block"><PanelPositionControl position={position} onChange={onPositionChange} /></div>
         <AISessionHistoryPopover
           activeSessionId={sessionId}
@@ -767,6 +770,7 @@ export function AiAssistantPanel({
 
   return (
     <AssistantRuntimeProvider runtime={agentSession.runtime}>
+    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} messages={session?.messages} scope={session?.scope} active={isOpen} loadFile={adapters?.aiSession?.getTaskFile} saveFile={adapters?.aiSession?.saveTaskFile} approve={async (id, approved) => { await agentSession.respondToToolApproval({ id, approved }) }} stop={cancelSession}>
     <aside
       data-terminal-panel
       role="complementary"
@@ -881,12 +885,12 @@ export function AiAssistantPanel({
               }
             />
 
-            <AgentComposerToolbar className="gap-2">
+            <AgentComposerToolbar className="flex-wrap gap-2">
               <AgentComposerTools className="flex flex-wrap items-center gap-1.5">
-                <AgentComposerAttachButton onClick={() => fileInputRef.current?.click()} disabled={attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || !isConfigured} aria-busy={attachmentsLoading} title={tAI("attachFile")} />
+                <AgentComposerAttachButton onClick={() => fileInputRef.current?.click()} disabled={attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || !isConfigured || sessionCreating || transport === "connecting"} aria-busy={attachmentsLoading} title={tAI("attachFile")} />
                 <TerminalAIContextPicker
                   session={terminalSession}
-                  disabled={!isConfigured || isConfigLoading}
+                  disabled={!isConfigured || isConfigLoading || sessionCreating || transport === "connecting"}
                   onAdd={(reference) => setContextReferences((current) => [
                     ...current.filter((item) => item.kind !== reference.kind),
                     reference,
@@ -894,7 +898,6 @@ export function AiAssistantPanel({
                 />
                 {isConfigured ? (
                   <>
-                    <AgentModelSelector models={modelOptions} value={resolvedModel} onValueChange={setModel} />
 
                     <Select
                       value={permissionMode}
@@ -965,7 +968,11 @@ export function AiAssistantPanel({
                 ) : null}
               </AgentComposerTools>
 
-              <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex min-w-0 items-center gap-1">
+                {isConfigured && <>
+                  <AgentReasoningSelector value={agentSession.reasoningEffort} onValueChange={agentSession.setReasoningEffort} disabled={isConfigLoading} />
+                  <AgentModelSelector models={modelOptions} value={resolvedModel} onValueChange={setModel} />
+                </>}
                 <AgentComposerDictation disabled={isConfigLoading || !isConfigured || isAssistantActive} />
                 <AgentComposerSubmit running={isAssistantActive} disabled={!canSend} hasContent={attachments.length > 0 || contextReferences.length > 0} onCancel={cancelSession} />
               </div>
@@ -974,7 +981,9 @@ export function AiAssistantPanel({
         </div>
       </div>
       </div>
+    <AgentWorkspacePanel compact />
     </aside>
+    </AgentWorkspaceProvider>
     </AssistantRuntimeProvider>
   )
 }

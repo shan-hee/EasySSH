@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/domain/server"
+	"github.com/easyssh/shared/aiworkspace"
 	"github.com/easyssh/shared/secretcrypto"
 	"github.com/easyssh/shared/sshutil"
 	"golang.org/x/crypto/ssh"
@@ -336,10 +337,13 @@ func (c *Client) ExecuteCommandDetailedContext(ctx context.Context, cmd string) 
 		output []byte
 		err    error
 	}
+	output := aiworkspace.NewOutput(ctx)
+	session.Stdout, session.Stderr = output, output
 	done := make(chan commandResponse, 1)
 	go func() {
-		output, err := session.CombinedOutput(cmd)
-		done <- commandResponse{output: output, err: err}
+		err := session.Run(cmd)
+		output.Flush()
+		done <- commandResponse{output: []byte(output.String()), err: err}
 	}()
 
 	select {
@@ -350,14 +354,14 @@ func (c *Client) ExecuteCommandDetailedContext(ctx context.Context, cmd string) 
 		_ = session.Close()
 		completed := time.Now().UTC()
 		exitCode := 130
-		output := "operation cancelled"
+		statusText := "operation cancelled"
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			exitCode = 124
-			output = "command timed out"
+			statusText = "command timed out"
 		}
 		return &CommandResult{
 			Command:     cmd,
-			Output:      output,
+			Output:      output.String() + "\n" + statusText,
 			ExitCode:    exitCode,
 			DurationMs:  completed.Sub(started).Milliseconds(),
 			StartedAt:   started,
