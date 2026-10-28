@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
@@ -20,6 +21,7 @@ type Client struct {
 	sftpClient *sftp.Client
 	sshClient  *sshDomain.Client
 	serverID   string
+	closed     atomic.Bool
 }
 
 // NewClient 创建 SFTP 客户端
@@ -36,11 +38,16 @@ func NewClient(sshClient *sshDomain.Client, srv *server.Server) (*Client, error)
 		return nil, fmt.Errorf("failed to create SFTP client: %w", err)
 	}
 
-	return &Client{
+	client := &Client{
 		sftpClient: sftpClient,
 		sshClient:  sshClient,
 		serverID:   srv.ID.String(),
-	}, nil
+	}
+	go func() {
+		_ = sftpClient.Wait()
+		client.closed.Store(true)
+	}()
+	return client, nil
 }
 
 // Close 关闭 SFTP 连接
@@ -61,10 +68,9 @@ func (c *Client) Close() error {
 
 // CloseSFTP 仅关闭 SFTP 通道，不关闭底层 SSH（用于 SSH 池化场景）
 func (c *Client) CloseSFTP() error {
+	c.closed.Store(true)
 	if c.sftpClient != nil {
-		err := c.sftpClient.Close()
-		c.sftpClient = nil
-		return err
+		return c.sftpClient.Close()
 	}
 	return nil
 }
@@ -79,17 +85,30 @@ func (c *Client) RawClient() *sftp.Client {
 
 // ListDirectory 列出目录
 func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
-	if path == "~" {
+	return c.ListDirectoryContext(context.Background(), path)
+}
+
+func (c *Client) ListDirectoryContext(ctx context.Context, path string) (*DirectoryListing, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	stop := sftputil.CloseOnCancel(ctx, c.CloseSFTP)
+	defer stop()
+	path = strings.TrimSpace(path)
+	if path == "~" || strings.HasPrefix(path, "~/") {
 		home, err := c.sftpClient.RealPath(".")
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve home directory: %w", err)
 		}
-		path = home
+		path = home + strings.TrimPrefix(path, "~")
 	}
 	path = sftputil.NormalizePath(path)
 	// 读取目录
 	entries, err := c.sftpClient.ReadDir(path)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, fmt.Errorf("failed to read directory: %w", err)
 	}
 
@@ -98,12 +117,7 @@ func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
 	for _, entry := range entries {
 		fullPath := sftputil.JoinPath(path, entry.Name())
 		isLink := entry.Mode()&os.ModeSymlink != 0
-		var linkTarget string
-		if isLink {
-			if t, err := c.sftpClient.ReadLink(fullPath); err == nil {
-				linkTarget = t
-			}
-		}
+		// Link targets are fetched by GetFileInfo on demand, not serially for every row.
 
 		fileInfo := &FileInfo{
 			Name:       entry.Name(),
@@ -112,7 +126,6 @@ func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
 			Mode:       entry.Mode(),
 			IsDir:      entry.IsDir(),
 			IsLink:     isLink,
-			LinkTarget: linkTarget,
 			ModTime:    entry.ModTime(),
 			Permission: sftputil.PermissionString(entry.Mode()),
 		}
@@ -122,6 +135,7 @@ func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
 
 	return &DirectoryListing{
 		Path:    path,
+		Parent:  sftputil.ParentPath(path),
 		Files:   files,
 		Total:   len(files),
 		CanRead: true,

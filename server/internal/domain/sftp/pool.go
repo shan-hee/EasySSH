@@ -15,7 +15,7 @@ import (
 	"log/slog"
 )
 
-// PooledClient 单次请求的 SFTP 客户端（底层 SSH 来自池）
+// PooledClient 独占借出的 SFTP 客户端；释放后可归还池复用。
 type PooledClient struct {
 	*Client
 	pool     *Pool
@@ -51,7 +51,11 @@ func (c Credential) toSSHCredential() sshDomain.Credential {
 func (pc *PooledClient) Release() {
 	pc.releaseOnce.Do(func() {
 		if pc.Client != nil {
-			_ = pc.Client.CloseSFTP()
+			if pc.sshConn != nil {
+				pc.sshConn.releaseSFTP(pc.Client)
+			} else {
+				_ = pc.Client.CloseSFTP()
+			}
 		}
 		if pc.pool != nil && pc.permitAcquired {
 			pc.pool.releasePermit(pc.key)
@@ -103,7 +107,36 @@ type pooledSSHConn struct {
 	lastUsedAt time.Time
 	closing    bool
 	lifeWarned bool
+	idleSFTP   []*Client
 	mu         sync.RWMutex
+}
+
+// 每条 SSH 最多保留两个空闲 SFTP 通道；操作期间独占，取消不影响其他借用者。
+func (sc *pooledSSHConn) acquireSFTP(serverID uuid.UUID) (*Client, error) {
+	sc.mu.Lock()
+	for len(sc.idleSFTP) > 0 {
+		last := len(sc.idleSFTP) - 1
+		client := sc.idleSFTP[last]
+		sc.idleSFTP[last] = nil
+		sc.idleSFTP = sc.idleSFTP[:last]
+		if !client.closed.Load() {
+			sc.mu.Unlock()
+			return client, nil
+		}
+	}
+	sc.mu.Unlock()
+	return NewClient(sc.Client, &server.Server{ID: serverID})
+}
+
+func (sc *pooledSSHConn) releaseSFTP(client *Client) {
+	sc.mu.Lock()
+	if !sc.closing && !client.closed.Load() && len(sc.idleSFTP) < 2 {
+		sc.idleSFTP = append(sc.idleSFTP, client)
+		sc.mu.Unlock()
+		return
+	}
+	sc.mu.Unlock()
+	_ = client.CloseSFTP()
 }
 
 func (sc *pooledSSHConn) IncRef() {
@@ -329,8 +362,8 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 		sshConn.IncRef()
 		p.mu.Unlock()
 
-		// 为本次请求创建新的 SFTP 客户端（锁外）
-		sftpClient, createErr := NewClient(sshConn.Client, &server.Server{ID: serverID})
+		// 优先借用空闲 SFTP 通道（池锁外）
+		sftpClient, createErr := sshConn.acquireSFTP(serverID)
 		if createErr != nil {
 			p.log.Warn("基于现有 SSH 创建 SFTP 失败，摘除并尝试重建",
 				"key", key,
@@ -342,7 +375,7 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 				err = createErr
 				return nil, err
 			}
-			newSFTP, newErr := NewClient(newSSH.Client, &server.Server{ID: serverID})
+			newSFTP, newErr := newSSH.acquireSFTP(serverID)
 			if newErr != nil {
 				p.invalidateSSHConn(key, newSSH)
 				err = newErr
@@ -385,7 +418,7 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 			err = newErr
 			return nil, err
 		}
-		newSFTP, newErr := NewClient(newSSH.Client, &server.Server{ID: serverID})
+		newSFTP, newErr := newSSH.acquireSFTP(serverID)
 		if newErr != nil {
 			p.invalidateSSHConn(key, newSSH)
 			err = newErr
@@ -421,7 +454,7 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 		return nil, err
 	}
 
-	sftpClient, err := NewClient(newSSH.Client, &server.Server{ID: serverID})
+	sftpClient, err := newSSH.acquireSFTP(serverID)
 	if err != nil {
 		p.invalidateSSHConn(key, newSSH)
 		return nil, err
@@ -511,9 +544,9 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 	p.mu.Lock()
 	if allowReuse {
 		if existing, exists := p.connections[key]; exists && existing.IsHealthy() {
+			existing.IncRef()
 			p.mu.Unlock()
 			go newConn.Client.Close()
-			existing.IncRef()
 			p.log.Debug("复用其他 goroutine 创建的 SSH 连接",
 				"key", key,
 				"refCount", existing.GetRefCount())

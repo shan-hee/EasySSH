@@ -17,7 +17,7 @@ export const SFTP_PARENT_ENTRY: SftpDirectoryItemBase = {
 }
 
 export interface SftpDirectoryApi {
-  listDirectory: (serverId: string, path?: string) => Promise<DirectoryListResponse>
+  listDirectory: (serverId: string, path?: string, signal?: AbortSignal) => Promise<DirectoryListResponse>
 }
 
 export interface LoadSftpDirectoryOptions<T extends SftpDirectoryItemBase> {
@@ -27,6 +27,7 @@ export interface LoadSftpDirectoryOptions<T extends SftpDirectoryItemBase> {
   withParentEntry?: boolean
   parentEntry?: T
   api?: SftpDirectoryApi
+  signal?: AbortSignal
 }
 
 export interface LoadedSftpDirectory<T extends SftpDirectoryItemBase> {
@@ -43,8 +44,9 @@ export async function loadSftpDirectory<T extends SftpDirectoryItemBase>({
   withParentEntry = false,
   parentEntry,
   api = sftpApi,
+  signal,
 }: LoadSftpDirectoryOptions<T>): Promise<LoadedSftpDirectory<T>> {
-  const response = await api.listDirectory(serverId, path)
+  const response = await api.listDirectory(serverId, path, signal)
   const convertedFiles = response.files.map(convertFileInfo)
   const parentDirectoryEntry = (parentEntry ?? SFTP_PARENT_ENTRY) as T
   const files = withParentEntry && response.parent

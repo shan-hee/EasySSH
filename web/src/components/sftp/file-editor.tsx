@@ -49,10 +49,13 @@ interface FileEditorProps {
   fileContent: string
   isOpen: boolean
   keyboardShortcutsEnabled?: boolean
+  onReady?: () => void
   onClose: () => void
-  onSave: (content: string) => void
+  onDraftChange?: (content: string) => void
+  onSave: (content: string) => void | Promise<void>
   onDownload?: () => void
   readOnly?: boolean
+  isBusy?: boolean
   toolbarActions?: ReactNode
   closeButtonLabel?: string
   scrollToBottomOnContentChange?: boolean
@@ -71,13 +74,17 @@ type MonacoEditorHandle = {
 
 export function FileEditor({
   fileName,
+  filePath,
   fileContent,
   isOpen,
   keyboardShortcutsEnabled = true,
   onClose,
+  onReady,
   onSave,
+  onDraftChange,
   onDownload,
   readOnly = false,
+  isBusy = false,
   toolbarActions,
   closeButtonLabel,
   scrollToBottomOnContentChange = false,
@@ -114,8 +121,9 @@ export function FileEditor({
   useEffect(() => {
     setContent(fileContent || '')
     editorRef.current?.setValue(fileContent || '')
+    onDraftChange?.(fileContent || '')
     setIsModified(false)
-  }, [fileContent, fileName])
+  }, [fileContent, filePath, onDraftChange])
 
   useEffect(() => {
     if (encoding) {
@@ -180,6 +188,7 @@ export function FileEditor({
 
     if (value !== undefined) {
       setContent(value)
+      onDraftChange?.(value)
       setIsModified(value !== fileContent)
     }
   }
@@ -211,23 +220,24 @@ export function FileEditor({
 
   // 保存文件
   const handleSave = useCallback(async () => {
-    if (readOnly) {
-      return
-    }
+    if (readOnly || isBusy || isSaving) return
 
     setIsSaving(true)
     try {
       await onSave(editorRef.current?.getValue() ?? content ?? '')
       setIsModified(false)
+    } catch (error) {
+      console.error("保存文件失败:", error)
     } finally {
       setIsSaving(false)
     }
-  }, [content, onSave, readOnly])
+  }, [content, onSave, readOnly, isBusy, isSaving])
 
   // 重置内容
   const handleReset = () => {
     setContent(fileContent || '')
     editorRef.current?.setValue(fileContent || '')
+    onDraftChange?.(fileContent || '')
     setIsModified(false)
   }
 
@@ -400,7 +410,7 @@ export function FileEditor({
                     "h-7 gap-1.5 px-2 text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                   onClick={handleReset}
-                  disabled={!isModified}
+                  disabled={!isModified || isSaving || isBusy}
                   title={tSftp("editorActionResetTooltip")}
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
@@ -432,7 +442,7 @@ export function FileEditor({
                     "h-7 gap-1.5 px-2",
                   )}
                   onClick={handleSave}
-                  disabled={!isModified || isSaving}
+                  disabled={!isModified || isSaving || isBusy}
                   title={tSftp("editorActionSaveTooltip")}
                 >
                   <Save className="h-3.5 w-3.5" />
@@ -480,7 +490,7 @@ export function FileEditor({
 
           {/* Monaco Editor */}
           <div ref={editorContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden">
-            <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">{tSftp("editorLoading")}</div>}>
+            <Suspense fallback={null}>
              <MonacoEditor
                height="100%"
                width="100%"
@@ -498,7 +508,7 @@ export function FileEditor({
                 automaticLayout: true,
                 tabSize: 2,
                 wordWrap: wordWrap,
-                readOnly,
+                readOnly: readOnly || isSaving || isBusy,
                 editContext: false,
                 acceptSuggestionOnEnter: "smart",
                 formatOnPaste: false, // 关闭粘贴时自动格式化，避免性能问题
@@ -517,17 +527,10 @@ export function FileEditor({
               }}
               onMount={(editor) => {
                 editorRef.current = editor
+                onReady?.()
                 window.requestAnimationFrame(() => editor.layout())
               }}
-              loading={
-                <div className="flex items-center justify-center h-full">
-                  <div className={cn(
-                    "text-sm text-muted-foreground",
-                  )}>
-                    {tSftp("editorLoading")}
-                  </div>
-                </div>
-              }
+              loading={null}
              />
             </Suspense>
           </div>
@@ -666,7 +669,7 @@ export function FileEditor({
                 "h-7 w-7 text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
               onClick={handleReset}
-              disabled={!isModified}
+              disabled={!isModified || isSaving || isBusy}
               title={tSftp("editorActionResetTooltip")}
               aria-label={tSftp("editorActionReset")}
             >
@@ -698,7 +701,7 @@ export function FileEditor({
                 "h-7 w-7",
               )}
               onClick={handleSave}
-              disabled={!isModified || isSaving}
+              disabled={!isModified || isSaving || isBusy}
               title={tSftp("editorActionSaveTooltip")}
               aria-label={isSaving ? tSftp("editorActionSaveSaving") : tSftp("editorActionSave")}
             >
@@ -730,7 +733,7 @@ export function FileEditor({
 
       {/* Monaco Editor */}
       <div ref={editorContainerRef} className="flex-1 min-h-0 min-w-0 overflow-hidden">
-        <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">{tSftp("editorLoading")}</div>}>
+        <Suspense fallback={null}>
         <MonacoEditor
           height="100%"
           width="100%"
@@ -748,7 +751,7 @@ export function FileEditor({
             automaticLayout: true,
             tabSize: 2,
             wordWrap: wordWrap,
-            readOnly,
+            readOnly: readOnly || isSaving || isBusy,
             editContext: false,
             acceptSuggestionOnEnter: "smart",
             formatOnPaste: false, // 关闭粘贴时自动格式化，避免性能问题
@@ -767,17 +770,10 @@ export function FileEditor({
           }}
           onMount={(editor) => {
             editorRef.current = editor
+            onReady?.()
             window.requestAnimationFrame(() => editor.layout())
           }}
-          loading={
-            <div className="flex items-center justify-center h-full">
-              <div className={cn(
-                "text-sm text-muted-foreground",
-              )}>
-                {tSftp("editorLoading")}
-              </div>
-            </div>
-          }
+          loading={null}
         />
         </Suspense>
       </div>

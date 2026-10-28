@@ -20,6 +20,7 @@ type FileInfo struct {
 
 // DirectoryListing 目录列表
 type DirectoryListing struct {
+	Parent  string      `json:"parent,omitempty"`
 	Path    string      `json:"path"`
 	Files   []*FileInfo `json:"files"`
 	Total   int         `json:"total"`

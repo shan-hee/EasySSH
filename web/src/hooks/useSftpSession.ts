@@ -1,10 +1,13 @@
 
 import { useState, useCallback, useEffect, useEffectEvent, useMemo, useRef } from 'react';
+import { QueryClient, isCancelledError } from '@tanstack/react-query';
 import type { FileInfo } from '@/lib/api/sftp';
 import { useFileTransfer, type FileTransferSftpApi, type UseFileTransferOptions } from './useFileTransfer';
+import { isApiError } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/error-utils";
-import { convertSftpFileInfo, type SftpFileItem } from "@/lib/sftp-file-utils";
-import { loadSftpDirectory } from "@/lib/session/sftp-directory";
+import { convertSftpFileInfo, resolveSftpNavigationPath, sftpRemoteBaseName, type SftpFileItem } from "@/lib/sftp-file-utils";
+import { createSftpDirectorySource, sftpParentPath, type SftpDirectoryLease } from "@/lib/session/sftp-directory-source";
+import { loadSftpDirectory, type LoadedSftpDirectory } from "@/lib/session/sftp-directory";
 import {
   performBatchDelete,
   performCreateFile,
@@ -127,15 +130,25 @@ export function useSftpSession(
     assertCompleteSftpSessionApi(resolved, "SFTP session file transfer");
     return resolved;
   }, [api]);
+  // 缓存随面板/连接身份销毁，避免不同凭据或产品适配器之间共享目录。
+  const directoryCache = useMemo(() => new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 5 * 60_000 } },
+  }), [serverId, sessionApi]);
+  const activeDirectoryRequest = useRef<{ path: string; promise: Promise<string | null>; lease: SftpDirectoryLease } | null>(null);
+  const [pendingPath, setPendingPath] = useState<string | null>(null);
+  const [failedPath, setFailedPath] = useState<string | null>(null);
   const [currentPath, setCurrentPath] = useState(initialPath);
   const currentPathRef = useRef(initialPath);
   const directoryRequestVersion = useRef(0);
+  const navigationVersion = useRef(0);
   const [isConnected, setIsConnected] = useState(false);
   const loadedServerRef = useRef<string | null>(null);
+  const loadedCacheRef = useRef<QueryClient | null>(null);
   const [pathBackStack, setPathBackStack] = useState<string[]>(() => initialPathBackStack);
   const [pathForwardStack, setPathForwardStack] = useState<string[]>(() => initialPathForwardStack);
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [isLoading, setIsLoading] = useState(Boolean(serverId));
+  const [loadingPresentation, setLoadingPresentation] = useState<"overlay" | "path" | null>(serverId ? "overlay" : null);
+  const isLoading = loadingPresentation !== null;
   const [error, setError] = useState<string | null>(null);
 
   const runSftpOperation = useCallback(<T,>(operation: () => Promise<T>) => {
@@ -143,14 +156,19 @@ export function useSftpSession(
       return operation();
     }
 
+    let attempted = false;
     return runWithCredentialRetry({
       serverId,
       serverName,
       authMethod,
       api: sessionApi,
-      operation,
+      operation: () => {
+        if (attempted) void directoryCache.invalidateQueries({ refetchType: "none" });
+        attempted = true;
+        return operation();
+      },
     });
-  }, [authMethod, runWithCredentialRetry, serverId, serverName, sessionApi]);
+  }, [authMethod, runWithCredentialRetry, serverId, serverName, sessionApi, directoryCache]);
 
   const fileTransferApi = useMemo<FileTransferSftpApi>(() => {
     // 页面只提供完整的会话 API；上传、下载和任务查询不能再由各产品壳自行裁剪。
@@ -202,36 +220,6 @@ export function useSftpSession(
     clearCompleted: transferManager?.clearCompleted ?? internalFileTransfer.clearCompleted,
   }), [internalFileTransfer, runSftpOperation, transferManager]);
 
-  const operationApi = useMemo<SftpSessionApi>(() => ({
-    ...sessionApi,
-    delete: (targetServerId, path) => runSftpOperation(() => sessionApi.delete(targetServerId, path)),
-    deletePaths: (targetServerId, paths) => runSftpOperation(() => sessionApi.deletePaths(targetServerId, paths)),
-    createDirectory: (targetServerId, path) => (
-      runSftpOperation(() => sessionApi.createDirectory(targetServerId, path))
-    ),
-    writeFile: (targetServerId, path, content) => (
-      runSftpOperation(() => sessionApi.writeFile(targetServerId, path, content))
-    ),
-    rename: (targetServerId, oldPath, newPath) => (
-      runSftpOperation(() => sessionApi.rename(targetServerId, oldPath, newPath))
-    ),
-    batchDelete: (targetServerId, paths) => (
-      runSftpOperation(() => sessionApi.batchDelete(targetServerId, paths))
-    ),
-    downloadFile: (targetServerId, path) => (
-      runSftpOperation(() => Promise.resolve(sessionApi.downloadFile(targetServerId, path)))
-    ),
-    readFile: (targetServerId, path) => runSftpOperation(() => sessionApi.readFile(targetServerId, path)),
-    batchDownload: (targetServerId, paths, mode, excludePatterns) => (
-      runSftpOperation(() => sessionApi.batchDownload(targetServerId, paths, mode, excludePatterns))
-    ),
-    chmod: sessionApi.chmod
-      ? (targetServerId, path, mode) => (
-          runSftpOperation(() => sessionApi.chmod!(targetServerId, path, mode))
-        )
-      : undefined,
-  }), [runSftpOperation, sessionApi]);
-
   /**
    * 转换后端FileInfo为前端FileItem
    */
@@ -243,53 +231,142 @@ export function useSftpSession(
     return converted
   }, []);
 
+  const directorySource = useMemo(() => createSftpDirectorySource(directoryCache, (path, signal) => (
+    runSftpOperation(() => {
+      signal.throwIfAborted();
+      return loadSftpDirectory({ serverId, path, convertFileInfo, withParentEntry: false, api: sessionApi, signal });
+    })
+  )), [directoryCache, runSftpOperation, serverId, convertFileInfo, sessionApi]);
+
+  const runSftpMutation = useCallback(async <T,>(operation: () => Promise<T>, paths: string[], removedSubtrees: string[] = []) => {
+    try {
+      return await runSftpOperation(operation);
+    } finally {
+      // 批量操作可能部分成功；即使失败也不能继续展示旧缓存。
+      directorySource.invalidate(paths.map(sftpParentPath), removedSubtrees);
+    }
+  }, [directorySource, runSftpOperation]);
+
+  const operationApi = useMemo<SftpSessionApi>(() => ({
+    ...sessionApi,
+    delete: (targetServerId, path) => runSftpMutation(() => sessionApi.delete(targetServerId, path), [path], [path]),
+    deletePaths: (targetServerId, paths) => runSftpMutation(() => sessionApi.deletePaths(targetServerId, paths), paths, paths),
+    createDirectory: (targetServerId, path) => (
+      runSftpMutation(() => sessionApi.createDirectory(targetServerId, path), [path])
+    ),
+    writeFile: (targetServerId, path, content) => (
+      runSftpMutation(() => sessionApi.writeFile(targetServerId, path, content), [path])
+    ),
+    rename: (targetServerId, oldPath, newPath) => (
+      runSftpMutation(() => sessionApi.rename(targetServerId, oldPath, newPath), [oldPath, newPath], [oldPath])
+    ),
+    batchDelete: (targetServerId, paths) => (
+      runSftpMutation(() => sessionApi.batchDelete(targetServerId, paths), paths, paths)
+    ),
+    downloadFile: (targetServerId, path) => (
+      runSftpOperation(() => Promise.resolve(sessionApi.downloadFile(targetServerId, path)))
+    ),
+    readFile: (targetServerId, path) => runSftpOperation(() => sessionApi.readFile(targetServerId, path)),
+    batchDownload: (targetServerId, paths, mode, excludePatterns) => (
+      runSftpOperation(() => sessionApi.batchDownload(targetServerId, paths, mode, excludePatterns))
+    ),
+    chmod: sessionApi.chmod
+      ? (targetServerId, path, mode) => (
+          runSftpMutation(() => sessionApi.chmod!(targetServerId, path, mode), [path])
+        )
+      : undefined,
+  }), [runSftpMutation, runSftpOperation, sessionApi]);
+
   /**
    * 加载目录内容
    */
-  const loadDirectory = useCallback(async (path: string) => {
-    if (!serverId) return;
+  const loadDirectory = useCallback(async (
+    inputPath: string,
+    { force = false, overlay = false }: { force?: boolean; overlay?: boolean } = {},
+  ): Promise<string | null> => {
+    if (!serverId) return null;
+    const path = resolveSftpNavigationPath(inputPath, currentPathRef.current);
+    const active = activeDirectoryRequest.current;
+    if (active?.path === path && !force) return active.promise;
 
     const requestVersion = ++directoryRequestVersion.current;
-    setIsLoading(true);
+    // 同路径刷新先取得新租约，避免误取消树或刷新仍需的请求。
+    const lease = directorySource.acquire(path, force);
+    active?.lease.release();
+    setLoadingPresentation(overlay ? "overlay" : "path");
+    setPendingPath(path);
     setError(null);
+    setFailedPath(null);
 
-    try {
-      const directory = await runSftpOperation(() => loadSftpDirectory({
-        serverId,
-        path,
-        convertFileInfo,
-        withParentEntry: false,
-        api: sessionApi,
-      }));
-
-      if (requestVersion !== directoryRequestVersion.current) return null;
-      setIsConnected(true);
+    const commit = (directory: LoadedSftpDirectory<FileItem>) => {
       setFiles(directory.files);
       setCurrentPath(directory.path);
       currentPathRef.current = directory.path;
-      return directory.path;
-    } catch (err: unknown) {
+    };
+    const cached = !force && !directoryCache.getQueryState([path])?.isInvalidated
+      ? directoryCache.getQueryData<LoadedSftpDirectory<FileItem>>([path])
+      : undefined;
+    if (cached) commit(cached);
+
+    const promise = lease.promise.then((directory) => {
       if (requestVersion !== directoryRequestVersion.current) return null;
-      setIsConnected(false);
-      console.error('[useSftpSession] 加载目录失败:', err);
-      const errorMessage = err instanceof Error ? err.message : '加载目录失败';
-      setError(errorMessage);
-      setFiles([]);
+      setIsConnected(true);
+      commit(directory);
+      return directory.path;
+    }).catch((err: unknown) => {
+      if (requestVersion !== directoryRequestVersion.current || isCancelledError(err)) return null;
+      // 仅连接/认证错误改变连接状态；目录权限或路径错误保留原列表。
+      const detail = isApiError(err) ? err.detail : err;
+      const code = detail && typeof detail === "object"
+        ? ("error" in detail ? detail.error : "code" in detail ? detail.code : null)
+        : null;
+      if (err instanceof TypeError || code === "sftp_error" || code === "sftp_connection_error" || code === "sftp_credential_required") {
+        setIsConnected(false);
+      }
+      setError(getErrorMessage(err, tSftp("directoryLoadFailed")));
+      setFailedPath(path);
       return null;
-    } finally {
-      if (requestVersion === directoryRequestVersion.current) setIsLoading(false);
+    }).finally(() => {
+      lease.release();
+      if (requestVersion === directoryRequestVersion.current) {
+        activeDirectoryRequest.current = null;
+        setLoadingPresentation(null);
+        setPendingPath(null);
+      }
+    });
+    activeDirectoryRequest.current = { path, promise, lease };
+    return cached ? cached.path : promise;
+  }, [serverId, directorySource, directoryCache, tSftp]);
+
+  useEffect(() => directoryCache.getQueryCache().subscribe((event) => {
+    if (event.type !== "updated" || event.action.type !== "success") return;
+    const directory = event.query.state.data as LoadedSftpDirectory<FileItem> | undefined;
+    if (loadedCacheRef.current === directoryCache && directory?.path === currentPathRef.current) {
+      setFiles(directory.files);
     }
-  }, [serverId, convertFileInfo, runSftpOperation, sessionApi]);
+  }), [directoryCache]);
+
+  // 操作完成后只修改操作发起时的目录；用户已经跳转时不能改写新目录。
+  const updateDirectoryFiles = useCallback((updater: FileItem[] | ((items: FileItem[]) => FileItem[])) => {
+    if (loadedCacheRef.current !== directoryCache) return;
+    const cached = directoryCache.getQueryData<LoadedSftpDirectory<FileItem>>([currentPath]);
+    if (cached) {
+      const nextFiles = typeof updater === "function" ? updater(cached.files) : updater;
+      directoryCache.setQueryData([currentPath], { ...cached, files: nextFiles });
+    }
+    else if (loadedServerRef.current === serverId && currentPathRef.current === currentPath) setFiles(updater);
+  }, [currentPath, directoryCache, serverId]);
 
   /**
    * 导航到指定路径
    */
   const navigate = useCallback(
     async (path: string) => {
+      const intent = ++navigationVersion.current;
       const previousPath = currentPathRef.current;
       const loadedPath = await loadDirectory(path);
 
-      if (loadedPath && loadedPath !== previousPath) {
+      if (intent === navigationVersion.current && loadedPath && loadedPath !== previousPath) {
         setPathBackStack((prev) => [...prev, previousPath].slice(-50));
         setPathForwardStack([]);
       }
@@ -304,9 +381,10 @@ export function useSftpSession(
     const previousPath = pathBackStack[pathBackStack.length - 1];
     if (!previousPath) return;
 
+    const intent = ++navigationVersion.current;
     const current = currentPathRef.current;
     const loadedPath = await loadDirectory(previousPath);
-    if (!loadedPath) return;
+    if (!loadedPath || intent !== navigationVersion.current) return;
 
     setPathBackStack((prev) => prev.slice(0, -1));
     if (loadedPath !== current) {
@@ -321,9 +399,10 @@ export function useSftpSession(
     const nextPath = pathForwardStack[pathForwardStack.length - 1];
     if (!nextPath) return;
 
+    const intent = ++navigationVersion.current;
     const current = currentPathRef.current;
     const loadedPath = await loadDirectory(nextPath);
-    if (!loadedPath) return;
+    if (!loadedPath || intent !== navigationVersion.current) return;
 
     setPathForwardStack((prev) => prev.slice(0, -1));
     if (loadedPath !== current) {
@@ -335,8 +414,8 @@ export function useSftpSession(
    * 刷新当前目录
    */
   const refresh = useCallback(() => {
-    loadDirectory(currentPath);
-  }, [currentPath, loadDirectory]);
+    void loadDirectory(currentPathRef.current, { force: true, overlay: true });
+  }, [loadDirectory]);
 
   /**
    * 上传文件
@@ -360,9 +439,13 @@ export function useSftpSession(
       }
 
       try {
-        await Promise.all(uploadPromises);
-        // 上传完成后刷新当前目录
-        refresh();
+        const results = await Promise.allSettled(uploadPromises);
+        directorySource.invalidate([currentPath]);
+        if (loadedCacheRef.current === directoryCache && currentPathRef.current === currentPath && (!activeDirectoryRequest.current || activeDirectoryRequest.current.path === currentPath)) {
+          void loadDirectory(currentPathRef.current, { force: true });
+        }
+        const failure = results.find((result) => result.status === "rejected");
+        if (failure?.status === "rejected") throw failure.reason;
         // 上传成功提示（与 SFTP 页面保持一致风格）
         if (fileList.length > 0) {
           sessionNotifier.success(
@@ -375,7 +458,7 @@ export function useSftpSession(
         throw error;
       }
     },
-    [serverId, currentPath, fileTransfer, refresh, sessionNotifier, tSftp]
+    [serverId, currentPath, fileTransfer, loadDirectory, sessionNotifier, tSftp, directoryCache, directorySource]
   );
 
   /**
@@ -384,14 +467,12 @@ export function useSftpSession(
   const downloadFile = useCallback(
     async (fileName: string) => {
       const file = files.find((f) => f.name === fileName);
-      if (!file || file.type === 'directory') return;
+      if (!fileName.startsWith('/') && (!file || file.type === 'directory')) return;
 
-      const fullPath = currentPath.endsWith('/')
-        ? `${currentPath}${fileName}`
-        : `${currentPath}/${fileName}`;
+      const fullPath = resolveSftpNavigationPath(fileName, currentPath);
 
       try {
-        await fileTransfer.downloadFile(serverId, fullPath, fileName);
+        await fileTransfer.downloadFile(serverId, fullPath, sftpRemoteBaseName(fullPath, fileName));
         sessionNotifier.success(tSftp("toastDownloadStartSingle", { file: fileName }));
       } catch (error) {
         console.error('[useSftpSession] 下载失败:', error);
@@ -412,10 +493,10 @@ export function useSftpSession(
       isDirectory,
       t: tSftp,
       notifier: sessionNotifier,
-      setFiles,
+      setFiles: updateDirectoryFiles,
       api: operationApi,
     }),
-    [serverId, currentPath, operationApi, sessionNotifier, tSftp]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp, updateDirectoryFiles]
   );
 
   /**
@@ -428,11 +509,11 @@ export function useSftpSession(
       name,
       t: tSftp,
       notifier: sessionNotifier,
-      setFiles,
+      setFiles: updateDirectoryFiles,
       convertFileInfo,
       api: operationApi,
     }),
-    [serverId, currentPath, convertFileInfo, operationApi, sessionNotifier, tSftp]
+    [serverId, currentPath, convertFileInfo, operationApi, sessionNotifier, tSftp, updateDirectoryFiles]
   );
 
   /**
@@ -445,11 +526,11 @@ export function useSftpSession(
       name,
       t: tSftp,
       notifier: sessionNotifier,
-      setFiles,
+      setFiles: updateDirectoryFiles,
       convertFileInfo,
       api: operationApi,
     }),
-    [serverId, currentPath, convertFileInfo, operationApi, sessionNotifier, tSftp]
+    [serverId, currentPath, convertFileInfo, operationApi, sessionNotifier, tSftp, updateDirectoryFiles]
   );
 
   /**
@@ -463,10 +544,10 @@ export function useSftpSession(
       newName,
       t: tSftp,
       notifier: sessionNotifier,
-      setFiles,
+      setFiles: updateDirectoryFiles,
       api: operationApi,
     }),
-    [serverId, currentPath, operationApi, sessionNotifier, tSftp]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp, updateDirectoryFiles]
   );
 
   /**
@@ -475,9 +556,7 @@ export function useSftpSession(
   const readFile = useCallback(
     async (fileName: string): Promise<string> => {
       try {
-        const fullPath = currentPath.endsWith('/')
-          ? `${currentPath}${fileName}`
-          : `${currentPath}/${fileName}`;
+        const fullPath = resolveSftpNavigationPath(fileName, currentPath);
 
         const content = await operationApi.readFile(serverId, fullPath);
 
@@ -495,18 +574,22 @@ export function useSftpSession(
    * 保存文件内容 (使用通用函数)
    */
   const saveFile = useCallback(
-    (fileName: string, content: string) => performSaveFile({
-      serverId,
-      currentPath,
-      fileName,
-      content,
-      t: tSftp,
-      notifier: sessionNotifier,
-      setFiles,
-      convertFileInfo,
-      api: operationApi,
-    }),
-    [serverId, currentPath, convertFileInfo, operationApi, sessionNotifier, tSftp]
+    (fileName: string, content: string) => {
+      const path = resolveSftpNavigationPath(fileName, currentPath);
+      const parent = sftpParentPath(path);
+      return performSaveFile({
+        serverId, currentPath: parent, fileName: sftpRemoteBaseName(path, fileName), content,
+        t: tSftp, notifier: sessionNotifier, convertFileInfo, api: operationApi,
+        setFiles: parent === currentPath ? updateDirectoryFiles : (updater) => {
+          if (loadedCacheRef.current !== directoryCache) return;
+          const cached = directoryCache.getQueryData<LoadedSftpDirectory<FileItem>>([parent]);
+          if (cached) directoryCache.setQueryData([parent], {
+            ...cached, files: typeof updater === "function" ? updater(cached.files) : updater,
+          });
+        },
+      });
+    },
+    [serverId, currentPath, convertFileInfo, operationApi, sessionNotifier, tSftp, updateDirectoryFiles, directoryCache]
   );
 
   /**
@@ -520,10 +603,10 @@ export function useSftpSession(
       hasDirectory,
       t: tSftp,
       notifier: sessionNotifier,
-      setFiles,
+      setFiles: updateDirectoryFiles,
       api: operationApi,
     }),
-    [serverId, currentPath, operationApi, sessionNotifier, tSftp]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp, updateDirectoryFiles]
   );
 
   /**
@@ -556,13 +639,15 @@ export function useSftpSession(
   useEffect(() => {
     if (!serverId || loadedServerRef.current === serverId) return;
     loadedServerRef.current = serverId;
+    loadedCacheRef.current = directoryCache;
     setIsConnected(false);
+    setFiles([]);
     currentPathRef.current = initialPath;
     setCurrentPath(initialPath);
     setPathBackStack(initialPathBackStack);
     setPathForwardStack(initialPathForwardStack);
-    void loadDirectory(initialPath);
-  }, [serverId, initialPath, initialPathBackStack, initialPathForwardStack, loadDirectory]);
+    void loadDirectory(initialPath, { overlay: true });
+  }, [serverId, initialPath, initialPathBackStack, initialPathForwardStack, loadDirectory, directoryCache]);
 
   const notifyHistoryChange = useEffectEvent((history: { currentPath: string; pathBackStack: string[]; pathForwardStack: string[] }) => onHistoryChange?.(history));
   useEffect(() => {
@@ -576,15 +661,26 @@ export function useSftpSession(
   // 视图不拥有服务器级连接。请求引用由后端连接池释放，空闲连接由池回收。
   // 仅使卸载/切换服务器前的响应失效，避免写回过期视图。
   useEffect(() => {
-    return () => { directoryRequestVersion.current += 1; loadedServerRef.current = null; };
-  }, [serverId]);
+    return () => {
+      directoryRequestVersion.current += 1;
+      navigationVersion.current += 1;
+      loadedServerRef.current = null;
+      loadedCacheRef.current = null;
+      activeDirectoryRequest.current = null;
+      directoryCache.clear();
+    };
+  }, [directoryCache]);
 
   return {
     // 状态
+    directorySource,
     isConnected,
     currentPath,
     files,
     isLoading,
+    showLoadingOverlay: loadingPresentation === "overlay",
+    pendingPath,
+    failedPath,
     error,
     transferTasks: fileTransfer.tasks,
     pathBackStack,

@@ -390,7 +390,7 @@ export interface SshWorkspaceApiClient {
     execute: (id: string) => Promise<void>
   }
   sftp?: {
-    listDirectory: (serverId: string, path?: string) => Promise<DirectoryListResponse>
+    listDirectory: (serverId: string, path?: string, signal?: AbortSignal) => Promise<DirectoryListResponse>
     authenticate?: (
       serverId: string,
       authMethod: WorkspaceAuthMethod,

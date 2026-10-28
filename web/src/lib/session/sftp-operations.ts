@@ -240,12 +240,13 @@ export async function performRename<T extends { name: string }>({
   const newPath = joinSftpRemotePath(currentPath, newName)
 
   const renamePromise = api.rename(serverId, oldPath, newPath).then(() => {
-    setFiles((prev) =>
-      prev.map((file) =>
-        file.name === oldName
-          ? { ...file, name: newName }
-          : file,
-      ),
+    const oldParent = oldPath.slice(0, oldPath.lastIndexOf("/")) || "/"
+    const newParent = newPath.slice(0, newPath.lastIndexOf("/")) || "/"
+    setFiles((prev) => oldParent === newParent
+      ? prev.map((file) => file.name === oldName
+        ? { ...file, name: sftpRemoteBaseName(newPath, newName) }
+        : file)
+      : prev.filter((file) => file.name !== oldName),
     )
   })
 

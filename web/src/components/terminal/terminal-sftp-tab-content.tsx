@@ -188,6 +188,11 @@ export function TerminalSftpTabContent({
         viewModeStorageKey="easyssh:sftp:viewMode:sftp-workspace"
         defaultViewMode="list"
         isLoading={sftp.isLoading}
+        directorySource={sftp.directorySource}
+        showLoadingOverlay={sftp.showLoadingOverlay}
+        pendingPath={sftp.pendingPath}
+        failedPath={sftp.failedPath}
+        error={sftp.error}
         onNavigate={sftp.navigate}
         onNavigateBack={sftp.goBack}
         canNavigateBack={sftp.canGoBack}

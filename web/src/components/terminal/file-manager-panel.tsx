@@ -8,9 +8,11 @@ import type { TerminalPanelPosition } from "@/stores/tab-ui-store"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
+import type { SftpDirectorySource } from "@/lib/session/sftp-directory-source"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
 
 export interface FileManagerPanelProps {
+  directorySource: SftpDirectorySource
   position: TerminalPanelPosition
   onPositionChange: (position: TerminalPanelPosition) => void
   layoutStyle?: React.CSSProperties
@@ -27,6 +29,10 @@ export interface FileManagerPanelProps {
   files: SftpFileItem[]
   sessionId: string
   sessionLabel: string
+  showLoadingOverlay?: boolean
+  pendingPath?: string | null
+  failedPath?: string | null
+  error?: string | null
   isLoading?: boolean // 是否正在加载文件列表
   onNavigate: (path: string) => void
   onNavigateBack?: () => void | Promise<void>

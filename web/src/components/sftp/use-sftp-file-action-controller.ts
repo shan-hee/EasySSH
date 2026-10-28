@@ -1,6 +1,5 @@
 
 import {
-  startTransition,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -20,7 +19,7 @@ import {
   type BatchDeleteResult,
 } from "@/lib/session/sftp-operations"
 import type { SshWorkspaceNotifier } from "@/lib/session/workspace"
-import { joinSftpRemotePath, sftpRemoteBaseName, type SftpFileItem } from "@/lib/sftp-file-utils"
+import { joinSftpRemotePath, resolveSftpNavigationPath, sftpRemoteBaseName, type SftpFileItem } from "@/lib/sftp-file-utils"
 import { loadFileEditor } from "@/lib/file-editor-preload"
 
 type SftpTranslator = (key: string, params?: Record<string, string | number>) => string
@@ -135,7 +134,7 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   return (
     target.matches("input, textarea, select, [role='textbox']") ||
     target.isContentEditable ||
-    target.closest("[contenteditable]:not([contenteditable='false']), [role='textbox']") !== null
+    target.closest("[contenteditable]:not([contenteditable='false']), [role='textbox'], [role='tree'], [role='dialog'], [role='alertdialog']") !== null
   )
 }
 
@@ -155,7 +154,7 @@ export function useSftpFileActionController({
   notifier = defaultNotifier,
   chmodFile,
   editingSessionLabelRef,
-  onNavigate,
+  onNavigate: navigateDirectory,
   onNavigateBack,
   canNavigateBack,
   onInternalBackHandlerChange,
@@ -177,60 +176,121 @@ export function useSftpFileActionController({
   const [editingFile, setEditingFile] = useState<string | null>(null)
   const [editingFileName, setEditingFileName] = useState("")
   const [creatingNew, setCreatingNew] = useState<SftpCreateEntryType | null>(null)
+  const [pendingFilePath, setPendingFilePath] = useState<string | null>(null)
+  const fileRequestVersion = useRef(0)
   const [editorState, setEditorState] = useState<SftpEditorState>(emptyEditorState)
   const [chmodDialog, setChmodDialog] = useState<SftpChmodDialogState>(emptyChmodDialogState)
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<SftpDeleteConfirmDialogState>(emptyDeleteConfirmDialogState)
 
-  const handleOpenEditor = useCallback(async (fileName: string) => {
+  const draftRef = useRef("")
+  const savingRef = useRef(false)
+  const [isSavingEditor, setIsSavingEditor] = useState(false)
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null)
+  const [leaveError, setLeaveError] = useState<string | null>(null)
+  const handleDraftChange = useCallback((content: string) => { draftRef.current = content }, [])
+  const requestLeave = useCallback((action: () => void) => {
+    if (savingRef.current) return
+    if (editorState.isOpen && draftRef.current !== editorState.content) {
+      setLeaveError(null)
+      setPendingLeave(() => action)
+    } else action()
+  }, [editorState.isOpen, editorState.content])
+
+  const closeEditor = useCallback(() => {
+    fileRequestVersion.current += 1
+    setPendingFilePath(null)
+    draftRef.current = ""
+    setEditorState(emptyEditorState)
+  }, [])
+  const leaveEditor = useCallback((action: () => void) => requestLeave(() => {
+    closeEditor()
+    action()
+  }), [requestLeave, closeEditor])
+  const onNavigate = useCallback((path: string) => leaveEditor(() => navigateDirectory(path)), [leaveEditor, navigateDirectory])
+
+  const openEditor = useCallback(async (fileName: string) => {
     if (!onReadFile) {
       console.warn("onReadFile 回调未提供")
       return
     }
 
-    // 读取远程文件期间并行下载编辑器，文件返回后即可复用已加载的模块。
-    void loadFileEditor().catch((error) => {
-      console.error("Failed to preload file editor:", error)
-    })
+    const requestVersion = ++fileRequestVersion.current
+    const fullPath = resolveSftpNavigationPath(fileName, currentPath)
+    setPendingFilePath(fullPath)
 
     try {
-      const content = await onReadFile(fileName)
-      const fullPath = joinSftpRemotePath(currentPath, fileName)
+      // 读取文件与加载编辑器并行；路径指示器持续到编辑器挂载完成。
+      const [content] = await Promise.all([onReadFile(fullPath), loadFileEditor()])
+      if (requestVersion !== fileRequestVersion.current) return
+      draftRef.current = content
       setEditorState({
         isOpen: true,
-        fileName,
+        fileName: sftpRemoteBaseName(fullPath, fileName),
         filePath: fullPath,
         content,
       })
     } catch (error) {
+      if (requestVersion === fileRequestVersion.current) setPendingFilePath(null)
       console.error("读取文件失败:", error)
     }
   }, [currentPath, onReadFile])
 
-  const handleCloseEditor = useCallback(() => {
-    setEditorState(emptyEditorState)
+  const handleOpenEditor = useCallback((path: string) => {
+    if (editorState.isOpen && resolveSftpNavigationPath(path, currentPath) === editorState.filePath) return
+    requestLeave(() => { void openEditor(path) })
+  }, [requestLeave, openEditor, currentPath, editorState.isOpen, editorState.filePath])
+
+  useLayoutEffect(() => {
+    setPendingFilePath(null)
+    return () => { fileRequestVersion.current += 1 }
+  }, [currentPath, serverId])
+
+  useLayoutEffect(() => {
+    closeEditor()
+    setPendingLeave(null)
+    setLeaveError(null)
+  }, [serverId, closeEditor])
+
+  const handleEditorReady = useCallback((filePath: string) => {
+    setPendingFilePath((pending) => pending === filePath ? null : pending)
   }, [])
 
-  const handleSaveFile = useCallback(async (content: string) => {
-    if (!onSaveFile) {
-      console.warn("onSaveFile 回调未提供")
-      return
-    }
+  const handleCloseEditor = useCallback(() => requestLeave(closeEditor), [requestLeave, closeEditor])
 
+  const handleSaveFile = useCallback(async (content: string) => {
+    if (!onSaveFile) throw new Error(tSftp("toastServiceUnavailable"))
+    if (savingRef.current) throw new Error(tSftp("editorActionSaveSaving"))
+    const path = editorState.filePath
+    savingRef.current = true
+    setIsSavingEditor(true)
     try {
-      await onSaveFile(editorState.fileName, content)
-      setEditorState((prev) => ({ ...prev, content }))
-    } catch (error) {
-      console.error("保存文件失败:", error)
-      throw error
+      await onSaveFile(path, content)
+      setEditorState((previous) => previous.filePath === path ? { ...previous, content } : previous)
+    } finally {
+      savingRef.current = false
+      setIsSavingEditor(false)
     }
-  }, [editorState.fileName, onSaveFile])
+  }, [editorState.filePath, onSaveFile, tSftp])
+
+  const resolveLeave = useCallback(async (choice: "save" | "discard" | "cancel") => {
+    if (savingRef.current) return
+    if (choice === "cancel") { setPendingLeave(null); setLeaveError(null); return }
+    try {
+      if (choice === "save") await handleSaveFile(draftRef.current)
+      setPendingLeave(null)
+      setLeaveError(null)
+      pendingLeave?.()
+    } catch (error) {
+      setLeaveError(formatSftpOperationError(error, tSftp, "toastSaveFileFailed", "toastSaveFileFailedWithMessage"))
+    }
+  }, [handleSaveFile, pendingLeave, tSftp])
 
   const handleFileDoubleClick = useCallback((fileName: string, fileType: "file" | "directory") => {
     if (fileType === "directory") {
+      fileRequestVersion.current += 1
+      setPendingFilePath(null)
       const next = joinSftpRemotePath(currentPath, fileName)
-      startTransition(() => {
-        onNavigate(next)
-      })
+      onNavigate(next)
       return
     }
 
@@ -715,6 +775,16 @@ export function useSftpFileActionController({
     editingFileName,
     creatingNew,
     editorState,
+    pendingFilePath,
+    handleEditorReady,
+    handleOpenEditor,
+    handleDraftChange,
+    isSavingEditor,
+    pendingLeave,
+    leaveError,
+    resolveLeave,
+    leaveEditor,
+    navigateWithGuard: onNavigate,
     chmodDialog,
     deleteConfirmDialog,
     setEditingFileName,

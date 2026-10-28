@@ -2,13 +2,12 @@ import { useContext, type ReactNode } from "react"
 import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
 import {
-  startTransition,
   useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react"
-import { ChevronLeft, ChevronRight, Clipboard, CloudUpload, CornerDownRight, FolderInput, Home, Maximize2, Minimize2, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, Clipboard, CloudUpload, CornerDownRight, FolderInput, Home, LoaderCircle, Maximize2, Minimize2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -31,7 +30,10 @@ interface PathDragState {
 }
 
 export interface SftpWorkspaceToolbarProps {
+  leadingAction?: ReactNode
   displayPath: string
+  pendingPath?: string | null
+  failedPath?: string | null
   pathInputValue: string
   pathSegments: string[]
   isEditingPath: boolean
@@ -61,7 +63,10 @@ export interface SftpWorkspaceToolbarProps {
 }
 
 export function SftpWorkspaceToolbar({
+  leadingAction,
   displayPath,
+  pendingPath,
+  failedPath,
   pathInputValue,
   pathSegments,
   isEditingPath,
@@ -198,20 +203,14 @@ export function SftpWorkspaceToolbar({
     }
   }
 
-  const navigateHome = () => {
-    startTransition(() => {
-      onNavigate("/")
-    })
-  }
+  const navigateHome = () => onNavigate("/")
 
   const navigateBack = () => {
     if (!canNavigateBack || !onNavigateBack) {
       return
     }
 
-    startTransition(() => {
-      void onNavigateBack()
-    })
+    void onNavigateBack()
   }
 
   const navigateForward = () => {
@@ -219,15 +218,13 @@ export function SftpWorkspaceToolbar({
       return
     }
 
-    startTransition(() => {
-      void onNavigateForward()
-    })
+    void onNavigateForward()
   }
 
   const finishPathEdit = (nextPath: string) => {
     onEditingPathChange(false)
     const normalized = nextPath.trim()
-    if (normalized && normalized !== displayPath) {
+    if (normalized && (normalized !== displayPath || failedPath)) {
       onNavigate(normalized)
     } else {
       onPathInputValueChange(displayPath)
@@ -237,6 +234,7 @@ export function SftpWorkspaceToolbar({
   return (
     <div data-sftp-toolbar="workspace" className="border-b text-sm flex items-center justify-between px-3 py-1.5">
       <div className="flex items-center gap-2 flex-1 min-w-0">
+        {leadingAction}
         <div className="flex items-center gap-1 shrink-0">
           <Button
             variant="ghost"
@@ -262,6 +260,11 @@ export function SftpWorkspaceToolbar({
 
         <div className="flex items-center gap-2 flex-1 min-w-0">
           <div className="relative flex-1 min-w-0">
+            {pendingPath && (
+              <span className="pointer-events-none absolute right-2 top-1/2 z-10 -translate-y-1/2" role="status" aria-label={tSftp("openingPath", { path: pendingPath })}>
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              </span>
+            )}
             {isEditingPath ? (
               <>
                 <button
@@ -279,20 +282,28 @@ export function SftpWorkspaceToolbar({
                   data-sftp-glass-control="path"
                   value={pathInputValue}
                   onChange={(event) => onPathInputValueChange(event.target.value)}
+                  aria-label={tSftp("pathInputPlaceholder")}
+                  aria-busy={!!pendingPath}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
-                      event.currentTarget.blur()
+                      if (event.nativeEvent.isComposing) return
+                      event.preventDefault()
+                      event.stopPropagation()
                       finishPathEdit(event.currentTarget.value)
                     } else if (event.key === "Escape") {
+                      event.preventDefault()
+                      event.stopPropagation()
                       onPathInputValueChange(displayPath)
                       onEditingPathChange(false)
-                      event.currentTarget.blur()
                     }
                   }}
-                  onBlur={(event) => finishPathEdit(event.target.value)}
+                  onBlur={() => {
+                    onPathInputValueChange(displayPath)
+                    onEditingPathChange(false)
+                  }}
                   autoFocus
                   placeholder={tSftp("pathInputPlaceholder")}
-                  className="h-7 border-0 bg-muted py-0.5 pl-7 pr-2 font-mono text-xs leading-4 placeholder:text-muted-foreground"
+                  className="h-7 border-0 bg-muted py-0.5 pl-7 pr-7 font-mono text-xs leading-4 placeholder:text-muted-foreground"
                 />
               </>
             ) : (
@@ -314,11 +325,11 @@ export function SftpWorkspaceToolbar({
                   event.stopPropagation()
                 }}
                 onClick={() => {
-                  onPathInputValueChange(displayPath)
+                  onPathInputValueChange(failedPath ?? displayPath)
                   onEditingPathChange(true)
                 }}
                 className={cn(
-                  "flex h-7 items-center gap-0.5 overflow-x-auto overflow-y-hidden rounded-md border-0 bg-muted py-0.5 pl-7 pr-2",
+                  "flex h-7 items-center gap-0.5 overflow-x-auto overflow-y-hidden rounded-md border-0 bg-muted py-0.5 pl-7 pr-7",
                   "scrollbar-none font-mono text-xs leading-4 select-none",
                   isPathOverflowing ? "cursor-grab" : "cursor-text",
                   isDraggingPath && "cursor-grabbing",
@@ -362,9 +373,7 @@ export function SftpWorkspaceToolbar({
                           if (isFileName) {
                             return
                           }
-                          startTransition(() => {
-                            onNavigate(segmentPath)
-                          })
+                          onNavigate(segmentPath)
                         }}
                         className={cn(
                           "shrink-0 whitespace-nowrap rounded-md px-1 py-0.5 leading-4 transition-all duration-200",

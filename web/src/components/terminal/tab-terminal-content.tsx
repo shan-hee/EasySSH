@@ -823,6 +823,11 @@ function TabTerminalContentComponent({
               currentPath={sftpSession.currentPath}
               files={sftpSession.files}
               isLoading={sftpSession.isLoading}
+              directorySource={sftpSession.directorySource}
+              showLoadingOverlay={sftpSession.showLoadingOverlay}
+              pendingPath={sftpSession.pendingPath}
+              failedPath={sftpSession.failedPath}
+              error={sftpSession.error}
               onNavigate={sftpSession.navigate}
               onNavigateBack={sftpSession.goBack}
               canNavigateBack={sftpSession.canGoBack}

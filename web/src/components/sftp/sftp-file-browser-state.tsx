@@ -1,12 +1,13 @@
 
 import { FolderOpen, Upload } from "lucide-react"
-import { LoadingSpinner } from "@/components/ui/loading/loading-spinner"
+import { Spinner } from "@/components/ui/spinner"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import { cn } from "@/lib/utils"
 
 export interface SftpFileBrowserStateProps {
   isDragging: boolean
   isLoading: boolean
+  showLoadingOverlay: boolean
   isEmpty: boolean
   searchTerm: string
 }
@@ -14,6 +15,7 @@ export interface SftpFileBrowserStateProps {
 export function SftpFileBrowserState({
   isDragging,
   isLoading,
+  showLoadingOverlay,
   isEmpty,
   searchTerm,
 }: SftpFileBrowserStateProps) {
@@ -37,9 +39,11 @@ export function SftpFileBrowserState({
     return (
       <>
         {dragOverlay}
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-          <LoadingSpinner size="lg" label={tSftp("loadingFiles")} />
-        </div>
+        {showLoadingOverlay && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/40 backdrop-blur-[1px]">
+            <Spinner className="size-8 text-muted-foreground" aria-label={tSftp("loadingFiles")} />
+          </div>
+        )}
       </>
     )
   }

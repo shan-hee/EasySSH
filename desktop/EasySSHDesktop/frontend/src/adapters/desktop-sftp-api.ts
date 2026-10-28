@@ -312,11 +312,24 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
       })
     },
     authenticate,
-    async listDirectory(serverId, remotePath = "/") {
-      return normalizeDirectoryList(await DesktopSFTPService.ListDirectory({
+    async listDirectory(serverId, remotePath = "/", signal) {
+      signal?.throwIfAborted()
+      const request = DesktopSFTPService.ListDirectoryContext({
         serverId,
         path: remotePath,
-      }) as DirectoryListResponse)
+      })
+      const cancel = () => { void request.cancel().catch(() => undefined) }
+      signal?.addEventListener("abort", cancel, { once: true })
+      try {
+        return normalizeDirectoryList(await request as DirectoryListResponse)
+      } catch (error) {
+        signal?.throwIfAborted()
+        const message = getDesktopErrorMessage(error)
+        const directoryError = message.includes("failed to read directory") && !/EOF|connection (?:lost|closed|reset)|broken pipe/i.test(message)
+        throw createDesktopSftpError(message, directoryError ? "sftp_directory_error" : "sftp_connection_error")
+      } finally {
+        signal?.removeEventListener("abort", cancel)
+      }
     },
     async getFileInfo(serverId, remotePath) {
       return normalizeFileInfo(await DesktopSFTPService.GetFileInfo({ serverId, path: remotePath }) as FileInfo)

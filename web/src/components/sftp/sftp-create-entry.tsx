@@ -1,5 +1,5 @@
 
-import type { FocusEvent, KeyboardEvent, RefObject } from "react"
+import type { FocusEvent, KeyboardEvent, Ref, RefObject } from "react"
 import { FileText, FolderOpen } from "lucide-react"
 import { TableCell, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,8 @@ import Folder from "@/components/Folder"
 import FileIcon from "@/components/File"
 
 export interface SftpCreateEntryProps {
+  containerRef?: Ref<HTMLDivElement>
+  gridColumns?: number
   variant: "grid" | "list"
   type: "file" | "folder"
   name: string
@@ -21,6 +23,8 @@ export interface SftpCreateEntryProps {
 
 export function SftpCreateEntry({
   variant,
+  containerRef,
+  gridColumns = 1,
   type,
   name,
   inputRef,
@@ -45,7 +49,7 @@ export function SftpCreateEntry({
 
   if (variant === "grid") {
     return (
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
+      <div ref={containerRef} className="grid gap-3 pb-3" style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}>
         <div
           data-sftp-create-entry="grid"
           className={cn(

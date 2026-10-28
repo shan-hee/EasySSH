@@ -530,6 +530,7 @@ func (h *SFTPHandler) ListDirectory(c *gin.Context) {
 	// 获取路径参数
 	path := c.DefaultQuery("path", "/")
 
+	acquireStarted := time.Now()
 	// 从连接池获取 SFTP 客户端
 	sftpClient, err := h.getPooledClient(c, serverID)
 	if err != nil {
@@ -538,10 +539,24 @@ func (h *SFTPHandler) ListDirectory(c *gin.Context) {
 	}
 	defer sftpClient.Release() // 释放回连接池，而不是关闭
 
-	// 列出目录
-	listing, err := sftpClient.ListDirectory(path)
+	acquireDuration := time.Since(acquireStarted)
+	readStarted := time.Now()
+	listing, err := sftpClient.ListDirectoryContext(c.Request.Context(), path)
+	c.Header("Server-Timing", fmt.Sprintf("sftp_acquire;dur=%.2f, sftp_read;dur=%.2f",
+		float64(acquireDuration.Microseconds())/1000, float64(time.Since(readStarted).Microseconds())/1000))
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "list_failed", err.Error())
+		switch {
+		case errors.Is(err, context.Canceled):
+			return
+		case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF), !sftpClient.IsHealthy():
+			RespondError(c, http.StatusBadGateway, "sftp_connection_error", err.Error())
+		case errors.Is(err, os.ErrNotExist):
+			RespondError(c, http.StatusNotFound, "directory_not_found", err.Error())
+		case errors.Is(err, os.ErrPermission):
+			RespondError(c, http.StatusForbidden, "directory_permission_denied", err.Error())
+		default:
+			RespondError(c, http.StatusInternalServerError, "list_failed", err.Error())
+		}
 		return
 	}
 

@@ -109,6 +109,8 @@ export function isSftpCredentialRequiredError(error: unknown) {
 
   if (error instanceof Error) {
     const message = error.message.toLowerCase()
+    // SFTP 文件权限失败不需要重新认证 SSH。
+    if (message.includes("failed to read directory")) return false
     return (
       message.includes("sftp_credential_required") ||
       message.includes("server credential is required") ||

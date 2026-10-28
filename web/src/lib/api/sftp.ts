@@ -77,8 +77,11 @@ export const sftpApi = {
   /**
    * 列出目录内容
    */
-  async listDirectory(serverId: string, path: string = "/"): Promise<DirectoryListResponse> {
-    return apiFetch<DirectoryListResponse>(`/sftp/${serverId}/list?path=${encodeURIComponent(path)}`)
+  async listDirectory(serverId: string, path: string = "/", signal?: AbortSignal): Promise<DirectoryListResponse> {
+    return apiFetch<DirectoryListResponse>(`/sftp/${serverId}/list?path=${encodeURIComponent(path)}`, {
+      signal,
+      retry: false,
+    })
   },
 
   /**

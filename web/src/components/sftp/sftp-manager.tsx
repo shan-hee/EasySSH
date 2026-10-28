@@ -1,3 +1,5 @@
+import { Content as AlertDialogContent } from "@radix-ui/react-alert-dialog"
+import { Button } from "@/components/ui/button"
 import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 
 import { useRef, useMemo, useCallback, useEffect, type ChangeEvent, type ReactNode } from "react"
@@ -6,6 +8,11 @@ import { SftpSessionProvider } from "@/contexts/sftp-session-context"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { ChmodDialog } from "@/components/sftp/chmod-dialog"
+import { AlertDialog, AlertDialogPortal, AlertDialogOverlay, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
+import type { SftpDirectorySource } from "@/lib/session/sftp-directory-source"
+import { SftpFileTreePane } from "./sftp-file-tree-pane"
+import { useSftpTreeLayout } from "./use-sftp-tree-layout"
+import { FolderTree } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
 import { DEFAULT_SFTP_DOWNLOAD_EXCLUDE_PATTERNS } from "@/lib/session/workspace-settings"
@@ -31,6 +38,7 @@ export interface SftpTerminalPathActions {
 }
 
 export interface SftpManagerProps {
+  directorySource: SftpDirectorySource
   keyboardShortcutsEnabled: boolean
   serverId: string
   serverName: string
@@ -47,6 +55,10 @@ export interface SftpManagerProps {
   surface?: "normal" | "transparent"
   viewModeStorageKey?: string
   defaultViewMode?: "grid" | "list"
+  showLoadingOverlay?: boolean
+  pendingPath?: string | null
+  failedPath?: string | null
+  error?: string | null
   isLoading?: boolean // 是否正在加载文件列表
   onNavigate: (path: string) => void
   onNavigateBack?: () => void | Promise<void>
@@ -91,6 +103,7 @@ export function SftpManager(props: SftpManagerProps) {
 
   const {
     keyboardShortcutsEnabled,
+    directorySource,
     host,
     username,
     isConnected,
@@ -107,6 +120,10 @@ export function SftpManager(props: SftpManagerProps) {
     viewModeStorageKey = "easyssh:sftp:viewMode:sftp",
     defaultViewMode = "grid",
     isLoading = false,
+    showLoadingOverlay = false,
+    pendingPath = null,
+    failedPath = null,
+    error = null,
     onNavigate,
     onNavigateBack,
     canNavigateBack,
@@ -140,6 +157,7 @@ export function SftpManager(props: SftpManagerProps) {
     onDownloadBackgroundArtifact,
     preferences,
   } = props
+  const treeLayout = useSftpTreeLayout(viewModeStorageKey, preferences ?? workspace?.adapters.preferences)
   const workspaceTransferManager = workspace?.adapters.transferManager
   const shouldRenderWorkspaceToolbar = chrome !== "content"
   const shouldRenderBody = chrome !== "toolbar"
@@ -195,6 +213,13 @@ export function SftpManager(props: SftpManagerProps) {
   useEffect(() => {
     setSelectedFiles([])
   }, [currentPath, setSelectedFiles])
+  useEffect(() => {
+    const names = new Set(files.map((file) => file.name))
+    setSelectedFiles((selected) => {
+      const remaining = selected.filter((name) => names.has(name))
+      return remaining.length === selected.length ? selected : remaining
+    })
+  }, [files, setSelectedFiles])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const backgroundFileInputRef = useRef<HTMLInputElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
@@ -223,6 +248,16 @@ export function SftpManager(props: SftpManagerProps) {
     editingFileName,
     creatingNew,
     editorState,
+    pendingFilePath,
+    handleEditorReady,
+    handleOpenEditor,
+    handleDraftChange,
+    isSavingEditor,
+    pendingLeave,
+    leaveError,
+    resolveLeave,
+    leaveEditor,
+    navigateWithGuard,
     chmodDialog,
     deleteConfirmDialog,
     setEditingFileName,
@@ -365,6 +400,7 @@ export function SftpManager(props: SftpManagerProps) {
     <TooltipProvider delayDuration={300}>
       <SftpSessionProvider value={sessionContextValue}>
         <div
+          ref={treeLayout.panelRef}
           className={cn(
             "flex min-w-0 w-full flex-col overflow-hidden rounded-none border-0 transition-colors",
             (surface !== "transparent" || isFullscreen) && "bg-background",
@@ -375,17 +411,23 @@ export function SftpManager(props: SftpManagerProps) {
       {shouldRenderWorkspaceToolbar && (
       <SessionWorkspaceToolbar kind="sftp">
       <SftpWorkspaceToolbar
+        leadingAction={<Button ref={treeLayout.toggleRef} variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={treeLayout.toggle}
+          aria-pressed={treeLayout.visible} aria-label={tSftp(treeLayout.visible ? "treeHide" : "treeShow")} title={tSftp(treeLayout.visible ? "treeHide" : "treeShow")}>
+          <FolderTree className="size-3.5" />
+        </Button>}
         displayPath={displayPath}
+        pendingPath={showLoadingOverlay ? null : pendingPath ?? pendingFilePath}
+        failedPath={failedPath}
         pathInputValue={pathInputValue}
         pathSegments={pathSegments}
         isEditingPath={isEditingPath}
         isEditorOpen={editorState.isOpen}
         onPathInputValueChange={setPathInputValue}
         onEditingPathChange={setIsEditingPath}
-        onNavigate={onNavigate}
-        onNavigateBack={onNavigateBack}
+        onNavigate={navigateWithGuard}
+        onNavigateBack={onNavigateBack ? () => leaveEditor(() => { void onNavigateBack() }) : undefined}
         canNavigateBack={canNavigateBack}
-        onNavigateForward={onNavigateForward}
+        onNavigateForward={onNavigateForward ? () => leaveEditor(() => { void onNavigateForward() }) : undefined}
         canNavigateForward={canNavigateForward}
         terminalPathActions={editorState.isOpen ? undefined : terminalPathActions}
         toolbarActions={toolbarActions}
@@ -400,22 +442,67 @@ export function SftpManager(props: SftpManagerProps) {
         onDownloadBackgroundArtifact={onDownloadBackgroundArtifact}
         isFullscreen={isFullscreen}
         onToggleFullscreen={onToggleFullscreen}
-        onDisconnect={onDisconnect}
+        onDisconnect={() => leaveEditor(onDisconnect)}
       />
       </SessionWorkspaceToolbar>
       )}
 
-      {/* 如果编辑器打开，只显示编辑器；否则显示搜索栏+文件列表 */}
-      {shouldRenderBody && (editorState.isOpen ? (
+      {shouldRenderBody && <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        {treeLayout.visible && treeLayout.narrow && <button tabIndex={-1} aria-label={tSftp("treeHide")} className="absolute inset-0 z-20 bg-black/15" onClick={treeLayout.dismiss} />}
+        <aside
+          hidden={!treeLayout.visible}
+          aria-label={tSftp("treeLabel")}
+          inert={!treeLayout.visible}
+          className={cn("min-h-0 shrink-0 border-r bg-background", treeLayout.narrow ? "absolute inset-y-0 left-0 z-30 shadow-lg" : "relative")}
+          style={{ width: treeLayout.actualWidth }}
+        >
+          <SftpFileTreePane key={`${serverId}:${sessionId}`} source={directorySource} currentPath={currentPath}
+            editorPath={editorState.isOpen ? editorState.filePath : undefined} showHidden={showHidden} visible={treeLayout.visible}
+            onNavigate={(path) => { navigateWithGuard(path); if (treeLayout.narrow) treeLayout.dismiss() }}
+            onOpenFile={(path) => { handleOpenEditor(path); if (treeLayout.narrow) treeLayout.dismiss() }}
+            onDismiss={treeLayout.dismiss}
+          />
+          {!treeLayout.narrow && <div role="separator" aria-orientation="vertical" tabIndex={0}
+            aria-label={tSftp("treeResize")} aria-valuemin={160} aria-valuemax={treeLayout.maxWidth} aria-valuenow={Math.round(treeLayout.actualWidth)}
+            className="absolute inset-y-0 -right-1 z-10 w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20 focus-visible:outline-none"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return
+              event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
+              treeLayout.resizeStart.current = { x: event.clientX, width: treeLayout.actualWidth }
+            }}
+            onPointerMove={(event) => {
+              const start = treeLayout.resizeStart.current
+              if (start) treeLayout.resize(start.width + event.clientX - start.x)
+            }}
+            onPointerUp={(event) => {
+              if (!treeLayout.resizeStart.current) return
+              treeLayout.resizeStart.current = null
+              treeLayout.persist("width", String(treeLayout.actualWidth))
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+            }}
+            onPointerCancel={() => { treeLayout.resizeStart.current = null }}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+              event.preventDefault(); event.stopPropagation()
+              treeLayout.persist("width", String(treeLayout.resize(treeLayout.actualWidth + (event.key === "ArrowLeft" ? -16 : 16))))
+            }}
+          />}
+        </aside>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      {editorState.isOpen ? (
         <SftpFileEditorPane
+          key={editorState.filePath}
+          onDraftChange={handleDraftChange}
+          isBusy={isSavingEditor || (!!pendingFilePath && pendingFilePath !== editorState.filePath)}
           fileName={editorState.fileName}
           filePath={editorState.filePath}
           fileContent={editorState.content}
           isOpen={editorState.isOpen}
           keyboardShortcutsEnabled={keyboardShortcutsEnabled}
           onClose={handleCloseEditor}
+          onReady={() => handleEditorReady(editorState.filePath)}
           onSave={handleSaveFile}
-          onDownload={() => onDownload(editorState.fileName)}
+          onDownload={() => onDownload(editorState.filePath)}
         />
       ) : (
         <>
@@ -428,11 +515,19 @@ export function SftpManager(props: SftpManagerProps) {
             showHidden={showHidden}
             onToggleHidden={toggleHidden}
             selectedCount={selectedFiles.length}
-            onRefresh={onRefresh}
+            onRefresh={() => { if (!isLoading) onRefresh() }}
           />
           )}
 
+          {error && (
+            <div role="alert" className="flex shrink-0 items-center gap-2 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <span className="min-w-0 flex-1 break-words">{tSftp("directoryError", { path: failedPath ?? currentPath, message: error })}</span>
+              <Button variant="ghost" size="sm" onClick={() => navigateWithGuard(failedPath ?? currentPath)}>{tSftp("retryDirectory")}</Button>
+            </div>
+          )}
           <SftpFileBrowserPane
+            currentPath={currentPath}
+            hasError={!!error}
             viewMode={viewMode}
             filteredFiles={filteredFiles}
             selectedFiles={selectedFiles}
@@ -440,6 +535,7 @@ export function SftpManager(props: SftpManagerProps) {
             sortOrder={sortOrder}
             isDragging={isDragging}
             isLoading={isLoading}
+            showLoadingOverlay={showLoadingOverlay}
             searchTerm={searchTerm}
             creatingNew={creatingNew}
             editingFile={editingFile}
@@ -476,7 +572,9 @@ export function SftpManager(props: SftpManagerProps) {
             onInputChange={handleInputChange}
           />
         </>
-      ))}
+      )}
+        </div>
+      </div>}
 
       {onCreateBackgroundUpload && (
       <input
@@ -488,6 +586,24 @@ export function SftpManager(props: SftpManagerProps) {
         onChange={handleBackgroundUploadInputChange}
       />
       )}
+
+      <AlertDialog open={!!pendingLeave} onOpenChange={(open) => { if (!open) void resolveLeave("cancel") }}>
+        <AlertDialogPortal>
+        <AlertDialogOverlay className="z-[10001]" />
+        <AlertDialogContent className="fixed left-1/2 top-1/2 z-[10002] grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{tSftp("unsavedTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{tSftp("unsavedDescription", { name: editorState.fileName })}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {leaveError && <p role="alert" className="text-sm text-destructive">{leaveError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSavingEditor}>{tSftp("unsavedCancel")}</AlertDialogCancel>
+            <Button variant="outline" disabled={isSavingEditor} onClick={() => void resolveLeave("discard")}>{tSftp("unsavedDiscard")}</Button>
+            <Button disabled={isSavingEditor} onClick={() => void resolveLeave("save")}>{tSftp(isSavingEditor ? "editorActionSaveSaving" : "unsavedSave")}</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+        </AlertDialogPortal>
+      </AlertDialog>
 
       {/* 权限修改对话框 */}
       {shouldRenderBody && (

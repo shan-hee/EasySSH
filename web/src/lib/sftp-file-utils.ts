@@ -29,6 +29,13 @@ interface ConvertOptions {
 
 const permissionCache = new Map<string, string>()
 
+// 主目录由远端解析；相对路径以当前面板目录为基准。
+export function resolveSftpNavigationPath(value: string, currentPath: string): string {
+  const input = value.trim().replace(/\\/g, "/")
+  if (input === "~" || input.startsWith("~/")) return input
+  return normalizeSftpRemotePath(input.startsWith("/") ? input : `${currentPath}/${input}`)
+}
+
 export function normalizeSftpRemotePath(value: string): string {
   const raw = value.trim().replace(/\\/g, "/")
   if (!raw) {

@@ -1,6 +1,6 @@
 import type { RegisterSftpDragItem } from "./use-sftp-drag-drop-controller"
 
-import { useRef, type ChangeEvent, type FocusEvent, type MouseEvent, type Ref, type RefObject } from "react"
+import { useLayoutEffect, useMemo, useState, useRef, type ChangeEvent, type FocusEvent, type MouseEvent, type Ref, type RefObject } from "react"
 import { Table, TableBody } from "@/components/ui/table"
 import { useFileListVirtualizer } from "@/hooks/use-file-list-virtualizer"
 import { cn } from "@/lib/utils"
@@ -20,6 +20,8 @@ import type {
 import type { SftpCreateEntryType } from "@/components/sftp/use-sftp-file-action-controller"
 
 export interface SftpFileBrowserPaneProps {
+  currentPath: string
+  hasError?: boolean
   registerDragItem: RegisterSftpDragItem
   viewMode: SftpFileViewMode
   filteredFiles: EnhancedSftpFileBrowserItem[]
@@ -28,6 +30,7 @@ export interface SftpFileBrowserPaneProps {
   sortOrder: SftpFileSortOrder
   isDragging: boolean
   isLoading: boolean
+  showLoadingOverlay: boolean
   searchTerm: string
   creatingNew: SftpCreateEntryType | null
   editingFile: string | null
@@ -64,6 +67,8 @@ export interface SftpFileBrowserPaneProps {
 }
 
 export function SftpFileBrowserPane({
+  currentPath,
+  hasError = false,
   registerDragItem,
   viewMode,
   filteredFiles,
@@ -72,6 +77,7 @@ export function SftpFileBrowserPane({
   sortOrder,
   isDragging,
   isLoading,
+  showLoadingOverlay,
   searchTerm,
   creatingNew,
   editingFile,
@@ -109,7 +115,47 @@ export function SftpFileBrowserPane({
   const listScrollRef = useRef<HTMLDivElement>(null)
   const gridScrollRef = useRef<HTMLDivElement>(null)
   const shouldVirtualize = filteredFiles.length > 100
-  const gridColumns = 6
+  const [gridColumns, setGridColumns] = useState(1)
+  const gridCreateRef = useRef<HTMLDivElement>(null)
+  const [gridCreateHeight, setGridCreateHeight] = useState(0)
+  const selectedNames = useMemo(() => new Set(selectedFiles), [selectedFiles])
+  const scrollPositions = useRef(new Map<string, number>())
+
+  useLayoutEffect(() => {
+    const element = gridScrollRef.current
+    if (!element) return
+    const resize = () => setGridColumns(Math.max(1, Math.min(6, Math.floor((element.clientWidth - 12) / 120))))
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [viewMode])
+
+  const rememberScroll = (element: HTMLDivElement) => {
+    const positions = scrollPositions.current
+    const key = `${viewMode}:${currentPath}`
+    positions.delete(key)
+    positions.set(key, element.scrollTop)
+    if (positions.size > 100) {
+      const oldest = positions.keys().next().value
+      if (oldest !== undefined) positions.delete(oldest)
+    }
+  }
+
+  useLayoutEffect(() => {
+    const element = viewMode === "grid" ? gridScrollRef.current : listScrollRef.current
+    if (element) element.scrollTop = scrollPositions.current.get(`${viewMode}:${currentPath}`) ?? 0
+  }, [currentPath, viewMode])
+
+  useLayoutEffect(() => {
+    const element = gridCreateRef.current
+    if (!element) { setGridCreateHeight(0); return }
+    const measure = () => setGridCreateHeight(element.getBoundingClientRect().height)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [creatingNew, viewMode])
 
   const listVirtualizer = useFileListVirtualizer({
     scrollElementRef: listScrollRef,
@@ -122,15 +168,20 @@ export function SftpFileBrowserPane({
     count: filteredFiles.length,
     viewMode: "grid",
     gridColumns,
+    paddingStart: creatingNew ? gridCreateHeight : 0,
     enabled: shouldVirtualize && viewMode === "grid",
   })
+
+  useLayoutEffect(() => {
+    gridVirtualizer.virtualizer.measure()
+  }, [gridColumns, gridVirtualizer.virtualizer])
 
   const renderGridItem = (file: EnhancedSftpFileBrowserItem) => (
     <SftpFileGridItem
       registerDragItem={registerDragItem}
       key={file.name}
       file={file}
-      isSelected={selectedFiles.includes(file.name)}
+      isSelected={selectedNames.has(file.name)}
       isEditing={editingFile === file.name}
       isDraggedOver={dragOverFolder === file.name}
       isDragged={draggedFileName === file.name}
@@ -141,7 +192,7 @@ export function SftpFileBrowserPane({
       onFinishRename={onFinishRename}
       onCancelRename={onCancelRename}
       onRenameBlur={onRenameBlur}
-      onSelect={(fileName, event) => onFileSelect(fileName, event)}
+      onSelect={onFileSelect}
       onDoubleClick={onFileDoubleClick}
       onOpenContextMenu={onOpenFileContextMenu}
       onCloseContextMenu={onCloseContextMenu}
@@ -158,7 +209,7 @@ export function SftpFileBrowserPane({
       file={file}
       dataIndex={dataIndex}
       measureElement={dataIndex !== undefined ? listVirtualizer.virtualizer.measureElement : undefined}
-      isSelected={selectedFiles.includes(file.name)}
+      isSelected={selectedNames.has(file.name)}
       isEditing={editingFile === file.name}
       isDraggedOver={dragOverFolder === file.name}
       isDragged={draggedFileName === file.name}
@@ -169,7 +220,7 @@ export function SftpFileBrowserPane({
       onFinishRename={onFinishRename}
       onCancelRename={onCancelRename}
       onRenameBlur={onRenameBlur}
-      onSelect={(fileName, event) => onFileSelect(fileName, event)}
+      onSelect={onFileSelect}
       onDoubleClick={onFileDoubleClick}
       onOpenContextMenu={onOpenFileContextMenu}
       onCloseContextMenu={onCloseContextMenu}
@@ -179,12 +230,11 @@ export function SftpFileBrowserPane({
     />
   )
 
-  const hasVisibleContent = !isLoading && (filteredFiles.length > 0 || creatingNew)
-
   const browserPane = (
     <div
       ref={dropZoneRef}
       data-sftp-browser="files"
+      aria-busy={isLoading}
       data-file-drop-target
       className={cn(
         "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
@@ -200,23 +250,25 @@ export function SftpFileBrowserPane({
       <SftpFileBrowserState
         isDragging={isDragging}
         isLoading={isLoading}
-        isEmpty={filteredFiles.length === 0 && !creatingNew}
+        showLoadingOverlay={showLoadingOverlay}
+        isEmpty={!hasError && filteredFiles.length === 0 && !creatingNew}
         searchTerm={searchTerm}
       />
 
-      {hasVisibleContent && (
-        viewMode === "grid" ? (
-          <div ref={gridScrollRef} className="overflow-auto h-full scrollbar-custom">
+      {viewMode === "grid" ? (
+          <div ref={gridScrollRef} onScroll={(event) => rememberScroll(event.currentTarget)} className="overflow-auto h-full scrollbar-custom">
             <div
               className="p-3"
               style={{
-                height: shouldVirtualize ? `${gridVirtualizer.virtualizer.getTotalSize()}px` : "auto",
+                height: shouldVirtualize ? `${gridVirtualizer.virtualizer.getTotalSize() + 24}px` : "auto",
                 position: "relative",
               }}
             >
               {creatingNew && (
                 <SftpCreateEntry
                   variant="grid"
+                  containerRef={gridCreateRef}
+                  gridColumns={gridColumns}
                   type={creatingNew}
                   name={editingFileName}
                   inputRef={editInputRef}
@@ -240,26 +292,27 @@ export function SftpFileBrowserPane({
                       style={{
                         position: "absolute",
                         top: 0,
-                        left: 0,
-                        width: "100%",
-                        transform: `translateY(${virtualRow.start}px)`,
+                        left: 12,
+                        width: "calc(100% - 24px)",
+                        paddingBottom: 12,
+                        transform: `translateY(${virtualRow.start + 12}px)`,
                       }}
                     >
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}>
                         {rowFiles.map(renderGridItem)}
                       </div>
                     </div>
                   )
                 })
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))` }}>
                   {filteredFiles.map(renderGridItem)}
                 </div>
               )}
             </div>
           </div>
         ) : (
-          <div ref={listScrollRef} className="overflow-auto h-full scrollbar-custom">
+          <div ref={listScrollRef} onScroll={(event) => rememberScroll(event.currentTarget)} className="overflow-auto h-full scrollbar-custom">
             <Table className="sftp-table text-xs [&_th]:h-9 [&_th]:px-3 [&_th]:text-xs [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-middle">
               <SftpFileTableHeader
                 sortBy={sortBy}
@@ -308,8 +361,7 @@ export function SftpFileBrowserPane({
               </TableBody>
             </Table>
           </div>
-        )
-      )}
+        )}
 
       <input
         ref={fileInputRef}

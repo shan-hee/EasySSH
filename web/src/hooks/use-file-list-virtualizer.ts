@@ -21,6 +21,7 @@ interface UseFileListVirtualizerOptions {
    * 网格视图的列数（仅在 grid 模式下使用）
    */
   gridColumns?: number
+  paddingStart?: number
 
   /**
    * 是否启用虚拟滚动（默认：文件数 > 100 时启用）
@@ -40,6 +41,7 @@ export function useFileListVirtualizer({
   count,
   viewMode,
   gridColumns = 6,
+  paddingStart = 0,
   enabled = true,
 }: UseFileListVirtualizerOptions) {
   // 计算虚拟化的项数
@@ -66,6 +68,7 @@ export function useFileListVirtualizer({
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: virtualCount,
+    paddingStart,
     getScrollElement: () => scrollElementRef.current,
     estimateSize,
     overscan: viewMode === 'grid' ? 2 : 5, // 网格视图缓冲2行，列表视图缓冲5行
