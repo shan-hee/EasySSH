@@ -185,6 +185,7 @@ export function createFileTransferController({
       return
     }
     if (job.status === "cancelled") return
+    if (job.status === "unknown") throw Object.assign(new Error(job.error_message || "Transfer outcome unknown; verify the remote result before retrying"), { transferOutcome: "unknown" })
     throw new Error(job.error_message || "传输失败")
   }
 
@@ -234,7 +235,7 @@ export function createFileTransferController({
         return
       }
       const message = error instanceof Error ? error.message : String(error)
-      updateTask(task.id, { status: "failed", error: message || "传输失败" })
+      updateTask(task.id, { status: error instanceof Error && "transferOutcome" in error && error.transferOutcome === "unknown" ? "unknown" : "failed", error: message || "传输失败" })
       throw error
     } finally {
       release?.()

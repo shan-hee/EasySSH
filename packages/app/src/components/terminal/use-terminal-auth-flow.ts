@@ -1,3 +1,4 @@
+import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 
 import { useCallback, useRef, useState } from "react"
 import type {
@@ -50,6 +51,7 @@ export function useTerminalAuthFlow({
   adapters,
   onAuthCancelled,
 }: UseTerminalAuthFlowOptions) {
+  const visitor = useOptionalSshWorkspace()?.capabilities.allowedActions !== undefined
   const [authChallenge, setAuthChallenge] = useState<{
     prompt: TerminalAuthPrompt
     respond: TerminalAuthPromptResponder
@@ -91,6 +93,11 @@ export function useTerminalAuthFlow({
   }, [])
 
   const handleAuthChallengeSubmit = useCallback((answers: string[] | TerminalAuthResponsePayload, authMethod?: TerminalAuthMethod) => {
+    if (visitor) {
+      authChallenge?.respond(Array.isArray(answers) ? answers : answers.answers ?? [], false)
+      setAuthChallenge(null)
+      return
+    }
     const payload = Array.isArray(answers)
       ? { answers, authMethod }
       : {
@@ -119,7 +126,7 @@ export function useTerminalAuthFlow({
     }
     authChallenge?.respond(answers, false, authMethod)
     setAuthChallenge(null)
-  }, [authChallenge])
+  }, [authChallenge, visitor])
 
   const handleAuthChallengeCancel = useCallback(() => {
     authChallenge?.respond([], true)

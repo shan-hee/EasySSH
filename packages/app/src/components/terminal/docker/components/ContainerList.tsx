@@ -1,3 +1,4 @@
+import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 /**
  * 容器列表组件
  * - 数据由父组件管理，本组件只负责展示和筛选
@@ -92,6 +93,8 @@ export function ContainerList({
   onRefresh,
   isLoading = false,
 }: ContainerListProps) {
+  const can = useWorkspaceAction()
+  const terminalAvailable = useTerminalStore(state => Boolean(state.getTerminal(sessionId)?.wsConnection))
   const { t } = useTranslation('terminal')
   const getTerminal = useTerminalStore((state) => state.getTerminal)
 
@@ -184,7 +187,7 @@ export function ContainerList({
   }
 
   const handleConfirmGroupAction = () => {
-    if (!groupActionInfo) return
+    if (!groupActionInfo || !can("docker.manage") || !can("terminal.connect")) return
 
     const terminalInstance = getTerminal(sessionId)
     if (!terminalInstance?.wsConnection) {
@@ -259,6 +262,7 @@ export function ContainerList({
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
+                          disabled={!can("docker.manage") || !can("terminal.connect") || !terminalAvailable}
                           onClick={() => openGroupActionDialog(group, 'pull')}
                         >
                           <Download className="h-3 w-3" />
@@ -274,6 +278,7 @@ export function ContainerList({
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
+                          disabled={!can("docker.manage") || !can("terminal.connect") || !terminalAvailable}
                           onClick={() => openGroupActionDialog(group, 'pull-restart')}
                         >
                           <RefreshCw className="h-3 w-3" />

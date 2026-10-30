@@ -1,3 +1,5 @@
+import type { components } from "@/generated/openapi"
+export type SyncAffectedGrant = components["schemas"]["SyncAffectedGrant"]
 export type SyncScopes = { credentials: boolean; ai_config: boolean; sessions: boolean }
 export const emptySyncScopes: SyncScopes = { credentials: false, ai_config: false, sessions: false }
 export type SyncVersionPreview = {
@@ -45,7 +47,7 @@ export type SyncStatus = {
 export interface SyncAdapter {
   status(): Promise<SyncStatus>
   sync(): Promise<void>
-  resolve(key: string, field: string, value: string): Promise<void>
+  resolve(key: string, field: string, value: string): Promise<void | SyncAffectedGrant[]>
   beginLogin?(url: string, name: string): Promise<SyncLogin>
   pollLogin?(): Promise<boolean>
   cancelLogin?(): Promise<void>
@@ -57,6 +59,7 @@ export interface SyncAdapter {
   setEnabled?(enabled: boolean): Promise<void>
   disconnect?(): Promise<boolean>
   revokeDevice?(id: string): Promise<void>
+  updateDeviceScopes?(id: string, scopes: SyncScopes): Promise<void>
 }
 
 export type SyncLogin = { url: string; code: string; expires_at: string }

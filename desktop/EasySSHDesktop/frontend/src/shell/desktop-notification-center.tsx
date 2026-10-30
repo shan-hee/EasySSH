@@ -60,10 +60,9 @@ export function DesktopNotificationCenter({ onOpenTask }: { onOpenTask: (taskID?
         toast.error(t("notificationsMarkReadFailed"))
       }
     }
-    const taskPrefix = "desktop://tasks/"
-    if (item.action_url?.startsWith(taskPrefix)) {
+    if (item.source_type === "task_run" && item.source_id) {
       setOpen(false)
-      onOpenTask(item.action_url.slice(taskPrefix.length) || undefined)
+      onOpenTask(item.source_id)
     }
   }, [onOpenTask, t])
 

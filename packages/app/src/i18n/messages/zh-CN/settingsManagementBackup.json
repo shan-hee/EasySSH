@@ -178,7 +178,7 @@
   "syncUnsavedScopes": "有尚未保存的修改，当前仍按原设置同步。",
   "syncPausedSettingsHint": "同步已暂停。可以调整内容和加入数据，恢复后再与服务端交换。",
   "syncDiscard": "撤销修改",
-  "syncSaveScopes": "保存同步内容",
+  "syncSaveScopes": "保存范围",
   "syncScopesSaved": "同步内容已保存",
   "syncAIConfigCopied": "AI 配置已复制到当前账户",
   "syncDataEnrolled": "所选数据已加入当前账户",
@@ -222,5 +222,9 @@
   "syncAuthorizeExpiredHint": "请求已过期或不存在。请返回桌面端重新发起连接，并使用新打开的授权页面。",
   "syncAuthorizeInvalidHint": "授权链接不完整或格式不正确。请从桌面端重新发起连接。",
   "syncAuthorizeDeviceLimit": "已达到 20 台授权设备的上限。请先在账户设置中撤销不再使用的设备，再重试。",
-  "syncAuthorizeBack": "返回网页终端"
+  "syncAuthorizeBack": "返回网页终端",
+  "syncEditScopes": "调整设备范围",
+  "syncAffectedShares": "本次同步影响的分享，请检查后确认资源。",
+  "syncSharedResourceDeleted": "资源已删除",
+  "syncSharedConnectionChanged": "连接信息已改变"
 }

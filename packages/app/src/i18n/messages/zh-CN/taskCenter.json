@@ -89,5 +89,12 @@
   "triggerManual": "手动",
   "triggerScheduled": "定时",
   "triggerSystem": "系统",
-  "triggerApi": "API"
+  "triggerApi": "API",
+  "statusUnknown": "结果未知",
+  "loadMoreEvents": "加载更多事件",
+  "partialEffectsHint": "取消只会在下一项开始前停止；结果未知不表示远端未执行。",
+  "success_paths": "已完成项目",
+  "failed_paths": "失败项目",
+  "unresolved_paths": "结果未确认项目",
+  "effects": "已产生的变动"
 }

@@ -21,7 +21,8 @@ export function mapWorkspaceActivityLogStatusToDesktop(status: WorkspaceActivity
 export function mapDesktopActivityLogStatus(status?: DesktopActivityLogStatus | string): WorkspaceActivityLogStatus {
   if (status === DesktopActivityLogStatus.DesktopActivityLogFailure || status === "failure") return "failure"
   if (status === DesktopActivityLogStatus.DesktopActivityLogWarning || status === "warning") return "warning"
-  return "success"
+  if (status === "pending" || status === "running" || status === "partial" || status === "canceled" || status === "timeout" || status === "unknown" || status === "success") return status
+  return "unknown"
 }
 
 export function mapDesktopActivityLogItem(item: DesktopActivityLogItem): WorkspaceActivityLogItem {
@@ -49,6 +50,7 @@ export function mapDesktopActivityLogItemToAuditLog(item: DesktopActivityLogItem
   return {
     id: item.id,
     username: desktopLogUsername,
+    source_table: item.source_table, source_id: item.source_id, resources: item.resources,
     server_id: item.serverId || undefined,
     type: desktopAuditLogTypeFromAction(action),
     action,

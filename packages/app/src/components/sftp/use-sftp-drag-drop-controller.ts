@@ -1,3 +1,4 @@
+import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefCallback } from "react"
 import { combine } from "@atlaskit/pragmatic-drag-and-drop/combine"
 import { draggable, dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter"
@@ -17,12 +18,13 @@ export interface UseSftpDragDropControllerOptions {
 }
 
 export function useSftpDragDropController({ sessionId, currentPath, files, onRename, onUpload }: UseSftpDragDropControllerOptions) {
+  const can = useWorkspaceAction()
   const [isDragging, setIsDragging] = useState(false)
   const [draggedFileName, setDraggedFileName] = useState<string | null>(null)
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null)
   const fileTypes = useMemo(() => new Map(files.map(file => [file.name, file.type])), [files])
-  const latest = useRef({ sessionId, currentPath, fileTypes, onRename, onUpload })
-  useLayoutEffect(() => { latest.current = { sessionId, currentPath, fileTypes, onRename, onUpload } }, [sessionId, currentPath, fileTypes, onRename, onUpload])
+  const latest = useRef({ sessionId, currentPath, fileTypes, onRename, onUpload, can })
+  useLayoutEffect(() => { latest.current = { sessionId, currentPath, fileTypes, onRename, onUpload, can } }, [sessionId, currentPath, fileTypes, onRename, onUpload, can])
 
   // Rows register in their own effect. Read current directory metadata when a gesture occurs.
   const registerDragItem = useCallback<RegisterSftpDragItem>((element, name) => combine(
@@ -44,7 +46,7 @@ export function useSftpDragDropController({ sessionId, currentPath, files, onRen
       element,
       canDrop: ({ source }) => {
         const { sessionId, currentPath, fileTypes } = latest.current
-        return !element.closest('[inert], [aria-hidden="true"]') &&
+        return latest.current.can("files.write") && !element.closest('[inert], [aria-hidden="true"]') &&
           isSftpFileDragData(source.data) && source.data.sourceSessionId === sessionId &&
           source.data.fileName !== name && source.data.filePath === joinSftpRemotePath(currentPath, source.data.fileName) &&
           fileTypes.get(name) === "directory"
@@ -66,7 +68,7 @@ export function useSftpDragDropController({ sessionId, currentPath, files, onRen
     if (!element) return
     const cleanup = dropTargetForExternal({
       element,
-      canDrop: ({ source }) => containsFiles({ source }) && !element.closest('[inert], [aria-hidden="true"]'),
+      canDrop: ({ source }) => latest.current.can("files.upload") && containsFiles({ source }) && !element.closest('[inert], [aria-hidden="true"]'),
       getDropEffect: () => "copy",
       onDragEnter: () => setIsDragging(true),
       onDragLeave: () => setIsDragging(false),
@@ -83,6 +85,6 @@ export function useSftpDragDropController({ sessionId, currentPath, files, onRen
     })
     return () => { cleanup(); setIsDragging(false) }
   }, [])
-  const handleFileUpload = useCallback(async (files: FileList) => { await onUpload(files) }, [onUpload])
+  const handleFileUpload = useCallback(async (files: FileList) => { if (can("files.upload")) await onUpload(files) }, [onUpload, can])
   return { dropZoneRef, isDragging, draggedFileName, dragOverFolder, registerDragItem, handleFileUpload }
 }

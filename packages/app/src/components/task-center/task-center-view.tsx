@@ -1,3 +1,4 @@
+import { ExecutionResult } from "./execution-result"
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { TFunction } from "i18next"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -49,9 +50,10 @@ import {
 } from "@/lib/dashboard-query-options"
 import { patchTaskRunDetail, patchTaskRunList, taskRealtimePatchFromEvent } from "@/components/task-center/task-center-realtime"
 
-const emptyStatistics: TaskStatistics = { total: 0, queued: 0, running: 0, canceling: 0, succeeded: 0, failed: 0, partial_success: 0, canceled: 0, timeout: 0 }
+const emptyStatistics: TaskStatistics = { total: 0, queued: 0, running: 0, canceling: 0, succeeded: 0, failed: 0, partial_success: 0, canceled: 0, timeout: 0, unknown: 0 }
 
 export interface TaskCenterViewProps {
+  canCleanup?: boolean
   api: TaskCenterApi
   subscribeEvents?: SubscribeRealtimeEvents | null
   hidePageHeader?: boolean
@@ -62,6 +64,7 @@ export interface TaskCenterViewProps {
 
 export function TaskCenterView({
   api,
+  canCleanup = true,
   subscribeEvents = null,
   hidePageHeader = false,
   schedulesContent,
@@ -81,6 +84,7 @@ export function TaskCenterView({
   const selectedRunIdRef = useRef<string | null>(null)
   const [pendingActions, setPendingActions] = useState<Record<string, "cancel" | "retry">>({})
   const pendingActionsRef = useRef<Record<string, "cancel" | "retry">>({})
+  const [loadingEvents, setLoadingEvents] = useState(false)
   const [cleanupOpen, setCleanupOpen] = useState(false)
   const [cleanupLoading, setCleanupLoading] = useState(false)
   const [retentionDays, setRetentionDays] = useState("90")
@@ -109,8 +113,16 @@ export function TaskCenterView({
   })
   const detailQuery = useQuery({
     queryKey: queryKeys.taskCenter.detail(selectedRunId ?? "none"),
-    queryFn: () => api.get(selectedRunId as string),
+    queryFn: async () => {
+      const id = selectedRunId as string
+      const next = await api.get(id)
+      const previous = queryClient.getQueryData<Awaited<ReturnType<TaskCenterApi["get"]>>>(queryKeys.taskCenter.detail(id))
+      if (!previous?.eventPage || !next.eventPage || previous.eventPage.next_after_id <= next.eventPage.next_after_id) return next
+      const fresh = new Map(next.events.map(event => [event.id, event]))
+      return { ...next, events: previous.events.map(event => fresh.get(event.id) ?? event), eventPage: { ...previous.eventPage, has_more: next.eventPage.has_more } }
+    },
     enabled: selectedRunId !== null,
+    refetchInterval: query => query.state.data && ["queued", "running", "canceling"].includes(query.state.data.run.status) ? 2500 : false,
     staleTime: 0,
   })
   const selected = detailQuery.data ?? null
@@ -289,7 +301,7 @@ export function TaskCenterView({
     { label: t("metricAll"), value: statistics.total, icon: Clock3 },
     { label: t("metricActive"), value: statistics.running + statistics.queued + statistics.canceling, icon: Loader2 },
     { label: t("metricSucceeded"), value: statistics.succeeded, icon: CheckCircle2 },
-    { label: t("metricAttention"), value: statistics.failed + statistics.partial_success + statistics.timeout, icon: AlertTriangle },
+    { label: t("metricAttention"), value: statistics.failed + statistics.partial_success + statistics.timeout + statistics.unknown, icon: AlertTriangle },
   ], [statistics, t])
 
   const runColumns = useMemo<ColumnDef<TaskRun>[]>(() => {
@@ -440,7 +452,7 @@ export function TaskCenterView({
                         <div className="flex flex-wrap gap-1">
                           {[
                             ["active", t("filterActive")], ["all", t("filterAll")], ["succeeded", t("filterSucceeded")], ["failed", t("filterFailed")],
-                            ["partial_success", t("filterPartial")], ["timeout", t("filterTimeout")], ["canceled", t("filterCanceled")],
+                            ["unknown", t("statusUnknown")], ["partial_success", t("filterPartial")], ["timeout", t("filterTimeout")], ["canceled", t("filterCanceled")],
                           ].map(([value, label]) => (
                             <Button key={value} variant={statusFilter === value ? "secondary" : "ghost"} size="sm" className="h-8" onClick={() => { setPage(1); setStatusFilter(value) }}>{label}</Button>
                           ))}
@@ -469,7 +481,7 @@ export function TaskCenterView({
                       </div>
                     )}
                   >
-                    <Button
+                    {canCleanup && <Button
                       variant="outline"
                       size="sm"
                       className="h-8 text-destructive hover:text-destructive"
@@ -478,7 +490,7 @@ export function TaskCenterView({
                     >
                       <Trash2 className="size-4" />
                       {t("cleanupButton")}
-                    </Button>
+                    </Button>}
                   </DataTableToolbar>
                 )}
               />
@@ -503,10 +515,20 @@ export function TaskCenterView({
             <DialogTitle>{selected?.run.title || t("viewDetails")}</DialogTitle>
             <DialogDescription>{selected?.run.resource || selected?.run.task_type || t("loading")}</DialogDescription>
           </DialogHeader>
-          {selected ? (
+          {detailQuery.isError ? <div role="alert" className="space-y-3 p-4 text-sm"><p>{getErrorMessage(detailQuery.error, t("loadFailed"))}</p><Button variant="outline" onClick={() => void detailQuery.refetch()}>{t("refresh")}</Button></div> : selected ? (
             <TaskDetails
               run={selected.run}
               events={selected.events}
+              moreEvents={selected.eventPage?.has_more}
+              loadingEvents={loadingEvents}
+              loadMore={() => {
+                if (!api.events || !selected.eventPage || loadingEvents) return
+                const id = selected.run.id
+                setLoadingEvents(true)
+                void api.events(id, selected.eventPage.next_after_id).then(page => {
+                  queryClient.setQueryData<Awaited<ReturnType<TaskCenterApi["get"]>>>(queryKeys.taskCenter.detail(id), current => current ? { ...current, events: [...current.events, ...page.events.filter(e => !current.events.some(old => old.id === e.id))], eventPage: page } : current)
+                }).catch(e => toast.error(getErrorMessage(e, t("loadFailed")))).finally(() => setLoadingEvents(false))
+              }}
               pendingAction={pendingActions[selected.run.id]}
               onAction={runAction}
               t={t}
@@ -570,17 +592,16 @@ export function TaskCenterView({
 
 function TaskProgress({ run, t }: { run: TaskRun; t: TFunction }) {
   if (run.status === "succeeded") return <span className="text-xs text-muted-foreground">{t("completed")}</span>
-  if (["failed", "canceled", "timeout"].includes(run.status)) return <span className="truncate text-xs text-muted-foreground">{run.error_message || t("ended")}</span>
+  if (["failed", "canceled", "timeout", "unknown"].includes(run.status)) return <span className="truncate text-xs text-muted-foreground">{run.error_message || t("ended")}</span>
   return <div className="flex items-center gap-2"><Progress value={run.progress} className="h-1.5" /><span className="w-8 text-right text-xs tabular-nums text-muted-foreground">{run.progress}%</span></div>
 }
 
 function TaskStatusBadge({ status, t }: { status: TaskRunStatus; t: TFunction }) {
-  const variants: Record<TaskRunStatus, "default" | "secondary" | "destructive" | "outline"> = { queued: "secondary", running: "default", succeeded: "outline", failed: "destructive", partial_success: "secondary", canceling: "secondary", canceled: "outline", timeout: "destructive" }
+  const variants: Record<TaskRunStatus, "default" | "secondary" | "destructive" | "outline"> = { queued: "secondary", running: "default", succeeded: "outline", failed: "destructive", partial_success: "secondary", canceling: "secondary", canceled: "outline", timeout: "destructive", unknown: "secondary" }
   return <Badge variant={variants[status]}>{t(statusLabelKeys[status])}</Badge>
 }
 
-function TaskDetails({ run, events, pendingAction, onAction, t, locale }: { run: TaskRun; events: TaskEvent[]; pendingAction?: "cancel" | "retry"; onAction: (action: "cancel" | "retry", run: TaskRun) => void; t: TFunction; locale: string }) {
-  const formattedResult = formatTaskResult(run.result_json)
+function TaskDetails({ run, events, pendingAction, onAction, t, locale, moreEvents, loadingEvents, loadMore }: { moreEvents?: boolean; loadingEvents?: boolean; loadMore: () => void; run: TaskRun; events: TaskEvent[]; pendingAction?: "cancel" | "retry"; onAction: (action: "cancel" | "retry", run: TaskRun) => void; t: TFunction; locale: string }) {
   return <div className="max-h-[calc(85vh-120px)] space-y-4 overflow-y-auto pr-2">
     <div className="grid grid-cols-2 gap-x-6 gap-y-3 border-y py-3 text-sm sm:grid-cols-4">
       <Detail label={t("detailStatus")}><TaskStatusBadge status={run.status} t={t} /></Detail><Detail label={t("detailType")}>{taskTypeLabel(run.task_type, t)}</Detail>
@@ -596,10 +617,8 @@ function TaskDetails({ run, events, pendingAction, onAction, t, locale }: { run:
           <span className="text-muted-foreground">{formatDate(event.created_at, locale)}</span><span className={event.level === "error" ? "text-destructive" : event.level === "warning" ? "text-amber-600" : "text-muted-foreground"}>{t(`eventLevel${event.level.charAt(0).toUpperCase()}${event.level.slice(1)}`)}</span><span>{event.message}</span>
         </div>
       ))}
-    </ScrollArea></div>
-    {formattedResult ? <div><h3 className="mb-2 text-sm font-semibold">{t("resultTitle")}</h3><ScrollArea className="h-64 border bg-muted/30">
-      <pre className="whitespace-pre-wrap break-words p-3 font-mono text-xs leading-5">{formattedResult}</pre>
-    </ScrollArea></div> : null}
+    </ScrollArea>{moreEvents && <Button variant="outline" size="sm" disabled={loadingEvents} onClick={loadMore}>{t("loadMoreEvents")}</Button>}</div>
+    <ExecutionResult raw={run.result_json} />
     {(run.cancelable || run.retryable) ? <div className="flex justify-end gap-2">
       {run.cancelable && ["queued", "running"].includes(run.status) ? <Button variant="outline" size="sm" disabled={Boolean(pendingAction)} onClick={() => onAction("cancel", run)}>{pendingAction === "cancel" ? <Loader2 className="size-4 animate-spin" /> : <CircleStop className="size-4" />}{t("cancelTask")}</Button> : null}
       {run.retryable && ["failed", "partial_success", "canceled", "timeout"].includes(run.status) ? <Button size="sm" disabled={Boolean(pendingAction)} onClick={() => onAction("retry", run)}>{pendingAction === "retry" ? <Loader2 className="size-4 animate-spin" /> : <RotateCcw className="size-4" />}{t("retryTask")}</Button> : null}
@@ -611,7 +630,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) { r
 
 const statusLabelKeys: Record<TaskRunStatus, string> = {
   queued: "statusQueued", running: "statusRunning", succeeded: "statusSucceeded", failed: "statusFailed",
-  partial_success: "statusPartial", canceling: "statusCanceling", canceled: "statusCanceled", timeout: "statusTimeout",
+  partial_success: "statusPartial", canceling: "statusCanceling", canceled: "statusCanceled", timeout: "statusTimeout", unknown: "statusUnknown",
 }
 
 const taskTypeLabelKeys: Record<string, string> = {
@@ -622,13 +641,5 @@ const taskTypeLabelKeys: Record<string, string> = {
 function taskTypeLabel(type: string, t: TFunction) { return taskTypeLabelKeys[type] ? t(taskTypeLabelKeys[type]) : type }
 function triggerTypeLabel(type: TaskRun["trigger_type"], t: TFunction) {
   return t(({ manual: "triggerManual", scheduled: "triggerScheduled", system: "triggerSystem", api: "triggerApi" } as const)[type])
-}
-function formatTaskResult(value?: string) {
-  if (!value) return ""
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2)
-  } catch {
-    return value
-  }
 }
 function formatDate(value: string | undefined, locale: string) { return value ? new Intl.DateTimeFormat(locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(value)) : "-" }

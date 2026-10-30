@@ -1,3 +1,4 @@
+import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 /**
  * 容器操作按钮组件
  */
@@ -28,6 +29,7 @@ export function ContainerActions({
   size = 'sm',
 }: ContainerActionsProps) {
   const { t } = useTranslation('terminal')
+  const can = useWorkspaceAction()
   const iconSize = size === 'sm' ? 'h-3 w-3' : 'h-4 w-4'
   const buttonSize = size === 'sm' ? 'h-6 w-6' : 'h-7 w-7'
 
@@ -44,7 +46,7 @@ export function ContainerActions({
               size="icon"
               className={buttonSize}
               onClick={() => onAction('start')}
-              disabled={!!loading}
+              disabled={!!loading || !can("docker.manage")}
             >
               {isLoading('start') ? (
                 <Loader2 className={`${iconSize} animate-spin`} />
@@ -66,7 +68,7 @@ export function ContainerActions({
               size="icon"
               className={buttonSize}
               onClick={() => onAction('unpause')}
-              disabled={!!loading}
+              disabled={!!loading || !can("docker.manage")}
             >
               {isLoading('unpause') ? (
                 <Loader2 className={`${iconSize} animate-spin`} />
@@ -88,7 +90,7 @@ export function ContainerActions({
               size="icon"
               className={buttonSize}
               onClick={() => onAction('pause')}
-              disabled={!!loading}
+              disabled={!!loading || !can("docker.manage")}
             >
               {isLoading('pause') ? (
                 <Loader2 className={`${iconSize} animate-spin`} />
@@ -110,7 +112,7 @@ export function ContainerActions({
               size="icon"
               className={buttonSize}
               onClick={() => onAction('stop')}
-              disabled={!!loading}
+              disabled={!!loading || !can("docker.manage")}
             >
               {isLoading('stop') ? (
                 <Loader2 className={`${iconSize} animate-spin`} />
@@ -132,7 +134,7 @@ export function ContainerActions({
               size="icon"
               className={buttonSize}
               onClick={() => onAction('restart')}
-              disabled={!!loading}
+              disabled={!!loading || !can("docker.manage")}
             >
               {isLoading('restart') ? (
                 <Loader2 className={`${iconSize} animate-spin`} />
@@ -153,7 +155,7 @@ export function ContainerActions({
             size="icon"
             className={buttonSize}
             onClick={onViewLogs}
-            disabled={!!loading}
+            disabled={!!loading || !can("docker.read")}
           >
             <FileText className={iconSize} />
           </Button>
@@ -170,7 +172,7 @@ export function ContainerActions({
               size="icon"
               className={`${buttonSize} text-destructive hover:text-destructive`}
               onClick={() => onAction('remove')}
-              disabled={!!loading}
+              disabled={!!loading || !can("docker.manage")}
             >
               {isLoading('remove') ? (
                 <Loader2 className={`${iconSize} animate-spin`} />

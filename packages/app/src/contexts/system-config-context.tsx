@@ -14,6 +14,7 @@ import {
  */
 
 export interface SystemConfigContextType {
+  workspaceReady?: boolean
   config: SystemConfig | null
   isLoading: boolean
   error: Error | null
@@ -63,6 +64,7 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
 }
 
 interface StaticSystemConfigProviderProps {
+  workspaceReady?: boolean
   children: ReactNode
   config?: SystemConfig
   authStatus?: AuthStatusResponse | null
@@ -72,6 +74,7 @@ export function StaticSystemConfigProvider({
   children,
   config = DEFAULT_SYSTEM_CONFIG,
   authStatus,
+  workspaceReady,
 }: StaticSystemConfigProviderProps) {
   const resolvedAuthStatus: AuthStatusResponse = authStatus ?? {
     need_init: false,
@@ -83,6 +86,7 @@ export function StaticSystemConfigProvider({
     <SystemConfigContext.Provider
       value={{
         config,
+        workspaceReady,
         isLoading: false,
         error: null,
         refreshConfig: async () => undefined,

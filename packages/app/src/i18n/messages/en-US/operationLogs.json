@@ -126,5 +126,6 @@
   "actionNotificationSettingsUpdate": "Update notification settings",
   "actionAIConfigUpdate": "Update AI configuration",
   "actionCreate": "Create",
-  "actionUpdate": "Update"
+  "actionUpdate": "Update",
+  "statusUnknown": "Unknown outcome"
 }

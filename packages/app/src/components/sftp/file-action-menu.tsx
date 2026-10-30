@@ -1,3 +1,4 @@
+import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 
 import {
   CloudDownload,
@@ -46,6 +47,7 @@ interface FileActionMenuProps {
 
 type FileActionMenuItemProps = {
   mode: "dropdown" | "context"
+  allowed?: boolean
   className: string
   variant?: "default" | "destructive"
   onClick: () => void
@@ -53,12 +55,14 @@ type FileActionMenuItemProps = {
 }
 
 function FileActionMenuItem({
+  allowed = true,
   mode,
   className,
   variant = "default",
   onClick,
   children,
 }: FileActionMenuItemProps) {
+  if (!allowed) return null
   return mode === "dropdown" ? (
     <DropdownMenuItem className={className} variant={variant} onClick={onClick}>
       {children}
@@ -98,6 +102,7 @@ export function FileActionMenu({
   onAction,
 }: FileActionMenuProps) {
   const t = useWorkspaceSftpTranslator()
+  const can = useWorkspaceAction()
   const isMultiSelect = selectedFilesCount > 1
   const isSingleSelect = selectedFilesCount === 1
 
@@ -120,6 +125,7 @@ export function FileActionMenu({
       <FileActionMenuItem
         mode={mode}
         className={itemClassName}
+        allowed={can(file.type === "directory" ? "files.list" : "files.read")}
         onClick={() => onAction("open")}
       >
         <Eye className="h-4 w-4 mr-2" />
@@ -134,7 +140,8 @@ export function FileActionMenu({
         <FileActionMenuItem
           mode={mode}
           className={itemClassName}
-          onClick={() => onAction("download")}
+          allowed={can("files.download")}
+        onClick={() => onAction("download")}
         >
           <Download className="h-4 w-4 mr-2" />
           <span className="flex-1">{t("actionDownload")}</span>
@@ -148,7 +155,8 @@ export function FileActionMenu({
         <FileActionMenuItem
           mode={mode}
           className={itemClassName}
-          onClick={() => onAction("backgroundDownload")}
+          allowed={can("files.download")}
+        onClick={() => onAction("backgroundDownload")}
         >
           <CloudDownload className="h-4 w-4 mr-2" />
           <span className="flex-1">{t("actionBackgroundDownload")}</span>
@@ -162,7 +170,8 @@ export function FileActionMenu({
         <FileActionMenuItem
           mode={mode}
           className={itemClassName}
-          onClick={() => onAction("rename")}
+          allowed={can("files.write")}
+        onClick={() => onAction("rename")}
         >
           <Edit className="h-4 w-4 mr-2" />
           <span className="flex-1">{t("actionRename")}</span>
@@ -175,7 +184,8 @@ export function FileActionMenu({
         <FileActionMenuItem
           mode={mode}
           className={itemClassName}
-          onClick={() => onAction("chmod")}
+          allowed={can("files.write")}
+        onClick={() => onAction("chmod")}
         >
           <FileText className="h-4 w-4 mr-2" />
           <span className="flex-1">{t("actionChangePermissions")}</span>
@@ -189,6 +199,7 @@ export function FileActionMenu({
         mode={mode}
         className={deleteClassName}
         variant="destructive"
+        allowed={can("files.delete")}
         onClick={() => onAction("delete")}
       >
         <Trash2 className="h-4 w-4 mr-2" />

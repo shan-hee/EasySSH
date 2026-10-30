@@ -1,3 +1,4 @@
+import { RelatedTask } from "./related-task"
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Check, ChevronDown, Copy, Download, FileCode2, Loader2, Maximize2, PanelRight, Square, Terminal, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -197,6 +198,7 @@ function TaskDetail({ task }: { task: TaskView }) {
       <div className="truncate text-sm font-medium" title={task.file?.path}>{task.file?.path ?? task.file?.name ?? t("workspaceCommands")}</div>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span title={serverID}>{target}</span><span>·</span><time>{new Date(task.created_at).toLocaleString()}</time>{task.file && <><span>·</span><span>{formatBytesString(task.file.size)}</span></>}</div>
       {task.file?.kind === "modified" && <p className="text-xs text-muted-foreground">{t(task.status === "succeeded" ? "workspaceAppliedSnapshot" : "workspaceProposedSnapshot")}</p>}
+      <RelatedTask result={task.result} />
       {task.error && <p role="alert" className="break-words text-xs text-destructive">{task.error}</p>}
     </div>
     {task.file ? <FilePreview task={task} /> : <CommandPreview task={task} />}

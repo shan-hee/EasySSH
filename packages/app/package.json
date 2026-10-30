@@ -95,7 +95,21 @@
     "./utils/datetime": "./src/utils/datetime.ts",
     "./vite": "./vite.ts",
     "./workbench/ai-workspace": "./src/workbench/ai-workspace.tsx",
-    "./workbench/workspace-shell": "./src/workbench/workspace-shell.tsx"
+    "./workbench/workspace-shell": "./src/workbench/workspace-shell.tsx",
+    "./components/sharing/access-workspace": "./src/components/sharing/access-workspace.tsx",
+    "./lib/session/workspace-adapters": "./src/lib/session/workspace-adapters.ts",
+    "./lib/access-ticket": "./src/lib/access-ticket.ts",
+    "./lib/api/sftp": "./src/lib/api/sftp.ts",
+    "./lib/api/grants": "./src/lib/api/grants.ts",
+    "./components/activity/activity-overview": "./src/components/activity/activity-overview.tsx",
+    "./components/task-center/task-content": "./src/components/task-center/task-content.ts",
+    "./lib/content": "./src/lib/content.ts",
+    "./lib/api/connections": "./src/lib/api/connections.ts",
+    "./lib/server-types": "./src/lib/server-types.ts",
+    "./lib/api/task-center": "./src/lib/api/task-center.ts",
+    "./lib/session/workspace": "./src/lib/session/workspace.ts",
+    "./lib/websocket-terminal": "./src/lib/websocket-terminal.ts",
+    "./lib/workspace-task-navigation": "./src/lib/workspace-task-navigation.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",

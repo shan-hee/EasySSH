@@ -55,7 +55,7 @@ function mapOperationRecordStatusToWorkspaceTransferStatus(status: OperationReco
   if (status === "running") {
     return "transferring"
   }
-  return "failed"
+  return status === "failure" ? "failed" : status
 }
 
 function mapOperationRecordActionToTransferType(action: string): WorkspaceTransferHistoryItem["transferType"] {

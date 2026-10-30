@@ -64,9 +64,10 @@ interface DockerPopoverProps {
   serverId: string
   sessionId: string
   isConnected: boolean
+  embedded?: boolean
 }
 
-export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopoverProps) {
+export function DockerPopover({ serverId, sessionId, isConnected, embedded = false }: DockerPopoverProps) {
   const { t } = useTranslation('terminal')
   const workspace = useOptionalSshWorkspace()
   const workspaceDockerClient = workspace?.adapters.apiClient?.docker
@@ -274,6 +275,29 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
     return 'text-muted-foreground'
   }
 
+  const content = (
+        <DockerPopoverContent
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          containersData={containersData}
+          imagesData={imagesData}
+          resourcesData={resourcesData}
+          containersLoading={containersLoading}
+          imagesLoading={imagesLoading}
+          resourcesLoading={resourcesLoading}
+          containersError={containersError}
+          imagesError={imagesError}
+          resourcesError={resourcesError}
+          dockerClient={dockerClient}
+          fetchContainersData={fetchContainersData}
+          fetchImagesData={fetchImagesData}
+          fetchResourcesData={fetchResourcesData}
+          serverId={serverId}
+          sessionId={sessionId}
+        />
+  )
+  if (embedded) return content
+
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
@@ -301,25 +325,7 @@ export function DockerPopover({ serverId, sessionId, isConnected }: DockerPopove
         align="center"
         sideOffset={8}
       >
-        <DockerPopoverContent
-          activeTab={activeTab}
-          onTabChange={handleTabChange}
-          containersData={containersData}
-          imagesData={imagesData}
-          resourcesData={resourcesData}
-          containersLoading={containersLoading}
-          imagesLoading={imagesLoading}
-          resourcesLoading={resourcesLoading}
-          containersError={containersError}
-          imagesError={imagesError}
-          resourcesError={resourcesError}
-          dockerClient={dockerClient}
-          fetchContainersData={fetchContainersData}
-          fetchImagesData={fetchImagesData}
-          fetchResourcesData={fetchResourcesData}
-          serverId={serverId}
-          sessionId={sessionId}
-        />
+        {content}
       </PopoverContent>
     </Popover>
   )

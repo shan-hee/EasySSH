@@ -155,5 +155,6 @@
   "resourceFile": "File",
   "resourceUser": "User",
   "resourceSystem": "System",
-  "resourceSession": "Session"
+  "resourceSession": "Session",
+  "statusUnknown": "Unknown outcome"
 }

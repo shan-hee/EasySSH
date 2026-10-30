@@ -68,6 +68,7 @@ export interface AIAssistantWorkspaceAdapters {
 }
 
 export interface AIAssistantWorkspaceViewProps {
+  canConfigure?: boolean
   active?: boolean
   hidePageHeader?: boolean
   onReturnToTerminal?: () => void
@@ -76,6 +77,7 @@ export interface AIAssistantWorkspaceViewProps {
 
 export function AIAssistantWorkspaceView({
   active = true,
+  canConfigure = true,
   hidePageHeader = false,
   onReturnToTerminal,
   adapters,
@@ -240,7 +242,7 @@ export function AIAssistantWorkspaceView({
   )
 
   const isConfigChecking = !ready || isLoading
-  const showConfigAction = ready && !isLoading && !isConfigured
+  const showConfigAction = canConfigure && ready && !isLoading && !isConfigured
   const modelSelectDisabled = isConfigChecking || !isConfigured || models.length === 0
   const serverReferenceDisabled = !ready || isLoading || !isConfigured || sessionCreating || agentSession.transport === "connecting"
   const attachmentDisabled = attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || serverReferenceDisabled
@@ -546,7 +548,7 @@ export function AIAssistantWorkspaceView({
     />
   )
 
-  const configuration = (
+  const configuration = canConfigure && (
     <AIAssistantConfigPopover
         side={sidebar ? "right" : "bottom"}
         open={configOpen}
@@ -654,6 +656,7 @@ export function AIAssistantWorkspaceView({
             </div>
 
             <div className={cn("w-full shrink-0", hasTimeline ? "pt-4" : "my-auto")}>
+              {!canConfigure && ready && !isLoading && !isConfigured && <p role="status" className={cn(conversationColumnClass, "mb-3 text-sm text-muted-foreground")}>{t("sharedAINotConfigured")}</p>}
               {agentSession.reconnecting && (
                 <div role="status" className={cn(conversationColumnClass, "mb-3 flex items-center gap-2 text-sm text-muted-foreground")}>
                   <Loader2 className="size-4 shrink-0 animate-spin" />

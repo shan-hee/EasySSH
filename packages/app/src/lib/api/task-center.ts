@@ -1,9 +1,10 @@
+import type { components } from "@/generated/openapi"
+import { resolveTaskDetails, resolveTaskEvents } from "@/components/task-center/task-content"
+import { readInstanceContentChunk } from "@/lib/api/content"
 import { apiFetch } from "@/lib/api-client"
 import type {
   TaskCenterApi,
   TaskCleanupResult,
-  TaskEvent,
-  TaskRun,
   TaskRunListParams,
   TaskRunListResponse,
   TaskRunStatus,
@@ -36,8 +37,15 @@ export const taskCenterApi: TaskCenterApi = {
   cleanup(retentionDays: number) {
     return apiFetch<TaskCleanupResult>(`/tasks/cleanup?retention_days=${retentionDays}`, { method: "DELETE" })
   },
-  get(id: string) {
-    return apiFetch<{ run: TaskRun; events: TaskEvent[] }>(`/tasks/${id}`)
+  async get(id: string) {
+    const details = await apiFetch<components["schemas"]["TaskRunDetails"]>(`/tasks/${id}`)
+    const run = await resolveTaskDetails(details, readInstanceContentChunk)
+    const page = await taskCenterApi.events!(id, 0)
+    return { run, events: page.events, eventPage: page }
+  },
+  async events(id, after) {
+    const page = await apiFetch<components["schemas"]["TaskEventPage"]>(`/tasks/${id}/events?after_id=${after}&limit=50`)
+    return resolveTaskEvents(page, readInstanceContentChunk)
   },
   cancel(id: string) {
     return apiFetch<{ id: string; status: TaskRunStatus }>(`/tasks/${id}/cancel`, { method: "POST" })

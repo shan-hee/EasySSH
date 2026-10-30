@@ -89,5 +89,12 @@
   "triggerManual": "Manual",
   "triggerScheduled": "Scheduled",
   "triggerSystem": "System",
-  "triggerApi": "API"
+  "triggerApi": "API",
+  "statusUnknown": "Unknown outcome",
+  "loadMoreEvents": "Load more events",
+  "partialEffectsHint": "Cancellation stops before the next item. Unknown outcomes do not mean that nothing ran remotely.",
+  "success_paths": "Completed items",
+  "failed_paths": "Failed items",
+  "unresolved_paths": "Unconfirmed items",
+  "effects": "Observed effects"
 }

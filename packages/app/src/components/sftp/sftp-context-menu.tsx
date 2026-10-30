@@ -1,3 +1,4 @@
+import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 import { useRef, type ReactNode } from "react"
 import { CloudUpload, FileText, FolderPlus, RefreshCw, Upload } from "lucide-react"
 
@@ -73,6 +74,7 @@ export function SftpBlankContextMenuContent({
   onRefresh,
 }: Omit<SftpBlankContextMenuProps, "children" | "disabled" | "onOpenChange">) {
   const tSftp = useWorkspaceSftpTranslator()
+  const can = useWorkspaceAction()
   const pendingCreateActionRef = useRef<(() => void) | null>(null)
 
   const handleCreateAction = (action: () => void) => {
@@ -97,26 +99,26 @@ export function SftpBlankContextMenuContent({
     >
       <SftpContextMenuSelectedLabel count={selectedFilesCount} />
 
-      <ContextMenuItem onSelect={() => handleCreateAction(onCreateFolder)}>
+      <ContextMenuItem disabled={!can("files.write")} onSelect={() => handleCreateAction(onCreateFolder)}>
         <FolderPlus className="h-4 w-4" />
         <span>{tSftp("contextNewFolder")}</span>
         <ContextMenuShortcut>⌘⇧N</ContextMenuShortcut>
       </ContextMenuItem>
 
       {onBackgroundUpload && (
-        <ContextMenuItem onSelect={onBackgroundUpload}>
+        <ContextMenuItem disabled={!can("files.upload")} onSelect={onBackgroundUpload}>
           <CloudUpload className="h-4 w-4" />
           <span>{tSftp("contextBackgroundUploadFile")}</span>
         </ContextMenuItem>
       )}
 
-      <ContextMenuItem onSelect={() => handleCreateAction(onCreateFile)}>
+      <ContextMenuItem disabled={!can("files.write")} onSelect={() => handleCreateAction(onCreateFile)}>
         <FileText className="h-4 w-4" />
         <span>{tSftp("contextNewFile")}</span>
         <ContextMenuShortcut>⌘N</ContextMenuShortcut>
       </ContextMenuItem>
 
-      <ContextMenuItem onSelect={onUpload}>
+      <ContextMenuItem disabled={!can("files.upload")} onSelect={onUpload}>
         <Upload className="h-4 w-4" />
         <span>{tSftp("contextUploadFile")}</span>
         <ContextMenuShortcut>⌘U</ContextMenuShortcut>

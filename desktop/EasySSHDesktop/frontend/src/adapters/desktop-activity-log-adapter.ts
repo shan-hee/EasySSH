@@ -159,9 +159,11 @@ function basename(value: string) {
 }
 
 function mapDesktopTransferStatus(status?: DesktopActivityLogStatus | string): WorkspaceTransferHistoryItem["status"] {
-  return status === DesktopActivityLogStatus.DesktopActivityLogSuccess || status === "success"
-    ? "completed"
-    : "failed"
+  if (status === "success") return "completed"
+  if (status === "pending") return "pending"
+  if (status === "running") return "transferring"
+  if (status === "partial" || status === "canceled" || status === "timeout" || status === "warning" || status === "unknown") return status
+  return "failed"
 }
 
 function clampProgress(value: number) {

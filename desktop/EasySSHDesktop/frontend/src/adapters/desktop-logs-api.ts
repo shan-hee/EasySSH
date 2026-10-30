@@ -1,3 +1,8 @@
+import { readContentBytes, readContentJSON, type ContentChunkReader } from "@easyssh/app/lib/content"
+import type { components } from "@easyssh/app/generated/openapi"
+import { DesktopContentService } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
+import { ContentReadInput } from "../../bindings/github.com/easyssh/shared/protocol/models"
+const readDetail: ContentChunkReader = (ref,offset) => DesktopContentService.ReadContent(ref.id, new ContentReadInput({ offset, sha256: ref.sha256 }))
 import {
   ActivityLogService,
   type DesktopActivityLogItem,
@@ -143,7 +148,13 @@ export function createDesktopLogsApi() {
     },
 
     async getById(id: string): Promise<AuditLog> {
-      return mapDesktopActivityLogItemToAuditLog(await ActivityLogService.GetById(id))
+      const item = await ActivityLogService.GetById(id)
+      if (item.detail_content) item.detail = new TextDecoder().decode(await readContentBytes(item.detail_content,readDetail))
+      if (item.task_content) {
+        const body = await readContentJSON<components["schemas"]["TaskBody"]>(item.task_content,readDetail)
+        item.detail = body.result_json || body.progress_json || body.description || ""
+      }
+      return mapDesktopActivityLogItemToAuditLog(item)
     },
 
     async getStatistics(params?: {

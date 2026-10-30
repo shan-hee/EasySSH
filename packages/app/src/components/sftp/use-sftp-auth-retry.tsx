@@ -1,3 +1,4 @@
+import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useCallback, useRef, useState } from "react"
 import { isApiError } from "@/lib/api-client"
 import type { Server } from "@/lib/server-types"
@@ -266,6 +267,7 @@ export function useSftpAuthRetry({
   tTerminal,
   adapters,
 }: UseSftpAuthRetryOptions) {
+  const visitor = useOptionalSshWorkspace()?.capabilities.allowedActions !== undefined
   const [credentialPrompt, setCredentialPrompt] = useState<CredentialPromptState | null>(null)
   const [hostKeyWarning, setHostKeyWarning] = useState<{
     prompt: TerminalHostKeyPrompt
@@ -464,6 +466,18 @@ export function useSftpAuthRetry({
     try {
       return await operation()
     } catch (error) {
+      if (visitor) {
+        // Visitors may answer a source-issued challenge, never replace stored
+        // credentials or approve host keys on behalf of the owner.
+        if (!api.preAuthenticate || !isSftpCredentialRequiredError(error)) throw error
+        await api.preAuthenticate(serverId, {}, async (prompt, respond) => {
+          try {
+            const { response } = await requestInteractiveResponse(serverName, prompt)
+            respond(Array.isArray(response) ? response : response.answers ?? [], false)
+          } catch { respond([], true) }
+        })
+        return await operation()
+      }
       if (!api.authenticate && !api.preAuthenticate) {
         throw error
       }
@@ -630,7 +644,7 @@ export function useSftpAuthRetry({
 
       throw lastError
     }
-  }, [authenticateForSftp, promptCredentialSave, requestCredential, requestPrivateKeyPassphrase])
+  }, [authenticateForSftp, promptCredentialSave, requestCredential, requestPrivateKeyPassphrase, requestInteractiveResponse, visitor])
 
   const runDirectTransferWithCredentialRetry = useCallback(async <T,>({
     sourceServerId,

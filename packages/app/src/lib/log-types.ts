@@ -1,3 +1,4 @@
+import type { components } from "@/generated/openapi"
 export type AuditLogStatus =
   | "pending"
   | "running"
@@ -7,8 +8,12 @@ export type AuditLogStatus =
   | "canceled"
   | "timeout"
   | "warning"
+  | "unknown"
 
 export interface AuditLogSummary {
+  source_table?: string
+  source_id?: string
+  resources?: components["schemas"]["ActivityResourceSnapshot"][]
   id: string
   username: string
   server_id?: string

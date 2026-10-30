@@ -16,6 +16,7 @@ export const TRANSFER_SETTLED_STATUSES: readonly WorkspaceTransferStatus[] = [
   "completed",
   "failed",
   "cancelled",
+  "unknown",
 ]
 
 export interface ApplyTransferTaskUpdateOptions {

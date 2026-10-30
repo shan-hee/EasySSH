@@ -58,6 +58,11 @@ function App() {
   const [preferenceSnapshot, setPreferenceSnapshot] = useState<DesktopPreferenceSnapshot | null>(null)
   const [activeView, setActiveView] = useState<DesktopView>(WORKBENCH_VIEW)
   const [requestedTaskRunID, setRequestedTaskRunID] = useState<string | null>(null)
+  useEffect(() => {
+    const open = (event: Event) => { const id = (event as CustomEvent<{ id: string }>).detail?.id; if (id) { setRequestedTaskRunID(id); setActiveView("tasks") } }
+    window.addEventListener("easyssh:open-task", open)
+    return () => window.removeEventListener("easyssh:open-task", open)
+  }, [])
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
   const { t: tCommon } = useTranslation("common")
   const { t: tTerminal } = useTranslation("terminal")

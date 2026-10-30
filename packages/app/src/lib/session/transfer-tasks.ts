@@ -117,6 +117,7 @@ function transferJobStatus(job: TransferJob): WorkspaceTransferTask["status"] {
     case "completed":
     case "failed":
     case "cancelled":
+    case "unknown":
       return job.status
     case "created":
     case "queued":
@@ -133,6 +134,8 @@ export function mapTransferJobToTaskUpdate(job: TransferJob): TransferTaskUpdate
   const settled = isTransferJobSettled(job)
   return {
     status: transferJobStatus(job),
+    taskRunId: job.task_run_id,
+    filesCompleted: job.files_completed, filesTotal: job.files_total, bytesCompleted: job.bytes_completed, resultPath: job.result_path,
     progress: job.status === "completed" ? 100 : Math.max(0, Math.min(100, Math.round(job.progress))),
     bytesTransferred: processed,
     ...(total > 0 ? { fileSizeBytes: total, fileSize: formatBytesString(total) } : {}),

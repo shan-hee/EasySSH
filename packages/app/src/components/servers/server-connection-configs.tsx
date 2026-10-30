@@ -1,3 +1,4 @@
+import { GrantManager } from "@/components/sharing/grant-manager"
 import { PageLoading } from "@/components/page-loading"
 
 import { useState, useEffect, useMemo, useRef } from "react"
@@ -56,7 +57,7 @@ import { useServerConnectionList } from "@/hooks/use-server-connection-list"
 import { preloadTerminalConnection } from "@/lib/terminal-preload"
 
 /** 通过实例 HTTP API 访问服务器配置；桌面等宿主可传入自己的实现。 */
-export const defaultServerConnectionConfigsApi: ServerConnectionConfigsApi = { ...serversApi, sshKeys: sshKeyApi, groups: serverGroupsApi }
+export const defaultServerConnectionConfigsApi: ServerConnectionConfigsApi = { ...serversApi, sshKeys: sshKeyApi, groups: serverGroupsApi, sharing: true }
 
 type ViewMode = "grid" | "list"
 type DragOverlaySize = { width: number; height: number } | null
@@ -85,6 +86,7 @@ interface ServerConnectionConfigsProps {
 }
 
 export interface ServerConnectionConfigsApi {
+ sharing?: boolean
  sshKeys: SSHKeyApi
  groups: {
  list: () => Promise<ServerGroup[]>
@@ -113,6 +115,7 @@ function ServerItemBody({
   server,
   viewMode,
   showActions = true,
+  sharing = false,
   onEdit,
   onDuplicate,
   onDelete,
@@ -120,6 +123,7 @@ function ServerItemBody({
   server: Server
   viewMode: ViewMode
   showActions?: boolean
+  sharing?: boolean
   onEdit?: (server: Server) => void
   onDuplicate?: (server: Server) => void
   onDelete?: (id: string) => void
@@ -159,6 +163,13 @@ function ServerItemBody({
             onClick={(e) => e.stopPropagation()}
             onDoubleClick={(e) => e.stopPropagation()}
           >
+            {sharing && (
+              <GrantManager
+                server={server}
+                compact
+                triggerClassName="h-7 w-7 text-muted-foreground hover:text-muted-foreground [&_svg]:size-3.5"
+              />
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -237,6 +248,7 @@ function ServerItemBody({
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
         >
+          {sharing && <GrantManager server={server} compact />}
           <Button
             variant="ghost"
             size="sm"
@@ -326,6 +338,7 @@ function SortableServerItem({
   onEdit,
   onDuplicate,
   onDelete,
+  sharing,
   disabled,
 }: {
   server: Server
@@ -335,6 +348,7 @@ function SortableServerItem({
   onDuplicate: (server: Server) => void
   onDelete: (id: string) => void
   disabled: boolean
+  sharing?: boolean
 }) {
   const {
     attributes,
@@ -371,6 +385,7 @@ function SortableServerItem({
         onEdit={onEdit}
         onDuplicate={onDuplicate}
         onDelete={onDelete}
+        sharing={sharing}
       />
     </div>
   )
@@ -385,6 +400,7 @@ export function ServerConnectionConfigs({
  const authReady = useAuthReady()
  const ready = externalReady ?? authReady.ready
  const { t } = useTranslation("servers")
+ const { t: tSharing } = useTranslation("sharing")
  const [searchTerm, setSearchTerm] = useState("")
  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
  const [duplicatingServer, setDuplicatingServer] = useState<Server | null>(null)
@@ -426,12 +442,12 @@ export function ServerConnectionConfigs({
    return () => { active = false; observer.disconnect() }
  }, [error, hasMore, history.searchPending, loadMore, loading, loadingMore, requestBusy])
 
- // 统计以分组名称计数；筛选按钮只显示有服务器的分组。
+ // 统计以分组 ID 计数；名称仅用于展示，筛选按钮只显示有服务器的分组。
  const groupFilters = useMemo(() => {
  const counts = statistics?.by_group ?? {}
  return groups
- .filter((group) => (counts[group.name] ?? 0) > 0)
- .map((group) => [group.id, group.name, counts[group.name] ?? 0] as const)
+ .filter((group) => (counts[group.id] ?? 0) > 0)
+ .map((group) => [group.id, group.name, counts[group.id] ?? 0] as const)
  .sort(([, a], [, b]) => a.localeCompare(b, "zh-CN"))
  }, [groups, statistics])
 
@@ -704,6 +720,10 @@ export function ServerConnectionConfigs({
 	 }
 
  const updatedServer = await serverApi.update(editingServer.id, updateData)
+ if (serverApi.sharing && (editingServer.host !== updatedServer.host || editingServer.port !== updatedServer.port || editingServer.username !== updatedServer.username || editingServer.auth_method !== updatedServer.auth_method || updateData.password !== undefined || updateData.ssh_key_id !== undefined && updateData.ssh_key_id !== editingServer.ssh_key_id)) {
+   const serverId = editingServer.id
+   toast(tSharing("reviewAfterEdit"), { action: { label: tSharing("reviewGrants"), onClick: () => window.dispatchEvent(new CustomEvent("easyssh:review-sharing", { detail: { serverId } })) } })
+ }
 
  toast.success(t("toastUpdateSuccess"))
  setIsEditDialogOpen(false)
@@ -781,6 +801,7 @@ export function ServerConnectionConfigs({
  </Tooltip>
  </div>
 
+ {serverApi.sharing && <GrantManager />}
  <Button onClick={() => setIsAddDialogOpen(true)} className="flex-1 shadow-sm sm:flex-none">
  <Plus className="mr-2 h-4 w-4" />
  {t("addServer")}
@@ -848,6 +869,7 @@ export function ServerConnectionConfigs({
  onEdit={handleEdit}
  onDuplicate={handleDuplicate}
  onDelete={handleRequestDelete}
+ sharing={serverApi.sharing}
  disabled={saving || loadingMore || history.searchPending}
  />
  ))}

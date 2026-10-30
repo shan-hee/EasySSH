@@ -6,6 +6,8 @@ export interface DesktopNotification {
   severity: "info" | "success" | "warning" | "error"
   title: string
   message: string
+  source_type?: string
+  source_id?: string
   action_url?: string
   read_at?: string
   created_at: string

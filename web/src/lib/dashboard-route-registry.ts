@@ -45,7 +45,7 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
   },
   {
     url: "/dashboard/terminal",
-    namespaces: ["terminal", "servers", "sftp", "terminalSettings"],
+    namespaces: ["terminal", "servers", "sftp", "terminalSettings", "sharing"],
     path: "terminal",
     load: () => import("@easyssh/app/pages/dashboard/terminal-page"),
   },
@@ -57,7 +57,7 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
   },
   {
     url: "/dashboard/logs",
-    namespaces: ["logsAudit"],
+    namespaces: ["logsAudit", "activityOverview"],
     path: "logs",
     load: () => import("@easyssh/app/pages/dashboard/logs-page"),
     loadData: (queryClient, url) => {
@@ -70,7 +70,7 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
   },
   {
     url: "/dashboard/operation-logs",
-    namespaces: ["operationLogs"],
+    namespaces: ["operationLogs", "activityOverview"],
     path: "operation-logs",
     load: () => import("@easyssh/app/pages/dashboard/operation-logs-page"),
     loadData: (queryClient, url) => {

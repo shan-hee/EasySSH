@@ -1,3 +1,6 @@
+import { useState } from "react"
+import { GrantManager } from "@/components/sharing/grant-manager"
+import type { SyncAffectedGrant } from "@/lib/sync/types"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { SettingsSection } from "./settings-section"
@@ -10,9 +13,11 @@ export function SyncConflicts({ status, adapter, busy, action }: {
   busy: boolean
   action: (fn: () => Promise<void>) => Promise<boolean>
 }) {
+  const [affected,setAffected] = useState<SyncAffectedGrant[]>([])
   const { t } = useTranslation("settingsManagementBackup")
   return (
     <div id="sync-conflicts" className="scroll-mt-4">
+      {affected.length > 0 && <section className="my-3 space-y-2 rounded border p-3"><p className="text-sm">{t("syncAffectedShares")}</p>{affected.map(item => <div key={`${item.grant_id}:${item.server_id}`} className="flex items-center justify-between gap-2 text-xs"><span>{item.grant_name} · {item.server_name} · {t(item.reason === "resource_deleted" ? "syncSharedResourceDeleted" : "syncSharedConnectionChanged")}</span><GrantManager grantId={item.grant_id} compact /></div>)}</section>}
       {!!status.conflicts.length && (
         <SettingsSection
           title={t("syncConflicts")}
@@ -92,7 +97,7 @@ export function SyncConflicts({ status, adapter, busy, action }: {
                     variant="outline"
                     disabled={busy}
                     onClick={() =>
-                      void action(() => adapter.resolve(conflict.key, conflict.field, value))
+                      void action(async () => { const result = await adapter.resolve(conflict.key, conflict.field, value); setAffected(result || []) })
                     }
                   >
                     {t("syncUseVersion", { number: i + 1 })}

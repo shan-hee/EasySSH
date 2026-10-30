@@ -126,5 +126,6 @@
   "actionNotificationSettingsUpdate": "更新通知设置",
   "actionAIConfigUpdate": "更新 AI 配置",
   "actionCreate": "创建",
-  "actionUpdate": "更新"
+  "actionUpdate": "更新",
+  "statusUnknown": "结果未知"
 }

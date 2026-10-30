@@ -1,3 +1,5 @@
+import { Button } from "@/components/ui/button"
+import { openWorkspaceTask } from "@/lib/workspace-task-navigation"
 
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +51,7 @@ export function UploadProgressItem({ task, onCancel }: UploadProgressItemProps) 
     if (isCancelled) {
       return <XCircle className="h-4 w-4 text-muted-foreground" />
     }
+    if (task.status === "unknown") return <Clock className="h-4 w-4 text-status-warning" />
     if (isPending) {
       return <Clock className="h-4 w-4 text-status-warning" />
     }
@@ -60,6 +63,10 @@ export function UploadProgressItem({ task, onCancel }: UploadProgressItemProps) 
 
   return (
     <div className="px-3 py-2.5 border-b last:border-b-0 hover:bg-table-row-hover transition-colors">
+      {task.status === "unknown" && <p className="mb-2 text-xs text-muted-foreground">{tSftp("transferUnknownHint")}</p>}
+      {(task.filesTotal !== undefined || task.bytesCompleted !== undefined) && <p className="mb-1 text-xs text-muted-foreground">{tSftp("transferFacts", { files: task.filesCompleted ?? 0, total: task.filesTotal ?? 0, bytes: task.bytesCompleted ?? 0 })}</p>}
+      {task.resultPath && <p className="mb-1 truncate text-xs text-muted-foreground" title={task.resultPath}>{task.resultPath}</p>}
+      {task.taskRunId && <Button size="sm" variant="ghost" onClick={() => openWorkspaceTask(task.taskRunId!)}>{tSftp("viewOperationTask")}</Button>}
       {/* 文件名和状态 */}
       <div className="flex items-center gap-2 mb-2">
         {getMainStatusIcon()}

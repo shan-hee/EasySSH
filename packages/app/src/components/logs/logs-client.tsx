@@ -1,3 +1,4 @@
+import { ActivityLinks } from "@/components/activity/activity-links"
 
 import * as React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -219,6 +220,7 @@ function statusLabel(t: (key: string) => string, status: AuditLogStatus) {
   if (status === "partial") return t("statusPartial")
   if (status === "canceled") return t("statusCanceled")
   if (status === "timeout") return t("statusTimeout")
+  if (status === "unknown") return t("statusUnknown")
   return t("filterStatusFailureLabel")
 }
 
@@ -713,6 +715,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
           </DialogHeader>
           {selectedLog ? (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-2 scrollbar-custom">
+              <ActivityLinks sourceTable={selectedLog.source_table} sourceId={selectedLog.source_id} resources={selectedLog.resources} />
               <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                 <Detail label={t("columnTime")} value={`${formatDate(selectedLog.created_at)} ${formatTime(selectedLog.created_at)}`} />
                 <Detail label={t("columnType")} value={typeLabel(t, selectedLog.type)} />

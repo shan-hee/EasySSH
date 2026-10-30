@@ -76,5 +76,7 @@ export function useTerminalAuthFlowAdapters({
     throw new Error("Desktop terminal authentication requires local credential adapters")
   }
 
+  if (workspace?.capabilities.allowedActions) return { notifySuccess: toast.success, notifyError: toast.error }
+
   return authFlowAdapters ?? workspaceAuthFlowAdapters ?? defaultAuthFlowAdapters
 }

@@ -331,5 +331,7 @@
   "pendingConfirmationEmpty": "No pending confirmation tasks.",
   "toolsTitle": "Available Tools",
   "toolsDescription": "Tools visible in the current session snapshot.",
-  "toolsEmpty": "No tools are available under the current permission mode."
+  "toolsEmpty": "No tools are available under the current permission mode.",
+  "workspaceRelatedTask": "View related task",
+  "sharedAINotConfigured": "AI is not configured for this shared workspace. Ask the owner to configure it, then refresh."
 }

@@ -73,6 +73,11 @@ function DashboardRouteOutlet({ usesViewportWorkspace }: { usesViewportWorkspace
  */
 function DashboardLayoutContent() {
   const navigate = useNavigate()
+  useEffect(() => {
+    const open = (event: Event) => { const id = (event as CustomEvent<{ id: string }>).detail?.id; if (id) navigate(`/dashboard/tasks?run=${encodeURIComponent(id)}`) }
+    window.addEventListener("easyssh:open-task", open)
+    return () => window.removeEventListener("easyssh:open-task", open)
+  }, [navigate])
   const pageScrollRef = useRef<HTMLDivElement>(null)
   const { t } = useTranslation("common")
   const { pathname } = useLocation()

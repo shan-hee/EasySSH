@@ -1,6 +1,7 @@
 import type { ComponentType } from "react"
-import { createBrowserRouter, Navigate, type LoaderFunctionArgs, type RouteObject } from "react-router-dom"
+import { createBrowserRouter, redirectDocument, Navigate, type LoaderFunctionArgs, type RouteObject } from "react-router-dom"
 import { App } from "./app"
+import { isSharePage } from "./platform/access-session"
 import { AppLoadingScreen } from "@easyssh/app/components/app-loading"
 import { RouteErrorBoundary } from "./components/route-error-boundary"
 import { ThemeProvider } from "@easyssh/app/components/theme-provider"
@@ -35,7 +36,15 @@ const dashboardRoutes: RouteObject[] = dashboardRouteRegistry.map((route): Route
 }))
 
 // 创建路由会立即执行当前地址的 loader，必须由入口在安装平台传输后调用。
-export const createAppRouter = () => createBrowserRouter([
+export const createAppRouter = () => {
+  // Cross an identity boundary with a full navigation so caches, streams and transport
+  // are recreated together. Navigation inside one share remains client-side.
+  const initialPath = window.location.pathname
+  const shareRoute: RouteObject = { path: "/share/:publicId", loader: ({ request }) => new URL(request.url).pathname === initialPath ? null : redirectDocument(request.url), lazy: lazyPage(() => import("./pages/share-page"), ["sharing", "activityOverview", "terminal", "sftp", "servers", "terminalSettings", "aiAssistant", "taskCenter"]), ErrorBoundary: RouteErrorBoundary }
+  const reload = ({ request }: LoaderFunctionArgs) => redirectDocument(request.url)
+  if (isSharePage()) return createBrowserRouter([shareRoute, { path: "*", loader: reload }])
+  return createBrowserRouter([
+  { path: "/share/:publicId", loader: reload },
   {
     path: "/instance-restart",
     element: <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange><InstanceRestartPage /></ThemeProvider>,
@@ -73,3 +82,4 @@ export const createAppRouter = () => createBrowserRouter([
     ],
   },
 ])
+}

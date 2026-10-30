@@ -1,3 +1,4 @@
+import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 
 import {
   useCallback,
@@ -171,6 +172,7 @@ export function useSftpFileActionController({
   onSaveFile,
   onUploadFiles,
 }: UseSftpFileActionControllerOptions) {
+  const can = useWorkspaceAction()
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [contextMenu, setContextMenu] = useState<SftpFileContextMenuState | null>(null)
   const [editingFile, setEditingFile] = useState<string | null>(null)
@@ -209,6 +211,7 @@ export function useSftpFileActionController({
   const onNavigate = useCallback((path: string) => leaveEditor(() => navigateDirectory(path)), [leaveEditor, navigateDirectory])
 
   const openEditor = useCallback(async (fileName: string) => {
+    if (!can("files.read")) return
     if (!onReadFile) {
       console.warn("onReadFile 回调未提供")
       return
@@ -233,7 +236,7 @@ export function useSftpFileActionController({
       if (requestVersion === fileRequestVersion.current) setPendingFilePath(null)
       console.error("读取文件失败:", error)
     }
-  }, [currentPath, onReadFile])
+  }, [can, currentPath, onReadFile])
 
   const handleOpenEditor = useCallback((path: string) => {
     if (editorState.isOpen && resolveSftpNavigationPath(path, currentPath) === editorState.filePath) return
@@ -258,6 +261,7 @@ export function useSftpFileActionController({
   const handleCloseEditor = useCallback(() => requestLeave(closeEditor), [requestLeave, closeEditor])
 
   const handleSaveFile = useCallback(async (content: string) => {
+    if (!can("files.write")) throw new Error(tSftp("operationNotAllowed"))
     if (!onSaveFile) throw new Error(tSftp("toastServiceUnavailable"))
     if (savingRef.current) throw new Error(tSftp("editorActionSaveSaving"))
     const path = editorState.filePath
@@ -270,7 +274,7 @@ export function useSftpFileActionController({
       savingRef.current = false
       setIsSavingEditor(false)
     }
-  }, [editorState.filePath, onSaveFile, tSftp])
+  }, [can, editorState.filePath, onSaveFile, tSftp])
 
   const resolveLeave = useCallback(async (choice: "save" | "discard" | "cancel") => {
     if (savingRef.current) return
@@ -330,6 +334,7 @@ export function useSftpFileActionController({
   }, [onUploadFiles])
 
   const startRename = useCallback((fileName: string) => {
+    if (!can("files.write")) return
     if (blurTimeoutRef.current) {
       clearTimeout(blurTimeoutRef.current)
       blurTimeoutRef.current = null
@@ -337,7 +342,7 @@ export function useSftpFileActionController({
 
     setEditingFile(fileName)
     setEditingFileName(fileName)
-  }, [])
+  }, [can])
 
   const finishRename = useCallback(() => {
     if (editingFile && editingFileName.trim() && editingFileName !== editingFile) {
@@ -419,9 +424,10 @@ export function useSftpFileActionController({
   }, [editInputRef, finishCreate])
 
   const startCreateNew = useCallback((type: SftpCreateEntryType) => {
+    if (!can("files.write")) return
     setCreatingNew(type)
     setEditingFileName(type === "folder" ? tSftp("defaultNewFolderName") : tSftp("defaultNewFileName"))
-  }, [tSftp])
+  }, [can, tSftp])
 
   const cancelCreate = useCallback(() => {
     setCreatingNew(null)
@@ -429,6 +435,7 @@ export function useSftpFileActionController({
   }, [])
 
   const handleBatchDownload = useCallback(async (fileNames?: string[]) => {
+    if (!can("files.download")) return
     const paths = fileNames && fileNames.length > 0
       ? fileNames
       : selectedFiles.length > 0
@@ -456,7 +463,7 @@ export function useSftpFileActionController({
       paths.forEach((path) => onDownload(path))
       setSelectedFiles([])
     }
-  }, [contextMenu, excludePatterns, notifier, onBatchDownload, onDownload, selectedFiles, setSelectedFiles, tSftp])
+  }, [can, contextMenu, excludePatterns, notifier, onBatchDownload, onDownload, selectedFiles, setSelectedFiles, tSftp])
 
   const handleBatchDelete = useCallback(async () => {
     if (selectedFiles.length === 0) return
@@ -492,6 +499,7 @@ export function useSftpFileActionController({
   }, [filteredFiles, notifier, onBatchDelete, onDelete, selectedFiles, setSelectedFiles, tSftp])
 
   const requestDelete = useCallback((fileName: string) => {
+    if (!can("files.delete")) return
     const file = filteredFiles.find((item) => item.name === fileName)
     setDeleteConfirmDialog({
       isOpen: true,
@@ -499,9 +507,10 @@ export function useSftpFileActionController({
       fileNames: [],
       isDirectory: file?.type === "directory",
     })
-  }, [filteredFiles])
+  }, [can, filteredFiles])
 
   const requestBatchDelete = useCallback(() => {
+    if (!can("files.delete")) return
     if (selectedFiles.length === 0) return
 
     const hasDirectory = selectedFiles.some((name) => (
@@ -513,9 +522,10 @@ export function useSftpFileActionController({
       fileNames: [...selectedFiles],
       isDirectory: hasDirectory,
     })
-  }, [filteredFiles, selectedFiles])
+  }, [can, filteredFiles, selectedFiles])
 
   const confirmDelete = useCallback(async () => {
+    if (!can("files.delete")) return
     if (deleteConfirmDialog.fileNames.length > 0) {
       await handleBatchDelete()
     } else if (deleteConfirmDialog.fileName) {
@@ -523,7 +533,7 @@ export function useSftpFileActionController({
     }
 
     setDeleteConfirmDialog(emptyDeleteConfirmDialogState)
-  }, [deleteConfirmDialog, handleBatchDelete, onDelete])
+  }, [can, deleteConfirmDialog, handleBatchDelete, onDelete])
 
   const handleFileAction = useCallback((file: SftpFileActionItem, action: FileAction) => {
     switch (action) {
@@ -535,6 +545,7 @@ export function useSftpFileActionController({
         }
         break
       case "download":
+        if (!can("files.download")) return
         setSelectedFiles([file.name])
         if (file.type === "directory") {
           void handleBatchDownload([file.name])
@@ -543,6 +554,7 @@ export function useSftpFileActionController({
         }
         break
       case "backgroundDownload":
+        if (!can("files.download")) return
         if (file.type !== "file") {
           return
         }
@@ -556,6 +568,7 @@ export function useSftpFileActionController({
         setTimeout(() => startRename(file.name), 50)
         break
       case "chmod":
+        if (!can("files.write")) return
         setChmodDialog({
           isOpen: true,
           fileName: file.name,
@@ -567,7 +580,7 @@ export function useSftpFileActionController({
         requestDelete(file.name)
         break
     }
-  }, [currentPath, handleBatchDownload, handleOpenEditor, notifier, onBackgroundDownload, onDownload, onNavigate, requestDelete, setSelectedFiles, startRename, tSftp])
+  }, [can, currentPath, handleBatchDownload, handleOpenEditor, notifier, onBackgroundDownload, onDownload, onNavigate, requestDelete, setSelectedFiles, startRename, tSftp])
 
   const contextMenuFile = useMemo<SftpFileActionItem | null>(() => {
     if (!contextMenu?.fileName || !contextMenu.fileType) {
@@ -606,6 +619,7 @@ export function useSftpFileActionController({
   }, [])
 
   const handleChmod = useCallback(async (mode: string) => {
+    if (!can("files.write")) throw new Error(tSftp("operationNotAllowed"))
     const fileName = chmodDialog.fileName
     const filePath = chmodDialog.filePath
     const chmodPromise = (chmodFile
@@ -627,7 +641,7 @@ export function useSftpFileActionController({
     })
 
     return chmodPromise
-  }, [chmodDialog.fileName, chmodDialog.filePath, chmodFile, notifier, onRefresh, serverId, tSftp])
+  }, [can, chmodDialog.fileName, chmodDialog.filePath, chmodFile, notifier, onRefresh, serverId, tSftp])
 
   const handleInternalBack = useCallback(async () => {
     if (editorState.isOpen) {
@@ -710,7 +724,7 @@ export function useSftpFileActionController({
         startCreateNew("file")
       }
 
-      if (cmdOrCtrl && event.key === "u") {
+      if (can("files.upload") && cmdOrCtrl && event.key === "u") {
         event.preventDefault()
         fileInputRef.current?.click()
       }
@@ -723,6 +737,7 @@ export function useSftpFileActionController({
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [
+    can,
     clearSelectedFiles,
     creatingNew,
     editingSessionLabelRef,

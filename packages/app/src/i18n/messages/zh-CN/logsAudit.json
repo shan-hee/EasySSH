@@ -155,5 +155,6 @@
   "resourceFile": "文件",
   "resourceUser": "用户",
   "resourceSystem": "系统",
-  "resourceSession": "会话"
+  "resourceSession": "会话",
+  "statusUnknown": "结果未知"
 }

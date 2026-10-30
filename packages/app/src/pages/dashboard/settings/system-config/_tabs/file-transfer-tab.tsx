@@ -217,6 +217,8 @@ export function FileTransferTab() {
                 step={1}
                 required
               />
+              <FormInput form={form} name="transfer_max_entries" label="目录条目上限" description="每次目录下载或中转最多遍历的文件和目录数量。" type="number" min={1} step={1} required />
+              <FormInput form={form} name="transfer_max_depth" label="目录深度上限" description="目录下载或中转允许遍历的最大层数。" type="number" min={1} step={1} required />
             </div>
 
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30 p-4">

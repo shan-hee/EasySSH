@@ -1,3 +1,5 @@
+import { toast } from "sonner"
+import { openWorkspaceTask } from "@/lib/workspace-task-navigation"
 import { sftpApi } from "@/lib/api/sftp"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { BatchDeleteResponse, FileInfo, SftpDeletePathsResult } from "@/lib/sftp-types"
@@ -128,7 +130,8 @@ export async function performDelete<T extends { name: string }>({
     error: (error) => formatSftpDeleteOperationError(error, t),
   })
 
-  await deletePromise
+  const result = await deletePromise
+  if (result?.task_id) toast(t("toastDeleteTaskCreated", { file: fileName }), { action: { label: t("viewOperationTask"), onClick: () => openWorkspaceTask(result.task_id!) } })
 }
 
 export interface CreateFolderOperationConfig<T extends { name: string }> {
@@ -387,5 +390,7 @@ export async function performBatchDelete<T extends { name: string }>({
     error: (error) => formatSftpDeleteOperationError(error, t, true),
   })
 
-  return batchDeletePromise
+  const result = await batchDeletePromise
+  if (result.task_id) toast(t("toastBatchDeleteTaskCreated", { count: fileNames.length }), { action: { label: t("viewOperationTask"), onClick: () => openWorkspaceTask(result.task_id!) } })
+  return result
 }

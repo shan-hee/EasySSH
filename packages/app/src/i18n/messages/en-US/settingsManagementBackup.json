@@ -178,7 +178,7 @@
   "syncUnsavedScopes": "Changes are not saved. Sync still uses the previous settings.",
   "syncPausedSettingsHint": "Sync is paused. You can change content and add records; data is exchanged after resuming.",
   "syncDiscard": "Discard changes",
-  "syncSaveScopes": "Save sync content",
+  "syncSaveScopes": "Save scope",
   "syncScopesSaved": "Sync content saved",
   "syncAIConfigCopied": "AI configuration copied to this account",
   "syncDataEnrolled": "Selected records added to this account",
@@ -222,5 +222,9 @@
   "syncAuthorizeExpiredHint": "This request expired or no longer exists. Start a new connection from the desktop app and use the newly opened authorization page.",
   "syncAuthorizeInvalidHint": "This authorization link is incomplete or invalid. Start a new connection from the desktop app.",
   "syncAuthorizeDeviceLimit": "The limit of 20 authorized devices has been reached. Revoke an unused device in account settings, then try again.",
-  "syncAuthorizeBack": "Return to web terminal"
+  "syncAuthorizeBack": "Return to web terminal",
+  "syncEditScopes": "Edit device scope",
+  "syncAffectedShares": "Shares affected by this sync. Review the resources before confirming them.",
+  "syncSharedResourceDeleted": "Resource deleted",
+  "syncSharedConnectionChanged": "Connection changed"
 }

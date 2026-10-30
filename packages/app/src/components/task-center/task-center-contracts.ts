@@ -1,4 +1,5 @@
-export type TaskRunStatus = "queued" | "running" | "succeeded" | "failed" | "partial_success" | "canceling" | "canceled" | "timeout"
+import type { components } from "@/generated/openapi"
+export type TaskRunStatus = components["schemas"]["TaskRunStatus"]
 
 export interface TaskRun {
   id: string
@@ -55,17 +56,7 @@ export interface TaskRunListResponse {
   total_pages: number
 }
 
-export interface TaskStatistics {
-  total: number
-  queued: number
-  running: number
-  canceling: number
-  succeeded: number
-  failed: number
-  partial_success: number
-  canceled: number
-  timeout: number
-}
+export type TaskStatistics = components["schemas"]["TaskStatistics"]
 
 export interface TaskCleanupResult {
   deleted_count: number
@@ -87,7 +78,8 @@ export interface TaskCenterApi {
   list(params?: TaskRunListParams): Promise<TaskRunListResponse>
   statistics(): Promise<TaskStatistics>
   cleanup(retentionDays: number): Promise<TaskCleanupResult>
-  get(id: string): Promise<{ run: TaskRun; events: TaskEvent[] }>
+  get(id: string): Promise<{ run: TaskRun; events: TaskEvent[]; eventPage?: components["schemas"]["TaskEventPage"] }>
+  events?(id: string, after: number): Promise<components["schemas"]["TaskEventPage"]>
   cancel(id: string): Promise<{ id: string; status: TaskRunStatus }>
   retry(id: string): Promise<{ definition_id?: string; id?: string; retry_of_id: string }>
 }

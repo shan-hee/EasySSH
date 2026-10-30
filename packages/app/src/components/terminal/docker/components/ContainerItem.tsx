@@ -1,3 +1,4 @@
+import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 /**
  * 容器卡片组件
  */
@@ -46,6 +47,9 @@ export function ContainerItem({
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
 
+  const can = useWorkspaceAction()
+  const terminalAvailable = useTerminalStore(state => Boolean(state.getTerminal(sessionId)?.wsConnection))
+  const canUpdate = can("docker.manage") && can("terminal.connect") && terminalAvailable
   const getTerminal = useTerminalStore((state) => state.getTerminal)
 
   // 获取显示名称（去掉前导斜杠）
@@ -88,6 +92,7 @@ export function ContainerItem({
 
   // 处理操作
   const handleAction = async (action: DockerAction) => {
+    if (!can("docker.manage")) return
     setLoading(action)
     try {
       switch (action) {
@@ -150,6 +155,7 @@ export function ContainerItem({
 
   // 确认更新 - 发送命令到终端
   const handleConfirmUpdate = (command: string) => {
+    if (!canUpdate) return
     const terminalInstance = getTerminal(sessionId)
 
     if (terminalInstance?.wsConnection) {
@@ -212,6 +218,7 @@ export function ContainerItem({
               size="icon"
               className="h-6 w-6"
               onClick={handlePullUpdate}
+              disabled={!canUpdate}
             >
               <Download className="h-3 w-3" />
             </Button>
@@ -226,6 +233,7 @@ export function ContainerItem({
               size="icon"
               className="h-6 w-6"
               onClick={handlePullAndRestart}
+              disabled={!canUpdate}
             >
               <RefreshCw className="h-3 w-3" />
             </Button>

@@ -1,3 +1,4 @@
+import { openWorkspaceTask } from "@/lib/workspace-task-navigation"
 import { Activity, CheckCircle2, Download, Loader2, Trash2, Upload, X, XCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -24,6 +25,8 @@ const removableBackgroundStatuses = new Set<TransferJob["status"]>(["created", "
 
 function getBackgroundStatusLabel(job: TransferJob, tSftp: WorkspaceUiTranslator) {
   switch (job.status) {
+    case "unknown":
+      return tSftp("transferUnknownHint")
     case "created":
       return tSftp("backgroundStatusCreated")
     case "staging":
@@ -153,6 +156,9 @@ function BackgroundTransferItem({
               <span className="truncate">{getBackgroundStatusLabel(job, tSftp)} · {progress}%</span>
               <span className="shrink-0 tabular-nums">{speed ? `${speed} · ` : ""}{fileSize}</span>
             </div>
+            <p className="text-xs text-muted-foreground">{tSftp("transferFacts", { files: job.files_completed, total: job.files_total, bytes: job.bytes_completed })}</p>
+            {job.result_path && <p className="truncate text-xs" title={job.result_path}>{job.result_path}</p>}
+            {job.task_run_id && <Button size="sm" variant="ghost" onClick={() => openWorkspaceTask(job.task_run_id!)}>{tSftp("viewOperationTask")}</Button>}
             {job.error_message && (
               <div className="line-clamp-2 text-xs text-destructive">{job.error_message}</div>
             )}

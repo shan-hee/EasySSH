@@ -1,3 +1,4 @@
+import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 
 import { FileEditor } from "@/components/sftp/file-editor"
 
@@ -28,6 +29,7 @@ export function SftpFileEditorPane({
   onSave,
   onDownload,
 }: SftpFileEditorPaneProps) {
+  const can = useWorkspaceAction()
   return (
     <FileEditor
       fileName={fileName}
@@ -40,7 +42,8 @@ export function SftpFileEditorPane({
       onDraftChange={onDraftChange}
       isBusy={isBusy}
       onSave={onSave}
-      onDownload={onDownload}
+      onDownload={can("files.download") ? onDownload : undefined}
+      readOnly={!can("files.write")}
     />
   )
 }

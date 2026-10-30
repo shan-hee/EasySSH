@@ -1,3 +1,4 @@
+import type { components } from "@/generated/openapi"
 import { authenticatedFetch, getApiUrl } from "@/lib/api-client"
 import type { SyncAdapter, SyncStatus } from "./types"
 export async function syncRequest<T>(path: string, options?: RequestInit): Promise<T> {
@@ -22,6 +23,9 @@ export const webSyncAdapter: SyncAdapter = {
   async sync() {
     await syncRequest("/status")
   },
+  async updateDeviceScopes(id, scopes) {
+    await syncRequest(`/devices/${encodeURIComponent(id)}/scopes`, { method: "PUT", body: JSON.stringify(scopes) })
+  },
   async revokeDevice(id) {
     await syncRequest(`/devices/${encodeURIComponent(id)}`, { method: "DELETE" })
   },
@@ -33,7 +37,8 @@ export const webSyncAdapter: SyncAdapter = {
     window.dispatchEvent(new Event("easyssh:sync-applied"))
   },
   async resolve(key, field, value) {
-    await syncRequest("/resolve", { method: "POST", body: JSON.stringify({ key, field, value }) })
+    const result = await syncRequest<components["schemas"]["SyncExchangeResult"]>("/resolve", { method: "POST", body: JSON.stringify({ key, field, value }) })
     window.dispatchEvent(new Event("easyssh:sync-applied"))
+    return result.affected_grants
   },
 }

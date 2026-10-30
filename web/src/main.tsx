@@ -2,6 +2,7 @@ import React from "react"
 import { createRoot } from "react-dom/client"
 import { RouterProvider } from "react-router-dom"
 import { installPlatformTransport } from "@easyssh/app/contracts/platform-transport"
+import { accessTransport, isSharePage } from "./platform/access-session"
 import { browserTransport } from "./platform/http-transport"
 import { createAppRouter } from "./router"
 import { ResourceBoundary } from "@easyssh/app/components/resource-boundary"
@@ -10,7 +11,7 @@ import "@easyssh/app/i18n"
 import "@easyssh/app/styles/vendor-styles"
 import "./styles/app.css"
 
-installPlatformTransport(browserTransport)
+installPlatformTransport(isSharePage() ? accessTransport : browserTransport)
 
 const rootElement = document.getElementById("root")
 

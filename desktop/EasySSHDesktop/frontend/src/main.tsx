@@ -9,10 +9,11 @@ import { AppLoadingScreen } from "@easyssh/app/components/app-loading"
 import "@easyssh/app/styles/vendor-styles"
 import "./styles.css"
 
+const remoteWindow = window.location.hash.startsWith("#/remote-workspace/")
 const desktopApp = createPreloadableComponent(async () => {
   const [module] = await Promise.all([
-    import("./App"),
-    preloadNamespaces(["common", "desktop", "terminal", "sftp", "servers", "terminalSettings", "headerActions", "settingsManagementBackup"]),
+    remoteWindow ? import("./remote/RemoteApp") : import("./App"),
+    preloadNamespaces(["common", "sharing", "activityOverview", "aiAssistant", "taskCenter", "desktop", "terminal", "sftp", "servers", "terminalSettings", "headerActions", "settingsManagementBackup"]),
   ])
   return module
 })
@@ -20,7 +21,7 @@ const App = desktopApp.Component
 
 async function startDesktop() {
   void desktopApp.preload().catch(() => undefined)
-  await DesktopActivationService.WaitForStartup()
+  if (!remoteWindow) await DesktopActivationService.WaitForStartup()
   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <React.StrictMode>
       <ResourceBoundary listenForResourceErrors>

@@ -101,7 +101,7 @@ export interface ServerStatisticsResponse {
   online?: number
   offline?: number
   connected_servers?: number
-  /** 以分组名称为键。 */
+  /** 以分组 ID 为键；名称由分组列表提供。 */
   by_group: Record<string, number>
   by_tag: Record<string, number>
 }

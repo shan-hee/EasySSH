@@ -14,7 +14,6 @@ export const ACTIVE_TRANSFER_JOB_STATUSES: ReadonlySet<TransferJobStatus> = new 
   "queued",
   "running",
   "canceling",
-  "unknown",
 ])
 
 export function isTransferJobSettled(job: Pick<TransferJob, "status">): boolean {

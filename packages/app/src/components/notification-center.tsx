@@ -84,7 +84,10 @@ export function NotificationCenter() {
         unread_count: Math.max(0, current.unread_count - 1),
       }))
     }
-    if (item.action_url) {
+    if (item.source_type === "task_run" && item.source_id) {
+      setOpen(false)
+      navigate(`/dashboard/tasks?run=${encodeURIComponent(item.source_id)}`)
+    } else if (item.action_url) {
       setOpen(false)
       navigate(item.action_url)
     }

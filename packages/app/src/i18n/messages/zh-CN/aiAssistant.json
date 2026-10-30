@@ -331,5 +331,7 @@
   "pendingConfirmationEmpty": "当前没有待确认任务。",
   "toolsTitle": "可用工具",
   "toolsDescription": "本会话快照下可见的工具列表。",
-  "toolsEmpty": "当前权限模式下没有可用工具。"
+  "toolsEmpty": "当前权限模式下没有可用工具。",
+  "workspaceRelatedTask": "查看关联任务",
+  "sharedAINotConfigured": "分享者尚未完成 AI 配置，请联系分享者配置后刷新。"
 }

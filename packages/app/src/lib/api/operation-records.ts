@@ -1,3 +1,6 @@
+import type { components } from "@/generated/openapi"
+import { readContentBytes, readContentJSON } from "@/lib/content"
+import { readInstanceContentChunk } from "@/lib/api/content"
 import { apiFetch } from "@/lib/api-client"
 
 export type OperationRecordType = "connection" | "transfer" | "execution" | "audit"
@@ -11,8 +14,15 @@ export type OperationRecordStatus =
   | "canceled"
   | "timeout"
   | "warning"
+  | "unknown"
 
 export interface OperationRecord {
+  resources?: components["schemas"]["ActivityResourceSnapshot"][]
+  detail_content?: components["schemas"]["ContentReference"]
+  task_content?: components["schemas"]["ContentReference"]
+  bytes_completed?: number
+  work_id?: string
+  attempt?: number
   id: string
   username: string
   type: OperationRecordType
@@ -102,7 +112,10 @@ export const operationRecordsApi = {
   },
 
   async getById(id: string): Promise<OperationRecord> {
-    return apiFetch<OperationRecord>(`/operation-records/${id}`)
+    const record = await apiFetch<OperationRecord>(`/operation-records/${id}`)
+    if (record.detail_content) record.detail_json = new TextDecoder().decode(await readContentBytes(record.detail_content, readInstanceContentChunk))
+    if (record.task_content) { const body = await readContentJSON<components["schemas"]["TaskBody"]>(record.task_content, readInstanceContentChunk); record.detail_json = body.result_json || body.progress_json || body.description || "" }
+    return record
   },
 
   async getStatistics(params?: Pick<OperationRecordListParams, "type" | "category" | "start_date" | "end_date">): Promise<OperationRecordStatistics> {

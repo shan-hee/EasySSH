@@ -1,3 +1,7 @@
+import { resolveTaskDetails, resolveTaskEvents } from "@easyssh/app/components/task-center/task-content"
+import { DesktopContentService } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
+import { ContentReadInput, TaskEventInput } from "../../bindings/github.com/easyssh/shared/protocol/models"
+import type { ContentChunkReader } from "@easyssh/app/lib/content"
 import { Events } from "@wailsio/runtime"
 
 import type {
@@ -14,6 +18,8 @@ import {
 } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 
 const desktopTaskChangedEvent = "desktop:task-center-changed"
+
+const readBody: ContentChunkReader = (ref, offset) => DesktopContentService.ReadContent(ref.id, new ContentReadInput({ offset, sha256: ref.sha256 }))
 
 export function createDesktopTaskCenterApi(): TaskCenterApi {
   return {
@@ -38,7 +44,17 @@ export function createDesktopTaskCenterApi(): TaskCenterApi {
     },
 
     async get(id: string) {
-      return await DesktopTaskService.Get(id) as unknown as Awaited<ReturnType<TaskCenterApi["get"]>>
+      const details = await DesktopTaskService.Get(id)
+      const page = await DesktopTaskService.ListEvents(id, new TaskEventInput({ after_id: 0, limit: 50 }))
+      if (!page) throw new Error("Task events unavailable")
+      const eventPage = await resolveTaskEvents(page, readBody)
+      return { run: await resolveTaskDetails(details, readBody), events: eventPage.events, eventPage }
+    },
+
+    async events(id, after) {
+      const page = await DesktopTaskService.ListEvents(id, new TaskEventInput({ after_id: after, limit: 50 }))
+      if (!page) throw new Error("Task events unavailable")
+      return resolveTaskEvents(page, readBody)
     },
 
     async cancel(id: string) {

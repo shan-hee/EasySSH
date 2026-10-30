@@ -21,6 +21,7 @@ import type {
 export type SshWorkspaceLayout = "web" | "desktop" | "embedded"
 
 export interface SshWorkspaceCapabilities {
+  allowedActions?: import("@/generated/openapi").components["schemas"]["Action"][]
   terminal?: boolean
   sftp?: boolean
   transfers?: boolean
@@ -70,8 +71,14 @@ export type WorkspaceTransferStatus =
   | "completed"
   | "failed"
   | "cancelled"
+  | "unknown"
 
 export interface WorkspaceTransferTask {
+  taskRunId?: string
+  filesCompleted?: number
+  filesTotal?: number
+  bytesCompleted?: number
+  resultPath?: string
   id: string
   fileName: string
   fileSize: string
@@ -494,7 +501,7 @@ export type SshWorkspaceAuthTicketProvider = (
   payload?: Record<string, unknown>,
 ) => Promise<string>
 
-export type WorkspaceTransferHistoryStatus = "pending" | "transferring" | "completed" | "failed"
+export type WorkspaceTransferHistoryStatus = "pending" | "transferring" | "completed" | "failed" | "partial" | "canceled" | "timeout" | "warning" | "unknown"
 export type WorkspaceTransferHistoryType = "upload" | "download" | "transfer"
 
 export interface WorkspaceTransferHistoryItem {
@@ -560,6 +567,7 @@ export type WorkspaceActivityLogStatus =
   | "canceled"
   | "timeout"
   | "warning"
+  | "unknown"
 
 export interface WorkspaceActivityLogItem {
   id: string

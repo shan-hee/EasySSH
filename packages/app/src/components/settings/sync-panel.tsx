@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { AlertCircle, CheckCircle2, Cloud, Laptop, Loader2, Pause, RefreshCw, Unplug } from "lucide-react"
 import { toast } from "sonner"
-import { scopeLabels } from "./sync-scopes"
+import { scopeLabels, SyncScopeOptions } from "./sync-scopes"
 import { SyncContentSettings } from "./sync-content-settings"
 import { SyncDataPicker } from "./sync-data-picker"
 import { SyncConflicts } from "./sync-conflicts"
 import { SettingsSection } from "./settings-section"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -17,6 +18,7 @@ import { emptySyncScopes, type SyncScopes, type SyncAdapter, type SyncStatus, ty
 export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desktopMode: boolean }) {
   const { t } = useTranslation("settingsManagementBackup")
   const { confirm, confirmDialog } = useConfirmDialog()
+  const [editingDevice, setEditingDevice] = useState<{ id: string; name: string; scopes: SyncScopes } | null>(null)
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [loadError, setLoadError] = useState("")
   const [actionError, setActionError] = useState("")
@@ -244,6 +246,7 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
           }} />
       )}
 
+      <Dialog open={!!editingDevice} onOpenChange={open => { if (!open) setEditingDevice(null) }}><DialogContent><DialogHeader><DialogTitle>{t("syncEditScopes")} · {editingDevice?.name}</DialogTitle></DialogHeader>{editingDevice && <><SyncScopeOptions value={editingDevice.scopes} disabled={disabled} onChange={scopes => setEditingDevice({ ...editingDevice, scopes })} /><Button disabled={disabled} onClick={() => void action(async () => { await adapter.updateDeviceScopes!(editingDevice.id, editingDevice.scopes); setEditingDevice(null) })}>{t("syncSaveScopes")}</Button></>}</DialogContent></Dialog>
       {!desktopMode && status && (
         <SettingsSection title={t("syncDevices")} icon={<Laptop className="size-5" />} className="rounded-xl border border-border bg-card/40 p-5">
           {!status.devices?.length ? <p className="text-sm text-muted-foreground">{t("syncNoDevices")}</p> : (
@@ -257,6 +260,7 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
                       .filter((key) => device.scopes?.[key]).map((key) => t(scopeLabels[key])).join(" · ") || t("syncBasicScope")}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{t("syncLastTime")}: {device.last_used_at ? new Date(device.last_used_at).toLocaleString() : t("syncNever")} · {t("syncExpires")}: {new Date(device.expires_at).toLocaleDateString()}</p>
                   </div>
+                  {adapter.updateDeviceScopes && <Button variant="outline" size="sm" disabled={disabled} onClick={() => setEditingDevice({ id: device.id, name: device.name, scopes: { ...device.scopes } })}>{t("syncEditScopes")}</Button>}
                   <Button variant="ghost" size="sm" disabled={disabled} onClick={() => void action(async () => {
                     if (await confirm({ description: t("syncRevokeConfirm"), variant: "destructive" })) await adapter.revokeDevice?.(device.id)
                   })}>{t("syncRevoke")}</Button>

@@ -1,3 +1,5 @@
+import { ActivityLinks } from "@/components/activity/activity-links"
+import { ActivityOverview } from "@/components/activity/activity-overview"
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
@@ -290,6 +292,7 @@ function OperationLogsContent() {
     canceled: t("statusCanceled"),
     timeout: t("statusTimeout"),
     warning: t("statusWarning"),
+    unknown: t("statusUnknown"),
   }), [t])
 
   const queryParams = React.useMemo<OperationRecordListParams>(() => ({
@@ -576,6 +579,7 @@ function OperationLogsContent() {
 
   return (
     <DashboardPageContent className="gap-3 sm:gap-4">
+      <ActivityOverview />
       <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
         <p>{t("dashboardDescription")}</p>
         <span className="shrink-0 tabular-nums">
@@ -655,6 +659,7 @@ function OperationLogsContent() {
           </DialogHeader>
           {selectedRecord ? (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-2 scrollbar-custom">
+              <ActivityLinks sourceTable={selectedRecord.source_table} sourceId={selectedRecord.source_id} resources={selectedRecord.resources} />
               <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                 <Detail label={t("columnType")} value={typeLabels[selectedRecord.type]} />
                 <Detail label={t("columnCategory")} value={categoryLabels[selectedRecord.category]} />
