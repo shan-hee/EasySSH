@@ -24,7 +24,7 @@ struct WebviewPreferences {
 extern void registerListener(unsigned int event);
 
 // Create a new Window
-void* windowNew(unsigned int id, int width, int height, bool fraudulentWebsiteWarningEnabled, bool frameless, bool enableDragAndDrop, struct WebviewPreferences preferences) {
+void* windowNew(unsigned int id, int width, int height, bool fraudulentWebsiteWarningEnabled, bool frameless, bool enableDragAndDrop, bool isolatedStorage, struct WebviewPreferences preferences) {
 	NSWindowStyleMask styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
 	if (frameless) {
 		styleMask = NSWindowStyleMaskBorderless | NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable;
@@ -60,6 +60,7 @@ void* windowNew(unsigned int id, int width, int height, bool fraudulentWebsiteWa
 	NSRect frame = NSMakeRect(0, 0, width, height);
 	WKWebViewConfiguration* config = [[WKWebViewConfiguration alloc] init];
 	[config autorelease];
+	if (isolatedStorage) { config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore]; }
 
 	// Set preferences
     if (preferences.TabFocusesLinks != NULL) {
@@ -1360,6 +1361,7 @@ func (w *macosWebviewWindow) run() {
 			C.bool(macOptions.EnableFraudulentWebsiteWarnings),
 			C.bool(options.Frameless),
 			C.bool(options.EnableFileDrop),
+			C.bool(options.IsolatedStorage),
 			w.getWebviewPreferences(),
 		)
 		if macOptions.DisableEscapeExitsFullscreen {

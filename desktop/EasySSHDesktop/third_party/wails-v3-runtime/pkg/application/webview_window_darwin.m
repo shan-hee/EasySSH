@@ -8,6 +8,7 @@ extern void processMessage(unsigned int, const char*, const char *, bool);
 extern void processURLRequest(unsigned int, void *);
 extern void processDragItems(unsigned int windowId, char** arr, int length, int x, int y);
 extern void processWindowKeyDownEvent(unsigned int, const char*);
+extern bool allowNativeNavigation(unsigned int, const char*, bool);
 extern bool hasListeners(unsigned int);
 extern bool windowShouldUnconditionallyClose(unsigned int);
 extern bool windowIsHidden(unsigned int);
@@ -774,6 +775,12 @@ typedef NS_ENUM(NSInteger, MacLiquidGlassStyle) {
     if( hasListeners(EventWindowHide) ) {
         processWindowEvent(self.windowId, EventWindowHide);
     }
+}
+- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)action decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    NSString *target = action.request.URL.absoluteString;
+    bool mainFrame = action.targetFrame != nil && action.targetFrame.isMainFrame;
+    bool allowed = target != nil && allowNativeNavigation(self.windowId, target.UTF8String, mainFrame);
+    decisionHandler(allowed ? WKNavigationActionPolicyAllow : WKNavigationActionPolicyCancel);
 }
 - (void)webView:(nonnull WKWebView *)webview didStartProvisionalNavigation:(WKNavigation *)navigation {
     if( hasListeners(EventWebViewDidStartProvisionalNavigation) ) {

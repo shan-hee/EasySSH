@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +25,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/w32"
 	"github.com/wailsapp/wails/webview2/pkg/edge"
+	"github.com/wailsapp/wails/webview2/pkg/webview2"
 )
 
 var edgeMap = map[string]uintptr{
@@ -38,6 +40,10 @@ var edgeMap = map[string]uintptr{
 }
 
 type windowsWebviewWindow struct {
+	isolatedDataPath         string
+	navigationPolicy         *webview2.ICoreWebView2NavigationStartingEventHandler
+	frameNavigationPolicy    *webview2.ICoreWebView2NavigationStartingEventHandler
+	popupPolicy              *webview2.ICoreWebView2NewWindowRequestedEventHandler
 	windowImpl               unsafe.Pointer
 	parent                   *WebviewWindow
 	hwnd                     w32.HWND
@@ -795,6 +801,25 @@ func (w *windowsWebviewWindow) setRelativePosition(x int, y int) {
 }
 
 func (w *windowsWebviewWindow) destroy() {
+	if w.isolatedDataPath != "" {
+		if controller := w.chromium.GetController(); controller != nil {
+			if err := (*webview2.ICoreWebView2Controller)(unsafe.Pointer(controller)).Close(); err != nil {
+				globalApplication.handleError(err)
+			}
+		}
+		path := w.isolatedDataPath
+		w.isolatedDataPath = ""
+		// WebView2 releases profile files asynchronously after controller.Close.
+		go func() {
+			for attempt := 0; attempt < 30; attempt++ {
+				if err := os.RemoveAll(path); err == nil {
+					return
+				}
+				time.Sleep(time.Second)
+			}
+			globalApplication.error("unable to remove isolated WebView storage")
+		}()
+	}
 	// Re-enable parent window if this was a modal window
 	if w.parentHWND != 0 {
 		w32.EnableWindow(w.parentHWND, true)
@@ -2086,6 +2111,15 @@ func (w *windowsWebviewWindow) setupChromium() {
 	}
 
 	chromium.DataPath = globalApplication.options.Windows.WebviewUserDataPath
+	if w.parent.options.IsolatedStorage {
+		directory, err := os.MkdirTemp("", "easyssh-remote-webview-")
+		if err != nil {
+			globalApplication.handleFatalError(err)
+			return
+		}
+		w.isolatedDataPath = directory
+		chromium.DataPath = directory
+	}
 	chromium.BrowserPath = globalApplication.options.Windows.WebviewBrowserPath
 
 	if opts.Permissions != nil {
@@ -2103,6 +2137,10 @@ func (w *windowsWebviewWindow) setupChromium() {
 	chromium.AcceleratorKeyCallback = w.processKeyBinding
 
 	chromium.Embed(w.hwnd)
+	if err := w.installNavigationPolicy(); err != nil {
+		globalApplication.handleFatalError(err)
+		return
+	}
 
 	// Prevent efficiency mode by keeping WebView2 visible (fixes issue #2861)
 	// Microsoft recommendation: keep IsVisible = true to avoid efficiency mode
@@ -2365,6 +2403,9 @@ func (w *windowsWebviewWindow) processMessageWithAdditionalObjects(
 	sender *edge.ICoreWebView2,
 	args *edge.ICoreWebView2WebMessageReceivedEventArgs,
 ) {
+	if !w.parent.options.EnableFileDrop {
+		return
+	}
 	if strings.HasPrefix(message, "file:drop:") {
 		objs, err := args.GetAdditionalObjects()
 		if err != nil {

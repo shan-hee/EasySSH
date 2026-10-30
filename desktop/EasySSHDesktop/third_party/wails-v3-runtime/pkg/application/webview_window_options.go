@@ -41,6 +41,12 @@ const (
 )
 
 type WebviewWindowOptions struct {
+	// RestrictNavigation confines the document to bundled application assets.
+	// It must be paired with frame-src 'none' in the asset CSP.
+	RestrictNavigation bool
+	// IsolatedStorage gives this window its own browser storage partition.
+	IsolatedStorage bool
+
 	// Name is a unique identifier that can be given to a window.
 	Name string
 

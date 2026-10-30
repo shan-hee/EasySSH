@@ -42,23 +42,26 @@ const (
 // to work around WebView2's ~2MB limit on request body content delivery
 // via the WebResourceRequested event.
 type pendingChunks struct {
-	mu        sync.Mutex
 	chunks    map[int][]byte
 	total     int
 	size      int
 	createdAt time.Time
+	finished  bool
 }
 
 type HTTPTransport struct {
 	messageProcessor *MessageProcessor
 	logger           *slog.Logger
-	chunkStore       sync.Map
+	chunkMu          sync.Mutex
+	chunkStore       map[nativeCallKey]*pendingChunks
 	stopCleanup      chan struct{}
+	stopOnce         sync.Once
 }
 
 func NewHTTPTransport(opts ...HTTPTransportOption) *HTTPTransport {
 	t := &HTTPTransport{
-		logger: slog.Default(),
+		logger:     slog.Default(),
+		chunkStore: make(map[nativeCallKey]*pendingChunks),
 	}
 
 	// Apply options
@@ -82,29 +85,26 @@ func HTTPTransportWithLogger(logger *slog.Logger) HTTPTransportOption {
 func (t *HTTPTransport) Start(ctx context.Context, processor *MessageProcessor) error {
 	t.messageProcessor = processor
 	t.stopCleanup = make(chan struct{})
-	go t.cleanupChunks()
+	go t.cleanupChunks(t.stopCleanup)
 	return nil
 }
 
-func (t *HTTPTransport) cleanupChunks() {
+func (t *HTTPTransport) cleanupChunks(stop <-chan struct{}) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-t.stopCleanup:
+		case <-stop:
 			return
 		case <-ticker.C:
 			now := time.Now()
-			t.chunkStore.Range(func(k, v any) bool {
-				pc := v.(*pendingChunks)
-				pc.mu.Lock()
-				expired := now.Sub(pc.createdAt) > chunkTTL
-				pc.mu.Unlock()
-				if expired {
-					t.chunkStore.Delete(k)
+			t.chunkMu.Lock()
+			for key, pending := range t.chunkStore {
+				if now.Sub(pending.createdAt) > chunkTTL {
+					delete(t.chunkStore, key)
 				}
-				return true
-			})
+			}
+			t.chunkMu.Unlock()
 		}
 	}
 }
@@ -115,8 +115,7 @@ func (t *HTTPTransport) JSClient() []byte {
 
 func (t *HTTPTransport) Stop() error {
 	if t.stopCleanup != nil {
-		close(t.stopCleanup)
-		t.stopCleanup = nil
+		t.stopOnce.Do(func() { close(t.stopCleanup) })
 	}
 	return nil
 }
@@ -142,6 +141,12 @@ func (t *HTTPTransport) Handler() func(next http.Handler) http.Handler {
 }
 
 func (t *HTTPTransport) handleRuntimeRequest(rw http.ResponseWriter, r *http.Request) {
+	if _, ok := RuntimeWindowID(r.Context()); !ok {
+		http.Error(rw, "native window provenance required", http.StatusForbidden)
+		return
+	}
+	rw.Header().Set("Cache-Control", "no-store")
+	r.Body = http.MaxBytesReader(rw, r.Body, maxAssembledBytes)
 	// Chunked upload: JS splits large bodies into smaller pieces to work
 	// around WebView2's ~2MB request body delivery limit in WebResourceRequested.
 	if chunkID := r.Header.Get(chunkIDHeader); chunkID != "" {
@@ -168,6 +173,12 @@ func (t *HTTPTransport) handleRuntimeRequest(rw http.ResponseWriter, r *http.Req
 // handleChunkedRequest stores an incoming chunk and, once all chunks are
 // received, assembles them and delegates to processBody.
 func (t *HTTPTransport) handleChunkedRequest(rw http.ResponseWriter, r *http.Request, chunkID string) {
+	windowID, ok := RuntimeWindowID(r.Context())
+	if !ok || len(chunkID) > 128 {
+		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("invalid native chunk source"))
+		return
+	}
+	key := nativeCallKey{windowID, chunkID}
 	indexStr := r.Header.Get(chunkIndexHeader)
 	totalStr := r.Header.Get(chunkTotalHeader)
 
@@ -201,45 +212,61 @@ func (t *HTTPTransport) handleChunkedRequest(rw http.ResponseWriter, r *http.Req
 	chunk := make([]byte, buf.Len())
 	copy(chunk, buf.Bytes())
 
-	actual, _ := t.chunkStore.LoadOrStore(chunkID, &pendingChunks{
-		chunks:    make(map[int][]byte),
-		total:     total,
-		createdAt: time.Now(),
-	})
-	pc := actual.(*pendingChunks)
-
-	pc.mu.Lock()
-	if pc.total != total {
-		pc.mu.Unlock()
-		t.chunkStore.Delete(chunkID)
-		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("inconsistent chunk total"))
+	// One lock owns assembly, accounting and completion. Keep completed IDs as
+	// bounded TTL tombstones so concurrent last chunks cannot dispatch twice.
+	t.chunkMu.Lock()
+	pc := t.chunkStore[key]
+	var totalBytes, windowBytes, windowRequests int
+	for k, pending := range t.chunkStore {
+		totalBytes += pending.size
+		if k.windowID == windowID {
+			windowBytes += pending.size
+			windowRequests++
+		}
+	}
+	if pc == nil {
+		if len(t.chunkStore) >= 128 || windowRequests >= 32 {
+			t.chunkMu.Unlock()
+			t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("too many chunk requests"))
+			return
+		}
+		pc = &pendingChunks{chunks: make(map[int][]byte), total: total, createdAt: time.Now()}
+		t.chunkStore[key] = pc
+	}
+	if pc.finished || time.Since(pc.createdAt) > chunkTTL || pc.total != total {
+		t.chunkMu.Unlock()
+		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("expired, completed or inconsistent chunk request"))
+		return
+	}
+	if previous, exists := pc.chunks[index]; exists {
+		equal := bytes.Equal(previous, chunk)
+		t.chunkMu.Unlock()
+		if !equal {
+			t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("conflicting duplicate chunk"))
+			return
+		}
+		rw.WriteHeader(http.StatusOK)
+		return
+	}
+	if windowBytes+len(chunk) > maxAssembledBytes || totalBytes+len(chunk) > 2*maxAssembledBytes {
+		pc.finished, pc.chunks, pc.size = true, nil, 0
+		t.chunkMu.Unlock()
+		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("chunk memory limit exceeded"))
 		return
 	}
 	pc.chunks[index] = chunk
 	pc.size += len(chunk)
-	if pc.size > maxAssembledBytes {
-		pc.mu.Unlock()
-		t.chunkStore.Delete(chunkID)
-		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("assembled body too large"))
-		return
-	}
-	received := len(pc.chunks)
-	pc.mu.Unlock()
-
-	if received < total {
+	if len(pc.chunks) < total {
+		t.chunkMu.Unlock()
 		rw.WriteHeader(http.StatusOK)
 		return
 	}
-
-	// All chunks received — assemble in order and process.
-	t.chunkStore.Delete(chunkID)
-
-	pc.mu.Lock()
-	var assembled []byte
+	assembled := make([]byte, 0, pc.size)
 	for i := 0; i < pc.total; i++ {
 		assembled = append(assembled, pc.chunks[i]...)
 	}
-	pc.mu.Unlock()
+	pc.finished, pc.chunks, pc.size = true, nil, 0
+	t.chunkMu.Unlock()
 
 	t.processBody(rw, r, assembled)
 }
@@ -286,26 +313,17 @@ func (t *HTTPTransport) processBody(rw http.ResponseWriter, r *http.Request, bod
 		return
 	}
 
-	windowIdStr := r.Header.Get(webViewRequestHeaderWindowId)
-	windowId := 0
-	if windowIdStr != "" {
-		windowId, err = strconv.Atoi(windowIdStr)
-		if err != nil {
-			t.httpError(rw, errs.WrapInvalidRuntimeCallErrorf(err, "error decoding windowId value"))
-			return
-		}
+	windowID, ok := RuntimeWindowID(r.Context())
+	if !ok {
+		t.httpError(rw, errs.NewInvalidRuntimeCallErrorf("native window provenance required"))
+		return
 	}
 
-	windowName := r.Header.Get(webViewRequestHeaderWindowName)
-	clientId := r.Header.Get("x-wails-client-id")
-
 	resp, err := t.messageProcessor.HandleRuntimeCallWithIDs(r.Context(), &RuntimeRequest{
-		Object:            *body.Object,
-		Method:            *body.Method,
-		Args:              &Args{body.Args},
-		WebviewWindowID:   uint32(windowId),
-		WebviewWindowName: windowName,
-		ClientID:          clientId,
+		Object:          *body.Object,
+		Method:          *body.Method,
+		Args:            &Args{body.Args},
+		WebviewWindowID: uint32(windowID),
 	})
 
 	if err != nil {

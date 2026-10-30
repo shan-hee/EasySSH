@@ -11,8 +11,8 @@ import (
 
 	"encoding/json"
 
-	"github.com/wailsapp/wails/v3/internal/optional"
 	"github.com/wailsapp/wails/v3/internal/assetserver"
+	"github.com/wailsapp/wails/v3/internal/optional"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
@@ -145,9 +145,10 @@ type WindowEventListener struct {
 }
 
 type WebviewWindow struct {
-	options WebviewWindowOptions
-	impl    webviewWindowImpl
-	id      uint
+	assetOrigin string
+	options     WebviewWindowOptions
+	impl        webviewWindowImpl
+	id          uint
 
 	eventListeners     map[uint][]*WindowEventListener
 	eventListenersLock sync.RWMutex
@@ -307,6 +308,7 @@ func NewWindow(options WebviewWindowOptions) *WebviewWindow {
 		menuBindings:   make(map[string]*MenuItem),
 	}
 
+	result.assetOrigin, _ = assetserver.GetStartURL("/")
 	result.setupEventMapping()
 
 	// Listen for window closing events and de
@@ -481,7 +483,10 @@ func (w *WebviewWindow) Hide() Window {
 }
 
 func (w *WebviewWindow) SetURL(s string) Window {
-	url, _ := assetserver.GetStartURL(s)
+	url, err := assetserver.GetStartURL(s)
+	if err != nil || !w.AllowsNavigation(url, true) {
+		return w
+	}
 	w.options.URL = url
 	if w.impl != nil {
 		InvokeSync(func() {
@@ -1293,6 +1298,9 @@ func (w *WebviewWindow) SetFrameless(frameless bool) Window {
 }
 
 func (w *WebviewWindow) DispatchWailsEvent(event *CustomEvent) {
+	if policy := globalApplication.options.NativeEventPolicy; policy != nil && !policy(w.id, event) {
+		return
+	}
 	if w.impl == nil || w.isDestroyed() {
 		return
 	}
@@ -1325,6 +1333,9 @@ func (w *WebviewWindow) Error(message string, args ...any) {
 }
 
 func (w *WebviewWindow) handleDragAndDropMessage(filenames []string, dropTarget *DropTargetDetails) {
+	if !w.options.EnableFileDrop {
+		return
+	}
 	thisEvent := NewWindowEvent()
 	ctx := newWindowEventContext()
 	ctx.setDroppedFiles(filenames)
@@ -1586,7 +1597,7 @@ func (w *WebviewWindow) ToggleMenuBar() {
 }
 
 func (w *WebviewWindow) InitiateFrontendDropProcessing(filenames []string, x int, y int) {
-	if w.impl == nil || w.isDestroyed() {
+	if !w.options.EnableFileDrop || w.impl == nil || w.isDestroyed() {
 		return
 	}
 

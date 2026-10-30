@@ -56,6 +56,7 @@ extern void handleNotifyState(GObject*, GParamSpec*, uintptr_t);
 extern gboolean handleFocusEnter(GtkEventController*, uintptr_t);
 extern gboolean handleFocusLeave(GtkEventController*, uintptr_t);
 extern void handleLoadChanged(WebKitWebView*, WebKitLoadEvent, uintptr_t);
+extern gboolean handleNavigationPolicy(WebKitWebView*, WebKitPolicyDecision*, WebKitPolicyDecisionType, uintptr_t);
 extern void handleButtonPressed(GtkGestureClick*, gint, gdouble, gdouble, uintptr_t);
 extern void handleButtonReleased(GtkGestureClick*, gint, gdouble, gdouble, uintptr_t);
 extern gboolean handleKeyPressed(GtkEventControllerKey*, guint, guint, GdkModifierType, uintptr_t);
@@ -105,7 +106,7 @@ void signal_connect(void *widget, char *event, void *cb, uintptr_t data);
 // ============================================================================
 
 WebKitWebView* webkit_web_view(GtkWidget *webview);
-GtkWidget* create_webview_with_user_content_manager(WebKitUserContentManager *manager);
+GtkWidget* create_webview_with_user_content_manager(WebKitUserContentManager *manager, WebKitNetworkSession *session);
 
 // ============================================================================
 // Menu system (GMenu/GAction for GTK4)

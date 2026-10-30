@@ -5,12 +5,15 @@ package application
 import (
 	"fmt"
 	"os"
+	"sync"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
 	"github.com/wailsapp/wails/v3/internal/assetserver/webview"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
+
+var puregoNativeWindows sync.Map // native WebView pointer -> native window ID
 
 type windowPointer uintptr
 type identifier uint
@@ -221,11 +224,21 @@ var (
 	webkitSettingsSetUserAgentWithApplicationDetails     func(pointer, string, string)
 	webkitUserContentManagerNew                          func() pointer
 	webkitUserContentManagerRegisterScriptMessageHandler func(pointer, string)
+	webkitWebContextNewEphemeral                         func() pointer
+	webkitWebViewNewWithContext                          func(pointer) pointer
+	webkitWebViewGetContext                              func(pointer) pointer
+	webkitWebViewGetUserContentManager                   func(pointer) pointer
+	webkitURISchemeRequestGetWebView                     func(pointer) pointer
 	webkitWebContextGetDefault                           func() pointer
 	webkitWebViewEvaluateJS                              func(pointer, string, int, pointer, string, pointer, pointer, pointer)
 	webkitWebViewGetSettings                             func(pointer) pointer
 	webkitWebViewGetZoom                                 func(pointer) float64
 	webkitWebViewLoadAlternateHTML                       func(pointer, string, string, *string)
+	webkitNavigationPolicyDecisionGetNavigationAction    func(pointer) pointer
+	webkitNavigationActionGetRequest                     func(pointer) pointer
+	webkitNavigationActionGetFrameName                   func(pointer) string
+	webkitURIRequestGetURI                               func(pointer) string
+	webkitPolicyDecisionIgnore                           func(pointer)
 	webkitWebViewLoadUri                                 func(pointer, string)
 	webkitWebViewSetBackgroundColor                      func(pointer, pointer)
 	webkitWebViewSetSettings                             func(pointer, pointer)
@@ -394,11 +407,21 @@ func init() {
 	purego.RegisterLibFunc(&webkitSettingsSetUserAgentWithApplicationDetails, webkit, "webkit_settings_set_user_agent_with_application_details")
 	purego.RegisterLibFunc(&webkitUserContentManagerNew, webkit, "webkit_user_content_manager_new")
 	purego.RegisterLibFunc(&webkitUserContentManagerRegisterScriptMessageHandler, webkit, "webkit_user_content_manager_register_script_message_handler")
+	purego.RegisterLibFunc(&webkitWebContextNewEphemeral, webkit, "webkit_web_context_new_ephemeral")
+	purego.RegisterLibFunc(&webkitWebViewNewWithContext, webkit, "webkit_web_view_new_with_context")
+	purego.RegisterLibFunc(&webkitWebViewGetContext, webkit, "webkit_web_view_get_context")
+	purego.RegisterLibFunc(&webkitWebViewGetUserContentManager, webkit, "webkit_web_view_get_user_content_manager")
+	purego.RegisterLibFunc(&webkitURISchemeRequestGetWebView, webkit, "webkit_uri_scheme_request_get_web_view")
 	purego.RegisterLibFunc(&webkitWebContextGetDefault, webkit, "webkit_web_context_get_default")
 	purego.RegisterLibFunc(&webkitWebViewEvaluateJS, webkit, "webkit_web_view_evaluate_javascript")
 	purego.RegisterLibFunc(&webkitWebViewGetSettings, webkit, "webkit_web_view_get_settings")
 	purego.RegisterLibFunc(&webkitWebViewGetZoom, webkit, "webkit_web_view_get_zoom_level")
 	purego.RegisterLibFunc(&webkitWebViewLoadAlternateHTML, webkit, "webkit_web_view_load_alternate_html")
+	purego.RegisterLibFunc(&webkitNavigationPolicyDecisionGetNavigationAction, webkit, "webkit_navigation_policy_decision_get_navigation_action")
+	purego.RegisterLibFunc(&webkitNavigationActionGetRequest, webkit, "webkit_navigation_action_get_request")
+	purego.RegisterLibFunc(&webkitNavigationActionGetFrameName, webkit, "webkit_navigation_action_get_frame_name")
+	purego.RegisterLibFunc(&webkitURIRequestGetURI, webkit, "webkit_uri_request_get_uri")
+	purego.RegisterLibFunc(&webkitPolicyDecisionIgnore, webkit, "webkit_policy_decision_ignore")
 	purego.RegisterLibFunc(&webkitWebViewLoadUri, webkit, "webkit_web_view_load_uri")
 	purego.RegisterLibFunc(&webkitWebViewSetBackgroundColor, webkit, "webkit_web_view_set_background_color")
 	purego.RegisterLibFunc(&webkitWebViewSetSettings, webkit, "webkit_web_view_set_settings")
@@ -889,29 +912,38 @@ func windowNew(application pointer, menu pointer, windowId uint, gpuPolicy int) 
 }
 
 func windowNewWebview(parentId uint, gpuPolicy int) pointer {
-	manager := webkitUserContentManagerNew()
+	isolated := nativeWindowIsolated(parentId)
+	var wv, manager pointer
+	if isolated {
+		webContext := webkitWebContextNewEphemeral()
+		wv = webkitWebViewNewWithContext(webContext)
+		gObjectUnref(webContext)
+		manager = webkitWebViewGetUserContentManager(wv)
+	} else {
+		manager = webkitUserContentManagerNew()
+		wv = webkitNewWithUserContentManager(manager)
+		gObjectUnref(manager)
+	}
 	webkitUserContentManagerRegisterScriptMessageHandler(manager, "external")
-	wv := webkitNewWithUserContentManager(manager)
-	if !registered {
-		webkitRegisterUriScheme(
-			webkitWebContextGetDefault(),
-			"wails",
-			pointer(purego.NewCallback(func(request uintptr) {
-				webviewRequests <- &webViewAssetRequest{
-					Request:  webview.NewRequest(request),
-					windowId: parentId,
-					windowName: func() string {
-						if window, ok := globalApplication.Window.GetByID(parentId); ok {
-							return window.Name()
-						}
-						return ""
-					}(),
-				}
-			})),
-			0,
-			0,
-		)
-		registered = true
+	puregoNativeWindows.Store(wv, parentId)
+	if window, ok := globalApplication.Window.GetByID(parentId); ok {
+		window.OnWindowEvent(events.Common.WindowClosing, func(*WindowEvent) { puregoNativeWindows.Delete(wv) })
+	}
+	if isolated || !registered {
+		webkitRegisterUriScheme(webkitWebViewGetContext(wv), "wails", pointer(purego.NewCallback(func(request uintptr) {
+			// The callback belongs to a context, which may serve multiple windows.
+			// Resolve the actual request's WebView instead of capturing the first ID.
+			source := webkitURISchemeRequestGetWebView(pointer(request))
+			id, ok := puregoNativeWindows.Load(source)
+			if !ok {
+				_ = webview.NewRequest(request).Close()
+				return
+			}
+			webviewRequests <- &webViewAssetRequest{Request: webview.NewRequest(request), windowId: id.(uint)}
+		})), 0, 0)
+		if !isolated {
+			registered = true
+		}
 	}
 
 	settings := webkitWebViewGetSettings(wv)
@@ -1038,6 +1070,20 @@ func windowSetURL(webview pointer, uri string) {
 }
 
 func windowSetupSignalHandlers(windowId uint, window, webview pointer, emit func(e events.WindowEventType)) {
+	navigationPolicy := purego.NewCallback(func(_ pointer, decision pointer, kind int, _ pointer) int {
+		if kind == 2 {
+			return 0
+		} // response decision
+		action := webkitNavigationPolicyDecisionGetNavigationAction(decision)
+		request := webkitNavigationActionGetRequest(action)
+		mainFrame := kind == 0 && webkitNavigationActionGetFrameName(action) == ""
+		if !nativeNavigationAllowed(windowId, webkitURIRequestGetURI(request), mainFrame) {
+			webkitPolicyDecisionIgnore(decision)
+			return 1
+		}
+		return 0
+	})
+	gSignalConnectData(webview, "decide-policy", navigationPolicy, 0, false, 0)
 	handleDelete := purego.NewCallback(func(pointer) {
 		emit(events.Common.WindowClosing)
 	})

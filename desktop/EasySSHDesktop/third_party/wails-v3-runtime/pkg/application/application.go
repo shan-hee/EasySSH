@@ -74,6 +74,7 @@ func New(appOptions Options) *App {
 	result.customEventProcessor = NewWailsEventProcessor(result.Event.dispatch)
 
 	messageProc := NewMessageProcessor(result.Logger)
+	result.messageProcessor = messageProc
 
 	// Initialize transport (default to HTTP if not specified)
 	transport := appOptions.Transport
@@ -246,6 +247,7 @@ type OriginInfo struct {
 	Origin      string
 	TopOrigin   string
 	IsMainFrame bool
+	FrameKnown  bool
 }
 
 var windowMessageBuffer = make(chan *windowMessage, 5)
@@ -288,6 +290,8 @@ type webViewAssetRequest struct {
 	windowId   uint
 	windowName string
 }
+
+func (r *webViewAssetRequest) NativeWindowID() uint { return r.windowId }
 
 var windowKeyEvents = make(chan *windowKeyEvent, 5)
 
@@ -337,6 +341,7 @@ type eventHook struct {
 }
 
 type App struct {
+	messageProcessor              *MessageProcessor
 	ctx                           context.Context
 	cancel                        context.CancelFunc
 	options                       Options
@@ -744,9 +749,12 @@ func (a *App) handleWindowMessage(event *windowMessage) {
 		a.warning("WebviewWindow #%d not found", event.windowId)
 		return
 	}
+	if policy := a.options.NativeMessagePolicy; policy != nil && !policy(event.windowId, event.message, event.originInfo) {
+		return
+	}
 	// Check if the message starts with "wails:"
 	if strings.HasPrefix(event.message, "wails:") {
-		a.debug("handleWindowMessage: Processing wails message", "message", event.message)
+		a.debug("handleWindowMessage: Processing wails message", "windowId", event.windowId)
 		window.HandleMessage(event.message)
 	} else {
 		if a.options.RawMessageHandler != nil {

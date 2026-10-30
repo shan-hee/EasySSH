@@ -1166,12 +1166,16 @@ func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy) pointer {
 
 	// WebKitGTK 6.0: Create network session first
 	networkSession := C.webkit_network_session_get_default()
+	if nativeWindowIsolated(parentId) {
+		networkSession = C.webkit_network_session_new_ephemeral()
+		defer C.g_object_unref(C.gpointer(networkSession))
+	}
 
 	// Create web view with settings
 	settings := C.webkit_settings_new()
 	// WebKitGTK 6.0: webkit_web_view_new_with_user_content_manager() was removed
 	// Use create_webview_with_user_content_manager() helper instead
-	webView := C.create_webview_with_user_content_manager(manager)
+	webView := C.create_webview_with_user_content_manager(manager, networkSession)
 
 	C.save_webview_to_content_manager(unsafe.Pointer(manager), unsafe.Pointer(webView))
 	C.save_window_id(unsafe.Pointer(webView), C.uint(parentId))
@@ -1209,7 +1213,6 @@ func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy) pointer {
 		C.schedule_signal_handler_fix()
 	})
 
-	_ = networkSession
 	return pointer(webView)
 }
 
@@ -1457,6 +1460,7 @@ func (w *linuxWebviewWindow) setupSignalHandlers(emit func(e events.WindowEventT
 
 	wv := unsafe.Pointer(w.webview)
 	C.signal_connect(wv, c.String("load-changed"), C.handleLoadChanged, winID)
+	C.signal_connect(wv, c.String("decide-policy"), C.handleNavigationPolicy, winID)
 
 	contentManager := C.webkit_web_view_get_user_content_manager(w.webKitWebView())
 	C.signal_connect(unsafe.Pointer(contentManager), c.String("script-message-received::external"), C.sendMessageToBackend, 0)
@@ -2083,3 +2087,23 @@ func enableDevTools(wv pointer) {
 var _ = time.Now
 var _ = events.Linux
 var _ = strings.TrimSpace
+
+//export handleNavigationPolicy
+func handleNavigationPolicy(webview *C.WebKitWebView, decision *C.WebKitPolicyDecision, kind C.WebKitPolicyDecisionType, data C.uintptr_t) C.gboolean {
+	if kind == C.WEBKIT_POLICY_DECISION_TYPE_RESPONSE {
+		return 0
+	}
+	navigation := (*C.WebKitNavigationPolicyDecision)(unsafe.Pointer(decision))
+	action := C.webkit_navigation_policy_decision_get_navigation_action(navigation)
+	request := C.webkit_navigation_action_get_request(action)
+	uri := C.webkit_uri_request_get_uri(request)
+	// WebKitGTK does not expose a main-frame flag here. Named targets and
+	// new-window actions are denied; CSP frame-src 'none' prevents children.
+	frame := C.webkit_navigation_action_get_frame_name(action)
+	mainFrame := kind == C.WEBKIT_POLICY_DECISION_TYPE_NAVIGATION_ACTION && (frame == nil || C.GoString(frame) == "")
+	if uri == nil || !nativeNavigationAllowed(uint(data), C.GoString(uri), mainFrame) {
+		C.webkit_policy_decision_ignore(decision)
+		return 1
+	}
+	return 0
+}

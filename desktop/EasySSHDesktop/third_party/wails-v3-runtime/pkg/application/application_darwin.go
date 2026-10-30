@@ -405,6 +405,7 @@ func processMessage(windowID C.uint, message *C.char, origin *C.char, isMainFram
 		originInfo: &OriginInfo{
 			Origin:      o,
 			IsMainFrame: isMainFrame,
+			FrameKnown:  true,
 		},
 	}
 }
@@ -771,4 +772,9 @@ func HandleOpenURL(urlCString *C.char) {
 		Id:  uint(events.Common.ApplicationLaunchedWithUrl),
 		ctx: eventContext,
 	}
+}
+
+//export allowNativeNavigation
+func allowNativeNavigation(windowID C.uint, target *C.char, mainFrame bool) bool {
+	return target != nil && nativeNavigationAllowed(uint(windowID), C.GoString(target), mainFrame)
 }

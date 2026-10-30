@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/wailsapp/wails/v3/internal/assetserver/webview"
+	"github.com/wailsapp/wails/v3/internal/runtimeorigin"
 )
 
 type assetServerWebView struct {
@@ -113,6 +114,9 @@ func (a *AssetServer) processWebViewRequestInternal(r webview.Request) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	if native, ok := r.(interface{ NativeWindowID() uint }); ok {
+		ctx = runtimeorigin.WithWindow(ctx, native.NativeWindowID())
+	}
 
 	req, err := http.NewRequestWithContext(ctx, method, uri, body)
 	if err != nil {

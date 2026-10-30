@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 
-	"encoding/json"
-
 	"github.com/wailsapp/wails/v3/pkg/errs"
 )
 
@@ -16,17 +14,38 @@ const (
 	WindowKey   contextKey = "Window"
 )
 
-func (m *MessageProcessor) processCallCancelMethod(req *RuntimeRequest) (any, error) {
+type nativeCallKey struct {
+	windowID uint
+	callID   string
+}
+
+func (m *MessageProcessor) cancelWindow(id uint) {
+	m.l.Lock()
+	var cancels []context.CancelFunc
+	for key, cancel := range m.runningCalls {
+		if key.windowID == id {
+			cancels = append(cancels, cancel)
+		}
+	}
+	m.l.Unlock()
+	for _, cancel := range cancels {
+		cancel()
+	}
+}
+
+func (m *MessageProcessor) processCallCancelMethod(ctx context.Context, req *RuntimeRequest) (any, error) {
 	callID := req.Args.AsMap().String("call-id")
-	if callID == nil || *callID == "" {
+	if callID == nil || *callID == "" || len(*callID) > 128 {
 		return nil, errs.NewInvalidBindingCallErrorf("missing argument 'call-id'")
 	}
 
+	windowID, _ := RuntimeWindowID(ctx)
+	key := nativeCallKey{windowID, *callID}
 	var cancel func()
 	func() {
 		m.l.Lock()
 		defer m.l.Unlock()
-		cancel = m.runningCalls[*callID]
+		cancel = m.runningCalls[key]
 	}()
 
 	if cancel != nil {
@@ -38,10 +57,12 @@ func (m *MessageProcessor) processCallCancelMethod(req *RuntimeRequest) (any, er
 
 func (m *MessageProcessor) processCallMethod(ctx context.Context, req *RuntimeRequest, window Window) (any, error) {
 	callID := req.Args.AsMap().String("call-id")
-	if callID == nil || *callID == "" {
+	if callID == nil || *callID == "" || len(*callID) > 128 {
 		return nil, errs.NewInvalidBindingCallErrorf("missing argument 'call-id'")
 	}
 
+	windowID, _ := RuntimeWindowID(ctx)
+	key := nativeCallKey{windowID, *callID}
 	switch req.Method {
 	case CallBinding:
 		var options CallOptions
@@ -72,10 +93,11 @@ func (m *MessageProcessor) processCallMethod(ctx context.Context, req *RuntimeRe
 			m.l.Lock()
 			defer m.l.Unlock()
 
-			if m.runningCalls[*callID] != nil {
+			_, exists := globalApplication.Window.GetByID(windowID)
+			if !exists || m.runningCalls[key] != nil {
 				ambiguousID = true
 			} else {
-				m.runningCalls[*callID] = cancel
+				m.runningCalls[key] = cancel
 			}
 		}()
 
@@ -86,7 +108,7 @@ func (m *MessageProcessor) processCallMethod(ctx context.Context, req *RuntimeRe
 		defer func() {
 			m.l.Lock()
 			defer m.l.Unlock()
-			delete(m.runningCalls, *callID)
+			delete(m.runningCalls, key)
 		}()
 		defer cancel()
 
@@ -103,12 +125,12 @@ func (m *MessageProcessor) processCallMethod(ctx context.Context, req *RuntimeRe
 			}
 		}
 
-		jsonArgs, _ := json.Marshal(options.Args)
+		if err := authorizeNativeRuntime(ctx, req, boundMethod.FQN); err != nil {
+			return nil, err
+		}
 		var result any
 		defer func() {
-			var jsonResult []byte
-			jsonResult, _ = json.Marshal(result)
-			m.Debug("Binding call complete:", "id", *callID, "method", boundMethod, "args", string(jsonArgs), "result", string(jsonResult))
+			m.Debug("Binding call complete:", "id", *callID, "method", boundMethod.FQN)
 		}()
 
 		// Set the context values for the window

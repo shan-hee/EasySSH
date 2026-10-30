@@ -3,8 +3,6 @@ package application
 import (
 	"context"
 	"log/slog"
-	"slices"
-	"strconv"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/errs"
@@ -69,14 +67,14 @@ type RuntimeRequest struct {
 type MessageProcessor struct {
 	logger *slog.Logger
 
-	runningCalls map[string]context.CancelFunc
+	runningCalls map[nativeCallKey]context.CancelFunc
 	l            sync.Mutex
 }
 
 func NewMessageProcessor(logger *slog.Logger) *MessageProcessor {
 	return &MessageProcessor{
 		logger:       logger,
-		runningCalls: map[string]context.CancelFunc{},
+		runningCalls: map[nativeCallKey]context.CancelFunc{},
 	}
 }
 
@@ -87,15 +85,26 @@ func (m *MessageProcessor) HandleRuntimeCallWithIDs(ctx context.Context, req *Ru
 			err = errs.NewInvalidRuntimeCallErrorf("runtime panic detected!")
 		}
 	}()
-	targetWindow, nameOrID := m.getTargetWindow(req)
-
-	var windowNotRequiredRequests = []int{callRequest, eventsRequest, applicationRequest, systemRequest}
-
-	// Some operations (calls, events, application) don't require a window
-	// This is useful for browser-based deployments with custom transports
-	windowRequired := !slices.Contains(windowNotRequiredRequests, req.Object)
-	if windowRequired && targetWindow == nil {
-		return nil, errs.NewInvalidRuntimeCallErrorf("window '%s' not found", nameOrID)
+	if req == nil || req.Args == nil {
+		return nil, errs.NewInvalidRuntimeCallErrorf("missing runtime request")
+	}
+	windowID, ok := RuntimeWindowID(ctx)
+	if !ok {
+		return nil, errs.NewInvalidRuntimeCallErrorf("native window provenance required")
+	}
+	targetWindow, ok := globalApplication.Window.GetByID(windowID)
+	if !ok || targetWindow == nil {
+		return nil, errs.NewInvalidRuntimeCallErrorf("native window not found")
+	}
+	// Renderer hints may describe the caller, never select another window.
+	if (req.WebviewWindowID != 0 && uint(req.WebviewWindowID) != windowID) ||
+		(req.WebviewWindowName != "" && req.WebviewWindowName != targetWindow.Name()) {
+		return nil, errs.NewInvalidRuntimeCallErrorf("cross-window runtime call denied")
+	}
+	if req.Object != callRequest {
+		if err := authorizeNativeRuntime(ctx, req, ""); err != nil {
+			return nil, err
+		}
 	}
 
 	m.logRuntimeCall(req)
@@ -122,7 +131,7 @@ func (m *MessageProcessor) HandleRuntimeCallWithIDs(ctx context.Context, req *Ru
 	case browserRequest:
 		return m.processBrowserMethod(req)
 	case cancelCallRequest:
-		return m.processCallCancelMethod(req)
+		return m.processCallCancelMethod(ctx, req)
 	case iosRequest:
 		return m.processIOSMethod(req, targetWindow)
 	case androidRequest:
@@ -130,34 +139,6 @@ func (m *MessageProcessor) HandleRuntimeCallWithIDs(ctx context.Context, req *Ru
 	default:
 		return nil, errs.NewInvalidRuntimeCallErrorf("unknown object %d", req.Object)
 	}
-}
-
-func (m *MessageProcessor) getTargetWindow(req *RuntimeRequest) (Window, string) {
-	// Check for browser window first (server mode)
-	if req.ClientID != "" {
-		if browserWindow := GetBrowserWindow(req.ClientID); browserWindow != nil {
-			return browserWindow, browserWindow.Name()
-		}
-	}
-	if req.WebviewWindowName != "" {
-		window, _ := globalApplication.Window.GetByName(req.WebviewWindowName)
-		return window, req.WebviewWindowName
-	}
-	if req.WebviewWindowID == 0 {
-		// No window specified - return the first available window
-		// This is useful for custom transports that don't have automatic window context
-		windows := globalApplication.Window.GetAll()
-		if len(windows) > 0 {
-			return windows[0], ""
-		}
-		return nil, ""
-	}
-	targetWindow, _ := globalApplication.Window.GetByID(uint(req.WebviewWindowID))
-	if targetWindow == nil {
-		m.Error("Window ID not found:", "id", req.WebviewWindowID)
-		return nil, strconv.Itoa(int(req.WebviewWindowID))
-	}
-	return targetWindow, strconv.Itoa(int(req.WebviewWindowID))
 }
 
 func (m *MessageProcessor) Error(message string, args ...any) {
@@ -201,5 +182,5 @@ func (m *MessageProcessor) logRuntimeCall(req *RuntimeRequest) {
 		methodName = androidMethodNames[req.Method]
 	}
 
-	m.Debug("Runtime call:", "method", objectName+"."+methodName, "args", req.Args.String())
+	m.Debug("Runtime call:", "method", objectName+"."+methodName)
 }

@@ -94,8 +94,11 @@ func (wm *WindowManager) Add(window Window) {
 // Remove removes a window from the manager by ID
 func (wm *WindowManager) Remove(windowID uint) {
 	wm.app.windowsLock.Lock()
-	defer wm.app.windowsLock.Unlock()
 	delete(wm.app.windows, windowID)
+	wm.app.windowsLock.Unlock()
+	if wm.app.messageProcessor != nil {
+		wm.app.messageProcessor.cancelWindow(windowID)
+	}
 }
 
 // RemoveByName removes a window from the manager by name

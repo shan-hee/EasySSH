@@ -182,9 +182,10 @@ WebKitWebView* webkit_web_view(GtkWidget *webview) {
 
 // WebKitGTK 6.0: webkit_web_view_new_with_user_content_manager() was removed
 // Use g_object_new() with the "user-content-manager" property instead
-GtkWidget* create_webview_with_user_content_manager(WebKitUserContentManager *manager) {
+GtkWidget* create_webview_with_user_content_manager(WebKitUserContentManager *manager, WebKitNetworkSession *session) {
     return GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW,
                                    "user-content-manager", manager,
+                                   "network-session", session,
                                    NULL));
 }
 
