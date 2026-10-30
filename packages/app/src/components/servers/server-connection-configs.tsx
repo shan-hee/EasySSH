@@ -729,9 +729,8 @@ export function ServerConnectionConfigs({
 
  <div className="flex min-h-0 flex-1 flex-col items-center px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
  <div className={cn("flex min-h-0 w-full flex-1 flex-col gap-3 transition-[max-width] duration-200", viewMode === "grid" ? "max-w-6xl" : "max-w-3xl")}>
- {/* 搜索栏和添加按钮 - 始终显示（有服务器时） */}
- {(loading || (statistics?.total ?? servers.length) > 0 || searchTerm || activeGroup !== "all") && (
- <div className="space-y-3">
+ {/* 工具栏在加载、空列表和有数据时保持同一布局。 */}
+ <div className="shrink-0 space-y-3">
  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
  {/* 左侧：搜索框 */}
  <div className="relative w-full sm:max-w-md sm:flex-1">
@@ -800,7 +799,7 @@ export function ServerConnectionConfigs({
  disabled={saving || draggedServer !== null}
  className="h-8"
  >
- {t("tabAll")} ({statistics?.total ?? servers.length})
+ {t("tabAll")} ({statistics?.total ?? (loading ? "—" : servers.length)})
  </Button>
  {groupFilters.map(([groupId, group, count]) => (
  <Button
@@ -818,11 +817,10 @@ export function ServerConnectionConfigs({
  ))}
  </div>
  </div>
- )}
 
- {/* 加载状态 */}
+ {/* 与空状态共用占位高度，避免加载提示被 flex-1 推到页面中央。 */}
  {loading && (
- <PageLoading delay={0} className="min-h-0 py-12" label={t("loadingList")} />
+ <PageLoading className="min-h-48 flex-none py-8" label={t("loadingList")} />
  )}
 
  {/* 服务器列表 */}
@@ -890,7 +888,7 @@ export function ServerConnectionConfigs({
 
  {/* 空状态 - 筛选后无结果 */}
  {!loading && !error && servers.length === 0 && (searchTerm.trim() !== "" || activeGroup !== "all") && (
- <div className="text-center space-y-3 py-8">
+ <div className="flex min-h-48 flex-none flex-col items-center justify-center gap-3 py-8 text-center">
  <div className={"inline-flex items-center justify-center w-12 h-12 rounded-lg border bg-card border-border"}>
  <Search className={"h-6 w-6 text-muted-foreground"} />
  </div>
@@ -907,26 +905,7 @@ export function ServerConnectionConfigs({
 
  {/* 空状态 - 完全没有服务器 */}
  {!loading && !error && servers.length === 0 && !hasMore && !searchTerm.trim() && activeGroup === "all" && (
- <>
- <div className="flex items-center justify-between gap-4">
- {/* 左侧：搜索框（禁用状态） */}
- <div className="relative flex-1 max-w-md opacity-50 pointer-events-none">
- <Search className="pointer-events-none absolute left-3 top-1/2 z-10 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
- <Input
- placeholder={t("searchPlaceholder")}
- className={"pl-10 bg-card border-border text-foreground placeholder:text-muted-foreground"}
- disabled
- />
- </div>
-
- {/* 右侧：添加按钮 */}
- <Button onClick={() => setIsAddDialogOpen(true)} className="shadow-sm flex-shrink-0">
- <Plus className="mr-2 h-4 w-4" />
- {t("addServer")}
- </Button>
- </div>
-
- <div className="text-center space-y-3 py-8">
+ <div className="flex min-h-48 flex-none flex-col items-center justify-center gap-3 py-8 text-center">
  <div className={"inline-flex items-center justify-center w-12 h-12 rounded-lg border bg-card border-border"}>
  <ServerIcon className={"h-6 w-6 text-muted-foreground"} />
  </div>
@@ -939,7 +918,6 @@ export function ServerConnectionConfigs({
  </p>
  </div>
  </div>
- </>
  )}
  </div>
  </div>
