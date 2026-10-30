@@ -490,6 +490,7 @@ function TabTerminalContentComponent({
   ])
   const { layoutRef, gridStyle: panelGridStyle, placement: panelPlacement, terminalColumn, handles: panelResizeHandles } = useTerminalPanelLayout({
     enabled: isDesktopLayout && shouldRenderBody,
+    resizeEnabled: isActive && hasReadyServer && !effectiveIsLoading,
     positions: panelPositions,
     visiblePanels,
     preferences: workspace?.adapters.preferences,
@@ -661,7 +662,7 @@ function TabTerminalContentComponent({
                   />
                 )}
 
-                {isActive && (
+                {isActive && !workspace?.capabilities.allowedActions && (
                   <ScriptLibraryPopover
                     canExecute={isTerminalReady && hasTerminalInputApi}
                     sessionLabel={connectionLoaderServerName ?? ''}
@@ -670,7 +671,7 @@ function TabTerminalContentComponent({
                   />
                 )}
 
-                {isActive && (["processes", "ports", "services"] as const).map((kind) => (
+                {isActive && !workspace?.capabilities.allowedActions && (["processes", "ports", "services"] as const).map((kind) => (
                   <SystemToolsPopover
                     key={kind}
                     kind={kind}

@@ -104,13 +104,7 @@ export function Workbench({
         {...presentation}
         sessions={terminalTransportReady ? sessions : deferConnections(sessions)}
         extraSessions={sftpTabSessions}
-        extraNewSessionActions={canUseSftp ? [{
-          id: "new-sftp-session",
-          label: "SFTP+",
-          ariaLabel: t("sftpPickerActionLabel"),
-          title: t("sftpPickerActionLabel"),
-          onCreate: workbench.openSftpPicker,
-        }] : []}
+        onNewSftpSession={canUseSftp ? workbench.openSftpPicker : undefined}
         renderExtraSessionContent={renderSftpTabContent}
         onOpenSftpSession={async (session, path) => {
           if (!session.serverId) return

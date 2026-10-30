@@ -6,7 +6,6 @@ import { ConnectionLoader } from "./connection-loader"
 import {
   SessionTabBar,
   type CrossSessionFileDragData,
-  type SessionTabBarNewSessionAction,
 } from "@/components/tabs/session-tab-bar"
 import type {
   TerminalSession,
@@ -180,7 +179,7 @@ const disabledFileTransferApi: FileTransferSftpApi = {
 export interface TerminalComponentProps {
   sessions: TerminalSession[]
   extraSessions?: TerminalSession[]
-  extraNewSessionActions?: TerminalExtraNewSessionAction[]
+  onNewSftpSession?: () => void
   renderExtraSessionContent?: (session: TerminalSession, options?: TerminalExtraSessionRenderOptions) => ReactNode
   onOpenSftpSession?: (session: TerminalSession, path?: string) => void
   onCloseExtraSession?: (sessionId: string) => void
@@ -213,18 +212,10 @@ export interface TerminalComponentProps {
   tabBarEndContent?: ReactNode
 }
 
-export interface TerminalExtraNewSessionAction {
-  id: string
-  label: string
-  onCreate: () => string | void
-  ariaLabel?: string
-  title?: string
-}
-
 export function TerminalComponent({
   sessions,
   extraSessions = [],
-  extraNewSessionActions = [],
+  onNewSftpSession,
   renderExtraSessionContent,
   onOpenSftpSession,
   onCloseExtraSession,
@@ -255,6 +246,7 @@ export function TerminalComponent({
   tabBarEndContent,
 }: TerminalComponentProps) {
   const { t: tTerminal } = useTranslation("terminal")
+  const { t: tNav } = useTranslation("nav")
   const { t: tSftpFallback } = useTranslation("sftp")
   const {
     mode: effectiveAppTheme,
@@ -665,22 +657,6 @@ export function TerminalComponent({
   const combinedActiveTabId = activeExtraSession && !isActiveExtraSessionInWorkspace
     ? activeExtraSession.id
     : tabActiveId
-  const combinedExtraNewSessionActions = useMemo<SessionTabBarNewSessionAction[]>(() => (
-    extraNewSessionActions.map((action) => ({
-      id: action.id,
-      label: action.label,
-      ariaLabel: action.ariaLabel,
-      title: action.title,
-      onClick: () => {
-        const id = action.onCreate()
-        if (id) {
-          setActiveSessionFromUser(String(id))
-        }
-        return id
-      },
-    }))
-  ), [extraNewSessionActions, setActiveSessionFromUser])
-
   const handleChangeCombinedActiveSession = useCallback((nextSessionId: string) => {
     if (extraSessionIdSet.has(nextSessionId)) {
       setActiveSessionFromUser(nextSessionId)
@@ -1276,7 +1252,7 @@ export function TerminalComponent({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {sftpTransferCredentialDialog}
       {!hidePageHeader && (
-        <PageHeader title={active?.serverName || activeExtraSession?.serverName || tTerminal("connectionConfigTitle")}>
+        <PageHeader title={tNav("terminal")}>
           <ActivityLogPane />
         </PageHeader>
       )}
@@ -1321,7 +1297,7 @@ export function TerminalComponent({
             activeId={combinedActiveTabId}
             onChangeActive={handleChangeCombinedActiveSession}
             onNewSession={handleNewSessionClick}
-            additionalNewSessionActions={combinedExtraNewSessionActions}
+            onNewSftpSession={onNewSftpSession}
             onCloseSession={handleCloseSession}
             onDuplicateSession={onDuplicateSession}
             onOpenSftpSession={onOpenSftpSession ? id => { const session = sessions.find(item => item.id === id); if (session) onOpenSftpSession(session, sftpPathBySessionId[id]) } : undefined}

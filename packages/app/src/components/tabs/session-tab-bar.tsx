@@ -5,7 +5,7 @@ import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { TerminalSession } from "@/components/terminal/types"
-import { Plus, Settings, X, FolderOpen, Terminal as TerminalIcon } from "lucide-react"
+import { ChevronDown, Plus, Settings, X, FolderOpen, Terminal as TerminalIcon } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -15,6 +15,13 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { Badge } from "@/components/ui/badge"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   ContextMenu,
   ContextMenuContent,
@@ -58,8 +65,7 @@ interface SessionTabBarProps {
   activeId: string
   onChangeActive: (id: string) => void
   onNewSession: () => void
-  newSessionLabel?: string
-  additionalNewSessionActions?: SessionTabBarNewSessionAction[]
+  onNewSftpSession?: () => void
   onCloseSession: (id: string) => void
   onOpenSftpSession?: (sessionId: string) => void
   onDuplicateSession: (id: string) => void
@@ -89,14 +95,6 @@ interface SessionTabBarProps {
 export type SessionTabDropSide = "top" | "right" | "bottom" | "left"
 export type { CrossSessionFileDragData }
 
-export type SessionTabBarNewSessionAction = {
-  id: string
-  label: string
-  onClick: () => string | void
-  ariaLabel?: string
-  title?: string
-}
-
 export type SessionTabDragEvent = {
   session: TerminalSession
   sessionId: string
@@ -108,6 +106,9 @@ export type SessionTabDragEvent = {
 }
 
 // 标签色彩算法暂不需要，后续如需按分组着色可恢复
+
+const CONNECTION_PROTOCOLS = ["SFTP", "VNC", "RDP", "SPICE"] as const
+type ConnectionProtocol = typeof CONNECTION_PROTOCOLS[number]
 
 const TAB_DETACH_THRESHOLD_Y = 44
 const TAB_WORKSPACE_DROP_THRESHOLD_Y = 18
@@ -345,11 +346,10 @@ export function SessionTabBar(props: SessionTabBarProps) {
     activeId,
     onChangeActive,
     onNewSession,
-    newSessionLabel,
-    additionalNewSessionActions = [],
+    onNewSftpSession,
     onCloseSession,
     onDuplicateSession,
-  onOpenSftpSession,
+    onOpenSftpSession,
     onCloseOthers,
     onCloseAll,
     onTogglePin,
@@ -378,61 +378,13 @@ export function SessionTabBar(props: SessionTabBarProps) {
 
   // 客户端挂载状态（解决 DndContext 水合不匹配问题）
   const [isMounted, setIsMounted] = useState(false)
+  const [connectionProtocol, setConnectionProtocol] = useState<ConnectionProtocol>("SFTP")
 
   useEffect(() => {
     setIsMounted(true)
   }, [])
 
-  // 溢出检测：判断页签是否超出容器
-  const [isOverflowing, setIsOverflowing] = useState(false)
   const tabBarRef = useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const tabsContainerRef = useRef<HTMLDivElement>(null)
-
-  // 检测页签溢出 - 优化版本
-  const sessionCount = sessions.length
-  useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-    let rafId: number | null = null
-
-    const checkOverflow = () => {
-      // 使用 requestAnimationFrame 延迟 DOM 读取，避免强制重排
-      if (rafId) cancelAnimationFrame(rafId)
-
-      rafId = requestAnimationFrame(() => {
-        if (scrollContainerRef.current && tabsContainerRef.current) {
-          const isOverflow = tabsContainerRef.current.scrollWidth > scrollContainerRef.current.clientWidth
-          setIsOverflowing(isOverflow)
-        }
-      })
-    }
-
-    // 节流函数：300ms 内最多执行一次
-    const throttledCheck = () => {
-      if (timeoutId) return // 如果已有待执行的检测，跳过
-
-      timeoutId = setTimeout(() => {
-        checkOverflow()
-        timeoutId = null
-      }, 300)
-    }
-
-    // 初始检测延迟到空闲时执行，避免阻塞主线程
-    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      requestIdleCallback(checkOverflow)
-    } else {
-      setTimeout(checkOverflow, 0)
-    }
-
-    // resize 事件使用节流
-    window.addEventListener('resize', throttledCheck)
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId)
-      if (rafId) cancelAnimationFrame(rafId)
-      window.removeEventListener('resize', throttledCheck)
-    }
-  }, [sessionCount]) // 只依赖 session 数量，不依赖整个数组
 
   // 使用 @dnd-kit 配置拖拽传感器
   const sensors = useSensors(
@@ -604,81 +556,6 @@ export function SessionTabBar(props: SessionTabBarProps) {
     }
   }
 
-  const getNewSessionButtonContent = (label?: string) => {
-    const trimmedLabel = label?.trim()
-    const labelHasPlus = trimmedLabel?.endsWith("+") ?? false
-    const labelText = labelHasPlus
-      ? trimmedLabel?.slice(0, -1).trim()
-      : trimmedLabel
-
-    return {
-      trimmedLabel,
-      content: trimmedLabel ? (
-        <>
-          {labelHasPlus ? <Plus className="h-4 w-4" /> : null}
-          {labelText ? <span>{labelText}</span> : null}
-        </>
-      ) : (
-        <Plus className="h-4 w-4" />
-      ),
-    }
-  }
-
-  const renderNewSessionButton = ({
-    key,
-    label,
-    onClick,
-    ariaLabel,
-    title,
-    className,
-  }: {
-    key?: string
-    label?: string
-    onClick: () => string | void
-    ariaLabel?: string
-    title?: string
-    className?: string
-  }) => {
-    const { trimmedLabel, content } = getNewSessionButtonContent(label)
-    return (
-      <Button
-        key={key}
-        variant="ghost"
-        size={trimmedLabel ? "sm" : "icon"}
-        className={cn(
-          "h-8 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-accent/70 hover:text-accent-foreground",
-          trimmedLabel ? "w-auto px-3 text-sm font-medium" : "w-8",
-          className
-        )}
-        onClick={onClick}
-        aria-label={ariaLabel ?? tTerminal("ariaNewSession")}
-        title={title}
-      >
-        {content}
-      </Button>
-    )
-  }
-
-  const renderPrimaryNewSessionButton = (className?: string) => (
-    renderNewSessionButton({
-      key: "primary-new-session",
-      label: newSessionLabel,
-      onClick: onNewSession,
-      ariaLabel: newSessionLabel || tTerminal("ariaNewSession"),
-      className,
-    })
-  )
-
-  const renderAdditionalNewSessionButtons = () => (
-    additionalNewSessionActions.map((action) => renderNewSessionButton({
-      key: action.id,
-      label: action.label,
-      onClick: action.onClick,
-      ariaLabel: action.ariaLabel,
-      title: action.title,
-    }))
-  )
-  const hasRightActions = additionalNewSessionActions.length > 0 || onOpenSettings
   const renderTabContextMenu = (session: TerminalSession, tab: React.ReactElement) => {
     if (!showContextMenu || (canShowContextMenu && !canShowContextMenu(session))) {
       return tab
@@ -713,6 +590,58 @@ export function SessionTabBar(props: SessionTabBarProps) {
       </ContextMenu>
     )
   }
+
+  const connectionActions = (
+    <div role="group" aria-label={tTerminal("connectionActions")} className="ml-1 flex shrink-0 items-center rounded-lg transition-colors hover:bg-accent/70 focus-within:bg-accent/70">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
+        onClick={onNewSession}
+        aria-label={tTerminal("newSshSession")}
+        title={tTerminal("newSshSession")}
+      >
+        <Plus className="h-4 w-4" />
+      </Button>
+      {onNewSftpSession && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-16 rounded-lg px-2 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
+            disabled={connectionProtocol !== "SFTP"}
+            onClick={connectionProtocol === "SFTP" ? onNewSftpSession : undefined}
+            aria-label={connectionProtocol === "SFTP" ? tTerminal("sftpPickerActionLabel") : tTerminal("connectionProtocolPending", { protocol: connectionProtocol })}
+            title={connectionProtocol === "SFTP" ? tTerminal("sftpPickerActionLabel") : tTerminal("connectionProtocolPending", { protocol: connectionProtocol })}
+          >
+            {connectionProtocol}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-7 rounded-lg text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
+                aria-label={tTerminal("selectConnectionProtocol")}
+                title={tTerminal("selectConnectionProtocol")}
+              >
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup value={connectionProtocol} onValueChange={(value) => setConnectionProtocol(value as ConnectionProtocol)}>
+                {CONNECTION_PROTOCOLS.map((protocol) => (
+                  <DropdownMenuRadioItem key={protocol} value={protocol}>
+                    {protocol}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      )}
+    </div>
+  )
 
   return (
     <>
@@ -778,7 +707,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
           endContent ? "pl-2" : "px-2"
         )}>
           {/* Tabs 容器 */}
-          <div ref={scrollContainerRef} className="h-10 min-w-0 flex-1 overflow-x-auto overflow-y-hidden pb-1 scrollbar-custom [--wails-draggable:drag]">
+          <div className="h-10 min-w-0 flex-1 overflow-x-auto overflow-y-hidden pb-1 scrollbar-custom [--wails-draggable:drag]">
             {isMounted ? (
               // 客户端渲染：带拖动功能
               <DndContext
@@ -794,7 +723,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                   items={sessionIds}
                   strategy={horizontalListSortingStrategy}
                 >
-                  <div ref={tabsContainerRef} className="flex min-h-0 w-max items-center gap-1 pt-1 [--wails-draggable:no-drag]">
+                  <div className="flex min-h-0 w-max items-center gap-1 pt-1 [--wails-draggable:no-drag]">
                     {sessions.map((s) => renderTabContextMenu(
                       s,
                       <SortableTab
@@ -811,12 +740,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
                         onCrossSessionFileDrop={onCrossSessionFileDrop}
                       />
                     ))}
-                    {/* 新建会话按钮：页签不溢出时显示 */}
-                    {!isOverflowing && (
-                      <div className="ml-1 flex items-center gap-1">
-                        {renderPrimaryNewSessionButton()}
-                      </div>
-                    )}
+                    {connectionActions}
                   </div>
                 </SortableContext>
 
@@ -827,7 +751,7 @@ export function SessionTabBar(props: SessionTabBarProps) {
               </DndContext>
             ) : (
               // 服务端渲染：静态页签（无拖动功能）
-              <div ref={tabsContainerRef} className="flex min-h-0 w-max items-center gap-1 pt-1 [--wails-draggable:no-drag]">
+              <div className="flex min-h-0 w-max items-center gap-1 pt-1 [--wails-draggable:no-drag]">
                 {sessions.map((s) => renderTabContextMenu(
                   s,
                   <StaticTab
@@ -844,45 +768,27 @@ export function SessionTabBar(props: SessionTabBarProps) {
                     onCrossSessionFileDrop={onCrossSessionFileDrop}
                   />
                 ))}
-                {/* 新建会话按钮：页签不溢出时显示 */}
-                {!isOverflowing && (
-                  <div className="ml-1 flex items-center gap-1">
-                    {renderPrimaryNewSessionButton()}
-                  </div>
-                )}
+                {connectionActions}
               </div>
             )}
           </div>
 
-          {/* 新建会话按钮：页签溢出时固定显示 */}
-          {isOverflowing && (
-            <div className="flex shrink-0 items-center gap-1 px-2 [--wails-draggable:no-drag]">
-              {renderPrimaryNewSessionButton()}
-            </div>
-          )}
-
-          {hasRightActions && (
-            <div className="flex shrink-0 items-center gap-1 px-2 [--wails-draggable:no-drag]">
-              {renderAdditionalNewSessionButtons()}
-
-              {onOpenSettings && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    "h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground",
-                  )}
-                  onClick={onOpenSettings}
-                  aria-label={tTerminal("ariaSettings")}
-                  title={tTerminal("titleSettings")}
-                >
-                  <Settings className="h-4 w-4" />
-                </Button>
-              )}
-
-
-            </div>
-          )}
+          <div className="flex shrink-0 items-center gap-1 px-2 [--wails-draggable:no-drag]">
+            {onOpenSettings && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-8 w-8 rounded-lg text-muted-foreground hover:bg-accent/70 hover:text-accent-foreground",
+                )}
+                onClick={onOpenSettings}
+                aria-label={tTerminal("ariaSettings")}
+                title={tTerminal("titleSettings")}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
 
           {endContent ? (
             <div className="flex h-full shrink-0 items-stretch [--wails-draggable:no-drag]">

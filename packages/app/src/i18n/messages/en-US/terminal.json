@@ -1,4 +1,8 @@
 {
+  "connectionActions": "Connection actions",
+  "newSshSession": "New SSH session",
+  "selectConnectionProtocol": "Switch connection protocol",
+  "connectionProtocolPending": "{protocol} connections are not available yet",
   "resizeDockedPanel": "Resize {panel} panel",
   "panelPosition": "Panel position",
   "panelPosition_left": "Dock left",

@@ -1,4 +1,8 @@
 {
+  "connectionActions": "连接操作",
+  "newSshSession": "新建 SSH 会话",
+  "selectConnectionProtocol": "切换连接协议",
+  "connectionProtocolPending": "{protocol} 连接功能尚未接入",
   "resizeDockedPanel": "调整{panel}面板大小",
   "panelPosition": "面板位置",
   "panelPosition_left": "停靠左侧",

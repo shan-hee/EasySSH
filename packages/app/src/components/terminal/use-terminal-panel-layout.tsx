@@ -34,8 +34,9 @@ function readSizes(preferences?: SshWorkspacePreferenceAdapter): Sizes {
 }
 
 /** One owner for grid tracks and resize handles, so panel dimensions cannot conflict. */
-export function useTerminalPanelLayout({ enabled, positions, visiblePanels, preferences }: {
+export function useTerminalPanelLayout({ enabled, resizeEnabled, positions, visiblePanels, preferences }: {
   enabled: boolean
+  resizeEnabled: boolean
   positions: Record<TerminalPanelKey, TerminalPanelPosition>
   visiblePanels: TerminalPanelKey[]
   preferences?: SshWorkspacePreferenceAdapter
@@ -64,7 +65,7 @@ export function useTerminalPanelLayout({ enabled, positions, visiblePanels, pref
   useEffect(() => {
     drag.current = null
     setResizing(null)
-  }, [enabled, layoutKey, bounds.width, bounds.height])
+  }, [enabled, resizeEnabled, layoutKey, bounds.width, bounds.height])
   const resizePosition = resizing ? positions[resizing] : null
   useEffect(() => {
     if (!resizePosition) return
@@ -128,7 +129,7 @@ export function useTerminalPanelLayout({ enabled, positions, visiblePanels, pref
     setSizes(current.next)
   }
   const labels = { monitor: t("ariaMonitor"), files: t("ariaFileManager"), ai: t("ariaAiAssistant") }
-  const handles = enabled && visiblePanels.map(key => {
+  const handles = enabled && resizeEnabled && visiblePanels.map(key => {
     const position = positions[key]
     const { axis, peers, min, max } = limits(key)
     const label = t("resizeDockedPanel", { panel: labels[key] })
