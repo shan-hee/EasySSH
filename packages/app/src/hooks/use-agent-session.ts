@@ -135,24 +135,6 @@ function getSessionChatApi(sessionId?: string | null) {
   return getApiUrl(`/ai/sessions/${sessionId?.trim() || "__idle__"}/chat`)
 }
 
-function getSessionMessagesSyncKey(session: SessionView) {
-  const messages = session.ui_messages ?? []
-  const lastMessage = messages.at(-1)
-  const lastTextLength = lastMessage ? getUIMessageTextLength(lastMessage) : 0
-  const lastPart = lastMessage?.parts.at(-1) as { state?: unknown; toolCallId?: unknown } | undefined
-
-  return [
-    session.id,
-    session.updated_at,
-    messages.length,
-    lastMessage?.id ?? "",
-    lastMessage?.parts.length ?? 0,
-    lastTextLength,
-    typeof lastPart?.state === "string" ? lastPart.state : "",
-    typeof lastPart?.toolCallId === "string" ? lastPart.toolCallId : "",
-  ].join(":")
-}
-
 function getSessionScopeKey(scope?: AgentSessionScope) {
   return [
     scope?.kind ?? "global",
@@ -252,7 +234,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   const sessionRef = useRef<SessionView | null>(null)
   const lastRestoreKeyRef = useRef<string | null>(null)
   const closingSessionIdRef = useRef<string | null>(null)
-  const syncedMessagesKeyRef = useRef<string | null>(null)
+  const syncedHistoryMessagesRef = useRef<SessionView["ui_messages"] | null>(null)
   const idleChatIdRef = useRef(createLocalId("agent-chat"))
   const approvalSubmissionRef = useRef(false)
   const chatErrorRef = useRef<Error | null>(null)
@@ -317,8 +299,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     sessionRef.current = nextSession
     setSession(nextSession)
     setTransport("ai_sdk_ui")
-    syncedMessagesKeyRef.current = input.syncMessages === false
-      ? getSessionMessagesSyncKey(nextSession)
+    syncedHistoryMessagesRef.current = input.syncMessages === false
+      ? nextSession.ui_messages
       : null
   }, [])
 
@@ -493,17 +475,18 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
   useEffect(() => {
     if (!session?.id) {
-      syncedMessagesKeyRef.current = null
+      syncedHistoryMessagesRef.current = null
       return
     }
 
-    const syncKey = getSessionMessagesSyncKey(session)
-    if (syncedMessagesKeyRef.current === syncKey) {
+    // 概况和任务更新保留历史数组引用，不得用旧历史覆盖 SDK / 桌面的实时消息。
+    // 只有显式提交历史快照时才清空同步标记，允许替换当前时间线。
+    if (syncedHistoryMessagesRef.current === session.ui_messages) {
       return
     }
 
-    setChatMessages(session.ui_messages || [])
-    syncedMessagesKeyRef.current = syncKey
+    setChatMessages(session.ui_messages)
+    syncedHistoryMessagesRef.current = session.ui_messages
   }, [session, setChatMessages])
 
   useEffect(() => {
@@ -1043,7 +1026,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     sessionRef.current = null
     setError(null)
     chat.setMessages([])
-    syncedMessagesKeyRef.current = null
+    syncedHistoryMessagesRef.current = null
     setTransport("idle")
   }, [chat, resetRecovery])
 
