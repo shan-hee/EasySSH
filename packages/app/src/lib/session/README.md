@@ -1,6 +1,6 @@
 # Session Core Boundary
 
-`web/src/lib/session` 是后续 SSH/SFTP Workspace 的第一层共享边界。这里先收拢连接身份类型、纯 SFTP 目录加载逻辑、SFTP 操作内核，以及可注入的 Workspace 合约；现阶段不移动终端和 SFTP 的现有 UI。
+`packages/app/src/lib/session` 是 SSH/SFTP Workspace 的会话与传输内核，收拢连接身份类型、纯 SFTP 目录加载逻辑、SFTP 操作内核，以及可注入的 Workspace 合约。工作区核心文件不依赖具体 Web 传输实现，由 `pnpm check:boundaries` 约束。
 
 ## 纯内核
 

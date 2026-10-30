@@ -38,10 +38,16 @@ Desktop data is stored in the `data` folder next to the desktop executable. The 
 
 ## Layout
 
-- `main.go`: Wails application entry point and main window configuration.
-- `desktopservice.go`: Desktop runtime bridge exposed to the frontend.
-- `frontend/`: React/Vite workspace shell UI.
-- `build/`: Wails platform build assets and packaging metadata.
+- `main.go`: executable entry point and embedded frontend/icon assets; delegates to `app.Run`.
+- `internal/app/`: desktop application assembly, Wails services, native window boundary, local execution and remote workspaces. Platform Go files and the macOS Objective-C launcher live here with their consumers.
+- `internal/accesslink/`: desktop launch-link parsing and validation.
+- `internal/storage/schema/`: desktop SQLite initialization definitions and embedded schema.
+- `frontend/`: desktop frontend entry and generated Wails bindings.
+- `build/`: platform assets, binding generation and packaging metadata.
+
+The desktop runtime belongs to the desktop module. Only capabilities used by both hosts belong in the repository's `shared` module. The runtime remains one application package where service lifecycles and private helpers are tightly coupled; this relocation does not add forwarding interfaces between those services.
+
+Moving service types out of `main` changes Wails binding identifiers and generated import paths to `github.com/easyssh/easyssh-desktop/internal/app`. Regenerate bindings and update frontend imports together when integrating the frontend. No old-package aliases or forwarding services are provided. The native remote-window allowlist derives the package path from the actual service type.
 
 ## Device sync
 

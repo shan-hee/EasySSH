@@ -1,8 +1,8 @@
 # SSH Workspace UI Kit
 
-`web/src/components/ssh-workspace` 是当前 Web 内部的可嵌入 SSH/SFTP Workspace 入口。它不实现 Dashboard 侧边栏、导航、权限、设置或运行形态判断，只提供工作台根组件、上下文和终端/SFTP/传输 UI building blocks。
+`packages/app/src/components/ssh-workspace` 是共享应用包 `@easyssh/app` 中可嵌入的 SSH/SFTP Workspace 入口。它不实现 Dashboard 侧边栏、导航、权限、设置或运行形态判断，只提供工作台根组件、上下文和终端/SFTP/传输 UI building blocks。
 
-当前 Web 应用通过内部包名 `@easyssh/ssh-workspace` 消费这个入口；该包位于 `web/packages/ssh-workspace`，现阶段是指向本目录的 facade。Desktop Shell 则通过 `@easyssh/ssh-workspace/desktop` 进入轻量子入口，只拿 Workspace 根组件、context、基础 settings/capabilities/helper 和类型，不把 Web/Next 专属 barrel 一起带进去。后续如果继续提取源码，应优先保持这两个导入名稳定，再逐步迁移实现文件。
+共享包内的功能视图直接引用本目录；Desktop Shell 通过 `@easyssh/app/desktop` 进入轻量子入口，只拿 Workspace 根组件、context、基础 settings/capabilities/helper 和类型，不把 Web Dashboard 专属模块一起带进去。
 
 当前导出的主要能力：
 
@@ -24,6 +24,6 @@
 - `TransferTaskPanel`、`UploadProgressItem`：传输任务展示。
 - `TerminalAuthChallengeDialog`、`TerminalHostKeyDialog`：终端连接过程中的认证和主机密钥确认 UI；凭据保存与通知通过 `TerminalAuthFlowAdapters` 或 Workspace adapters 注入。
 
-类型和 adapter 合约来自 `@/lib/session/workspace`。`apiClient.sftp` 可替换 Workspace 内的 SFTP API，包括目录加载、文件操作、读写、下载、批量下载、chmod 和连接关闭；`i18n` 提供 UI Kit 文案，`settings.sftp.downloadExcludePatterns` 提供批量下载排除规则，`preferences` 提供视图模式、面板宽度等工作台内部小型 UI 偏好，`theme.mode` 与 `theme.terminalTheme` 可覆盖终端渲染明暗模式和主题名，`panes.fileManager` 可声明终端文件面板的挂载模式和顶部锚点，`capabilities` 控制 SFTP、监控、Docker、AI、全屏等入口，`transferManager` 覆盖上传、下载、批量下载、跨服务器传输、取消、清理和历史记录，`sessionController` 覆盖终端/SFTP 会话激活、关闭和重置，`notifier.action` 用于带操作的提示，`authTicketProvider` 与 `apiClient.terminal.createWebSocketUrl` 可替换终端 WebSocket ticket/url runtime，`apiClient.terminal.saveVerifiedCredential` 用于保存终端补充凭据。后续如果提取到 `packages/ssh-workspace`，这里应成为迁移清单，而不是继续吸收 Dashboard 专属依赖。
+类型和 adapter 合约来自 `@/lib/session/workspace`。`apiClient.sftp` 可替换 Workspace 内的 SFTP API，包括目录加载、文件操作、读写、下载、批量下载、chmod 和连接关闭；`i18n` 提供 UI Kit 文案，`settings.sftp.downloadExcludePatterns` 提供批量下载排除规则，`preferences` 提供视图模式、面板宽度等工作台内部小型 UI 偏好，`theme.mode` 与 `theme.terminalTheme` 可覆盖终端渲染明暗模式和主题名，`panes.fileManager` 可声明终端文件面板的挂载模式和顶部锚点，`capabilities` 控制 SFTP、监控、Docker、AI、全屏等入口，`transferManager` 覆盖上传、下载、批量下载、跨服务器传输、取消、清理和历史记录，`sessionController` 覆盖终端/SFTP 会话激活、关闭和重置，`notifier.action` 用于带操作的提示，`authTicketProvider` 与 `apiClient.terminal.createWebSocketUrl` 可替换终端 WebSocket ticket/url runtime，`apiClient.terminal.saveVerifiedCredential` 用于保存终端补充凭据。这些合约是 Workspace 与宿主之间的边界，不应继续吸收 Dashboard 专属依赖。
 
 当前 `/terminal` 与 `/sftp` Dashboard 入口已经挂载 `SshWorkspace`，并通过 Workspace adapters 暴露 SFTP API、auth ticket、i18n、settings、preferences、session store、session controller、notifier、transfer manager 和 transfer history；页面自己的导航、服务器选择、页签编排仍保留在 Shell/page 层。

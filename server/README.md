@@ -263,8 +263,8 @@ go build -ldflags="-s -w" -o easyssh-server ./cmd/api
 同步集成测试会启动真实的 Automerge worker，需安装 Node.js 22+。
 
 ```bash
-# 安装同步测试运行时依赖（首次检出或依赖更新后执行）
-npm ci --prefix sync-runtime --ignore-scripts
+# 安装同步测试运行时依赖（首次检出或依赖更新后执行，使用仓库根 pnpm 工作区）
+make sync-deps
 
 # 运行所有测试
 go test ./...
@@ -400,9 +400,9 @@ Apache License 2.0 - 详见 [LICENSE](../LICENSE)
 
 ## Configuration synchronization
 
-The Web **Account settings → Data & sync** page manages authorized desktop devices and concurrent configuration changes. Its sync switch persists a per-account pause flag and blocks subsequent device sync requests while paused; device revocation/logout and existing data remain available. System backup/restore remains in system settings. The sync service uses Automerge 3.5.0, with the same document logic as the desktop JS/WASM client (`shared/syncjs`). The Go server launches a private Node.js stdio worker on demand; no extra public port is exposed and CGO remains disabled.
+The Web **Account settings → Data & sync** page manages authorized desktop devices and concurrent configuration changes. Its sync switch persists a per-account pause flag and blocks subsequent device sync requests while paused; device revocation/logout and existing data remain available. System backup/restore remains in system settings. The sync service uses Automerge 3.5.0, with the same document logic as the Web and desktop JS/WASM clients (`packages/sync-document`). The Go server launches a private Node.js stdio worker on demand; no extra public port is exposed and CGO remains disabled.
 
-Docker includes the runtime automatically. For a source checkout, install Node.js 22+ and run `npm ci --prefix server/sync-runtime --ignore-scripts` from the repository root. `scripts/dev.sh` and `make dev` install the worker dependencies. When deploying the Go executable separately, include `server/sync-runtime` (with its production `node_modules`) and `shared/syncjs` with their relative directory layout, and point `EASYSSH_SYNC_ENGINE` to the absolute path of `server/sync-runtime/engine.mjs`.
+Docker includes the runtime automatically. For a source checkout, install Node.js 22+ and pnpm, then run `pnpm install --frozen-lockfile --filter "easyssh-sync-runtime..."` from the repository root (or `make sync-deps` in `server`). `scripts/dev.sh` and `make dev` install the worker dependencies. When deploying the Go executable separately, create a self-contained worker directory with `pnpm --filter easyssh-sync-runtime deploy --prod --legacy <dir>` and point `EASYSSH_SYNC_ENGINE` to the absolute path of `<dir>/engine.mjs`.
 
 Owner-scoped server metadata and scripts form the basic scope. Browser approval can additionally grant server credentials (passwords/private keys), personal AI configuration/API keys and conversation history. Each grant is enforced on the supplementary object/document endpoints. System-shared AI keys, account/device credentials, live terminal state, execution authorization and another owner’s resources are excluded. Device tokens are generated in desktop Go, stored only as SHA-256 hashes on the server, expire in 90 days, and require the owner's current `server:manage` permission for bidirectional sync. The default ordinary-user role lacks this resource permission and must be granted it explicitly; no system backup permission is required. Listing and revoking one's own devices requires only account authentication. Local desktop tokens use the OS credential store-backed encryption already used for SSH credentials.
 

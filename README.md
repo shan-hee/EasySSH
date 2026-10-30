@@ -143,8 +143,8 @@ Docker Hub 镜像发布由 GitHub Actions 执行，推送前需要配置仓库 s
 # 后端（支持热重载）
 cd server && make dev
 
-# 前端
-cd web && pnpm dev
+# 前端（首次在仓库根目录执行 pnpm install）
+pnpm dev:web
 ```
 
 访问 http://localhost:3000
@@ -200,11 +200,14 @@ EasySSH/
 ### 常用命令
 
 ```bash
-# 前端开发
-cd web
-pnpm dev          # 开发服务器
-pnpm build        # Vite 构建生产版本（静态产物到 web/dist）
-pnpm lint         # 代码检查
+# 前端开发（仓库根目录的 pnpm 工作区：web、桌面前端、packages、tooling 与服务端同步进程）
+pnpm install            # 安装全部前端与同步进程依赖，统一使用根目录 pnpm-lock.yaml
+pnpm dev:web            # Web 开发服务器
+pnpm build:web          # Vite 构建生产版本（静态产物到 web/dist）
+pnpm typecheck          # 各前端包类型检查
+pnpm test               # 各前端包单元测试
+pnpm lint               # 代码检查
+pnpm check:boundaries   # 共享应用包与 Web/桌面宿主的导入边界检查
 
 # 后端开发
 cd server
