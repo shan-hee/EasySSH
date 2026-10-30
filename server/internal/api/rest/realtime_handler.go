@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -17,16 +18,21 @@ func NewRealtimeHandler(hub *realtime.Hub) *RealtimeHandler {
 }
 
 func (h *RealtimeHandler) Stream(c *gin.Context) {
-	userID, ok := requireCurrentUserID(c)
-	if !ok {
+	subscription, err := h.hub.Subscribe(c.Request.Context())
+	if err != nil {
+		accessError(c, err)
 		return
 	}
+	defer subscription.Close()
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		RespondError(c, http.StatusInternalServerError, "streaming_unsupported", "Streaming is not supported")
 		return
 	}
 
+	controller := http.NewResponseController(c.Writer)
+	stopWrite := context.AfterFunc(subscription.Context(), func() { _ = controller.SetWriteDeadline(time.Now()) })
+	defer stopWrite()
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
@@ -34,14 +40,17 @@ func (h *RealtimeHandler) Stream(c *gin.Context) {
 	c.Status(http.StatusOK)
 	flusher.Flush()
 
-	events, unsubscribe := h.hub.Subscribe(userID)
-	defer unsubscribe()
+	events := subscription.Events
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 
 	for {
 		select {
 		case event := <-events:
+			if subscription.Context().Err() != nil {
+				return
+			}
+			_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue
@@ -51,11 +60,15 @@ func (h *RealtimeHandler) Stream(c *gin.Context) {
 			}
 			flusher.Flush()
 		case <-heartbeat.C:
+			if subscription.Context().Err() != nil {
+				return
+			}
+			_ = controller.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if _, err := fmt.Fprint(c.Writer, ": heartbeat\n\n"); err != nil {
 				return
 			}
 			flusher.Flush()
-		case <-c.Request.Context().Done():
+		case <-subscription.Context().Done():
 			return
 		}
 	}

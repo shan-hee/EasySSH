@@ -3,10 +3,10 @@ package ssh
 import (
 	"context"
 	"errors"
+	"github.com/easyssh/shared/protocol"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -25,33 +25,35 @@ const (
 
 // Session SSH 会话
 type Session struct {
-	ID         string        `json:"id"`
-	UserID     string        `json:"user_id"`
-	ServerID   string        `json:"server_id"`
-	Client     *Client       `json:"-"`
-	SSHSession *ssh.Session  `json:"-"`
-	Status     SessionStatus `json:"status"`
-	CreatedAt  time.Time     `json:"created_at"`
-	ClosedAt   *time.Time    `json:"closed_at,omitempty"`
+	ID         string         `json:"id"`
+	Actor      protocol.Actor `json:"actor"`
+	ServerID   string         `json:"server_id"`
+	Client     *Client        `json:"-"`
+	SSHSession *ssh.Session   `json:"-"`
+	Status     SessionStatus  `json:"status"`
+	CreatedAt  time.Time      `json:"created_at"`
+	ClosedAt   *time.Time     `json:"closed_at,omitempty"`
 
 	// 终端相关
 	Cols int `json:"cols"`
 	Rows int `json:"rows"`
 
-	mu sync.RWMutex
+	closeConnection func()
+	mu              sync.RWMutex
 }
 
 // NewSession 创建新会话
-func NewSession(userID, serverID string, client *Client, cols, rows int) *Session {
+func NewSession(actor protocol.Actor, connectionID, serverID string, client *Client, cols, rows int, closeConnection func()) *Session {
 	return &Session{
-		ID:        uuid.New().String(),
-		UserID:    userID,
-		ServerID:  serverID,
-		Client:    client,
-		Status:    SessionStatusActive,
-		CreatedAt: time.Now(),
-		Cols:      cols,
-		Rows:      rows,
+		ID:              connectionID,
+		closeConnection: closeConnection,
+		Actor:           actor,
+		ServerID:        serverID,
+		Client:          client,
+		Status:          SessionStatusActive,
+		CreatedAt:       time.Now(),
+		Cols:            cols,
+		Rows:            rows,
 	}
 }
 
@@ -62,6 +64,10 @@ func (s *Session) Close() error {
 
 	if s.Status == SessionStatusClosed {
 		return ErrSessionClosed
+	}
+
+	if s.closeConnection != nil {
+		s.closeConnection()
 	}
 
 	// 关闭 SSH 会话
@@ -155,14 +161,14 @@ func (m *SessionManager) Get(sessionID string) (*Session, error) {
 	return session, nil
 }
 
-// GetByUserID 获取用户的所有会话
-func (m *SessionManager) GetByUserID(userID string) []*Session {
+// GetByActor lists only sessions of the exact authenticated context.
+func (m *SessionManager) GetByActor(actor protocol.Actor) []*Session {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	var sessions []*Session
 	for _, session := range m.sessions {
-		if session.UserID == userID {
+		if session.Actor == actor {
 			sessions = append(sessions, session)
 		}
 	}
@@ -183,20 +189,6 @@ func (m *SessionManager) GetByServerID(serverID string) []*Session {
 	}
 
 	return sessions
-}
-
-// GetActiveByUserAndServer 获取用户在指定服务器上的活跃会话（返回第一个匹配的）
-func (m *SessionManager) GetActiveByUserAndServer(userID, serverID string) *Session {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	for _, session := range m.sessions {
-		if session.UserID == userID && session.ServerID == serverID && session.IsActive() {
-			return session
-		}
-	}
-
-	return nil
 }
 
 // Remove 移除会话
@@ -251,21 +243,6 @@ func (m *SessionManager) Count() int {
 	return len(m.sessions)
 }
 
-// CountByUserID 获取用户的会话数
-func (m *SessionManager) CountByUserID(userID string) int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	count := 0
-	for _, session := range m.sessions {
-		if session.UserID == userID {
-			count++
-		}
-	}
-
-	return count
-}
-
 // CleanupInactive 清理不活跃的会话
 func (m *SessionManager) CleanupInactive(ctx context.Context, maxAge time.Duration) {
 	ticker := time.NewTicker(5 * time.Minute)
@@ -295,24 +272,18 @@ func (m *SessionManager) cleanupOldSessions(maxAge time.Duration) {
 }
 
 // ToPublic 转换为公开信息
-func (s *Session) ToPublic() map[string]interface{} {
+func (s *Session) ToPublic() protocol.SSHSession {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	result := map[string]interface{}{
-		"id":         s.ID,
-		"user_id":    s.UserID,
-		"server_id":  s.ServerID,
-		"status":     s.Status,
-		"cols":       s.Cols,
-		"rows":       s.Rows,
-		"created_at": s.CreatedAt,
-		"uptime":     s.GetUptime().Seconds(),
-	}
-
+	uptime := time.Since(s.CreatedAt)
+	var closedAt *time.Time
 	if s.ClosedAt != nil {
-		result["closed_at"] = s.ClosedAt
+		value := *s.ClosedAt
+		closedAt = &value
+		uptime = value.Sub(s.CreatedAt)
 	}
-
-	return result
+	return protocol.SSHSession{
+		ID: s.ID, Actor: s.Actor, ServerID: s.ServerID, Status: protocol.SSHSessionStatus(s.Status),
+		Cols: s.Cols, Rows: s.Rows, CreatedAt: s.CreatedAt, ClosedAt: closedAt, Uptime: uptime.Seconds(),
+	}
 }

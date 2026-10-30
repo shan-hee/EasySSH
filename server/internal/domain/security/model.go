@@ -1,6 +1,7 @@
 package security
 
 import (
+	"github.com/easyssh/shared/protocol"
 	"strings"
 	"time"
 
@@ -12,10 +13,10 @@ type SecurityConfig struct {
 	ID uint `gorm:"primarykey" json:"id"`
 
 	// 会话管理
-	SessionTimeout  int  `gorm:"not null;default:30" json:"session_timeout"`  // 会话超时时间（分钟）
+	SessionTimeout  int  `gorm:"not null;default:30" json:"session_timeout"`  // 所有者会话空闲超时（分钟）；有效 Cookie 认证请求续期
 	MaxTabs         int  `gorm:"not null;default:10" json:"max_tabs"`         // 最大标签页数
 	InactiveMinutes int  `gorm:"not null;default:15" json:"inactive_minutes"` // 非活动断开提醒时间（分钟）
-	RememberLogin   bool `gorm:"not null;default:true" json:"remember_login"` // 是否允许记住登录状态
+	RememberLogin   bool `gorm:"not null;default:true" json:"remember_login"` // 是否允许持久 Cookie；不绕过空闲超时
 	Hibernate       bool `gorm:"not null;default:true" json:"hibernate"`      // 是否启用后台标签页休眠
 
 	// 网络安全
@@ -56,9 +57,7 @@ func (SecurityConfig) TableName() string {
 }
 
 // CORSConfig CORS 配置结构
-type CORSConfig struct {
-	AllowedOrigins []string `json:"allowed_origins"` // 允许的域名列表
-}
+type CORSConfig = protocol.CORSConfig
 
 // DefaultCORSConfig 默认CORS配置
 func DefaultCORSConfig() *CORSConfig {
@@ -73,7 +72,7 @@ const DefaultContentSecurityPolicy = "default-src 'self'; " +
 	"style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://accounts.google.com; " +
 	"img-src 'self' data: blob: https:; " +
 	"font-src 'self' data: https://fonts.gstatic.com; " +
-	"connect-src 'self' https://cdn.jsdelivr.net https://api.dicebear.com https://accounts.google.com https://oauth2.googleapis.com; " +
+	"connect-src 'self' https://cdn.jsdelivr.net https://api.dicebear.com; " +
 	"frame-src 'self' https://accounts.google.com"
 
 func (c *SecurityConfig) TrustedProxyList() []string {

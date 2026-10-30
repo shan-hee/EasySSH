@@ -25,8 +25,11 @@ func IsAllowedOrigin(r *http.Request, securityService security.Service, webDevPo
 		return false
 	}
 
-	host := requestHost(r)
-	return host != "" && strings.EqualFold(host, originURL.Hostname())
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return originURL.User == nil && originURL.RawQuery == "" && originURL.Fragment == "" && originURL.Path == "" && originURL.Scheme == scheme && strings.EqualFold(originURL.Host, r.Host)
 }
 
 func IsConfiguredOriginAllowed(origin string, securityService security.Service, webDevPort int) bool {

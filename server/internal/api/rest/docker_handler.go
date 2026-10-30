@@ -1,15 +1,19 @@
 package rest
 
 import (
-	"context"
-	"fmt"
+	"errors"
+	"github.com/easyssh/shared/protocol"
+	"github.com/easyssh/shared/resultstore"
 	"net/http"
-	"strings"
 
-	"github.com/easyssh/server/internal/domain/monitor"
+	"github.com/easyssh/server/internal/access"
+
+	"github.com/easyssh/server/internal/domain/docker"
 	"github.com/easyssh/shared/dockerutil"
 	"github.com/easyssh/shared/textencoding"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type DockerContainer = dockerutil.Container
@@ -20,47 +24,11 @@ type DockerImage = dockerutil.Image
 type DockerSystemInfo = dockerutil.SystemInfo
 
 const dockerResourceStatsLimit = dockerutil.DefaultResourceStatsLimit
-const dockerSocketPath = "/var/run/docker.sock"
 
-type DockerHandler struct {
-	connectionPool *monitor.ConnectionPool
-}
+type DockerHandler struct{ service *docker.Service }
 
-func NewDockerHandler(connectionPool *monitor.ConnectionPool) *DockerHandler {
-	return &DockerHandler{connectionPool: connectionPool}
-}
-
-func (h *DockerHandler) getDockerClient(c *gin.Context, serverID string) (*dockerutil.Client, func(), error) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		return nil, nil, fmt.Errorf("unauthorized")
-	}
-	userIDValue, ok := userID.(string)
-	if !ok || strings.TrimSpace(userIDValue) == "" {
-		return nil, nil, fmt.Errorf("invalid user identity")
-	}
-
-	pooledConnection, err := h.connectionPool.GetOrCreate(userIDValue, serverID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get ssh connection: %w", err)
-	}
-	cleanupPool := func() { h.connectionPool.Release(userIDValue, serverID) }
-
-	rawConnection := pooledConnection.Client.GetRawConnection()
-	if rawConnection == nil {
-		cleanupPool()
-		return nil, nil, fmt.Errorf("ssh connection is not available")
-	}
-	dockerClient, err := dockerutil.NewClient(rawConnection.DialContext, dockerSocketPath)
-	if err != nil {
-		cleanupPool()
-		return nil, nil, err
-	}
-	cleanup := func() {
-		_ = dockerClient.Close()
-		cleanupPool()
-	}
-	return dockerClient, cleanup, nil
+func NewDockerHandler(service *docker.Service) *DockerHandler {
+	return &DockerHandler{service: service}
 }
 
 func (h *DockerHandler) ListContainers(c *gin.Context) {
@@ -75,7 +43,7 @@ func (h *DockerHandler) ListContainers(c *gin.Context) {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
 		return
 	}
-	RespondSuccess(c, map[string]interface{}{"data": containers, "total": len(containers)})
+	RespondSuccess(c, dockerutil.ContainersResult{Data: containers, Total: len(containers)})
 }
 
 func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
@@ -101,49 +69,31 @@ func (h *DockerHandler) GetContainerLogs(c *gin.Context) {
 		return
 	}
 
-	RespondSuccess(c, map[string]interface{}{
-		"data":         textencoding.Decode(string(output), encodingName),
-		"container_id": containerID,
-		"lines":        tail,
-		"encoding":     encodingName,
-	})
+	RespondSuccess(c, dockerutil.LogsResult{Data: textencoding.Decode(string(output), encodingName), ContainerID: containerID, Lines: tail, Encoding: encodingName})
 }
 
 func (h *DockerHandler) StartContainer(c *gin.Context) {
-	h.containerAction(c, "Container started", (*dockerutil.Client).Start)
+	h.containerAction(c, protocol.DockerActionStart, false)
 }
 
 func (h *DockerHandler) StopContainer(c *gin.Context) {
-	h.containerAction(c, "Container stopped", (*dockerutil.Client).Stop)
+	h.containerAction(c, protocol.DockerActionStop, false)
 }
 
 func (h *DockerHandler) RestartContainer(c *gin.Context) {
-	h.containerAction(c, "Container restarted", (*dockerutil.Client).Restart)
+	h.containerAction(c, protocol.DockerActionRestart, false)
 }
 
 func (h *DockerHandler) PauseContainer(c *gin.Context) {
-	h.containerAction(c, "Container paused", (*dockerutil.Client).Pause)
+	h.containerAction(c, protocol.DockerActionPause, false)
 }
 
 func (h *DockerHandler) UnpauseContainer(c *gin.Context) {
-	h.containerAction(c, "Container unpaused", (*dockerutil.Client).Unpause)
+	h.containerAction(c, protocol.DockerActionUnpause, false)
 }
 
 func (h *DockerHandler) RemoveContainer(c *gin.Context) {
-	containerID, ok := normalizeDockerContainerID(c)
-	if !ok {
-		return
-	}
-	dockerClient, cleanup, ok := h.clientForRequest(c)
-	if !ok {
-		return
-	}
-	defer cleanup()
-	if err := dockerClient.Remove(c.Request.Context(), containerID, c.DefaultQuery("force", "false") == "true"); err != nil {
-		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
-		return
-	}
-	RespondSuccessWithMessage(c, nil, "Container removed")
+	h.containerAction(c, protocol.DockerActionRemove, c.DefaultQuery("force", "false") == "true")
 }
 
 func (h *DockerHandler) ListImages(c *gin.Context) {
@@ -157,7 +107,7 @@ func (h *DockerHandler) ListImages(c *gin.Context) {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
 		return
 	}
-	RespondSuccess(c, map[string]interface{}{"data": images, "total": len(images)})
+	RespondSuccess(c, dockerutil.ImagesResult{Data: images, Total: len(images)})
 }
 
 func (h *DockerHandler) GetSystemInfo(c *gin.Context) {
@@ -171,7 +121,7 @@ func (h *DockerHandler) GetSystemInfo(c *gin.Context) {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
 		return
 	}
-	RespondSuccess(c, map[string]interface{}{"data": info})
+	RespondSuccess(c, protocol.DockerSystemResult{Data: info})
 }
 
 func (h *DockerHandler) GetStats(c *gin.Context) {
@@ -180,12 +130,12 @@ func (h *DockerHandler) GetStats(c *gin.Context) {
 		return
 	}
 	defer cleanup()
-	stats, _, err := dockerClient.Stats(c.Request.Context(), -1)
+	stats, total, err := dockerClient.Stats(c.Request.Context(), dockerutil.MaxStatsLimit)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
 		return
 	}
-	RespondSuccess(c, map[string]interface{}{"data": stats})
+	RespondSuccess(c, dockerutil.StatsResult{Data: stats, Total: total, Limit: dockerutil.MaxStatsLimit, Truncated: total > dockerutil.MaxStatsLimit})
 }
 
 func (h *DockerHandler) GetContainerStat(c *gin.Context) {
@@ -206,15 +156,7 @@ func (h *DockerHandler) GetContainerStat(c *gin.Context) {
 	RespondSuccess(c, stats)
 }
 
-type DockerResourcesResponse struct {
-	Stats             []ContainerStats  `json:"stats"`
-	SystemInfo        *DockerSystemInfo `json:"systemInfo"`
-	DockerInstalled   bool              `json:"dockerInstalled"`
-	StatsTruncated    bool              `json:"statsTruncated"`
-	StatsLimit        int               `json:"statsLimit"`
-	RunningStatsTotal int               `json:"runningStatsTotal"`
-	Error             string            `json:"error,omitempty"`
-}
+type DockerResourcesResponse = dockerutil.ResourcesResult
 
 func (h *DockerHandler) GetResources(c *gin.Context) {
 	dockerClient, cleanup, ok := h.clientForRequest(c)
@@ -253,13 +195,7 @@ func (h *DockerHandler) GetResources(c *gin.Context) {
 	})
 }
 
-type ImageUpdateCheckResponse struct {
-	HasUpdate     bool   `json:"hasUpdate"`
-	ImageName     string `json:"imageName"`
-	ContainerName string `json:"containerName"`
-	UpdateCommand string `json:"updateCommand"`
-	Error         string `json:"error,omitempty"`
-}
+type ImageUpdateCheckResponse = dockerutil.ImageUpdateResult
 
 func (h *DockerHandler) CheckContainerImageUpdate(c *gin.Context) {
 	containerID, ok := normalizeDockerContainerID(c)
@@ -286,29 +222,47 @@ func (h *DockerHandler) CheckContainerImageUpdate(c *gin.Context) {
 }
 
 func (h *DockerHandler) clientForRequest(c *gin.Context) (*dockerutil.Client, func(), bool) {
-	dockerClient, cleanup, err := h.getDockerClient(c, c.Param("serverId"))
+	dockerClient, ctx, cleanup, err := h.service.Client(c.Request.Context(), c.Param("serverId"))
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "ssh_error", err.Error())
+		respondDockerError(c, err)
 		return nil, nil, false
 	}
+
+	c.Request = c.Request.WithContext(ctx)
 	return dockerClient, cleanup, true
 }
 
-func (h *DockerHandler) containerAction(c *gin.Context, message string, action func(*dockerutil.Client, context.Context, string) error) {
+func (h *DockerHandler) containerAction(c *gin.Context, action protocol.DockerAction, force bool) {
 	containerID, ok := normalizeDockerContainerID(c)
 	if !ok {
 		return
 	}
-	dockerClient, cleanup, ok := h.clientForRequest(c)
-	if !ok {
+	result, err := h.service.Apply(c.Request.Context(), c.Param("serverId"), containerID, action, force)
+	if err != nil {
+		respondDockerError(c, err)
 		return
 	}
-	defer cleanup()
-	if err := action(dockerClient, c.Request.Context(), containerID); err != nil {
-		RespondError(c, http.StatusInternalServerError, "docker_error", err.Error())
+	respondDockerResult(c, result)
+}
+
+func respondDockerResult(c *gin.Context, result protocol.DockerActionResult) {
+	// An accepted operation returns its actual outcome, including unknown. Clients
+	// must not treat an HTTP transport error as permission to repeat the mutation.
+	RespondSuccess(c, result)
+}
+
+func (h *DockerHandler) Result(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("taskId"))
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "invalid_task_id", "Invalid task ID")
 		return
 	}
-	RespondSuccessWithMessage(c, nil, message)
+	result, err := h.service.Result(c.Request.Context(), c.Param("serverId"), id)
+	if err != nil {
+		respondDockerError(c, err)
+		return
+	}
+	respondDockerResult(c, result)
 }
 
 func normalizeDockerContainerID(c *gin.Context) (string, bool) {
@@ -318,4 +272,21 @@ func normalizeDockerContainerID(c *gin.Context) (string, bool) {
 		return "", false
 	}
 	return containerID, true
+}
+
+func respondDockerError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, resultstore.ErrUnavailable):
+		RespondError(c, http.StatusServiceUnavailable, "storage_unavailable", "Execution result could not be stored")
+	case errors.Is(err, access.ErrUnauthenticated), errors.Is(err, access.ErrForbidden), errors.Is(err, access.ErrExpired), errors.Is(err, access.ErrRevoked), errors.Is(err, access.ErrResourceChanged), errors.Is(err, access.ErrCapacity):
+		accessError(c, err)
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		RespondError(c, http.StatusNotFound, "task_not_found", "Docker task not found")
+	case errors.Is(err, docker.ErrInvalidOperation):
+		RespondError(c, http.StatusBadRequest, "invalid_docker_operation", err.Error())
+	case errors.Is(err, docker.ErrStopped):
+		RespondError(c, http.StatusServiceUnavailable, "docker_stopped", err.Error())
+	default:
+		RespondError(c, http.StatusBadGateway, "docker_error", err.Error())
+	}
 }

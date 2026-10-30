@@ -3,6 +3,8 @@ package sftp
 import (
 	"context"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"strings"
 	"sync"
 	"time"
@@ -10,8 +12,9 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/shared/secretcrypto"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/ssh"
+
 	"log/slog"
 )
 
@@ -20,12 +23,14 @@ type PooledClient struct {
 	*Client
 	pool     *Pool
 	key      string
-	userID   uuid.UUID
 	serverID uuid.UUID
 	sshConn  *pooledSSHConn
 
 	permitAcquired bool
 	releaseOnce    sync.Once
+	lease          *access.Lease
+	stopCancel     func() bool
+	cancelDone     chan struct{}
 }
 
 // Credential 是一次性 SFTP 建连凭据，只用于当前连接池建连，不负责持久化。
@@ -50,6 +55,13 @@ func (c Credential) toSSHCredential() sshDomain.Credential {
 // Release 释放本次 SFTP 会话，并归还 SSH 引用
 func (pc *PooledClient) Release() {
 	pc.releaseOnce.Do(func() {
+		if pc.stopCancel != nil && !pc.stopCancel() {
+			<-pc.cancelDone
+		}
+		if pc.lease != nil {
+			pc.lease.Close(nil)
+		}
+
 		if pc.Client != nil {
 			if pc.sshConn != nil {
 				pc.sshConn.releaseSFTP(pc.Client)
@@ -83,14 +95,6 @@ func (pc *PooledClient) IsHealthy() bool {
 	return pc.sshConn.IsHealthy()
 }
 
-// DeleteDirectory 直接删除目录
-func (pc *PooledClient) DeleteDirectory(path string) error {
-	if pc.Client == nil {
-		return fmt.Errorf("sftp client not initialized")
-	}
-	return pc.Client.DeleteDirectory(path)
-}
-
 // DeleteFile 直接删除文件
 func (pc *PooledClient) DeleteFile(path string) error {
 	if pc.Client == nil {
@@ -101,18 +105,22 @@ func (pc *PooledClient) DeleteFile(path string) error {
 
 // pooledSSHConn 池化的 SSH 连接
 type pooledSSHConn struct {
-	Client     *sshDomain.Client
-	refCount   int
-	createdAt  time.Time
-	lastUsedAt time.Time
-	closing    bool
-	lifeWarned bool
-	idleSFTP   []*Client
-	mu         sync.RWMutex
+	Revision         int64
+	CredentialDigest [32]byte
+	Client           *sshDomain.Client
+	Actor            protocol.Actor
+	ServerID         uuid.UUID
+	refCount         int
+	createdAt        time.Time
+	lastUsedAt       time.Time
+	closing          bool
+	lifeWarned       bool
+	idleSFTP         []*Client
+	mu               sync.RWMutex
 }
 
 // 每条 SSH 最多保留两个空闲 SFTP 通道；操作期间独占，取消不影响其他借用者。
-func (sc *pooledSSHConn) acquireSFTP(serverID uuid.UUID) (*Client, error) {
+func (sc *pooledSSHConn) acquireSFTP(ctx context.Context, serverID uuid.UUID) (*Client, error) {
 	sc.mu.Lock()
 	for len(sc.idleSFTP) > 0 {
 		last := len(sc.idleSFTP) - 1
@@ -125,7 +133,7 @@ func (sc *pooledSSHConn) acquireSFTP(serverID uuid.UUID) (*Client, error) {
 		}
 	}
 	sc.mu.Unlock()
-	return NewClient(sc.Client, &server.Server{ID: serverID})
+	return NewClient(ctx, sc.Client, &server.Server{ID: serverID})
 }
 
 func (sc *pooledSSHConn) releaseSFTP(client *Client) {
@@ -186,7 +194,7 @@ type Pool struct {
 	mu              sync.RWMutex
 	connections     map[string]*pooledSSHConn // key -> SSH 连接
 	encryptor       *crypto.Encryptor
-	hostKeyCallback ssh.HostKeyCallback
+	hostKeyCallback sshutil.HostKeyPolicy
 	serverService   server.Service
 	serverRepo      server.Repository
 	credentialStore *sshDomain.RuntimeCredentialStore
@@ -208,7 +216,7 @@ type Pool struct {
 func NewPool(
 	config *PoolConfig,
 	encryptor *crypto.Encryptor,
-	hostKeyCallback ssh.HostKeyCallback,
+	hostKeyCallback sshutil.HostKeyPolicy,
 	serverService server.Service,
 	serverRepo server.Repository,
 	credentialStore *sshDomain.RuntimeCredentialStore,
@@ -256,12 +264,12 @@ func NewPool(
 	return p
 }
 
-func (p *Pool) updateServerOSIfEmpty(srv *server.Server, sshClient *sshDomain.Client) {
+func (p *Pool) updateServerOSIfEmpty(ctx context.Context, srv *server.Server, sshClient *sshDomain.Client) {
 	if p.serverRepo == nil || srv == nil || sshClient == nil || strings.TrimSpace(srv.OS) != "" {
 		return
 	}
 
-	osValue, err := sshClient.DetectOS()
+	osValue, err := sshClient.DetectOS(ctx)
 	if err != nil {
 		p.log.Warn("Failed to detect server OS", "serverID", srv.ID.String(), "error", err)
 		return
@@ -271,7 +279,7 @@ func (p *Pool) updateServerOSIfEmpty(srv *server.Server, sshClient *sshDomain.Cl
 		return
 	}
 
-	if err := p.serverRepo.UpdateOSIfEmpty(context.Background(), srv.ID, osValue); err != nil {
+	if err := p.serverRepo.UpdateOSIfEmpty(ctx, srv.ID, osValue); err != nil {
 		p.log.Warn("Failed to update server OS", "serverID", srv.ID.String(), "error", err)
 	}
 }
@@ -296,22 +304,23 @@ func DefaultPoolConfig() *PoolConfig {
 }
 
 // makeKey 生成连接唯一标识
-func makeKey(userID, serverID uuid.UUID) string {
-	return fmt.Sprintf("%s:%s", userID.String(), serverID.String())
+func makeKey(scope access.Scope, serverID uuid.UUID) string {
+	return string(scope.Actor().Kind) + ":" + scope.Actor().SessionID + ":" + serverID.String()
 }
 
 // Get 获取一次 SFTP 会话（底层 SSH 复用），并限制每条 SSH 的并发 SFTP 会话数
-func (p *Pool) Get(ctx context.Context, userID, serverID uuid.UUID) (client *PooledClient, err error) {
-	if p.credentialStore != nil {
-		if credential, ok := p.credentialStore.Get(userID, serverID); ok {
-			return p.get(ctx, userID, serverID, true, sshDomain.CredentialOptions(credential)...)
-		}
-	}
-	return p.get(ctx, userID, serverID, true)
+func (p *Pool) Get(ctx context.Context, serverID uuid.UUID, action protocol.Action) (client *PooledClient, err error) {
+	return p.get(ctx, serverID, action, true)
 }
 
 // GetWithCredential 使用临时凭据获取一次 SFTP 会话。凭据只用于创建新的底层 SSH 连接。
-func (p *Pool) GetWithCredential(ctx context.Context, userID, serverID uuid.UUID, credential Credential, extraOpts ...sshDomain.ClientOption) (client *PooledClient, err error) {
+func (p *Pool) GetWithCredential(ctx context.Context, serverID uuid.UUID, action protocol.Action, credential Credential, extraOpts ...sshDomain.ClientOption) (client *PooledClient, err error) {
+	if !access.Current(ctx).IsOwner() {
+		if credential.AuthMethod != "" || credential.Secret != "" || credential.Password != "" || credential.PrivateKey != "" || credential.PrivateKeyPassphrase != "" {
+			return nil, access.ErrForbidden
+		}
+		return p.get(ctx, serverID, action, true, extraOpts...)
+	}
 	if !credential.AuthMethod.IsValid() {
 		return nil, fmt.Errorf("unsupported auth method: %s", credential.AuthMethod)
 	}
@@ -325,24 +334,59 @@ func (p *Pool) GetWithCredential(ctx context.Context, userID, serverID uuid.UUID
 	})
 	opts = append(opts, extraOpts...)
 
-	client, err = p.get(ctx, userID, serverID, false, opts...)
+	client, err = p.get(ctx, serverID, action, false, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	if p.credentialStore != nil {
-		p.credentialStore.Set(userID, serverID, credential.toSSHCredential())
+		p.credentialStore.Set(ctx, serverID, client.sshConn.Revision, client.sshConn.CredentialDigest, credential.toSSHCredential())
 	}
 
 	return client, nil
 }
 
-func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse bool, opts ...sshDomain.ClientOption) (client *PooledClient, err error) {
-	key := makeKey(userID, serverID)
-
-	if ctx == nil {
-		ctx = context.Background()
+func (p *Pool) get(ctx context.Context, serverID uuid.UUID, action protocol.Action, allowReuse bool, opts ...sshDomain.ClientOption) (client *PooledClient, err error) {
+	scope, scopeErr := access.FromContext(ctx)
+	if scopeErr != nil {
+		return nil, scopeErr
 	}
+	if err := scope.Check(ctx, access.Requirement{Action: protocol.WorkspaceRead, ServerID: serverID.String()}); err != nil {
+		return nil, err
+	}
+	switch action {
+	case protocol.FilesList, protocol.FilesRead, protocol.FilesDownload, protocol.FilesUpload, protocol.FilesWrite, protocol.FilesDelete:
+	default:
+		return nil, access.ErrForbidden
+	}
+	lease, leaseErr := scope.OpenWork(ctx, access.Task, access.Requirement{Action: action, ServerID: serverID.String()})
+	if leaseErr != nil {
+		return nil, leaseErr
+	}
+	ctx = lease.Context()
+	defer func() {
+		if err != nil || client == nil {
+			lease.Close(err)
+			return
+		}
+		if err = scope.Check(ctx, access.Requirement{Action: action, ServerID: serverID.String()}); err != nil {
+			client.Release()
+			client = nil
+			lease.Close(err)
+			return
+		}
+		client.Client.ctx = ctx
+		client.Client.action = action
+		client.lease = lease
+		client.cancelDone = make(chan struct{})
+		borrowed := client
+		client.stopCancel = context.AfterFunc(ctx, func() { defer close(borrowed.cancelDone); _ = borrowed.Client.CloseSFTP() })
+	}()
+	srv, err := p.serverService.GetByID(ctx, scope, serverID)
+	if err != nil {
+		return nil, err
+	}
+	key := makeKey(scope, serverID)
 
 	permitAcquired, err := p.acquirePermit(ctx, key)
 	if err != nil {
@@ -358,24 +402,28 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 	// 尝试复用 SSH 连接（在池锁内完成存在性检查 + IncRef，避免竞态）
 	p.mu.Lock()
 	sshConn, exists := p.connections[key]
-	if allowReuse && exists && sshConn.IsHealthy() {
+	if allowReuse && exists && sshConn.Revision == srv.ConnectionRevision && sshConn.IsHealthy() {
 		sshConn.IncRef()
 		p.mu.Unlock()
 
 		// 优先借用空闲 SFTP 通道（池锁外）
-		sftpClient, createErr := sshConn.acquireSFTP(serverID)
+		sftpClient, createErr := sshConn.acquireSFTP(ctx, serverID)
 		if createErr != nil {
+			if ctx.Err() != nil {
+				p.releaseSSH(key, sshConn)
+				return nil, ctx.Err()
+			}
 			p.log.Warn("基于现有 SSH 创建 SFTP 失败，摘除并尝试重建",
 				"key", key,
 				"error", createErr)
 			p.invalidateSSHConn(key, sshConn)
 
-			newSSH, newErr := p.createNewSSH(ctx, userID, serverID, allowReuse, opts...)
+			newSSH, newErr := p.createNewSSH(ctx, srv, allowReuse, opts...)
 			if newErr != nil {
 				err = createErr
 				return nil, err
 			}
-			newSFTP, newErr := newSSH.acquireSFTP(serverID)
+			newSFTP, newErr := newSSH.acquireSFTP(ctx, serverID)
 			if newErr != nil {
 				p.invalidateSSHConn(key, newSSH)
 				err = newErr
@@ -386,7 +434,6 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 				Client:         newSFTP,
 				pool:           p,
 				key:            key,
-				userID:         userID,
 				serverID:       serverID,
 				sshConn:        newSSH,
 				permitAcquired: permitAcquired,
@@ -401,7 +448,6 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 			Client:         sftpClient,
 			pool:           p,
 			key:            key,
-			userID:         userID,
 			serverID:       serverID,
 			sshConn:        sshConn,
 			permitAcquired: permitAcquired,
@@ -413,12 +459,12 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 		delete(p.connections, key)
 		p.mu.Unlock()
 		p.markClosingAndMaybeClose(sshConn)
-		newSSH, newErr := p.createNewSSH(ctx, userID, serverID, false, opts...)
+		newSSH, newErr := p.createNewSSH(ctx, srv, false, opts...)
 		if newErr != nil {
 			err = newErr
 			return nil, err
 		}
-		newSFTP, newErr := newSSH.acquireSFTP(serverID)
+		newSFTP, newErr := newSSH.acquireSFTP(ctx, serverID)
 		if newErr != nil {
 			p.invalidateSSHConn(key, newSSH)
 			err = newErr
@@ -429,7 +475,6 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 			Client:         newSFTP,
 			pool:           p,
 			key:            key,
-			userID:         userID,
 			serverID:       serverID,
 			sshConn:        newSSH,
 			permitAcquired: permitAcquired,
@@ -449,12 +494,12 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 	}
 
 	// 创建新 SSH 连接
-	newSSH, err := p.createNewSSH(ctx, userID, serverID, allowReuse, opts...)
+	newSSH, err := p.createNewSSH(ctx, srv, allowReuse, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	sftpClient, err := newSSH.acquireSFTP(serverID)
+	sftpClient, err := newSSH.acquireSFTP(ctx, serverID)
 	if err != nil {
 		p.invalidateSSHConn(key, newSSH)
 		return nil, err
@@ -464,7 +509,6 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 		Client:         sftpClient,
 		pool:           p,
 		key:            key,
-		userID:         userID,
 		serverID:       serverID,
 		sshConn:        newSSH,
 		permitAcquired: permitAcquired,
@@ -473,15 +517,23 @@ func (p *Pool) get(ctx context.Context, userID, serverID uuid.UUID, allowReuse b
 }
 
 // createNewSSH 创建新的 SSH 连接并加入池
-func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, allowReuse bool, opts ...sshDomain.ClientOption) (*pooledSSHConn, error) {
-	key := makeKey(userID, serverID)
+func (p *Pool) createNewSSH(ctx context.Context, srv *server.Server, allowReuse bool, opts ...sshDomain.ClientOption) (*pooledSSHConn, error) {
+	serverID := srv.ID
+	scope, scopeErr := access.FromContext(ctx)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}
+	if err := scope.Check(ctx, access.Requirement{Action: protocol.WorkspaceRead, ServerID: serverID.String()}); err != nil {
+		return nil, err
+	}
+	key := makeKey(scope, serverID)
 
 	// 双重检查（持有写锁）
 	p.mu.Lock()
 	if allowReuse {
-		if existing, exists := p.connections[key]; exists && existing.IsHealthy() {
-			p.mu.Unlock()
+		if existing, exists := p.connections[key]; exists && existing.Revision == srv.ConnectionRevision && existing.IsHealthy() {
 			existing.IncRef()
+			p.mu.Unlock()
 			p.log.Debug("复用刚创建的 SSH 连接",
 				"key", key,
 				"refCount", existing.GetRefCount())
@@ -495,10 +547,6 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 	}
 	p.mu.Unlock()
 
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
 	// 如果调用方没有设置 deadline，则用池的连接超时兜底
 	ctxToUse := ctx
 	if _, ok := ctx.Deadline(); !ok {
@@ -507,14 +555,15 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 		defer cancel()
 	}
 
-	// 获取服务器信息（不持有锁）
-	srv, err := p.serverService.GetByID(ctxToUse, userID, serverID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get server: %w", err)
+	// Resolve cached credentials against the exact snapshot used for this dial.
+	if allowReuse && p.credentialStore != nil {
+		if credential, ok := p.credentialStore.Get(ctxToUse, serverID, srv.ConnectionRevision, srv.CredentialDigest()); ok {
+			opts = append(sshDomain.CredentialOptions(credential), opts...)
+		}
 	}
 
 	// 创建 SSH 客户端并使用 ctx 建连（可取消）
-	sshClient, err := sshDomain.NewClient(srv, p.encryptor, p.hostKeyCallback, opts...)
+	sshClient, err := sshDomain.NewClient(ctxToUse, srv, p.encryptor, p.hostKeyCallback, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SSH client: %w", err)
 	}
@@ -524,6 +573,12 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 
+	current, err := p.serverService.GetByID(ctxToUse, scope, serverID)
+	if err != nil || current.ConnectionRevision != srv.ConnectionRevision || current.CredentialDigest() != srv.CredentialDigest() {
+		_ = sshClient.Close()
+		return nil, access.ErrResourceChanged
+	}
+
 	// 更新服务器状态
 	srv.UpdateStatus(server.StatusOnline)
 	if p.serverRepo != nil {
@@ -531,10 +586,11 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 			p.log.Warn("Failed to update server status", "error", err)
 		}
 	}
-	go p.updateServerOSIfEmpty(srv, sshClient)
+	go p.updateServerOSIfEmpty(ctx, srv, sshClient)
 
 	newConn := &pooledSSHConn{
-		Client:     sshClient,
+		Client: sshClient,
+		Actor:  scope.Actor(), ServerID: serverID, Revision: srv.ConnectionRevision, CredentialDigest: srv.CredentialDigest(),
 		refCount:   1,
 		createdAt:  time.Now(),
 		lastUsedAt: time.Now(),
@@ -543,7 +599,7 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 	// 加入连接池（持有写锁）
 	p.mu.Lock()
 	if allowReuse {
-		if existing, exists := p.connections[key]; exists && existing.IsHealthy() {
+		if existing, exists := p.connections[key]; exists && existing.Revision == srv.ConnectionRevision && existing.IsHealthy() {
 			existing.IncRef()
 			p.mu.Unlock()
 			go newConn.Client.Close()
@@ -558,8 +614,12 @@ func (p *Pool) createNewSSH(ctx context.Context, userID, serverID uuid.UUID, all
 		p.markClosingAndMaybeClose(existing)
 		p.mu.Lock()
 	}
+	displaced := p.connections[key]
 	p.connections[key] = newConn
 	p.mu.Unlock()
+	if displaced != nil {
+		p.markClosingAndMaybeClose(displaced)
+	}
 
 	p.log.Debug("创建新 SSH 连接",
 		"key", key,
@@ -614,8 +674,8 @@ func (p *Pool) forceRemoveSSH(key string, conn *pooledSSHConn) {
 }
 
 // CloseByKey 关闭特定 key 的连接（用于用户主动关闭 SFTP 面板）
-func (p *Pool) CloseByKey(userID, serverID uuid.UUID) {
-	key := makeKey(userID, serverID)
+func (p *Pool) CloseByKey(ctx context.Context, serverID uuid.UUID) {
+	key := makeKey(access.Current(ctx), serverID)
 
 	p.mu.Lock()
 	conn, exists := p.connections[key]
@@ -629,6 +689,22 @@ func (p *Pool) CloseByKey(userID, serverID uuid.UUID) {
 		p.markClosingAndMaybeClose(conn)
 		p.log.Debug("主动关闭 SSH 连接(延迟到空闲)",
 			"key", key)
+	}
+}
+
+// InvalidateResource removes old transports after a trusted owner mutation.
+func (p *Pool) InvalidateResource(ownerID, serverID uuid.UUID) {
+	p.mu.Lock()
+	var affected []*pooledSSHConn
+	for key, conn := range p.connections {
+		if conn.Actor.Kind == protocol.Owner && conn.Actor.ID == ownerID.String() && conn.ServerID == serverID {
+			delete(p.connections, key)
+			affected = append(affected, conn)
+		}
+	}
+	p.mu.Unlock()
+	for _, conn := range affected {
+		p.markClosingAndMaybeClose(conn)
 	}
 }
 
@@ -871,37 +947,23 @@ func (p *Pool) keepAlive(conn *pooledSSHConn) bool {
 }
 
 // Stats 返回连接池统计信息
-func (p *Pool) Stats() map[string]interface{} {
+func (p *Pool) Stats() protocol.SFTPPoolStats {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-
-	totalConnections := len(p.connections)
-	activeConnections := 0
-	idleConnections := 0
-
-	connectionDetails := make([]map[string]interface{}, 0, len(p.connections))
-
+	result := protocol.SFTPPoolStats{TotalConnections: len(p.connections), Connections: make([]protocol.SFTPPoolConnection, 0, len(p.connections))}
 	for key, conn := range p.connections {
-		refCount := conn.GetRefCount()
-		if refCount > 0 {
-			activeConnections++
-		} else {
-			idleConnections++
+		conn.mu.RLock()
+		detail := protocol.SFTPPoolConnection{
+			Key: key, RefCount: conn.refCount, CreatedAt: conn.createdAt, LastUsedAt: conn.lastUsedAt,
+			IsHealthy: !conn.closing && conn.Client != nil && conn.Client.IsConnected(),
 		}
-
-		connectionDetails = append(connectionDetails, map[string]interface{}{
-			"key":        key,
-			"refCount":   refCount,
-			"createdAt":  conn.createdAt,
-			"lastUsedAt": conn.lastUsedAt,
-			"isHealthy":  conn.IsHealthy(),
-		})
+		conn.mu.RUnlock()
+		if detail.RefCount > 0 {
+			result.ActiveConnections++
+		} else {
+			result.IdleConnections++
+		}
+		result.Connections = append(result.Connections, detail)
 	}
-
-	return map[string]interface{}{
-		"totalConnections":  totalConnections,
-		"activeConnections": activeConnections,
-		"idleConnections":   idleConnections,
-		"connections":       connectionDetails,
-	}
+	return result
 }

@@ -41,3 +41,26 @@ func TestCancelTaskCancelsDurableJobAndExecutionContext(t *testing.T) {
 		t.Fatal("execution context was not canceled")
 	}
 }
+
+func TestUnknownTargetsStopShortOfClaimingFailure(t *testing.T) {
+	cases := []struct {
+		statuses        []executionStatus
+		want            executionStatus
+		success, failed int
+	}{
+		{[]executionStatus{executionStatusSuccess, executionStatusUnknown, executionStatusCanceled}, executionStatusUnknown, 1, 0},
+		{[]executionStatus{executionStatusFailed, executionStatusUnknown}, executionStatusUnknown, 0, 1},
+		{[]executionStatus{executionStatusSuccess, executionStatusCanceled}, executionStatusCanceled, 1, 0},
+		{[]executionStatus{executionStatusSuccess, executionStatusSuccess}, executionStatusSuccess, 2, 0},
+	}
+	for _, tc := range cases {
+		var targets []ServerExecutionResult
+		for _, status := range tc.statuses {
+			targets = append(targets, ServerExecutionResult{Status: status})
+		}
+		status, success, failed := summarizeServerExecution(targets)
+		if status != tc.want || success != tc.success || failed != tc.failed {
+			t.Fatalf("incorrect summary: %s %d %d", status, success, failed)
+		}
+	}
+}

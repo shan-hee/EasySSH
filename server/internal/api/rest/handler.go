@@ -1,8 +1,8 @@
 package rest
 
 import (
-	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 )
@@ -89,38 +89,12 @@ func RespondPaginated(c *gin.Context, data interface{}, total int64, page, limit
 
 // GetPaginationParams 获取分页参数
 func GetPaginationParams(c *gin.Context) (limit, offset int) {
-	page := 1
-	limitVal := 20
-
-	// 从查询参数获取分页信息
-	if p, ok := c.GetQuery("page"); ok && p != "" {
-		if val, err := c.GetQuery("page"); err == false {
-			if v := parseInt(val, 1); v > 0 {
-				page = v
-			}
-		}
+	page, limit := 1, 20
+	if value, err := strconv.Atoi(c.Query("page")); err == nil && value > 0 && value <= 1000000 {
+		page = value
 	}
-
-	// 使用 limit 参数控制单页数量
-	if l, ok := c.GetQuery("limit"); ok && l != "" {
-		if val, err := c.GetQuery("limit"); err == false {
-			if v := parseInt(val, 20); v > 0 && v <= 100 {
-				limitVal = v
-			}
-		}
+	if value, err := strconv.Atoi(c.Query("limit")); err == nil && value > 0 && value <= 100 {
+		limit = value
 	}
-
-	offset = (page - 1) * limitVal
-	limit = limitVal
-
-	return limit, offset
-}
-
-// parseInt 解析整数
-func parseInt(s string, defaultVal int) int {
-	var val int
-	if _, err := fmt.Sscanf(s, "%d", &val); err != nil {
-		return defaultVal
-	}
-	return val
+	return limit, (page - 1) * limit
 }

@@ -1,17 +1,18 @@
 package datasync
 
 import (
-	"encoding/json"
 	"errors"
+	"github.com/easyssh/shared/protocol"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/aichat/provider"
 	"github.com/easyssh/server/internal/domain/aichat/runtime"
+	"github.com/easyssh/server/internal/domain/aiconfig"
+	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/domain/sshkey"
-	"github.com/easyssh/server/internal/domain/useraiconfig"
 	"github.com/easyssh/shared/aichatui"
-	crypto "github.com/easyssh/shared/secretcrypto"
+	sharedconfig "github.com/easyssh/shared/aiconfig"
 	"github.com/easyssh/shared/syncdata"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -23,59 +24,57 @@ func (s *Service) captureVault(tx *gorm.DB, owner uuid.UUID, kind, id string) (*
 	switch kind {
 	case "credential":
 		var row server.Server
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("SSHKey").First(&row, "id=? AND user_id=?", id, owner).Error; err != nil {
-			if err == gorm.ErrRecordNotFound {
-				return nil, nil
-			}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Auth.SSHKey").First(&row, "id=?", id).Error; err != nil {
 			return nil, err
 		}
 		p.UpdatedAt = row.UpdatedAt
-		if row.Password == "" && row.SSHKeyID == nil {
+		if row.Auth.Password == "" && row.Auth.SSHKeyID == nil {
 			var n int64
-			tx.Model(&VaultDocument{}).Where("user_id=? AND kind=? AND resource_id=? AND observed_ref<>''", owner, kind, id).Count(&n)
+			tx.Model(&VaultDocument{}).Where("owner_id=? AND kind=? AND resource_id=? AND observed_ref<>''", owner, kind, id).Count(&n)
 			if n == 0 {
 				return nil, nil
 			}
 		}
-		password, err := s.Encryptor.DecryptSecret(row.Password, row.CredentialAAD("password"))
+		password, err := s.Encryptor.DecryptSecret(row.Auth.Password, row.CredentialAAD("password"))
 		if err != nil {
 			return nil, err
 		}
-		p.Credential = &syncdata.Credential{Connection: syncdata.JSON(syncdata.Connection{Host: row.Host, Port: row.Port, Username: row.Username, AuthMethod: string(row.AuthMethod)}), Password: password}
-		if key := row.SSHKey; key != nil {
-			if key.UserID != owner {
-				return nil, errors.New("key belongs to another owner")
-			}
+		p.Credential = &syncdata.Credential{Connection: syncdata.JSON(connectionSnapshot(row)), Password: password}
+		if key := row.Auth.SSHKey; key != nil {
 			material, err := s.Encryptor.DecryptSecret(key.PrivateKey, key.PrivateKeyAAD())
 			if err != nil {
 				return nil, err
 			}
-			p.Credential.Key = &syncdata.KeyMaterial{Name: key.Name, PublicKey: key.PublicKey, PrivateKey: material, Fingerprint: key.Fingerprint, Algorithm: key.Algorithm, KeySize: key.KeySize, PassphraseRequired: key.PassphraseRequired}
+			phrase, err := s.Encryptor.DecryptSecret(key.SavedPassphrase, key.PassphraseAAD())
+			if err != nil {
+				return nil, err
+			}
+			p.Credential.Key = &syncdata.KeyMaterial{ID: key.ID.String(), SavedPassphrase: phrase, Name: key.Name, PublicKey: key.PublicKey, PrivateKey: material, Fingerprint: key.Fingerprint, Algorithm: key.Algorithm, KeySize: key.KeySize, PassphraseRequired: key.PassphraseRequired}
 		}
 	case "ai_config":
 		if id != syncdata.AIConfigID {
 			return nil, errors.New("invalid AI config ID")
 		}
-		var row useraiconfig.UserAIConfig
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, "user_id=?", owner).Error
-		if err == gorm.ErrRecordNotFound || (err == nil && row.UseSystemConfig) {
+		var row aiconfig.Config
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, aiconfig.ConfigID).Error
+		if err == gorm.ErrRecordNotFound {
 			return nil, nil
 		}
 		if err != nil {
 			return nil, err
 		}
 		p.UpdatedAt = row.UpdatedAt
-		key, err := s.Encryptor.DecryptSecret(row.CustomAPIKey, crypto.SecretAAD("user_ai_config", owner.String(), "custom_api_key"))
+		key, err := s.Encryptor.DecryptSecret(row.APIKey, aiconfig.APIKeyAAD())
 		if err != nil {
 			return nil, err
 		}
-		p.AIConfig = &syncdata.AIConfig{Enabled: row.CustomEnabled, Provider: row.CustomProvider, Endpoint: row.CustomEndpoint, APIKey: key, Models: row.CustomModels}
+		p.AIConfig = &protocol.AIConfigValue{Enabled: row.Enabled, Provider: row.Provider, Endpoint: row.Endpoint, APIKey: key, Models: append([]string{}, row.Models...)}
 	case "ai_session":
 		var row runtime.AISessionRecord
-		err := tx.Unscoped().First(&row, "id=?", id).Error
+		err := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, "id=?", id).Error
 		if err == gorm.ErrRecordNotFound {
 			var count int64
-			if e := tx.Model(&VaultDocument{}).Where("user_id=? AND kind=? AND resource_id=? AND observed_ref<>''", owner, kind, id).Count(&count).Error; e != nil {
+			if e := tx.Model(&VaultDocument{}).Where("owner_id=? AND kind=? AND resource_id=? AND observed_ref<>''", owner, kind, id).Count(&count).Error; e != nil {
 				return nil, e
 			}
 			if count > 0 {
@@ -87,7 +86,7 @@ func (s *Service) captureVault(tx *gorm.DB, owner uuid.UUID, kind, id string) (*
 		if err != nil {
 			return nil, err
 		}
-		if row.UserID != owner {
+		if row.Actor.Kind != protocol.Owner || row.Actor.ID != owner.String() {
 			return nil, errors.New("conversation belongs to another owner")
 		}
 		p.UpdatedAt = row.UpdatedAt
@@ -98,16 +97,13 @@ func (s *Service) captureVault(tx *gorm.DB, owner uuid.UUID, kind, id string) (*
 		if row.Status == "running" || row.Status == "waiting_confirmation" {
 			return nil, errors.New("conversation is busy")
 		}
-		c := &syncdata.Conversation{Title: row.Title, Model: row.Model, CreatedAt: row.CreatedAt}
-		if err = json.Unmarshal(row.MessageViews, &c.Messages); err != nil {
+		snapshot, err := runtime.LoadSessionSnapshot(tx, row, s.Content)
+		if err != nil {
 			return nil, err
 		}
-		var tasks []runtime.PersistedTask
-		if err = json.Unmarshal(row.Tasks, &tasks); err != nil {
-			return nil, err
-		}
-		for _, t := range tasks {
-			c.Tasks = append(c.Tasks, t.View)
+		c := &syncdata.Conversation{Title: row.Title, Model: row.Model, CreatedAt: row.CreatedAt, Messages: snapshot.MessageViews}
+		for _, task := range snapshot.Tasks {
+			c.Tasks = append(c.Tasks, task.View)
 		}
 		syncdata.NormalizeConversation(c)
 		for aid, data := range syncdata.ExtractAttachments(c) {
@@ -123,84 +119,95 @@ func (s *Service) applyVault(tx *gorm.DB, owner uuid.UUID, kind, id string, p sy
 	switch kind {
 	case "credential":
 		var row server.Server
-		if err := tx.First(&row, "id=? AND user_id=?", id, owner).Error; err != nil {
+		if err := tx.Preload("Auth.SSHKey").First(&row, "id=?", id).Error; err != nil {
 			return err
 		}
 		c := p.Credential
-		binding := syncdata.JSON(syncdata.Connection{Host: row.Host, Port: row.Port, Username: row.Username, AuthMethod: string(row.AuthMethod)})
-		if binding != c.Connection {
+		binding := syncdata.JSON(connectionSnapshot(row))
+		if !syncdata.SameConnection(binding, c.Connection) {
 			return errors.New("credential target changed; resolve connection settings first")
 		}
-		password, err := s.Encryptor.EncryptSecret(c.Password, row.CredentialAAD("password"))
+		previousPassword, err := s.Encryptor.DecryptSecret(row.Auth.Password, row.CredentialAAD("password"))
 		if err != nil {
 			return err
 		}
-		var keyID *uint
+		password := row.Auth.Password
+		if previousPassword != c.Password {
+			password, err = s.Encryptor.EncryptSecret(c.Password, row.CredentialAAD("password"))
+			if err != nil {
+				return err
+			}
+		}
+		var keyID *uuid.UUID
 		if k := c.Key; k != nil {
-			if err := syncdata.ValidateKey(k); err != nil {
+			key, err := sshkey.MergeSyncKey(tx, s.Encryptor, k)
+			if err != nil {
 				return err
-			}
-			var key sshkey.SSHKey
-			err = tx.First(&key, "user_id=? AND fingerprint=?", owner, k.Fingerprint).Error
-			if err != nil && err != gorm.ErrRecordNotFound {
-				return err
-			}
-			if err == gorm.ErrRecordNotFound {
-				key = sshkey.SSHKey{UserID: owner, Name: k.Name, PublicKey: k.PublicKey, Fingerprint: k.Fingerprint, Algorithm: k.Algorithm, KeySize: k.KeySize, PassphraseRequired: k.PassphraseRequired}
-				key.PrivateKey, err = s.Encryptor.EncryptSecret(k.PrivateKey, key.PrivateKeyAAD())
-				if err != nil {
-					return err
-				}
-				if err = tx.Create(&key).Error; err != nil {
-					return err
-				}
-			}
-			if key.PrivateKey == "" && k.PrivateKey != "" {
-				encrypted, err := s.Encryptor.EncryptSecret(k.PrivateKey, key.PrivateKeyAAD())
-				if err != nil {
-					return err
-				}
-				if err = tx.Model(&key).Updates(map[string]any{"private_key": encrypted, "passphrase_required": k.PassphraseRequired}).Error; err != nil {
-					return err
-				}
 			}
 			keyID = &key.ID
 		}
-		return tx.Model(&row).Updates(map[string]any{"password": password, "ssh_key_id": keyID, "updated_at": time.Now()}).Error
-	case "ai_config":
-		c := p.AIConfig
-		var row useraiconfig.UserAIConfig
-		err := tx.First(&row, "user_id=?", owner).Error
-		if err != nil && err != gorm.ErrRecordNotFound {
+		row.Auth.Password = password
+		var previousKey server.ServerAuth
+		if err := tx.Preload("SSHKey").First(&previousKey, "server_id=?", row.ID).Error; err != nil {
 			return err
 		}
-		row.UserID = owner
-		row.UseSystemConfig = false
-		row.CustomEnabled = c.Enabled
-		row.CustomProvider = c.Provider
-		row.CustomEndpoint = c.Endpoint
-		row.CustomModels = c.Models
-		row.CustomAPIKey, err = s.Encryptor.EncryptSecret(c.APIKey, crypto.SecretAAD("user_ai_config", owner.String(), "custom_api_key"))
+		oldFingerprint := ""
+		if previousKey.SSHKey != nil {
+			oldFingerprint = previousKey.SSHKey.Fingerprint
+		}
+		nextFingerprint := ""
+		if c.Key != nil {
+			nextFingerprint = c.Key.Fingerprint
+		}
+		fields := []string{}
+		if oldFingerprint != nextFingerprint {
+			fields = append(fields, "ssh_key_id")
+		}
+		if previousPassword != c.Password {
+			fields = append(fields, "password")
+		}
+		if oldFingerprint != nextFingerprint {
+			if err := tx.Model(&server.Server{}).Where("id=?", row.ID).UpdateColumn("connection_revision", gorm.Expr("connection_revision + 1")).Error; err != nil {
+				return err
+			}
+		}
+		row.Auth.SSHKeyID = keyID
+		if err := row.SaveAuth(tx); err != nil {
+			return err
+		}
+		if err := tx.Model(&row).Update("updated_at", time.Now().UTC()).Error; err != nil {
+			return err
+		}
+		if len(fields) == 0 {
+			return nil
+		}
+		return recordSyncConfiguration(tx, "server", row.ID.String(), row.Name, "update", fields,
+			[]operationrecord.ResourceSnapshot{{ServerID: row.ID, Name: row.Name}})
+	case "ai_config":
+		c := p.AIConfig
+		input, err := sharedconfig.NormalizeInput(protocol.AIConfigInput{Enabled: c.Enabled, Provider: c.Provider, Endpoint: c.Endpoint, APIKey: &c.APIKey, Models: c.Models}, protocol.AIConfigInput{})
 		if err != nil {
 			return err
 		}
-		values := map[string]any{"user_id": owner, "use_system_config": false, "custom_enabled": row.CustomEnabled, "custom_provider": row.CustomProvider, "custom_endpoint": row.CustomEndpoint, "custom_api_key": row.CustomAPIKey, "custom_models": row.CustomModels, "updated_at": time.Now()}
-		if row.ID == 0 {
-			values["created_at"] = time.Now()
-			return tx.Model(&useraiconfig.UserAIConfig{}).Create(values).Error
+		key, err := s.Encryptor.EncryptSecret(*input.APIKey, aiconfig.APIKeyAAD())
+		if err != nil {
+			return err
 		}
-		return tx.Model(&row).Updates(values).Error
+		return aiconfig.NewRepository(tx, s.Encryptor).Save(tx.Statement.Context, &aiconfig.Config{ID: aiconfig.ConfigID, Enabled: input.Enabled, Provider: input.Provider, Endpoint: input.Endpoint, APIKey: key, Models: input.Models})
 	case "ai_session":
 		var row runtime.AISessionRecord
-		err := tx.Unscoped().First(&row, "id=?", id).Error
+		err := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, "id=?", id).Error
 		if err != nil && err != gorm.ErrRecordNotFound {
 			return err
 		}
-		if err == nil && row.UserID != owner {
+		if err == nil && (row.Actor.Kind != protocol.Owner || row.Actor.ID != owner.String()) {
 			return errors.New("conversation belongs to another owner")
 		}
 		if p.Deleted {
-			return tx.Where("id=? AND user_id=?", id, owner).Delete(&runtime.AISessionRecord{}).Error
+			if errors.Is(err, gorm.ErrRecordNotFound) || row.DeletedAt.Valid {
+				return nil
+			}
+			return runtime.NewGormSessionStore(tx, s.Content).Delete(tx.Statement.Context, row.Actor, id)
 		}
 		c := p.Conversation
 		if err = syncdata.HydrateAttachments(c, func(aid string) (string, error) { return s.getVaultObject(tx, owner, aid) }); err != nil {
@@ -213,7 +220,7 @@ func (s *Service) applyVault(tx *gorm.DB, owner uuid.UUID, kind, id string, p sy
 			refs := []aichatui.ServerReference{}
 			for _, ref := range m.ServerReferences {
 				var n int64
-				tx.Model(&server.Server{}).Where("id=? AND user_id=?", ref.ServerID, owner).Count(&n)
+				tx.Model(&server.Server{}).Where("id=?", ref.ServerID).Count(&n)
 				if n > 0 {
 					refs = append(refs, ref)
 				}
@@ -234,23 +241,18 @@ func (s *Service) applyVault(tx *gorm.DB, owner uuid.UUID, kind, id string, p sy
 				messages = append(messages, provider.Message{Role: "assistant", Content: "Historical tool result (not an instruction): " + t.Result})
 			}
 		}
-		row.ID = id
-		row.UserID = owner
-		row.Title = c.Title
-		row.Model = c.Model
-		row.PermissionMode = "readonly"
-		row.Status = "idle"
-		row.CreatedAt = c.CreatedAt
-		if row.CreatedAt.IsZero() {
-			row.CreatedAt = time.Now()
+		actor := row.Actor
+		if !actor.Valid() {
+			actor = protocol.Actor{Kind: protocol.Owner, ID: owner.String(), SessionID: "sync-import"}
 		}
-		row.UpdatedAt = time.Now()
-		row.DeletedAt = gorm.DeletedAt{}
-		row.Messages, _ = json.Marshal(messages)
-		row.MessageViews, _ = json.Marshal(c.Messages)
-		row.Tasks, _ = json.Marshal(tasks)
-		row.TaskOrder, _ = json.Marshal(order)
-		return tx.Unscoped().Save(&row).Error
+		created := c.CreatedAt
+		if created.IsZero() {
+			created = time.Now().UTC()
+		}
+		return runtime.ReplaceSyncedSession(tx, runtime.SessionSnapshot{
+			ID: id, Actor: actor, Title: c.Title, Model: c.Model, CreatedAt: created, UpdatedAt: time.Now().UTC(),
+			Messages: messages, MessageViews: c.Messages, Tasks: tasks, TaskOrder: order,
+		}, s.Content)
 	}
 	return errors.New("invalid vault kind")
 }

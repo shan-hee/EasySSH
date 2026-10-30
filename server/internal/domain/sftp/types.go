@@ -1,31 +1,9 @@
 package sftp
 
-import (
-	"os"
-	"time"
-)
+import "github.com/easyssh/shared/protocol"
 
-// FileInfo 文件信息
-type FileInfo struct {
-	Name       string      `json:"name"`
-	Path       string      `json:"path"`
-	Size       int64       `json:"size"`
-	Mode       os.FileMode `json:"mode"`
-	IsDir      bool        `json:"is_dir"`
-	IsLink     bool        `json:"is_link"`
-	LinkTarget string      `json:"link_target,omitempty"`
-	ModTime    time.Time   `json:"mod_time"`
-	Permission string      `json:"permission"`
-}
-
-// DirectoryListing 目录列表
-type DirectoryListing struct {
-	Parent  string      `json:"parent,omitempty"`
-	Path    string      `json:"path"`
-	Files   []*FileInfo `json:"files"`
-	Total   int         `json:"total"`
-	CanRead bool        `json:"can_read"`
-}
+type FileInfo = protocol.FileInfo
+type DirectoryListing = protocol.DirectoryListing
 
 // UploadProgress 上传进度
 type UploadProgress struct {
@@ -50,11 +28,4 @@ type FileOperationResult struct {
 	Path    string `json:"path,omitempty"`
 }
 
-// DiskUsage 磁盘使用情况
-type DiskUsage struct {
-	Path        string  `json:"path"`
-	Total       uint64  `json:"total"`
-	Used        uint64  `json:"used"`
-	Available   uint64  `json:"available"`
-	UsedPercent float64 `json:"used_percent"`
-}
+type DiskUsage = protocol.DiskUsage

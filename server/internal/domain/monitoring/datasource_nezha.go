@@ -24,6 +24,8 @@ func NewNezhaDataSource(endpoint, token string) *NezhaDataSource {
 		token:    token,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
+			// Credentials belong to the configured endpoint, not redirect targets.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}
 }

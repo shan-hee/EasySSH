@@ -3,6 +3,8 @@ package monitoring
 import (
 	"context"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,24 +14,24 @@ import (
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	sharedmonitoring "github.com/easyssh/shared/monitoring"
 	"github.com/easyssh/shared/secretcrypto"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/ssh"
 )
 
 // EasySSHDataSource EasySSH 数据源（SSH 直连采集）
 type EasySSHDataSource struct {
 	serverService   server.Service
 	encryptor       *crypto.Encryptor
-	userID          uuid.UUID
-	hostKeyCallback ssh.HostKeyCallback
+	ownerID         uuid.UUID
+	hostKeyCallback sshutil.HostKeyPolicy
 }
 
 // NewEasySSHDataSource 创建 EasySSH 数据源
-func NewEasySSHDataSource(serverService server.Service, encryptor *crypto.Encryptor, userID uuid.UUID, hostKeyCallback ssh.HostKeyCallback) *EasySSHDataSource {
+func NewEasySSHDataSource(serverService server.Service, encryptor *crypto.Encryptor, ownerID uuid.UUID, hostKeyCallback sshutil.HostKeyPolicy) *EasySSHDataSource {
 	return &EasySSHDataSource{
 		serverService:   serverService,
 		encryptor:       encryptor,
-		userID:          userID,
+		ownerID:         ownerID,
 		hostKeyCallback: hostKeyCallback,
 	}
 }
@@ -47,7 +49,7 @@ func (e *EasySSHDataSource) TestConnection(ctx context.Context) error {
 // GetServersResources 获取所有服务器资源概览
 func (e *EasySSHDataSource) GetServersResources(ctx context.Context) ([]*ServerResourceSummary, error) {
 	// 获取用户的所有服务器
-	servers, _, err := e.serverService.List(ctx, e.userID, 1000, 0)
+	servers, _, err := e.serverService.List(ctx, access.Current(ctx), 1000, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list servers: %w", err)
 	}
@@ -94,8 +96,16 @@ func (e *EasySSHDataSource) collectServerResource(ctx context.Context, srv *serv
 		return result
 	}
 
+	lease, err := access.Current(ctx).OpenWork(ctx, access.Task, access.Requirement{Action: protocol.MonitorRead, ServerID: srv.ID.String()})
+	if err != nil {
+		result.Status = "error"
+		result.Error = err.Error()
+		return result
+	}
+	defer lease.Close(nil)
+	ctx = lease.Context()
 	// 创建 SSH 客户端
-	sshClient, err := sshDomain.NewClient(srv, e.encryptor, e.hostKeyCallback)
+	sshClient, err := sshDomain.NewClient(ctx, srv, e.encryptor, e.hostKeyCallback)
 	if err != nil {
 		result.Status = "error"
 		result.Error = fmt.Sprintf("failed to create SSH client: %v", err)
@@ -106,27 +116,16 @@ func (e *EasySSHDataSource) collectServerResource(ctx context.Context, srv *serv
 	connCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	connDone := make(chan error, 1)
-	go func() {
-		connDone <- sshClient.Connect(srv.Host, srv.Port)
-	}()
-
-	select {
-	case err = <-connDone:
-		if err != nil {
-			result.Status = "error"
-			result.Error = fmt.Sprintf("failed to connect: %v", err)
-			return result
-		}
-	case <-connCtx.Done():
+	if err := sshClient.ConnectContext(connCtx, srv.Host, srv.Port); err != nil {
+		_ = sshClient.Close()
 		result.Status = "error"
-		result.Error = "connection timeout"
+		result.Error = err.Error()
 		return result
 	}
 	defer sshClient.Close()
 
 	// 执行批量采集脚本
-	output, err := sshClient.ExecuteCommand(sharedmonitoring.BuildMetricsScript(sharedmonitoring.MetricsScriptOptions{
+	commandResult, err := sshClient.ExecuteCommandDetailedContext(ctx, sharedmonitoring.BuildMetricsScript(sharedmonitoring.MetricsScriptOptions{
 		IncludeStaticInfo: true,
 	}))
 	if err != nil {
@@ -136,7 +135,7 @@ func (e *EasySSHDataSource) collectServerResource(ctx context.Context, srv *serv
 	}
 
 	// 解析输出
-	e.parseBatchOutput(output, result)
+	e.parseBatchOutput(commandResult.Output, result)
 	result.Status = "online"
 
 	return result

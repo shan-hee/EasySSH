@@ -6,18 +6,18 @@ import (
 	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/shared/secretcrypto"
-	"golang.org/x/crypto/ssh"
+	"github.com/easyssh/shared/sshutil"
 )
 
 // DataSourceFactory 数据源工厂
 type DataSourceFactory struct {
 	serverService   server.Service
 	encryptor       *crypto.Encryptor
-	hostKeyCallback ssh.HostKeyCallback
+	hostKeyCallback sshutil.HostKeyPolicy
 }
 
 // NewDataSourceFactory 创建数据源工厂
-func NewDataSourceFactory(serverService server.Service, encryptor *crypto.Encryptor, hostKeyCallback ssh.HostKeyCallback) *DataSourceFactory {
+func NewDataSourceFactory(serverService server.Service, encryptor *crypto.Encryptor, hostKeyCallback sshutil.HostKeyPolicy) *DataSourceFactory {
 	return &DataSourceFactory{
 		serverService:   serverService,
 		encryptor:       encryptor,
@@ -25,53 +25,59 @@ func NewDataSourceFactory(serverService server.Service, encryptor *crypto.Encryp
 	}
 }
 
-// CreateDataSource 根据用户配置创建数据源
-func (f *DataSourceFactory) CreateDataSource(user *auth.User) (DataSourceProvider, error) {
-	switch auth.MonitorDataSourceType(user.MonitorDataSource) {
+// CreateDataSource 根据所有者配置创建数据源
+func (f *DataSourceFactory) CreateDataSource(owner *auth.Owner) (DataSourceProvider, error) {
+	switch auth.MonitorDataSourceType(owner.MonitorDataSource) {
 	case auth.MonitorDataSourceEasySSH, "":
 		// 默认使用 EasySSH
-		return NewEasySSHDataSource(f.serverService, f.encryptor, user.ID, f.hostKeyCallback), nil
+		return NewEasySSHDataSource(f.serverService, f.encryptor, owner.ID, f.hostKeyCallback), nil
 
 	case auth.MonitorDataSourceNezha:
-		if user.NezhaAPIEndpoint == "" {
+		if owner.NezhaAPIEndpoint == "" {
 			return nil, fmt.Errorf("Nezha endpoint is required")
 		}
 		// 解密 token
-		token := user.NezhaAPIToken
-		if token != "" && f.encryptor != nil {
-			decrypted, err := f.encryptor.DecryptSecret(token, crypto.SecretAAD("users", user.ID.String(), "nezha_api_token"))
+		token := owner.NezhaAPIToken
+		if token != "" {
+			if f.encryptor == nil {
+				return nil, fmt.Errorf("monitor credential encryption is unavailable")
+			}
+			decrypted, err := f.encryptor.DecryptSecret(token, crypto.SecretAAD("owners", owner.ID.String(), "nezha_api_token"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to decrypt Nezha token: %w", err)
 			}
 			token = decrypted
 		}
-		return NewNezhaDataSource(user.NezhaAPIEndpoint, token), nil
+		return NewNezhaDataSource(owner.NezhaAPIEndpoint, token), nil
 
 	case auth.MonitorDataSourceKomari:
-		if user.KomariAPIEndpoint == "" {
+		if owner.KomariAPIEndpoint == "" {
 			return nil, fmt.Errorf("Komari endpoint is required")
 		}
 		// 解密 token
-		token := user.KomariAPIToken
-		if token != "" && f.encryptor != nil {
-			decrypted, err := f.encryptor.DecryptSecret(token, crypto.SecretAAD("users", user.ID.String(), "komari_api_token"))
+		token := owner.KomariAPIToken
+		if token != "" {
+			if f.encryptor == nil {
+				return nil, fmt.Errorf("monitor credential encryption is unavailable")
+			}
+			decrypted, err := f.encryptor.DecryptSecret(token, crypto.SecretAAD("owners", owner.ID.String(), "komari_api_token"))
 			if err != nil {
 				return nil, fmt.Errorf("failed to decrypt Komari token: %w", err)
 			}
 			token = decrypted
 		}
-		return NewKomariDataSource(user.KomariAPIEndpoint, token), nil
+		return NewKomariDataSource(owner.KomariAPIEndpoint, token), nil
 
 	default:
-		return nil, fmt.Errorf("unsupported data source type: %s", user.MonitorDataSource)
+		return nil, fmt.Errorf("unsupported data source type: %s", owner.MonitorDataSource)
 	}
 }
 
 // CreateDataSourceFromConfig 根据配置创建数据源（用于测试连接等场景）
-func (f *DataSourceFactory) CreateDataSourceFromConfig(config *DataSourceConfig, user *auth.User) (DataSourceProvider, error) {
+func (f *DataSourceFactory) CreateDataSourceFromConfig(config *DataSourceConfig, owner *auth.Owner) (DataSourceProvider, error) {
 	switch config.Type {
 	case "easyssh", "":
-		return NewEasySSHDataSource(f.serverService, f.encryptor, user.ID, f.hostKeyCallback), nil
+		return NewEasySSHDataSource(f.serverService, f.encryptor, owner.ID, f.hostKeyCallback), nil
 
 	case "nezha":
 		if config.Endpoint == "" {

@@ -3,14 +3,12 @@ package systeminfo
 
 import (
 	"fmt"
+	"github.com/easyssh/shared/protocol"
 	"regexp"
 	"strings"
 )
 
-type Snapshot struct {
-	Rows      []map[string]string `json:"rows"`
-	Truncated bool                `json:"truncated"`
-}
+type Snapshot = protocol.SystemTableSnapshot
 
 // Match complete ss process tuples, not numbers embedded in process names.
 var socketProcessPattern = regexp.MustCompile(`\("(?:\\.|[^"\\])*",pid=([1-9][0-9]*),fd=[0-9]+\)`)

@@ -1,9 +1,6 @@
 package systemconfig
 
 import (
-	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -11,7 +8,8 @@ import (
 
 // SystemConfig 系统配置模型
 type SystemConfig struct {
-	ID uint `gorm:"primarykey" json:"id"`
+	PublicURL string `gorm:"size:512" json:"public_url"`
+	ID        uint   `gorm:"primarykey" json:"id"`
 
 	// 基本信息
 	SystemName    string `gorm:"size:100;not null;default:'EasySSH'" json:"system_name"`
@@ -25,31 +23,15 @@ type SystemConfig struct {
 
 	// 文件传输设置
 	DownloadExcludePatterns string `gorm:"type:text" json:"download_exclude_patterns"`
-	DefaultDownloadMode     string `gorm:"size:20;not null;default:'fast'" json:"default_download_mode"`
 	SkipExcludedOnUpload    bool   `gorm:"not null;default:true" json:"skip_excluded_on_upload"`
 	MaxFileUploadSize       int    `gorm:"not null;default:100" json:"max_file_upload_size"` // MB
 	TransferStoragePath     string `gorm:"type:text" json:"transfer_storage_path"`
 	TransferRetentionDays   int    `gorm:"not null;default:3" json:"transfer_retention_days"`
 	TransferMaxStorageGB    int    `gorm:"not null;default:10" json:"transfer_max_storage_gb"`
 	TransferMaxConcurrency  int    `gorm:"not null;default:2" json:"transfer_max_concurrency"`
+	TransferMaxEntries      int    `gorm:"not null;default:100000" json:"transfer_max_entries"`
+	TransferMaxDepth        int    `gorm:"not null;default:128" json:"transfer_max_depth"`
 	TransferCleanupEnabled  bool   `gorm:"not null;default:true" json:"transfer_cleanup_enabled"`
-
-	// 注册配置
-	RequireEmailVerification bool   `gorm:"not null;default:false" json:"require_email_verification"`
-	AllowRegistration        bool   `gorm:"not null;default:false" json:"allow_registration"`
-	DefaultRole              string `gorm:"size:64;not null;default:'user'" json:"default_role"`
-
-	// OAuth 配置
-	OAuthEnabled       bool   `gorm:"column:oauth_enabled;not null;default:false" json:"oauth_enabled"`
-	GoogleClientID     string `gorm:"size:255" json:"google_client_id"`
-	GoogleClientSecret string `gorm:"size:255" json:"-"` // 加密存储，不返回给前端
-
-	OAuthAccessTokenMinutes      int    `gorm:"column:oauth_access_token_minutes;not null;default:15" json:"oauth_access_token_minutes"`
-	OAuthRefreshTokenDays        int    `gorm:"column:oauth_refresh_token_days;not null;default:30" json:"oauth_refresh_token_days"`
-	ExternalOAuthProviderEnabled bool   `gorm:"column:external_oauth_provider_enabled;not null;default:false" json:"external_oauth_provider_enabled"`
-	ExternalOAuthIssuer          string `gorm:"column:external_oauth_issuer;size:512" json:"external_oauth_issuer"`
-	ExternalOAuthLoginURL        string `gorm:"column:external_oauth_login_url;size:512" json:"external_oauth_login_url"`
-	ExternalOAuthRedirectURIs    string `gorm:"column:external_oauth_redirect_uris;type:text" json:"external_oauth_redirect_uris"`
 
 	// 连接运行参数（启动时读取，修改后重启生效）
 	SFTPMaxIdleTimeSeconds     int `gorm:"not null;default:120" json:"sftp_max_idle_time_seconds"`
@@ -71,115 +53,6 @@ func (SystemConfig) TableName() string {
 	return "system_config"
 }
 
-type OAuthTokenConfig struct {
-	AccessTokenMinutes           int    `json:"oauth_access_token_minutes"`
-	RefreshTokenDays             int    `json:"oauth_refresh_token_days"`
-	ExternalOAuthProviderEnabled bool   `json:"external_oauth_provider_enabled"`
-	Issuer                       string `json:"external_oauth_issuer"`
-	LoginURL                     string `json:"external_oauth_login_url"`
-	RedirectURIs                 string `json:"external_oauth_redirect_uris"`
-}
-
-func DefaultOAuthTokenConfig() *OAuthTokenConfig {
-	return &OAuthTokenConfig{
-		AccessTokenMinutes:           15,
-		RefreshTokenDays:             30,
-		ExternalOAuthProviderEnabled: false,
-		Issuer:                       "",
-		LoginURL:                     "",
-		RedirectURIs:                 "",
-	}
-}
-
-func (c *SystemConfig) OAuthTokenConfig() *OAuthTokenConfig {
-	defaults := DefaultOAuthTokenConfig()
-	if c == nil {
-		return defaults
-	}
-
-	settings := &OAuthTokenConfig{
-		AccessTokenMinutes:           c.OAuthAccessTokenMinutes,
-		RefreshTokenDays:             c.OAuthRefreshTokenDays,
-		ExternalOAuthProviderEnabled: c.ExternalOAuthProviderEnabled,
-		Issuer:                       strings.TrimRight(strings.TrimSpace(c.ExternalOAuthIssuer), "/"),
-		LoginURL:                     strings.TrimSpace(c.ExternalOAuthLoginURL),
-		RedirectURIs:                 strings.TrimSpace(c.ExternalOAuthRedirectURIs),
-	}
-
-	if settings.AccessTokenMinutes <= 0 {
-		settings.AccessTokenMinutes = defaults.AccessTokenMinutes
-	}
-	if settings.RefreshTokenDays <= 0 {
-		settings.RefreshTokenDays = defaults.RefreshTokenDays
-	}
-
-	return settings
-}
-
-func (c *OAuthTokenConfig) RedirectURIList() []string {
-	if c == nil {
-		return nil
-	}
-	var values []string
-	for _, value := range strings.Split(c.RedirectURIs, "\n") {
-		if value = strings.TrimSpace(value); value != "" {
-			values = append(values, value)
-		}
-	}
-	return values
-}
-
-// ValidateExternalProvider 验证对外 OAuth/OIDC Provider 的完整公开地址。
-// 三项全部为空表示未配置，不影响 EasySSH 自身登录。
-func (c *OAuthTokenConfig) ValidateExternalProvider(production bool) error {
-	if c == nil {
-		return fmt.Errorf("external OAuth/OIDC Provider configuration is unavailable")
-	}
-	if c.Issuer == "" && c.LoginURL == "" && len(c.RedirectURIList()) == 0 {
-		return fmt.Errorf("external OAuth/OIDC Provider URLs are not configured")
-	}
-	issuer, err := validateAbsoluteURL(c.Issuer)
-	if err != nil {
-		return fmt.Errorf("invalid external OAuth issuer: %w", err)
-	}
-	loginURL, err := validateAbsoluteURL(c.LoginURL)
-	if err != nil {
-		return fmt.Errorf("invalid external OAuth login URL: %w", err)
-	}
-	redirectURIs := c.RedirectURIList()
-	if len(redirectURIs) == 0 {
-		return fmt.Errorf("at least one external OAuth redirect URI is required")
-	}
-	parsedRedirects := make([]*url.URL, 0, len(redirectURIs))
-	for _, redirectURI := range redirectURIs {
-		parsed, err := validateAbsoluteURL(redirectURI)
-		if err != nil {
-			return fmt.Errorf("invalid external OAuth redirect URI %q: %w", redirectURI, err)
-		}
-		parsedRedirects = append(parsedRedirects, parsed)
-	}
-	if production {
-		if issuer.Scheme != "https" || loginURL.Scheme != "https" {
-			return fmt.Errorf("external OAuth issuer and login URL must use HTTPS in production")
-		}
-		for index, redirectURI := range parsedRedirects {
-			if redirectURI.Scheme != "https" {
-				return fmt.Errorf("external OAuth redirect URI must use HTTPS in production: %s", redirectURIs[index])
-			}
-		}
-	}
-	return nil
-}
-
-func validateAbsoluteURL(raw string) (*url.URL, error) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return nil, fmt.Errorf("must be an absolute URL")
-	}
-	return parsed, nil
-}
-
-// DefaultDownloadExcludePatterns 默认下载排除规则
 func DefaultDownloadExcludePatterns() string {
 	return `node_modules
 .git
@@ -217,6 +90,10 @@ func DefaultTransferMaxConcurrency() int {
 	return 2
 }
 
+func DefaultTransferMaxEntries() int { return 100000 }
+
+func DefaultTransferMaxDepth() int { return 128 }
+
 func DefaultJobQueueMaxConcurrency() int {
 	return 2
 }
@@ -233,6 +110,12 @@ func (c *SystemConfig) ApplyTransferDefaults() {
 	}
 	if c.TransferMaxConcurrency <= 0 {
 		c.TransferMaxConcurrency = DefaultTransferMaxConcurrency()
+	}
+	if c.TransferMaxEntries == 0 {
+		c.TransferMaxEntries = DefaultTransferMaxEntries()
+	}
+	if c.TransferMaxDepth == 0 {
+		c.TransferMaxDepth = DefaultTransferMaxDepth()
 	}
 	if c.SFTPMaxIdleTimeSeconds <= 0 {
 		c.SFTPMaxIdleTimeSeconds = 120

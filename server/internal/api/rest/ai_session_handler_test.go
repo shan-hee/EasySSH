@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/aichatui"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,7 +26,7 @@ type restFakeResolver struct {
 	config provider.Config
 }
 
-func (r restFakeResolver) Resolve(ctx context.Context, userID uuid.UUID) (provider.Config, error) {
+func (r restFakeResolver) Resolve(ctx context.Context) (provider.Config, error) {
 	return r.config, nil
 }
 
@@ -72,17 +74,19 @@ func (r *restFakeTurnRunner) snapshotCalls() []provider.TurnRequest {
 	return calls
 }
 
-func newTestAISessionRouter(userID uuid.UUID, handler *AISessionHandler) *gin.Engine {
+func newTestAISessionRouter(t *testing.T, ownerID uuid.UUID, handler *AISessionHandler) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 
+	scope := access.Current(testAIContext(t, ownerID))
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
-		c.Set("user_id", userID.String())
+		c.Request = c.Request.WithContext(access.WithScope(c.Request.Context(), scope))
 	})
 	router.GET("/sessions", handler.ListSessions)
 	router.GET("/sessions/latest", handler.GetLatestSession)
 	router.POST("/sessions", handler.CreateSession)
 	router.GET("/sessions/:session_id", handler.GetSession)
+	router.GET("/sessions/:session_id/history", handler.History)
 	router.PATCH("/sessions/:session_id", handler.RenameSession)
 	router.POST("/sessions/:session_id/chat", handler.Chat)
 	router.GET("/sessions/:session_id/chat/stream", handler.ResumeChat)
@@ -91,6 +95,22 @@ func newTestAISessionRouter(userID uuid.UUID, handler *AISessionHandler) *gin.En
 	router.DELETE("/sessions/:session_id/messages/:message_id", handler.DeleteMessage)
 	router.DELETE("/sessions/:session_id", handler.DeleteSession)
 	return router
+}
+
+func TestAISDKStorageErrorFinishesStreamWithoutPendingState(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	streamer := newAISDKUIMessageStreamer(recorder, false)
+	done, err := streamer.writeRuntimeEvent(runtime.Event{Type: runtime.EventError,
+		Error: &runtime.ErrorView{Code: "storage_unavailable", Message: "存储暂时不可用，本轮已停止。"},
+	})
+	require.NoError(t, err)
+	require.True(t, done)
+	chunks := parseSSEChunks(t, recorder)
+	_, ok := findChunk(chunks, "data-session")
+	require.False(t, ok)
+	failure, ok := findChunk(chunks, "error")
+	require.True(t, ok)
+	require.Equal(t, "存储暂时不可用，本轮已停止。", failure["errorText"])
 }
 
 func performJSONRequest(t *testing.T, router http.Handler, method, path string, body interface{}) *httptest.ResponseRecorder {
@@ -181,7 +201,7 @@ func chatRequestBody(content string, extra map[string]interface{}) map[string]in
 }
 
 func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
-	userID := uuid.New()
+	ownerID := uuid.New()
 	runner := &restFakeTurnRunner{
 		scripts: []restFakeTurnScript{
 			{
@@ -205,7 +225,7 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 	}
 
 	manager := runtime.NewManager(
-		restFakeResolver{config: provider.Config{Model: "fake-model"}},
+		restFakeResolver{config: provider.Config{Model: "fake-model", Models: []string{"fake-model", "gpt-test"}}},
 		runner,
 		registry.NewToolRegistry([]registry.ToolSpec{
 			{
@@ -215,7 +235,7 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 				Dangerous:       true,
 				ConfirmStrategy: registry.ConfirmUser,
 				SupportedModes:  []string{"balanced", "privileged"},
-				Executor: func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (registry.ExecutionResult, error) {
+				Executor: func(ctx context.Context, args json.RawMessage) (registry.ExecutionResult, error) {
 					return registry.ExecutionResult{Content: "load average: 0.12 0.18 0.22"}, nil
 				},
 			},
@@ -224,7 +244,7 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 	)
 
 	handler := NewAISessionHandler(manager)
-	router := newTestAISessionRouter(userID, handler)
+	router := newTestAISessionRouter(t, ownerID, handler)
 
 	createResp := performJSONRequest(t, router, http.MethodPost, "/sessions", map[string]interface{}{
 		"model":           "gpt-test",
@@ -250,9 +270,8 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 	sessionData, ok := sessionChunk["data"].(map[string]interface{})
 	require.True(t, ok)
 	require.Equal(t, string(runtime.SessionStatusRunning), sessionData["status"])
-	sessionMessages, ok := sessionData["messages"].([]interface{})
-	require.True(t, ok)
-	require.Len(t, sessionMessages, 1)
+	require.EqualValues(t, 1, sessionData["message_count"])
+	require.NotContains(t, sessionData, "messages")
 	require.Contains(t, chunkTypes(sendChunks), "tool-approval-request")
 	approvalChunk, ok := findChunk(sendChunks, "tool-approval-request")
 	require.True(t, ok)
@@ -291,9 +310,10 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 	var latest CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(latestResp.Body.Bytes(), &latest))
 	require.Equal(t, runtime.SessionStatusIdle, latest.Session.Status)
-	require.Len(t, latest.Session.Tasks, 1)
-	require.Equal(t, runtime.TaskStatusSucceeded, latest.Session.Tasks[0].Status)
-	require.Equal(t, "命令执行完成，系统负载正常。", latest.Session.Messages[len(latest.Session.Messages)-1].Content)
+	history := readAIHistory(t, router, created.SessionID)
+	require.Len(t, history.Tasks, 1)
+	require.Equal(t, runtime.TaskStatusSucceeded, history.Tasks[0].Status)
+	require.Equal(t, "命令执行完成，系统负载正常。", history.Messages[len(history.Messages)-1].Content)
 
 	calls := runner.snapshotCalls()
 	require.Len(t, calls, 2)
@@ -302,17 +322,17 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 	require.Equal(t, "执行 uptime", calls[0].Messages[1].Content)
 	require.NotContains(t, calls[0].Messages[1].Content, "请只返回摘要")
 	require.Contains(t, calls[1].Messages[0].Content, "请只返回摘要")
-	require.Equal(t, "执行 uptime", latest.Session.Messages[0].Content)
+	require.Equal(t, "执行 uptime", history.Messages[0].Content)
 
 	closeResp := performJSONRequest(t, router, http.MethodDelete, "/sessions/"+created.SessionID, nil)
 	require.Equal(t, http.StatusNoContent, closeResp.Code)
 
-	_, err := manager.GetSession(userID, created.SessionID)
+	_, err := manager.GetSession(testAIContext(t, ownerID), created.SessionID)
 	require.ErrorIs(t, err, runtime.ErrSessionNotFound)
 }
 
 func TestAISessionHandlerUpdateAndDeleteUserMessage(t *testing.T) {
-	userID := uuid.New()
+	ownerID := uuid.New()
 	runner := &restFakeTurnRunner{
 		scripts: []restFakeTurnScript{
 			{
@@ -326,14 +346,14 @@ func TestAISessionHandlerUpdateAndDeleteUserMessage(t *testing.T) {
 		},
 	}
 	manager := runtime.NewManager(
-		restFakeResolver{config: provider.Config{Model: "fake-model"}},
+		restFakeResolver{config: provider.Config{Model: "fake-model", Models: []string{"fake-model", "gpt-test"}}},
 		runner,
 		registry.NewToolRegistry(nil),
 		time.Minute,
 	)
 
 	handler := NewAISessionHandler(manager)
-	router := newTestAISessionRouter(userID, handler)
+	router := newTestAISessionRouter(t, ownerID, handler)
 
 	createResp := performJSONRequest(t, router, http.MethodPost, "/sessions", map[string]interface{}{
 		"model":           "gpt-test",
@@ -354,8 +374,10 @@ func TestAISessionHandlerUpdateAndDeleteUserMessage(t *testing.T) {
 	require.Equal(t, http.StatusOK, latestResp.Code)
 	var latest CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(latestResp.Body.Bytes(), &latest))
-	require.Len(t, latest.Session.Messages, 2)
-	userMessageID := latest.Session.Messages[0].ID
+	history := readAIHistory(t, router, created.SessionID)
+	require.Equal(t, 2, latest.Session.MessageCount)
+	require.Len(t, history.Messages, 2)
+	userMessageID := history.Messages[0].ID
 	require.Equal(t, clientMessageID, userMessageID)
 
 	updateResp := performJSONRequest(t, router, http.MethodPatch, "/sessions/"+created.SessionID+"/messages/"+userMessageID, map[string]interface{}{
@@ -364,15 +386,17 @@ func TestAISessionHandlerUpdateAndDeleteUserMessage(t *testing.T) {
 	require.Equal(t, http.StatusOK, updateResp.Code)
 	var updated CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(updateResp.Body.Bytes(), &updated))
-	require.Len(t, updated.Session.Messages, 1)
-	require.Equal(t, "你能做什么", updated.Session.Messages[0].Content)
+	updatedHistory := readAIHistory(t, router, created.SessionID)
+	require.Equal(t, 1, updated.Session.MessageCount)
+	require.Len(t, updatedHistory.Messages, 1)
+	require.Equal(t, "你能做什么", updatedHistory.Messages[0].Content)
 
 	regenerateResp := performJSONRequest(t, router, http.MethodPost, "/sessions/"+created.SessionID+"/chat", map[string]interface{}{
 		"id":        "test-chat",
 		"trigger":   "submit-message",
 		"messageId": userMessageID,
 		"mode":      "regenerate",
-		"messages":  updated.Session.UIMessages,
+		"messages":  aichatui.BuildMessages(updatedHistory.Messages, updatedHistory.Tasks),
 	})
 	require.Equal(t, http.StatusOK, regenerateResp.Code)
 
@@ -380,31 +404,33 @@ func TestAISessionHandlerUpdateAndDeleteUserMessage(t *testing.T) {
 	require.Equal(t, http.StatusOK, regeneratedResp.Code)
 	var regenerated CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(regeneratedResp.Body.Bytes(), &regenerated))
-	require.Len(t, regenerated.Session.Messages, 2)
-	require.Equal(t, userMessageID, regenerated.Session.Messages[0].ID)
-	require.Equal(t, "你能做什么", regenerated.Session.Messages[0].Content)
-	require.Equal(t, "assistant", regenerated.Session.Messages[1].Role)
-	require.Equal(t, "新回答", regenerated.Session.Messages[1].Content)
+	regeneratedHistory := readAIHistory(t, router, created.SessionID)
+	require.Equal(t, 2, regenerated.Session.MessageCount)
+	require.Len(t, regeneratedHistory.Messages, 2)
+	require.Equal(t, userMessageID, regeneratedHistory.Messages[0].ID)
+	require.Equal(t, "你能做什么", regeneratedHistory.Messages[0].Content)
+	require.Equal(t, "assistant", regeneratedHistory.Messages[1].Role)
+	require.Equal(t, "新回答", regeneratedHistory.Messages[1].Content)
 
 	deleteResp := performJSONRequest(t, router, http.MethodDelete, "/sessions/"+created.SessionID+"/messages/"+userMessageID, nil)
 	require.Equal(t, http.StatusOK, deleteResp.Code)
 	var deleted CreateAISessionResponse
 	require.NoError(t, json.Unmarshal(deleteResp.Body.Bytes(), &deleted))
-	require.Empty(t, deleted.Session.Messages)
-	require.Empty(t, deleted.Session.UIMessages)
+	require.Zero(t, deleted.Session.MessageCount)
+	require.Empty(t, readAIHistory(t, router, created.SessionID).Messages)
 }
 
 func TestAISessionHandlerReturnsNotFoundForUnknownSession(t *testing.T) {
-	userID := uuid.New()
+	ownerID := uuid.New()
 	manager := runtime.NewManager(
-		restFakeResolver{config: provider.Config{Model: "fake-model"}},
+		restFakeResolver{config: provider.Config{Model: "fake-model", Models: []string{"fake-model", "gpt-test"}}},
 		nil,
 		registry.NewToolRegistry(nil),
 		time.Minute,
 	)
 
 	handler := NewAISessionHandler(manager)
-	router := newTestAISessionRouter(userID, handler)
+	router := newTestAISessionRouter(t, ownerID, handler)
 
 	resp := performJSONRequest(t, router, http.MethodPost, "/sessions/not-found/chat", chatRequestBody("hello", nil))
 	require.Equal(t, http.StatusNotFound, resp.Code)

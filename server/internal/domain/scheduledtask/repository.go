@@ -1,20 +1,27 @@
 package scheduledtask
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Repository 定时任务数据访问接口
 type Repository interface {
-	Create(task *ScheduledTask) error
-	Update(id uuid.UUID, updates map[string]interface{}) error
-	Delete(id uuid.UUID) error
+	Create(context.Context, *ScheduledTask) error
+	Update(context.Context, uuid.UUID, map[string]interface{}) error
+	UpdateRuntime(context.Context, uuid.UUID, map[string]interface{}) error
+	Delete(context.Context, uuid.UUID) error
 	GetByID(id uuid.UUID) (*ScheduledTask, error)
-	List(userID uuid.UUID, req *ListScheduledTasksRequest) ([]ScheduledTask, int64, error)
-	GetStatistics(userID uuid.UUID) (*ScheduledTaskStatistics, error)
-	UpdateRunStatus(id uuid.UUID, status string, runCount, failureCount int) error
-	GetEnabledTasks() ([]ScheduledTask, error)
+	CheckStage(context.Context, uuid.UUID, string, uuid.UUID, bool, string) error
+	List(ctx context.Context, req *protocol.ListScheduledTasksRequest) ([]ScheduledTask, int64, error)
+	GetStatistics(ctx context.Context) (*protocol.ScheduledTaskStatistics, error)
+	GetEnabledTasks(context.Context, uuid.UUID, int) ([]ScheduledTask, error)
 }
 
 type repository struct {
@@ -27,18 +34,74 @@ func NewRepository(db *gorm.DB) Repository {
 }
 
 // Create 创建定时任务
-func (r *repository) Create(task *ScheduledTask) error {
-	return r.db.Create(task).Error
+func (r *repository) Create(ctx context.Context, task *ScheduledTask) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(task).Error; err != nil {
+			return err
+		}
+		return recordConfiguration(tx, "scheduled_task_create", *task, []string{"created"}, nil)
+	})
 }
 
 // Update 更新定时任务
-func (r *repository) Update(id uuid.UUID, updates map[string]interface{}) error {
-	return r.db.Model(&ScheduledTask{}).Where("id = ?", id).Updates(updates).Error
+func (r *repository) Update(ctx context.Context, id uuid.UUID, updates map[string]interface{}) error {
+	if ids, ok := updates["server_ids"].([]string); ok {
+		encoded, err := json.Marshal(ids)
+		if err != nil {
+			return err
+		}
+		updates["server_ids"] = string(encoded)
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var before ScheduledTask
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&before, "id=?", id).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&ScheduledTask{}).Where("id=?", id).Updates(updates).Error; err != nil {
+			return err
+		}
+		var after ScheduledTask
+		if err := tx.First(&after, "id=?", id).Error; err != nil {
+			return err
+		}
+		fields := configurationFields(before, after)
+		if len(fields) == 0 {
+			return nil
+		}
+		action := "scheduled_task_update"
+		if len(fields) == 1 && fields[0] == "enabled" {
+			action = "scheduled_task_toggle"
+		}
+		return recordConfiguration(tx, action, after, fields, &before)
+	})
 }
 
-// Delete 删除定时任务（软删除）
-func (r *repository) Delete(id uuid.UUID) error {
-	return r.db.Where("id = ?", id).Delete(&ScheduledTask{}).Error
+// Runtime timestamps and counters are observations, not configuration changes.
+// Keep their writes independent of an owner request and never accept executable
+// fields through this scheduler-only path.
+func (r *repository) UpdateRuntime(ctx context.Context, id uuid.UUID, updates map[string]interface{}) error {
+	for field := range updates {
+		switch field {
+		case "last_run_at", "next_run_at", "run_count", "failure_count", "last_status":
+		default:
+			return access.ErrForbidden
+		}
+	}
+	return r.db.WithContext(ctx).Model(&ScheduledTask{}).Where("id=?", id).Updates(updates).Error
+}
+
+// Delete removes the definition; later execution stages reject its absence.
+func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row ScheduledTask
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, "id=?", id).Error; err != nil {
+			return err
+		}
+		if err := tx.Unscoped().Delete(&row).Error; err != nil {
+			return err
+		}
+		return recordConfiguration(tx, "scheduled_task_delete", row, []string{"deleted"}, nil)
+	})
 }
 
 // GetByID 根据ID获取定时任务
@@ -52,11 +115,11 @@ func (r *repository) GetByID(id uuid.UUID) (*ScheduledTask, error) {
 }
 
 // List 获取定时任务列表
-func (r *repository) List(userID uuid.UUID, req *ListScheduledTasksRequest) ([]ScheduledTask, int64, error) {
+func (r *repository) List(ctx context.Context, req *protocol.ListScheduledTasksRequest) ([]ScheduledTask, int64, error) {
 	var tasks []ScheduledTask
 	var total int64
 
-	query := r.db.Model(&ScheduledTask{}).Where("user_id = ?", userID)
+	query := r.db.WithContext(ctx).Model(&ScheduledTask{})
 
 	// 筛选条件
 	if req.Enabled != nil {
@@ -85,57 +148,39 @@ func (r *repository) List(userID uuid.UUID, req *ListScheduledTasksRequest) ([]S
 }
 
 // GetStatistics 获取定时任务统计信息
-func (r *repository) GetStatistics(userID uuid.UUID) (*ScheduledTaskStatistics, error) {
-	stats := &ScheduledTaskStatistics{
-		ByType: make(map[string]int),
+func (r *repository) GetStatistics(ctx context.Context) (*protocol.ScheduledTaskStatistics, error) {
+	var groups []struct {
+		Enabled         bool
+		TaskType        string
+		Count, RunCount int64
 	}
-
-	// 总任务数
-	r.db.Model(&ScheduledTask{}).Where("user_id = ?", userID).Count(&stats.TotalTasks)
-
-	// 启用的任务数
-	r.db.Model(&ScheduledTask{}).Where("user_id = ? AND enabled = ?", userID, true).Count(&stats.EnabledTasks)
-
-	// 禁用的任务数
-	r.db.Model(&ScheduledTask{}).Where("user_id = ? AND enabled = ?", userID, false).Count(&stats.DisabledTasks)
-
-	// 总运行次数
-	r.db.Model(&ScheduledTask{}).
-		Where("user_id = ?", userID).
-		Select("COALESCE(SUM(run_count), 0)").
-		Scan(&stats.TotalRuns)
-
-	// 按类型统计
-	var typeStats []struct {
-		TaskType string
-		Count    int
+	if err := r.db.WithContext(ctx).Model(&ScheduledTask{}).Select("enabled, task_type, count(*) AS count, COALESCE(SUM(run_count),0) AS run_count").Group("enabled, task_type").Scan(&groups).Error; err != nil {
+		return nil, err
 	}
-	r.db.Model(&ScheduledTask{}).
-		Select("task_type, count(*) as count").
-		Where("user_id = ?", userID).
-		Group("task_type").
-		Scan(&typeStats)
-
-	for _, stat := range typeStats {
-		stats.ByType[stat.TaskType] = stat.Count
+	stats := &protocol.ScheduledTaskStatistics{ByType: map[string]int{}}
+	for _, row := range groups {
+		stats.TotalTasks += row.Count
+		stats.TotalRuns += row.RunCount
+		stats.ByType[row.TaskType] += int(row.Count)
+		if row.Enabled {
+			stats.EnabledTasks += row.Count
+		} else {
+			stats.DisabledTasks += row.Count
+		}
 	}
-
 	return stats, nil
 }
 
-// UpdateRunStatus 更新任务运行状态
-func (r *repository) UpdateRunStatus(id uuid.UUID, status string, runCount, failureCount int) error {
-	updates := map[string]interface{}{
-		"last_status":   status,
-		"run_count":     runCount,
-		"failure_count": failureCount,
+// GetEnabledTasks reads only scheduling metadata in bounded UUID order.
+func (r *repository) GetEnabledTasks(ctx context.Context, after uuid.UUID, limit int) ([]ScheduledTask, error) {
+	if limit < 1 || limit > 100 {
+		return nil, errors.New("invalid schedule page size")
 	}
-	return r.db.Model(&ScheduledTask{}).Where("id = ?", id).Updates(updates).Error
-}
-
-// GetEnabledTasks 获取所有启用的定时任务（用于调度器）
-func (r *repository) GetEnabledTasks() ([]ScheduledTask, error) {
-	var tasks []ScheduledTask
-	err := r.db.Where("enabled = ?", true).Find(&tasks).Error
+	query := r.db.WithContext(ctx).Model(&ScheduledTask{}).Where("enabled=?", true)
+	if after != uuid.Nil {
+		query = query.Where("id>?", after)
+	}
+	tasks := []ScheduledTask{}
+	err := query.Select("id", "task_name", "cron_expression", "timezone", "enabled").Order("id ASC").Limit(limit).Find(&tasks).Error
 	return tasks, err
 }

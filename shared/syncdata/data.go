@@ -2,10 +2,16 @@
 package syncdata
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/easyssh/shared/scriptutil"
+	"github.com/easyssh/shared/servergroup"
+	"github.com/easyssh/shared/servertag"
+	"io"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -13,11 +19,25 @@ import (
 type Record map[string]string
 type Snapshot map[string]Record
 
+type KeyReference struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	PublicKey   string `json:"public_key"`
+	Fingerprint string `json:"fingerprint"`
+	Algorithm   string `json:"algorithm"`
+	KeySize     int    `json:"key_size"`
+}
+
+func (k KeyReference) Material() *KeyMaterial {
+	return &KeyMaterial{ID: k.ID, Name: k.Name, PublicKey: k.PublicKey, Fingerprint: k.Fingerprint, Algorithm: k.Algorithm, KeySize: k.KeySize}
+}
+
 type Connection struct {
-	Host       string `json:"host"`
-	Port       int    `json:"port"`
-	Username   string `json:"username"`
-	AuthMethod string `json:"auth_method"`
+	Key        *KeyReference `json:"key,omitempty"`
+	Host       string        `json:"host"`
+	Port       int           `json:"port"`
+	Username   string        `json:"username"`
+	AuthMethod string        `json:"auth_method"`
 }
 
 func JSON(value any) string { b, _ := json.Marshal(value); return string(b) }
@@ -36,8 +56,18 @@ func Tags(value string) []string {
 }
 func ParseConnection(value string) (Connection, error) {
 	var c Connection
-	if err := json.Unmarshal([]byte(value), &c); err != nil {
+	decoder := json.NewDecoder(bytes.NewBufferString(value))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&c); err != nil {
 		return c, err
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return c, fmt.Errorf("invalid trailing connection data")
+	}
+	if c.Key != nil {
+		if err := ValidateKey(c.Key.Material()); err != nil {
+			return c, err
+		}
 	}
 	if strings.TrimSpace(c.Host) == "" || len(c.Host) > 255 || strings.TrimSpace(c.Username) == "" || len(c.Username) > 50 || c.Port < 1 || c.Port > 65535 {
 		return c, fmt.Errorf("invalid SSH connection")
@@ -85,17 +115,25 @@ func Validate(snapshot Snapshot) error {
 				return fmt.Errorf("invalid vault reference")
 			}
 			continue
+		case "group":
+			if _, err := ParseGroup(identifier, r); err != nil {
+				return err
+			}
+			continue
 		case "server":
 			allowed["connection"] = true
-			allowed["group"] = true
+			allowed["group_id"] = true
+			if r["group_id"] != "" && !servergroup.ValidID(r["group_id"]) {
+				return servergroup.ErrInvalid
+			}
 			if _, err := ParseConnection(r["connection"]); err != nil {
 				return err
 			}
 		case "script":
 			allowed["content"] = true
 			allowed["language"] = true
-			if strings.TrimSpace(r["name"]) == "" || r["content"] == "" || len(r["language"]) > 20 {
-				return fmt.Errorf("invalid script")
+			if _, err := scriptutil.Command(r["language"], r["content"], nil); err != nil {
+				return err
 			}
 		default:
 			return fmt.Errorf("invalid sync record type")
@@ -105,12 +143,28 @@ func Validate(snapshot Snapshot) error {
 				return fmt.Errorf("unsupported sync field or field too large")
 			}
 		}
-		if utf8.RuneCountInString(r["name"]) > 100 || utf8.RuneCountInString(r["group"]) > 50 {
-			return fmt.Errorf("sync name or group too long")
+		if utf8.RuneCountInString(r["name"]) > 100 {
+			return fmt.Errorf("sync name too long")
 		}
 		var tags []string
 		if err := json.Unmarshal([]byte(r["tags"]), &tags); err != nil || len(tags) > 100 {
 			return fmt.Errorf("invalid tags")
+		}
+		if parts[0] == "server" {
+			normalized, err := servertag.Normalize(tags)
+			if err != nil || tags == nil || !slices.Equal(tags, normalized) {
+				return servertag.ErrInvalid
+			}
+		}
+		if parts[0] == "script" {
+			if err := scriptutil.ValidateMetadata(r["name"], r["description"], tags); err != nil {
+				return err
+			}
+		}
+	}
+	for key, record := range snapshot {
+		if strings.HasPrefix(key, "server/") && record["group_id"] != "" && snapshot["group/"+record["group_id"]] == nil {
+			return fmt.Errorf("server references a missing group")
 		}
 	}
 	return nil
@@ -123,4 +177,23 @@ func ValidUUID(id string) bool {
 	raw := strings.ReplaceAll(id, "-", "")
 	_, err := hex.DecodeString(raw)
 	return len(raw) == 32 && err == nil
+}
+
+// Display metadata and canonical UUIDs do not change the remote identity.
+func SameConnection(a, b string) bool {
+	left, err := ParseConnection(a)
+	if err != nil {
+		return false
+	}
+	right, err := ParseConnection(b)
+	if err != nil {
+		return false
+	}
+	if left.Host != right.Host || left.Port != right.Port || left.Username != right.Username || left.AuthMethod != right.AuthMethod {
+		return false
+	}
+	if left.Key == nil || right.Key == nil {
+		return left.Key == nil && right.Key == nil
+	}
+	return left.Key.Fingerprint == right.Key.Fingerprint
 }

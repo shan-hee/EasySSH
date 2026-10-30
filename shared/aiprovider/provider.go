@@ -3,10 +3,10 @@ package aiprovider
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"net/url"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	anthropicoption "github.com/anthropics/anthropic-sdk-go/option"
@@ -25,20 +25,21 @@ const (
 )
 
 func (f *Factory) ListModels(ctx context.Context, config Config) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	provider := aiconfig.NormalizeProvider(config.Provider)
 	if strings.TrimSpace(config.APIKey) == "" {
 		return nil, NewLimitError("api_key_required", "AI API key is required")
 	}
 
-	modelSet := make(map[string]struct{})
+	budget := modelListBudget{}
 	switch provider {
 	case "anthropic":
 		client := newAnthropicClient(config)
 		pager := client.Models.ListAutoPaging(ctx, anthropic.ModelListParams{})
 		for pager.Next() {
-			id := strings.TrimSpace(pager.Current().ID)
-			if id != "" {
-				modelSet[id] = struct{}{}
+			if err := budget.add(pager.Current().ID); err != nil {
+				return nil, err
 			}
 		}
 		if err := pager.Err(); err != nil {
@@ -51,17 +52,16 @@ func (f *Factory) ListModels(ctx context.Context, config Config) ([]string, erro
 			return nil, wrapOpenAIError(provider, err)
 		}
 		for _, model := range page.Data {
-			id := strings.TrimSpace(model.ID)
-			if id != "" {
-				modelSet[id] = struct{}{}
+			if err := budget.add(model.ID); err != nil {
+				return nil, err
 			}
 		}
 	default:
 		return nil, NewLimitError("invalid_provider", "invalid AI provider")
 	}
 
-	models := make([]string, 0, len(modelSet))
-	for model := range modelSet {
+	models := make([]string, 0, len(budget.items))
+	for model := range budget.items {
 		models = append(models, model)
 	}
 	sort.Strings(models)
@@ -69,6 +69,8 @@ func (f *Factory) ListModels(ctx context.Context, config Config) ([]string, erro
 }
 
 func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest, onEvent func(Event) error) (TurnResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, RequestTimeout)
+	defer cancel()
 	if onEvent == nil {
 		onEvent = func(Event) error { return nil }
 	}
@@ -76,10 +78,20 @@ func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest
 		return TurnResult{}, err
 	}
 	req.Messages = prepareToolContext(req.Messages)
+	if err := validateRequestSize(req); err != nil {
+		return TurnResult{}, err
+	}
 
 	provider := aiconfig.NormalizeProvider(config.Provider)
 	config.Provider = provider
+	budget := responseBudget{}
 	eventHandler := func(event Event) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := budget.accept(event); err != nil {
+			return err
+		}
 		if event.Type == EventResponseCompleted && event.Metadata != nil && event.Usage != nil {
 			metadata := metadataWithCostEstimate(*event.Metadata, *event.Usage, config.Pricing)
 			event.Metadata = &metadata
@@ -105,6 +117,9 @@ func (f *Factory) StreamTurn(ctx context.Context, config Config, req TurnRequest
 		return TurnResult{}, err
 	}
 
+	if err := validateTurnResult(result); err != nil {
+		return TurnResult{}, err
+	}
 	result.Metadata = metadataWithCostEstimate(result.Metadata, result.Usage, config.Pricing)
 	return result, nil
 }
@@ -116,6 +131,9 @@ func metadataWithCostEstimate(metadata ProviderMetadata, usage Usage, pricing Pr
 }
 
 func validateTurnRequest(config Config, req TurnRequest) error {
+	if err := validateRequestSize(req); err != nil {
+		return err
+	}
 	switch req.ReasoningEffort {
 	case "", "low", "medium", "high", "xhigh", "max":
 	default:
@@ -127,8 +145,21 @@ func validateTurnRequest(config Config, req TurnRequest) error {
 	if strings.TrimSpace(req.Model) == "" {
 		return NewLimitError("model_required", "AI model is required")
 	}
+	return validateContextAttachments(req.Messages)
+}
+
+// ValidateContext is used before accepting user edits/new turns. It never
+// changes history, invokes a provider or rejects saving already observed results.
+func ValidateContext(messages []Message) error {
+	if err := validateRequestSize(TurnRequest{Messages: messages}); err != nil {
+		return err
+	}
+	return validateContextAttachments(messages)
+}
+
+func validateContextAttachments(messages []Message) error {
 	var totalImageBytes int64
-	for _, message := range req.Messages {
+	for _, message := range messages {
 		imageBytes, err := validateAttachments(message.Attachments)
 		if err != nil {
 			return &ProviderError{Code: "invalid_attachment", Message: err.Error(), Retryable: false, Cause: err}
@@ -148,7 +179,7 @@ func newOpenAIClient(config Config) openai.Client {
 		openaioption.WithMaxRetries(0),
 		openaioption.WithRequestTimeout(0),
 		// Bypass the SDK's response-header deadline; cancellation comes from ctx.
-		openaioption.WithHTTPClient(&http.Client{}),
+		openaioption.WithHTTPClient(boundedHTTPClient()),
 	}
 	baseURL := aiconfig.NormalizeOpenAIBaseURL(config.Provider, config.Endpoint)
 	if baseURL == "" && aiconfig.NormalizeProvider(config.Provider) == "gemini" {
@@ -177,7 +208,7 @@ func newAnthropicClient(config Config) anthropic.Client {
 		anthropicoption.WithMaxRetries(0),
 		anthropicoption.WithRequestTimeout(0),
 		// Bypass the SDK's response-header deadline; cancellation comes from ctx.
-		anthropicoption.WithHTTPClient(&http.Client{}),
+		anthropicoption.WithHTTPClient(boundedHTTPClient()),
 	}
 	if baseURL := aiconfig.NormalizeAnthropicBaseURL(config.Endpoint); baseURL != "" {
 		options = append(options, anthropicoption.WithBaseURL(baseURL+"/"))

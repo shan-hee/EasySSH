@@ -1,18 +1,19 @@
 package platform
 
 import (
+	"github.com/easyssh/shared/protocol"
 	"os"
 	"strings"
 )
 
-type RuntimeProfile string
+type RuntimeProfile = protocol.RuntimeProfile
 
 const (
 	RuntimeProfileWeb     RuntimeProfile = "web"
 	RuntimeProfileDesktop RuntimeProfile = "desktop"
 )
 
-type Capability string
+type Capability = protocol.RuntimeCapability
 
 const (
 	CapabilityServers        Capability = "servers"
@@ -27,33 +28,18 @@ const (
 	CapabilityActivityLog    Capability = "activity_log"
 	CapabilityBackup         Capability = "backup"
 	CapabilitySettings       Capability = "settings"
-	CapabilityUsers          Capability = "users"
-	CapabilityPermissions    Capability = "permissions"
 	CapabilityAudit          Capability = "audit"
 	CapabilityLoginLogs      Capability = "login_logs"
 	CapabilityNotifications  Capability = "notifications"
-	CapabilityOAuth          Capability = "oauth"
 	CapabilitySecurityPolicy Capability = "security_policy"
 	CapabilityDesktopDataDir Capability = "desktop_data_dir"
 	CapabilityOpenDataDir    Capability = "open_data_dir"
 	CapabilityPortableMode   Capability = "portable_mode"
 )
 
-type Principal struct {
-	Kind string `json:"kind"`
-	Role string `json:"role"`
-}
+type Principal = protocol.RuntimePrincipal
 
-type RuntimeInfo struct {
-	Profile      RuntimeProfile      `json:"profile"`
-	Principal    Principal           `json:"principal"`
-	SingleUser   bool                `json:"single_user"`
-	Portable     bool                `json:"portable"`
-	Managed      bool                `json:"managed"`
-	DataDir      string              `json:"data_dir,omitempty"`
-	Version      string              `json:"version,omitempty"`
-	Capabilities map[Capability]bool `json:"capabilities"`
-}
+type RuntimeInfo = protocol.RuntimeInfo
 
 type RuntimeOptions struct {
 	Profile RuntimeProfile
@@ -83,7 +69,7 @@ func NewRuntimeInfo(options RuntimeOptions) RuntimeInfo {
 	if profile == RuntimeProfileDesktop {
 		return RuntimeInfo{
 			Profile:    RuntimeProfileDesktop,
-			Principal:  Principal{Kind: "local_owner", Role: "owner"},
+			Principal:  Principal{Kind: "local_owner"},
 			SingleUser: true,
 			Portable:   true,
 			Managed:    false,
@@ -110,8 +96,8 @@ func NewRuntimeInfo(options RuntimeOptions) RuntimeInfo {
 
 	return RuntimeInfo{
 		Profile:    RuntimeProfileWeb,
-		Principal:  Principal{Kind: "user", Role: "user"},
-		SingleUser: false,
+		Principal:  Principal{Kind: "owner"},
+		SingleUser: true,
 		Portable:   false,
 		Managed:    true,
 		DataDir:    options.DataDir,
@@ -129,12 +115,9 @@ func NewRuntimeInfo(options RuntimeOptions) RuntimeInfo {
 			CapabilityActivityLog,
 			CapabilityBackup,
 			CapabilitySettings,
-			CapabilityUsers,
-			CapabilityPermissions,
 			CapabilityAudit,
 			CapabilityLoginLogs,
 			CapabilityNotifications,
-			CapabilityOAuth,
 			CapabilitySecurityPolicy,
 		),
 	}

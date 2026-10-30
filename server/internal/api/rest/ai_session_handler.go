@@ -8,12 +8,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/aichat/runtime"
 	"github.com/easyssh/shared/aichatui"
+	"github.com/easyssh/shared/aiprovider"
+	"github.com/easyssh/shared/aiwire"
+	"github.com/easyssh/shared/protocol"
+	"github.com/easyssh/shared/resultstore"
 	"github.com/gin-gonic/gin"
 )
 
-const maxAIChatRequestBytes int64 = 32 * 1024 * 1024
+const maxAIChatRequestBytes int64 = aiwire.MaxChatRequestBytes
 
 type AISessionHandler struct {
 	manager *runtime.Manager
@@ -23,58 +28,23 @@ func NewAISessionHandler(manager *runtime.Manager) *AISessionHandler {
 	return &AISessionHandler{manager: manager}
 }
 
-type CreateAISessionRequest struct {
-	Model          string               `json:"model,omitempty"`
-	PermissionMode string               `json:"permission_mode,omitempty" binding:"omitempty,oneof=readonly balanced privileged"`
-	Scope          runtime.SessionScope `json:"scope,omitempty"`
-}
+type CreateAISessionRequest = protocol.CreateAISessionRequest
 
-type CreateAISessionResponse struct {
-	SessionID        string                `json:"session_id"`
-	Session          *runtime.SessionView  `json:"session"`
-	DefaultTransport runtime.TransportType `json:"default_transport"`
-}
+type CreateAISessionResponse = protocol.CreateAISessionResponse
 
-type ListAISessionsResponse struct {
-	Items []runtime.SessionListItem `json:"items"`
-	Total int64                     `json:"total"`
-}
+type ListAISessionsResponse = protocol.ListAISessionsResponse
 
-type AISDKChatRequest struct {
-	ReasoningEffort  string                     `json:"reasoning_effort,omitempty" binding:"omitempty,oneof=low medium high xhigh max"`
-	ServerReferences []aichatui.ServerReference `json:"server_references,omitempty"`
-	ID               string                     `json:"id,omitempty"`
-	Messages         []runtime.UIMessage        `json:"messages,omitempty"`
-	Trigger          string                     `json:"trigger,omitempty"`
-	MessageID        string                     `json:"messageId,omitempty"`
-	Context          string                     `json:"context,omitempty"`
-	Model            string                     `json:"model,omitempty"`
-	Mode             string                     `json:"mode,omitempty"`
-	PermissionMode   string                     `json:"permission_mode,omitempty" binding:"omitempty,oneof=readonly balanced privileged"`
-	Scope            runtime.SessionScope       `json:"scope,omitempty"`
-	Attachments      []runtime.Attachment       `json:"attachments,omitempty"`
-}
+type AISDKChatRequest = protocol.AISDKChatRequest
 
-type RenameAISessionRequest struct {
-	Title string `json:"title" binding:"required"`
-}
+type RenameAISessionRequest = protocol.RenameAISessionRequest
 
-type UpdateAIMessageRequest struct {
-	ServerReferences []aichatui.ServerReference `json:"server_references,omitempty"`
-	Content          string                     `json:"content" binding:"required"`
-}
+type UpdateAIMessageRequest = protocol.UpdateAIMessageRequest
 
 func (h *AISessionHandler) ListSessions(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 
 	limit, offset := GetPaginationParams(c)
 	items, total, err := h.manager.ListSessions(
 		c.Request.Context(),
-		userID,
 		strings.TrimSpace(c.Query("q")),
 		limit,
 		offset,
@@ -85,7 +55,7 @@ func (h *AISessionHandler) ListSessions(c *gin.Context) {
 		},
 	)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "list_sessions_failed", err.Error())
+		h.respondRuntimeError(c, err)
 		return
 	}
 
@@ -96,11 +66,6 @@ func (h *AISessionHandler) ListSessions(c *gin.Context) {
 }
 
 func (h *AISessionHandler) GetSession(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	if sessionID == "" {
@@ -108,7 +73,7 @@ func (h *AISessionHandler) GetSession(c *gin.Context) {
 		return
 	}
 
-	view, err := h.manager.GetSession(userID, sessionID)
+	view, err := h.manager.GetOverview(c.Request.Context(), sessionID)
 	if err != nil {
 		h.respondRuntimeError(c, err)
 		return
@@ -122,12 +87,8 @@ func (h *AISessionHandler) GetSession(c *gin.Context) {
 }
 
 func (h *AISessionHandler) GetTaskFile(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
-	file, err := h.manager.GetTaskFile(userID, c.Param("session_id"), c.Param("task_id"))
+	c.Header("Cache-Control", "no-store")
+	file, err := h.manager.GetTaskFile(c.Request.Context(), c.Param("session_id"), c.Param("task_id"))
 	if err != nil {
 		h.respondRuntimeError(c, err)
 		return
@@ -136,13 +97,8 @@ func (h *AISessionHandler) GetTaskFile(c *gin.Context) {
 }
 
 func (h *AISessionHandler) GetLatestSession(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 
-	view, err := h.manager.GetLatestActiveSession(c.Request.Context(), userID)
+	view, err := h.manager.GetLatestActiveSession(c.Request.Context())
 	if err != nil {
 		h.respondRuntimeError(c, err)
 		return
@@ -150,17 +106,13 @@ func (h *AISessionHandler) GetLatestSession(c *gin.Context) {
 
 	RespondSuccess(c, CreateAISessionResponse{
 		SessionID:        view.ID,
-		Session:          view,
+		Session:          runtime.Overview(view),
 		DefaultTransport: view.DefaultTransport,
 	})
 }
 
 func (h *AISessionHandler) CreateSession(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
 
 	var req CreateAISessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -168,29 +120,24 @@ func (h *AISessionHandler) CreateSession(c *gin.Context) {
 		return
 	}
 
-	view, err := h.manager.CreateSession(c.Request.Context(), userID, runtime.CreateSessionInput{
+	view, err := h.manager.CreateSession(c.Request.Context(), runtime.CreateSessionInput{
 		Model:          req.Model,
 		PermissionMode: req.PermissionMode,
 		Scope:          req.Scope,
 	})
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "create_session_failed", err.Error())
+		h.respondRuntimeError(c, err)
 		return
 	}
 
 	RespondCreated(c, CreateAISessionResponse{
 		SessionID:        view.ID,
-		Session:          view,
+		Session:          runtime.Overview(view),
 		DefaultTransport: view.DefaultTransport,
 	})
 }
 
 func (h *AISessionHandler) Chat(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	if sessionID == "" {
@@ -211,7 +158,7 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	events, unsubscribe, err := h.manager.Subscribe(userID, sessionID)
+	events, unsubscribe, err := h.manager.Subscribe(c.Request.Context(), sessionID)
 	if err != nil {
 		h.respondRuntimeError(c, err)
 		return
@@ -228,14 +175,13 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 				Reason:   approval.reason,
 			})
 		}
-		if err := h.manager.ConfirmTasks(c.Request.Context(), userID, sessionID, confirmations); err != nil {
+		if err := h.manager.ConfirmTasks(c.Request.Context(), sessionID, confirmations); err != nil {
 			h.respondRuntimeError(c, err)
 			return
 		}
 	case "message":
 		if err := h.manager.SendUserMessageWithOptions(
 			c.Request.Context(),
-			userID,
 			sessionID,
 			runtime.SendUserMessageInput{
 				ReasoningEffort:  req.ReasoningEffort,
@@ -255,7 +201,6 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 	case "regenerate":
 		if err := h.manager.RegenerateAfterUserMessage(
 			c.Request.Context(),
-			userID,
 			sessionID,
 			action.messageID,
 			runtime.SendUserMessageInput{
@@ -274,9 +219,13 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 		return
 	}
 
-	startAIChatStream(c)
+	writer, stop, err := startAIChatStream(c)
+	defer stop()
+	if err != nil {
+		return
+	}
 
-	streamer := newAISDKUIMessageStreamer(c.Writer, action.kind == "approval")
+	streamer := newAISDKUIMessageStreamer(writer, action.kind == "approval")
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
 	for {
@@ -284,10 +233,12 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 		case <-c.Request.Context().Done():
 			return
 		case <-heartbeat.C:
-			if _, err := fmt.Fprint(c.Writer, ": heartbeat\n\n"); err != nil {
+			if _, err := fmt.Fprint(writer, ": heartbeat\n\n"); err != nil {
 				return
 			}
-			c.Writer.Flush()
+			if err := writer.FlushError(); err != nil {
+				return
+			}
 		case event, ok := <-events:
 			if !ok {
 				_ = streamer.finish("stop")
@@ -298,7 +249,9 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 			if err != nil {
 				return
 			}
-			c.Writer.Flush()
+			if err := writer.FlushError(); err != nil {
+				return
+			}
 			if done {
 				return
 			}
@@ -306,27 +259,23 @@ func (h *AISessionHandler) Chat(c *gin.Context) {
 	}
 }
 
-func startAIChatStream(c *gin.Context) {
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache, no-transform")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Vercel-AI-UI-Message-Stream", "v1")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-	c.Writer.Flush()
+func startAIChatStream(c *gin.Context) (*aiStreamWriter, func(), error) {
+	writer, stop := newAIStreamWriter(c.Request.Context(), c.Writer)
+	writer.Header().Set("Content-Type", "text/event-stream")
+	writer.Header().Set("Cache-Control", "no-cache, no-transform")
+	writer.Header().Set("Connection", "keep-alive")
+	writer.Header().Set("X-Vercel-AI-UI-Message-Stream", "v1")
+	writer.Header().Set("X-Accel-Buffering", "no")
+	writer.WriteHeader(http.StatusOK)
+	return writer, stop, writer.FlushError()
 }
 
 // ResumeChat observes an existing run; it never submits messages or executes tools.
-// Authoritative snapshots replace the client view, so reconnects need no delta
-// cursor and cannot duplicate text or miss events between catch-up and live output.
+// Reconnects reload committed history and observe new progress. Live deltas are
+// not a durable replay log; history changes identify successful commits.
 func (h *AISessionHandler) ResumeChat(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 	sessionID := strings.TrimSpace(c.Param("session_id"))
-	view, err := h.manager.GetSession(userID, sessionID)
+	view, err := h.manager.GetOverview(c.Request.Context(), sessionID)
 	if err != nil {
 		h.respondRuntimeError(c, err)
 		return
@@ -335,7 +284,7 @@ func (h *AISessionHandler) ResumeChat(c *gin.Context) {
 	var events <-chan runtime.Event
 	if view.Status != runtime.SessionStatusClosed {
 		var unsubscribe func()
-		events, unsubscribe, err = h.manager.Subscribe(userID, sessionID)
+		events, unsubscribe, err = h.manager.Subscribe(c.Request.Context(), sessionID)
 		if err != nil {
 			h.respondRuntimeError(c, err)
 			return
@@ -343,13 +292,17 @@ func (h *AISessionHandler) ResumeChat(c *gin.Context) {
 		defer unsubscribe()
 	}
 
-	startAIChatStream(c)
-	streamer := newAISDKUIMessageStreamer(c.Writer, false)
+	writer, stop, err := startAIChatStream(c)
+	defer stop()
+	if err != nil {
+		return
+	}
+	streamer := newAISDKUIMessageStreamer(writer, false)
 	var lastUpdated time.Time
 	var lastStatus runtime.SessionStatus
 	writeSnapshot := func() (bool, error) {
 		// Read current state instead of replaying queued, possibly stale events.
-		latest, err := h.manager.GetSession(userID, sessionID)
+		latest, err := h.manager.GetOverview(c.Request.Context(), sessionID)
 		if err != nil {
 			return true, err
 		}
@@ -367,7 +320,9 @@ func (h *AISessionHandler) ResumeChat(c *gin.Context) {
 				return true, err
 			}
 		}
-		c.Writer.Flush()
+		if err := writer.FlushError(); err != nil {
+			return true, err
+		}
 		return done, nil
 	}
 	if done, err := writeSnapshot(); done || err != nil {
@@ -390,13 +345,23 @@ func (h *AISessionHandler) ResumeChat(c *gin.Context) {
 				return
 			}
 			dirty = true
+			if event.Type == runtime.EventHistoryChanged || event.Type == runtime.EventTaskCreated || event.Type == runtime.EventTaskUpdated || event.Type == runtime.EventAssistantDelta || event.Type == runtime.EventAssistantCompleted {
+				if _, err := streamer.writeRuntimeEvent(event); err != nil {
+					return
+				}
+				if err := writer.FlushError(); err != nil {
+					return
+				}
+			}
 			if event.Type == runtime.EventError && event.Error != nil {
 				if err := streamer.writeChunk(map[string]interface{}{
 					"type": "error", "errorText": event.Error.Message,
 				}); err != nil {
 					return
 				}
-				c.Writer.Flush()
+				if err := writer.FlushError(); err != nil {
+					return
+				}
 			}
 			if event.Type == runtime.EventSessionCompleted {
 				if done, err := writeSnapshot(); done || err != nil {
@@ -415,20 +380,17 @@ func (h *AISessionHandler) ResumeChat(c *gin.Context) {
 			if done, err := writeSnapshot(); done || err != nil {
 				return
 			}
-			if _, err := fmt.Fprint(c.Writer, ": heartbeat\n\n"); err != nil {
+			if _, err := fmt.Fprint(writer, ": heartbeat\n\n"); err != nil {
 				return
 			}
-			c.Writer.Flush()
+			if err := writer.FlushError(); err != nil {
+				return
+			}
 		}
 	}
 }
 
 func (h *AISessionHandler) CancelSession(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	if sessionID == "" {
@@ -436,20 +398,16 @@ func (h *AISessionHandler) CancelSession(c *gin.Context) {
 		return
 	}
 
-	if err := h.manager.CancelSession(c.Request.Context(), userID, sessionID); err != nil {
+	if err := h.manager.CancelSession(c.Request.Context(), sessionID); err != nil {
 		h.respondRuntimeError(c, err)
 		return
 	}
 
-	RespondSuccess(c, gin.H{"cancelled": true})
+	RespondSuccess(c, protocol.AICancelled{Cancelled: true})
 }
 
 func (h *AISessionHandler) RenameSession(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
 
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	if sessionID == "" {
@@ -463,20 +421,15 @@ func (h *AISessionHandler) RenameSession(c *gin.Context) {
 		return
 	}
 
-	if err := h.manager.RenameSession(c.Request.Context(), userID, sessionID, req.Title); err != nil {
+	if err := h.manager.RenameSession(c.Request.Context(), sessionID, req.Title); err != nil {
 		h.respondRuntimeError(c, err)
 		return
 	}
 
-	RespondSuccess(c, gin.H{"updated": true})
+	RespondSuccess(c, protocol.AIUpdated{Updated: true})
 }
 
 func (h *AISessionHandler) DeleteSession(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	if sessionID == "" {
@@ -484,7 +437,7 @@ func (h *AISessionHandler) DeleteSession(c *gin.Context) {
 		return
 	}
 
-	if err := h.manager.DeleteSession(c.Request.Context(), userID, sessionID); err != nil {
+	if err := h.manager.DeleteSession(c.Request.Context(), sessionID); err != nil {
 		h.respondRuntimeError(c, err)
 		return
 	}
@@ -493,11 +446,7 @@ func (h *AISessionHandler) DeleteSession(c *gin.Context) {
 }
 
 func (h *AISessionHandler) UpdateMessage(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
 
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	messageID := strings.TrimSpace(c.Param("message_id"))
@@ -512,7 +461,7 @@ func (h *AISessionHandler) UpdateMessage(c *gin.Context) {
 		return
 	}
 
-	view, err := h.manager.UpdateUserMessage(c.Request.Context(), userID, sessionID, messageID, runtime.UpdateMessageInput{
+	view, err := h.manager.UpdateUserMessage(c.Request.Context(), sessionID, messageID, runtime.UpdateMessageInput{
 		Content:          req.Content,
 		ServerReferences: req.ServerReferences,
 	})
@@ -523,17 +472,12 @@ func (h *AISessionHandler) UpdateMessage(c *gin.Context) {
 
 	RespondSuccess(c, CreateAISessionResponse{
 		SessionID:        view.ID,
-		Session:          view,
+		Session:          runtime.Overview(view),
 		DefaultTransport: view.DefaultTransport,
 	})
 }
 
 func (h *AISessionHandler) DeleteMessage(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 
 	sessionID := strings.TrimSpace(c.Param("session_id"))
 	messageID := strings.TrimSpace(c.Param("message_id"))
@@ -542,7 +486,7 @@ func (h *AISessionHandler) DeleteMessage(c *gin.Context) {
 		return
 	}
 
-	view, err := h.manager.DeleteMessage(c.Request.Context(), userID, sessionID, messageID)
+	view, err := h.manager.DeleteMessage(c.Request.Context(), sessionID, messageID)
 	if err != nil {
 		h.respondRuntimeError(c, err)
 		return
@@ -550,7 +494,7 @@ func (h *AISessionHandler) DeleteMessage(c *gin.Context) {
 
 	RespondSuccess(c, CreateAISessionResponse{
 		SessionID:        view.ID,
-		Session:          view,
+		Session:          runtime.Overview(view),
 		DefaultTransport: view.DefaultTransport,
 	})
 }
@@ -667,6 +611,7 @@ func approvalResponsesFromUIMessages(messages []runtime.UIMessage) []aiSDKChatAp
 }
 
 type aiSDKUIMessageStreamer struct {
+	taskOutputs       map[string]string
 	writer            http.ResponseWriter
 	preserveMessageID bool
 	started           bool
@@ -690,6 +635,7 @@ type aiSDKTextPartState struct {
 func newAISDKUIMessageStreamer(writer http.ResponseWriter, preserveMessageID bool) *aiSDKUIMessageStreamer {
 	return &aiSDKUIMessageStreamer{
 		writer:            writer,
+		taskOutputs:       make(map[string]string),
 		preserveMessageID: preserveMessageID,
 		assistantSources:  make(map[string]bool),
 		textParts:         make(map[string]*aiSDKTextPartState),
@@ -701,7 +647,17 @@ func newAISDKUIMessageStreamer(writer http.ResponseWriter, preserveMessageID boo
 }
 
 func (s *aiSDKUIMessageStreamer) writeRuntimeEvent(event runtime.Event) (bool, error) {
+	if event.Session != nil && (event.Type == runtime.EventError || event.Type == runtime.EventSessionCompleted) {
+		if err := s.writeChunk(map[string]interface{}{"type": "data-session", "id": event.Session.ID, "data": runtime.Overview(event.Session), "transient": true}); err != nil {
+			return false, err
+		}
+	}
 	switch event.Type {
+	case runtime.EventHistoryChanged:
+		if event.History == nil {
+			return false, nil
+		}
+		return false, s.writeChunk(map[string]interface{}{"type": "data-history-changed", "data": event.History, "transient": true})
 	case runtime.EventSessionStarted:
 		return false, nil
 	case runtime.EventSessionUpdated:
@@ -711,7 +667,7 @@ func (s *aiSDKUIMessageStreamer) writeRuntimeEvent(event runtime.Event) (bool, e
 		return false, s.writeChunk(map[string]interface{}{
 			"type":      "data-session",
 			"id":        event.Session.ID,
-			"data":      event.Session,
+			"data":      runtime.Overview(event.Session),
 			"transient": true,
 		})
 	case runtime.EventAssistantDelta, runtime.EventAssistantCompleted:
@@ -722,10 +678,27 @@ func (s *aiSDKUIMessageStreamer) writeRuntimeEvent(event runtime.Event) (bool, e
 		}
 	case runtime.EventTaskCreated, runtime.EventTaskUpdated, runtime.EventConfirmationRequested, runtime.EventConfirmationResolved:
 		if event.Task != nil {
-			if err := s.writeChunk(map[string]interface{}{"type": "data-workspace-task", "data": map[string]interface{}{"session_id": event.SessionID, "task": event.Task}, "transient": true}); err != nil {
+			task := event.Task.Public()
+			if err := aiwire.OutputDeltas(event.SessionID, task.ID, s.taskOutputs[task.ID], task.CommandOutput, func(delta protocol.AITaskOutputDelta) error {
+				return s.writeChunk(map[string]interface{}{"type": "data-task-output-delta", "data": delta, "transient": true})
+			}); err != nil {
 				return false, err
 			}
-			if err := s.writeTask(*event.Task); err != nil {
+			s.taskOutputs[task.ID] = task.CommandOutput
+			task.CommandOutput = ""
+			item, err := aiwire.DescribeHistoryItem(task.ID, task)
+			if err != nil {
+				return false, err
+			}
+			if len(item.Data) == 0 {
+				// The commit notification refreshes its durable descriptor.
+				// Never advertise a hash for an uncommitted runtime payload.
+				return false, nil
+			}
+			if err := s.writeChunk(map[string]interface{}{"type": "data-workspace-task", "data": map[string]interface{}{"session_id": event.SessionID, "task": task}, "transient": true}); err != nil {
+				return false, err
+			}
+			if err := s.writeTask(task); err != nil {
 				return false, err
 			}
 		} else if event.UIMessage != nil {
@@ -812,15 +785,16 @@ func (s *aiSDKUIMessageStreamer) writeTextPart(parts map[string]*aiSDKTextPartSt
 		state.started = true
 	}
 
-	if len(text) > state.sent {
+	for len(text) > state.sent {
+		delta, _ := aiwire.NextTextChunk(text[state.sent:])
 		if err := s.writeChunk(map[string]interface{}{
 			"type":  kind + "-delta",
 			"id":    id,
-			"delta": text[state.sent:],
+			"delta": delta,
 		}); err != nil {
 			return err
 		}
-		state.sent = len(text)
+		state.sent += len(delta)
 	}
 
 	if done && !state.ended {
@@ -1047,6 +1021,9 @@ func (s *aiSDKUIMessageStreamer) writeChunk(chunk map[string]interface{}) error 
 	if err != nil {
 		return err
 	}
+	if len(payload) > aiwire.MaxStreamChunkBytes {
+		return errors.New("AI stream item exceeds frame budget; refresh history")
+	}
 	_, err = fmt.Fprintf(s.writer, "data: %s\n\n", payload)
 	return err
 }
@@ -1105,7 +1082,28 @@ func coalesceString(values ...string) string {
 }
 
 func (h *AISessionHandler) respondRuntimeError(c *gin.Context, err error) {
+	var providerErr *aiprovider.ProviderError
+	if errors.As(err, &providerErr) {
+		RespondError(c, http.StatusBadRequest, providerErr.Code, providerErr.Message)
+		return
+	}
+
 	switch {
+	case errors.Is(err, aiwire.ErrHistoryQuery):
+		RespondError(c, http.StatusBadRequest, "invalid_ai_history_query", err.Error())
+	case errors.Is(err, aiwire.ErrHistoryCursor):
+		RespondError(c, http.StatusConflict, "ai_history_cursor", err.Error())
+
+	case errors.Is(err, aichatui.ErrSessionSearchTooLong):
+		RespondError(c, http.StatusBadRequest, "ai_search_too_long", "AI 会话搜索内容最多 512 字节")
+	case errors.Is(err, runtime.ErrManagerStopped):
+		RespondError(c, http.StatusServiceUnavailable, "ai_runtime_stopped", "AI 服务正在关闭")
+	case errors.Is(err, resultstore.ErrUnavailable):
+		RespondError(c, http.StatusServiceUnavailable, "storage_unavailable", "存储暂时不可用，本轮已停止")
+	case errors.Is(err, runtime.ErrSnapshotConflict):
+		RespondError(c, http.StatusConflict, "ai_snapshot_conflict", "AI 会话存储版本已变化，保存未覆盖已有内容")
+	case errors.Is(err, access.ErrUnauthenticated), errors.Is(err, access.ErrForbidden), errors.Is(err, access.ErrRevoked), errors.Is(err, access.ErrExpired), errors.Is(err, access.ErrResourceChanged), errors.Is(err, access.ErrCapacity):
+		accessError(c, err)
 	case errors.Is(err, aichatui.ErrServerReferenceUnavailable):
 		RespondError(c, http.StatusBadRequest, "server_reference_unavailable", err.Error())
 	case errors.Is(err, runtime.ErrSessionNotFound):

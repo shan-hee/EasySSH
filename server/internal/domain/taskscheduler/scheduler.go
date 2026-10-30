@@ -4,38 +4,48 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/easyssh/shared/protocol"
 	"log"
-	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/easyssh/server/internal/domain/jobqueue"
+	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/easyssh/server/internal/domain/taskexecutor"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
+	"gorm.io/gorm"
 )
 
 // Scheduler 定时任务调度器
+type DispatchNotifier interface{ NotifyEnqueued() }
+
 type Scheduler struct {
+	bodies      taskcenter.Bodies
+	db          *gorm.DB
+	ownerScope  func(context.Context, uuid.UUID) (access.Scope, error)
 	cron        *cron.Cron
 	taskRepo    scheduledtask.Repository
-	queue       jobqueue.Enqueuer
+	queue       DispatchNotifier
 	taskRuns    taskcenter.Service
 	taskEntries map[uuid.UUID]cron.EntryID
 	mu          sync.RWMutex
-	enqueueMu   sync.Mutex
 	ctx         context.Context
 	cancel      context.CancelFunc
-	started     bool
+	started     atomic.Bool
+	lifecycleMu sync.Mutex
 }
 
 // NewScheduler 创建调度器
 func NewScheduler(
+	db *gorm.DB,
 	taskRepo scheduledtask.Repository,
-	queue jobqueue.Enqueuer,
+	queue DispatchNotifier,
 	taskRuns taskcenter.Service,
+	ownerScope func(context.Context, uuid.UUID) (access.Scope, error),
+	bodies taskcenter.Bodies,
 ) *Scheduler {
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -44,46 +54,53 @@ func NewScheduler(
 		cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow,
 	)))
 
-	return &Scheduler{
-		cron:        c,
+	return &Scheduler{bodies: bodies,
+		cron:       c,
+		ownerScope: ownerScope, db: db,
 		taskRepo:    taskRepo,
 		queue:       queue,
 		taskRuns:    taskRuns,
 		taskEntries: make(map[uuid.UUID]cron.EntryID),
 		ctx:         ctx,
 		cancel:      cancel,
-		started:     false,
 	}
 }
 
 // Start 启动调度器
 func (s *Scheduler) Start() error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.started.Load() {
+		return nil
+	}
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
 	log.Println("[TaskScheduler] 启动定时任务调度器...")
-	if err := s.recoverQueuedRuns(); err != nil {
-		return fmt.Errorf("recover queued task runs: %w", err)
-	}
 
-	// 加载所有启用的任务
-	tasks, err := s.taskRepo.GetEnabledTasks()
-	if err != nil {
-		return fmt.Errorf("failed to load enabled tasks: %w", err)
-	}
-
-	log.Printf("[TaskScheduler] 加载了 %d 个启用的定时任务", len(tasks))
-
-	// 添加所有任务到调度器
-	for _, task := range tasks {
-		taskCopy := task // 避免闭包问题
-		if err := s.addTask(&taskCopy); err != nil {
-			log.Printf("[TaskScheduler] 添加任务失败: taskID=%s, name=%s, error=%v",
-				task.ID, task.TaskName, err)
-			continue
+	after := uuid.Nil
+	total := 0
+	for {
+		tasks, err := s.taskRepo.GetEnabledTasks(s.ctx, after, 100)
+		if err != nil {
+			return fmt.Errorf("load enabled tasks: %w", err)
 		}
+		for i := range tasks {
+			if err := s.addTask(&tasks[i]); err != nil {
+				log.Printf("[TaskScheduler] 添加任务失败: taskID=%s, error=%v", tasks[i].ID, err)
+			}
+		}
+		total += len(tasks)
+		if len(tasks) < 100 {
+			break
+		}
+		after = tasks[len(tasks)-1].ID
 	}
+	log.Printf("[TaskScheduler] 加载了 %d 个启用的定时任务", total)
 
 	// 启动 cron 调度器
 	s.cron.Start()
-	s.started = true
+	s.started.Store(true)
 	log.Println("[TaskScheduler] 调度器已启动")
 
 	return nil
@@ -91,6 +108,9 @@ func (s *Scheduler) Start() error {
 
 // Stop 停止调度器
 func (s *Scheduler) Stop() {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	s.started.Store(false)
 	log.Println("[TaskScheduler] 停止定时任务调度器...")
 	s.cancel()
 
@@ -104,11 +124,14 @@ func (s *Scheduler) Stop() {
 			log.Println("[TaskScheduler] 等待超时，强制停止")
 		}
 	}
-	s.started = false
+	s.started.Store(false)
 }
 
 // addTask 添加任务到调度器（内部方法）
 func (s *Scheduler) addTask(task *scheduledtask.ScheduledTask) error {
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -121,8 +144,7 @@ func (s *Scheduler) addTask(task *scheduledtask.ScheduledTask) error {
 	// 加载时区
 	loc, err := time.LoadLocation(task.Timezone)
 	if err != nil {
-		log.Printf("[TaskScheduler] 无法加载时区 %s，使用UTC: %v", task.Timezone, err)
-		loc = time.UTC
+		return fmt.Errorf("invalid schedule timezone %q: %w", task.Timezone, err)
 	}
 	scheduleExpression := fmt.Sprintf("CRON_TZ=%s %s", loc.String(), task.CronExpression)
 
@@ -138,9 +160,14 @@ func (s *Scheduler) addTask(task *scheduledtask.ScheduledTask) error {
 	s.taskEntries[task.ID] = entryID
 
 	// 计算并更新下次运行时间
-	entry := s.cron.Entry(entryID)
-	nextRun := entry.Next.In(loc)
-	if err := s.taskRepo.Update(task.ID, map[string]interface{}{
+	schedule, err := cron.ParseStandard(scheduleExpression)
+	if err != nil {
+		s.cron.Remove(entryID)
+		delete(s.taskEntries, task.ID)
+		return err
+	}
+	nextRun := schedule.Next(time.Now()).In(loc)
+	if err := s.taskRepo.UpdateRuntime(s.ctx, task.ID, map[string]interface{}{
 		"next_run_at": nextRun,
 	}); err != nil {
 		log.Printf("[TaskScheduler] 更新下次运行时间失败: %v", err)
@@ -173,7 +200,7 @@ func (s *Scheduler) executeTask(taskID uuid.UUID) {
 	s.updateNextRunTime(taskID)
 
 	dedupeKey := fmt.Sprintf("scheduled:%s:%s", task.ID, time.Now().UTC().Truncate(time.Minute).Format(time.RFC3339))
-	if _, err := s.enqueueTask(task, taskexecutor.TriggerSchedule, nil, 1, dedupeKey); err != nil {
+	if _, err := s.enqueueTask(s.ctx, task, taskexecutor.TriggerSchedule, nil, 1, dedupeKey); err != nil {
 		log.Printf("[TaskScheduler] 任务入队失败: taskID=%s, error=%v", taskID, err)
 	}
 }
@@ -198,13 +225,13 @@ func (s *Scheduler) updateNextRunTime(taskID uuid.UUID) {
 		return
 	}
 
-	loc, _ := time.LoadLocation(task.Timezone)
-	if loc == nil {
-		loc = time.UTC
+	loc, err := time.LoadLocation(task.Timezone)
+	if err != nil {
+		return
 	}
 
 	nextRun := entry.Next.In(loc)
-	s.taskRepo.Update(taskID, map[string]interface{}{
+	s.taskRepo.UpdateRuntime(s.ctx, taskID, map[string]interface{}{
 		"next_run_at": nextRun,
 	})
 }
@@ -214,7 +241,7 @@ func (s *Scheduler) AddTask(task *scheduledtask.ScheduledTask) error {
 	if !task.Enabled {
 		return nil
 	}
-	if !s.started {
+	if !s.started.Load() {
 		return nil // 调度器未启动，不添加
 	}
 	return s.addTask(task)
@@ -235,35 +262,42 @@ func (s *Scheduler) RemoveTask(taskID uuid.UUID) {
 // UpdateTask 更新任务（移除后重新添加）
 func (s *Scheduler) UpdateTask(task *scheduledtask.ScheduledTask) error {
 	s.RemoveTask(task.ID)
-	if task.Enabled && s.started {
+	if task.Enabled && s.started.Load() {
 		return s.addTask(task)
 	}
 	return nil
 }
 
 // TriggerTaskManually 手动触发任务
-func (s *Scheduler) TriggerTaskManually(taskID uuid.UUID) (uuid.UUID, error) {
+func (s *Scheduler) TriggerTaskManually(ctx context.Context, taskID uuid.UUID) (uuid.UUID, error) {
 	task, err := s.taskRepo.GetByID(taskID)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("task not found: %w", err)
 	}
 
-	return s.enqueueTask(task, taskexecutor.TriggerManual, nil, 1, "")
+	return s.enqueueTask(ctx, task, taskexecutor.TriggerManual, nil, 1, "")
 }
 
-func (s *Scheduler) RetryTask(taskID, retryOfID uuid.UUID, attempt int) (uuid.UUID, error) {
+func (s *Scheduler) RetryTask(ctx context.Context, taskID, retryOfID uuid.UUID, attempt int) (uuid.UUID, error) {
 	task, err := s.taskRepo.GetByID(taskID)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("task not found: %w", err)
 	}
-	if attempt < 2 {
-		attempt = 2
+	if s.taskRuns == nil {
+		return uuid.Nil, errors.New("task center is not initialized")
+	}
+	previous, err := s.taskRuns.Get(ctx, retryOfID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if previous.DefinitionID == nil || *previous.DefinitionID != taskID || !previous.Retryable || !isTerminalRun(previous.Status) || previous.Status == taskcenter.StatusUnknown || previous.Status == taskcenter.StatusSucceeded || attempt != previous.Attempt+1 {
+		return uuid.Nil, errors.New("task run cannot be retried; review its observed outcome first")
 	}
 	dedupeKey := fmt.Sprintf("retry:%s:%d", retryOfID, attempt)
-	return s.enqueueTask(task, taskexecutor.TriggerManual, &retryOfID, attempt, dedupeKey)
+	return s.enqueueTask(ctx, task, taskexecutor.TriggerManual, &retryOfID, attempt, dedupeKey)
 }
 
-func (s *Scheduler) enqueueTask(task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, retryOfID *uuid.UUID, attempt int, dedupeKey string) (uuid.UUID, error) {
+func (s *Scheduler) enqueueTask(ctx context.Context, task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, retryOfID *uuid.UUID, attempt int, dedupeKey string) (uuid.UUID, error) {
 	if s.queue == nil {
 		return uuid.Nil, errors.New("job queue is not initialized")
 	}
@@ -271,112 +305,36 @@ func (s *Scheduler) enqueueTask(task *scheduledtask.ScheduledTask, trigger taske
 		return uuid.Nil, errors.New("task center is not initialized")
 	}
 
-	s.enqueueMu.Lock()
-	defer s.enqueueMu.Unlock()
-
+	if trigger != taskexecutor.TriggerSchedule {
+		scope := access.Current(ctx)
+		if scope.Actor().ID != task.OwnerID.String() {
+			return uuid.Nil, access.ErrForbidden
+		}
+		if err := scope.RequireOwner(ctx, protocol.ResourcesManage); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	if s.ownerScope == nil {
+		return uuid.Nil, access.ErrUnauthenticated
+	}
+	scope, err := s.ownerScope(ctx, task.OwnerID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	ctx = access.WithScope(ctx, scope)
 	runID := uuid.New()
 	if dedupeKey != "" {
 		runID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("easyssh:task-run:"+dedupeKey))
 	}
-	run, err := s.taskRuns.Get(s.ctx, task.UserID, runID)
-	if err == nil && isTerminalRun(run.Status) {
-		return runID, nil
-	}
-	if err != nil && !errors.Is(err, taskcenter.ErrNotFound) {
-		return uuid.Nil, fmt.Errorf("load task run: %w", err)
-	}
-	if errors.Is(err, taskcenter.ErrNotFound) {
-		triggerType := taskcenter.TriggerManual
-		if trigger == taskexecutor.TriggerSchedule {
-			triggerType = taskcenter.TriggerScheduled
-		}
-		definitionID := task.ID
-		run = &taskcenter.TaskRun{
-			ID: runID, UserID: task.UserID, DefinitionID: &definitionID, RetryOfID: retryOfID,
-			SourceType: string(taskexecutor.SourceScheduledTask), SourceID: task.ID.String(), TaskType: task.TaskType,
-			Title: task.TaskName, Description: task.Description, TriggerType: triggerType, Runner: "server",
-			Status: taskcenter.StatusQueued, Resource: strings.Join(task.ServerIDs, ","), PayloadJSON: task.PayloadJSON,
-			Cancelable: !isTransferTask(task.TaskType), Retryable: true, Attempt: attempt, MaxAttempts: attempt,
-		}
-		if err := s.taskRuns.Create(s.ctx, run); err != nil {
-			return uuid.Nil, fmt.Errorf("create task run: %w", err)
-		}
-	}
-
-	_, err = s.queue.Enqueue(s.ctx, taskexecutor.QueueJobKind, "task_run", runID.String(), taskexecutor.QueuePayload{
-		RunID: runID, TaskID: task.ID, Trigger: trigger, Source: taskexecutor.SourceScheduledTask,
-		RetryOfID: retryOfID, Attempt: attempt,
-	}, jobqueue.EnqueueOptions{MaxAttempts: 3, DedupeKey: taskRunDedupeKey(runID)})
+	run, created, err := s.dispatch(ctx, task, runID, trigger, retryOfID, attempt)
 	if err != nil {
-		completeErr := s.taskRuns.Complete(s.ctx, runID, taskcenter.StatusFailed, "", "enqueue_failed", err.Error(), 0, 0)
-		if completeErr != nil {
-			log.Printf("[TaskScheduler] 标记入队失败任务失败: runID=%s, error=%v", runID, completeErr)
-		}
-		return runID, fmt.Errorf("enqueue task run: %w", err)
+		return uuid.Nil, err
 	}
-	return runID, nil
-}
-
-func (s *Scheduler) recoverQueuedRuns() error {
-	if s.queue == nil || s.taskRuns == nil {
-		return errors.New("task queue dependencies are not initialized")
+	if created {
+		s.taskRuns.PublishCreated(run)
+		s.queue.NotifyEnqueued()
 	}
-	runs, err := s.taskRuns.ListActive(s.ctx)
-	if err != nil {
-		return err
-	}
-	for i := range runs {
-		run := &runs[i]
-		if run.SourceType != string(taskexecutor.SourceScheduledTask) || run.Status != taskcenter.StatusQueued {
-			continue
-		}
-		if run.DefinitionID == nil {
-			if err := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "definition_missing", "排队任务缺少定时任务定义", 0, 0); err != nil {
-				return err
-			}
-			continue
-		}
-		task, err := s.taskRepo.GetByID(*run.DefinitionID)
-		if err != nil {
-			if completeErr := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "task_definition_unavailable", err.Error(), 0, 0); completeErr != nil {
-				return completeErr
-			}
-			continue
-		}
-		trigger := taskexecutor.TriggerManual
-		if run.TriggerType == taskcenter.TriggerScheduled {
-			trigger = taskexecutor.TriggerSchedule
-		}
-		job, err := s.queue.Enqueue(s.ctx, taskexecutor.QueueJobKind, "task_run", run.ID.String(), taskexecutor.QueuePayload{
-			RunID: run.ID, TaskID: task.ID, Trigger: trigger, Source: taskexecutor.SourceScheduledTask,
-			RetryOfID: run.RetryOfID, Attempt: run.Attempt,
-		}, jobqueue.EnqueueOptions{MaxAttempts: 3, DedupeKey: taskRunDedupeKey(run.ID)})
-		if err != nil {
-			if completeErr := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "queue_recovery_failed", err.Error(), 0, 0); completeErr != nil {
-				return completeErr
-			}
-			continue
-		}
-		switch job.Status {
-		case jobqueue.StatusFailed:
-			message := job.LastError
-			if message == "" {
-				message = "持久队列任务已失败"
-			}
-			if err := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "queue_failed", message, 0, 0); err != nil {
-				return err
-			}
-		case jobqueue.StatusCancelled:
-			if err := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusCanceled, "", "", "持久队列任务已取消", 0, 0); err != nil {
-				return err
-			}
-		case jobqueue.StatusSucceeded:
-			if err := s.taskRuns.Complete(s.ctx, run.ID, taskcenter.StatusFailed, "", "queue_state_inconsistent", "任务运行状态与持久队列状态不一致", 0, 0); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return run.ID, nil
 }
 
 func taskRunDedupeKey(runID uuid.UUID) string {
@@ -385,7 +343,7 @@ func taskRunDedupeKey(runID uuid.UUID) string {
 
 func isTerminalRun(status taskcenter.Status) bool {
 	return status == taskcenter.StatusSucceeded || status == taskcenter.StatusFailed || status == taskcenter.StatusPartialSuccess ||
-		status == taskcenter.StatusCanceled || status == taskcenter.StatusTimeout
+		status == taskcenter.StatusCanceled || status == taskcenter.StatusTimeout || status == taskcenter.StatusUnknown
 }
 
 func isTransferTask(taskType string) bool {
@@ -415,5 +373,5 @@ func (s *Scheduler) GetScheduledTaskCount() int {
 
 // IsStarted 检查调度器是否已启动
 func (s *Scheduler) IsStarted() bool {
-	return s.started
+	return s.started.Load()
 }

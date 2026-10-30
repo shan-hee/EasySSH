@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/easyssh/shared/protocol"
 	"log"
 	"log/slog"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/api/rest"
 	"github.com/easyssh/server/internal/api/staticfiles"
@@ -27,17 +29,18 @@ import (
 	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/batchtask"
 	"github.com/easyssh/server/internal/domain/completion"
+	"github.com/easyssh/server/internal/domain/content"
 	"github.com/easyssh/server/internal/domain/dashboard"
 	"github.com/easyssh/server/internal/domain/datasync"
+	"github.com/easyssh/server/internal/domain/docker"
+	"github.com/easyssh/server/internal/domain/grant"
 	"github.com/easyssh/server/internal/domain/inboxnotification"
 	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/monitor"
 	"github.com/easyssh/server/internal/domain/monitoring"
 	"github.com/easyssh/server/internal/domain/notification"
 	"github.com/easyssh/server/internal/domain/notificationconfig"
-	"github.com/easyssh/server/internal/domain/oauthprovider"
 	"github.com/easyssh/server/internal/domain/operationrecord"
-	"github.com/easyssh/server/internal/domain/permission"
 	"github.com/easyssh/server/internal/domain/realtime"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/script"
@@ -52,14 +55,11 @@ import (
 	"github.com/easyssh/server/internal/domain/taskexecutor"
 	"github.com/easyssh/server/internal/domain/taskscheduler"
 	"github.com/easyssh/server/internal/domain/transferjob"
-	"github.com/easyssh/server/internal/domain/user"
-	"github.com/easyssh/server/internal/domain/useraiconfig"
-	"github.com/easyssh/server/internal/domain/verification"
 	"github.com/easyssh/server/internal/infra/config"
 	"github.com/easyssh/server/internal/infra/db"
 	"github.com/easyssh/server/internal/pkg/geoip"
 	"github.com/easyssh/server/internal/platform"
-	"github.com/easyssh/shared/dbmigration"
+	"github.com/easyssh/server/internal/storage/schema"
 	"github.com/easyssh/shared/instanceactivation"
 	"github.com/easyssh/shared/instancebackup"
 	"github.com/easyssh/shared/secretcrypto"
@@ -132,7 +132,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer releaseDatabase()
-	if err := dbmigration.Start(context.Background(), sqlDB, "server", cfg.Database.Driver); err != nil {
+	if err := schema.Start(context.Background(), sqlDB, cfg.Database.Driver); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
@@ -146,18 +146,10 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	oauthGlobalSecret, err := crypto.DeriveKey(cfg.Server.EncryptionKey, "oauth-global-secret", 32)
-	if err != nil {
-		log.Fatalf("❌ Failed to derive OAuth key: %v", err)
-	}
-	csrfSecret, err := crypto.DeriveKey(cfg.Server.EncryptionKey, "csrf-cookie", 32)
-	if err != nil {
-		log.Fatalf("❌ Failed to derive CSRF key: %v", err)
-	}
 
 	// 数据库中的系统设置承载业务与运行参数；根密钥和数据库连接仍由部署配置提供。
 	systemConfigRepo := systemconfig.NewRepository(database)
-	systemConfigService := systemconfig.NewService(systemConfigRepo, encryptor, cfg.Server.Env == "production")
+	systemConfigService := systemconfig.NewService(systemConfigRepo)
 	systemCfg, err := systemConfigService.Get(context.Background())
 	if err != nil {
 		log.Fatalf("❌ Failed to load system config: %v", err)
@@ -172,96 +164,83 @@ func main() {
 	geoipClient := geoip.NewClient()
 	log.Println("🌍 GeoIP provider: ipwho.is")
 
-	oauthTokenSettings := systemCfg.OAuthTokenConfig()
-	externalOAuthConfigErr := oauthTokenSettings.ValidateExternalProvider(cfg.Server.Env == "production")
-	externalOAuthProviderGate, err := oauthprovider.NewExternalProviderGate(
-		externalOAuthConfigErr == nil,
-		oauthTokenSettings.ExternalOAuthProviderEnabled,
-	)
-	if err != nil {
-		log.Fatalf("❌ Failed to configure external OAuth/OIDC Provider: %v (%v)", err, externalOAuthConfigErr)
-	}
-
-	// 初始化服务层
-	accessTokenDuration := time.Duration(oauthTokenSettings.AccessTokenMinutes) * time.Minute
-	refreshTokenDuration := time.Duration(oauthTokenSettings.RefreshTokenDays) * 24 * time.Hour
-
-	oauthProvider, err := oauthprovider.New(database, encryptor, oauthprovider.Config{
-		Issuer:                oauthTokenSettings.Issuer,
-		ExternalProviderGate:  externalOAuthProviderGate,
-		GlobalSecret:          oauthGlobalSecret,
-		AccessTokenLifespan:   accessTokenDuration,
-		RefreshTokenLifespan:  refreshTokenDuration,
-		AuthorizeCodeLifespan: 5 * time.Minute,
-		WebRedirectURIs:       oauthTokenSettings.RedirectURIList(),
-	})
-	if err != nil {
-		log.Fatalf("❌ Failed to initialize OAuth/OIDC provider: %v", err)
-	}
-
-	// 一次性 Ticket：进程内短期存储（用于 WebSocket 握手 / 原生下载等无法附带 Authorization Header 的场景）
-	ticketService := auth.NewTicketService(database, auth.TicketConfig{
-		TTL: 30 * time.Second,
-	})
-
+	accessRuntime := access.NewRuntime()
+	defer accessRuntime.Close()
 	authRepo := auth.NewRepository(database)
-	authService := auth.NewService(authRepo, oauthProvider, encryptor)
+	authService, err := auth.NewService(database, encryptor, accessRuntime)
+	if err != nil {
+		log.Fatal(err)
+	}
+	grantService := grant.NewService(database, grant.NewResourceCatalog(encryptor), accessRuntime, func(ctx context.Context) (string, error) {
+		settings, err := systemConfigService.Get(ctx)
+		if err != nil {
+			return "", err
+		}
+		return settings.PublicURL, nil
+	})
+	restoreExecution := func(ctx context.Context, actor protocol.Actor) (access.Scope, error) {
+		switch actor.Kind {
+		case protocol.Visitor:
+			return grantService.Restore(ctx, actor)
+		case protocol.Owner:
+			if actor.SessionID == "" {
+				ownerID, err := uuid.Parse(actor.ID)
+				if err != nil || !actor.Valid() {
+					return access.Scope{}, access.ErrForbidden
+				}
+				return authService.OwnerExecutionScope(ctx, ownerID)
+			}
+			return authService.Restore(ctx, actor)
+		default:
+			return access.Scope{}, access.ErrForbidden
+		}
+	}
+	ticketService := auth.NewTicketService(database, auth.TicketConfig{TTL: 30 * time.Second}, accessRuntime, func(ctx context.Context, actor protocol.Actor) (access.Scope, error) {
+		if actor.Kind == protocol.Visitor {
+			return grantService.Restore(ctx, actor)
+		}
+		return authService.Restore(ctx, actor)
+	})
+	grantContext, cancelGrants := context.WithCancel(context.Background())
+	defer cancelGrants()
+	go func() {
+		if err := grantService.Run(grantContext); err != nil && grantContext.Err() == nil {
+			log.Printf("grant session maintenance: %v", err)
+		}
+	}()
 
 	// 通知配置服务
 	notificationConfigRepo := notificationconfig.NewRepository(database)
 	notificationConfigService := notificationconfig.NewService(notificationConfigRepo, encryptor)
 
 	// AI配置服务
-	aiConfigRepo := aiconfig.NewRepository(database)
+	aiConfigRepo := aiconfig.NewRepository(database, encryptor)
 	aiConfigService := aiconfig.NewService(aiConfigRepo, encryptor)
-
-	// 用户AI配置服务
-	userAIConfigRepo := useraiconfig.NewRepository(database)
-	userAIConfigService := useraiconfig.NewService(userAIConfigRepo, encryptor)
 
 	log.Println("✅ New configuration services initialized")
 
-	// 邮件服务(支持动态配置)
-	// 从新的通知配置服务加载 SMTP 配置
-	var emailService notification.EmailService
-	smtpConfig, err := notificationConfigService.GetSMTPConfig(context.Background())
-	if err == nil && smtpConfig != nil && smtpConfig.Enabled {
-		// 获取系统配置用于邮件模板
-		sysConfig, _ := systemConfigService.Get(context.Background())
+	// 登录提醒在每次发送前读取 SMTP，启用/修改/关闭无需重启。
+	currentLoginEmail := func(ctx context.Context) (auth.EmailService, error) {
+		config, err := notificationConfigService.GetSMTPConfig(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if !config.Enabled {
+			return nil, nil
+		}
+		sysConfig, err := systemConfigService.Get(ctx)
+		if err != nil {
+			return nil, err
+		}
 		systemName := "EasySSH"
 		if sysConfig != nil && sysConfig.SystemName != "" {
 			systemName = sysConfig.SystemName
 		}
-
-		// 从数据库加载成功且启用了邮件服务
-		emailService, err = notification.NewEmailService(&notification.EmailConfig{
-			SMTPHost:     smtpConfig.Host,
-			SMTPPort:     smtpConfig.Port,
-			SMTPUsername: smtpConfig.Username,
-			SMTPPassword: smtpConfig.Password,
-			FromEmail:    smtpConfig.FromEmail,
-			FromName:     smtpConfig.FromName,
-			UseTLS:       smtpConfig.UseTLS,
-			SystemName:   systemName,
-			CurrentYear:  time.Now().Year(),
+		return notification.NewEmailService(&notification.EmailConfig{
+			SMTPHost: config.Host, SMTPPort: config.Port, SMTPUsername: config.Username, SMTPPassword: config.Password,
+			FromEmail: config.FromEmail, FromName: config.FromName, UseTLS: config.UseTLS,
+			SystemName: systemName, CurrentYear: time.Now().Year(),
 		})
-		if err != nil {
-			log.Printf("⚠️ Warning: Failed to initialize email service: %v", err)
-		} else {
-			log.Println("✅ Email service initialized from database configuration")
-		}
-	} else {
-		log.Println("ℹ️  Email service is disabled (configure via Web UI: Settings > Notifications > SMTP)")
-	}
-
-	// 注入邮件服务到认证服务
-	if emailService != nil {
-		type emailServiceSetter interface {
-			SetEmailService(auth.EmailService)
-		}
-		if setter, ok := authService.(emailServiceSetter); ok {
-			setter.SetEmailService(emailService)
-		}
 	}
 
 	// 账户锁定服务（进程内短期计数 + 数据库账户锁定状态）
@@ -284,50 +263,42 @@ func main() {
 	)
 	log.Println("✅ Account lock service initialized")
 
-	type accountLockServiceSetter interface {
-		SetAccountLockService(auth.AccountLockService)
-	}
-	if setter, ok := authService.(accountLockServiceSetter); ok {
-		setter.SetAccountLockService(accountLockService)
-	}
+	authService.SetAccountLockService(accountLockService)
 
 	// 登录检测服务（需要数据库）
-	var loginDetectionService auth.LoginDetectionService
-	trustedDeviceRepo := auth.NewTrustedDeviceRepository(database)
-	loginAlertRepo := auth.NewLoginAlertRepository(database)
-	loginDetectionService = auth.NewLoginDetectionService(trustedDeviceRepo, loginAlertRepo, authRepo, geoipClient, emailService)
+	knownLoginDeviceRepo := auth.NewKnownLoginDeviceRepository(database)
+	loginDetectionService := auth.NewLoginDetectionService(knownLoginDeviceRepo, authRepo, geoipClient, currentLoginEmail)
 	log.Println("✅ Login detection service initialized")
 
-	// 注入登录检测服务到认证服务
-	type loginDetectionServiceSetter interface {
-		SetLoginDetectionService(auth.LoginDetectionService)
-	}
-	if setter, ok := authService.(loginDetectionServiceSetter); ok {
-		setter.SetLoginDetectionService(loginDetectionService)
-	}
+	authService.SetLoginDetectionService(loginDetectionService)
 
-	// 验证码服务（进程内短期存储）
-	verificationService := verification.NewService()
-	log.Println("✅ Verification service initialized")
-
-	// 服务器服务
-	serverRepo := server.NewRepository(database)
-	sshKeyRepo := sshkey.NewRepository(database)
+	serverRepo := server.NewRepository(database, accessRuntime)
+	sshKeyRepo := sshkey.NewRepository(database, encryptor)
 	sshKeyService := sshkey.NewService(sshKeyRepo, encryptor)
 	serverService := server.NewService(serverRepo, encryptor, geoipClient, sshKeyService)
 
 	// SSH 主机密钥验证服务（TOFU安全模型）
-	sshHostKeyService := sshhostkey.NewService(database)
+	sshHostKeyService := sshhostkey.NewService(database, accessRuntime)
 
 	// SSH 会话管理器
 	sessionManager := ssh.NewSessionManager()
 
 	// 监控连接池（独立于终端会话）
-	monitorConnectionPool := monitor.NewConnectionPool(serverService, encryptor, sshHostKeyService.GetHostKeyCallback())
+	monitorConnectionPool := monitor.NewConnectionPool(serverService, encryptor, sshHostKeyService.GetHostKeyPolicy())
 	defer monitorConnectionPool.Close() // 程序退出时关闭连接池
 
+	contentService, err := content.New(database, runtimeInfo.DataDir)
+	if err != nil {
+		log.Fatalf("Open content storage: %v", err)
+	}
+	defer contentService.Close()
+	if err := contentService.Recover(context.Background()); err != nil {
+		log.Fatalf("Recover interrupted content: %v", err)
+	}
+	contentHandler := rest.NewContentHandler(contentService)
+
 	// 审计日志服务
-	auditLogRepo := auditlog.NewRepository(database)
+	auditLogRepo := auditlog.NewRepository(database, contentService)
 	auditLogService := auditlog.NewService(auditLogRepo)
 
 	// 仪表盘聚合服务
@@ -335,21 +306,23 @@ func main() {
 	dashboardService := dashboard.NewService(dashboardRepo)
 
 	// 监控服务
-	monitoringService := monitoring.NewService(serverService, encryptor, sshHostKeyService.GetHostKeyCallback())
+	monitoringService := monitoring.NewService(serverService, encryptor, sshHostKeyService.GetHostKeyPolicy())
 
 	// 脚本服务
 	scriptRepo := script.NewRepository(database)
-	scriptService := script.NewService(scriptRepo)
+	scriptService := script.NewService(scriptRepo, grantService, accessRuntime)
 
 	// 补全服务
-	completionService := completion.NewService(scriptRepo)
+	completionService := completion.NewService(scriptService)
 
 	// 批量任务服务
-	batchTaskRepo := batchtask.NewRepository(database)
-	batchTaskService := batchtask.NewService(batchTaskRepo)
-	jobQueueRepo := jobqueue.NewRepository(database)
+	batchTaskRepo := batchtask.NewRepository(database, contentService)
+	batchTaskService := batchtask.NewService(batchTaskRepo, scriptService)
+	realtimeHub := realtime.NewHub()
+	jobQueueRepo := jobqueue.NewRepository(database, realtimeHub, contentService)
 	instanceStarted := make(chan struct{})
 	jobQueue := jobqueue.New(jobQueueRepo, jobqueue.Options{
+		Restore:              restoreExecution,
 		StartGate:            instanceStarted,
 		MaxConcurrency:       systemCfg.JobQueueMaxConcurrency,
 		FallbackPollInterval: 2 * time.Second,
@@ -359,19 +332,26 @@ func main() {
 
 	// 定时任务服务
 	scheduledTaskRepo := scheduledtask.NewRepository(database)
-	scheduledTaskService := scheduledtask.NewService(scheduledTaskRepo)
+	scheduledTaskService := scheduledtask.NewService(scheduledTaskRepo, scriptService)
 
 	// 统一操作记录服务
-	operationRecordRepo := operationrecord.NewRepository(database)
+	operationRecordRepo := operationrecord.NewRepository(database, contentService)
 	operationRecordService := operationrecord.NewService(operationRecordRepo)
+	if err := operationRecordService.EnsureCoverage(context.Background()); err != nil {
+		log.Fatalf("initialize activity coverage: %v", err)
+	}
+
+	if err := operationRecordService.RecoverInterrupted(context.Background()); err != nil {
+		log.Fatalf("recover interrupted activities: %v", err)
+	}
 
 	// 统一任务运行中心与站内通知
-	realtimeHub := realtime.NewHub()
-	taskCenterRepo := taskcenter.NewRepository(database)
+	operationRecordService.SetPublisher(realtimeHub)
+	taskCenterRepo := taskcenter.NewRepository(database, contentService)
 	taskCenterService := taskcenter.NewService(taskCenterRepo, realtimeHub)
+	taskCenterService.SetContentCleanup(contentService.Cleanup)
 	inboxNotificationRepo := inboxnotification.NewRepository(database)
-	inboxNotificationService := inboxnotification.NewService(inboxNotificationRepo, authRepo, notificationConfigService, emailService, realtimeHub)
-	taskCenterService.SetNotifier(inboxNotificationService)
+	inboxNotificationService := inboxnotification.NewService(inboxNotificationRepo, authRepo, notificationConfigService, nil, realtimeHub)
 
 	// 任务执行引擎
 	taskExecutor := taskexecutor.NewExecutor(
@@ -380,85 +360,42 @@ func main() {
 		scheduledTaskRepo,
 		encryptor,
 		10, // 最大并发数
-		operationRecordService,
 		taskCenterService,
 	)
-	taskExecutor.SetHostKeyCallback(sshHostKeyService.GetHostKeyCallback())
+	taskExecutor.SetHostKeyPolicy(sshHostKeyService.GetHostKeyPolicy())
 	taskExecutor.SetQueue(jobQueue)
-	taskCenterService.SetCanceler(taskExecutor)
-	taskCenterService.SetDefinitionStatusUpdater(taskExecutor)
 	if err := taskCenterService.RecoverInterrupted(context.Background()); err != nil {
-		log.Printf("⚠️ Warning: Failed to recover interrupted task runs: %v", err)
+		log.Fatalf("Failed to recover interrupted task outcomes: %v", err)
 	}
 
 	// 注入执行器到批量任务服务
 	batchTaskService.SetExecutor(taskExecutor)
+	batchTaskService.SetTaskCenter(taskCenterService)
 
 	// 任务调度器
-	taskScheduler := taskscheduler.NewScheduler(scheduledTaskRepo, jobQueue, taskCenterService)
+	taskScheduler := taskscheduler.NewScheduler(database, scheduledTaskRepo, jobQueue, taskCenterService, authService.OwnerExecutionScope, contentService)
 
 	// 注入调度器到定时任务服务
 	scheduledTaskService.SetScheduler(taskScheduler)
 
-	// Casbin RBAC 服务（角色、继承、全局权限和资源级授权）
-	permissionService, err := permission.NewService(database)
-	if err != nil {
-		log.Fatalf("❌ Failed to initialize Casbin RBAC: %v", err)
-	}
-	if err := permissionService.EnsureDefaults(context.Background()); err != nil {
-		log.Fatalf("❌ Failed to ensure default RBAC roles: %v", err)
-	} else {
-		log.Println("✅ Casbin RBAC policies loaded")
-	}
-
-	// 用户管理服务
-	userRepo := user.NewRepository(database)
-	userService := user.NewService(userRepo, permissionService)
-
-	// SSH密钥服务
-
-	// SFTP 上传 WebSocket 处理器
-	sftpUploadWSHandler := ws.NewSFTPUploadHandler(securityService, cfg.Server.WebDevPort)
+	// 共享传输并发限制
+	transferLimiter := sftp.NewTransferLimiter(systemCfg.TransferMaxConcurrency)
 	runtimeCredentialStore := ssh.NewRuntimeCredentialStore()
 
-	// SFTP 跨服务器传输 WebSocket 处理器
-	sftpTransferWSHandler := ws.NewSFTPTransferHandler(
-		serverService,
-		serverRepo,
-		encryptor,
-		securityService,
-		cfg.Server.WebDevPort,
-		sshHostKeyService.GetHostKeyCallback(),
-		operationRecordService,
-		runtimeCredentialStore,
-	)
-
 	// 令牌有效期（秒），用于 Cookie 和 API 响应
-	accessTokenTTLSeconds := int(accessTokenDuration.Seconds())
-	refreshTokenTTLSeconds := int(refreshTokenDuration.Seconds())
 
 	// 初始化处理器
-	authHandler := rest.NewAuthHandler(
-		authService,
-		oauthProvider,
-		securityService,
-		accessTokenTTLSeconds,
-		refreshTokenTTLSeconds,
-		systemConfigService,
-		verificationService,
-		emailService,
-		permissionService,
-	)
-	oauthHandler := rest.NewOAuthHandler(
-		authService,
-		oauthProvider,
-		systemConfigService,
-		securityService,
-		accessTokenTTLSeconds,
-		refreshTokenTTLSeconds,
-	)
-	oauthProviderHandler := rest.NewOAuthProviderHandler(oauthProvider, oauthTokenSettings.LoginURL)
+	ownerHandler := rest.NewOwnerHandler(authService, securityService)
+	grantHandler := rest.NewGrantHandler(grantService)
+	accessHandler := rest.NewAccessHandler(grantService, func(c *gin.Context) (string, error) {
+		settings, err := systemConfigService.Get(c.Request.Context())
+		if err != nil {
+			return "", err
+		}
+		return settings.PublicURL, nil
+	})
 	serverHandler := rest.NewServerHandler(serverService)
+	serverGroupHandler := rest.NewServerGroupHandler(server.NewGroupService(database))
 	sshHandler := rest.NewSSHHandler(sessionManager)
 	sftpPoolConfig := &sftp.PoolConfig{
 		MaxIdleTime:            time.Duration(systemCfg.SFTPMaxIdleTimeSeconds) * time.Second,
@@ -467,24 +404,46 @@ func main() {
 		ConnTimeout:            time.Duration(systemCfg.SFTPConnTimeoutSeconds) * time.Second,
 		MaxSFTPSessionsPerConn: systemCfg.SFTPMaxSessionsPerConn,
 	}
-	sftpHandler := rest.NewSFTPHandler(serverService, serverRepo, encryptor, sftpUploadWSHandler, sshHostKeyService.GetHostKeyCallback(), sftpPoolConfig, runtimeCredentialStore, operationRecordService)
+	sftpHandler := rest.NewSFTPHandler(serverService, serverRepo, encryptor, sshHostKeyService.GetHostKeyPolicy(), sftpPoolConfig, runtimeCredentialStore, operationRecordService)
 	sftpHandler.SetTaskCenter(taskCenterService)
-	sftpTransferWSHandler.SetPool(sftpHandler.GetPool())
-	sftpHandler.SetTransferHandler(sftpTransferWSHandler) // 注入跨服务器传输处理器
+	sftpHandler.SetContentStore(contentService)
+	taskCenterService.SetCanceler(taskcenter.CancelHandlerFunc(func(ctx context.Context, id uuid.UUID) error {
+		run, err := taskCenterService.Get(ctx, id)
+		if err != nil {
+			return err
+		}
+		if run.SourceType == "sftp_delete" {
+			return sftpHandler.CancelDeleteTask(ctx, id)
+		}
+		return taskExecutor.CancelTask(ctx, id)
+	}))
 	sftpAuthWSHandler := ws.NewSFTPAuthHandler(sftpHandler.GetPool(), serverService, securityService, sshHostKeyService, cfg.Server.WebDevPort)
 
-	transferJobRepo := transferjob.NewRepository(database)
+	transferJobRepo := transferjob.NewRepository(database, realtimeHub, contentService)
 	transferJobService := transferjob.NewService(
 		transferJobRepo,
 		sftpHandler.GetPool(),
 		serverService,
 		systemConfigService,
-		operationRecordService,
-		transferjob.ServiceOptions{DataDir: runtimeInfo.DataDir},
+		transferjob.ServiceOptions{DataDir: runtimeInfo.DataDir, Limiter: transferLimiter},
 	)
+	if err := ticketService.RegisterWorkResolver(auth.TicketTypeTransferArtifact, transferJobService.ArtifactRequirements); err != nil {
+		log.Fatal(err)
+	}
 	transferJobService.SetTaskCenter(taskCenterService)
 	transferJobService.SetQueue(jobQueue)
 	taskExecutor.SetTransferJobService(transferJobService)
+	jobQueue.SetAccessRejectionHandler(func(ctx context.Context, job *jobqueue.Job, reason error) error {
+		switch job.Kind {
+		case taskexecutor.QueueJobKind, "batch.execute":
+			// The queue transaction settles only TaskRuns still queued.
+			return nil
+		case "transfer.execute":
+			return transferJobService.RejectQueueJob(ctx, job, reason)
+		default:
+			return access.ErrForbidden
+		}
+	})
 	jobQueue.Register(taskexecutor.QueueJobKind, taskExecutor.HandleQueueJob)
 	jobQueue.Register("batch.execute", batchTaskService.HandleQueueJob)
 	jobQueue.Register("transfer.execute", transferJobService.HandleQueueJob)
@@ -492,39 +451,46 @@ func main() {
 	terminalHandler := ws.NewTerminalHandler(serverService, serverRepo, sessionManager, encryptor, operationRecordService, sshHostKeyService, securityService, cfg.Server.WebDevPort, completionService, runtimeCredentialStore)
 	monitorHandler := ws.NewMonitorHandler(monitorConnectionPool, serverRepo, securityService, cfg.Server.WebDevPort)
 	auditLogHandler := rest.NewAuditLogHandler(auditLogService)
-	dashboardHandler := rest.NewDashboardHandler(dashboardService, permissionService)
+	dashboardHandler := rest.NewDashboardHandler(dashboardService)
 	monitoringHandler := rest.NewMonitoringHandler(monitoringService, authService)
 	ticketHandler := rest.NewTicketHandler(ticketService)
-	scriptHandler := rest.NewScriptHandler(scriptService)
+	connectionHandler := rest.NewConnectionHandler(accessRuntime)
+	scriptHandler := rest.NewScriptHandler(scriptService, batchTaskService)
 	batchTaskHandler := rest.NewBatchTaskHandler(batchTaskService)
 	scheduledTaskHandler := rest.NewScheduledTaskHandler(scheduledTaskService)
 	scheduledTaskHandler.SetTransferJobService(transferJobService)
-	transferJobHandler := rest.NewTransferJobHandler(transferJobService)
+	transferJobHandler := rest.NewTransferJobHandler(transferJobService, transferLimiter)
 	taskCenterHandler := rest.NewTaskCenterHandler(taskCenterService, scheduledTaskService)
 	inboxNotificationHandler := rest.NewInboxNotificationHandler(inboxNotificationService)
 	realtimeHandler := rest.NewRealtimeHandler(realtimeHub)
 	operationRecordHandler := rest.NewOperationRecordHandler(operationRecordService)
-	userHandler := rest.NewUserHandler(userService, accountLockService)
-	permissionHandler := rest.NewPermissionHandler(permissionService)
 	// 新的配置处理器
 	securityHandler := rest.NewSecurityHandler(securityService)
-	systemConfigHandler := rest.NewSystemConfigHandler(systemConfigService, permissionService, externalOAuthProviderGate, jobQueue)
+	systemConfigHandler := rest.NewSystemConfigHandler(systemConfigService, jobQueue, transferLimiter, transferJobService)
 	notificationConfigHandler := rest.NewNotificationConfigHandler(notificationConfigService)
 	aiConfigHandler := rest.NewAIConfigHandler(aiConfigService)
-	userAIConfigHandler := rest.NewUserAIConfigHandler(userAIConfigService)
-	aiRuntimeConfigHandler := rest.NewAIRuntimeConfigHandler(aichat.NewConfigResolver(aiConfigService, userAIConfigService))
+	aiRuntimeConfigHandler := rest.NewAIRuntimeConfigHandler(aichat.NewConfigResolver(aiConfigService))
 	// AI 工具执行器和会话运行时
-	aiToolExecutor := aichat.NewToolExecutorService(serverService, sftpHandler.GetPool(), encryptor, sshHostKeyService.GetHostKeyCallback())
-	aiRuntimeManager := aichat.NewRuntimeManager(aiConfigService, userAIConfigService, aiToolExecutor)
-	aiRuntimeManager.SetSessionStore(runtime.NewGormSessionStore(database))
+	aiToolExecutor := aichat.NewToolExecutorService(serverService, sftpHandler.GetPool(), encryptor, sshHostKeyService.GetHostKeyPolicy())
+	aiRuntimeManager := aichat.NewRuntimeManager(aiConfigService, aiToolExecutor)
+	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	recoveryErr := runtime.RecoverInterrupted(recoveryCtx, database, contentService)
+	recoveryCancel()
+	if recoveryErr != nil {
+		log.Fatalf("恢复 AI 执行记录失败: %v", recoveryErr)
+	}
+	aiRuntimeManager.SetSessionStore(runtime.NewGormSessionStore(database, contentService))
 	aiSessionHandler := rest.NewAISessionHandler(aiRuntimeManager)
 	// Docker 处理器（复用监控连接池）
-	dockerHandler := rest.NewDockerHandler(monitorConnectionPool)
+	dockerService := docker.NewService(monitorConnectionPool, taskCenterService, taskCenterRepo)
+	dockerHandler := rest.NewDockerHandler(dockerService)
 	systemInfoHandler := rest.NewSystemInfoHandler(monitorConnectionPool)
 	// 其他处理器
 	sshKeyHandler := rest.NewSSHKeyHandler(sshKeyService)
 	avatarHandler := rest.NewAvatarHandler()
-	instanceHistory, err := newInstanceHistory(cfg, database, transferJobService.SnapshotStorage)
+	instanceHistory, err := newInstanceHistory(cfg, database, func(capture func() error) error {
+		return transferJobService.SnapshotStorage(func() error { return contentService.SnapshotStorage(capture) })
+	})
 	if err != nil {
 		log.Fatalf("Failed to initialize backup history: %v", err)
 	}
@@ -534,11 +500,12 @@ func main() {
 
 	syncEngine := &datasync.Engine{}
 	defer syncEngine.Close()
-	syncHandler := rest.NewSyncHandler(&datasync.Service{DB: database, Engine: syncEngine, Encryptor: encryptor, WithSessionSync: aiRuntimeManager.WithSyncSession, InvalidateConnection: func(owner, id uuid.UUID) {
-		runtimeCredentialStore.Delete(owner, id)
-		sftpHandler.GetPool().CloseByKey(owner, id)
+	syncHandler := rest.NewSyncHandler(&datasync.Service{DB: database, Content: contentService, Engine: syncEngine, Encryptor: encryptor, WithSessionSync: aiRuntimeManager.WithSyncSession, InvalidateScript: func(id string) { accessRuntime.InvalidateScript(id, access.ErrResourceChanged) }, InvalidateConnection: func(owner, id uuid.UUID) {
+		accessRuntime.RevalidateResource(id.String())
+		runtimeCredentialStore.Invalidate(owner, id)
+		sftpHandler.GetPool().InvalidateResource(owner, id)
 		_ = monitorConnectionPool.ForceClose(owner.String(), id.String())
-	}}, permissionService)
+	}})
 	runtimeHandler := rest.NewRuntimeHandler(runtimeInfo)
 	updateCheckHandler := rest.NewUpdateCheckHandler(runtimeInfo)
 
@@ -562,36 +529,23 @@ func main() {
 	r.Use(middleware.Recovery())  // 错误恢复
 	r.Use(middleware.Logger())    // 日志记录
 	r.Use(middleware.RequestID()) // 请求 ID
-	// Freeze transfer-root changes during the database + artifact snapshot.
-	r.Use(func(c *gin.Context) {
-		path := c.Request.URL.Path
-		if strings.HasPrefix(path, "/api/v1/settings/system/") && c.Request.Method != http.MethodGet {
-			release, ok := transferJobService.TryStorageChange()
-			if !ok {
-				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "instance backup is capturing files; retry shortly"})
-				return
-			}
-			defer release()
-		}
-		c.Next()
-	})
 
-	r.Use(middleware.SecurityConfigCache(securityService))             // 请求级安全配置快照
-	r.Use(middleware.SecurityHeaders(cfg.Server.Env != "production"))  // 安全响应头
-	r.Use(middleware.CORS(cfg, securityService))                       // 跨域（支持动态配置）
-	r.Use(middleware.CSRFMiddleware(cfg, securityService, csrfSecret)) // Cookie 凭证端点 CSRF 防护
-	r.Use(middleware.OptionalIPWhitelistMiddleware(securityService))   // IP 访问控制验证（可选）
+	r.Use(middleware.SecurityConfigCache(securityService))            // 请求级安全配置快照
+	r.Use(middleware.SecurityHeaders(cfg.Server.Env != "production")) // 安全响应头
+	r.Use(middleware.CORS(cfg, securityService))                      // 跨域（支持动态配置）
+	r.Use(middleware.OwnerBrowserOrigin(cfg, securityService))        // Cookie 凭证端点 CSRF 防护
+	r.Use(middleware.OptionalIPWhitelistMiddleware(securityService))  // IP 访问控制验证（可选）
 
 	// API v1 路由组
-	openAPIValidation := middleware.OpenAPIRequestValidation()
-	v1 := r.Group("/api/v1")
+	v1 := middleware.NewPolicyRoutes(r.Group("/api/v1"))
 	{
-		v1.GET("/runtime", runtimeHandler.GetRuntime)
-		v1.GET("/updates/check", updateCheckHandler.Check)
-		v1.GET("/backup/activation/status/:operationId", instanceBackupHandler.ActivationStatus)
+		v1.GET("/runtime", middleware.PublicRoute(), runtimeHandler.GetRuntime)
+		v1.GET("/public/branding", middleware.PublicRoute(), systemConfigHandler.GetPublicBranding)
+		v1.GET("/updates/check", middleware.PublicRoute(), updateCheckHandler.Check)
+		v1.GET("/backup/activation/status/:operationId", middleware.PublicRoute(), instanceBackupHandler.ActivationStatus)
 
 		// 健康检查
-		v1.GET("/health", func(c *gin.Context) {
+		v1.GET("/health", middleware.PublicRoute(), func(c *gin.Context) {
 			// 检查数据库连接
 			dbStatus := "ok"
 			dbCtx, cancel := context.WithTimeout(c.Request.Context(), 500*time.Millisecond)
@@ -611,559 +565,446 @@ func main() {
 		})
 
 		// Ping 端点（用于延迟测量）
-		v1.HEAD("/ping", func(c *gin.Context) {
+		v1.HEAD("/ping", middleware.PublicRoute(), func(c *gin.Context) {
 			c.Status(http.StatusOK)
 		})
-		v1.GET("/ping", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"pong": time.Now().UnixMilli()})
+		v1.GET("/ping", middleware.PublicRoute(), func(c *gin.Context) {
+			c.JSON(http.StatusOK, protocol.PingResult{Pong: time.Now().UnixMilli()})
 		})
 
-		// 认证路由（公开）
-		authRoutes := v1.Group("/auth")
-		authRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
+		// Owner bootstrap and sessions are separate from visitor access.
+		ownerRoutes := v1.Group("/owner")
 		{
-			authRoutes.POST("/send-verification-code", authHandler.SendVerificationCode)
-			authRoutes.POST("/send-password-reset-code", authHandler.SendPasswordResetCode)
-			authRoutes.POST("/reset-password", authHandler.ResetPassword)
-			authRoutes.POST("/register", authHandler.Register)
-			// 使用可选认证中间件，支持未登录和已登录状态
-			authRoutes.GET("/status", middleware.OptionalAuth(oauthProvider, ticketService, authRepo), authHandler.CheckStatus) // 检查系统和认证状态
-			authRoutes.GET("/csrf", authHandler.CSRFToken)                                                                      // 获取 CSRF token
-			// 一次性 Ticket（需认证，用于 WS/下载握手）
-			authRoutes.POST("/ticket", middleware.AuthMiddleware(oauthProvider, ticketService, authRepo), ticketHandler.CreateTicket)
-			// 初始化管理员接口应用速率限制（支持动态配置）
-			authRoutes.POST("/initialize-admin", middleware.LoginRateLimitMiddleware(securityService), authHandler.InitializeAdmin)
-			authRoutes.POST("/2fa/verify", middleware.TwoFARateLimitMiddleware(securityService), authHandler.Verify2FACode) // 验证 2FA 代码（登录时）
+			ownerRoutes.GET("/status", middleware.PublicRoute(), ownerHandler.Status)
+			ownerRoutes.POST("/initialize", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), ownerHandler.Initialize)
+			ownerRoutes.POST("/login", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), ownerHandler.Login)
+			ownerRoutes.GET("/csrf", middleware.PublicRoute(), ownerHandler.CSRF)
+			ownerPrivate := ownerRoutes.Group("")
+			ownerPrivate.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
+			ownerPrivate.Use(middleware.AuditLogMiddleware(auditLogService, nil))
+			ownerPrivate.GET("/profile", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.Profile)
+			ownerPrivate.PUT("/profile", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.UpdateProfile)
+			ownerPrivate.PUT("/password", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.ChangePassword)
+			ownerPrivate.POST("/logout", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.Logout)
+			ownerPrivate.POST("/2fa/setup", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.Generate2FA)
+			ownerPrivate.POST("/2fa/enable", middleware.OwnerRoute(protocol.OwnerManage, ""), middleware.TwoFARateLimitMiddleware(securityService), ownerHandler.Enable2FA)
+			ownerPrivate.POST("/2fa/disable", middleware.OwnerRoute(protocol.OwnerManage, ""), middleware.TwoFARateLimitMiddleware(securityService), ownerHandler.Disable2FA)
+			ownerPrivate.GET("/sessions", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.ListSessions)
+			ownerPrivate.DELETE("/sessions/:session_id", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.RevokeSession)
+			ownerPrivate.POST("/sessions/revoke-others", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.RevokeOtherSessions)
+			ownerPrivate.PUT("/notifications", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.UpdateNotifications)
+			ownerPrivate.PUT("/monitor-datasource", middleware.OwnerRoute(protocol.OwnerManage, ""), ownerHandler.UpdateMonitorDataSource)
+			ownerPrivate.GET("/ai-config", middleware.OwnerRoute(protocol.OwnerManage, ""), aiConfigHandler.Get)
+			ownerPrivate.PUT("/ai-config", middleware.OwnerRoute(protocol.OwnerManage, ""), aiConfigHandler.Save)
+			ownerPrivate.POST("/ai-config/models", middleware.OwnerRoute(protocol.OwnerManage, ""), aiConfigHandler.ProbeModels)
+			ownerPrivate.DELETE("/ai-config", middleware.OwnerRoute(protocol.OwnerManage, ""), aiConfigHandler.Reset)
 		}
+		grantRoutes := v1.Group("/grants", middleware.AuthMiddleware(authService, ticketService, securityService))
+		grantRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
+		grantRoutes.GET("", middleware.OwnerRoute(protocol.GrantsManage, ""), grantHandler.List)
+		grantRoutes.POST("", middleware.OwnerRoute(protocol.GrantsManage, ""), grantHandler.Create)
+		grantRoutes.GET("/:id", middleware.OwnerRoute(protocol.GrantsManage, ""), grantHandler.Detail)
+		grantRoutes.PUT("/:id", middleware.OwnerRoute(protocol.GrantsManage, ""), grantHandler.Update)
+		grantRoutes.DELETE("/:id", middleware.OwnerRoute(protocol.GrantsManage, ""), grantHandler.Revoke)
+		grantRoutes.POST("/:id/rotate-secret", middleware.OwnerRoute(protocol.GrantsManage, ""), grantHandler.RotateSecret)
+		grantRoutes.POST("/:id/resources/:server_id/confirm", middleware.OwnerRoute(protocol.GrantsManage, ""), grantHandler.ConfirmResource)
+		grantRoutes.DELETE("/sessions/:id", middleware.OwnerRoute(protocol.GrantsManage, ""), accessHandler.EndSession)
 
-		// OAuth 路由（内置登录端点始终可用；对外 Provider 端点由系统设置动态控制）
-		externalOAuthProviderOnly := func(c *gin.Context) {
-			if !externalOAuthProviderGate.Enabled() {
-				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not_found", "message": "Not found"})
-				return
-			}
-			c.Next()
-		}
-		v1.GET("/.well-known/openid-configuration", externalOAuthProviderOnly, oauthProviderHandler.Discovery)
-		oauthRoutes := v1.Group("/oauth")
-		oauthRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
-		{
-			oauthRoutes.GET("/authorize", externalOAuthProviderOnly, oauthProviderHandler.Authorize) // 标准浏览器授权入口
-			oauthRoutes.GET("/userinfo", externalOAuthProviderOnly, oauthProviderHandler.UserInfo)
-			oauthRoutes.POST("/userinfo", externalOAuthProviderOnly, oauthProviderHandler.UserInfo)
-			oauthRoutes.POST("/revoke", externalOAuthProviderOnly, oauthProviderHandler.Revoke)
-			oauthRoutes.POST("/introspect", externalOAuthProviderOnly, oauthProviderHandler.Introspect)
-			oauthRoutes.GET("/jwks", externalOAuthProviderOnly, oauthProviderHandler.JWKS)
-			oauthRoutes.POST("/authorize", middleware.LoginRateLimitMiddleware(securityService), authHandler.OAuthAuthorize) // 登录交互提交
-			oauthRoutes.POST("/token", authHandler.OAuthToken)                                                               // 交换/刷新 access_token
-			oauthRoutes.POST("/logout", authHandler.Logout)                                                                  // 推荐登出端点（可携带 refresh_token Cookie）
-			oauthRoutes.POST("/google/verify", oauthHandler.GoogleVerify)                                                    // 验证 Google ID Token
-		}
-
-		// 用户路由（需要认证）
-		userRoutes := v1.Group("/users")
-		userRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		userRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
-		{
-			userRoutes.GET("/me", authHandler.GetCurrentUser)
-			userRoutes.PUT("/me", authHandler.UpdateProfile)
-			userRoutes.PUT("/me/password", authHandler.ChangePassword)
-			userRoutes.POST("/me/oauth/google/link", oauthHandler.GoogleLink)
-			userRoutes.DELETE("/me/oauth/google/link", oauthHandler.GoogleUnlink)
-
-			// 2FA 相关路由
-			userRoutes.GET("/me/2fa/generate", authHandler.Generate2FASecret) // 生成 2FA secret
-			userRoutes.POST("/me/2fa/enable", authHandler.Enable2FA)          // 启用 2FA
-			userRoutes.POST("/me/2fa/disable", authHandler.Disable2FA)        // 禁用 2FA
-
-			// 会话管理路由
-			userRoutes.GET("/me/sessions", authHandler.ListSessions)                          // 获取活跃会话列表
-			userRoutes.DELETE("/me/sessions/:session_id", authHandler.RevokeSession)          // 撤销指定会话
-			userRoutes.POST("/me/sessions/revoke-others", authHandler.RevokeAllOtherSessions) // 撤销所有其他会话
-
-			// 通知设置路由
-			userRoutes.PUT("/me/notifications", authHandler.UpdateNotificationSettings) // 更新通知设置
-
-			// 监控数据源设置路由
-			userRoutes.PUT("/me/monitor-datasource", authHandler.UpdateMonitorDataSource) // 更新监控数据源设置
-
-			// 用户AI配置路由
-			userRoutes.GET("/me/ai-config", userAIConfigHandler.GetUserAIConfig)           // 获取用户AI配置
-			userRoutes.PUT("/me/ai-config", userAIConfigHandler.SaveUserAIConfig)          // 保存用户AI配置
-			userRoutes.POST("/me/ai-config/models", userAIConfigHandler.ProbeUserAIModels) // 获取自定义AI可用模型
-			userRoutes.DELETE("/me/ai-config", userAIConfigHandler.DeleteUserAIConfig)     // 删除用户AI配置
-		}
-
-		// 用户管理路由（需要认证）
-		userManagementRoutes := v1.Group("/users")
-		userManagementRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		userManagementRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
-		userManagementRoutes.Use(middleware.RequirePermission(permissionService, "user:manage"))
-		{
-			userManagementRoutes.GET("", userHandler.ListUsers)                    // 获取用户列表
-			userManagementRoutes.GET("/statistics", userHandler.GetStatistics)     // 获取统计信息
-			userManagementRoutes.GET("/:id", userHandler.GetUser)                  // 获取用户详情
-			userManagementRoutes.POST("", userHandler.CreateUser)                  // 创建用户
-			userManagementRoutes.PUT("/:id", userHandler.UpdateUser)               // 更新用户
-			userManagementRoutes.DELETE("/:id", userHandler.DeleteUser)            // 删除用户
-			userManagementRoutes.POST("/:id/password", userHandler.ChangePassword) // 修改密码
-			userManagementRoutes.POST("/:id/lock", userHandler.LockUser)           // 锁定账户
-			userManagementRoutes.POST("/:id/unlock", userHandler.UnlockUser)       // 解锁账户
-		}
-
-		// 权限目录（只读）
-		permissionRoutes := v1.Group("/permissions")
-		permissionRoutes.Use(openAPIValidation)
-		permissionRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		permissionRoutes.Use(middleware.RequirePermission(permissionService, "user:manage"))
-		{
-			permissionRoutes.GET("", permissionHandler.ListPermissions)
-		}
-
-		// 自定义角色管理
-		roleRoutes := v1.Group("/roles")
-		roleRoutes.Use(openAPIValidation)
-		roleRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		roleRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
-		{
-			roleRoutes.GET("", permissionHandler.ListRoles)
-			roleRoutes.GET("/:id", permissionHandler.GetRole)
-			roleRoutes.POST("", middleware.RequirePermission(permissionService, "user:manage"), permissionHandler.CreateRole)
-			roleRoutes.PUT("/:id", middleware.RequirePermission(permissionService, "user:manage"), permissionHandler.UpdateRole)
-			roleRoutes.DELETE("/:id", middleware.RequirePermission(permissionService, "user:manage"), permissionHandler.DeleteRole)
-		}
-
-		// 指定用户或角色的资源级授权
-		resourceGrantRoutes := v1.Group("/resource-grants")
-		resourceGrantRoutes.Use(openAPIValidation)
-		resourceGrantRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		resourceGrantRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
-		resourceGrantRoutes.Use(middleware.RequirePermission(permissionService, "user:manage"))
-		{
-			resourceGrantRoutes.GET("", permissionHandler.ListResourceGrants)
-			resourceGrantRoutes.POST("", permissionHandler.GrantResource)
-			resourceGrantRoutes.POST("/revoke", permissionHandler.RevokeResource)
-		}
+		accessRoutes := v1.Group("/access")
+		accessRoutes.POST("/exchanges", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), accessHandler.Exchange)
+		accessRoutes.POST("/handoffs/:id/bind", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), accessHandler.BindHandoff)
+		accessRoutes.POST("/handoffs/:id/claim", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), accessHandler.ClaimHandoff)
+		visitorRoutes := accessRoutes.Group("", accessHandler.Authenticate())
+		visitorRoutes.GET("/context", middleware.AccessRoute(protocol.WorkspaceRead, ""), accessHandler.Context)
+		visitorRoutes.DELETE("/sessions/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), accessHandler.EndSession)
+		visitorRoutes.POST("/handoffs", middleware.AccessRoute(protocol.WorkspaceRead, ""), accessHandler.CreateHandoff)
+		visitorRoutes.GET("/handoffs/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), accessHandler.HandoffStatus)
+		visitorRoutes.POST("/handoffs/:id/approve", middleware.AccessRoute(protocol.WorkspaceRead, ""), accessHandler.ApproveHandoff)
+		// Resource execution routes are enabled per capability when their
+		// complete service and running-work checks have been connected.
+		executionAuth := middleware.ExecutionAuth(authService, ticketService, securityService, accessHandler.Authenticate())
+		accessRoutes.POST("/tickets", middleware.AccessRoute(protocol.WorkspaceRead, ""), executionAuth, ticketHandler.CreateTicket)
+		connectionRoutes := v1.Group("/connections", executionAuth)
+		connectionRoutes.POST("", middleware.AccessRoute(protocol.WorkspaceRead, ""), connectionHandler.Create)
+		connectionRoutes.POST("/:id/heartbeat", middleware.AccessRoute(protocol.WorkspaceRead, ""), connectionHandler.Heartbeat)
+		connectionRoutes.DELETE("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), connectionHandler.Close)
 
 		// 服务器路由（需要认证）
 		serverRoutes := v1.Group("/servers")
-		serverRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		serverRoutes.Use(executionAuth)
 		serverRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
-			serverRoutes.GET("", middleware.RequirePermission(permissionService, "server:view"), serverHandler.List)                                                           // 列表
-			serverRoutes.GET("/statistics", middleware.RequirePermission(permissionService, "server:view"), serverHandler.GetStatistics)                                       // 统计
-			serverRoutes.GET("/:id", middleware.RequireResourcePermission(permissionService, "server:view", "server", middleware.PathResourceID("id")), serverHandler.GetByID) // 详情
+			serverRoutes.GET("", middleware.AccessRoute(protocol.WorkspaceRead, ""), serverHandler.List)                     // 列表
+			serverRoutes.GET("/statistics", middleware.AccessRoute(protocol.WorkspaceRead, ""), serverHandler.GetStatistics) // 统计
+			serverRoutes.GET("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), serverHandler.GetByID)              // 详情
 
-			serverRoutes.POST("", middleware.RequirePermission(permissionService, "server:manage"), serverHandler.Create)                                                          // 创建
-			serverRoutes.PATCH("/reorder", middleware.RequirePermission(permissionService, "server:manage"), serverHandler.Reorder)                                                // 批量更新排序
-			serverRoutes.PUT("/:id", middleware.RequireResourcePermission(permissionService, "server:manage", "server", middleware.PathResourceID("id")), serverHandler.Update)    // 更新
-			serverRoutes.DELETE("/:id", middleware.RequireResourcePermission(permissionService, "server:manage", "server", middleware.PathResourceID("id")), serverHandler.Delete) // 删除
+			serverRoutes.POST("", middleware.OwnerRoute(protocol.ResourcesManage, ""), serverHandler.Create)           // 创建
+			serverRoutes.PATCH("/reorder", middleware.OwnerRoute(protocol.ResourcesManage, ""), serverHandler.Reorder) // 批量更新排序
+			serverRoutes.PUT("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), serverHandler.Update)        // 更新
+			serverRoutes.DELETE("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), serverHandler.Delete)     // 删除
 		}
+
+		groupRoutes := v1.Group("/server-groups")
+		groupRoutes.Use(executionAuth, middleware.AuditLogMiddleware(auditLogService, nil))
+		groupRoutes.GET("", middleware.OwnerRoute(protocol.ResourcesManage, ""), serverGroupHandler.List)
+		groupRoutes.POST("", middleware.OwnerRoute(protocol.ResourcesManage, ""), serverGroupHandler.Create)
+		groupRoutes.PUT("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), serverGroupHandler.Update)
+		groupRoutes.DELETE("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), serverGroupHandler.Delete)
 
 		// SSH 路由（需要认证）
 		sshRoutes := v1.Group("/ssh")
-		sshRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		sshRoutes.Use(executionAuth)
 		{
 			// WebSocket 终端
 			sshRoutes.GET(
 				"/terminal/:server_id",
-				middleware.RequireResourcePermission(permissionService, "server:connect", "server", middleware.PathResourceID("server_id")),
-				middleware.RequireResourcePermission(permissionService, "terminal:execute", "server", middleware.PathResourceID("server_id")),
-				terminalHandler.HandleSSH,
+				middleware.AccessRoute(protocol.TerminalConnect, "server_id"), middleware.ConnectionContext(accessRuntime, "server_id"), terminalHandler.HandleSSH,
 			)
 
 			// 会话管理 REST API
-			sshRoutes.GET("/sessions", middleware.RequirePermission(permissionService, "terminal:execute"), sshHandler.ListSessions)        // 会话列表
-			sshRoutes.GET("/sessions/:id", middleware.RequirePermission(permissionService, "terminal:execute"), sshHandler.GetSession)      // 会话详情
-			sshRoutes.DELETE("/sessions/:id", middleware.RequirePermission(permissionService, "terminal:execute"), sshHandler.CloseSession) // 关闭会话
-			sshRoutes.GET("/statistics", middleware.RequirePermission(permissionService, "terminal:execute"), sshHandler.GetStatistics)     // 统计信息
+			sshRoutes.GET("/sessions", middleware.AccessRoute(protocol.WorkspaceRead, ""), sshHandler.ListSessions)        // 会话列表
+			sshRoutes.GET("/sessions/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), sshHandler.GetSession)      // 会话详情
+			sshRoutes.DELETE("/sessions/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), sshHandler.CloseSession) // 关闭会话
+			sshRoutes.GET("/statistics", middleware.AccessRoute(protocol.WorkspaceRead, ""), sshHandler.GetStatistics)     // 统计信息
 		}
 
 		systemRoutes := v1.Group("/system/:serverId")
-		systemRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		systemRoutes.Use(middleware.RequireResourcePermission(permissionService, "server:connect", "server", middleware.PathResourceID("serverId")))
-		systemRoutes.GET("/:kind", middleware.RequireResourcePermission(permissionService, "terminal:execute", "server", middleware.PathResourceID("serverId")), systemInfoHandler.Snapshot)
+		systemRoutes.Use(executionAuth, middleware.ConnectionContext(accessRuntime, "serverId"))
+		systemRoutes.GET("/:kind", middleware.AccessRoute(protocol.MonitorRead, "serverId"), systemInfoHandler.Snapshot)
 
 		// Docker 路由（需要认证）
 		dockerRoutes := v1.Group("/docker/:serverId")
-		dockerRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		dockerRoutes.Use(middleware.RequireResourcePermission(permissionService, "server:connect", "server", middleware.PathResourceID("serverId")))
+		dockerRoutes.Use(executionAuth, middleware.ConnectionContext(accessRuntime, "serverId"))
 		{
-			dockerRoutes.GET("/containers", middleware.RequireResourcePermission(permissionService, "docker:view", "server", middleware.PathResourceID("serverId")), dockerHandler.ListContainers)
-			dockerRoutes.GET("/containers/:id/stats", middleware.RequireResourcePermission(permissionService, "docker:view", "server", middleware.PathResourceID("serverId")), dockerHandler.GetContainerStat)
-			dockerRoutes.GET("/containers/:id/logs", middleware.RequireResourcePermission(permissionService, "docker:view", "server", middleware.PathResourceID("serverId")), dockerHandler.GetContainerLogs)
-			dockerRoutes.GET("/containers/:id/check-update", middleware.RequireResourcePermission(permissionService, "docker:view", "server", middleware.PathResourceID("serverId")), dockerHandler.CheckContainerImageUpdate)
-			dockerRoutes.POST("/containers/:id/start", middleware.RequireResourcePermission(permissionService, "docker:manage", "server", middleware.PathResourceID("serverId")), dockerHandler.StartContainer)
-			dockerRoutes.POST("/containers/:id/stop", middleware.RequireResourcePermission(permissionService, "docker:manage", "server", middleware.PathResourceID("serverId")), dockerHandler.StopContainer)
-			dockerRoutes.POST("/containers/:id/restart", middleware.RequireResourcePermission(permissionService, "docker:manage", "server", middleware.PathResourceID("serverId")), dockerHandler.RestartContainer)
-			dockerRoutes.POST("/containers/:id/pause", middleware.RequireResourcePermission(permissionService, "docker:manage", "server", middleware.PathResourceID("serverId")), dockerHandler.PauseContainer)
-			dockerRoutes.POST("/containers/:id/unpause", middleware.RequireResourcePermission(permissionService, "docker:manage", "server", middleware.PathResourceID("serverId")), dockerHandler.UnpauseContainer)
-			dockerRoutes.DELETE("/containers/:id", middleware.RequireResourcePermission(permissionService, "docker:manage", "server", middleware.PathResourceID("serverId")), dockerHandler.RemoveContainer)
-			dockerRoutes.GET("/images", middleware.RequireResourcePermission(permissionService, "docker:view", "server", middleware.PathResourceID("serverId")), dockerHandler.ListImages)
-			dockerRoutes.GET("/system", middleware.RequireResourcePermission(permissionService, "docker:view", "server", middleware.PathResourceID("serverId")), dockerHandler.GetSystemInfo)
-			dockerRoutes.GET("/stats", middleware.RequireResourcePermission(permissionService, "docker:view", "server", middleware.PathResourceID("serverId")), dockerHandler.GetStats)
-			dockerRoutes.GET("/resources", middleware.RequireResourcePermission(permissionService, "docker:view", "server", middleware.PathResourceID("serverId")), dockerHandler.GetResources)
+			dockerRoutes.GET("/tasks/:taskId", middleware.AccessRoute(protocol.DockerManage, "serverId"), dockerHandler.Result)
+			dockerRoutes.GET("/containers", middleware.AccessRoute(protocol.DockerRead, "serverId"), dockerHandler.ListContainers)
+			dockerRoutes.GET("/containers/:id/stats", middleware.AccessRoute(protocol.DockerRead, "serverId"), dockerHandler.GetContainerStat)
+			dockerRoutes.GET("/containers/:id/logs", middleware.AccessRoute(protocol.DockerRead, "serverId"), dockerHandler.GetContainerLogs)
+			dockerRoutes.GET("/containers/:id/check-update", middleware.AccessRoute(protocol.DockerRead, "serverId"), dockerHandler.CheckContainerImageUpdate)
+			dockerRoutes.POST("/containers/:id/start", middleware.AccessRoute(protocol.DockerManage, "serverId"), dockerHandler.StartContainer)
+			dockerRoutes.POST("/containers/:id/stop", middleware.AccessRoute(protocol.DockerManage, "serverId"), dockerHandler.StopContainer)
+			dockerRoutes.POST("/containers/:id/restart", middleware.AccessRoute(protocol.DockerManage, "serverId"), dockerHandler.RestartContainer)
+			dockerRoutes.POST("/containers/:id/pause", middleware.AccessRoute(protocol.DockerManage, "serverId"), dockerHandler.PauseContainer)
+			dockerRoutes.POST("/containers/:id/unpause", middleware.AccessRoute(protocol.DockerManage, "serverId"), dockerHandler.UnpauseContainer)
+			dockerRoutes.DELETE("/containers/:id", middleware.AccessRoute(protocol.DockerManage, "serverId"), dockerHandler.RemoveContainer)
+			dockerRoutes.GET("/images", middleware.AccessRoute(protocol.DockerRead, "serverId"), dockerHandler.ListImages)
+			dockerRoutes.GET("/system", middleware.AccessRoute(protocol.DockerRead, "serverId"), dockerHandler.GetSystemInfo)
+			dockerRoutes.GET("/stats", middleware.AccessRoute(protocol.DockerRead, "serverId"), dockerHandler.GetStats)
+			dockerRoutes.GET("/resources", middleware.AccessRoute(protocol.DockerRead, "serverId"), dockerHandler.GetResources)
 		}
 
 		// 监控 WebSocket 路由（需要认证）
 		monitorRoutes := v1.Group("/monitor")
-		monitorRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		monitorRoutes.Use(middleware.RequireResourcePermission(permissionService, "server:connect", "server", middleware.PathResourceID("server_id")))
+		monitorRoutes.Use(executionAuth, middleware.ConnectionContext(accessRuntime, "server_id"))
 		{
 			// WebSocket 实时监控 - 使用 server_id 查找活跃会话
-			monitorRoutes.GET("/server/:server_id", monitorHandler.HandleMonitor) // 实时监控 WebSocket
+			monitorRoutes.GET("/server/:server_id", middleware.AccessRoute(protocol.MonitorRead, "server_id"), monitorHandler.HandleMonitor) // 实时监控 WebSocket
 		}
 
 		// SFTP 路由（需要认证）
 		sftpRoutes := v1.Group("/sftp/:server_id")
-		sftpRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		sftpRoutes.Use(middleware.RequireResourcePermission(permissionService, "server:connect", "server", middleware.PathResourceID("server_id")))
+		sftpRoutes.Use(executionAuth, middleware.ConnectionContext(accessRuntime, "server_id"))
 		{
 			// 文件浏览
-			sftpRoutes.GET("/list", middleware.RequireResourcePermission(permissionService, "file:view", "server", middleware.PathResourceID("server_id")), sftpHandler.ListDirectory)
-			sftpRoutes.GET("/stat", middleware.RequireResourcePermission(permissionService, "file:view", "server", middleware.PathResourceID("server_id")), sftpHandler.GetFileInfo)
-			sftpRoutes.GET("/disk-usage", middleware.RequireResourcePermission(permissionService, "file:view", "server", middleware.PathResourceID("server_id")), sftpHandler.GetDiskUsage)
-			sftpRoutes.POST("/auth", middleware.RequireResourcePermission(permissionService, "file:view", "server", middleware.PathResourceID("server_id")), sftpHandler.Authenticate)
-			sftpRoutes.GET("/auth/ws", middleware.RequireResourcePermission(permissionService, "file:view", "server", middleware.PathResourceID("server_id")), sftpAuthWSHandler.HandleAuthWebSocket)
+			sftpRoutes.GET("/list", middleware.AccessRoute(protocol.FilesList, "server_id"), sftpHandler.ListDirectory)
+			sftpRoutes.GET("/stat", middleware.AccessRoute(protocol.FilesList, "server_id"), sftpHandler.GetFileInfo)
+			sftpRoutes.GET("/disk-usage", middleware.AccessRoute(protocol.FilesList, "server_id"), sftpHandler.GetDiskUsage)
+			sftpRoutes.POST("/auth", middleware.OwnerRoute(protocol.FilesList, "server_id"), sftpHandler.Authenticate)
+			sftpRoutes.GET("/auth/ws", middleware.AccessRoute(protocol.FilesList, "server_id"), sftpAuthWSHandler.HandleAuthWebSocket)
 
 			// 文件传输
-			sftpRoutes.POST("/upload/stream", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.UploadFileStream)
-			sftpRoutes.GET("/download", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.DownloadFile)
 
 			// 文件操作
-			sftpRoutes.POST("/mkdir", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.CreateDirectory)
-			sftpRoutes.DELETE("/delete", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.Delete)
-			sftpRoutes.POST("/delete-paths", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.DeletePaths)
-			sftpRoutes.POST("/rename", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.Rename)
-			sftpRoutes.POST("/chmod", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.Chmod)
+			sftpRoutes.POST("/mkdir", middleware.AccessRoute(protocol.FilesWrite, "server_id"), sftpHandler.CreateDirectory)
+			sftpRoutes.DELETE("/delete", middleware.AccessRoute(protocol.FilesDelete, "server_id"), sftpHandler.Delete)
+			sftpRoutes.POST("/delete-paths", middleware.AccessRoute(protocol.FilesDelete, "server_id"), sftpHandler.DeletePaths)
+			sftpRoutes.POST("/rename", middleware.AccessRoute(protocol.FilesWrite, "server_id"), sftpHandler.Rename)
+			sftpRoutes.POST("/chmod", middleware.AccessRoute(protocol.FilesWrite, "server_id"), sftpHandler.Chmod)
 
 			// 批量操作
-			sftpRoutes.POST("/batch-delete", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.BatchDelete)
-			sftpRoutes.POST("/batch-download", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.BatchDownload)
+			sftpRoutes.POST("/batch-delete", middleware.AccessRoute(protocol.FilesDelete, "server_id"), sftpHandler.BatchDelete)
 
 			// 文件内容
-			sftpRoutes.GET("/read", middleware.RequireResourcePermission(permissionService, "file:view", "server", middleware.PathResourceID("server_id")), sftpHandler.ReadFile)
-			sftpRoutes.POST("/write", middleware.RequireResourcePermission(permissionService, "file:manage", "server", middleware.PathResourceID("server_id")), sftpHandler.WriteFile)
+			sftpRoutes.GET("/read", middleware.AccessRoute(protocol.FilesRead, "server_id"), sftpHandler.ReadFile)
+			sftpRoutes.POST("/write", middleware.AccessRoute(protocol.FilesWrite, "server_id"), sftpHandler.WriteFile)
 
 			// 连接管理
-			sftpRoutes.POST("/close", middleware.RequireResourcePermission(permissionService, "file:view", "server", middleware.PathResourceID("server_id")), sftpHandler.CloseConnection)
+
 		}
 
 		// SFTP 连接池统计路由（需要认证）
 		sftpPoolRoutes := v1.Group("/sftp/pool")
-		sftpPoolRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		sftpPoolRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
-		sftpPoolRoutes.Use(middleware.RequirePermission(permissionService, "file:view"))
+		sftpPoolRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 		{
-			sftpPoolRoutes.GET("/stats", sftpHandler.GetPoolStats) // 连接池统计
-		}
-
-		// SFTP 上传进度 WebSocket 路由（需要认证）
-		sftpWSRoutes := v1.Group("/sftp/upload/ws")
-		sftpWSRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		sftpWSRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
-		sftpWSRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
-		{
-			sftpWSRoutes.GET("/:task_id", sftpUploadWSHandler.HandleUploadWebSocket) // 上传进度 WebSocket
-		}
-
-		// SFTP 上传任务路由（需要认证）
-		sftpUploadRoutes := v1.Group("/sftp/upload")
-		sftpUploadRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		sftpUploadRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
-		sftpUploadRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
-		{
-			sftpUploadRoutes.POST("/task", sftpHandler.CreateUploadTask)                  // 创建上传任务（服务端生成 task_id）
-			sftpUploadRoutes.GET("/tasks", sftpHandler.ListUploadTasks)                   // 上传任务列表（内存运行态）
-			sftpUploadRoutes.GET("/tasks/:task_id", sftpHandler.GetUploadTask)            // 上传任务详情（内存运行态）
-			sftpUploadRoutes.POST("/tasks/:task_id/cancel", sftpHandler.CancelUploadTask) // 取消上传任务
-		}
-
-		// SFTP 跨服务器传输路由（需要认证）
-		sftpTransferRoutes := v1.Group("/sftp")
-		sftpTransferRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		sftpTransferRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
-		sftpTransferRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
-		{
-			sftpTransferRoutes.POST("/transfer", sftpHandler.Transfer)                       // 跨服务器文件传输（流式中转）
-			sftpTransferRoutes.POST("/transfer/direct", sftpHandler.DirectTransfer)          // 跨服务器直连传输（rsync/scp）
-			sftpTransferRoutes.POST("/transfer/:task_id/cancel", sftpHandler.CancelTransfer) // 取消传输任务
-		}
-
-		// SFTP 跨服务器传输进度 WebSocket 路由（需要认证）
-		sftpTransferWSRoutes := v1.Group("/sftp/transfer/ws")
-		sftpTransferWSRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		sftpTransferWSRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
-		sftpTransferWSRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
-		{
-			sftpTransferWSRoutes.GET("/:task_id", sftpTransferWSHandler.HandleTransferWebSocket) // 传输进度 WebSocket
+			sftpPoolRoutes.GET("/stats", middleware.OwnerRoute(protocol.WorkspaceRead, ""), sftpHandler.GetPoolStats) // 连接池统计
 		}
 
 		// 监控路由（需要认证）
 		monitoringRoutes := v1.Group("/monitoring")
-		monitoringRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		monitoringRoutes.Use(middleware.RequirePermission(permissionService, "server:connect"))
+		monitoringRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 		{
-			monitoringRoutes.GET("/resources", monitoringHandler.GetAllResources)                 // 所有服务器资源概览
-			monitoringRoutes.POST("/datasource/test", monitoringHandler.TestDataSourceConnection) // 测试数据源连接
+			monitoringRoutes.GET("/resources", middleware.OwnerRoute(protocol.WorkspaceRead, ""), monitoringHandler.GetAllResources)                 // 所有服务器资源概览
+			monitoringRoutes.POST("/datasource/test", middleware.OwnerRoute(protocol.WorkspaceRead, ""), monitoringHandler.TestDataSourceConnection) // 测试数据源连接
 		}
 
 		// 仪表盘聚合路由（需要认证）
 		dashboardRoutes := v1.Group("/dashboard")
-		dashboardRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		dashboardRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 		{
-			dashboardRoutes.GET("/overview", dashboardHandler.GetOverview) // 仪表盘聚合概览
+			dashboardRoutes.GET("/overview", middleware.OwnerRoute(protocol.WorkspaceRead, ""), dashboardHandler.GetOverview) // 仪表盘聚合概览
 		}
 
 		// 全部日志路由（团队治理，需要管理员审计权限）
 		logRoutes := v1.Group("/logs")
-		logRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		logRoutes.Use(middleware.RequirePermission(permissionService, "audit:view"))
+		logRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 		{
-			logRoutes.GET("", auditLogHandler.ListAll)
-			logRoutes.GET("/statistics", auditLogHandler.GetAllStatistics)
-			logRoutes.DELETE("/cleanup", middleware.RequirePermission(permissionService, "audit:manage"), auditLogHandler.CleanupOldLogs)
-			logRoutes.GET("/:id", auditLogHandler.GetAnyByID)
+			logRoutes.GET("", middleware.OwnerRoute(protocol.ActivityRead, ""), auditLogHandler.ListAll)
+			logRoutes.GET("/statistics", middleware.OwnerRoute(protocol.ActivityRead, ""), auditLogHandler.GetAllStatistics)
+			logRoutes.DELETE("/cleanup", middleware.OwnerRoute(protocol.ActivityRead, ""), auditLogHandler.CleanupOldLogs)
+			logRoutes.GET("/:id", middleware.OwnerRoute(protocol.ActivityRead, ""), auditLogHandler.GetAnyByID)
 		}
 
-		// 统一操作记录路由：当前用户只读查看自己的记录；管理员全局视角走 /logs
+		// 活动读取在仓储层按可信主体过滤，所有者可查看工作区。
 		operationRecordRoutes := v1.Group("/operation-records")
-		operationRecordRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		operationRecordRoutes.Use(executionAuth)
 		{
-			operationRecordRoutes.GET("", operationRecordHandler.List)
-			operationRecordRoutes.GET("/statistics", operationRecordHandler.GetStatistics)
-			operationRecordRoutes.GET("/:id", operationRecordHandler.GetByID)
+			operationRecordRoutes.GET("", middleware.AccessRoute(protocol.WorkspaceRead, ""), operationRecordHandler.List)
+			operationRecordRoutes.GET("/overview", middleware.AccessRoute(protocol.WorkspaceRead, ""), operationRecordHandler.Overview)
+			operationRecordRoutes.GET("/statistics", middleware.AccessRoute(protocol.WorkspaceRead, ""), operationRecordHandler.GetStatistics)
+			operationRecordRoutes.GET("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), operationRecordHandler.GetByID)
 		}
 
 		// 后台文件传输任务路由（需要认证）
 		transferJobRoutes := v1.Group("/transfer-jobs")
-		transferJobRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		transferJobRoutes.Use(middleware.RequirePermission(permissionService, "file:manage"))
+		transferJobRoutes.Use(executionAuth)
 		{
-			transferJobRoutes.GET("", transferJobHandler.List)
-			transferJobRoutes.GET("/statistics", transferJobHandler.GetStatistics)
-			transferJobRoutes.POST("/sftp/upload", transferJobHandler.CreateUpload)
-			transferJobRoutes.POST("/sftp/download", transferJobHandler.CreateDownload)
-			transferJobRoutes.GET("/:id", transferJobHandler.GetByID)
-			transferJobRoutes.POST("/:id/cancel", transferJobHandler.Cancel)
-			transferJobRoutes.DELETE("/:id", transferJobHandler.Delete)
-			transferJobRoutes.GET("/:id/artifact", transferJobHandler.DownloadArtifact)
+			transferJobRoutes.GET("", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.List)
+			transferJobRoutes.GET("/statistics", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.GetStatistics)
+			transferJobRoutes.POST("/sftp/upload", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.CreateUpload)
+			transferJobRoutes.PUT("/:id/input", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.UploadContent)
+			transferJobRoutes.POST("/sftp/relay", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.CreateRelay)
+			transferJobRoutes.POST("/sftp/download", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.CreateDownload)
+			transferJobRoutes.GET("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.GetByID)
+			transferJobRoutes.POST("/:id/cancel", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.Cancel)
+			transferJobRoutes.DELETE("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.Delete)
+			transferJobRoutes.GET("/:id/artifact", middleware.AccessRoute(protocol.WorkspaceRead, ""), transferJobHandler.DownloadArtifact)
 		}
 
 		// 用户任务与通知实时事件
 		realtimeRoutes := v1.Group("/events")
-		realtimeRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		realtimeRoutes.Use(executionAuth)
 		{
-			realtimeRoutes.GET("/stream", realtimeHandler.Stream)
+			realtimeRoutes.GET("/stream", middleware.AccessRoute(protocol.WorkspaceRead, ""), realtimeHandler.Stream)
 		}
 
 		// 统一任务运行中心
 		taskCenterRoutes := v1.Group("/tasks")
-		taskCenterRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		taskCenterRoutes.Use(executionAuth)
 		{
-			taskCenterRoutes.GET("", taskCenterHandler.List)
-			taskCenterRoutes.GET("/statistics", taskCenterHandler.Statistics)
-			taskCenterRoutes.DELETE("/cleanup", taskCenterHandler.Cleanup)
-			taskCenterRoutes.GET("/:id", taskCenterHandler.Get)
-			taskCenterRoutes.POST("/:id/cancel", taskCenterHandler.Cancel)
-			taskCenterRoutes.POST("/:id/retry", taskCenterHandler.Retry)
+			taskCenterRoutes.GET("", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.List)
+			taskCenterRoutes.GET("/statistics", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.Statistics)
+			taskCenterRoutes.DELETE("/cleanup", middleware.OwnerRoute(protocol.ResourcesManage, ""), taskCenterHandler.Cleanup)
+			taskCenterRoutes.GET("/:id/events", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.Events)
+			taskCenterRoutes.GET("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.Get)
+			taskCenterRoutes.POST("/:id/cancel", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.Cancel)
+			taskCenterRoutes.POST("/:id/retry", middleware.OwnerRoute(protocol.ResourcesManage, ""), taskCenterHandler.Retry)
 		}
 
 		// 用户站内通知
 		inboxNotificationRoutes := v1.Group("/notifications")
-		inboxNotificationRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		inboxNotificationRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 		{
-			inboxNotificationRoutes.GET("", inboxNotificationHandler.List)
-			inboxNotificationRoutes.POST("/read-all", inboxNotificationHandler.MarkAllRead)
-			inboxNotificationRoutes.DELETE("/read", inboxNotificationHandler.ClearRead)
-			inboxNotificationRoutes.POST("/:id/read", inboxNotificationHandler.MarkRead)
-			inboxNotificationRoutes.DELETE("/:id", inboxNotificationHandler.Delete)
+			inboxNotificationRoutes.GET("", middleware.OwnerRoute(protocol.OwnerManage, ""), inboxNotificationHandler.List)
+			inboxNotificationRoutes.POST("/read-all", middleware.OwnerRoute(protocol.OwnerManage, ""), inboxNotificationHandler.MarkAllRead)
+			inboxNotificationRoutes.DELETE("/read", middleware.OwnerRoute(protocol.OwnerManage, ""), inboxNotificationHandler.ClearRead)
+			inboxNotificationRoutes.POST("/:id/read", middleware.OwnerRoute(protocol.OwnerManage, ""), inboxNotificationHandler.MarkRead)
+			inboxNotificationRoutes.DELETE("/:id", middleware.OwnerRoute(protocol.OwnerManage, ""), inboxNotificationHandler.Delete)
 		}
 
 		// 脚本管理路由（需要认证）
 		scriptRoutes := v1.Group("/scripts")
-		scriptRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		scriptRoutes.Use(executionAuth)
 		scriptRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
-			scriptRoutes.GET("", scriptHandler.List)                 // 脚本列表
-			scriptRoutes.POST("", scriptHandler.Create)              // 创建脚本
-			scriptRoutes.GET("/:id", scriptHandler.GetByID)          // 脚本详情
-			scriptRoutes.PUT("/:id", scriptHandler.Update)           // 更新脚本
-			scriptRoutes.DELETE("/:id", scriptHandler.Delete)        // 删除脚本
-			scriptRoutes.POST("/:id/execute", scriptHandler.Execute) // 执行脚本
+			scriptRoutes.GET("/available", middleware.AccessRoute(protocol.WorkspaceRead, ""), scriptHandler.Available)
+			scriptRoutes.GET("", middleware.OwnerRoute(protocol.ResourcesManage, ""), scriptHandler.List)                // 脚本列表
+			scriptRoutes.POST("", middleware.OwnerRoute(protocol.ResourcesManage, ""), scriptHandler.Create)             // 创建脚本
+			scriptRoutes.GET("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), scriptHandler.GetByID)         // 脚本详情
+			scriptRoutes.PUT("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), scriptHandler.Update)          // 更新脚本
+			scriptRoutes.DELETE("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), scriptHandler.Delete)       // 删除脚本
+			scriptRoutes.POST("/:id/execute", middleware.AccessRoute(protocol.WorkspaceRead, ""), scriptHandler.Execute) // 执行脚本
 		}
 
 		// 批量任务路由（需要认证）
 		batchTaskRoutes := v1.Group("/batch-tasks")
-		batchTaskRoutes.Use(openAPIValidation)
-		batchTaskRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		batchTaskRoutes.Use(executionAuth)
 		{
-			batchTaskRoutes.GET("", batchTaskHandler.List)                     // 任务列表
-			batchTaskRoutes.POST("", batchTaskHandler.Create)                  // 创建任务
-			batchTaskRoutes.GET("/statistics", batchTaskHandler.GetStatistics) // 统计信息
-			batchTaskRoutes.GET("/:id", batchTaskHandler.GetByID)              // 任务详情
-			batchTaskRoutes.PUT("/:id", batchTaskHandler.Update)               // 更新任务
-			batchTaskRoutes.DELETE("/:id", batchTaskHandler.Delete)            // 删除任务
-			batchTaskRoutes.POST("/:id/start", batchTaskHandler.Start)         // 启动任务
+			batchTaskRoutes.GET("", middleware.AccessRoute(protocol.WorkspaceRead, ""), batchTaskHandler.List)                     // 任务列表
+			batchTaskRoutes.POST("", middleware.AccessRoute(protocol.WorkspaceRead, ""), batchTaskHandler.Create)                  // 创建任务
+			batchTaskRoutes.GET("/statistics", middleware.AccessRoute(protocol.WorkspaceRead, ""), batchTaskHandler.GetStatistics) // 统计信息
+			batchTaskRoutes.GET("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), batchTaskHandler.GetByID)              // 任务详情
+			batchTaskRoutes.PUT("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), batchTaskHandler.Update)               // 更新任务
+			batchTaskRoutes.DELETE("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), batchTaskHandler.Delete)            // 删除任务
+			batchTaskRoutes.POST("/:id/start", middleware.AccessRoute(protocol.WorkspaceRead, ""), batchTaskHandler.Start)         // 启动任务
 		}
 
 		// 定时任务路由（需要认证）
 		scheduledTaskRoutes := v1.Group("/scheduled-tasks")
-		scheduledTaskRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		scheduledTaskRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 		scheduledTaskRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
-			scheduledTaskRoutes.GET("", scheduledTaskHandler.List)                     // 任务列表
-			scheduledTaskRoutes.POST("", scheduledTaskHandler.Create)                  // 创建任务
-			scheduledTaskRoutes.GET("/statistics", scheduledTaskHandler.GetStatistics) // 统计信息
-			scheduledTaskRoutes.GET("/:id", scheduledTaskHandler.GetByID)              // 任务详情
-			scheduledTaskRoutes.PUT("/:id", scheduledTaskHandler.Update)               // 更新任务
-			scheduledTaskRoutes.DELETE("/:id", scheduledTaskHandler.Delete)            // 删除任务
-			scheduledTaskRoutes.POST("/:id/toggle", scheduledTaskHandler.Toggle)       // 启用/禁用
-			scheduledTaskRoutes.POST("/:id/trigger", scheduledTaskHandler.Trigger)     // 手动触发
+			scheduledTaskRoutes.GET("", middleware.OwnerRoute(protocol.ResourcesManage, ""), scheduledTaskHandler.List)                     // 任务列表
+			scheduledTaskRoutes.POST("", middleware.OwnerRoute(protocol.ResourcesManage, ""), scheduledTaskHandler.Create)                  // 创建任务
+			scheduledTaskRoutes.GET("/statistics", middleware.OwnerRoute(protocol.ResourcesManage, ""), scheduledTaskHandler.GetStatistics) // 统计信息
+			scheduledTaskRoutes.GET("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), scheduledTaskHandler.GetByID)              // 任务详情
+			scheduledTaskRoutes.PUT("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), scheduledTaskHandler.Update)               // 更新任务
+			scheduledTaskRoutes.DELETE("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), scheduledTaskHandler.Delete)            // 删除任务
+			scheduledTaskRoutes.POST("/:id/toggle", middleware.OwnerRoute(protocol.ResourcesManage, ""), scheduledTaskHandler.Toggle)       // 启用/禁用
+			scheduledTaskRoutes.POST("/:id/trigger", middleware.OwnerRoute(protocol.ResourcesManage, ""), scheduledTaskHandler.Trigger)     // 手动触发
 		}
 
 		// 系统设置路由（需要认证）
 		settingsGroup := v1.Group("/settings")
-		settingsGroup.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		settingsGroup.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 		settingsGroup.Use(middleware.AuditLogMiddleware(auditLogService, nil))
-		settingsGroup.Use(middleware.RequirePermission(permissionService, "system:settings"))
 		{
 			// 系统配置
-			settingsGroup.GET("/system", systemConfigHandler.GetSystemConfig)
+			settingsGroup.GET("/system", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.GetSystemConfig)
 			// 系统配置 - 分组部分更新
-			settingsGroup.PATCH("/system/basic", systemConfigHandler.PatchBasicInfo)
-			settingsGroup.PATCH("/system/file-transfer", systemConfigHandler.PatchFileTransferConfig)
-			settingsGroup.PATCH("/system/registration", systemConfigHandler.PatchRegistrationConfig)
-			settingsGroup.PATCH("/system/google-auth", systemConfigHandler.PatchGoogleAuthConfig)
-			settingsGroup.PATCH("/system/oauth-provider", systemConfigHandler.PatchOAuthProviderConfig)
-			settingsGroup.GET("/system/scheduled-tasks", systemConfigHandler.GetScheduledTaskConfig)
-			settingsGroup.PATCH("/system/scheduled-tasks", systemConfigHandler.PatchScheduledTaskConfig)
+			settingsGroup.PATCH("/system/basic", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.PatchBasicInfo)
+			settingsGroup.PATCH("/system/file-transfer", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.PatchFileTransferConfig)
+			settingsGroup.GET("/system/scheduled-tasks", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.GetScheduledTaskConfig)
+			settingsGroup.PATCH("/system/scheduled-tasks", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.PatchScheduledTaskConfig)
 
-			settingsGroup.GET("/workspace", securityHandler.GetWorkspaceConfig)
-			settingsGroup.POST("/workspace", securityHandler.SaveWorkspaceConfig)
-			settingsGroup.GET("/login-session", securityHandler.GetLoginSessionConfig)
-			settingsGroup.POST("/login-session", securityHandler.SaveLoginSessionConfig)
-			settingsGroup.GET("/login-security", securityHandler.GetLoginSecurityConfig)
-			settingsGroup.POST("/login-security", securityHandler.SaveLoginSecurityConfig)
-			settingsGroup.GET("/web-security", securityHandler.GetWebSecurityConfig)
-			settingsGroup.POST("/web-security", securityHandler.SaveWebSecurityConfig)
-			settingsGroup.GET("/cors", securityHandler.GetCORSConfig)
-			settingsGroup.POST("/cors", securityHandler.SaveCORSConfig)
+			settingsGroup.GET("/workspace", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.GetWorkspaceConfig)
+			settingsGroup.POST("/workspace", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.SaveWorkspaceConfig)
+			settingsGroup.GET("/login-session", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.GetLoginSessionConfig)
+			settingsGroup.POST("/login-session", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.SaveLoginSessionConfig)
+			settingsGroup.GET("/login-security", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.GetLoginSecurityConfig)
+			settingsGroup.POST("/login-security", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.SaveLoginSecurityConfig)
+			settingsGroup.GET("/web-security", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.GetWebSecurityConfig)
+			settingsGroup.POST("/web-security", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.SaveWebSecurityConfig)
+			settingsGroup.GET("/cors", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.GetCORSConfig)
+			settingsGroup.POST("/cors", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.SaveCORSConfig)
 
 			// IP访问控制配置
-			settingsGroup.GET("/access-control", securityHandler.GetAccessControlConfig)
-			settingsGroup.POST("/access-control", securityHandler.SaveAccessControlConfig)
+			settingsGroup.GET("/access-control", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.GetAccessControlConfig)
+			settingsGroup.POST("/access-control", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.SaveAccessControlConfig)
 
 			// 通知配置 - 统一接口
-			settingsGroup.GET("/notifications", notificationConfigHandler.GetAllNotificationConfig)
-			settingsGroup.POST("/notifications", notificationConfigHandler.SaveAllNotificationConfig)
+			settingsGroup.GET("/notifications", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.GetAllNotificationConfig)
+			settingsGroup.POST("/notifications", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.SaveAllNotificationConfig)
 
 			// 通知配置 - SMTP
-			settingsGroup.GET("/smtp", notificationConfigHandler.GetSMTPConfig)
-			settingsGroup.POST("/smtp", notificationConfigHandler.SaveSMTPConfig)
-			settingsGroup.POST("/smtp/test", notificationConfigHandler.TestSMTPConnection)
+			settingsGroup.GET("/smtp", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.GetSMTPConfig)
+			settingsGroup.POST("/smtp", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.SaveSMTPConfig)
+			settingsGroup.POST("/smtp/test", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.TestSMTPConnection)
 
 			// 通知配置 - Webhook
-			settingsGroup.GET("/webhook", notificationConfigHandler.GetWebhookConfig)
-			settingsGroup.POST("/webhook", notificationConfigHandler.SaveWebhookConfig)
-			settingsGroup.POST("/webhook/test", notificationConfigHandler.TestWebhookConnection)
+			settingsGroup.GET("/webhook", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.GetWebhookConfig)
+			settingsGroup.POST("/webhook", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.SaveWebhookConfig)
+			settingsGroup.POST("/webhook/test", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.TestWebhookConnection)
 
 			// 通知配置 - 钉钉
-			settingsGroup.GET("/dingtalk", notificationConfigHandler.GetDingTalkConfig)
-			settingsGroup.POST("/dingtalk", notificationConfigHandler.SaveDingTalkConfig)
-			settingsGroup.POST("/dingtalk/test", notificationConfigHandler.TestDingTalkConnection)
+			settingsGroup.GET("/dingtalk", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.GetDingTalkConfig)
+			settingsGroup.POST("/dingtalk", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.SaveDingTalkConfig)
+			settingsGroup.POST("/dingtalk/test", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.TestDingTalkConnection)
 
 			// 通知配置 - 企业微信
-			settingsGroup.GET("/wecom", notificationConfigHandler.GetWeComConfig)
-			settingsGroup.POST("/wecom", notificationConfigHandler.SaveWeComConfig)
-			settingsGroup.POST("/wecom/test", notificationConfigHandler.TestWeComConnection)
+			settingsGroup.GET("/wecom", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.GetWeComConfig)
+			settingsGroup.POST("/wecom", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.SaveWeComConfig)
+			settingsGroup.POST("/wecom/test", middleware.OwnerRoute(protocol.OwnerManage, ""), notificationConfigHandler.TestWeComConnection)
 
-			// AI配置
-			aiGroup := settingsGroup.Group("/ai")
-			{
-				aiGroup.GET("/system", aiConfigHandler.GetSystemAIConfig)
-				aiGroup.POST("/system", aiConfigHandler.SaveSystemAIConfig)
-				aiGroup.POST("/system/models", aiConfigHandler.ProbeSystemAIModels)
-			}
+		}
+
+		contentRoutes := v1.Group("/content")
+		contentRoutes.Use(executionAuth)
+		{
+			contentRoutes.GET("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), contentHandler.Reference)
+			contentRoutes.GET("/:id/bytes", middleware.AccessRoute(protocol.WorkspaceRead, ""), contentHandler.Read)
 		}
 
 		// AI聊天路由（需要认证）
 		aiChatRoutes := v1.Group("/ai")
-		aiChatRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		aiChatRoutes.Use(executionAuth)
 		{
-			aiChatRoutes.GET("/config", aiRuntimeConfigHandler.GetConfig)
-			aiChatRoutes.GET("/sessions", aiSessionHandler.ListSessions)
-			aiChatRoutes.GET("/sessions/latest", aiSessionHandler.GetLatestSession)
-			aiChatRoutes.POST("/sessions", aiSessionHandler.CreateSession)
-			aiChatRoutes.GET("/sessions/:session_id", aiSessionHandler.GetSession)
-			aiChatRoutes.GET("/sessions/:session_id/tasks/:task_id/file", aiSessionHandler.GetTaskFile)
-			aiChatRoutes.PATCH("/sessions/:session_id", aiSessionHandler.RenameSession)
-			aiChatRoutes.POST("/sessions/:session_id/chat", aiSessionHandler.Chat)
-			aiChatRoutes.GET("/sessions/:session_id/chat/stream", aiSessionHandler.ResumeChat)
-			aiChatRoutes.POST("/sessions/:session_id/cancel", aiSessionHandler.CancelSession)
-			aiChatRoutes.PATCH("/sessions/:session_id/messages/:message_id", aiSessionHandler.UpdateMessage)
-			aiChatRoutes.DELETE("/sessions/:session_id/messages/:message_id", aiSessionHandler.DeleteMessage)
-			aiChatRoutes.DELETE("/sessions/:session_id", aiSessionHandler.DeleteSession)
+			aiChatRoutes.GET("/config", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiRuntimeConfigHandler.GetConfig)
+			aiChatRoutes.GET("/sessions", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.ListSessions)
+			aiChatRoutes.GET("/sessions/latest", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.GetLatestSession)
+			aiChatRoutes.POST("/sessions", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.CreateSession)
+			aiChatRoutes.GET("/sessions/:session_id", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.GetSession)
+			aiChatRoutes.GET("/sessions/:session_id/history", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.History)
+			aiChatRoutes.GET("/sessions/:session_id/tasks/:task_id/file", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.GetTaskFile)
+			aiChatRoutes.PATCH("/sessions/:session_id", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.RenameSession)
+			aiChatRoutes.POST("/sessions/:session_id/chat", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.Chat)
+			aiChatRoutes.GET("/sessions/:session_id/chat/stream", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.ResumeChat)
+			aiChatRoutes.POST("/sessions/:session_id/cancel", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.CancelSession)
+			aiChatRoutes.PATCH("/sessions/:session_id/messages/:message_id", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.UpdateMessage)
+			aiChatRoutes.DELETE("/sessions/:session_id/messages/:message_id", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.DeleteMessage)
+			aiChatRoutes.DELETE("/sessions/:session_id", middleware.AccessRoute(protocol.WorkspaceRead, ""), aiSessionHandler.DeleteSession)
 		}
 
 		// Personal sync authorization is independent of system backup permissions.
-		v1.POST("/sync/authorization/start", middleware.LoginRateLimitMiddleware(securityService), syncHandler.StartAuthorization)
-		v1.POST("/sync/authorization/cancel", middleware.APIRateLimitMiddleware(securityService), syncHandler.CancelAuthorization)
-		v1.POST("/sync/authorization/poll", middleware.APIRateLimitMiddleware(securityService), syncHandler.PollAuthorization)
+		v1.POST("/sync/authorization/start", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), syncHandler.StartAuthorization)
+		v1.POST("/sync/authorization/cancel", middleware.PublicRoute(), middleware.APIRateLimitMiddleware(securityService), syncHandler.CancelAuthorization)
+		v1.POST("/sync/authorization/poll", middleware.PublicRoute(), middleware.APIRateLimitMiddleware(securityService), syncHandler.PollAuthorization)
 		syncRoutes := v1.Group("/sync")
-		syncRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		syncRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 
 		{
-			syncRoutes.GET("/status", syncHandler.Status)
-			syncRoutes.PUT("/settings", middleware.RequirePermission(permissionService, "server:manage"), syncHandler.SetEnabled)
-			syncRoutes.POST("/authorization/deny", syncHandler.DenyAuthorization)
-			syncRoutes.POST("/authorization/info", syncHandler.AuthorizationInfo)
-			syncRoutes.POST("/authorization/approve", middleware.RequirePermission(permissionService, "server:manage"), syncHandler.ApproveAuthorization)
-			syncRoutes.DELETE("/devices/:id", syncHandler.RevokeDevice)
-			syncRoutes.POST("/vault/fork", middleware.RequirePermission(permissionService, "server:manage"), syncHandler.ForkVaultSession)
-			syncRoutes.POST("/resolve", middleware.RequirePermission(permissionService, "server:manage"), syncHandler.Resolve)
+			syncRoutes.GET("/status", middleware.OwnerRoute(protocol.SyncWrite, ""), syncHandler.Status)
+			syncRoutes.PUT("/settings", middleware.OwnerRoute(protocol.SyncWrite, ""), syncHandler.SetEnabled)
+			syncRoutes.POST("/authorization/deny", middleware.OwnerRoute(protocol.SyncWrite, ""), syncHandler.DenyAuthorization)
+			syncRoutes.POST("/authorization/info", middleware.OwnerRoute(protocol.SyncWrite, ""), syncHandler.AuthorizationInfo)
+			syncRoutes.POST("/authorization/approve", middleware.OwnerRoute(protocol.SyncWrite, ""), syncHandler.ApproveAuthorization)
+			syncRoutes.DELETE("/devices/:id", middleware.OwnerRoute(protocol.SyncWrite, ""), syncHandler.RevokeDevice)
+			syncRoutes.PUT("/devices/:id/scopes", middleware.OwnerRoute(protocol.SyncWrite, ""), syncHandler.UpdateDeviceScopes)
+			syncRoutes.POST("/vault/fork", middleware.OwnerRoute(protocol.SyncWrite, ""), syncHandler.ForkVaultSession)
+			syncRoutes.POST("/resolve", middleware.OwnerRoute(protocol.SyncWrite, ""), syncHandler.Resolve)
 		}
 		deviceSyncRoutes := v1.Group("/sync/device")
 		deviceSyncRoutes.Use(syncHandler.DeviceAuth())
 		{
-			deviceSyncRoutes.GET("", syncHandler.Identity)
-			deviceSyncRoutes.POST("/exchange", syncHandler.Exchange)
-			deviceSyncRoutes.POST("/disconnect", syncHandler.Disconnect)
-			deviceSyncRoutes.GET("/vault", syncHandler.VaultList)
-			deviceSyncRoutes.GET("/vault/objects/:id", syncHandler.VaultGet)
-			deviceSyncRoutes.POST("/vault/objects/:id", syncHandler.VaultPut)
-			deviceSyncRoutes.POST("/vault/documents/:kind/:id", syncHandler.VaultExchange)
+			deviceSyncRoutes.GET("", middleware.AccessRoute(protocol.SyncRead, ""), syncHandler.Identity)
+			deviceSyncRoutes.POST("/exchange", middleware.AccessRoute(protocol.SyncWrite, ""), syncHandler.Exchange)
+			deviceSyncRoutes.POST("/disconnect", middleware.AccessRoute(protocol.SyncWrite, ""), syncHandler.Disconnect)
+			deviceSyncRoutes.GET("/vault", middleware.AccessRoute(protocol.SyncRead, ""), syncHandler.VaultList)
+			deviceSyncRoutes.GET("/vault/objects/:id", middleware.AccessRoute(protocol.SyncRead, ""), syncHandler.VaultGet)
+			deviceSyncRoutes.POST("/vault/objects/:id", middleware.AccessRoute(protocol.SyncWrite, ""), syncHandler.VaultPut)
+			deviceSyncRoutes.POST("/vault/documents/:kind/:id", middleware.AccessRoute(protocol.SyncWrite, ""), syncHandler.VaultExchange)
 		}
 		backupRoutes := v1.Group("/backup")
-		backupRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
-		backupRoutes.Use(middleware.RequirePermission(permissionService, "backup:manage"))
+		backupRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 		{
-			backupRoutes.GET("/instances", instanceBackupHandler.List)
-			backupRoutes.POST("/instances", instanceBackupHandler.Create)
-			backupRoutes.POST("/instances/upload", instanceBackupHandler.Upload)
-			backupRoutes.GET("/instances/:id/download", instanceBackupHandler.Download)
-			backupRoutes.DELETE("/instances/:id", instanceBackupHandler.Delete)
-			backupRoutes.POST("/instances/:id/inspect", instanceBackupHandler.Inspect)
-			backupRoutes.POST("/instances/:id/restore", instanceBackupHandler.Restore)
-			backupRoutes.POST("/instances/:id/activate", instanceBackupHandler.Activate)
-			backupRoutes.POST("/activation/rollback", instanceBackupHandler.Rollback)
+			backupRoutes.GET("/instances", middleware.OwnerRoute(protocol.BackupManage, ""), instanceBackupHandler.List)
+			backupRoutes.POST("/instances", middleware.OwnerRoute(protocol.BackupManage, ""), instanceBackupHandler.Create)
+			backupRoutes.POST("/instances/upload", middleware.OwnerRoute(protocol.BackupManage, ""), instanceBackupHandler.Upload)
+			backupRoutes.GET("/instances/:id/download", middleware.OwnerRoute(protocol.BackupManage, ""), instanceBackupHandler.Download)
+			backupRoutes.DELETE("/instances/:id", middleware.OwnerRoute(protocol.BackupManage, ""), instanceBackupHandler.Delete)
+			backupRoutes.POST("/instances/:id/inspect", middleware.OwnerRoute(protocol.BackupManage, ""), instanceBackupHandler.Inspect)
+			backupRoutes.POST("/instances/:id/restore", middleware.OwnerRoute(protocol.BackupManage, ""), instanceBackupHandler.Restore)
+			backupRoutes.POST("/instances/:id/activate", middleware.OwnerRoute(protocol.BackupManage, ""), instanceBackupHandler.Activate)
+			backupRoutes.POST("/activation/rollback", middleware.OwnerRoute(protocol.BackupManage, ""), instanceBackupHandler.Rollback)
 		}
 
 		// SSH密钥路由（需要认证）
 		sshKeyRoutes := v1.Group("/ssh-keys")
-		sshKeyRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		sshKeyRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
+		sshKeyRoutes.Use(middleware.AuditLogMiddleware(auditLogService, nil))
 		{
-			sshKeyRoutes.GET("", sshKeyHandler.GetSSHKeys)               // 获取密钥列表
-			sshKeyRoutes.POST("/generate", sshKeyHandler.GenerateSSHKey) // 生成密钥
-			sshKeyRoutes.POST("/import", sshKeyHandler.ImportSSHKey)     // 导入密钥
-			sshKeyRoutes.DELETE("/:id", sshKeyHandler.DeleteSSHKey)      // 删除密钥
+			sshKeyRoutes.GET("", middleware.OwnerRoute(protocol.CredentialsRead, ""), sshKeyHandler.GetSSHKeys)               // 获取密钥列表
+			sshKeyRoutes.POST("/generate", middleware.OwnerRoute(protocol.ResourcesManage, ""), sshKeyHandler.GenerateSSHKey) // 生成密钥
+			sshKeyRoutes.POST("/import", middleware.OwnerRoute(protocol.ResourcesManage, ""), sshKeyHandler.ImportSSHKey)     // 导入密钥
+			sshKeyRoutes.GET("/:id/references", middleware.OwnerRoute(protocol.CredentialsRead, ""), sshKeyHandler.GetReferences)
+			sshKeyRoutes.PUT("/:id/passphrase", middleware.OwnerRoute(protocol.ResourcesManage, ""), sshKeyHandler.SetPassphrase)
+			sshKeyRoutes.DELETE("/:id", middleware.OwnerRoute(protocol.ResourcesManage, ""), sshKeyHandler.DeleteSSHKey) // 删除密钥
 		}
 
 		// 头像生成路由（需要认证）
 		avatarRoutes := v1.Group("/avatar")
-		avatarRoutes.Use(middleware.AuthMiddleware(oauthProvider, ticketService, authRepo))
+		avatarRoutes.Use(middleware.AuthMiddleware(authService, ticketService, securityService))
 		{
-			avatarRoutes.POST("/generate", avatarHandler.GenerateAvatar) // 生成头像
+			avatarRoutes.POST("/generate", middleware.OwnerRoute(protocol.OwnerManage, ""), avatarHandler.GenerateAvatar) // 生成头像
 		}
 	}
 
@@ -1226,6 +1067,10 @@ func main() {
 		log.Printf("⚠️  Static directory not found: %s (frontend not built)", staticDir)
 	}
 
+	if err := v1.Audit(r.Routes()); err != nil {
+		log.Fatal(err)
+	}
+
 	// 创建 HTTP 服务器
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	var httpReady atomic.Bool
@@ -1251,6 +1096,9 @@ func main() {
 	defer listener.Close()
 	// Prepare the queue and scheduler while execution is gated. Failures here
 	// still belong to candidate startup and trigger launcher rollback.
+	if err := transferJobService.RecoverInterrupted(context.Background()); err != nil {
+		log.Fatalf("Failed to recover transfer outcomes: %v", err)
+	}
 	if err := jobQueue.Start(context.Background()); err != nil {
 		log.Fatalf("Failed to start database job queue: %v", err)
 	}
@@ -1300,6 +1148,14 @@ func main() {
 	httpReady.Store(false)
 	instanceHistory.Cancel()
 
+	aiStopContext, cancelAIStop := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := aiRuntimeManager.Stop(aiStopContext); err != nil {
+		log.Printf("⚠️ AI shutdown incomplete; results may still await persistence: %v", err)
+	} else {
+		log.Println("✅ AI runtime stopped and conversation results saved")
+	}
+	cancelAIStop()
+
 	taskCenterService.StopRetention()
 	log.Println("✅ Task retention worker stopped")
 
@@ -1310,9 +1166,27 @@ func main() {
 	jobQueue.Stop()
 	log.Println("✅ Database job queue stopped")
 
-	transferJobService.Stop()
-	log.Println("✅ Transfer job service stopped")
+	executorStopContext, cancelExecutorStop := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := taskExecutor.Stop(executorStopContext); err != nil {
+		log.Printf("⚠️ Task executor shutdown incomplete; outcomes may await persistence: %v", err)
+	} else {
+		log.Println("✅ Task executor stopped and observed outcomes saved")
+	}
+	cancelExecutorStop()
 
+	transferStopContext, cancelTransferStop := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := transferJobService.Stop(transferStopContext); err != nil {
+		log.Printf("⚠️ Transfer shutdown incomplete; outcomes may await persistence: %v", err)
+	} else {
+		log.Println("✅ Transfer job service stopped and outcomes saved")
+	}
+	cancelTransferStop()
+
+	dockerStopContext, cancelDockerStop := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := dockerService.Stop(dockerStopContext); err != nil {
+		log.Printf("⚠️ Docker shutdown incomplete: %v", err)
+	}
+	cancelDockerStop()
 	inboxNotificationService.Stop()
 	log.Println("✅ Notification delivery worker stopped")
 

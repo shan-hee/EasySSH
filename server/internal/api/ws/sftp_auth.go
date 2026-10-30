@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"log"
 	"net/http"
 	"strings"
@@ -17,10 +19,10 @@ import (
 	sftpDomain "github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/domain/sshhostkey"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
-	"golang.org/x/crypto/ssh"
 )
 
 const sftpAuthInitTimeout = 5 * time.Minute
@@ -73,16 +75,6 @@ func (h *SFTPAuthHandler) getUpgrader() websocket.Upgrader {
 // HandleAuthWebSocket pre-authenticates SFTP with interactive SSH challenges.
 // WS /api/v1/sftp/:server_id/auth/ws
 func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
-	userIDStr, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-	userID, err := uuid.Parse(userIDStr.(string))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_user_id"})
-		return
-	}
 	serverID, err := uuid.Parse(c.Param("server_id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_server_id"})
@@ -96,6 +88,8 @@ func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
 		return
 	}
 	defer wsConn.Close()
+	stopSocketCancel := context.AfterFunc(c.Request.Context(), func() { _ = wsConn.Close() })
+	defer stopSocketCancel()
 	wsConn.SetReadLimit(512 << 10)
 
 	var writeMu sync.Mutex
@@ -129,7 +123,7 @@ func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), sftpAuthInitTimeout)
 	defer cancel()
 
-	srv, err := h.serverService.GetByID(ctx, userID, serverID)
+	srv, err := h.serverService.GetByID(ctx, access.Current(ctx), serverID)
 	if err != nil {
 		writeError("server_not_found", err)
 		return
@@ -149,21 +143,21 @@ func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
 		PrivateKey:           req.PrivateKey,
 		PrivateKeyPassphrase: req.PrivateKeyPassphrase,
 	}
-	if credential.AuthMethod == "" {
-		credential.AuthMethod = srv.AuthMethod
+	if access.Current(ctx).IsOwner() && credential.AuthMethod == "" {
+		credential.AuthMethod = srv.Auth.AuthMethod
 	}
-	if credential.AuthMethod == "" || !credential.AuthMethod.IsValid() {
+	if access.Current(ctx).IsOwner() && !credential.AuthMethod.IsValid() {
 		writeError("unsupported_auth_method", fmt.Errorf("unsupported auth method: %s", credential.AuthMethod))
 		return
 	}
 
 	client, err := h.pool.GetWithCredential(
 		ctx,
-		userID,
 		serverID,
+		protocol.FilesList,
 		credential,
 		sshDomain.WithKeyboardInteractive(newTerminalKeyboardInteractiveChallenge(wsConn, safeWriteJSON)),
-		sshDomain.WithHostKeyCallback(h.hostKeyCallback(wsConn, safeWriteJSON)),
+		sshDomain.WithHostKeyPolicy(h.hostKeyCallback(ctx, srv.ExecutionScope(), wsConn, safeWriteJSON)),
 	)
 	if err != nil {
 		code, message := classifySFTPAuthWebSocketError(err)
@@ -211,12 +205,12 @@ func classifySFTPAuthWebSocketError(err error) (string, string) {
 	}
 }
 
-func (h *SFTPAuthHandler) hostKeyCallback(conn *websocket.Conn, writeJSON func(interface{}) error) ssh.HostKeyCallback {
+func (h *SFTPAuthHandler) hostKeyCallback(ctx context.Context, scope access.Scope, conn *websocket.Conn, writeJSON func(interface{}) error) sshutil.HostKeyPolicy {
 	if h.hostKeyService == nil {
 		return nil
 	}
 
-	return h.hostKeyService.GetTrustOnChangeHostKeyCallback(
+	return h.hostKeyService.GetOwnerApprovalPolicy(ctx, scope,
 		func(details *sshhostkey.HostKeyVerificationError) (bool, error) {
 			return newTerminalHostKeyPrompt(conn, writeJSON, details)
 		},

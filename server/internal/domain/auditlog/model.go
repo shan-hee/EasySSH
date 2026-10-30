@@ -1,6 +1,7 @@
 package auditlog
 
 import (
+	"github.com/easyssh/shared/protocol"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,11 +13,26 @@ const (
 	ActionLogin  ActionType = "login"
 	ActionLogout ActionType = "logout"
 
-	ActionServerCreate  ActionType = "server_create"
-	ActionServerUpdate  ActionType = "server_update"
-	ActionServerDelete  ActionType = "server_delete"
-	ActionServerTest    ActionType = "server_test"
-	ActionServerReorder ActionType = "server_reorder"
+	ActionServerCreate      ActionType = "server_create"
+	ActionServerUpdate      ActionType = "server_update"
+	ActionServerDelete      ActionType = "server_delete"
+	ActionServerTest        ActionType = "server_test"
+	ActionServerReorder     ActionType = "server_reorder"
+	ActionServerGroupCreate ActionType = "server_group_create"
+	ActionServerGroupUpdate ActionType = "server_group_update"
+	ActionServerGroupDelete ActionType = "server_group_delete"
+
+	ActionSSHKeyGenerate         ActionType = "ssh_key_generate"
+	ActionSSHKeyImport           ActionType = "ssh_key_import"
+	ActionSSHKeyDelete           ActionType = "ssh_key_delete"
+	ActionSSHKeyPassphraseUpdate ActionType = "ssh_key_passphrase_update"
+
+	ActionGrantCreate          ActionType = "grant_create"
+	ActionGrantUpdate          ActionType = "grant_update"
+	ActionGrantRevoke          ActionType = "grant_revoke"
+	ActionGrantRotateSecret    ActionType = "grant_rotate_secret"
+	ActionGrantConfirmResource ActionType = "grant_confirm_resource"
+	ActionGrantEndSession      ActionType = "grant_end_session"
 
 	ActionSSHConnect    ActionType = "ssh_connect"
 	ActionSSHDisconnect ActionType = "ssh_disconnect"
@@ -29,10 +45,6 @@ const (
 
 	ActionMonitoringQuery ActionType = "monitoring_query"
 
-	ActionUserCreate ActionType = "user_create"
-	ActionUserUpdate ActionType = "user_update"
-	ActionUserDelete ActionType = "user_delete"
-
 	ActionScheduledTaskCreate  ActionType = "scheduled_task_create"
 	ActionScheduledTaskUpdate  ActionType = "scheduled_task_update"
 	ActionScheduledTaskDelete  ActionType = "scheduled_task_delete"
@@ -41,11 +53,6 @@ const (
 
 	ActionProfileUpdate              ActionType = "profile_update"
 	ActionSecurityUpdate             ActionType = "security_update"
-	ActionRoleCreate                 ActionType = "role_create"
-	ActionRoleUpdate                 ActionType = "role_update"
-	ActionRoleDelete                 ActionType = "role_delete"
-	ActionResourceGrant              ActionType = "resource_grant"
-	ActionResourceRevoke             ActionType = "resource_revoke"
 	ActionScriptCreate               ActionType = "script_create"
 	ActionScriptUpdate               ActionType = "script_update"
 	ActionScriptDelete               ActionType = "script_delete"
@@ -85,60 +92,47 @@ const (
 )
 
 type AuditLog struct {
-	ID        uuid.UUID   `json:"id"`
-	UserID    uuid.UUID   `json:"user_id"`
-	Username  string      `json:"username"`
-	ServerID  *uuid.UUID  `json:"server_id,omitempty"`
-	Type      string      `json:"type"`
-	Action    ActionType  `json:"action"`
-	Category  LogCategory `json:"category"`
-	Resource  string      `json:"resource"`
-	Source    string      `json:"source"`
-	Status    Status      `json:"status"`
-	IP        string      `json:"ip"`
-	UserAgent string      `json:"user_agent"`
-	Details   string      `json:"details"`
-	ErrorMsg  string      `json:"error_msg,omitempty"`
-	Duration  int64       `json:"duration"`
-	CreatedAt time.Time   `json:"created_at"`
+	ID uuid.UUID `json:"id"`
+
+	Actor         protocol.Actor             `json:"actor"`
+	Username      string                     `json:"username"`
+	ServerID      *uuid.UUID                 `json:"server_id,omitempty"`
+	Type          string                     `json:"type"`
+	Action        ActionType                 `json:"action"`
+	Category      LogCategory                `json:"category"`
+	Resource      string                     `json:"resource"`
+	Source        string                     `json:"source"`
+	Status        Status                     `json:"status"`
+	IP            string                     `json:"ip"`
+	UserAgent     string                     `json:"user_agent"`
+	Details       string                     `json:"details"`
+	TaskContent   *protocol.ContentReference `json:"task_content,omitempty"`
+	DetailContent *protocol.ContentReference `json:"detail_content,omitempty"`
+	ErrorMsg      string                     `json:"error_msg,omitempty"`
+	Duration      int64                      `json:"duration"`
+	CreatedAt     time.Time                  `json:"created_at"`
 }
 
 // AuditLogSummary 是管理员活动日志列表的轻量视图。UserAgent 与 Details 仅在详情查询返回。
-type AuditLogSummary struct {
-	ID        uuid.UUID   `json:"id"`
-	UserID    uuid.UUID   `json:"user_id"`
-	Username  string      `json:"username"`
-	ServerID  *uuid.UUID  `json:"server_id,omitempty"`
-	Type      string      `json:"type"`
-	Action    ActionType  `json:"action"`
-	Category  LogCategory `json:"category"`
-	Resource  string      `json:"resource"`
-	Source    string      `json:"source"`
-	Status    Status      `json:"status"`
-	IP        string      `json:"ip"`
-	ErrorMsg  string      `json:"error_msg,omitempty"`
-	Duration  int64       `json:"duration"`
-	CreatedAt time.Time   `json:"created_at"`
-}
+type AuditLogSummary = protocol.AuditLogSummary
 
 type CreateAuditLogRequest struct {
-	UserID    uuid.UUID  `json:"user_id" binding:"required"`
-	Username  string     `json:"username"`
-	ServerID  *uuid.UUID `json:"server_id,omitempty"`
-	Type      string     `json:"type,omitempty"`
-	Action    ActionType `json:"action" binding:"required"`
-	Resource  string     `json:"resource"`
-	Source    string     `json:"source,omitempty"`
-	Status    Status     `json:"status" binding:"required"`
-	IP        string     `json:"ip"`
-	UserAgent string     `json:"user_agent"`
-	Details   string     `json:"details"`
-	ErrorMsg  string     `json:"error_msg,omitempty"`
-	Duration  int64      `json:"duration"`
+	Actor     protocol.Actor `json:"actor"`
+	Username  string         `json:"username"`
+	ServerID  *uuid.UUID     `json:"server_id,omitempty"`
+	Type      string         `json:"type,omitempty"`
+	Action    ActionType     `json:"action" binding:"required"`
+	Resource  string         `json:"resource"`
+	Source    string         `json:"source,omitempty"`
+	Status    Status         `json:"status" binding:"required"`
+	IP        string         `json:"ip"`
+	UserAgent string         `json:"user_agent"`
+	Details   string         `json:"details"`
+	ErrorMsg  string         `json:"error_msg,omitempty"`
+	Duration  int64          `json:"duration"`
 }
 
 type ListAuditLogsRequest struct {
-	UserID     *uuid.UUID
 	ServerID   *uuid.UUID
 	Type       string
 	Types      []string
@@ -159,16 +153,10 @@ type ListAuditLogsRequest struct {
 }
 
 type AuditLogStatisticsRequest struct {
-	UserID    *uuid.UUID
 	Category  LogCategory
 	Days      int
 	StartTime *time.Time
 	EndTime   *time.Time
 }
 
-type AuditLogStatistics struct {
-	TotalLogs    int64                `json:"total_logs"`
-	SuccessCount int64                `json:"success_count"`
-	FailureCount int64                `json:"failure_count"`
-	ActionStats  map[ActionType]int64 `json:"action_stats"`
-}
+type AuditLogStatistics = protocol.AuditLogStatistics

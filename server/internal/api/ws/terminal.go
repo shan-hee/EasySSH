@@ -3,7 +3,10 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"io"
 	"log"
 	"net/http"
@@ -381,7 +384,7 @@ func readTerminalAuthResponse(conn *websocket.Conn, writeJSON func(interface{}) 
 
 func newTerminalCredentialRetryPrompt(conn *websocket.Conn, writeJSON func(interface{}) error, srv *server.Server, attempt, maxAttempts int) (*terminalCredentialRetry, error) {
 	requestID := uuid.NewString()
-	authMethod := srv.AuthMethod
+	authMethod := srv.Auth.AuthMethod
 	if !authMethod.IsValid() {
 		authMethod = server.AuthMethodPassword
 	}
@@ -419,7 +422,7 @@ func newTerminalCredentialRetryPrompt(conn *websocket.Conn, writeJSON func(inter
 
 	authMethod = response.AuthMethod
 	if authMethod == "" {
-		authMethod = srv.AuthMethod
+		authMethod = srv.Auth.AuthMethod
 	}
 	if !authMethod.IsValid() {
 		return nil, fmt.Errorf("unsupported authentication method: %s", authMethod)
@@ -584,7 +587,7 @@ func (h *TerminalHandler) updateServerOSIfEmpty(ctx context.Context, srv *server
 		return
 	}
 
-	osValue, err := client.DetectOS()
+	osValue, err := client.DetectOS(ctx)
 	if err != nil {
 		log.Printf("Failed to detect server OS: server_id=%s err=%v", srv.ID, err)
 		return
@@ -603,15 +606,10 @@ func (h *TerminalHandler) updateServerOSIfEmpty(ctx context.Context, srv *server
 // WS /api/v1/ssh/terminal/:server_id
 func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	// 从上下文获取用户 ID
-	userIDStr, exists := c.Get("user_id")
+	scope, scopeErr := access.FromContext(c.Request.Context())
+	exists := scopeErr == nil
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-		return
-	}
-	userID := userIDStr.(string)
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_user_id"})
 		return
 	}
 
@@ -623,8 +621,16 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 		return
 	}
 	if h.credentialStore != nil {
-		defer h.credentialStore.Delete(userUUID, serverUUID)
+		defer h.credentialStore.Delete(c.Request.Context(), serverUUID)
 	}
+
+	lease, leaseErr := access.OpenStream(c.Request.Context(), access.Requirement{Action: protocol.TerminalConnect, ServerID: serverID})
+	if leaseErr != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access_denied"})
+		return
+	}
+	defer lease.Close(nil)
+	c.Request = c.Request.WithContext(lease.Context())
 
 	// 获取终端尺寸参数
 	cols := 80
@@ -646,6 +652,40 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 		return
 	}
 	defer wsConn.Close()
+	wsConn.SetReadLimit(256 << 10)
+	stopSocketCancel := context.AfterFunc(lease.Context(), func() { _ = wsConn.Close() })
+	defer stopSocketCancel()
+
+	activityMu := &sync.Mutex{}
+	activityFinalized := false
+	activity := terminalOperationRecord{
+		Actor: scope.Actor(), ServerID: serverUUID,
+		SessionID: access.ConnectionFromContext(lease.Context()).Info().ID,
+		ClientIP:  clientIP, ClientPort: clientPort, TerminalType: "xterm-256color",
+		StartedAt: time.Now().UTC(), Status: operationrecord.StatusPending,
+	}
+	if err := h.upsertTerminalOperationRecord(lease.Context(), activity); err != nil {
+		log.Printf("[Terminal] save connection intent failed: %v", err)
+		h.sendError(wsConn, "connection_record_unavailable", "Unable to save connection record")
+		return
+	}
+	defer func() {
+		now := time.Now().UTC()
+		activityMu.Lock()
+		defer activityMu.Unlock()
+		activityFinalized = true
+		activity.FinishedAt = &now
+		if activity.EstablishedAt != nil {
+			activity.Status = operationrecord.StatusSuccess
+		} else if errors.Is(lease.Context().Err(), context.Canceled) {
+			activity.Status = operationrecord.StatusCanceled
+		} else {
+			activity.Status = operationrecord.StatusFailure
+		}
+		if err := h.upsertTerminalOperationRecord(lease.Context(), activity); err != nil {
+			log.Printf("[Terminal] save connection outcome failed: session=%s error=%v", activity.SessionID, err)
+		}
+	}()
 
 	// WebSocket写锁保护（防止并发写入）
 	wsMutex := &sync.Mutex{}
@@ -660,6 +700,9 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 		return wsConn.WriteJSON(v)
 	}
 	sendError := func(errorCode, message string, details interface{}) {
+		activityMu.Lock()
+		activity.ErrorMessage = errorCode + ": " + message
+		activityMu.Unlock()
 		errMsg := ErrorMessage{
 			Error:   errorCode,
 			Message: message,
@@ -689,14 +732,13 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 
 	// 创建通道用于异步初始化结果
 	type initResult struct {
-		session    *sshDomain.Session
-		serverName string
-		stdin      io.WriteCloser
-		stdout     io.Reader
-		stderr     io.Reader
-		err        error
-		errCode    string
-		errDetail  interface{}
+		session   *sshDomain.Session
+		stdin     io.WriteCloser
+		stdout    io.Reader
+		stderr    io.Reader
+		err       error
+		errCode   string
+		errDetail interface{}
 	}
 	initCtx, cancelInit := context.WithTimeout(c.Request.Context(), terminalSSHInitTimeout)
 	defer cancelInit()
@@ -730,14 +772,21 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 		}
 
 		// 获取服务器信息
-		srv, err := h.serverService.GetByID(initCtx, userUUID, serverUUID)
+		srv, err := h.serverService.GetByID(initCtx, access.Current(initCtx), serverUUID)
 		if err != nil {
 			sendResult(initResult{err: fmt.Errorf("server_not_found: %w", err)})
 			return
 		}
 
+		activityMu.Lock()
+		activity.ServerName = srv.Name
+		if activity.ServerName == "" {
+			activity.ServerName = srv.Host
+		}
+		activityMu.Unlock()
+
 		keyboardInteractive := newTerminalKeyboardInteractiveChallenge(wsConn, safeWriteJSON)
-		hostKeyCallback := h.hostKeyService.GetTrustOnChangeHostKeyCallback(
+		hostKeyCallback := h.hostKeyService.GetOwnerApprovalPolicy(initCtx, srv.ExecutionScope(),
 			func(details *sshhostkey.HostKeyVerificationError) (bool, error) {
 				return newTerminalHostKeyPrompt(wsConn, safeWriteJSON, details)
 			},
@@ -755,12 +804,12 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 					PrivateKeyPassphrase: credential.PrivateKeyPassphrase,
 				})...)
 			} else if h.credentialStore != nil {
-				if cachedCredential, ok := h.credentialStore.Get(userUUID, serverUUID); ok {
+				if cachedCredential, ok := h.credentialStore.Get(initCtx, serverUUID, srv.ConnectionRevision, srv.CredentialDigest()); ok {
 					opts = append(opts, sshDomain.CredentialOptions(cachedCredential)...)
 				}
 			}
 
-			nextClient, createErr := sshDomain.NewClient(
+			nextClient, createErr := sshDomain.NewClient(initCtx,
 				srv,
 				h.encryptor,
 				hostKeyCallback,
@@ -780,7 +829,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 
 		var credential *terminalCredentialRetry
 		client, err = connectWithCredential(nil)
-		if err != nil && isTerminalPrivateKeyPassphraseError(err) && srv.AuthMethod.RequiresPrivateKey() {
+		if scope.IsOwner() && err != nil && isTerminalPrivateKeyPassphraseError(err) && srv.Auth.AuthMethod.RequiresPrivateKey() {
 			for attempt := 1; attempt <= terminalSSHAuthRetryMaxAttempts; attempt++ {
 				passphrase, promptErr := newTerminalPrivateKeyPassphrasePrompt(
 					wsConn,
@@ -794,7 +843,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 				}
 
 				credential = &terminalCredentialRetry{
-					AuthMethod:           srv.AuthMethod,
+					AuthMethod:           srv.Auth.AuthMethod,
 					PrivateKeyPassphrase: passphrase,
 				}
 				client, err = connectWithCredential(credential)
@@ -806,7 +855,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 				}
 			}
 		}
-		if err != nil && isTerminalSSHAuthError(err) {
+		if scope.IsOwner() && err != nil && isTerminalSSHAuthError(err) {
 			for attempt := 1; attempt <= terminalSSHAuthRetryMaxAttempts; attempt++ {
 				nextCredential, promptErr := newTerminalCredentialRetryPrompt(
 					wsConn,
@@ -822,7 +871,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 
 				credential = nextCredential
 				client, err = connectWithCredential(credential)
-				if err != nil && isTerminalPrivateKeyPassphraseError(err) && credential.AuthMethod.RequiresPrivateKey() {
+				if scope.IsOwner() && err != nil && isTerminalPrivateKeyPassphraseError(err) && credential.AuthMethod.RequiresPrivateKey() {
 					for passphraseAttempt := 1; passphraseAttempt <= terminalSSHAuthRetryMaxAttempts; passphraseAttempt++ {
 						passphrase, passphraseErr := newTerminalPrivateKeyPassphrasePrompt(
 							wsConn,
@@ -865,7 +914,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 			return
 		}
 		if credential != nil && h.credentialStore != nil {
-			h.credentialStore.Set(userUUID, serverUUID, sshDomain.Credential{
+			h.credentialStore.Set(initCtx, serverUUID, srv.ConnectionRevision, srv.CredentialDigest(), sshDomain.Credential{
 				AuthMethod:           credential.AuthMethod,
 				Secret:               credential.Secret,
 				Password:             credential.Password,
@@ -883,14 +932,14 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 		}()
 
 		// 创建 SSH 会话
-		sshSession, err = client.NewSession()
+		sshSession, err = client.NewSession(initCtx)
 		if err != nil {
 			sendResult(initResult{err: fmt.Errorf("session_creation_failed: %w", err)})
 			return
 		}
 
 		// 创建会话记录
-		session := sshDomain.NewSession(userID, serverID, client, cols, rows)
+		session := sshDomain.NewSession(scope.Actor(), access.ConnectionFromContext(c.Request.Context()).Info().ID, serverID, client, cols, rows, access.ConnectionFromContext(c.Request.Context()).Close)
 		session.SSHSession = sshSession
 
 		// 设置终端模式
@@ -930,27 +979,28 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 			sendResult(initResult{err: fmt.Errorf("shell_start_failed: %w", err)})
 			return
 		}
-		go h.updateServerOSIfEmpty(context.Background(), srv, client)
+		go h.updateServerOSIfEmpty(lease.Context(), srv, client)
 
-		h.upsertTerminalOperationRecord(terminalOperationRecord{
-			UserID:       userUUID,
-			ServerID:     serverUUID,
-			ServerName:   srv.Name,
-			SessionID:    session.ID,
-			ClientIP:     clientIP,
-			ClientPort:   clientPort,
-			TerminalType: "xterm-256color",
-			StartedAt:    session.CreatedAt,
-			Status:       operationrecord.StatusRunning,
-		})
+		activityMu.Lock()
+		if activityFinalized {
+			activityMu.Unlock()
+			return
+		}
+		establishedAt := time.Now().UTC()
+		activity.EstablishedAt, activity.Status = &establishedAt, operationrecord.StatusRunning
+		recordErr := h.upsertTerminalOperationRecord(lease.Context(), activity)
+		activityMu.Unlock()
+		if recordErr != nil {
+			sendResult(initResult{err: errors.New("Unable to save established connection record"), errCode: "connection_record_unavailable"})
+			return
+		}
 
 		initSucceeded = sendResult(initResult{
-			session:    session,
-			serverName: srv.Name,
-			stdin:      stdin,
-			stdout:     stdout,
-			stderr:     stderr,
-			err:        nil,
+			session: session,
+			stdin:   stdin,
+			stdout:  stdout,
+			stderr:  stderr,
+			err:     nil,
 		})
 	}()
 
@@ -982,7 +1032,6 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 
 	// 初始化成功，注册会话
 	session := result.session
-	serverName := result.serverName
 	stdin := result.stdin
 	stdout := result.stdout
 	stderr := result.stderr
@@ -990,6 +1039,8 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	h.sessionManager.Add(session)
 	defer h.sessionManager.Remove(session.ID)
 	defer session.Close()
+	stopSessionCancel := context.AfterFunc(lease.Context(), func() { _ = session.Close() })
+	defer stopSessionCancel()
 
 	// 发送连接成功消息
 	if err := safeWriteJSON(Message{
@@ -1040,6 +1091,34 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	}
 	refreshSSHLatency()
 
+	// Persist confirmed liveness so restart recovery does not invent an end time.
+	go func() {
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-lease.Context().Done():
+				return
+			case <-ticker.C:
+				activityMu.Lock()
+				if activityFinalized {
+					activityMu.Unlock()
+					return
+				}
+				err := h.upsertTerminalOperationRecord(lease.Context(), activity)
+				activityMu.Unlock()
+				if err != nil {
+					log.Printf("[Terminal] save connection observation failed: session=%s error=%v", session.ID, err)
+					_ = session.Close()
+					closeChannel()
+					return
+				}
+			}
+		}
+	}()
+
 	// 从 SSH 读取并发送到 WebSocket（stdout）- 使用二进制传输
 	go func() {
 		buf := make([]byte, 32768) // 增大缓冲区以提高性能
@@ -1087,6 +1166,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	}()
 
 	// 从 WebSocket 读取并发送到 SSH
+	var completionInFlight atomic.Bool
 	go func() {
 		for {
 			messageType, message, err := wsConn.ReadMessage()
@@ -1165,8 +1245,12 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						continue
 					}
 
-					// 异步获取补全数据
+					// 每条终端仅允许一个在途补全查询，避免反复创建远端 SSH 通道。
+					if !completionInFlight.CompareAndSwap(false, true) {
+						continue
+					}
 					go func() {
+						defer completionInFlight.Store(false)
 						// 获取SSH客户端
 						sshClient := session.Client.GetRawConnection()
 						if sshClient == nil {
@@ -1187,8 +1271,8 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						}
 						// 获取补全数据（传递 serverID 以区分不同服务器）
 						completionData, err := h.completionService.FetchCompletionData(
+							lease.Context(),
 							sshClient,
-							userUUID,
 							serverUUID,
 							fetchOpts,
 						)
@@ -1248,42 +1332,29 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	// 等待会话结束
 	<-done
 
-	finishedAt := time.Now()
-	h.upsertTerminalOperationRecord(terminalOperationRecord{
-		UserID:       userUUID,
-		ServerID:     serverUUID,
-		ServerName:   serverName,
-		SessionID:    session.ID,
-		ClientIP:     clientIP,
-		ClientPort:   clientPort,
-		TerminalType: "xterm-256color",
-		StartedAt:    session.CreatedAt,
-		FinishedAt:   &finishedAt,
-		Status:       operationrecord.StatusSuccess,
-	})
-
 	// 尝试发送关闭消息（如果连接已关闭则静默忽略）
 	wsConn.SetWriteDeadline(time.Now().Add(time.Second))
 	_ = safeWriteJSON(Message{Type: "closed"})
 }
 
 type terminalOperationRecord struct {
-	UserID       uuid.UUID
-	ServerID     uuid.UUID
-	ServerName   string
-	SessionID    string
-	ClientIP     string
-	ClientPort   int
-	TerminalType string
-	StartedAt    time.Time
-	FinishedAt   *time.Time
-	Status       operationrecord.Status
-	ErrorMessage string
+	Actor         protocol.Actor
+	ServerID      uuid.UUID
+	ServerName    string
+	SessionID     string
+	ClientIP      string
+	ClientPort    int
+	TerminalType  string
+	StartedAt     time.Time
+	EstablishedAt *time.Time
+	FinishedAt    *time.Time
+	Status        operationrecord.Status
+	ErrorMessage  string
 }
 
-func (h *TerminalHandler) upsertTerminalOperationRecord(input terminalOperationRecord) {
-	if h.operationRecords == nil || input.UserID == uuid.Nil || input.ServerID == uuid.Nil || input.SessionID == "" {
-		return
+func (h *TerminalHandler) upsertTerminalOperationRecord(ctx context.Context, input terminalOperationRecord) error {
+	if h.operationRecords == nil || !input.Actor.Valid() || input.ServerID == uuid.Nil || input.SessionID == "" {
+		return errors.New("connection record identity or storage is unavailable")
 	}
 
 	detail, _ := json.Marshal(map[string]interface{}{
@@ -1293,36 +1364,45 @@ func (h *TerminalHandler) upsertTerminalOperationRecord(input terminalOperationR
 	})
 
 	var durationMs int64
-	if input.FinishedAt != nil {
-		durationMs = input.FinishedAt.Sub(input.StartedAt).Milliseconds()
+	if input.FinishedAt != nil && input.EstablishedAt != nil {
+		durationMs = max(0, input.FinishedAt.Sub(*input.EstablishedAt).Milliseconds())
 	}
 
 	now := time.Now()
 	record := &operationrecord.OperationRecord{
-		UserID:       input.UserID,
-		Type:         operationrecord.TypeConnection,
-		Action:       "ssh_session",
-		Status:       input.Status,
-		ServerID:     &input.ServerID,
-		ServerName:   input.ServerName,
-		Title:        "SSH session",
-		Resource:     input.SessionID,
-		Source:       "terminal",
-		IP:           input.ClientIP,
-		StartedAt:    &input.StartedAt,
-		FinishedAt:   input.FinishedAt,
-		DurationMs:   durationMs,
-		ErrorMessage: input.ErrorMessage,
-		DetailJSON:   string(detail),
-		SourceTable:  "terminal_sessions",
-		SourceID:     input.SessionID,
-		CreatedAt:    input.StartedAt,
-		UpdatedAt:    now,
+		Actor:         input.Actor,
+		Type:          operationrecord.TypeConnection,
+		Action:        "ssh_session",
+		Status:        input.Status,
+		ServerID:      &input.ServerID,
+		ServerName:    input.ServerName,
+		Title:         "SSH session",
+		Resource:      input.SessionID,
+		Source:        "manual",
+		IP:            input.ClientIP,
+		StartedAt:     &input.StartedAt,
+		EstablishedAt: input.EstablishedAt,
+		FinishedAt:    input.FinishedAt,
+		DurationMs:    durationMs,
+		ErrorMessage:  input.ErrorMessage,
+		DetailJSON:    string(detail),
+		SourceTable:   "terminal_sessions",
+		SourceID:      input.SessionID,
+		CreatedAt:     input.StartedAt,
+		UpdatedAt:     now,
+		TotalCount:    1,
 	}
 
-	if err := h.operationRecords.Upsert(context.Background(), record); err != nil {
-		log.Printf("[Terminal] persist operation record failed: session=%s error=%v", input.SessionID, err)
+	if input.Actor.GrantID != "" {
+		record.Source = "share"
 	}
+	if input.Status == operationrecord.StatusSuccess {
+		record.SuccessCount = 1
+	}
+	if input.Status == operationrecord.StatusFailure {
+		record.FailureCount = 1
+	}
+	return h.operationRecords.Upsert(ctx, record)
 }
 
 // sendMessage 发送消息

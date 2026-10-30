@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+
+	"github.com/easyssh/shared/protocol"
 	"strings"
 	"time"
 
@@ -19,20 +22,11 @@ func NewAvatarHandler() *AvatarHandler {
 	return &AvatarHandler{}
 }
 
-// GenerateAvatarRequest 生成头像请求
-type GenerateAvatarRequest struct {
-	Seed string `json:"seed"` // 种子值，用于生成一致的头像
-}
-
-// GenerateAvatarResponse 生成头像响应
-type GenerateAvatarResponse struct {
-	Avatar string `json:"avatar"` // base64编码的SVG头像数据URL
-}
-
 // GenerateAvatar 生成头像
 // POST /api/v1/avatar/generate
 func (h *AvatarHandler) GenerateAvatar(c *gin.Context) {
-	var req GenerateAvatarRequest
+	var req protocol.AvatarGenerateRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondError(c, http.StatusBadRequest, "validation_error", err.Error())
 		return
@@ -52,7 +46,7 @@ func (h *AvatarHandler) GenerateAvatar(c *gin.Context) {
 	}
 
 	// 返回生成的头像
-	RespondSuccess(c, GenerateAvatarResponse{
+	RespondSuccess(c, protocol.AvatarGenerateResult{
 		Avatar: avatar,
 	})
 }
@@ -60,7 +54,7 @@ func (h *AvatarHandler) GenerateAvatar(c *gin.Context) {
 // generateDiceBearAvatar 生成DiceBear头像
 func (h *AvatarHandler) generateDiceBearAvatar(seed string) (string, error) {
 	// DiceBear API URL - 使用notionists-neutral风格
-	dicebearUrl := fmt.Sprintf("https://api.dicebear.com/7.x/notionists-neutral/svg?seed=%s", seed)
+	dicebearUrl := fmt.Sprintf("https://api.dicebear.com/7.x/notionists-neutral/svg?seed=%s", url.QueryEscape(seed))
 
 	// 发起HTTP请求获取SVG
 	resp, err := http.Get(dicebearUrl)
@@ -81,9 +75,7 @@ func (h *AvatarHandler) generateDiceBearAvatar(seed string) (string, error) {
 
 	svgText := string(svgBytes)
 
-	// 简单的base64编码（Go的base64编码）
-	// 注意：这里我们直接返回SVG内容，让前端处理base64编码
-	// 因为Go的base64编码与JavaScript的btoa可能不完全一致
+	// Return the existing percent-encoded SVG data URL.
 	return fmt.Sprintf("data:image/svg+xml,%s", urlEncodedSVG(svgText)), nil
 }
 

@@ -1,6 +1,8 @@
 package script
 
 import (
+	"github.com/easyssh/shared/protocol"
+	"github.com/easyssh/shared/scriptutil"
 	"time"
 
 	"github.com/google/uuid"
@@ -9,8 +11,8 @@ import (
 
 // Script 脚本模型
 type Script struct {
+	Version     string         `gorm:"type:char(64);not null" json:"version"`
 	ID          uuid.UUID      `gorm:"type:char(36);primary_key" json:"id"`
-	UserID      uuid.UUID      `gorm:"type:char(36);not null;index" json:"user_id"`
 	Name        string         `gorm:"type:varchar(100);not null" json:"name"`
 	Description string         `gorm:"type:text" json:"description"`
 	Content     string         `gorm:"type:text;not null" json:"content"`
@@ -33,6 +35,22 @@ func (s *Script) BeforeCreate(tx *gorm.DB) error {
 	if s.ID == uuid.Nil {
 		s.ID = uuid.New()
 	}
+	if s.Language == "" {
+		s.Language = "bash"
+	}
+	s.Version = scriptutil.Version(s.Language, s.Content)
+	return nil
+}
+
+// Struct saves include source and its derived version in the same statement.
+// Map updates are controlled by Repository.Update and explicitly set version.
+func (s *Script) BeforeSave(tx *gorm.DB) error {
+	if _, full := tx.Statement.Dest.(*Script); full {
+		if s.Language == "" {
+			s.Language = "bash"
+		}
+		s.Version = scriptutil.Version(s.Language, s.Content)
+	}
 	return nil
 }
 
@@ -47,10 +65,10 @@ type CreateScriptRequest struct {
 
 // UpdateScriptRequest 更新脚本请求
 type UpdateScriptRequest struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Content     string   `json:"content"`
-	Language    string   `json:"language"`
+	Name        *string  `json:"name"`
+	Description *string  `json:"description"`
+	Content     *string  `json:"content"`
+	Language    *string  `json:"language"`
 	Tags        []string `json:"tags"`
 }
 
@@ -65,10 +83,19 @@ type ListScriptsRequest struct {
 }
 
 // ListScriptsResponse 脚本列表响应
-type ListScriptsResponse struct {
-	Data       []Script `json:"data"`
-	Total      int64    `json:"total"`
-	Page       int      `json:"page"`
-	PageSize   int      `json:"page_size"`
-	TotalPages int      `json:"total_pages"`
+type ListScriptsResponse = protocol.ScriptListResponse
+
+// ExecutionInput is snapshotted into a queued run and revalidated on execution.
+type ExecutionInput struct {
+	ScriptID   *uuid.UUID        `json:"script_id,omitempty"`
+	Version    string            `json:"script_version"`
+	Parameters map[string]string `json:"parameters"`
+}
+
+func (s Script) Public() protocol.Script {
+	return protocol.Script{
+		ID: s.ID, Name: s.Name, Description: s.Description, Content: s.Content,
+		Language: s.Language, Tags: s.Tags, Version: s.Version, Executions: s.Executions,
+		Author: s.Author, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
+	}
 }

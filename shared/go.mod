@@ -8,9 +8,12 @@ require (
 	github.com/anthropics/anthropic-sdk-go v1.57.0
 	github.com/distribution/reference v0.6.0
 	github.com/gofrs/flock v0.12.1
+	github.com/google/uuid v1.6.0
 	github.com/moby/moby/api v1.55.0
 	github.com/moby/moby/client v0.5.0
+	github.com/oapi-codegen/runtime v1.6.0
 	github.com/openai/openai-go/v3 v3.43.0
+	github.com/pkg/sftp v1.13.6
 	github.com/pressly/goose/v3 v3.24.1
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sys v0.48.0
@@ -20,6 +23,7 @@ require (
 require (
 	filippo.io/hpke v0.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -31,6 +35,7 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/invopop/jsonschema v0.14.0 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect

@@ -4,101 +4,66 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
+	sharedconfig "github.com/easyssh/shared/aiconfig"
+	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/secretcrypto"
 )
 
-// Service AI配置服务接口
 type Service interface {
-	// GetSystemConfig 获取系统级AI配置
-	GetSystemConfig(ctx context.Context) (*AIConfig, error)
-
-	// SaveSystemConfig 保存系统级AI配置
-	SaveSystemConfig(ctx context.Context, config *AIConfig) error
+	Get(context.Context) (*Config, error)
+	Save(context.Context, protocol.AIConfigInput) (protocol.OwnerAIConfig, error)
+	Reset(context.Context) error
 }
-
 type service struct {
 	repo      Repository
 	encryptor *crypto.Encryptor
 }
 
-// NewService 创建AI配置服务
 func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
 	return &service{repo: repo, encryptor: encryptor}
 }
-
-// GetSystemConfig 获取系统级AI配置
-func (s *service) GetSystemConfig(ctx context.Context) (*AIConfig, error) {
-	config, err := s.repo.GetSystemConfig(ctx)
+func (s *service) Get(ctx context.Context) (*Config, error) {
+	config, err := s.repo.Get(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if config.SystemAPIKey != "" && s.encryptor != nil {
-		decrypted, err := s.encryptor.DecryptSecret(config.SystemAPIKey, systemAPIKeyAAD())
-		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt system API key: %w", err)
+	if config.APIKey != "" {
+		if s.encryptor == nil {
+			return nil, errors.New("AI secret encryption is unavailable")
 		}
-		config.SystemAPIKey = decrypted
+		config.APIKey, err = s.encryptor.DecryptSecret(config.APIKey, APIKeyAAD())
+		if err != nil {
+			return nil, fmt.Errorf("decrypt AI API key: %w", err)
+		}
 	}
 	return config, nil
 }
-
-// SaveSystemConfig 保存系统级AI配置
-func (s *service) SaveSystemConfig(ctx context.Context, config *AIConfig) error {
-	// 更新系统配置时允许前端不回传密钥，避免因密钥不下发而误清空已有配置。
-	if strings.TrimSpace(config.SystemAPIKey) == "" {
-		if existing, err := s.repo.GetSystemConfig(ctx); err == nil && existing != nil && existing.SystemAPIKey != "" {
-			config.SystemAPIKey = existing.SystemAPIKey
+func (s *service) Save(ctx context.Context, input protocol.AIConfigInput) (protocol.OwnerAIConfig, error) {
+	current, err := s.Get(ctx)
+	if err != nil {
+		return protocol.OwnerAIConfig{}, err
+	}
+	input, err = sharedconfig.NormalizeInput(input, current.Input())
+	if err != nil {
+		return protocol.OwnerAIConfig{}, err
+	}
+	config := &Config{ID: ConfigID, Enabled: input.Enabled, Provider: input.Provider, Endpoint: input.Endpoint, Models: input.Models}
+	if *input.APIKey != "" {
+		if s.encryptor == nil {
+			return protocol.OwnerAIConfig{}, errors.New("AI secret encryption is unavailable")
 		}
-	}
-
-	// 验证配置
-	if err := s.validateSystemConfig(config); err != nil {
-		return err
-	}
-	if config.SystemAPIKey != "" && s.encryptor != nil && !crypto.HasEncryptedPrefix(config.SystemAPIKey) {
-		encrypted, err := s.encryptor.EncryptSecret(config.SystemAPIKey, systemAPIKeyAAD())
+		config.APIKey, err = s.encryptor.EncryptSecret(*input.APIKey, APIKeyAAD())
 		if err != nil {
-			return fmt.Errorf("failed to encrypt system API key: %w", err)
+			return protocol.OwnerAIConfig{}, err
 		}
-		config.SystemAPIKey = encrypted
 	}
-
-	return s.repo.SaveSystemConfig(ctx, config)
+	if err := s.repo.Save(ctx, config); err != nil {
+		return protocol.OwnerAIConfig{}, err
+	}
+	return sharedconfig.Public(input), nil
 }
-
-// validateSystemConfig 验证系统配置
-func (s *service) validateSystemConfig(config *AIConfig) error {
-	if !config.SystemEnabled {
-		return nil
-	}
-
-	provider := strings.ToLower(strings.TrimSpace(config.SystemProvider))
-	if provider == "" {
-		provider = "openai"
-	}
-
-	// 验证服务商
-	validProviders := map[string]bool{
-		"openai":          true,
-		"openai-response": true,
-		"gemini":          true,
-		"anthropic":       true,
-	}
-	if !validProviders[provider] {
-		return fmt.Errorf("invalid provider: %s (supported: openai, openai-response, gemini, anthropic)", config.SystemProvider)
-	}
-	config.SystemProvider = provider
-
-	// 验证模型列表
-	if strings.TrimSpace(config.SystemModels) == "" {
-		return errors.New("at least one model is required when system AI is enabled")
-	}
-
-	return nil
-}
-
-func systemAPIKeyAAD() []byte {
-	return crypto.SecretAAD("ai_config", "system", "system_api_key")
+func (s *service) Reset(ctx context.Context) error {
+	// Keep a disabled value so synchronization propagates the reset as well.
+	return s.repo.Save(ctx, &Config{ID: ConfigID, Provider: "openai", Models: []string{}})
 }

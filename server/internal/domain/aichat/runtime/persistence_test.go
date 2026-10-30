@@ -3,7 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
-	"sort"
+	"github.com/easyssh/shared/protocol"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +11,7 @@ import (
 	"github.com/easyssh/server/internal/domain/aichat/provider"
 	"github.com/easyssh/server/internal/domain/aichat/registry"
 	"github.com/easyssh/shared/aichatui"
+	"github.com/easyssh/shared/aiwire"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -33,23 +34,55 @@ func (s *memorySessionStore) Save(ctx context.Context, snapshot SessionSnapshot)
 	return nil
 }
 
-func (s *memorySessionStore) Get(ctx context.Context, userID uuid.UUID, sessionID string) (*SessionSnapshot, error) {
+func (s *memorySessionStore) Get(ctx context.Context, actor protocol.Actor, sessionID string) (*SessionSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snapshot, ok := s.snapshots[sessionID]
-	if !ok || snapshot.UserID != userID {
+	if !ok || !sameConversationActor(snapshot.Actor, actor) {
 		return nil, ErrSessionNotFound
 	}
 	return &snapshot, nil
 }
 
-func (s *memorySessionStore) GetLatestActive(ctx context.Context, userID uuid.UUID) (*SessionSnapshot, error) {
+// This fake has no file store; artifact endpoint tests use the real GORM fixture.
+func (s *memorySessionStore) TaskFile(ctx context.Context, actor protocol.Actor, sessionID, taskID string) (protocol.ContentReference, error) {
+	if _, err := s.Get(ctx, actor, sessionID); err != nil {
+		return protocol.ContentReference{}, err
+	}
+	return protocol.ContentReference{}, ErrTaskNotFound
+}
+
+func (s *memorySessionStore) History(ctx context.Context, actor protocol.Actor, sessionID string, input protocol.AIHistoryInput) (protocol.AIHistoryPage, error) {
+	snapshot, err := s.Get(ctx, actor, sessionID)
+	if err != nil {
+		return protocol.AIHistoryPage{}, err
+	}
+	if snapshot.Status == SessionStatusClosed {
+		return protocol.AIHistoryPage{}, ErrSessionNotFound
+	}
+	ids := make([]string, len(snapshot.MessageViews))
+	read := func(i int) (any, error) { return snapshot.MessageViews[i], nil }
+	if input.Kind == "tasks" {
+		ids = make([]string, len(snapshot.Tasks))
+		for i := range ids {
+			ids[i] = snapshot.Tasks[i].View.ID
+		}
+		read = func(i int) (any, error) { return snapshot.Tasks[i].View.Public(), nil }
+	} else {
+		for i := range ids {
+			ids[i] = snapshot.MessageViews[i].ID
+		}
+	}
+	return aiwire.BuildHistoryPage(sessionID, snapshot.UpdatedAt, input, ids, read)
+}
+
+func (s *memorySessionStore) GetLatestActive(ctx context.Context, actor protocol.Actor) (*SessionSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	var latest *SessionSnapshot
 	for _, snapshot := range s.snapshots {
-		if snapshot.UserID != userID || snapshot.Status == SessionStatusClosed {
+		if !sameConversationActor(snapshot.Actor, actor) || snapshot.Status == SessionStatusClosed {
 			continue
 		}
 		candidate := snapshot
@@ -63,58 +96,27 @@ func (s *memorySessionStore) GetLatestActive(ctx context.Context, userID uuid.UU
 	return latest, nil
 }
 
-func (s *memorySessionStore) List(ctx context.Context, userID uuid.UUID, query string, limit, offset int) ([]SessionSnapshot, int64, error) {
+func (s *memorySessionStore) List(ctx context.Context, actor protocol.Actor, query string, limit, offset int, filter SessionScope) ([]SessionListItem, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	snapshots := make([]SessionSnapshot, 0)
+	items := make([]SessionListItem, 0)
 	for _, snapshot := range s.snapshots {
-		if snapshot.UserID != userID {
+		if !sameConversationActor(snapshot.Actor, actor) || !scopeMatches(snapshot.Scope, filter) || len(snapshot.MessageViews) == 0 {
 			continue
 		}
 		if query != "" && !aichatui.SessionMatchesSearch(snapshot.Title, snapshot.MessageViews, query) {
 			continue
 		}
-		snapshots = append(snapshots, snapshot)
+		items = append(items, sessionListItemFromSnapshot(snapshot, query))
 	}
-	sort.SliceStable(snapshots, func(i, j int) bool {
-		return snapshots[i].UpdatedAt.After(snapshots[j].UpdatedAt)
-	})
-	total := int64(len(snapshots))
-	if limit <= 0 || limit > 100 {
-		limit = 30
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	if offset >= len(snapshots) {
-		return nil, total, nil
-	}
-	end := offset + limit
-	if end > len(snapshots) {
-		end = len(snapshots)
-	}
-	return snapshots[offset:end], total, nil
+	return paginateSessionListItems(items, limit, offset), int64(len(items)), nil
 }
 
-func (s *memorySessionStore) Rename(ctx context.Context, userID uuid.UUID, sessionID, title string) error {
+func (s *memorySessionStore) Delete(ctx context.Context, actor protocol.Actor, sessionID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snapshot, ok := s.snapshots[sessionID]
-	if !ok || snapshot.UserID != userID {
-		return ErrSessionNotFound
-	}
-	snapshot.Title = title
-	snapshot.UpdatedAt = time.Now()
-	s.snapshots[sessionID] = snapshot
-	return nil
-}
-
-func (s *memorySessionStore) Delete(ctx context.Context, userID uuid.UUID, sessionID string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	snapshot, ok := s.snapshots[sessionID]
-	if !ok || snapshot.UserID != userID {
+	if !ok || !sameConversationActor(snapshot.Actor, actor) {
 		return ErrSessionNotFound
 	}
 	delete(s.snapshots, sessionID)
@@ -124,11 +126,11 @@ func (s *memorySessionStore) Delete(ctx context.Context, userID uuid.UUID, sessi
 func TestSessionSnapshotRecordRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
+	ownerID := uuid.New()
 	now := time.Now().UTC().Truncate(time.Second)
 	snapshot := SessionSnapshot{
 		ID:             uuid.NewString(),
-		UserID:         userID,
+		Actor:          testAIActor(ownerID),
 		Model:          "gpt-test",
 		PermissionMode: "balanced",
 		Status:         SessionStatusWaitingConfirmation,
@@ -166,13 +168,12 @@ func TestSessionSnapshotRecordRoundTrip(t *testing.T) {
 		TaskOrder: []string{"task-1"},
 	}
 
-	record, err := snapshot.toRecord()
-	require.NoError(t, err)
-
-	restored, err := record.toSnapshot()
+	_, store := sessionItemsFixture(t)
+	require.NoError(t, store.Save(context.Background(), snapshot))
+	restored, err := store.Get(context.Background(), snapshot.Actor, snapshot.ID)
 	require.NoError(t, err)
 	require.Equal(t, snapshot.ID, restored.ID)
-	require.Equal(t, snapshot.UserID, restored.UserID)
+	require.Equal(t, snapshot.Actor, restored.Actor)
 	require.Equal(t, snapshot.Status, restored.Status)
 	require.Len(t, restored.Messages, 2)
 	require.Len(t, restored.MessageViews, 2)
@@ -186,14 +187,14 @@ func TestGormSessionStoreListScansSQLiteJSONText(t *testing.T) {
 
 	db, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&AISessionRecord{}))
+	require.NoError(t, db.AutoMigrate(&AISessionRecord{}, &AIMessageRecord{}, &AIModelMessageRecord{}, &AISessionTaskRecord{}, &ToolExecutionRecord{}))
 
-	store := NewGormSessionStore(db)
-	userID := uuid.New()
+	store := newGormTestSessionStore(t, db)
+	ownerID := uuid.New()
 	now := time.Now().UTC().Truncate(time.Second)
 	snapshot := SessionSnapshot{
 		ID:             uuid.NewString(),
-		UserID:         userID,
+		Actor:          testAIActor(ownerID),
 		Model:          "gpt-test",
 		Title:          "SQLite 会话",
 		PermissionMode: "balanced",
@@ -212,19 +213,46 @@ func TestGormSessionStoreListScansSQLiteJSONText(t *testing.T) {
 
 	require.NoError(t, store.Save(context.Background(), snapshot))
 
-	items, total, err := store.List(context.Background(), userID, "", 10, 0)
+	items, total, err := store.List(context.Background(), testAIActor(ownerID), "", 10, 0, SessionScope{})
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, items, 1)
 	require.Equal(t, snapshot.ID, items[0].ID)
-	require.Equal(t, snapshot.Messages[0].Content, items[0].Messages[0].Content)
-	require.Equal(t, snapshot.MessageViews[0].Content, items[0].MessageViews[0].Content)
+	require.Equal(t, len(snapshot.MessageViews), items[0].MessageCount)
+	require.Contains(t, items[0].Preview, snapshot.MessageViews[0].Content)
+	restored, err := store.Get(context.Background(), snapshot.Actor, snapshot.ID)
+	require.NoError(t, err)
+	require.Equal(t, snapshot.Messages[0].Content, restored.Messages[0].Content)
+}
+
+func TestGormSessionStoreRejectsStaleSnapshotAndAllowsIdenticalReplay(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&AISessionRecord{}, &AIMessageRecord{}, &AIModelMessageRecord{}, &AISessionTaskRecord{}, &ToolExecutionRecord{}))
+	store := newGormTestSessionStore(t, db)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	snapshot := SessionSnapshot{ID: uuid.NewString(), Actor: testAIActor(uuid.New()), Title: "first", Status: SessionStatusIdle, CreatedAt: now, UpdatedAt: now}
+	require.NoError(t, store.Save(context.Background(), snapshot))
+	newer := snapshot
+	newer.Title, newer.UpdatedAt = "newer result", now.Add(time.Second)
+	require.NoError(t, store.Save(context.Background(), newer))
+	require.NoError(t, store.Save(context.Background(), newer))
+	require.ErrorIs(t, store.Save(context.Background(), snapshot), ErrSnapshotConflict)
+	saved, err := store.Get(context.Background(), snapshot.Actor, snapshot.ID)
+	require.NoError(t, err)
+	require.Equal(t, "newer result", saved.Title)
+	record, err := newer.toRecord()
+	require.NoError(t, err)
+	require.True(t, sameSessionMetadata(record, record, time.Nanosecond))
+	changed := record
+	changed.ScopeJSON = jsonText(`{"kind":"terminal"}`)
+	require.False(t, sameSessionMetadata(record, changed, time.Nanosecond))
 }
 
 func TestManagerPersistsRestoresAndListsSessions(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
+	ownerID := uuid.New()
 	store := newMemorySessionStore()
 	runner := &fakeTurnRunner{
 		scripts: []fakeTurnScript{
@@ -235,26 +263,26 @@ func TestManagerPersistsRestoresAndListsSessions(t *testing.T) {
 	}
 
 	manager := NewManager(
-		fakeResolver{config: provider.Config{Model: "fake-model"}},
+		fakeResolver{config: provider.Config{Model: "fake-model", Models: []string{"fake-model", "gpt-test"}}},
 		runner,
 		registry.NewToolRegistry(nil),
 		time.Minute,
 	)
 	manager.SetSessionStore(store)
 
-	session, err := manager.CreateSession(context.Background(), userID, CreateSessionInput{
+	session, err := manager.CreateSession(testAIContext(t, ownerID), CreateSessionInput{
 		Model:          "gpt-test",
 		PermissionMode: "balanced",
 	})
 	require.NoError(t, err)
-	require.NoError(t, manager.SendUserMessage(context.Background(), userID, session.ID, "你好"))
+	require.NoError(t, manager.SendUserMessage(testAIContext(t, ownerID), session.ID, "你好"))
 
 	require.Eventually(t, func() bool {
-		latest, err := store.GetLatestActive(context.Background(), userID)
+		latest, err := store.GetLatestActive(context.Background(), testAIActor(ownerID))
 		return err == nil && latest.ID == session.ID && len(latest.MessageViews) >= 2 && latest.Status == SessionStatusIdle
 	}, 2*time.Second, 20*time.Millisecond)
 
-	items, total, err := manager.ListSessions(context.Background(), userID, "", 10, 0)
+	items, total, err := manager.ListSessions(testAIContext(t, ownerID), "", 10, 0)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, items, 1)
@@ -262,14 +290,14 @@ func TestManagerPersistsRestoresAndListsSessions(t *testing.T) {
 	require.Equal(t, "你好", items[0].Title)
 	require.Equal(t, 2, items[0].MessageCount)
 
-	require.NoError(t, manager.RenameSession(context.Background(), userID, session.ID, "巡检会话"))
-	items, total, err = manager.ListSessions(context.Background(), userID, "巡检", 10, 0)
+	require.NoError(t, manager.RenameSession(testAIContext(t, ownerID), session.ID, "巡检会话"))
+	items, total, err = manager.ListSessions(testAIContext(t, ownerID), "巡检", 10, 0)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Equal(t, "巡检会话", items[0].Title)
 	require.True(t, items[0].CustomTitle)
 
-	require.NoError(t, manager.SendUserMessageWithOptions(context.Background(), userID, session.ID, SendUserMessageInput{
+	require.NoError(t, manager.SendUserMessageWithOptions(testAIContext(t, ownerID), session.ID, SendUserMessageInput{
 		Content:        "切换到指定服务器",
 		PermissionMode: "privileged",
 		Scope: SessionScope{
@@ -279,18 +307,18 @@ func TestManagerPersistsRestoresAndListsSessions(t *testing.T) {
 		},
 	}))
 	require.Eventually(t, func() bool {
-		view, err := manager.GetSession(userID, session.ID)
+		view, err := manager.GetSession(testAIContext(t, ownerID), session.ID)
 		return err == nil && view.Status == SessionStatusIdle && len(view.Messages) >= 4
 	}, 2*time.Second, 20*time.Millisecond)
 
-	items, total, err = manager.ListSessions(context.Background(), userID, "", 10, 0)
+	items, total, err = manager.ListSessions(testAIContext(t, ownerID), "", 10, 0)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Equal(t, session.ID, items[0].ID)
 	require.Equal(t, "privileged", items[0].PermissionMode)
 	require.Equal(t, 4, items[0].MessageCount)
 
-	terminalSession, err := manager.CreateSession(context.Background(), userID, CreateSessionInput{
+	terminalSession, err := manager.CreateSession(testAIContext(t, ownerID), CreateSessionInput{
 		Model:          "gpt-test",
 		PermissionMode: "privileged",
 		Scope: SessionScope{
@@ -300,14 +328,14 @@ func TestManagerPersistsRestoresAndListsSessions(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.NoError(t, manager.SendUserMessage(context.Background(), userID, terminalSession.ID, "你好"))
+	require.NoError(t, manager.SendUserMessage(testAIContext(t, ownerID), terminalSession.ID, "你好"))
 
 	require.Eventually(t, func() bool {
-		view, err := manager.GetSession(userID, terminalSession.ID)
+		view, err := manager.GetSession(testAIContext(t, ownerID), terminalSession.ID)
 		return err == nil && view.Status == SessionStatusIdle && len(view.Messages) >= 2
 	}, 2*time.Second, 20*time.Millisecond)
 
-	items, total, err = manager.ListSessions(context.Background(), userID, "", 10, 0)
+	items, total, err = manager.ListSessions(testAIContext(t, ownerID), "", 10, 0)
 	require.NoError(t, err)
 	require.Equal(t, int64(2), total)
 	require.Equal(t, terminalSession.ID, items[0].ID)
@@ -315,22 +343,22 @@ func TestManagerPersistsRestoresAndListsSessions(t *testing.T) {
 	require.Equal(t, "privileged", items[0].PermissionMode)
 
 	restoredManager := NewManager(
-		fakeResolver{config: provider.Config{Model: "fake-model"}},
+		fakeResolver{config: provider.Config{Model: "fake-model", Models: []string{"fake-model", "gpt-test"}}},
 		nil,
 		registry.NewToolRegistry(nil),
 		time.Minute,
 	)
 	restoredManager.SetSessionStore(store)
 
-	restored, err := restoredManager.GetLatestActiveSession(context.Background(), userID)
+	restored, err := restoredManager.GetLatestActiveSession(testAIContext(t, ownerID))
 	require.NoError(t, err)
-	require.Equal(t, session.ID, restored.ID)
+	require.Equal(t, terminalSession.ID, restored.ID)
 	require.Equal(t, SessionStatusIdle, restored.Status)
 	require.Len(t, restored.Messages, 2)
 
-	require.NoError(t, manager.DeleteSession(context.Background(), userID, session.ID))
-	require.NoError(t, manager.DeleteSession(context.Background(), userID, terminalSession.ID))
-	items, total, err = manager.ListSessions(context.Background(), userID, "", 10, 0)
+	require.NoError(t, manager.DeleteSession(testAIContext(t, ownerID), session.ID))
+	require.NoError(t, manager.DeleteSession(testAIContext(t, ownerID), terminalSession.ID))
+	items, total, err = manager.ListSessions(testAIContext(t, ownerID), "", 10, 0)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), total)
 	require.Empty(t, items)

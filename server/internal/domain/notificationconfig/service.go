@@ -2,48 +2,33 @@ package notificationconfig
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
-	"time"
+	"unicode/utf8"
 
+	"github.com/easyssh/server/internal/domain/notification"
 	"github.com/easyssh/server/internal/pkg/mailclient"
+	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/secretcrypto"
 )
 
-// Service 通知配置服务接口
+var ErrInvalidConfig = errors.New("invalid notification configuration")
+var ErrConnectionTest = errors.New("notification connection test failed")
+
 type Service interface {
-	// Get 获取通知配置
-	Get(ctx context.Context) (*NotificationConfig, error)
-
-	// Save 保存通知配置
-	Save(ctx context.Context, config *NotificationConfig) error
-
-	// SMTP相关
-	GetSMTPConfig(ctx context.Context) (*SMTPConfig, error)
-	SaveSMTPConfig(ctx context.Context, config *SMTPConfig) error
-	TestSMTPConnection(ctx context.Context, config *SMTPConfig) error
-
-	// Webhook相关
-	GetWebhookConfig(ctx context.Context) (*WebhookConfig, error)
-	SaveWebhookConfig(ctx context.Context, config *WebhookConfig) error
-	TestWebhookConnection(ctx context.Context, config *WebhookConfig) error
-
-	// 钉钉相关
-	GetDingTalkConfig(ctx context.Context) (*DingTalkConfig, error)
-	SaveDingTalkConfig(ctx context.Context, config *DingTalkConfig) error
-	TestDingTalkConnection(ctx context.Context, config *DingTalkConfig) error
-
-	// 企业微信相关
-	GetWeComConfig(ctx context.Context) (*WeComConfig, error)
-	SaveWeComConfig(ctx context.Context, config *WeComConfig) error
-	TestWeComConnection(ctx context.Context, config *WeComConfig) error
-
-	// 统一配置接口
-	GetAllConfig(ctx context.Context) (*AllNotificationConfig, error)
-	SaveAllConfig(ctx context.Context, config *AllNotificationConfig) error
+	GetSMTPConfig(context.Context) (*SMTPConfig, error)
+	GetWebhookConfig(context.Context) (*WebhookConfig, error)
+	GetDingTalkConfig(context.Context) (*DingTalkConfig, error)
+	GetWeComConfig(context.Context) (*WeComConfig, error)
+	GetAllConfig(context.Context) (*AllNotificationConfig, error)
+	SaveAllConfig(context.Context, *protocol.NotificationConfigUpdate) error
+	TestSMTPConnection(context.Context, *protocol.SMTPConfigUpdate) error
+	TestWebhookConnection(context.Context, *protocol.WebhookConfigUpdate) error
+	TestDingTalkConnection(context.Context, *protocol.DingTalkConfigUpdate) error
+	TestWeComConnection(context.Context, *protocol.WeComConfigUpdate) error
 }
 
 type service struct {
@@ -51,350 +36,293 @@ type service struct {
 	encryptor *crypto.Encryptor
 }
 
-// NewService 创建通知配置服务
 func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
 	return &service{repo: repo, encryptor: encryptor}
 }
 
-// Get 获取通知配置
-func (s *service) Get(ctx context.Context) (*NotificationConfig, error) {
-	return s.repo.Get(ctx)
+// Malformed stored configuration is an error, never silently replaced by disabled defaults.
+func decodeNotificationConfig(raw string, value any) error {
+	if strings.TrimSpace(raw) == "null" {
+		return errors.New("stored notification configuration is null")
+	}
+	if err := json.Unmarshal([]byte(raw), value); err != nil {
+		return errors.New("stored notification configuration is invalid")
+	}
+	return nil
 }
 
-// Save 保存通知配置
-func (s *service) Save(ctx context.Context, config *NotificationConfig) error {
-	return s.repo.Save(ctx, config)
+func (s *service) cryptField(value *string, section, field string, decrypt bool) error {
+	if *value == "" {
+		return nil
+	}
+	if s.encryptor == nil {
+		return errors.New("notification credential encryption is unavailable")
+	}
+	var result string
+	var err error
+	aad := crypto.SecretAAD("notification_config", section, field)
+	if decrypt {
+		result, err = s.encryptor.DecryptSecret(*value, aad)
+	} else {
+		result, err = s.encryptor.EncryptSecret(*value, aad)
+	}
+	if err != nil {
+		return fmt.Errorf("notification credential %s.%s: %w", section, field, err)
+	}
+	*value = result
+	return nil
 }
 
-// GetSMTPConfig 获取SMTP配置
+func (s *service) readSMTP(raw string) (*SMTPConfig, error) {
+	var config SMTPConfig
+	if err := decodeNotificationConfig(raw, &config); err != nil {
+		return nil, err
+	}
+	if err := s.cryptField(&config.Password, "smtp", "password", true); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
 func (s *service) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
-	config, err := s.repo.GetSMTPConfig(ctx)
+	row, err := s.repo.Get(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.decryptSMTPConfig(config); err != nil {
-		return nil, err
-	}
-	return config, nil
+	return s.readSMTP(row.SMTPConfig)
 }
 
-// SaveSMTPConfig 保存SMTP配置
-func (s *service) SaveSMTPConfig(ctx context.Context, config *SMTPConfig) error {
-	// 验证配置
-	if err := s.validateSMTPConfig(config); err != nil {
-		return err
+func (s *service) readWebhook(raw string) (*WebhookConfig, error) {
+	var config WebhookConfig
+	if err := decodeNotificationConfig(raw, &config); err != nil {
+		return nil, err
 	}
+	if err := s.cryptField(&config.URL, "webhook", "url", true); err != nil {
+		return nil, err
+	}
+	if err := s.cryptField(&config.Secret, "webhook", "secret", true); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
 
-	// 如果密码为空，保留原密码
-	if config.Password == "" {
-		existing, err := s.repo.GetSMTPConfig(ctx)
-		if err == nil && existing != nil {
-			config.Password = existing.Password
+func (s *service) GetWebhookConfig(ctx context.Context) (*WebhookConfig, error) {
+	row, err := s.repo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.readWebhook(row.WebhookConfig)
+}
+
+func (s *service) readDingTalk(raw string) (*DingTalkConfig, error) {
+	var config DingTalkConfig
+	if err := decodeNotificationConfig(raw, &config); err != nil {
+		return nil, err
+	}
+	if err := s.cryptField(&config.WebhookURL, "dingtalk", "webhook_url", true); err != nil {
+		return nil, err
+	}
+	if err := s.cryptField(&config.Secret, "dingtalk", "secret", true); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+func (s *service) GetDingTalkConfig(ctx context.Context) (*DingTalkConfig, error) {
+	row, err := s.repo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.readDingTalk(row.DingTalkConfig)
+}
+
+func (s *service) readWeCom(raw string) (*WeComConfig, error) {
+	var config WeComConfig
+	if err := decodeNotificationConfig(raw, &config); err != nil {
+		return nil, err
+	}
+	if err := s.cryptField(&config.WebhookURL, "wecom", "webhook_url", true); err != nil {
+		return nil, err
+	}
+	return &config, nil
+}
+
+func (s *service) GetWeComConfig(ctx context.Context) (*WeComConfig, error) {
+	row, err := s.repo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.readWeCom(row.WeComConfig)
+}
+
+func (s *service) GetAllConfig(ctx context.Context) (*AllNotificationConfig, error) {
+	row, err := s.repo.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result := &AllNotificationConfig{}
+	result.SMTP, err = s.readSMTP(row.SMTPConfig)
+	if err != nil {
+		return nil, err
+	}
+	result.Webhook, err = s.readWebhook(row.WebhookConfig)
+	if err != nil {
+		return nil, err
+	}
+	result.DingTalk, err = s.readDingTalk(row.DingTalkConfig)
+	if err != nil {
+		return nil, err
+	}
+	result.WeCom, err = s.readWeCom(row.WeComConfig)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *service) SaveAllConfig(ctx context.Context, input *protocol.NotificationConfigUpdate) error {
+	if input == nil {
+		return ErrInvalidConfig
+	}
+	if input.SMTP == nil && input.Webhook == nil && input.DingTalk == nil && input.WeCom == nil {
+		return nil
+	}
+	return s.repo.Update(ctx, func(row *NotificationConfig) error {
+		if input.SMTP != nil {
+			current, err := s.readSMTP(row.SMTPConfig)
+			if err != nil {
+				return err
+			}
+			config := mergeSMTPConfig(*current, input.SMTP)
+			if err := s.validateSMTPConfig(&config); err != nil {
+				return fmt.Errorf("%w: %s", ErrInvalidConfig, err)
+			}
+			if config != *current {
+				if err := s.cryptField(&config.Password, "smtp", "password", false); err != nil {
+					return err
+				}
+				data, err := json.Marshal(config)
+				if err != nil {
+					return err
+				}
+				row.SMTPConfig = string(data)
+			}
 		}
-	}
-	if err := s.encryptSMTPConfig(config); err != nil {
-		return err
-	}
-
-	return s.repo.SaveSMTPConfig(ctx, config)
+		if input.Webhook != nil {
+			current, err := s.readWebhook(row.WebhookConfig)
+			if err != nil {
+				return err
+			}
+			config := mergeWebhookConfig(*current, input.Webhook)
+			if err := s.validateWebhookConfig(&config); err != nil {
+				return fmt.Errorf("%w: %s", ErrInvalidConfig, err)
+			}
+			if config != *current {
+				if err := s.cryptField(&config.URL, "webhook", "url", false); err != nil {
+					return err
+				}
+				if err := s.cryptField(&config.Secret, "webhook", "secret", false); err != nil {
+					return err
+				}
+				data, err := json.Marshal(config)
+				if err != nil {
+					return err
+				}
+				row.WebhookConfig = string(data)
+			}
+		}
+		if input.DingTalk != nil {
+			current, err := s.readDingTalk(row.DingTalkConfig)
+			if err != nil {
+				return err
+			}
+			config := mergeDingTalkConfig(*current, input.DingTalk)
+			if err := s.validateDingTalkConfig(&config); err != nil {
+				return fmt.Errorf("%w: %s", ErrInvalidConfig, err)
+			}
+			if config != *current {
+				if err := s.cryptField(&config.WebhookURL, "dingtalk", "webhook_url", false); err != nil {
+					return err
+				}
+				if err := s.cryptField(&config.Secret, "dingtalk", "secret", false); err != nil {
+					return err
+				}
+				data, err := json.Marshal(config)
+				if err != nil {
+					return err
+				}
+				row.DingTalkConfig = string(data)
+			}
+		}
+		if input.WeCom != nil {
+			current, err := s.readWeCom(row.WeComConfig)
+			if err != nil {
+				return err
+			}
+			config := mergeWeComConfig(*current, input.WeCom)
+			if err := s.validateWeComConfig(&config); err != nil {
+				return fmt.Errorf("%w: %s", ErrInvalidConfig, err)
+			}
+			if config != *current {
+				if err := s.cryptField(&config.WebhookURL, "wecom", "webhook_url", false); err != nil {
+					return err
+				}
+				data, err := json.Marshal(config)
+				if err != nil {
+					return err
+				}
+				row.WeComConfig = string(data)
+			}
+		}
+		return nil
+	})
 }
 
-// TestSMTPConnection 测试SMTP连接
-func (s *service) TestSMTPConnection(ctx context.Context, config *SMTPConfig) error {
-	if !config.Enabled {
-		return errors.New("SMTP is disabled")
+func (s *service) TestSMTPConnection(ctx context.Context, input *protocol.SMTPConfigUpdate) error {
+	if input == nil {
+		return ErrInvalidConfig
 	}
-
-	// 验证配置
-	if err := s.validateSMTPConfig(config); err != nil {
+	current, err := s.GetSMTPConfig(ctx)
+	if err != nil {
 		return err
 	}
-
-	client, err := mailclient.New(mailclient.Config{
-		Host:     config.Host,
-		Port:     config.Port,
-		Username: config.Username,
-		Password: config.Password,
-		UseTLS:   config.UseTLS,
-	})
+	config := mergeSMTPConfig(*current, input)
+	if !config.Enabled {
+		return fmt.Errorf("%w: SMTP is disabled", ErrInvalidConfig)
+	}
+	if err := s.validateSMTPConfig(&config); err != nil {
+		return fmt.Errorf("%w: %s", ErrInvalidConfig, err)
+	}
+	client, err := mailclient.New(mailclient.Config{Host: config.Host, Port: config.Port, Username: config.Username, Password: config.Password, UseTLS: config.UseTLS})
 	if err != nil {
-		return fmt.Errorf("failed to create SMTP client: %w", err)
+		return notificationTestError(err)
 	}
 	if err := client.DialWithContext(ctx); err != nil {
-		return fmt.Errorf("failed to connect to SMTP server: %w", err)
+		return notificationTestError(err)
 	}
-	return client.Close()
+	return notificationTestError(client.Close())
 }
 
-// GetWebhookConfig 获取Webhook配置
-func (s *service) GetWebhookConfig(ctx context.Context) (*WebhookConfig, error) {
-	config, err := s.repo.GetWebhookConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.decryptWebhookConfig(config); err != nil {
-		return nil, err
-	}
-	return config, nil
-}
-
-// SaveWebhookConfig 保存Webhook配置
-func (s *service) SaveWebhookConfig(ctx context.Context, config *WebhookConfig) error {
-	// 验证配置
-	if err := s.validateWebhookConfig(config); err != nil {
-		return err
-	}
-
-	// 如果密钥为空，保留原密钥
-	if config.Secret == "" {
-		existing, err := s.repo.GetWebhookConfig(ctx)
-		if err == nil && existing != nil {
-			config.Secret = existing.Secret
-		}
-	}
-	if err := s.encryptWebhookConfig(config); err != nil {
-		return err
-	}
-
-	return s.repo.SaveWebhookConfig(ctx, config)
-}
-
-// TestWebhookConnection 测试Webhook连接
-func (s *service) TestWebhookConnection(ctx context.Context, config *WebhookConfig) error {
-	if !config.Enabled {
-		return errors.New("Webhook is disabled")
-	}
-
-	// 验证配置
-	if err := s.validateWebhookConfig(config); err != nil {
-		return err
-	}
-
-	// 发送测试请求
-	client := &http.Client{Timeout: 10 * time.Second}
-	var req *http.Request
-	var err error
-
-	if config.Method == "GET" {
-		req, err = http.NewRequestWithContext(ctx, "GET", config.URL, nil)
-	} else {
-		req, err = http.NewRequestWithContext(ctx, "POST", config.URL, strings.NewReader(`{"test": true}`))
-		if err == nil {
-			req.Header.Set("Content-Type", "application/json")
-		}
-	}
-
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("webhook returned error status: %d", resp.StatusCode)
-	}
-
-	return nil
-}
-
-// GetDingTalkConfig 获取钉钉配置
-func (s *service) GetDingTalkConfig(ctx context.Context) (*DingTalkConfig, error) {
-	config, err := s.repo.GetDingTalkConfig(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.decryptDingTalkConfig(config); err != nil {
-		return nil, err
-	}
-	return config, nil
-}
-
-// SaveDingTalkConfig 保存钉钉配置
-func (s *service) SaveDingTalkConfig(ctx context.Context, config *DingTalkConfig) error {
-	// 验证配置
-	if err := s.validateDingTalkConfig(config); err != nil {
-		return err
-	}
-
-	// 如果密钥为空，保留原密钥
-	if config.Secret == "" {
-		existing, err := s.repo.GetDingTalkConfig(ctx)
-		if err == nil && existing != nil {
-			config.Secret = existing.Secret
-		}
-	}
-	if err := s.encryptDingTalkConfig(config); err != nil {
-		return err
-	}
-
-	return s.repo.SaveDingTalkConfig(ctx, config)
-}
-
-// TestDingTalkConnection 测试钉钉连接
-func (s *service) TestDingTalkConnection(ctx context.Context, config *DingTalkConfig) error {
-	if !config.Enabled {
-		return errors.New("DingTalk is disabled")
-	}
-
-	// 验证配置
-	if err := s.validateDingTalkConfig(config); err != nil {
-		return err
-	}
-
-	// 发送测试消息
-	client := &http.Client{Timeout: 10 * time.Second}
-	testMessage := `{"msgtype": "text", "text": {"content": "EasySSH 钉钉通知测试"}}`
-
-	req, err := http.NewRequestWithContext(ctx, "POST", config.WebhookURL, strings.NewReader(testMessage))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("dingtalk returned error status: %d", resp.StatusCode)
-	}
-
-	return nil
-}
-
-func (s *service) encryptSMTPConfig(config *SMTPConfig) error {
-	if config == nil || config.Password == "" || s.encryptor == nil || crypto.HasEncryptedPrefix(config.Password) {
-		return nil
-	}
-	encrypted, err := s.encryptor.EncryptSecret(config.Password, notificationSecretAAD("smtp", "password"))
-	if err != nil {
-		return fmt.Errorf("failed to encrypt SMTP password: %w", err)
-	}
-	config.Password = encrypted
-	return nil
-}
-
-func (s *service) decryptSMTPConfig(config *SMTPConfig) error {
-	if config == nil || config.Password == "" || s.encryptor == nil {
-		return nil
-	}
-	decrypted, err := s.encryptor.DecryptSecret(config.Password, notificationSecretAAD("smtp", "password"))
-	if err != nil {
-		return fmt.Errorf("failed to decrypt SMTP password: %w", err)
-	}
-	config.Password = decrypted
-	return nil
-}
-
-func (s *service) encryptWebhookConfig(config *WebhookConfig) error {
-	if config == nil || config.Secret == "" || s.encryptor == nil || crypto.HasEncryptedPrefix(config.Secret) {
-		return nil
-	}
-	encrypted, err := s.encryptor.EncryptSecret(config.Secret, notificationSecretAAD("webhook", "secret"))
-	if err != nil {
-		return fmt.Errorf("failed to encrypt webhook secret: %w", err)
-	}
-	config.Secret = encrypted
-	return nil
-}
-
-func (s *service) decryptWebhookConfig(config *WebhookConfig) error {
-	if config == nil || config.Secret == "" || s.encryptor == nil {
-		return nil
-	}
-	decrypted, err := s.encryptor.DecryptSecret(config.Secret, notificationSecretAAD("webhook", "secret"))
-	if err != nil {
-		return fmt.Errorf("failed to decrypt webhook secret: %w", err)
-	}
-	config.Secret = decrypted
-	return nil
-}
-
-func (s *service) encryptDingTalkConfig(config *DingTalkConfig) error {
-	if config == nil || config.Secret == "" || s.encryptor == nil || crypto.HasEncryptedPrefix(config.Secret) {
-		return nil
-	}
-	encrypted, err := s.encryptor.EncryptSecret(config.Secret, notificationSecretAAD("dingtalk", "secret"))
-	if err != nil {
-		return fmt.Errorf("failed to encrypt DingTalk secret: %w", err)
-	}
-	config.Secret = encrypted
-	return nil
-}
-
-func (s *service) decryptDingTalkConfig(config *DingTalkConfig) error {
-	if config == nil || config.Secret == "" || s.encryptor == nil {
-		return nil
-	}
-	decrypted, err := s.encryptor.DecryptSecret(config.Secret, notificationSecretAAD("dingtalk", "secret"))
-	if err != nil {
-		return fmt.Errorf("failed to decrypt DingTalk secret: %w", err)
-	}
-	config.Secret = decrypted
-	return nil
-}
-
-func notificationSecretAAD(section string, field string) []byte {
-	return crypto.SecretAAD("notification_config", section, field)
-}
-
-// GetWeComConfig 获取企业微信配置
-func (s *service) GetWeComConfig(ctx context.Context) (*WeComConfig, error) {
-	return s.repo.GetWeComConfig(ctx)
-}
-
-// SaveWeComConfig 保存企业微信配置
-func (s *service) SaveWeComConfig(ctx context.Context, config *WeComConfig) error {
-	// 验证配置
-	if err := s.validateWeComConfig(config); err != nil {
-		return err
-	}
-
-	return s.repo.SaveWeComConfig(ctx, config)
-}
-
-// TestWeComConnection 测试企业微信连接
-func (s *service) TestWeComConnection(ctx context.Context, config *WeComConfig) error {
-	if !config.Enabled {
-		return errors.New("WeCom is disabled")
-	}
-
-	// 验证配置
-	if err := s.validateWeComConfig(config); err != nil {
-		return err
-	}
-
-	// 发送测试消息
-	client := &http.Client{Timeout: 10 * time.Second}
-	testMessage := `{"msgtype": "text", "text": {"content": "EasySSH 企业微信通知测试"}}`
-
-	req, err := http.NewRequestWithContext(ctx, "POST", config.WebhookURL, strings.NewReader(testMessage))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("wecom returned error status: %d", resp.StatusCode)
-	}
-
-	return nil
-}
-
-// validateSMTPConfig 验证SMTP配置
 func (s *service) validateSMTPConfig(config *SMTPConfig) error {
+	if config == nil {
+		return ErrInvalidConfig
+	}
+	if utf8.RuneCountInString(config.Host) > 4096 {
+		return errors.New("smtp.host is too long")
+	}
+	if utf8.RuneCountInString(config.Username) > 4096 {
+		return errors.New("smtp.username is too long")
+	}
+	if utf8.RuneCountInString(config.Password) > 4096 {
+		return errors.New("smtp.password is too long")
+	}
+	if utf8.RuneCountInString(config.FromEmail) > 4096 {
+		return errors.New("smtp.from_email is too long")
+	}
+	if utf8.RuneCountInString(config.FromName) > 4096 {
+		return errors.New("smtp.from_name is too long")
+	}
+
 	if !config.Enabled {
 		return nil
 	}
@@ -423,8 +351,42 @@ func (s *service) validateSMTPConfig(config *SMTPConfig) error {
 	return nil
 }
 
-// validateWebhookConfig 验证Webhook配置
+func (s *service) TestWebhookConnection(ctx context.Context, input *protocol.WebhookConfigUpdate) error {
+	if input == nil {
+		return ErrInvalidConfig
+	}
+	current, err := s.GetWebhookConfig(ctx)
+	if err != nil {
+		return err
+	}
+	config := mergeWebhookConfig(*current, input)
+	if !config.Enabled {
+		return fmt.Errorf("%w: Webhook is disabled", ErrInvalidConfig)
+	}
+	if err := s.validateWebhookConfig(&config); err != nil {
+		return fmt.Errorf("%w: %s", ErrInvalidConfig, err)
+	}
+	sender, err := notification.NewWebhookService(&notification.WebhookConfig{URL: config.URL, Secret: config.Secret, Method: config.Method})
+	if err != nil {
+		return notificationTestError(err)
+	}
+	return notificationTestError(sender.SendNotification(ctx, "test", map[string]interface{}{"message": "EasySSH notification test", "source": "EasySSH"}))
+}
+
 func (s *service) validateWebhookConfig(config *WebhookConfig) error {
+	if config == nil {
+		return ErrInvalidConfig
+	}
+	if utf8.RuneCountInString(config.URL) > 8192 {
+		return errors.New("webhook.url is too long")
+	}
+	if utf8.RuneCountInString(config.Secret) > 4096 {
+		return errors.New("webhook.secret is too long")
+	}
+	if utf8.RuneCountInString(config.Method) > 4096 {
+		return errors.New("webhook.method is too long")
+	}
+
 	if !config.Enabled {
 		return nil
 	}
@@ -434,7 +396,7 @@ func (s *service) validateWebhookConfig(config *WebhookConfig) error {
 	}
 
 	// 验证URL格式
-	if _, err := url.Parse(config.URL); err != nil {
+	if err := validateNotificationURL(config.URL); err != nil {
 		return fmt.Errorf("invalid webhook URL: %w", err)
 	}
 
@@ -446,8 +408,39 @@ func (s *service) validateWebhookConfig(config *WebhookConfig) error {
 	return nil
 }
 
-// validateDingTalkConfig 验证钉钉配置
+func (s *service) TestDingTalkConnection(ctx context.Context, input *protocol.DingTalkConfigUpdate) error {
+	if input == nil {
+		return ErrInvalidConfig
+	}
+	current, err := s.GetDingTalkConfig(ctx)
+	if err != nil {
+		return err
+	}
+	config := mergeDingTalkConfig(*current, input)
+	if !config.Enabled {
+		return fmt.Errorf("%w: DingTalk is disabled", ErrInvalidConfig)
+	}
+	if err := s.validateDingTalkConfig(&config); err != nil {
+		return fmt.Errorf("%w: %s", ErrInvalidConfig, err)
+	}
+	sender, err := notification.NewDingTalkService(&notification.DingTalkConfig{WebhookURL: config.WebhookURL, Secret: config.Secret})
+	if err != nil {
+		return notificationTestError(err)
+	}
+	return notificationTestError(sender.SendTextMessage(ctx, "EasySSH DingTalk 通知测试"))
+}
+
 func (s *service) validateDingTalkConfig(config *DingTalkConfig) error {
+	if config == nil {
+		return ErrInvalidConfig
+	}
+	if utf8.RuneCountInString(config.WebhookURL) > 8192 {
+		return errors.New("dingtalk.webhook_url is too long")
+	}
+	if utf8.RuneCountInString(config.Secret) > 4096 {
+		return errors.New("dingtalk.secret is too long")
+	}
+
 	if !config.Enabled {
 		return nil
 	}
@@ -457,15 +450,43 @@ func (s *service) validateDingTalkConfig(config *DingTalkConfig) error {
 	}
 
 	// 验证URL格式
-	if _, err := url.Parse(config.WebhookURL); err != nil {
+	if err := validateNotificationURL(config.WebhookURL); err != nil {
 		return fmt.Errorf("invalid dingtalk webhook URL: %w", err)
 	}
 
 	return nil
 }
 
-// validateWeComConfig 验证企业微信配置
+func (s *service) TestWeComConnection(ctx context.Context, input *protocol.WeComConfigUpdate) error {
+	if input == nil {
+		return ErrInvalidConfig
+	}
+	current, err := s.GetWeComConfig(ctx)
+	if err != nil {
+		return err
+	}
+	config := mergeWeComConfig(*current, input)
+	if !config.Enabled {
+		return fmt.Errorf("%w: WeCom is disabled", ErrInvalidConfig)
+	}
+	if err := s.validateWeComConfig(&config); err != nil {
+		return fmt.Errorf("%w: %s", ErrInvalidConfig, err)
+	}
+	sender, err := notification.NewWeComService(&notification.WeComConfig{WebhookURL: config.WebhookURL})
+	if err != nil {
+		return notificationTestError(err)
+	}
+	return notificationTestError(sender.SendTextMessage(ctx, "EasySSH WeCom 通知测试"))
+}
+
 func (s *service) validateWeComConfig(config *WeComConfig) error {
+	if config == nil {
+		return ErrInvalidConfig
+	}
+	if utf8.RuneCountInString(config.WebhookURL) > 8192 {
+		return errors.New("wecom.webhook_url is too long")
+	}
+
 	if !config.Enabled {
 		return nil
 	}
@@ -475,70 +496,32 @@ func (s *service) validateWeComConfig(config *WeComConfig) error {
 	}
 
 	// 验证URL格式
-	if _, err := url.Parse(config.WebhookURL); err != nil {
+	if err := validateNotificationURL(config.WebhookURL); err != nil {
 		return fmt.Errorf("invalid wecom webhook URL: %w", err)
 	}
 
 	return nil
 }
 
-// GetAllConfig 获取所有通知配置
-func (s *service) GetAllConfig(ctx context.Context) (*AllNotificationConfig, error) {
-	// 分别获取各个配置，复用现有的逻辑
-	smtp, err := s.GetSMTPConfig(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get SMTP config: %w", err)
+func validateNotificationURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Hostname() == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.Fragment != "" {
+		return errors.New("an absolute HTTP(S) URL without userinfo or fragment is required")
 	}
-
-	webhook, err := s.GetWebhookConfig(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Webhook config: %w", err)
-	}
-
-	dingtalk, err := s.GetDingTalkConfig(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get DingTalk config: %w", err)
-	}
-
-	wecom, err := s.GetWeComConfig(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get WeCom config: %w", err)
-	}
-
-	return &AllNotificationConfig{
-		SMTP:     smtp,
-		Webhook:  webhook,
-		DingTalk: dingtalk,
-		WeCom:    wecom,
-	}, nil
+	return nil
 }
 
-// SaveAllConfig 保存所有通知配置
-func (s *service) SaveAllConfig(ctx context.Context, config *AllNotificationConfig) error {
-	// 分别保存各个配置，复用现有的验证和密码保留逻辑
-	if config.SMTP != nil {
-		if err := s.SaveSMTPConfig(ctx, config.SMTP); err != nil {
-			return fmt.Errorf("failed to save SMTP config: %w", err)
-		}
+// Transport and provider errors can echo saved passwords, tokens or request URLs.
+// Return a stable failure without exposing those values through the test endpoint.
+func notificationTestError(err error) error {
+	if err == nil {
+		return nil
 	}
-
-	if config.Webhook != nil {
-		if err := s.SaveWebhookConfig(ctx, config.Webhook); err != nil {
-			return fmt.Errorf("failed to save Webhook config: %w", err)
-		}
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("%w: request canceled", ErrConnectionTest)
 	}
-
-	if config.DingTalk != nil {
-		if err := s.SaveDingTalkConfig(ctx, config.DingTalk); err != nil {
-			return fmt.Errorf("failed to save DingTalk config: %w", err)
-		}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: request timed out", ErrConnectionTest)
 	}
-
-	if config.WeCom != nil {
-		if err := s.SaveWeComConfig(ctx, config.WeCom); err != nil {
-			return fmt.Errorf("failed to save WeCom config: %w", err)
-		}
-	}
-
-	return nil
+	return ErrConnectionTest
 }

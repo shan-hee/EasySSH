@@ -5,21 +5,20 @@ import (
 	"fmt"
 
 	"github.com/easyssh/shared/aichatui"
-	"github.com/google/uuid"
 )
 
-func (m *Manager) SetServerReferenceResolver(resolve func(context.Context, uuid.UUID, []aichatui.ServerReference) ([]aichatui.ServerReference, error)) {
+func (m *Manager) SetServerReferenceResolver(resolve func(context.Context, []aichatui.ServerReference) ([]aichatui.ServerReference, error)) {
 	m.serverReferenceResolver = resolve
 }
 
-func (m *Manager) resolveServerReferences(ctx context.Context, userID uuid.UUID, refs []aichatui.ServerReference) ([]aichatui.ServerReference, error) {
+func (m *Manager) resolveServerReferences(ctx context.Context, refs []aichatui.ServerReference) ([]aichatui.ServerReference, error) {
 	if len(refs) == 0 {
 		return nil, nil
 	}
 	if m.serverReferenceResolver == nil {
 		return nil, fmt.Errorf("服务器引用解析服务不可用")
 	}
-	return m.serverReferenceResolver(ctx, userID, refs)
+	return m.serverReferenceResolver(ctx, refs)
 }
 
 func (m *Manager) refreshRunServerReferences(ctx context.Context, s *session, runID string) error {
@@ -39,7 +38,7 @@ func (m *Manager) refreshRunServerReferences(ctx context.Context, s *session, ru
 	if len(refs) == 0 {
 		return nil
 	}
-	resolved, err := m.resolveServerReferences(ctx, s.userID, refs)
+	resolved, err := m.resolveServerReferences(ctx, refs)
 	if err != nil {
 		return err
 	}

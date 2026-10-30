@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
+	"github.com/easyssh/shared/sftputil"
 	"io"
 	"log"
 	"os"
@@ -15,7 +18,6 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/domain/jobqueue"
-	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/domain/sftp"
 	"github.com/easyssh/server/internal/domain/systemconfig"
@@ -25,55 +27,70 @@ import (
 
 var (
 	ErrInvalidJobRequest = errors.New("invalid transfer job request")
-	ErrForbiddenJob      = errors.New("transfer job is not owned by user")
+	ErrForbiddenJob      = errors.New("transfer job is outside the access scope")
 	ErrArtifactNotReady  = errors.New("transfer artifact is not ready")
 	ErrArtifactInUse     = errors.New("transfer artifact is in use")
 )
 
 type Service interface {
+	ArtifactRequirements(context.Context, access.Scope, string) ([]access.Requirement, error)
 	SnapshotStorage(fn func() error) error
-	TryStorageChange() (func(), bool)
-	CreateUploadJob(ctx context.Context, userID uuid.UUID, req *CreateUploadRequest, reader io.Reader) (*TransferJob, error)
-	CreateDownloadJob(ctx context.Context, userID uuid.UUID, req *CreateDownloadRequest) (*TransferJob, error)
-	ValidateScheduledTask(ctx context.Context, userID uuid.UUID, scheduledTaskID uuid.UUID, taskType string, payloadJSON string) error
+	ConfigureStorage(context.Context, *systemconfig.SystemConfig) error
+	CreateUploadJob(ctx context.Context, req *CreateUploadRequest) (*TransferJob, error)
+	UploadJobContent(ctx context.Context, id uuid.UUID, reader io.ReadCloser) (*TransferJob, error)
+	CreateRelayJob(context.Context, *protocol.TransferRelayInput) (*TransferJob, error)
+	CreateDownloadJob(ctx context.Context, req *CreateDownloadRequest) (*TransferJob, error)
+	ValidateScheduledTask(ctx context.Context, scheduledTaskID uuid.UUID, taskType string, payloadJSON string) error
 	RunScheduledTask(ctx context.Context, req RunScheduledRequest) (*TransferJob, error)
 	ListJobs(ctx context.Context, req *ListRequest) (*ListResponse, error)
-	GetStatistics(ctx context.Context, userID uuid.UUID) (*Statistics, error)
-	GetJob(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*TransferJob, error)
-	AttachScheduledTask(ctx context.Context, userID uuid.UUID, id uuid.UUID, scheduledTaskID uuid.UUID) error
-	DetachScheduledTask(ctx context.Context, userID uuid.UUID, id uuid.UUID) error
-	CancelJob(ctx context.Context, userID uuid.UUID, id uuid.UUID) error
-	DeleteJob(ctx context.Context, userID uuid.UUID, id uuid.UUID) error
-	DeleteScheduledInputJob(ctx context.Context, userID uuid.UUID, id uuid.UUID, scheduledTaskID uuid.UUID) error
-	GetArtifact(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*TransferJob, string, error)
+	GetStatistics(ctx context.Context) (*protocol.TransferStatistics, error)
+	GetJob(ctx context.Context, id uuid.UUID) (*TransferJob, error)
+	AttachScheduledTask(ctx context.Context, id uuid.UUID, scheduledTaskID uuid.UUID) error
+	DetachScheduledTask(ctx context.Context, id uuid.UUID) error
+	CancelJob(ctx context.Context, id uuid.UUID) error
+	DeleteJob(ctx context.Context, id uuid.UUID) error
+	DeleteScheduledInputJob(ctx context.Context, id uuid.UUID, scheduledTaskID uuid.UUID) error
+	GetArtifact(ctx context.Context, id uuid.UUID) (*TransferJob, string, error)
+	RecoverInterrupted(ctx context.Context) error
 	StartMaintenance(ctx context.Context)
-	Stop()
+	Stop(context.Context) error
 	SetTaskCenter(service taskcenter.Service)
 	SetQueue(queue jobqueue.Enqueuer)
 	HandleQueueJob(ctx context.Context, job *jobqueue.Job) error
+	RejectQueueJob(context.Context, *jobqueue.Job, error) error
 }
 
 type service struct {
-	storageMu        sync.RWMutex
-	repo             Repository
-	pool             *sftp.Pool
-	serverService    server.Service
-	systemConfig     systemconfig.Service
-	operationRecords operationrecord.Service
-	taskRuns         taskcenter.Service
-	queue            jobqueue.Enqueuer
-	dataDir          string
-	limiter          chan struct{}
+	artifactMu    sync.Mutex
+	budget        storageBudget
+	stagingMu     sync.Mutex
+	staging       map[uuid.UUID]context.CancelFunc
+	storageMu     sync.RWMutex
+	repo          Repository
+	pool          *sftp.Pool
+	serverService server.Service
+	systemConfig  systemconfig.Service
+	taskRuns      taskcenter.Service
+	queue         jobqueue.Enqueuer
+	dataDir       string
+	limiter       *sftp.TransferLimiter
 
-	stopMaintenance chan struct{}
-	stopOnce        sync.Once
+	lifecycleMu sync.Mutex
+	operations  map[uuid.UUID]context.CancelFunc
+	workers     sync.WaitGroup
+	stopped     bool
+	startOnce   sync.Once
+	stopOnce    sync.Once
+	stopDone    chan struct{}
 }
 
 func (s *service) SetTaskCenter(service taskcenter.Service) { s.taskRuns = service }
-func (s *service) SetQueue(queue jobqueue.Enqueuer)         { s.queue = queue }
+
+func (s *service) SetQueue(queue jobqueue.Enqueuer) { s.queue = queue }
 
 type ServiceOptions struct {
 	DataDir string
+	Limiter *sftp.TransferLimiter
 }
 
 func NewService(
@@ -81,149 +98,25 @@ func NewService(
 	pool *sftp.Pool,
 	serverService server.Service,
 	systemConfig systemconfig.Service,
-	operationRecords operationrecord.Service,
 	options ServiceOptions,
 ) Service {
-	maxConcurrency := systemconfig.DefaultTransferMaxConcurrency()
-	if systemConfig != nil {
-		if cfg, err := systemConfig.Get(context.Background()); err == nil && cfg != nil && cfg.TransferMaxConcurrency > 0 {
-			maxConcurrency = cfg.TransferMaxConcurrency
-		}
-	}
-	return &service{
-		repo:             repo,
-		pool:             pool,
-		serverService:    serverService,
-		systemConfig:     systemConfig,
-		operationRecords: operationRecords,
-		dataDir:          options.DataDir,
-		limiter:          make(chan struct{}, maxConcurrency),
-		stopMaintenance:  make(chan struct{}),
+	return &service{staging: make(map[uuid.UUID]context.CancelFunc),
+		repo:          repo,
+		pool:          pool,
+		serverService: serverService,
+		systemConfig:  systemConfig,
+		dataDir:       options.DataDir,
+		limiter:       options.Limiter,
 	}
 }
 
-func (s *service) CreateUploadJob(ctx context.Context, userID uuid.UUID, req *CreateUploadRequest, reader io.Reader) (*TransferJob, error) {
-	s.storageMu.RLock()
-	defer s.storageMu.RUnlock()
-	if req == nil || reader == nil {
-		return nil, ErrInvalidJobRequest
-	}
-	targetServerID, err := uuid.Parse(strings.TrimSpace(req.ServerID))
-	if err != nil {
-		return nil, fmt.Errorf("%w: invalid server_id", ErrInvalidJobRequest)
-	}
-	if _, err := s.serverService.GetByID(ctx, userID, targetServerID); err != nil {
-		return nil, err
-	}
-
-	fileName := sanitizeFileName(req.FileName)
-	if fileName == "" {
-		return nil, fmt.Errorf("%w: file_name is required", ErrInvalidJobRequest)
-	}
-	targetDir := cleanRemoteDir(req.TargetPath)
-	targetPath := path.Join(targetDir, fileName)
-	cfg, err := s.config(ctx)
+func (s *service) CreateDownloadJob(ctx context.Context, req *CreateDownloadRequest) (*TransferJob, error) {
+	ctx, finishOperation, err := s.beginOperation(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.ensureQuota(ctx, cfg, req.FileSize, true); err != nil {
-		return nil, err
-	}
+	defer finishOperation()
 
-	now := time.Now()
-	expireTime := now.AddDate(0, 0, retentionDays(req.RetentionDays, cfg))
-	expiresAt := &expireTime
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		name = fmt.Sprintf("上传 %s", fileName)
-	}
-	job := &TransferJob{
-		UserID:            userID,
-		Name:              name,
-		Kind:              JobKindSFTPUpload,
-		Runner:            "server",
-		Status:            JobStatusStaging,
-		Stage:             JobStageStaging,
-		TargetServerID:    &targetServerID,
-		SourcePath:        fileName,
-		TargetPath:        targetPath,
-		FileName:          fileName,
-		ArtifactName:      fileName,
-		ArtifactManaged:   true,
-		BytesTotal:        req.FileSize,
-		ArtifactExpiresAt: expiresAt,
-		Description:       req.Description,
-		ScheduledTaskID:   req.ScheduledTaskID,
-		TaskRunID:         req.TaskRunID,
-	}
-	if err := s.repo.Create(ctx, job); err != nil {
-		return nil, err
-	}
-
-	localPath, err := s.artifactPath(ctx, cfg, job, "upload", fileName)
-	if err != nil {
-		_ = s.failJob(context.Background(), job.ID, err, JobStageStaging)
-		return nil, err
-	}
-	if err := s.stageReader(ctx, job, reader, localPath); err != nil {
-		_ = os.Remove(localPath)
-		_ = s.failJob(context.Background(), job.ID, err, JobStageStaging)
-		return nil, err
-	}
-
-	if info, statErr := os.Stat(localPath); statErr == nil {
-		job.ArtifactSize = info.Size()
-		if job.BytesTotal <= 0 {
-			job.BytesTotal = info.Size()
-		}
-	}
-	if err := s.ensureQuota(ctx, cfg, 0, false); err != nil {
-		_ = os.Remove(localPath)
-		_ = s.failJob(context.Background(), job.ID, err, JobStageStaging)
-		return nil, err
-	}
-	job.ArtifactPath = localPath
-	if req.DeferStart {
-		job.Status = JobStatusCreated
-		job.Stage = JobStageStaging
-		job.Progress = 100
-		job.BytesProcessed = job.BytesTotal
-	} else {
-		job.Status = JobStatusQueued
-		job.Stage = JobStageTransferToRemote
-		job.Progress = 0
-		job.BytesProcessed = 0
-	}
-	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{JobStatusStaging}, map[string]interface{}{
-		"artifact_path":   job.ArtifactPath,
-		"artifact_size":   job.ArtifactSize,
-		"bytes_total":     job.BytesTotal,
-		"bytes_processed": job.BytesProcessed,
-		"progress":        job.Progress,
-		"status":          job.Status,
-		"stage":           job.Stage,
-	})
-	if err != nil {
-		_ = os.Remove(localPath)
-		_ = s.failJob(context.Background(), job.ID, err, JobStageStaging)
-		return nil, err
-	}
-	if !updated {
-		_ = os.Remove(localPath)
-		return nil, fmt.Errorf("%w: transfer job was cancelled during staging", ErrInvalidJobRequest)
-	}
-
-	if !req.DeferStart {
-		s.ensureTaskRun(ctx, job)
-		if err := s.enqueueTransfer(ctx, job); err != nil {
-			_ = s.failJob(context.Background(), job.ID, err, JobStageTransferToRemote)
-			return nil, err
-		}
-	}
-	return s.repo.GetByID(ctx, job.ID)
-}
-
-func (s *service) CreateDownloadJob(ctx context.Context, userID uuid.UUID, req *CreateDownloadRequest) (*TransferJob, error) {
 	if req == nil {
 		return nil, ErrInvalidJobRequest
 	}
@@ -231,22 +124,39 @@ func (s *service) CreateDownloadJob(ctx context.Context, userID uuid.UUID, req *
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid server_id", ErrInvalidJobRequest)
 	}
-	if _, err := s.serverService.GetByID(ctx, userID, sourceServerID); err != nil {
+	lease, err := access.Current(ctx).OpenWork(ctx, access.Task, access.Requirement{Action: protocol.FilesDownload, ServerID: sourceServerID.String()})
+	if err != nil {
 		return nil, err
 	}
-	sourcePath := strings.TrimSpace(req.SourcePath)
-	if sourcePath == "" {
-		return nil, fmt.Errorf("%w: source_path is required", ErrInvalidJobRequest)
+	defer lease.Close(nil)
+	ctx = lease.Context()
+	if err := access.Current(ctx).CheckBytes(ctx, access.Requirement{Action: protocol.FilesDownload, ServerID: sourceServerID.String()}, 1); err != nil {
+		return nil, err
 	}
-	fileName := sanitizeFileName(path.Base(sourcePath))
-	if fileName == "" {
-		fileName = "download"
+	if _, err := s.serverService.GetByID(ctx, access.Current(ctx), sourceServerID); err != nil {
+		return nil, err
 	}
 	cfg, err := s.config(ctx)
 	if err != nil {
 		return nil, err
 	}
+	selection, err := normalizeDownloadSelection(req, cfg)
+	if err != nil {
+		return nil, err
+	}
+	detail, err := json.Marshal(selection)
+	if err != nil {
+		return nil, err
+	}
+	sourcePath := selection.Paths[0]
+	fileName := sanitizeFileName(path.Base(sourcePath))
+	if selection.Archive {
+		fileName = "files.zip"
+	}
 
+	if !access.Current(ctx).IsOwner() {
+		req.RetentionDays = cfg.TransferRetentionDays
+	}
 	now := time.Now()
 	expiresAt := now.AddDate(0, 0, retentionDays(req.RetentionDays, cfg))
 	name := strings.TrimSpace(req.Name)
@@ -254,7 +164,7 @@ func (s *service) CreateDownloadJob(ctx context.Context, userID uuid.UUID, req *
 		name = fmt.Sprintf("下载 %s", fileName)
 	}
 	job := &TransferJob{
-		UserID:            userID,
+		Actor:             access.Current(ctx).Actor(),
 		Name:              name,
 		Kind:              JobKindSFTPDownload,
 		Runner:            "server",
@@ -271,21 +181,21 @@ func (s *service) CreateDownloadJob(ctx context.Context, userID uuid.UUID, req *
 		ScheduledTaskID:   req.ScheduledTaskID,
 		TaskRunID:         req.TaskRunID,
 	}
-	if err := s.repo.Create(ctx, job); err != nil {
-		return nil, err
-	}
+	job.DetailJSON = string(detail)
 
-	s.ensureTaskRun(ctx, job)
-	if err := s.enqueueTransfer(ctx, job); err != nil {
-		_ = s.failJob(context.Background(), job.ID, err, JobStageDownloadFromRemote)
-		return nil, err
-	}
-	return job, nil
+	return s.saveAdmission(ctx, job)
 }
 
 func (s *service) RunScheduledTask(ctx context.Context, req RunScheduledRequest) (*TransferJob, error) {
-	s.storageMu.RLock()
-	defer s.storageMu.RUnlock()
+	if req.TaskRunID == uuid.Nil || req.ScheduledTaskID == uuid.Nil {
+		return nil, ErrInvalidJobRequest
+	}
+	ctx, finishOperation, err := s.beginOperation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer finishOperation()
+
 	var payload ScheduledPayload
 	if strings.TrimSpace(req.PayloadJSON) != "" {
 		if err := json.Unmarshal([]byte(req.PayloadJSON), &payload); err != nil {
@@ -303,7 +213,10 @@ func (s *service) RunScheduledTask(ctx context.Context, req RunScheduledRequest)
 	}
 }
 
-func (s *service) ValidateScheduledTask(ctx context.Context, userID uuid.UUID, scheduledTaskID uuid.UUID, taskType string, payloadJSON string) error {
+func (s *service) ValidateScheduledTask(ctx context.Context, scheduledTaskID uuid.UUID, taskType string, payloadJSON string) error {
+	if err := access.Current(ctx).RequireOwner(ctx, protocol.ResourcesManage); err != nil {
+		return err
+	}
 	if taskType != string(JobKindSFTPUpload) && taskType != string(JobKindSFTPDownload) {
 		return nil
 	}
@@ -318,20 +231,20 @@ func (s *service) ValidateScheduledTask(ctx context.Context, userID uuid.UUID, s
 
 	switch taskType {
 	case string(JobKindSFTPUpload):
-		return s.validateScheduledUploadPayload(ctx, userID, scheduledTaskID, payload)
+		return s.validateScheduledUploadPayload(ctx, scheduledTaskID, payload)
 	case string(JobKindSFTPDownload):
-		return s.validateScheduledDownloadPayload(ctx, userID, payload)
+		return s.validateScheduledDownloadPayload(ctx, payload)
 	default:
 		return nil
 	}
 }
 
-func (s *service) validateScheduledUploadPayload(ctx context.Context, userID uuid.UUID, scheduledTaskID uuid.UUID, payload ScheduledPayload) error {
+func (s *service) validateScheduledUploadPayload(ctx context.Context, scheduledTaskID uuid.UUID, payload ScheduledPayload) error {
 	stagedID, err := uuid.Parse(strings.TrimSpace(payload.StagedJobID))
 	if err != nil {
 		return fmt.Errorf("%w: staged_job_id is required for SFTP upload tasks", ErrInvalidJobRequest)
 	}
-	job, err := s.GetJob(ctx, userID, stagedID)
+	job, err := s.GetJob(ctx, stagedID)
 	if err != nil {
 		return err
 	}
@@ -352,7 +265,7 @@ func (s *service) validateScheduledUploadPayload(ctx context.Context, userID uui
 		if err != nil {
 			return fmt.Errorf("%w: invalid server_id", ErrInvalidJobRequest)
 		}
-		if _, err := s.serverService.GetByID(ctx, userID, serverID); err != nil {
+		if _, err := s.serverService.GetByID(ctx, access.Current(ctx), serverID); err != nil {
 			return err
 		}
 	} else if job.TargetServerID == nil {
@@ -361,7 +274,7 @@ func (s *service) validateScheduledUploadPayload(ctx context.Context, userID uui
 	return nil
 }
 
-func (s *service) validateScheduledDownloadPayload(ctx context.Context, userID uuid.UUID, payload ScheduledPayload) error {
+func (s *service) validateScheduledDownloadPayload(ctx context.Context, payload ScheduledPayload) error {
 	serverID, err := uuid.Parse(strings.TrimSpace(payload.ServerID))
 	if err != nil {
 		return fmt.Errorf("%w: server_id is required for SFTP download tasks", ErrInvalidJobRequest)
@@ -369,7 +282,7 @@ func (s *service) validateScheduledDownloadPayload(ctx context.Context, userID u
 	if strings.TrimSpace(payload.SourcePath) == "" {
 		return fmt.Errorf("%w: source_path is required for SFTP download tasks", ErrInvalidJobRequest)
 	}
-	if _, err := s.serverService.GetByID(ctx, userID, serverID); err != nil {
+	if _, err := s.serverService.GetByID(ctx, access.Current(ctx), serverID); err != nil {
 		return err
 	}
 	return nil
@@ -379,30 +292,40 @@ func (s *service) ListJobs(ctx context.Context, req *ListRequest) (*ListResponse
 	return s.repo.List(ctx, req)
 }
 
-func (s *service) GetStatistics(ctx context.Context, userID uuid.UUID) (*Statistics, error) {
-	stats, err := s.repo.GetStatistics(ctx, userID)
+func (s *service) GetStatistics(ctx context.Context) (*protocol.TransferStatistics, error) {
+	stats, err := s.repo.GetStatistics(ctx)
 	if err != nil {
 		return nil, err
-	}
-	cfg, err := s.config(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if used, err := dirSize(s.storageRoot(cfg)); err == nil {
-		stats.StorageBytes = used
 	}
 	return stats, nil
 }
 
-func (s *service) GetJob(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*TransferJob, error) {
-	return s.repo.GetByUserAndID(ctx, userID, id)
+func (s *service) GetJob(ctx context.Context, id uuid.UUID) (*TransferJob, error) {
+	return s.repo.GetVisible(ctx, id)
 }
 
-func (s *service) AttachScheduledTask(ctx context.Context, userID uuid.UUID, id uuid.UUID, scheduledTaskID uuid.UUID) error {
+func (s *service) AttachScheduledTask(ctx context.Context, id uuid.UUID, scheduledTaskID uuid.UUID) error {
+	ctx, finishOperation, admissionErr := s.beginOperation(ctx)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer finishOperation()
+
+	if err := access.Current(ctx).RequireOwner(ctx, protocol.ResourcesManage); err != nil {
+		return err
+	}
 	if scheduledTaskID == uuid.Nil {
 		return fmt.Errorf("%w: scheduled_task_id is required", ErrInvalidJobRequest)
 	}
-	job, err := s.GetJob(ctx, userID, id)
+	job, err := s.GetJob(ctx, id)
+	if err != nil {
+		return err
+	}
+	s.storageMu.RLock()
+	defer s.storageMu.RUnlock()
+	s.artifactMu.Lock()
+	defer s.artifactMu.Unlock()
+	job, err = s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -428,9 +351,30 @@ func (s *service) AttachScheduledTask(ctx context.Context, userID uuid.UUID, id 
 	return nil
 }
 
-func (s *service) DetachScheduledTask(ctx context.Context, userID uuid.UUID, id uuid.UUID) error {
-	if _, err := s.GetJob(ctx, userID, id); err != nil {
+func (s *service) DetachScheduledTask(ctx context.Context, id uuid.UUID) error {
+	ctx, finishOperation, admissionErr := s.beginOperation(ctx)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer finishOperation()
+
+	if err := access.Current(ctx).RequireOwner(ctx, protocol.ResourcesManage); err != nil {
 		return err
+	}
+	job, err := s.GetJob(ctx, id)
+	if err != nil {
+		return err
+	}
+	s.storageMu.RLock()
+	defer s.storageMu.RUnlock()
+	s.artifactMu.Lock()
+	defer s.artifactMu.Unlock()
+	job, err = s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if job.Kind != JobKindSFTPUpload || job.Status != JobStatusCreated || !job.ArtifactManaged {
+		return ErrInvalidJobRequest
 	}
 	expiresAt := s.defaultExpiration(ctx)
 	return s.repo.Update(ctx, id, map[string]interface{}{
@@ -439,64 +383,105 @@ func (s *service) DetachScheduledTask(ctx context.Context, userID uuid.UUID, id 
 	})
 }
 
-func (s *service) CancelJob(ctx context.Context, userID uuid.UUID, id uuid.UUID) error {
-	job, err := s.GetJob(ctx, userID, id)
+func (s *service) CancelJob(ctx context.Context, id uuid.UUID) error {
+	ctx, finishOperation, admissionErr := s.beginOperation(ctx)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer finishOperation()
+	ctx, cancelDeadline := context.WithTimeout(ctx, 5*time.Second)
+	defer cancelDeadline()
+
+	job, err := s.GetJob(ctx, id)
 	if err != nil {
 		return err
 	}
 	if isScheduledStagedInput(job) {
 		return fmt.Errorf("%w: scheduled transfer inputs are managed by their scheduled task", ErrInvalidJobRequest)
 	}
-	if job.Status != JobStatusCreated &&
-		job.Status != JobStatusStaging &&
-		job.Status != JobStatusQueued &&
-		job.Status != JobStatusRunning {
-		return fmt.Errorf("%w: transfer job is not cancellable", ErrInvalidJobRequest)
-	}
-
-	if s.queue != nil {
-		if err := s.queue.CancelBySource(ctx, "transfer_job", id.String()); err != nil {
+	// The source CAS arbitrates with executor admission. Only work which has
+	// not started can become cancelled immediately; running work must settle.
+	for {
+		status, ok := cancellationStatus(job.Status)
+		if !ok {
+			return fmt.Errorf("%w: transfer job is not cancellable", ErrInvalidJobRequest)
+		}
+		if job.Status == JobStatusCanceling || job.Status == JobStatusCancelled {
+			break
+		}
+		updates := map[string]interface{}{"status": status, "error_message": "cancellation requested"}
+		if status == JobStatusCancelled {
+			now := time.Now().UTC()
+			updates["finished_at"], updates["speed_bps"] = &now, 0
+		}
+		updated, err := s.repo.UpdateIfStatus(ctx, id, []JobStatus{job.Status}, updates)
+		if err != nil {
+			return err
+		}
+		if updated {
+			break
+		}
+		job, err = s.GetJob(ctx, id)
+		if err != nil {
 			return err
 		}
 	}
-	now := time.Now()
-	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{
-		JobStatusCreated,
-		JobStatusStaging,
-		JobStatusQueued,
-		JobStatusRunning,
-	}, map[string]interface{}{
-		"status":        JobStatusCancelled,
-		"error_message": "cancelled",
-		"finished_at":   &now,
-	})
-	if err != nil {
-		return err
+	s.stagingMu.Lock()
+	if cancel := s.staging[id]; cancel != nil {
+		cancel()
 	}
-	if !updated {
-		return fmt.Errorf("%w: transfer job is not cancellable", ErrInvalidJobRequest)
+	s.stagingMu.Unlock()
+	var queueErr error
+	if s.queue != nil {
+		queueErr = s.queue.CancelBySource(ctx, "transfer_job", id.String())
 	}
-	s.upsertOperationRecord(context.Background(), job.ID)
-	s.syncTaskRun(context.Background(), job.ID)
-	return err
+	finishCtx, cancelFinish := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancelFinish()
+	return errors.Join(queueErr, s.syncTaskRun(finishCtx, id))
 }
 
-func (s *service) DeleteJob(ctx context.Context, userID uuid.UUID, id uuid.UUID) error {
-	job, err := s.GetJob(ctx, userID, id)
+func cancellationStatus(status JobStatus) (JobStatus, bool) {
+	switch status {
+	case JobStatusCreated, JobStatusQueued, JobStatusCancelled:
+		return JobStatusCancelled, true
+	case JobStatusStaging, JobStatusRunning, JobStatusCanceling:
+		return JobStatusCanceling, true
+	default:
+		return status, false
+	}
+}
+
+func (s *service) DeleteJob(ctx context.Context, id uuid.UUID) error {
+	ctx, finishOperation, admissionErr := s.beginOperation(ctx)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer finishOperation()
+
+	job, err := s.GetJob(ctx, id)
 	if err != nil {
 		return err
 	}
 	if isScheduledStagedInput(job) {
 		return fmt.Errorf("%w: scheduled transfer inputs are managed by their scheduled task", ErrInvalidJobRequest)
 	}
-	return s.deleteLoadedJob(ctx, job)
+	return s.deleteLoadedJob(ctx, job, nil)
 }
 
-func (s *service) DeleteScheduledInputJob(ctx context.Context, userID uuid.UUID, id uuid.UUID, scheduledTaskID uuid.UUID) error {
+func (s *service) DeleteScheduledInputJob(ctx context.Context, id uuid.UUID, scheduledTaskID uuid.UUID) error {
+	ctx, finishOperation, admissionErr := s.beginOperation(ctx)
+	if admissionErr != nil {
+		return admissionErr
+	}
+	defer finishOperation()
+
+	if err := access.Current(ctx).RequireOwner(ctx, protocol.ResourcesManage); err != nil {
+		return err
+	}
 	if scheduledTaskID == uuid.Nil {
 		return fmt.Errorf("%w: scheduled_task_id is required", ErrInvalidJobRequest)
 	}
-	job, err := s.GetJob(ctx, userID, id)
+	job, err := s.GetJob(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -506,16 +491,31 @@ func (s *service) DeleteScheduledInputJob(ctx context.Context, userID uuid.UUID,
 	if job.Kind != JobKindSFTPUpload || job.Status != JobStatusCreated || !job.ArtifactManaged {
 		return fmt.Errorf("%w: scheduled input must be a staged upload job", ErrInvalidJobRequest)
 	}
-	return s.deleteLoadedJob(ctx, job)
+	return s.deleteLoadedJob(ctx, job, &scheduledTaskID)
 }
 
-func (s *service) deleteLoadedJob(ctx context.Context, job *TransferJob) error {
+func (s *service) deleteLoadedJob(ctx context.Context, job *TransferJob, scheduledTaskID *uuid.UUID) error {
 	s.storageMu.RLock()
 	defer s.storageMu.RUnlock()
 	if job == nil {
 		return ErrJobNotFound
 	}
-	if job.Status == JobStatusStaging || job.Status == JobStatusQueued || job.Status == JobStatusRunning {
+	s.artifactMu.Lock()
+	defer s.artifactMu.Unlock()
+	current, err := s.repo.GetByID(ctx, job.ID)
+	if err != nil {
+		return err
+	}
+	job = current
+	if scheduledTaskID == nil && isScheduledStagedInput(job) {
+		return ErrInvalidJobRequest
+	}
+	if scheduledTaskID != nil {
+		if job.Kind != JobKindSFTPUpload || job.Status != JobStatusCreated || !job.ArtifactManaged || job.ScheduledTaskID != nil && *job.ScheduledTaskID != *scheduledTaskID {
+			return ErrInvalidJobRequest
+		}
+	}
+	if job.Status == JobStatusStaging || job.Status == JobStatusQueued || job.Status == JobStatusRunning || job.Status == JobStatusCanceling {
 		return fmt.Errorf("%w: active transfer jobs must be cancelled before deletion", ErrInvalidJobRequest)
 	}
 	if job.ArtifactManaged && strings.TrimSpace(job.ArtifactPath) != "" {
@@ -527,20 +527,18 @@ func (s *service) deleteLoadedJob(ctx context.Context, job *TransferJob) error {
 			return fmt.Errorf("%w: transfer artifact is in use by an active job", ErrArtifactInUse)
 		}
 	}
-	_ = s.removeJobFiles(ctx, job)
+	if err := s.removeJobFiles(ctx, job); err != nil {
+		return err
+	}
 	if err := s.repo.Delete(ctx, job.ID); err != nil {
 		return err
 	}
-	if s.operationRecords != nil {
-		if err := s.operationRecords.DeleteBySource(ctx, "transfer_jobs", job.ID.String()); err != nil {
-			log.Printf("[TransferJob] delete operation record failed: job=%s error=%v", job.ID, err)
-		}
-	}
+
 	return nil
 }
 
-func (s *service) GetArtifact(ctx context.Context, userID uuid.UUID, id uuid.UUID) (*TransferJob, string, error) {
-	job, err := s.GetJob(ctx, userID, id)
+func (s *service) GetArtifact(ctx context.Context, id uuid.UUID) (*TransferJob, string, error) {
+	job, err := s.GetJob(ctx, id)
 	if err != nil {
 		return nil, "", err
 	}
@@ -548,10 +546,6 @@ func (s *service) GetArtifact(ctx context.Context, userID uuid.UUID, id uuid.UUI
 		return nil, "", ErrArtifactNotReady
 	}
 	if job.ArtifactExpiresAt != nil && time.Now().After(*job.ArtifactExpiresAt) {
-		_ = s.repo.Update(ctx, job.ID, map[string]interface{}{
-			"status": JobStatusExpired,
-			"stage":  JobStageCleanup,
-		})
 		return nil, "", ErrArtifactNotReady
 	}
 	if _, err := os.Stat(job.ArtifactPath); err != nil {
@@ -560,39 +554,33 @@ func (s *service) GetArtifact(ctx context.Context, userID uuid.UUID, id uuid.UUI
 	return job, job.ArtifactPath, nil
 }
 
-func (s *service) StartMaintenance(ctx context.Context) {
-	if err := s.repo.MarkStagingInterrupted(ctx); err != nil {
-		fmt.Printf("[TransferJob] mark interrupted staging jobs failed: %v\n", err)
+func (s *service) RecoverInterrupted(ctx context.Context) error {
+	jobs, err := s.repo.RecoverInterrupted(ctx)
+	if err != nil {
+		return err
 	}
-	go func() {
-		s.cleanupExpired(context.Background())
-		ticker := time.NewTicker(time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				s.cleanupExpired(context.Background())
-			case <-s.stopMaintenance:
-				return
-			}
+	for _, job := range jobs {
+		if err := s.syncTaskRun(ctx, job.ID); err != nil {
+			return err
 		}
-	}()
-}
-
-func (s *service) Stop() {
-	s.stopOnce.Do(func() {
-		close(s.stopMaintenance)
-	})
+	}
+	return nil
 }
 
 func (s *service) runScheduledUpload(ctx context.Context, req RunScheduledRequest, payload ScheduledPayload) (*TransferJob, error) {
+	s.storageMu.RLock()
+	defer s.storageMu.RUnlock()
 	stagedID, err := uuid.Parse(strings.TrimSpace(payload.StagedJobID))
 	if err != nil {
 		return nil, fmt.Errorf("%w: staged_job_id is required for scheduled upload", ErrInvalidJobRequest)
 	}
-	stagedJob, err := s.repo.GetByUserAndID(ctx, req.UserID, stagedID)
+	stagedJob, err := s.GetJob(ctx, stagedID)
 	if err != nil {
 		return nil, err
+	}
+	actor := access.Current(ctx).Actor()
+	if actor.Kind != protocol.Owner || stagedJob.Actor.Kind != protocol.Owner || actor.ID != stagedJob.Actor.ID || stagedJob.ScheduledTaskID == nil || *stagedJob.ScheduledTaskID != req.ScheduledTaskID {
+		return nil, ErrForbiddenJob
 	}
 	if stagedJob.Kind != JobKindSFTPUpload {
 		return nil, fmt.Errorf("%w: staged job must be an upload job", ErrInvalidJobRequest)
@@ -613,7 +601,7 @@ func (s *service) runScheduledUpload(ctx context.Context, req RunScheduledReques
 		if err != nil {
 			return nil, fmt.Errorf("%w: invalid server_id", ErrInvalidJobRequest)
 		}
-		if _, err := s.serverService.GetByID(ctx, req.UserID, parsed); err != nil {
+		if _, err := s.serverService.GetByID(ctx, access.Current(ctx), parsed); err != nil {
 			return nil, err
 		}
 		targetServerID = &parsed
@@ -662,7 +650,7 @@ func (s *service) runScheduledUpload(ctx context.Context, req RunScheduledReques
 		"staged_job_id": stagedJob.ID,
 	})
 	job := &TransferJob{
-		UserID:            req.UserID,
+		Actor:             access.Current(ctx).Actor(),
 		Name:              name,
 		Kind:              JobKindSFTPUpload,
 		Runner:            "server",
@@ -678,6 +666,7 @@ func (s *service) runScheduledUpload(ctx context.Context, req RunScheduledReques
 		ArtifactManaged:   false,
 		ArtifactExpiresAt: &expireTime,
 		BytesTotal:        stagedJob.BytesTotal,
+		FilesTotal:        1,
 		Description:       description,
 		ScheduledTaskID:   &req.ScheduledTaskID,
 		TaskRunID:         &req.TaskRunID,
@@ -689,15 +678,7 @@ func (s *service) runScheduledUpload(ctx context.Context, req RunScheduledReques
 	if job.SourcePath == "" {
 		job.SourcePath = fileName
 	}
-	if err := s.repo.Create(ctx, job); err != nil {
-		return nil, err
-	}
-	s.ensureTaskRun(ctx, job)
-	if err := s.enqueueTransfer(ctx, job); err != nil {
-		_ = s.failJob(context.Background(), job.ID, err, JobStageTransferToRemote)
-		return nil, err
-	}
-	return s.repo.GetByID(ctx, job.ID)
+	return s.saveAdmission(ctx, job)
 }
 
 func (s *service) runScheduledDownload(ctx context.Context, req RunScheduledRequest, payload ScheduledPayload) (*TransferJob, error) {
@@ -708,7 +689,7 @@ func (s *service) runScheduledDownload(ctx context.Context, req RunScheduledRequ
 	if name == "" {
 		name = strings.TrimSpace(req.TaskName)
 	}
-	job, err := s.CreateDownloadJob(ctx, req.UserID, &CreateDownloadRequest{
+	return s.CreateDownloadJob(ctx, &CreateDownloadRequest{
 		Name:            name,
 		ServerID:        payload.ServerID,
 		SourcePath:      payload.SourcePath,
@@ -717,264 +698,239 @@ func (s *service) runScheduledDownload(ctx context.Context, req RunScheduledRequ
 		ScheduledTaskID: &req.ScheduledTaskID,
 		TaskRunID:       &req.TaskRunID,
 	})
-	if err != nil {
-		return nil, err
-	}
-	return s.repo.GetByID(ctx, job.ID)
-}
-
-func (s *service) enqueueTransfer(ctx context.Context, job *TransferJob) error {
-	if s.queue == nil {
-		return errors.New("job queue is not initialized")
-	}
-	_, err := s.queue.Enqueue(ctx, "transfer.execute", "transfer_job", job.ID.String(), map[string]string{"job_id": job.ID.String()}, jobqueue.EnqueueOptions{MaxAttempts: 3})
-	return err
 }
 
 func (s *service) HandleQueueJob(ctx context.Context, queuedJob *jobqueue.Job) error {
+	ctx, finishOperation, err := s.beginOperation(ctx)
+	if err != nil {
+		return err
+	}
+	defer finishOperation()
+
 	s.storageMu.RLock()
 	defer s.storageMu.RUnlock()
 	var payload struct {
-		JobID string `json:"job_id"`
+		JobID uuid.UUID `json:"job_id"`
+	}
+	if queuedJob == nil {
+		return ErrInvalidJobRequest
 	}
 	if err := json.Unmarshal([]byte(queuedJob.PayloadJSON), &payload); err != nil {
-		return fmt.Errorf("decode transfer job payload: %w", err)
+		return err
 	}
-	jobID, err := uuid.Parse(payload.JobID)
-	if err != nil {
-		return fmt.Errorf("invalid transfer job id: %w", err)
-	}
-	job, err := s.repo.GetByID(ctx, jobID)
+	job, err := s.repo.GetByID(ctx, payload.JobID)
 	if err != nil {
 		return err
 	}
-	if job.Status == JobStatusCancelled || job.Status == JobStatusCompleted || job.Status == JobStatusFailed || job.Status == JobStatusExpired {
-		return nil
+	if job.Actor != queuedJob.Actor || job.Actor != access.Current(ctx).Actor() {
+		return access.ErrForbidden
 	}
-	select {
-	case s.limiter <- struct{}{}:
-		defer func() { <-s.limiter }()
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-	switch job.Kind {
-	case JobKindSFTPUpload:
-		s.executeUpload(ctx, job)
-	case JobKindSFTPDownload:
-		s.executeDownload(ctx, job)
-	default:
-		return fmt.Errorf("unsupported transfer job kind %s", job.Kind)
-	}
-	return ctx.Err()
-}
 
-func (s *service) executeUpload(ctx context.Context, job *TransferJob) {
-	startedAt := time.Now()
-	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{JobStatusQueued, JobStatusRunning}, map[string]interface{}{
-		"status":     JobStatusRunning,
-		"stage":      JobStageTransferToRemote,
-		"started_at": &startedAt,
+	// Register before checking source state. Lease redelivery must never run a
+	// second executor while the first still owns its SFTP connection.
+	ctx, cancel := context.WithCancel(ctx)
+	s.stagingMu.Lock()
+	if s.staging[job.ID] != nil {
+		s.stagingMu.Unlock()
+		cancel()
+		return errors.New("transfer executor is still active")
+	}
+	if s.staging == nil {
+		s.staging = make(map[uuid.UUID]context.CancelFunc)
+	}
+	s.staging[job.ID] = cancel
+	s.stagingMu.Unlock()
+	defer func() {
+		cancel()
+		s.stagingMu.Lock()
+		delete(s.staging, job.ID)
+		s.stagingMu.Unlock()
+	}()
+
+	// Read again after registration: cancellation or a prior worker may have
+	// changed the record while this delivery was waiting.
+	job, err = s.repo.GetByID(ctx, job.ID)
+	if err != nil {
+		return err
+	}
+	switch job.Status {
+	case JobStatusCompleted, JobStatusFailed, JobStatusCancelled, JobStatusUnknown:
+		return s.syncTaskRun(ctx, job.ID)
+	case JobStatusRunning, JobStatusCanceling:
+		return s.finishExecution(ctx, job, fmt.Errorf("%w: executor no longer owns an observed result; transfer was not replayed", sftputil.ErrMutationOutcomeUnknown), job.Stage)
+	case JobStatusQueued:
+	default:
+		return fmt.Errorf("%w: transfer job is not queued", ErrInvalidJobRequest)
+	}
+	release, err := s.limiter.Acquire(ctx, true)
+	if err != nil {
+		return err
+	}
+	defer release()
+	stage := JobStageTransferToRemote
+	if job.Kind == JobKindSFTPDownload {
+		stage = JobStageDownloadFromRemote
+	}
+	if job.Kind != JobKindSFTPUpload && job.Kind != JobKindSFTPDownload && job.Kind != JobKindSFTPTransfer {
+		_, err := s.savePreparationFailure(ctx, job, errors.New("unsupported transfer kind"))
+		return err
+	}
+	startedAt := time.Now().UTC()
+	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{JobStatusQueued}, map[string]interface{}{
+		"status": JobStatusRunning, "stage": stage, "started_at": &startedAt,
 	})
 	if err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageTransferToRemote)
-		return
+		// This worker still owns the local execution slot and has not touched
+		// SFTP. Preserve that known fact even if the running CAS committed but
+		// its reply was lost; a retry must not invent an unknown remote effect.
+		job.Stage, job.StartedAt = stage, &startedAt
+		observed := observedOutcome(ctx, job, fmt.Errorf("transfer admission failed before remote I/O: %w", err), stage)
+		_, saveErr := s.saveTerminal(ctx, observed, []JobStatus{JobStatusQueued, JobStatusRunning, JobStatusCanceling}, true)
+		return saveErr
 	}
 	if !updated {
-		return
+		return nil
 	}
-	s.syncTaskRun(context.Background(), job.ID)
+	job.Status, job.Stage, job.StartedAt = JobStatusRunning, stage, &startedAt
+	job.BytesProcessed, job.Progress = 0, 0
+	if err := s.syncTaskRun(ctx, job.ID); err != nil {
+		return s.finishExecution(ctx, job, err, stage)
+	}
+	if job.Kind == JobKindSFTPUpload {
+		return s.executeUpload(ctx, job)
+	}
+	if job.Kind == JobKindSFTPTransfer {
+		return s.executeRelay(ctx, job)
+	}
+	return s.executeDownload(ctx, job)
+}
 
+func (s *service) executeUpload(ctx context.Context, job *TransferJob) error {
+	finish := func(err error) error { return s.finishExecution(ctx, job, err, JobStageTransferToRemote) }
+	if err := s.repo.CheckScheduledStage(ctx, job); err != nil {
+		return finish(err)
+	}
+	if err := ctx.Err(); err != nil {
+		return finish(err)
+	}
 	if job.TargetServerID == nil {
-		_ = s.failJob(ctx, job.ID, errors.New("target server is required"), JobStageTransferToRemote)
-		return
+		return finish(errors.New("target server is required"))
+	}
+	if err := access.Current(ctx).CheckBytes(ctx, access.Requirement{Action: protocol.FilesUpload, ServerID: job.TargetServerID.String()}, job.ArtifactSize); err != nil {
+		return finish(err)
 	}
 	file, err := os.Open(job.ArtifactPath)
 	if err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageTransferToRemote)
-		return
+		return finish(err)
 	}
 	defer file.Close()
-
-	client, err := s.pool.Get(ctx, job.UserID, *job.TargetServerID)
+	client, err := s.pool.Get(ctx, *job.TargetServerID, protocol.FilesUpload)
 	if err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageTransferToRemote)
-		return
+		return finish(err)
 	}
 	defer client.Release()
-
-	total := job.BytesTotal
-	if total <= 0 {
-		total = job.ArtifactSize
+	if job.BytesTotal <= 0 {
+		job.BytesTotal = job.ArtifactSize
 	}
-	startTime := time.Now()
-	lastProgress := startTime
+	startTime, lastProgress := time.Now(), time.Now()
 	err = client.UploadFileWithProgressWithContext(ctx, file, job.TargetPath, func(loaded int64) {
+		job.BytesProcessed = loaded
+		job.Progress = transferProgress(loaded, job.BytesTotal)
 		now := time.Now()
-		if now.Sub(lastProgress) < 500*time.Millisecond && loaded < total {
+		if now.Sub(lastProgress) < 500*time.Millisecond && loaded < job.BytesTotal {
 			return
 		}
-		s.updateProgress(context.Background(), job.ID, JobStageTransferToRemote, loaded, total, startTime)
+		s.updateProgress(ctx, job.ID, JobStageTransferToRemote, loaded, job.BytesTotal, startTime)
 		lastProgress = now
 	})
-	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return
-		}
-		_ = s.failJob(context.Background(), job.ID, err, JobStageTransferToRemote)
-		return
-	}
-
-	if s.completeJob(context.Background(), job.ID, JobStageTransferToRemote, total) {
-		s.upsertOperationRecord(context.Background(), job.ID)
-	}
+	// A successful commit wins a late cancellation; a lost commit reply is
+	// unknown even when the local context was cancelled at the same time.
+	return finish(err)
 }
 
-func (s *service) executeDownload(ctx context.Context, job *TransferJob) {
-	startedAt := time.Now()
-	updated, err := s.repo.UpdateIfStatus(ctx, job.ID, []JobStatus{JobStatusQueued, JobStatusRunning}, map[string]interface{}{
-		"status":     JobStatusRunning,
-		"stage":      JobStageDownloadFromRemote,
-		"started_at": &startedAt,
-	})
-	if err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageDownloadFromRemote)
-		return
+func (s *service) executeDownload(ctx context.Context, job *TransferJob) error {
+	finish := func(err error) error {
+		stage := JobStageDownloadFromRemote
+		if err == nil {
+			stage = JobStageReadyForDownload
+		}
+		return s.finishExecution(ctx, job, err, stage)
 	}
-	if !updated {
-		return
+	if err := ctx.Err(); err != nil {
+		return finish(err)
 	}
-	s.syncTaskRun(context.Background(), job.ID)
-
+	if err := s.repo.CheckScheduledStage(ctx, job); err != nil {
+		return finish(err)
+	}
 	if job.SourceServerID == nil {
-		_ = s.failJob(ctx, job.ID, errors.New("source server is required"), JobStageDownloadFromRemote)
-		return
+		return finish(errors.New("source server is required"))
 	}
-	client, err := s.pool.Get(ctx, job.UserID, *job.SourceServerID)
+	client, err := s.pool.Get(ctx, *job.SourceServerID, protocol.FilesDownload)
 	if err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageDownloadFromRemote)
-		return
+		return finish(err)
 	}
 	defer client.Release()
-
-	info, err := client.GetFileInfo(job.SourcePath)
-	if err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageDownloadFromRemote)
-		return
-	}
-	if info.IsDir {
-		_ = s.failJob(ctx, job.ID, errors.New("background download currently supports single files"), JobStageDownloadFromRemote)
-		return
-	}
-
-	cfg, err := s.config(ctx)
-	if err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageDownloadFromRemote)
-		return
-	}
-	if err := s.ensureQuota(ctx, cfg, info.Size, false); err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageDownloadFromRemote)
-		return
-	}
-	localPath, err := s.artifactPath(ctx, cfg, job, "download", sanitizeFileName(info.Name))
-	if err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageDownloadFromRemote)
-		return
-	}
-	file, err := os.Create(localPath)
-	if err != nil {
-		_ = s.failJob(ctx, job.ID, err, JobStageDownloadFromRemote)
-		return
-	}
-	defer file.Close()
-
-	total := info.Size
-	_ = s.repo.Update(ctx, job.ID, map[string]interface{}{
-		"artifact_path": localPath,
-		"artifact_name": info.Name,
-		"bytes_total":   total,
-	})
-
-	startTime := time.Now()
-	lastProgress := startTime
-	err = client.DownloadFileWithProgressWithContext(ctx, job.SourcePath, file, func(loaded int64) {
-		now := time.Now()
-		if now.Sub(lastProgress) < 500*time.Millisecond && loaded < total {
-			return
-		}
-		s.updateProgress(context.Background(), job.ID, JobStageDownloadFromRemote, loaded, total, startTime)
-		lastProgress = now
-	})
-	if err != nil {
-		_ = file.Close()
-		_ = os.Remove(localPath)
-		if errors.Is(err, context.Canceled) {
-			return
-		}
-		_ = s.failJob(context.Background(), job.ID, err, JobStageDownloadFromRemote)
-		return
-	}
-
-	if info, statErr := os.Stat(localPath); statErr == nil {
-		total = info.Size()
-	}
-	if err := s.ensureQuota(context.Background(), cfg, 0, false); err != nil {
-		_ = file.Close()
-		_ = os.Remove(localPath)
-		_ = s.failJob(context.Background(), job.ID, err, JobStageDownloadFromRemote)
-		return
-	}
-	if s.completeJob(context.Background(), job.ID, JobStageReadyForDownload, total) {
-		s.upsertOperationRecord(context.Background(), job.ID)
-	}
+	return s.downloadToArtifact(ctx, job, client.Client, finish)
 }
 
-func (s *service) stageReader(ctx context.Context, job *TransferJob, reader io.Reader, localPath string) error {
+func transferProgress(loaded, total int64) int {
+	if total <= 0 {
+		return 0
+	}
+	return min(100, int(float64(loaded)/float64(total)*100))
+}
+
+func (s *service) stageReader(ctx context.Context, job *TransferJob, reader io.Reader, localPath string, reservation *storageReservation) error {
 	if err := os.MkdirAll(filepath.Dir(localPath), 0750); err != nil {
 		return err
 	}
-	file, err := os.Create(localPath)
+	file, err := os.OpenFile(localPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-
-	startTime := time.Now()
-	lastProgress := startTime
-	progressReader := &progressReader{
-		reader: reader,
-		onProgress: func(loaded int64) {
-			now := time.Now()
-			if now.Sub(lastProgress) < 500*time.Millisecond && (job.BytesTotal <= 0 || loaded < job.BytesTotal) {
-				return
-			}
-			s.updateProgress(context.Background(), job.ID, JobStageStaging, loaded, job.BytesTotal, startTime)
-			lastProgress = now
-		},
-		reportEvery: 65536,
-	}
-	copyReader := io.Reader(progressReader)
-	cfg, cfgErr := s.config(ctx)
-	if cfgErr != nil {
-		return cfgErr
-	}
-	limit := int64(cfg.MaxFileUploadSize)<<20 + 1
-	if limit > 1 {
-		copyReader = &limitReader{
-			reader: copyReader,
-			remain: limit,
-			onExceeded: func() error {
-				return fmt.Errorf("file exceeds max upload size: %d MB", cfg.MaxFileUploadSize)
-			},
+	start := time.Now()
+	last := start
+	writer := &stagingProgressWriter{writer: reservation.Writer(file), report: func(n int64) {
+		job.BytesProcessed, job.Progress = n, transferProgress(n, job.BytesTotal)
+		now := time.Now()
+		if now.Sub(last) >= 500*time.Millisecond || n == job.BytesTotal {
+			s.updateProgress(context.WithoutCancel(ctx), job.ID, JobStageStaging, n, job.BytesTotal, start)
+			last = now
 		}
-	}
-	_, err = io.Copy(file, &ctxReader{ctx: ctx, reader: copyReader})
+	}}
+	input := &ctxReader{ctx: ctx, reader: reader}
+	_, err = io.CopyN(writer, input, job.BytesTotal)
+	s.updateProgress(context.WithoutCancel(ctx), job.ID, JobStageStaging, writer.loaded, job.BytesTotal, start)
 	if err != nil {
 		return err
 	}
-	return nil
+	var extra [1]byte
+	if n, err := io.ReadFull(input, extra[:]); n != 0 || err != io.EOF {
+		return fmt.Errorf("%w: upload does not match declared file_size", ErrInvalidJobRequest)
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	return file.Close()
+}
+
+type stagingProgressWriter struct {
+	writer io.Writer
+	loaded int64
+	report func(int64)
+}
+
+func (w *stagingProgressWriter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	w.loaded += int64(n)
+	w.report(w.loaded)
+	return n, err
 }
 
 func (s *service) updateProgress(ctx context.Context, id uuid.UUID, stage JobStage, loaded int64, total int64, start time.Time) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	progress := 0
 	if total > 0 {
 		progress = int(float64(loaded) / float64(total) * 100)
@@ -987,10 +943,11 @@ func (s *service) updateProgress(ctx context.Context, id uuid.UUID, stage JobSta
 	if elapsed > 0 {
 		speed = int64(float64(loaded) / elapsed)
 	}
-	_, _ = s.repo.UpdateIfStatus(ctx, id, []JobStatus{
+	updated, err := s.repo.UpdateIfStatus(ctx, id, []JobStatus{
 		JobStatusStaging,
 		JobStatusQueued,
 		JobStatusRunning,
+		JobStatusCanceling,
 	}, map[string]interface{}{
 		"stage":           stage,
 		"bytes_processed": loaded,
@@ -998,43 +955,12 @@ func (s *service) updateProgress(ctx context.Context, id uuid.UUID, stage JobSta
 		"progress":        progress,
 		"speed_bps":       speed,
 	})
-	s.syncTaskRun(context.Background(), id)
-}
-
-func (s *service) completeJob(ctx context.Context, id uuid.UUID, stage JobStage, total int64) bool {
-	now := time.Now()
-	updated, err := s.repo.UpdateIfStatus(ctx, id, []JobStatus{JobStatusRunning}, map[string]interface{}{
-		"status":          JobStatusCompleted,
-		"stage":           stage,
-		"progress":        100,
-		"bytes_processed": total,
-		"bytes_total":     total,
-		"finished_at":     &now,
-	})
 	if err == nil && updated {
-		s.syncTaskRun(context.Background(), id)
+		err = s.syncTaskRun(ctx, id)
 	}
-	return err == nil && updated
-}
-
-func (s *service) failJob(ctx context.Context, id uuid.UUID, err error, stage JobStage) error {
-	now := time.Now()
-	updated, updateErr := s.repo.UpdateIfStatus(ctx, id, []JobStatus{
-		JobStatusCreated,
-		JobStatusStaging,
-		JobStatusQueued,
-		JobStatusRunning,
-	}, map[string]interface{}{
-		"status":        JobStatusFailed,
-		"stage":         stage,
-		"error_message": err.Error(),
-		"finished_at":   &now,
-	})
-	if updated {
-		s.upsertOperationRecord(context.Background(), id)
-		s.syncTaskRun(context.Background(), id)
+	if err != nil {
+		log.Printf("[TransferJob] progress persistence failed: job=%s error=%v", id, err)
 	}
-	return updateErr
 }
 
 func (s *service) config(ctx context.Context) (*systemconfig.SystemConfig, error) {
@@ -1043,6 +969,8 @@ func (s *service) config(ctx context.Context) (*systemconfig.SystemConfig, error
 			TransferRetentionDays:  systemconfig.DefaultTransferRetentionDays(),
 			TransferMaxStorageGB:   systemconfig.DefaultTransferMaxStorageGB(),
 			TransferMaxConcurrency: systemconfig.DefaultTransferMaxConcurrency(),
+			TransferMaxEntries:     systemconfig.DefaultTransferMaxEntries(),
+			TransferMaxDepth:       systemconfig.DefaultTransferMaxDepth(),
 			MaxFileUploadSize:      100,
 		}, nil
 	}
@@ -1071,7 +999,7 @@ func (s *service) storageRoot(cfg *systemconfig.SystemConfig) string {
 
 func (s *service) artifactPath(ctx context.Context, cfg *systemconfig.SystemConfig, job *TransferJob, group string, fileName string) (string, error) {
 	root := s.storageRoot(cfg)
-	dir := filepath.Join(root, job.UserID.String(), job.ID.String(), group)
+	dir := filepath.Join(root, job.ID.String(), group)
 	if err := os.MkdirAll(dir, 0750); err != nil {
 		return "", err
 	}
@@ -1085,7 +1013,7 @@ func (s *service) jobDir(cfg *systemconfig.SystemConfig, job *TransferJob) strin
 			return candidate
 		}
 	}
-	return filepath.Join(s.storageRoot(cfg), job.UserID.String(), job.ID.String())
+	return filepath.Join(s.storageRoot(cfg), job.ID.String())
 }
 
 func (s *service) removeJobFiles(ctx context.Context, job *TransferJob) error {
@@ -1106,28 +1034,6 @@ func (s *service) removeJobFiles(ctx context.Context, job *TransferJob) error {
 	return os.RemoveAll(dir)
 }
 
-func (s *service) ensureQuota(ctx context.Context, cfg *systemconfig.SystemConfig, incomingBytes int64, enforceFileLimit bool) error {
-	if incomingBytes < 0 {
-		incomingBytes = 0
-	}
-	if enforceFileLimit && cfg.MaxFileUploadSize > 0 && incomingBytes > int64(cfg.MaxFileUploadSize)<<20 {
-		return fmt.Errorf("file exceeds max upload size: %d MB", cfg.MaxFileUploadSize)
-	}
-	root := s.storageRoot(cfg)
-	maxBytes := int64(cfg.TransferMaxStorageGB) << 30
-	if maxBytes <= 0 {
-		return nil
-	}
-	used, err := dirSize(root)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	if used+incomingBytes > maxBytes {
-		return fmt.Errorf("transfer storage quota exceeded")
-	}
-	return nil
-}
-
 func (s *service) cleanupExpired(ctx context.Context) {
 	s.storageMu.RLock()
 	defer s.storageMu.RUnlock()
@@ -1140,7 +1046,24 @@ func (s *service) cleanupExpired(ctx context.Context) {
 		fmt.Printf("[TransferJob] find expired jobs failed: %v\n", err)
 		return
 	}
+	s.artifactMu.Lock()
+	defer s.artifactMu.Unlock()
 	for _, job := range jobs {
+		if ctx.Err() != nil {
+			return
+		}
+		current, err := s.repo.GetByID(ctx, job.ID)
+		if err != nil {
+			log.Printf("[TransferJob] reload cleanup candidate: %v", err)
+			continue
+		}
+		if current.ArtifactCleanedAt != nil || current.ArtifactExpiresAt == nil || !current.ArtifactExpiresAt.Before(time.Now()) {
+			continue
+		}
+		if current.Status != JobStatusCreated && current.Status != JobStatusCompleted && current.Status != JobStatusFailed && current.Status != JobStatusCancelled && current.Status != JobStatusUnknown {
+			continue
+		}
+		job = current
 		if cfg.TransferCleanupEnabled && job.ArtifactManaged {
 			if strings.TrimSpace(job.ArtifactPath) != "" {
 				inUse, err := s.repo.HasActiveArtifactReference(ctx, job.ArtifactPath, job.ID)
@@ -1152,156 +1075,99 @@ func (s *service) cleanupExpired(ctx context.Context) {
 					continue
 				}
 			}
-			_ = os.RemoveAll(s.jobDir(cfg, job))
+			if err := os.RemoveAll(s.jobDir(cfg, job)); err != nil {
+				log.Printf("[TransferJob] remove expired artifact: %v", err)
+				continue
+			}
 		}
-		now := time.Now()
-		if err := s.repo.Update(ctx, job.ID, map[string]interface{}{
-			"status":      JobStatusExpired,
-			"stage":       JobStageCleanup,
-			"finished_at": &now,
-		}); err != nil {
+		now := time.Now().UTC()
+		updates := map[string]interface{}{"artifact_cleaned_at": &now}
+		if cfg.TransferCleanupEnabled && job.ArtifactManaged {
+			updates["artifact_size"] = 0
+			updates["artifact_path"] = ""
+		}
+		if job.Status == JobStatusCreated {
+			updates["status"] = JobStatusCancelled
+			updates["finished_at"] = &now
+			updates["error_message"] = "staged artifact expired before execution"
+		}
+		if err := s.repo.Update(ctx, job.ID, updates); err != nil {
 			fmt.Printf("[TransferJob] mark expired job failed: %v\n", err)
 			continue
 		}
-		s.upsertOperationRecord(ctx, job.ID)
 	}
 }
 
-func (s *service) upsertOperationRecord(ctx context.Context, id uuid.UUID) {
-	if s.operationRecords == nil {
-		return
+func (s *service) ensureTaskRun(ctx context.Context, job *TransferJob) error {
+	if s.taskRuns == nil || job == nil || job.TaskRunID != nil || job.Status == JobStatusCreated || job.Status == JobStatusStaging {
+		return nil
 	}
-	job, err := s.repo.GetByID(ctx, id)
+	attached, err := s.repo.EnsureTaskRun(ctx, job.ID)
 	if err != nil {
-		log.Printf("[TransferJob] load operation record source failed: job=%s error=%v", id, err)
-		return
+		return err
 	}
-	status := operationrecord.StatusRunning
-	switch job.Status {
-	case JobStatusCompleted:
-		status = operationrecord.StatusSuccess
-	case JobStatusFailed:
-		status = operationrecord.StatusFailure
-	case JobStatusCancelled:
-		status = operationrecord.StatusCanceled
-	case JobStatusQueued, JobStatusCreated, JobStatusStaging:
-		status = operationrecord.StatusPending
-	}
-	detail, _ := json.Marshal(map[string]interface{}{
-		"job_id":              job.ID,
-		"kind":                job.Kind,
-		"stage":               job.Stage,
-		"artifact_name":       job.ArtifactName,
-		"artifact_expires_at": job.ArtifactExpiresAt,
-	})
-	resource := job.SourcePath
-	if job.TargetPath != "" {
-		resource = fmt.Sprintf("%s -> %s", job.SourcePath, job.TargetPath)
-	}
-	var serverID *uuid.UUID
-	if job.SourceServerID != nil {
-		serverID = job.SourceServerID
-	}
-	if job.TargetServerID != nil {
-		serverID = job.TargetServerID
-	}
-	durationMs := int64(0)
-	if job.StartedAt != nil && job.FinishedAt != nil {
-		durationMs = job.FinishedAt.Sub(*job.StartedAt).Milliseconds()
-	}
-	record := &operationrecord.OperationRecord{
-		UserID:         job.UserID,
-		Type:           operationrecord.TypeTransfer,
-		Action:         string(job.Kind),
-		Status:         status,
-		ServerID:       serverID,
-		Title:          job.Name,
-		Resource:       resource,
-		Source:         "transfer_job",
-		StartedAt:      job.StartedAt,
-		FinishedAt:     job.FinishedAt,
-		DurationMs:     durationMs,
-		Progress:       job.Progress,
-		BytesTotal:     job.BytesTotal,
-		BytesProcessed: job.BytesProcessed,
-		SpeedBps:       job.SpeedBps,
-		ErrorMessage:   job.ErrorMessage,
-		DetailJSON:     string(detail),
-		SourceTable:    "transfer_jobs",
-		SourceID:       job.ID.String(),
-		CreatedAt:      job.CreatedAt,
-		UpdatedAt:      time.Now(),
-	}
-	if err := s.operationRecords.Upsert(ctx, record); err != nil {
-		log.Printf("[TransferJob] persist operation record failed: job=%s error=%v", job.ID, err)
-	}
+	job.TaskRunID = attached.TaskRunID
+	return nil
 }
 
-func (s *service) ensureTaskRun(ctx context.Context, job *TransferJob) {
-	if s.taskRuns == nil || job == nil || job.Status == JobStatusCreated || job.Status == JobStatusStaging {
-		return
-	}
-	if job.TaskRunID != nil && *job.TaskRunID != uuid.Nil {
-		return
-	}
-	run := &taskcenter.TaskRun{
-		UserID:      job.UserID,
-		TaskType:    string(job.Kind),
-		Title:       job.Name,
-		Description: job.Description,
-		TriggerType: taskcenter.TriggerManual,
-		Runner:      job.Runner,
-		Status:      taskcenter.StatusQueued,
-		SourceType:  "transfer_job",
-		SourceID:    job.ID.String(),
-		Resource:    transferJobResource(job),
-		Cancelable:  false,
-		Retryable:   job.ScheduledTaskID != nil,
-		BytesTotal:  job.BytesTotal,
-	}
-	if job.ScheduledTaskID != nil {
-		run.DefinitionID = job.ScheduledTaskID
-		run.TriggerType = taskcenter.TriggerScheduled
-	}
-	if err := s.taskRuns.Create(ctx, run); err != nil {
-		return
-	}
-	job.TaskRunID = &run.ID
-	_ = s.repo.Update(ctx, job.ID, map[string]interface{}{"task_run_id": run.ID})
-}
-
-func (s *service) syncTaskRun(ctx context.Context, jobID uuid.UUID) {
+func (s *service) syncTaskRun(ctx context.Context, jobID uuid.UUID) error {
 	if s.taskRuns == nil {
-		return
+		return nil
 	}
 	job, err := s.repo.GetByID(ctx, jobID)
 	if err != nil {
-		return
+		return err
 	}
-	s.ensureTaskRun(ctx, job)
+	if err := s.ensureTaskRun(ctx, job); err != nil {
+		log.Printf("[TransferJob] attach task run failed: job=%s error=%v", job.ID, err)
+		return err
+	}
 	if job.TaskRunID == nil || *job.TaskRunID == uuid.Nil {
-		return
+		return nil
 	}
+	resultJSON, _ := json.Marshal(map[string]interface{}{
+		"job_id": job.ID, "kind": job.Kind, "source_path": job.SourcePath, "target_path": job.TargetPath,
+		"result_path": job.ResultPath, "bytes_processed": job.BytesProcessed, "bytes_completed": job.BytesCompleted,
+		"files_total": job.FilesTotal, "files_completed": job.FilesCompleted,
+	})
+	successCount := job.FilesCompleted
 	progressJSON, _ := json.Marshal(map[string]interface{}{
 		"bytes_total":     job.BytesTotal,
 		"bytes_processed": job.BytesProcessed,
 		"speed_bps":       job.SpeedBps,
+		"bytes_completed": job.BytesCompleted,
+		"files_total":     job.FilesTotal,
+		"files_completed": job.FilesCompleted,
+		"result_path":     job.ResultPath,
 	})
-	switch job.Status {
-	case JobStatusRunning:
-		_ = s.taskRuns.Start(ctx, *job.TaskRunID, string(job.Stage))
-		_ = s.taskRuns.UpdateProgress(ctx, *job.TaskRunID, job.Progress, string(job.Stage), string(progressJSON), 0, 0)
-	case JobStatusQueued, JobStatusStaging:
-		_ = s.taskRuns.UpdateProgress(ctx, *job.TaskRunID, job.Progress, string(job.Stage), string(progressJSON), 0, 0)
-	case JobStatusCompleted:
-		_ = s.taskRuns.Complete(ctx, *job.TaskRunID, taskcenter.StatusSucceeded, job.DetailJSON, "", "", 1, 0)
-	case JobStatusFailed:
-		_ = s.taskRuns.Complete(ctx, *job.TaskRunID, taskcenter.StatusFailed, job.DetailJSON, "transfer_failed", job.ErrorMessage, 0, 1)
-	case JobStatusCancelled:
-		_ = s.taskRuns.Complete(ctx, *job.TaskRunID, taskcenter.StatusCanceled, job.DetailJSON, "", job.ErrorMessage, 0, 0)
-	case JobStatusExpired:
-		_ = s.taskRuns.AppendEvent(ctx, *job.TaskRunID, job.UserID, "info", "传输制品已过期清理", "")
+	if job.Status == JobStatusCompleted || job.Status == JobStatusFailed || job.Status == JobStatusCancelled || job.Status == JobStatusUnknown {
+		if err := s.taskRuns.UpdateProgress(ctx, *job.TaskRunID, job.Progress, string(job.Stage), string(progressJSON), job.FilesCompleted, 0); err != nil {
+			return err
+		}
 	}
+	switch job.Status {
+	case JobStatusCanceling:
+		if err := s.taskRuns.MarkTransferCanceling(ctx, *job.TaskRunID); err != nil {
+			return err
+		}
+		return s.taskRuns.UpdateProgress(ctx, *job.TaskRunID, job.Progress, string(job.Stage), string(progressJSON), job.FilesCompleted, 0)
+	case JobStatusRunning:
+		if err := s.taskRuns.Start(ctx, *job.TaskRunID, string(job.Stage)); err != nil {
+			return err
+		}
+		return s.taskRuns.UpdateProgress(ctx, *job.TaskRunID, job.Progress, string(job.Stage), string(progressJSON), job.FilesCompleted, 0)
+	case JobStatusQueued, JobStatusStaging:
+		return s.taskRuns.UpdateProgress(ctx, *job.TaskRunID, job.Progress, string(job.Stage), string(progressJSON), job.FilesCompleted, 0)
+	case JobStatusCompleted:
+		return s.taskRuns.CompleteTransfer(ctx, *job.TaskRunID, taskcenter.StatusSucceeded, string(resultJSON), "", "", successCount, 0)
+	case JobStatusFailed:
+		return s.taskRuns.CompleteTransfer(ctx, *job.TaskRunID, taskcenter.StatusFailed, string(resultJSON), "transfer_failed", job.ErrorMessage, successCount, 1)
+	case JobStatusUnknown:
+		return s.taskRuns.CompleteTransfer(ctx, *job.TaskRunID, taskcenter.StatusUnknown, string(resultJSON), "transfer_outcome_unknown", job.ErrorMessage, successCount, 0)
+	case JobStatusCancelled:
+		return s.taskRuns.CompleteTransfer(ctx, *job.TaskRunID, taskcenter.StatusCanceled, string(resultJSON), "", job.ErrorMessage, successCount, 0)
+	}
+	return nil
 }
 
 func transferJobResource(job *TransferJob) string {
@@ -1366,6 +1232,9 @@ func dirSize(root string) (int64, error) {
 	var total int64
 	err := filepath.WalkDir(root, func(item string, entry os.DirEntry, err error) error {
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
 			return err
 		}
 		if entry.IsDir() {
@@ -1373,6 +1242,9 @@ func dirSize(root string) (int64, error) {
 		}
 		info, err := entry.Info()
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
 			return err
 		}
 		total += info.Size()
@@ -1398,63 +1270,60 @@ func (r *ctxReader) Read(p []byte) (int, error) {
 	return r.reader.Read(p)
 }
 
-type progressReader struct {
-	reader      io.Reader
-	onProgress  func(loaded int64)
-	loaded      int64
-	lastReport  int64
-	reportEvery int64
-}
-
-func (r *progressReader) Read(p []byte) (int, error) {
-	n, err := r.reader.Read(p)
-	r.loaded += int64(n)
-	if r.loaded-r.lastReport >= r.reportEvery {
-		r.onProgress(r.loaded)
-		r.lastReport = r.loaded
-	}
-	return n, err
-}
-
-type limitReader struct {
-	reader     io.Reader
-	remain     int64
-	onExceeded func() error
-}
-
-func (r *limitReader) Read(p []byte) (int, error) {
-	if r.remain <= 0 {
-		if r.onExceeded != nil {
-			return 0, r.onExceeded()
-		}
-		return 0, fmt.Errorf("read limit exceeded")
-	}
-	if int64(len(p)) > r.remain {
-		p = p[:r.remain]
-	}
-	n, err := r.reader.Read(p)
-	r.remain -= int64(n)
-	if r.remain <= 0 && err == nil {
-		if r.onExceeded != nil {
-			return n, r.onExceeded()
-		}
-		return n, fmt.Errorf("read limit exceeded")
-	}
-	return n, err
-}
-
 // A native database snapshot is consistent by itself. Hold local artifacts stable
 // for the entire database + files snapshot so cleanup cannot delete referenced files.
 func (s *service) SnapshotStorage(fn func() error) error {
+	_, done, err := s.beginOperation(context.Background())
+	if err != nil {
+		return err
+	}
+	defer done()
 	if !s.storageMu.TryLock() {
 		return errors.New("file transfers or cleanup are active; retry backup when they finish")
 	}
 	defer s.storageMu.Unlock()
 	return fn()
 }
-func (s *service) TryStorageChange() (func(), bool) {
-	if !s.storageMu.TryRLock() {
-		return nil, false
+func (s *service) RejectQueueJob(ctx context.Context, queued *jobqueue.Job, reason error) error {
+	ctx, finishOperation, admissionErr := s.beginOperation(ctx)
+	if admissionErr != nil {
+		return admissionErr
 	}
-	return s.storageMu.RUnlock, true
+	defer finishOperation()
+
+	var payload struct {
+		JobID uuid.UUID `json:"job_id"`
+	}
+	if err := json.Unmarshal([]byte(queued.PayloadJSON), &payload); err != nil {
+		return err
+	}
+	job, err := s.repo.GetByID(ctx, payload.JobID)
+	if err != nil {
+		return err
+	}
+	_, err = s.savePreparationFailure(ctx, job, reason)
+	return err
+}
+
+func (s *service) ArtifactRequirements(ctx context.Context, scope access.Scope, ref string) ([]access.Requirement, error) {
+	id, err := uuid.Parse(ref)
+	if err != nil {
+		return nil, ErrInvalidJobRequest
+	}
+	job, _, err := s.GetArtifact(access.WithScope(ctx, scope), id)
+	if err != nil {
+		return nil, err
+	}
+	serverID := job.SourceServerID
+	if serverID == nil {
+		serverID = job.TargetServerID
+	}
+	if serverID == nil {
+		return nil, ErrInvalidJobRequest
+	}
+	req := access.Requirement{Action: protocol.FilesDownload, ServerID: serverID.String()}
+	if err := scope.Check(ctx, req); err != nil {
+		return nil, err
+	}
+	return []access.Requirement{req}, nil
 }

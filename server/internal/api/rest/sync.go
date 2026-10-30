@@ -4,25 +4,27 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/datasync"
 	"github.com/easyssh/shared/syncdata"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type SyncHandler struct {
-	service     *datasync.Service
-	permissions middleware.PermissionService
+	service *datasync.Service
 }
 
-func NewSyncHandler(service *datasync.Service, permissions middleware.PermissionService) *SyncHandler {
-	return &SyncHandler{service, permissions}
+func NewSyncHandler(service *datasync.Service) *SyncHandler {
+	return &SyncHandler{service: service}
 }
 func syncTokenHash(token string) string {
 	sum := sha256.Sum256([]byte(token))
@@ -36,21 +38,16 @@ func (h *SyncHandler) DeviceAuth() gin.HandlerFunc {
 			return
 		}
 		var device datasync.Device
-		if err := h.service.DB.WithContext(c.Request.Context()).Where("token_hash = ? AND expires_at > ?", syncTokenHash(token), time.Now()).First(&device).Error; err != nil {
+		if err := h.service.DB.WithContext(c.Request.Context()).Where("token_hash = ? AND revoked = ? AND expires_at > ?", syncTokenHash(token), false, time.Now()).First(&device).Error; err != nil {
 			c.AbortWithStatusJSON(401, gin.H{"error": "device_revoked_or_expired"})
 			return
 		}
-		var user auth.User
-		if err := h.service.DB.WithContext(c.Request.Context()).First(&user, "id = ?", device.UserID).Error; err != nil || (user.LockedUntil != nil && user.LockedUntil.After(time.Now())) {
+		var user auth.Owner
+		if err := h.service.DB.WithContext(c.Request.Context()).First(&user, "id = ?", device.OwnerID).Error; err != nil || (user.LockedUntil != nil && user.LockedUntil.After(time.Now())) {
 			c.AbortWithStatusJSON(403, gin.H{"error": "account_unavailable"})
 			return
 		}
 		if !strings.HasSuffix(c.Request.URL.Path, "/disconnect") {
-			allowed, err := h.permissions.Authorize(c.Request.Context(), user.ID, string(user.Role), "server:manage", "")
-			if err != nil || !allowed {
-				c.AbortWithStatusJSON(403, gin.H{"error": "sync_permission_denied"})
-				return
-			}
 			enabled, err := h.service.Enabled(c.Request.Context(), user.ID)
 			if err != nil {
 				c.AbortWithStatusJSON(500, gin.H{"error": "sync_status_failed"})
@@ -61,14 +58,19 @@ func (h *SyncHandler) DeviceAuth() gin.HandlerFunc {
 				return
 			}
 		}
-		c.Set("user_id", user.ID.String())
+		scope, err := access.NewScope(protocol.Actor{Kind: protocol.Device, ID: device.OwnerID.String(), SessionID: device.ID.String()}, device.ExpiresAt, h.service)
+		if err != nil {
+			accessError(c, err)
+			return
+		}
+		c.Request = c.Request.WithContext(access.WithScope(c.Request.Context(), scope))
 		c.Set("sync_device_id", device.ID.String())
 		c.Set("sync_scopes", device.Scopes)
 		c.Next()
 	}
 }
 func (h *SyncHandler) Identity(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
@@ -77,7 +79,7 @@ func (h *SyncHandler) Identity(c *gin.Context) {
 		RespondError(c, 500, "sync_identity_failed", err.Error())
 		return
 	}
-	var user auth.User
+	var user auth.Owner
 	if err := h.service.DB.First(&user, "id = ?", owner).Error; err != nil {
 		RespondError(c, 500, "sync_identity_failed", err.Error())
 		return
@@ -86,27 +88,18 @@ func (h *SyncHandler) Identity(c *gin.Context) {
 	c.JSON(200, gin.H{"space_id": uuid.NewSHA1(instance, []byte(owner.String())).String(), "instance_id": instance, "user_id": owner, "account_name": user.Username, "protocol": syncdata.ConfigurationProtocol, "grants": c.MustGet("sync_scopes")})
 }
 func (h *SyncHandler) Status(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
 	var devices []datasync.Device
-	if err := h.service.DB.WithContext(c.Request.Context()).Where("user_id = ?", owner).Order("created_at DESC").Find(&devices).Error; err != nil {
+	if err := h.service.DB.WithContext(c.Request.Context()).Where("owner_id = ?", owner).Order("created_at DESC").Find(&devices).Error; err != nil {
 		RespondError(c, 500, "sync_status_failed", err.Error())
-		return
-	}
-	allowed, err := h.permissions.Authorize(c.Request.Context(), owner, c.GetString("role"), "server:manage", "")
-	if err != nil {
-		RespondError(c, 500, "sync_permission_failed", err.Error())
 		return
 	}
 	enabled, err := h.service.Enabled(c.Request.Context(), owner)
 	if err != nil {
 		RespondError(c, 500, "sync_status_failed", err.Error())
-		return
-	}
-	if !allowed {
-		c.JSON(200, gin.H{"can_sync": false, "enabled": enabled, "devices": devices, "conflicts": []any{}})
 		return
 	}
 	var instance datasync.Instance
@@ -145,18 +138,53 @@ func (h *SyncHandler) Status(c *gin.Context) {
 	c.JSON(200, gin.H{"can_sync": true, "enabled": enabled, "space_id": spaceID, "devices": devices, "conflicts": conflicts, "records": records})
 }
 func (h *SyncHandler) RevokeDevice(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
-	if err := h.service.DB.Where("id = ? AND user_id = ?", c.Param("id"), owner).Delete(&datasync.Device{}).Error; err != nil {
+	id, ok := accessID(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.service.RevokeDevice(c.Request.Context(), owner, id); errors.Is(err, gorm.ErrRecordNotFound) {
+		RespondError(c, http.StatusNotFound, "device_unavailable", "Device unavailable")
+		return
+	} else if err != nil {
 		RespondError(c, 500, "device_failed", err.Error())
 		return
 	}
 	c.Status(204)
 }
+
+func (h *SyncHandler) UpdateDeviceScopes(c *gin.Context) {
+	owner, ok := requireSyncOwnerID(c)
+	if !ok {
+		return
+	}
+	id, ok := accessID(c, "id")
+	if !ok {
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	var input *protocol.SyncScopes
+	if c.ShouldBindJSON(&input) != nil || input == nil {
+		RespondError(c, http.StatusBadRequest, "invalid_sync_scopes", "Invalid sync scopes")
+		return
+	}
+	device, err := h.service.UpdateDeviceScopes(c.Request.Context(), owner, id, syncdata.SyncScopes{Credentials: input.Credentials, AIConfig: input.AIConfig, Sessions: input.Sessions})
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		RespondError(c, http.StatusNotFound, "device_unavailable", "Device unavailable, revoked or expired")
+		return
+	}
+	if err != nil {
+		RespondError(c, http.StatusInternalServerError, "device_failed", err.Error())
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, device.Public())
+}
 func (h *SyncHandler) Exchange(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
@@ -177,10 +205,10 @@ func (h *SyncHandler) Exchange(c *gin.Context) {
 		h.service.DB.Model(&datasync.Device{}).Where("id = ?", id).Update("last_used_at", time.Now())
 	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(200, result.Response)
+	c.JSON(200, result.ExchangeResult())
 }
 func (h *SyncHandler) Resolve(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
@@ -193,6 +221,7 @@ func (h *SyncHandler) Resolve(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 	var err error
+	var result datasync.EngineResult
 	if strings.HasPrefix(resolution.Key, "vault/") {
 		parts := strings.Split(resolution.Key, "/")
 		if len(parts) != 3 || resolution.Field != "ref" {
@@ -200,15 +229,16 @@ func (h *SyncHandler) Resolve(c *gin.Context) {
 			return
 		}
 		resolution.Key = syncdata.ValueKey
-		_, err = h.service.VaultExchange(ctx, owner, parts[1], parts[2], datasync.Peer{}, &resolution)
+		result, err = h.service.VaultExchange(ctx, owner, parts[1], parts[2], datasync.Peer{}, &resolution)
 	} else {
-		_, err = h.service.Exchange(ctx, owner, datasync.Peer{}, &resolution)
+		result, err = h.service.Exchange(ctx, owner, datasync.Peer{}, &resolution)
 	}
 	if err != nil {
 		RespondError(c, 409, "resolution_failed", err.Error())
 		return
 	}
-	c.Status(204)
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, result.ExchangeResult())
 }
 
 func (h *SyncHandler) Disconnect(c *gin.Context) {
@@ -216,11 +246,11 @@ func (h *SyncHandler) Disconnect(c *gin.Context) {
 		RespondError(c, 500, "device_failed", err.Error())
 		return
 	}
-	c.JSON(200, gin.H{"disconnected": true})
+	c.JSON(200, protocol.SyncDeviceDisconnected{Disconnected: true})
 }
 
 func (h *SyncHandler) SetEnabled(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}

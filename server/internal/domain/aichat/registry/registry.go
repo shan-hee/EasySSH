@@ -7,7 +7,6 @@ import (
 	"sort"
 
 	"github.com/easyssh/shared/aiworkspace"
-	"github.com/google/uuid"
 )
 
 type ConfirmStrategy string
@@ -28,11 +27,13 @@ type ExecutionResult struct {
 	Artifact      *aiworkspace.FileArtifact `json:"artifact,omitempty"`
 	Content       string                    `json:"content"`
 	IsError       bool                      `json:"is_error,omitempty"`
+	Unknown       bool                      `json:"unknown,omitempty"`
+	Cancelled     bool                      `json:"cancelled,omitempty"`
 }
 
-type ToolExecutor func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (ExecutionResult, error)
+type ToolExecutor func(ctx context.Context, args json.RawMessage) (ExecutionResult, error)
 
-type ToolPreparer func(context.Context, uuid.UUID, json.RawMessage) (*aiworkspace.FileArtifact, error)
+type ToolPreparer func(context.Context, json.RawMessage) (*aiworkspace.FileArtifact, error)
 
 type ToolSpec struct {
 	Prepare         ToolPreparer           `json:"-"`

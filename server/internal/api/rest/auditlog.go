@@ -2,9 +2,9 @@ package rest
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/easyssh/server/internal/domain/auditlog"
+	"github.com/easyssh/shared/protocol"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -24,7 +24,7 @@ func NewAuditLogHandler(auditService auditlog.Service) *AuditLogHandler {
 // ListAll 查询全部日志列表（由 audit:view 策略授权）
 // GET /api/v1/logs?page=1&page_size=20&category=activity
 func (h *AuditLogHandler) ListAll(c *gin.Context) {
-	req, ok := parseAuditLogListRequest(c, true)
+	req, ok := parseAuditLogListRequest(c)
 	if !ok {
 		return
 	}
@@ -46,13 +46,19 @@ func (h *AuditLogHandler) GetAnyByID(c *gin.Context) {
 		return
 	}
 
-	RespondSuccess(c, log)
+	RespondSuccess(c, protocol.AuditLogDetail{
+		ID: log.ID, Actor: log.Actor, Username: log.Username, ServerID: log.ServerID,
+		Type: log.Type, Action: string(log.Action), Category: string(log.Category),
+		Resource: log.Resource, Source: log.Source, Status: string(log.Status),
+		IP: log.IP, UserAgent: log.UserAgent, Details: log.Details, DetailContent: log.DetailContent, TaskContent: log.TaskContent,
+		ErrorMsg: log.ErrorMsg, Duration: log.Duration, CreatedAt: log.CreatedAt,
+	})
 }
 
 // GetAllStatistics 获取全部日志统计（由 audit:view 策略授权）
 // GET /api/v1/logs/statistics?days=30&category=activity
 func (h *AuditLogHandler) GetAllStatistics(c *gin.Context) {
-	req, ok := parseAuditLogStatisticsRequest(c, true)
+	req, ok := parseAuditLogStatisticsRequest(c)
 	if !ok {
 		return
 	}
@@ -69,13 +75,8 @@ func (h *AuditLogHandler) GetAllStatistics(c *gin.Context) {
 // CleanupOldLogs 清理旧日志（由 audit:view + audit:manage 策略授权）
 // DELETE /api/v1/logs/cleanup?retention_days=90
 func (h *AuditLogHandler) CleanupOldLogs(c *gin.Context) {
-	retentionStr := c.DefaultQuery("retention_days", "90")
-	retentionDays, err := strconv.Atoi(retentionStr)
-	if err != nil || retentionDays <= 0 {
-		retentionDays = 90
-	}
-	if retentionDays > 3650 {
-		RespondError(c, http.StatusBadRequest, "invalid_retention_days", "Retention days must be between 1 and 3650")
+	retentionDays, ok := parseBoundedQueryInt(c, "retention_days", 90, 1, 3650)
+	if !ok {
 		return
 	}
 
@@ -85,10 +86,7 @@ func (h *AuditLogHandler) CleanupOldLogs(c *gin.Context) {
 		return
 	}
 
-	RespondSuccessWithMessage(c, gin.H{
-		"deleted_count":  deletedCount,
-		"retention_days": retentionDays,
-	}, "Old logs cleaned up successfully")
+	RespondSuccess(c, protocol.AuditLogCleanupResult{DeletedCount: deletedCount, RetentionDays: retentionDays})
 }
 
 func (h *AuditLogHandler) getLogByID(c *gin.Context) (*auditlog.AuditLog, bool) {
@@ -107,17 +105,8 @@ func (h *AuditLogHandler) getLogByID(c *gin.Context) (*auditlog.AuditLog, bool) 
 	return log, true
 }
 
-func parseAuditLogListRequest(c *gin.Context, allowUserID bool) (*auditlog.ListAuditLogsRequest, bool) {
+func parseAuditLogListRequest(c *gin.Context) (*auditlog.ListAuditLogsRequest, bool) {
 	req := &auditlog.ListAuditLogsRequest{}
-
-	if userIDStr := c.Query("user_id"); allowUserID && userIDStr != "" {
-		userID, err := uuid.Parse(userIDStr)
-		if err != nil {
-			RespondError(c, http.StatusBadRequest, "invalid_user_id", "Invalid user_id")
-			return nil, false
-		}
-		req.UserID = &userID
-	}
 
 	if serverIDStr := c.Query("server_id"); serverIDStr != "" {
 		serverID, err := uuid.Parse(serverIDStr)
@@ -167,36 +156,30 @@ func parseAuditLogListRequest(c *gin.Context, allowUserID bool) (*auditlog.ListA
 		req.EndTime = endTime
 	}
 
-	if pageStr := c.DefaultQuery("page", "1"); pageStr != "" {
-		if page, err := strconv.Atoi(pageStr); err == nil {
-			req.Page = page
-		}
+	page, ok := parseBoundedQueryInt(c, "page", 1, 1, 1000000)
+	if !ok {
+		return nil, false
 	}
-	if pageSizeStr := c.DefaultQuery("page_size", "20"); pageSizeStr != "" {
-		if pageSize, err := strconv.Atoi(pageSizeStr); err == nil {
-			req.PageSize = pageSize
-		}
+	pageSize, ok := parseBoundedQueryInt(c, "page_size", 20, 1, 100)
+	if !ok {
+		return nil, false
 	}
+	req.Page, req.PageSize = page, pageSize
 
+	if !validQueryTimeRange(c, req.StartTime, req.EndTime) {
+		return nil, false
+	}
 	return req, true
 }
 
-func parseAuditLogStatisticsRequest(c *gin.Context, allowUserID bool) (*auditlog.AuditLogStatisticsRequest, bool) {
+func parseAuditLogStatisticsRequest(c *gin.Context) (*auditlog.AuditLogStatisticsRequest, bool) {
 	req := &auditlog.AuditLogStatisticsRequest{}
 
-	if userIDStr := c.Query("user_id"); allowUserID && userIDStr != "" {
-		userID, err := uuid.Parse(userIDStr)
-		if err != nil {
-			RespondError(c, http.StatusBadRequest, "invalid_user_id", "Invalid user_id")
-			return nil, false
-		}
-		req.UserID = &userID
+	days, ok := parseBoundedQueryInt(c, "days", 30, 1, 365)
+	if !ok {
+		return nil, false
 	}
-
-	daysStr := c.DefaultQuery("days", "30")
-	if days, err := strconv.Atoi(daysStr); err == nil {
-		req.Days = days
-	}
+	req.Days = days
 	if category := c.Query("category"); category != "" {
 		req.Category = auditlog.LogCategory(category)
 	}
@@ -212,6 +195,9 @@ func parseAuditLogStatisticsRequest(c *gin.Context, allowUserID bool) (*auditlog
 		req.EndTime = endTime
 	}
 
+	if !validQueryTimeRange(c, req.StartTime, req.EndTime) {
+		return nil, false
+	}
 	return req, true
 }
 
@@ -221,11 +207,5 @@ func respondLogList(c *gin.Context, logs []*auditlog.AuditLogSummary, total int6
 		totalPages++
 	}
 
-	RespondSuccess(c, gin.H{
-		"logs":        logs,
-		"total":       total,
-		"page":        req.Page,
-		"page_size":   req.PageSize,
-		"total_pages": totalPages,
-	})
+	RespondSuccess(c, protocol.AuditLogList{Logs: logs, Total: total, Page: req.Page, PageSize: req.PageSize, TotalPages: totalPages})
 }

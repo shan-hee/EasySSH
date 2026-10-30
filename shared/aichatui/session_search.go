@@ -7,12 +7,12 @@ import (
 
 // SessionMatchesSearch searches visible message text, not just the derived title.
 func SessionMatchesSearch(title string, messages []MessageView, query string) bool {
-	query = strings.ToLower(strings.TrimSpace(query))
+	query = NormalizeSessionSearch(query)
 	if query == "" || strings.Contains(strings.ToLower(title), query) {
 		return true
 	}
 	for _, message := range messages {
-		if (message.Role == "user" || message.Role == "assistant") && strings.Contains(strings.ToLower(message.Content), query) {
+		if (message.Role == "user" || message.Role == "assistant") && strings.Contains(strings.ToLower(strings.Join(strings.Fields(message.Content), " ")), query) {
 			return true
 		}
 	}
@@ -49,14 +49,25 @@ func SessionSearchPreview(messages []MessageView, query string) string {
 
 func sessionSearchExcerpt(content string, match int) string {
 	const limit = 180
-	runes := []rune(content)
 	start := max(0, match-48)
-	end := min(len(runes), start+limit)
-	excerpt := string(runes[start:end])
-	if start > 0 {
+	end := start + limit
+	first, last := len(content), len(content)
+	ordinal := 0
+	for offset := range content {
+		if ordinal == start {
+			first = offset
+		}
+		if ordinal == end {
+			last = offset
+			break
+		}
+		ordinal++
+	}
+	excerpt := content[first:last]
+	if first > 0 {
 		excerpt = "…" + excerpt
 	}
-	if end < len(runes) {
+	if last < len(content) {
 		excerpt += "…"
 	}
 	return excerpt

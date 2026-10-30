@@ -30,10 +30,16 @@ func auditLogToOperationRecord(log *AuditLog) *operationrecord.OperationRecord {
 	if source == "" {
 		source = "api"
 	}
+	successCount, failureCount := 0, 0
+	if status == operationrecord.StatusSuccess {
+		successCount = 1
+	} else if status == operationrecord.StatusFailure {
+		failureCount = 1
+	}
 
 	return &operationrecord.OperationRecord{
 		ID:           log.ID,
-		UserID:       log.UserID,
+		Actor:        log.Actor,
 		Username:     log.Username,
 		Type:         recordType,
 		Category:     mapLogCategory(log.Category),
@@ -47,6 +53,9 @@ func auditLogToOperationRecord(log *AuditLog) *operationrecord.OperationRecord {
 		StartedAt:    &log.CreatedAt,
 		FinishedAt:   &log.CreatedAt,
 		DurationMs:   log.Duration,
+		TotalCount:   1,
+		SuccessCount: successCount,
+		FailureCount: failureCount,
 		ErrorMessage: log.ErrorMsg,
 		DetailJSON:   log.Details,
 		SourceTable:  "audit_events",
@@ -61,22 +70,24 @@ func operationRecordToAuditLog(record *operationrecord.OperationRecord) *AuditLo
 	}
 
 	return &AuditLog{
-		ID:        record.ID,
-		UserID:    record.UserID,
-		Username:  record.Username,
-		ServerID:  record.ServerID,
-		Type:      string(record.Type),
-		Action:    ActionType(record.Action),
-		Category:  unmapLogCategory(record.Category),
-		Resource:  firstNonEmpty(record.Resource, record.Title, record.Source),
-		Source:    record.Source,
-		Status:    Status(record.Status),
-		IP:        record.IP,
-		UserAgent: record.UserAgent,
-		Details:   record.DetailJSON,
-		ErrorMsg:  record.ErrorMessage,
-		Duration:  record.DurationMs,
-		CreatedAt: record.CreatedAt,
+		ID:            record.ID,
+		Actor:         record.Actor,
+		Username:      record.Username,
+		ServerID:      record.ServerID,
+		Type:          string(record.Type),
+		Action:        ActionType(record.Action),
+		Category:      unmapLogCategory(record.Category),
+		Resource:      firstNonEmpty(record.Resource, record.Title, record.Source),
+		Source:        record.Source,
+		Status:        Status(record.Status),
+		IP:            record.IP,
+		UserAgent:     record.UserAgent,
+		Details:       record.DetailJSON,
+		DetailContent: record.DetailContent,
+		TaskContent:   record.TaskContent,
+		ErrorMsg:      record.ErrorMessage,
+		Duration:      record.DurationMs,
+		CreatedAt:     record.CreatedAt,
 	}
 }
 
@@ -87,15 +98,15 @@ func operationRecordSummaryToAuditLogSummary(record *operationrecord.OperationRe
 
 	return &AuditLogSummary{
 		ID:        record.ID,
-		UserID:    record.UserID,
+		Actor:     record.Actor,
 		Username:  record.Username,
 		ServerID:  record.ServerID,
 		Type:      string(record.Type),
-		Action:    ActionType(record.Action),
-		Category:  unmapLogCategory(record.Category),
+		Action:    record.Action,
+		Category:  string(unmapLogCategory(record.Category)),
 		Resource:  firstNonEmpty(record.Resource, record.Title, record.Source),
 		Source:    record.Source,
-		Status:    Status(record.Status),
+		Status:    string(record.Status),
 		IP:        record.IP,
 		ErrorMsg:  record.ErrorMessage,
 		Duration:  record.DurationMs,
@@ -109,7 +120,6 @@ func auditListRequestToOperationRecordRequest(req *ListAuditLogsRequest) *operat
 	}
 
 	return &operationrecord.ListRequest{
-		UserID:     req.UserID,
 		Type:       operationrecord.RecordType(req.Type),
 		Types:      mapLogTypes(req.Types),
 		Category:   mapLogCategory(req.Category),

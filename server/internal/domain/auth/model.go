@@ -1,20 +1,12 @@
 package auth
 
 import (
+	"github.com/easyssh/shared/protocol"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-)
-
-// UserRole 用户角色类型
-type UserRole string
-
-const (
-	RoleAdmin  UserRole = "admin"
-	RoleUser   UserRole = "user"
-	RoleViewer UserRole = "viewer"
 )
 
 // MonitorDataSourceType 监控数据源类型
@@ -26,16 +18,16 @@ const (
 	MonitorDataSourceKomari  MonitorDataSourceType = "komari"  // Komari Monitor REST API
 )
 
-// User 用户模型
-type User struct {
-	ID            uuid.UUID `gorm:"type:char(36);primary_key" json:"id"`
-	Username      string    `gorm:"not null;size:50" json:"username"` // 允许重复，用户可修改
-	Email         string    `gorm:"uniqueIndex;not null;size:100" json:"email"`
-	EmailVerified bool      `gorm:"not null;default:false" json:"email_verified"`
-	Password      string    `gorm:"not null;size:255" json:"-"` // bcrypt hash，不在 JSON 中返回
-	Role          UserRole  `gorm:"type:varchar(64);default:'user'" json:"role"`
-	Avatar        string    `gorm:"type:text" json:"avatar"`
-	GoogleSub     *string   `gorm:"uniqueIndex;size:255" json:"-"` // Google OIDC subject，OAuth 账户稳定标识
+// Owner 用户模型
+type Owner struct {
+	Slot                      int        `gorm:"not null;uniqueIndex;check:slot = 1" json:"-"`
+	PendingTwoFactorSecret    string     `gorm:"type:text" json:"-"`
+	PendingTwoFactorExpiresAt *time.Time `json:"-"`
+	ID                        uuid.UUID  `gorm:"type:char(36);primary_key" json:"id"`
+	Username                  string     `gorm:"not null;size:50" json:"username"` // 允许重复，用户可修改
+	Email                     string     `gorm:"uniqueIndex;not null;size:100" json:"email"`
+	Password                  string     `gorm:"not null;size:255" json:"-"` // bcrypt hash，不在 JSON 中返回
+	Avatar                    string     `gorm:"type:text" json:"avatar"`
 	// 个性化偏好
 	Language         string `gorm:"size:20;default:''" json:"language"` // 用户界面语言偏好，如 zh-CN、en-US
 	Timezone         string `gorm:"size:50;default:''" json:"timezone"` // 用户时区偏好，如 Asia/Shanghai
@@ -57,10 +49,10 @@ type User struct {
 	NotifyTaskExternal bool `gorm:"default:false" json:"notify_task_external"` // 通过已配置外部渠道发送任务通知
 
 	// 账户锁定相关
-	FailedLoginAttempts int        `gorm:"default:0" json:"failed_login_attempts,omitempty"`     // 连续失败登录次数
-	LastFailedLogin     *time.Time `json:"-"`                                                    // 最后一次登录失败时间
-	LockedUntil         *time.Time `gorm:"index:idx_users_locked" json:"locked_until,omitempty"` // 锁定截止时间
-	LockReason          string     `gorm:"size:200" json:"lock_reason,omitempty"`                // 锁定原因
+	FailedLoginAttempts int        `gorm:"default:0" json:"failed_login_attempts,omitempty"`      // 连续失败登录次数
+	LastFailedLogin     *time.Time `json:"-"`                                                     // 最后一次登录失败时间
+	LockedUntil         *time.Time `gorm:"index:idx_owners_locked" json:"locked_until,omitempty"` // 锁定截止时间
+	LockReason          string     `gorm:"size:200" json:"lock_reason,omitempty"`                 // 锁定原因
 
 	// 监控数据源设置
 	// MonitorDataSource: 当前选中的数据源类型 (easyssh/nezha/komari)
@@ -73,18 +65,18 @@ type User struct {
 	KomariAPIEndpoint string `gorm:"type:text" json:"komari_api_endpoint"` // Komari API 地址
 	KomariAPIToken    string `gorm:"type:text" json:"-"`                   // Komari API Token（加密存储）
 
-	CreatedAt time.Time      `json:"created_at"`
-	UpdatedAt time.Time      `json:"updated_at"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"` // 软删除
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // TableName 指定表名
-func (User) TableName() string {
-	return "users"
+func (Owner) TableName() string {
+	return "owners"
 }
 
 // BeforeCreate GORM 钩子：创建前生成 UUID
-func (u *User) BeforeCreate(tx *gorm.DB) error {
+func (u *Owner) BeforeCreate(tx *gorm.DB) error {
+	u.Slot = 1
 	if u.ID == uuid.Nil {
 		u.ID = uuid.New()
 	}
@@ -92,7 +84,7 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 }
 
 // SetPassword 设置密码（bcrypt 加密）
-func (u *User) SetPassword(password string) error {
+func (u *Owner) SetPassword(password string) error {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -102,59 +94,46 @@ func (u *User) SetPassword(password string) error {
 }
 
 // CheckPassword 验证密码
-func (u *User) CheckPassword(password string) bool {
+func (u *Owner) CheckPassword(password string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password))
 	return err == nil
 }
 
-// IsAdmin 判断是否是管理员
-func (u *User) IsAdmin() bool {
-	return u.Role == RoleAdmin
-}
-
-// IsViewer 判断是否是只读用户
-func (u *User) IsViewer() bool {
-	return u.Role == RoleViewer
-}
-
 // ToPublic 转换为公开信息（不包含密码和敏感信息）
-func (u *User) ToPublic() map[string]interface{} {
-	return map[string]interface{}{
-		"id":                   u.ID,
-		"username":             u.Username,
-		"email":                u.Email,
-		"email_verified":       u.EmailVerified,
-		"role":                 u.Role,
-		"avatar":               u.Avatar,
-		"google_linked":        u.GoogleSub != nil && *u.GoogleSub != "",
-		"language":             u.Language,
-		"timezone":             u.Timezone,
-		"two_factor_enabled":   u.TwoFactorEnabled,
-		"notify_email_login":   u.NotifyEmailLogin,
-		"notify_email_alert":   u.NotifyEmailAlert,
-		"notify_browser":       u.NotifyBrowser,
-		"notify_new_device":    u.NotifyNewDevice,
-		"notify_new_location":  u.NotifyNewLocation,
-		"notify_suspicious":    u.NotifySuspicious,
-		"notify_task_in_app":   u.NotifyTaskInApp,
-		"notify_task_success":  u.NotifyTaskSuccess,
-		"notify_task_failure":  u.NotifyTaskFailure,
-		"notify_task_partial":  u.NotifyTaskPartial,
-		"notify_task_external": u.NotifyTaskExternal,
-		"monitor_data_source":  u.MonitorDataSource,
+func (u *Owner) ToPublic() protocol.OwnerPublic {
+	return protocol.OwnerPublic{
+		ID:                 u.ID,
+		Username:           u.Username,
+		Email:              u.Email,
+		Avatar:             u.Avatar,
+		Language:           u.Language,
+		Timezone:           u.Timezone,
+		TwoFactorEnabled:   u.TwoFactorEnabled,
+		NotifyEmailLogin:   u.NotifyEmailLogin,
+		NotifyEmailAlert:   u.NotifyEmailAlert,
+		NotifyBrowser:      u.NotifyBrowser,
+		NotifyNewDevice:    u.NotifyNewDevice,
+		NotifyNewLocation:  u.NotifyNewLocation,
+		NotifySuspicious:   u.NotifySuspicious,
+		NotifyTaskInApp:    u.NotifyTaskInApp,
+		NotifyTaskSuccess:  u.NotifyTaskSuccess,
+		NotifyTaskFailure:  u.NotifyTaskFailure,
+		NotifyTaskPartial:  u.NotifyTaskPartial,
+		NotifyTaskExternal: u.NotifyTaskExternal,
+		MonitorDataSource:  u.MonitorDataSource,
 		// Nezha 配置
-		"nezha_api_endpoint":  u.NezhaAPIEndpoint,
-		"nezha_api_token_set": u.NezhaAPIToken != "",
+		NezhaAPIEndpoint: u.NezhaAPIEndpoint,
+		NezhaAPITokenSet: u.NezhaAPIToken != "",
 		// Komari 配置
-		"komari_api_endpoint":  u.KomariAPIEndpoint,
-		"komari_api_token_set": u.KomariAPIToken != "",
-		"created_at":           u.CreatedAt,
-		"updated_at":           u.UpdatedAt,
+		KomariAPIEndpoint: u.KomariAPIEndpoint,
+		KomariAPITokenSet: u.KomariAPIToken != "",
+		CreatedAt:         u.CreatedAt,
+		UpdatedAt:         u.UpdatedAt,
 	}
 }
 
 // IsLocked 检查账户是否被锁定
-func (u *User) IsLocked() bool {
+func (u *Owner) IsLocked() bool {
 	if u.LockedUntil == nil {
 		return false
 	}
@@ -162,7 +141,7 @@ func (u *User) IsLocked() bool {
 }
 
 // GetLockRemainingTime 获取锁定剩余时间
-func (u *User) GetLockRemainingTime() time.Duration {
+func (u *Owner) GetLockRemainingTime() time.Duration {
 	if u.LockedUntil == nil {
 		return 0
 	}

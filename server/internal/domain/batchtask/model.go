@@ -1,6 +1,7 @@
 package batchtask
 
 import (
+	"github.com/easyssh/shared/protocol"
 	"time"
 
 	"github.com/google/uuid"
@@ -9,23 +10,25 @@ import (
 
 // BatchTask 批量任务模型
 type BatchTask struct {
-	ID            uuid.UUID      `gorm:"type:char(36);primary_key" json:"id"`
-	UserID        uuid.UUID      `gorm:"type:char(36);not null;index" json:"user_id"`
-	TaskName      string         `gorm:"type:varchar(100);not null" json:"task_name"`
-	TaskType      string         `gorm:"type:varchar(20);not null" json:"task_type"` // command/script
-	Content       string         `gorm:"type:text" json:"content"`                   // 命令内容或文件路径
-	ScriptID      *uuid.UUID     `gorm:"type:char(36)" json:"script_id,omitempty"`   // 关联的脚本ID
-	ServerIDs     []string       `gorm:"type:text;serializer:json;not null" json:"server_ids"`
-	ExecutionMode string         `gorm:"type:varchar(20);default:'parallel'" json:"execution_mode"` // parallel/sequential
-	Status        string         `gorm:"type:varchar(20);default:'pending'" json:"status"`          // pending/queued/running/completed/failed
-	SuccessCount  int            `gorm:"default:0" json:"success_count"`
-	FailedCount   int            `gorm:"default:0" json:"failed_count"`
-	StartedAt     *time.Time     `json:"started_at,omitempty"`
-	CompletedAt   *time.Time     `json:"completed_at,omitempty"`
-	Duration      int            `json:"duration,omitempty"` // 执行耗时（秒）
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
-	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
+	Actor         protocol.Actor    `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
+	ScriptVersion string            `gorm:"size:64" json:"script_version,omitempty"`
+	Parameters    map[string]string `gorm:"serializer:json;type:text" json:"parameters"`
+	ID            uuid.UUID         `gorm:"type:char(36);primary_key" json:"id"`
+	TaskName      string            `gorm:"type:varchar(100);not null" json:"task_name"`
+	TaskType      string            `gorm:"type:varchar(20);not null" json:"task_type"` // command/script
+	Content       string            `gorm:"type:text" json:"content"`                   // 命令内容或文件路径
+	ScriptID      *uuid.UUID        `gorm:"type:char(36)" json:"script_id,omitempty"`   // 关联的脚本ID
+	ServerIDs     []string          `gorm:"type:text;serializer:json;not null" json:"server_ids"`
+	ExecutionMode string            `gorm:"type:varchar(20);default:'parallel'" json:"execution_mode"` // parallel/sequential
+	Status        string            `gorm:"type:varchar(20);default:'pending'" json:"status"`          // pending/queued/running/completed/failed
+	SuccessCount  int               `gorm:"default:0" json:"success_count"`
+	FailedCount   int               `gorm:"default:0" json:"failed_count"`
+	StartedAt     *time.Time        `json:"started_at,omitempty"`
+	CompletedAt   *time.Time        `json:"completed_at,omitempty"`
+	Duration      int               `json:"duration,omitempty"` // 执行耗时（秒）
+	CreatedAt     time.Time         `json:"created_at"`
+	UpdatedAt     time.Time         `json:"updated_at"`
+	DeletedAt     gorm.DeletedAt    `gorm:"index" json:"-"`
 }
 
 // TableName 指定表名
@@ -41,48 +44,14 @@ func (b *BatchTask) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// CreateBatchTaskRequest 创建批量任务请求
-type CreateBatchTaskRequest struct {
-	TaskName      string   `json:"task_name" binding:"required"`
-	TaskType      string   `json:"task_type" binding:"required,oneof=command script"`
-	Content       string   `json:"content"`
-	ScriptID      *string  `json:"script_id,omitempty"`
-	ServerIDs     []string `json:"server_ids" binding:"required,min=1"`
-	ExecutionMode string   `json:"execution_mode"`
-}
-
-// UpdateBatchTaskRequest 更新批量任务请求
-type UpdateBatchTaskRequest struct {
-	TaskName      string   `json:"task_name,omitempty"`
-	Content       string   `json:"content,omitempty"`
-	ServerIDs     []string `json:"server_ids,omitempty"`
-	ExecutionMode string   `json:"execution_mode,omitempty"`
-}
-
-// ListBatchTasksRequest 批量任务列表查询请求
-type ListBatchTasksRequest struct {
-	Page     int    `form:"page" json:"page"`
-	Limit    int    `form:"limit" json:"limit"`
-	Status   string `form:"status" json:"status"`       // 状态筛选
-	TaskType string `form:"task_type" json:"task_type"` // 类型筛选
-}
-
-// ListBatchTasksResponse 批量任务列表响应
-type ListBatchTasksResponse struct {
-	Data       []BatchTask `json:"data"`
-	Total      int64       `json:"total"`
-	Page       int         `json:"page"`
-	PageSize   int         `json:"page_size"`
-	TotalPages int         `json:"total_pages"`
-}
-
-// BatchTaskStatistics 批量任务统计
-type BatchTaskStatistics struct {
-	TotalTasks     int64          `json:"total_tasks"`
-	PendingTasks   int64          `json:"pending_tasks"`
-	QueuedTasks    int64          `json:"queued_tasks"`
-	RunningTasks   int64          `json:"running_tasks"`
-	CompletedTasks int64          `json:"completed_tasks"`
-	FailedTasks    int64          `json:"failed_tasks"`
-	ByType         map[string]int `json:"by_type"`
+func (b BatchTask) Public() protocol.BatchTask {
+	parameters := b.Parameters
+	if parameters == nil {
+		parameters = map[string]string{}
+	}
+	return protocol.BatchTask{ID: b.ID, Actor: b.Actor, TaskName: b.TaskName, TaskType: protocol.BatchTaskType(b.TaskType),
+		Content: b.Content, ScriptID: b.ScriptID, ScriptVersion: b.ScriptVersion, Parameters: parameters,
+		ServerIDs: b.ServerIDs, ExecutionMode: protocol.BatchTaskExecutionMode(b.ExecutionMode), Status: protocol.BatchTaskStatus(b.Status),
+		SuccessCount: b.SuccessCount, FailedCount: b.FailedCount, Duration: b.Duration,
+		StartedAt: b.StartedAt, CompletedAt: b.CompletedAt, CreatedAt: b.CreatedAt, UpdatedAt: b.UpdatedAt}
 }

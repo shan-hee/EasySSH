@@ -1,9 +1,16 @@
 package scheduledtask
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/domain/script"
+	"github.com/easyssh/shared/protocol"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
@@ -22,33 +29,34 @@ type TaskScheduler interface {
 	AddTask(task *ScheduledTask) error
 	UpdateTask(task *ScheduledTask) error
 	RemoveTask(taskID uuid.UUID)
-	TriggerTaskManually(taskID uuid.UUID) (uuid.UUID, error)
-	RetryTask(taskID, retryOfID uuid.UUID, attempt int) (uuid.UUID, error)
+	TriggerTaskManually(ctx context.Context, taskID uuid.UUID) (uuid.UUID, error)
+	RetryTask(ctx context.Context, taskID, retryOfID uuid.UUID, attempt int) (uuid.UUID, error)
 }
 
 // Service 定时任务业务逻辑接口
 type Service interface {
-	CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTaskRequest) (*ScheduledTask, error)
-	UpdateScheduledTask(userID uuid.UUID, id uuid.UUID, req *UpdateScheduledTaskRequest) (*ScheduledTask, error)
-	DeleteScheduledTask(userID uuid.UUID, id uuid.UUID) error
-	GetScheduledTask(userID uuid.UUID, id uuid.UUID) (*ScheduledTask, error)
-	ListScheduledTasks(userID uuid.UUID, req *ListScheduledTasksRequest) (*ListScheduledTasksResponse, error)
-	GetStatistics(userID uuid.UUID) (*ScheduledTaskStatistics, error)
-	ToggleTask(userID uuid.UUID, id uuid.UUID, enabled bool) error
-	TriggerTask(userID uuid.UUID, id uuid.UUID) (uuid.UUID, error)
-	RetryTask(userID, id, retryOfID uuid.UUID, attempt int) (uuid.UUID, error)
-	IsStagedJobReferenced(userID uuid.UUID, stagedJobID uuid.UUID, excludeTaskID uuid.UUID) (bool, error)
+	CreateScheduledTask(ctx context.Context, req *protocol.CreateScheduledTaskRequest) (*ScheduledTask, error)
+	UpdateScheduledTask(ctx context.Context, id uuid.UUID, req *protocol.UpdateScheduledTaskRequest) (*ScheduledTask, error)
+	DeleteScheduledTask(ctx context.Context, id uuid.UUID) error
+	GetScheduledTask(ctx context.Context, id uuid.UUID) (*ScheduledTask, error)
+	ListScheduledTasks(ctx context.Context, req *protocol.ListScheduledTasksRequest) (*protocol.ListScheduledTasksResponse, error)
+	GetStatistics(ctx context.Context) (*protocol.ScheduledTaskStatistics, error)
+	ToggleTask(ctx context.Context, id uuid.UUID, enabled bool) error
+	TriggerTask(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
+	RetryTask(ctx context.Context, id, retryOfID uuid.UUID, attempt int) (uuid.UUID, error)
+	IsStagedJobReferenced(ctx context.Context, stagedJobID uuid.UUID, excludeTaskID uuid.UUID) (bool, error)
 	SetScheduler(scheduler TaskScheduler)
 }
 
 type service struct {
+	scripts   script.Service
 	repo      Repository
 	scheduler TaskScheduler
 }
 
 // NewService 创建定时任务服务实例
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, scripts script.Service) Service {
+	return &service{repo: repo, scripts: scripts}
 }
 
 // SetScheduler 设置调度器
@@ -71,7 +79,7 @@ func isValidPayloadJSON(value string) bool {
 		return false
 	}
 	var payload map[string]interface{}
-	return json.Unmarshal([]byte(value), &payload) == nil
+	return json.Unmarshal([]byte(value), &payload) == nil && payload != nil
 }
 
 func isValidTaskType(taskType string) bool {
@@ -102,32 +110,45 @@ func stagedJobIDFromPayload(payloadJSON string) string {
 func (s *service) calculateNextRunTime(cronExpr, timezone string) (*time.Time, error) {
 	loc, err := time.LoadLocation(timezone)
 	if err != nil {
-		loc = time.UTC
+		return nil, ErrInvalidScheduledTaskData
 	}
 
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	schedule, err := parser.Parse(cronExpr)
 	if err != nil {
-		return nil, err
+		return nil, ErrInvalidCronExpression
 	}
 
 	nextTime := schedule.Next(time.Now().In(loc))
+	if nextTime.IsZero() {
+		return nil, ErrInvalidCronExpression
+	}
 	return &nextTime, nil
 }
 
 // CreateScheduledTask 创建定时任务
-func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTaskRequest) (*ScheduledTask, error) {
+func (s *service) CreateScheduledTask(ctx context.Context, req *protocol.CreateScheduledTaskRequest) (*ScheduledTask, error) {
+	if err := requireTaskOwner(ctx); err != nil {
+		return nil, err
+	}
 	// 验证必填字段
-	if req.TaskName == "" || req.CronExpression == "" {
+	ownerID, err := uuid.Parse(access.Current(ctx).Actor().ID)
+	if err != nil {
+		return nil, access.ErrUnauthenticated
+	}
+	if req == nil {
+		return nil, ErrInvalidScheduledTaskData
+	}
+	if !validTaskText(req.TaskName, req.CronExpression, req.Timezone, req.Description, req.Command, req.PayloadJSON) {
 		return nil, ErrInvalidScheduledTaskData
 	}
 
 	// 验证任务类型
-	if !isValidTaskType(req.TaskType) {
-		return nil, errors.New("invalid task_type, must be one of: command, script, sftp_upload, sftp_download")
+	if !isValidTaskType(string(req.TaskType)) {
+		return nil, fmt.Errorf("%w: invalid task_type, must be one of: command, script, sftp_upload, sftp_download", ErrInvalidScheduledTaskData)
 	}
-	if isSFTPTaskType(req.TaskType) && !isValidPayloadJSON(req.PayloadJSON) {
-		return nil, errors.New("payload_json must be a valid JSON object for SFTP tasks")
+	if isSFTPTaskType(string(req.TaskType)) && !isValidPayloadJSON(req.PayloadJSON) {
+		return nil, fmt.Errorf("%w: payload_json must be a valid JSON object for SFTP tasks", ErrInvalidScheduledTaskData)
 	}
 
 	// 验证Cron表达式
@@ -150,8 +171,8 @@ func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTask
 	var scriptID *uuid.UUID
 	if req.ScriptID != nil && *req.ScriptID != "" {
 		sid, err := uuid.Parse(*req.ScriptID)
-		if err != nil {
-			return nil, errors.New("invalid script_id format")
+		if err != nil || sid == uuid.Nil || sid.String() != *req.ScriptID {
+			return nil, fmt.Errorf("%w: invalid script_id format", ErrInvalidScheduledTaskData)
 		}
 		scriptID = &sid
 	}
@@ -162,11 +183,14 @@ func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTask
 		return nil, err
 	}
 
+	if !enabled {
+		nextRunAt = nil
+	}
 	// 构建定时任务
 	task := &ScheduledTask{
-		UserID:         userID,
+		OwnerID:        ownerID,
 		TaskName:       req.TaskName,
-		TaskType:       req.TaskType,
+		TaskType:       string(req.TaskType),
 		ScriptID:       scriptID,
 		Command:        req.Command,
 		PayloadJSON:    req.PayloadJSON,
@@ -180,7 +204,10 @@ func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTask
 		Description:    req.Description,
 	}
 
-	if err := s.repo.Create(task); err != nil {
+	if err := s.prepareExecution(ctx, task); err != nil {
+		return nil, err
+	}
+	if err := s.repo.Create(ctx, task); err != nil {
 		return nil, err
 	}
 
@@ -193,7 +220,13 @@ func (s *service) CreateScheduledTask(userID uuid.UUID, req *CreateScheduledTask
 }
 
 // UpdateScheduledTask 更新定时任务
-func (s *service) UpdateScheduledTask(userID uuid.UUID, id uuid.UUID, req *UpdateScheduledTaskRequest) (*ScheduledTask, error) {
+func (s *service) UpdateScheduledTask(ctx context.Context, id uuid.UUID, req *protocol.UpdateScheduledTaskRequest) (*ScheduledTask, error) {
+	if err := requireTaskOwner(ctx); err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return nil, ErrInvalidScheduledTaskData
+	}
 	// 获取现有任务
 	existingTask, err := s.repo.GetByID(id)
 	if err != nil {
@@ -201,10 +234,26 @@ func (s *service) UpdateScheduledTask(userID uuid.UUID, id uuid.UUID, req *Updat
 	}
 
 	// 验证所有权
-	if existingTask.UserID != userID {
+	if existingTask.OwnerID.String() != access.Current(ctx).Actor().ID {
 		return nil, ErrUnauthorized
 	}
 
+	taskName, cronExpr, timezone, description := existingTask.TaskName, existingTask.CronExpression, existingTask.Timezone, existingTask.Description
+	if req.TaskName != "" {
+		taskName = req.TaskName
+	}
+	if req.CronExpression != "" {
+		cronExpr = req.CronExpression
+	}
+	if req.Timezone != "" {
+		timezone = req.Timezone
+	}
+	if req.Description != nil {
+		description = *req.Description
+	}
+	if !validTaskText(taskName, cronExpr, timezone, description, req.Command, req.PayloadJSON) {
+		return nil, ErrInvalidScheduledTaskData
+	}
 	// 构建更新字段
 	updates := make(map[string]interface{})
 	taskType := existingTask.TaskType
@@ -215,11 +264,11 @@ func (s *service) UpdateScheduledTask(userID uuid.UUID, id uuid.UUID, req *Updat
 	}
 
 	if req.TaskType != "" {
-		if !isValidTaskType(req.TaskType) {
-			return nil, errors.New("invalid task_type, must be one of: command, script, sftp_upload, sftp_download")
+		if !isValidTaskType(string(req.TaskType)) {
+			return nil, fmt.Errorf("%w: invalid task_type, must be one of: command, script, sftp_upload, sftp_download", ErrInvalidScheduledTaskData)
 		}
-		taskType = req.TaskType
-		updates["task_type"] = req.TaskType
+		taskType = string(req.TaskType)
+		updates["task_type"] = string(req.TaskType)
 	}
 
 	if req.Command != "" {
@@ -228,57 +277,77 @@ func (s *service) UpdateScheduledTask(userID uuid.UUID, id uuid.UUID, req *Updat
 
 	if req.PayloadJSON != "" {
 		if !isValidPayloadJSON(req.PayloadJSON) {
-			return nil, errors.New("payload_json must be a valid JSON object")
+			return nil, fmt.Errorf("%w: payload_json must be a valid JSON object", ErrInvalidScheduledTaskData)
 		}
 		payloadJSON = req.PayloadJSON
 		updates["payload_json"] = req.PayloadJSON
 	}
 
 	if isSFTPTaskType(taskType) && !isValidPayloadJSON(payloadJSON) {
-		return nil, errors.New("payload_json must be a valid JSON object for SFTP tasks")
+		return nil, fmt.Errorf("%w: payload_json must be a valid JSON object for SFTP tasks", ErrInvalidScheduledTaskData)
 	}
 
-	if len(req.ServerIDs) > 0 {
-		updates["server_ids"] = req.ServerIDs
+	if req.ServerIDs != nil {
+		updates["server_ids"] = *req.ServerIDs
 	}
 
-	if req.CronExpression != "" {
-		if err := s.validateCronExpression(req.CronExpression); err != nil {
-			return nil, err
+	if req.CronExpression != "" || req.Timezone != "" || req.Enabled != nil {
+		expr, timezone := existingTask.CronExpression, existingTask.Timezone
+		if req.CronExpression != "" {
+			expr = req.CronExpression
+			updates["cron_expression"] = expr
 		}
-		updates["cron_expression"] = req.CronExpression
-
-		// 重新计算下次运行时间
-		timezone := existingTask.Timezone
 		if req.Timezone != "" {
 			timezone = req.Timezone
 			updates["timezone"] = timezone
 		}
-		nextRunAt, err := s.calculateNextRunTime(req.CronExpression, timezone)
+		nextRunAt, err := s.calculateNextRunTime(expr, timezone)
 		if err != nil {
 			return nil, err
 		}
 		updates["next_run_at"] = nextRunAt
 	}
 
-	if req.Timezone != "" {
-		updates["timezone"] = req.Timezone
-	}
-
+	enabled := existingTask.Enabled
 	if req.Enabled != nil {
-		updates["enabled"] = *req.Enabled
+		enabled = *req.Enabled
+		updates["enabled"] = enabled
+	}
+	if !enabled {
+		updates["next_run_at"] = nil
 	}
 
-	if req.Description != "" {
-		updates["description"] = req.Description
+	if req.Description != nil {
+		updates["description"] = *req.Description
 	}
 
-	if len(updates) == 0 {
-		return existingTask, nil
+	next := *existingTask
+	next.TaskType = taskType
+	next.PayloadJSON = payloadJSON
+	if req.Command != "" {
+		next.Command = req.Command
 	}
+	if req.ServerIDs != nil {
+		next.ServerIDs = *req.ServerIDs
+	}
+	if req.ScriptID != nil {
+		parsed, err := uuid.Parse(*req.ScriptID)
+		if err != nil || parsed == uuid.Nil || parsed.String() != *req.ScriptID {
+			return nil, ErrInvalidScheduledTaskData
+		}
+		next.ScriptID = &parsed
+		updates["script_id"] = &parsed
+	}
+	if err := s.prepareExecution(ctx, &next); err != nil {
+		return nil, err
+	}
+	updates["command"] = next.Command
+	updates["script_id"] = next.ScriptID
+	updates["server_ids"] = next.ServerIDs
+	updates["payload_json"] = next.PayloadJSON
 
 	// 执行更新
-	if err := s.repo.Update(id, updates); err != nil {
+	if err := s.repo.Update(ctx, id, updates); err != nil {
 		return nil, err
 	}
 
@@ -295,7 +364,10 @@ func (s *service) UpdateScheduledTask(userID uuid.UUID, id uuid.UUID, req *Updat
 }
 
 // DeleteScheduledTask 删除定时任务
-func (s *service) DeleteScheduledTask(userID uuid.UUID, id uuid.UUID) error {
+func (s *service) DeleteScheduledTask(ctx context.Context, id uuid.UUID) error {
+	if err := requireTaskOwner(ctx); err != nil {
+		return err
+	}
 	// 获取现有任务
 	existingTask, err := s.repo.GetByID(id)
 	if err != nil {
@@ -303,27 +375,33 @@ func (s *service) DeleteScheduledTask(userID uuid.UUID, id uuid.UUID) error {
 	}
 
 	// 验证所有权
-	if existingTask.UserID != userID {
+	if existingTask.OwnerID.String() != access.Current(ctx).Actor().ID {
 		return ErrUnauthorized
 	}
 
-	// 通知调度器移除任务
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	// The scheduler changes only after the definition and activity commit.
 	if s.scheduler != nil {
 		s.scheduler.RemoveTask(id)
 	}
 
-	return s.repo.Delete(id)
+	return nil
 }
 
 // GetScheduledTask 获取定时任务详情
-func (s *service) GetScheduledTask(userID uuid.UUID, id uuid.UUID) (*ScheduledTask, error) {
+func (s *service) GetScheduledTask(ctx context.Context, id uuid.UUID) (*ScheduledTask, error) {
+	if err := requireTaskOwner(ctx); err != nil {
+		return nil, err
+	}
 	task, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, ErrScheduledTaskNotFound
 	}
 
 	// 验证所有权
-	if task.UserID != userID {
+	if task.OwnerID.String() != access.Current(ctx).Actor().ID {
 		return nil, ErrUnauthorized
 	}
 
@@ -331,8 +409,17 @@ func (s *service) GetScheduledTask(userID uuid.UUID, id uuid.UUID) (*ScheduledTa
 }
 
 // ListScheduledTasks 获取定时任务列表
-func (s *service) ListScheduledTasks(userID uuid.UUID, req *ListScheduledTasksRequest) (*ListScheduledTasksResponse, error) {
+func (s *service) ListScheduledTasks(ctx context.Context, req *protocol.ListScheduledTasksRequest) (*protocol.ListScheduledTasksResponse, error) {
+	if err := requireTaskOwner(ctx); err != nil {
+		return nil, err
+	}
 	// 设置默认值
+	if req == nil {
+		req = &protocol.ListScheduledTasksRequest{}
+	}
+	if req.Page < 0 || req.Page > 1000000 || req.Limit < 0 || req.Limit > 100 || (req.TaskType != "" && !isValidTaskType(string(req.TaskType))) {
+		return nil, ErrInvalidScheduledTaskData
+	}
 	if req.Page < 1 {
 		req.Page = 1
 	}
@@ -340,7 +427,7 @@ func (s *service) ListScheduledTasks(userID uuid.UUID, req *ListScheduledTasksRe
 		req.Limit = 20
 	}
 
-	tasks, total, err := s.repo.List(userID, req)
+	tasks, total, err := s.repo.List(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -351,8 +438,12 @@ func (s *service) ListScheduledTasks(userID uuid.UUID, req *ListScheduledTasksRe
 		totalPages++
 	}
 
-	return &ListScheduledTasksResponse{
-		Data:       tasks,
+	data := make([]protocol.ScheduledTask, 0, len(tasks))
+	for _, task := range tasks {
+		data = append(data, task.Public())
+	}
+	return &protocol.ListScheduledTasksResponse{
+		Data:       data,
 		Total:      total,
 		Page:       req.Page,
 		PageSize:   req.Limit,
@@ -361,12 +452,18 @@ func (s *service) ListScheduledTasks(userID uuid.UUID, req *ListScheduledTasksRe
 }
 
 // GetStatistics 获取定时任务统计信息
-func (s *service) GetStatistics(userID uuid.UUID) (*ScheduledTaskStatistics, error) {
-	return s.repo.GetStatistics(userID)
+func (s *service) GetStatistics(ctx context.Context) (*protocol.ScheduledTaskStatistics, error) {
+	if err := requireTaskOwner(ctx); err != nil {
+		return nil, err
+	}
+	return s.repo.GetStatistics(ctx)
 }
 
 // ToggleTask 启用/禁用定时任务
-func (s *service) ToggleTask(userID uuid.UUID, id uuid.UUID, enabled bool) error {
+func (s *service) ToggleTask(ctx context.Context, id uuid.UUID, enabled bool) error {
+	if err := requireTaskOwner(ctx); err != nil {
+		return err
+	}
 	// 获取任务
 	task, err := s.repo.GetByID(id)
 	if err != nil {
@@ -374,7 +471,7 @@ func (s *service) ToggleTask(userID uuid.UUID, id uuid.UUID, enabled bool) error
 	}
 
 	// 验证所有权
-	if task.UserID != userID {
+	if task.OwnerID.String() != access.Current(ctx).Actor().ID {
 		return ErrUnauthorized
 	}
 
@@ -389,9 +486,11 @@ func (s *service) ToggleTask(userID uuid.UUID, id uuid.UUID, enabled bool) error
 			return err
 		}
 		updates["next_run_at"] = nextRunAt
+	} else {
+		updates["next_run_at"] = nil
 	}
 
-	if err := s.repo.Update(id, updates); err != nil {
+	if err := s.repo.Update(ctx, id, updates); err != nil {
 		return err
 	}
 
@@ -407,7 +506,10 @@ func (s *service) ToggleTask(userID uuid.UUID, id uuid.UUID, enabled bool) error
 }
 
 // TriggerTask 手动触发定时任务
-func (s *service) TriggerTask(userID uuid.UUID, id uuid.UUID) (uuid.UUID, error) {
+func (s *service) TriggerTask(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	if err := requireTaskOwner(ctx); err != nil {
+		return uuid.Nil, err
+	}
 	// 获取任务
 	task, err := s.repo.GetByID(id)
 	if err != nil {
@@ -415,37 +517,43 @@ func (s *service) TriggerTask(userID uuid.UUID, id uuid.UUID) (uuid.UUID, error)
 	}
 
 	// 验证所有权
-	if task.UserID != userID {
+	if task.OwnerID.String() != access.Current(ctx).Actor().ID {
 		return uuid.Nil, ErrUnauthorized
 	}
 
 	// 使用调度器手动触发任务
 	if s.scheduler != nil {
-		return s.scheduler.TriggerTaskManually(id)
+		return s.scheduler.TriggerTaskManually(ctx, id)
 	}
 
 	return uuid.Nil, ErrSchedulerNotInitialized
 }
 
-func (s *service) RetryTask(userID, id, retryOfID uuid.UUID, attempt int) (uuid.UUID, error) {
+func (s *service) RetryTask(ctx context.Context, id, retryOfID uuid.UUID, attempt int) (uuid.UUID, error) {
+	if err := requireTaskOwner(ctx); err != nil {
+		return uuid.Nil, err
+	}
 	task, err := s.repo.GetByID(id)
 	if err != nil {
 		return uuid.Nil, ErrScheduledTaskNotFound
 	}
-	if task.UserID != userID {
+	if task.OwnerID.String() != access.Current(ctx).Actor().ID {
 		return uuid.Nil, ErrUnauthorized
 	}
 	if s.scheduler == nil {
 		return uuid.Nil, ErrSchedulerNotInitialized
 	}
-	return s.scheduler.RetryTask(id, retryOfID, attempt)
+	return s.scheduler.RetryTask(ctx, id, retryOfID, attempt)
 }
 
-func (s *service) IsStagedJobReferenced(userID uuid.UUID, stagedJobID uuid.UUID, excludeTaskID uuid.UUID) (bool, error) {
+func (s *service) IsStagedJobReferenced(ctx context.Context, stagedJobID uuid.UUID, excludeTaskID uuid.UUID) (bool, error) {
+	if err := requireTaskOwner(ctx); err != nil {
+		return false, err
+	}
 	if stagedJobID == uuid.Nil {
 		return false, nil
 	}
-	tasks, _, err := s.repo.List(userID, &ListScheduledTasksRequest{
+	tasks, _, err := s.repo.List(ctx, &protocol.ListScheduledTasksRequest{
 		Page:     1,
 		Limit:    100000,
 		TaskType: "sftp_upload",
@@ -464,4 +572,68 @@ func (s *service) IsStagedJobReferenced(userID uuid.UUID, stagedJobID uuid.UUID,
 		}
 	}
 	return false, nil
+}
+
+func requireTaskOwner(ctx context.Context) error {
+	return access.Current(ctx).RequireOwner(ctx, protocol.ResourcesManage)
+}
+
+func (s *service) prepareExecution(ctx context.Context, task *ScheduledTask) error {
+	if isSFTPTaskType(task.TaskType) {
+		task.ScriptID = nil
+		task.Command = ""
+		task.ServerIDs = []string{}
+		return nil
+	}
+	if len(task.ServerIDs) == 0 || len(task.ServerIDs) > 100 {
+		return ErrInvalidScheduledTaskData
+	}
+	seen := map[string]bool{}
+	for _, id := range task.ServerIDs {
+		parsed, err := uuid.Parse(id)
+		if err != nil || parsed == uuid.Nil || parsed.String() != id || seen[id] {
+			return ErrInvalidScheduledTaskData
+		}
+		seen[id] = true
+	}
+	if task.TaskType == "command" {
+		if strings.TrimSpace(task.Command) == "" || len(task.Command) > 1<<20 || strings.ContainsRune(task.Command, 0) {
+			return ErrInvalidScheduledTaskData
+		}
+		task.ScriptID = nil
+		task.PayloadJSON = ""
+		return nil
+	}
+	task.Command = ""
+	if task.ScriptID == nil {
+		return ErrInvalidScheduledTaskData
+	}
+	var input script.ExecutionInput
+	if task.PayloadJSON != "" {
+		if !isValidPayloadJSON(task.PayloadJSON) {
+			return ErrInvalidScheduledTaskData
+		}
+		if err := json.Unmarshal([]byte(task.PayloadJSON), &input); err != nil {
+			return fmt.Errorf("%w: invalid script payload", ErrInvalidScheduledTaskData)
+		}
+	}
+	execution, err := s.scripts.Resolve(ctx, *task.ScriptID, task.ServerIDs, input.Parameters, input.Version)
+	if err != nil {
+		return err
+	}
+	input.Version = execution.Version
+	input.ScriptID = task.ScriptID
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return err
+	}
+	task.PayloadJSON = string(encoded)
+	return nil
+}
+
+func validTaskText(name, cronExpr, timezone, description, command, payload string) bool {
+	return strings.TrimSpace(name) != "" && utf8.RuneCountInString(name) <= 100 &&
+		strings.TrimSpace(cronExpr) != "" && len(cronExpr) <= 100 && len(timezone) <= 50 &&
+		utf8.RuneCountInString(description) <= 10000 && len(command) <= 1<<20 && len(payload) <= 1<<20 &&
+		!strings.ContainsRune(name+description, 0)
 }

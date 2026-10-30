@@ -9,7 +9,8 @@ import (
 const MaxTextFileBytes = 5 << 20
 
 func NormalizePath(value string) string {
-	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	// SFTP paths use POSIX separators. Whitespace and backslashes are valid
+	// filename bytes; changing them can target a different remote file.
 	if value == "" {
 		return "/"
 	}
@@ -22,7 +23,7 @@ func NormalizePath(value string) string {
 
 func JoinPath(basePath string, name string) string {
 	basePath = NormalizePath(basePath)
-	name = strings.TrimPrefix(strings.ReplaceAll(name, "\\", "/"), "/")
+	name = strings.TrimPrefix(name, "/")
 	return NormalizePath(path.Join(basePath, name))
 }
 

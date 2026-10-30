@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/easyssh/shared/protocol"
 	"io"
 	"net/http"
 	"strings"
@@ -19,42 +20,13 @@ const (
 	maxManifestBytes   = 2 << 20
 )
 
-type Manifest struct {
-	Version     string                   `json:"version"`
-	Tag         string                   `json:"tag"`
-	PublishedAt string                   `json:"published_at,omitempty"`
-	ReleaseURL  string                   `json:"release_url"`
-	Notes       string                   `json:"notes,omitempty"`
-	Web         WebUpdateInfo            `json:"web"`
-	Desktop     map[string]DesktopTarget `json:"desktop,omitempty"`
-}
+type Manifest = protocol.UpdateManifest
 
-type WebUpdateInfo struct {
-	DockerImage       string `json:"docker_image,omitempty"`
-	DockerCompose     string `json:"docker_compose,omitempty"`
-	DockerComposeFile string `json:"docker_compose_file,omitempty"`
-}
+type WebUpdateInfo = protocol.UpdateInstructions
 
-type DesktopTarget struct {
-	Filename    string `json:"filename"`
-	DownloadURL string `json:"download_url"`
-	Size        int64  `json:"size,omitempty"`
-	SHA256      string `json:"sha256,omitempty"`
-	Platform    string `json:"platform"`
-	Arch        string `json:"arch"`
-}
+type DesktopTarget = protocol.UpdateArtifact
 
-type CheckResult struct {
-	CurrentVersion string         `json:"current_version"`
-	LatestVersion  string         `json:"latest_version"`
-	HasUpdate      bool           `json:"has_update"`
-	Target         string         `json:"target"`
-	ReleaseURL     string         `json:"release_url,omitempty"`
-	PublishedAt    string         `json:"published_at,omitempty"`
-	Notes          string         `json:"notes,omitempty"`
-	Instructions   WebUpdateInfo  `json:"instructions,omitempty"`
-	Desktop        *DesktopTarget `json:"desktop,omitempty"`
-}
+type CheckResult = protocol.UpdateCheckResult
 
 type Fetcher struct {
 	URL        string
@@ -100,13 +72,13 @@ func (f Fetcher) Fetch(ctx context.Context) (*Manifest, error) {
 	if err := json.Unmarshal(body, &manifest); err != nil {
 		return nil, fmt.Errorf("parse update manifest: %w", err)
 	}
-	if err := manifest.Validate(); err != nil {
+	if err := validateManifest(manifest); err != nil {
 		return nil, err
 	}
 	return &manifest, nil
 }
 
-func (m Manifest) Validate() error {
+func validateManifest(m Manifest) error {
 	if strings.TrimSpace(m.Version) == "" {
 		return errors.New("update manifest version is required")
 	}

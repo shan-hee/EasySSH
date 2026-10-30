@@ -1,9 +1,13 @@
 package sftp
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
+	"golang.org/x/crypto/ssh"
 	"io"
 	"os"
 	"strings"
@@ -12,41 +16,78 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/shared/sftputil"
+	"github.com/google/uuid"
 	"github.com/pkg/sftp"
-	"log/slog"
 )
 
 // Client SFTP 客户端封装
 type Client struct {
+	ctx        context.Context
+	action     protocol.Action
 	sftpClient *sftp.Client
 	sshClient  *sshDomain.Client
 	serverID   string
 	closed     atomic.Bool
 }
 
-// NewClient 创建 SFTP 客户端
-func NewClient(sshClient *sshDomain.Client, srv *server.Server) (*Client, error) {
-	if !sshClient.IsConnected() {
+// sessionWriter closes the complete subsystem channel, including its read side.
+type sessionWriter struct {
+	io.WriteCloser
+	session *ssh.Session
+}
+
+func (w sessionWriter) Close() error { return w.session.Close() }
+
+// NewClient supports cancellation while opening the SSH channel and negotiating
+// SFTP. Only the channel is closed after NewSession returns. SSH has no channel-
+// open cancellation API, so a stalled channel-open requires closing its transport.
+func NewClient(ctx context.Context, sshClient *sshDomain.Client, srv *server.Server) (*Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	raw := sshClient.GetRawConnection()
+	if raw == nil {
 		return nil, fmt.Errorf("SSH client not connected")
 	}
-
-	// 获取 SSH 连接
-	// 注意：需要从 sshClient 中导出底层连接
-	// 这里假设我们可以通过某种方式获取
-	sftpClient, err := sftp.NewClient(sshClient.GetRawConnection())
+	stopOpen := sftputil.CloseOnCancel(ctx, raw.Close)
+	session, err := raw.NewSession()
+	stopOpen()
+	if err != nil {
+		return nil, err
+	}
+	stop := sftputil.CloseOnCancel(ctx, session.Close)
+	defer stop()
+	success := false
+	defer func() {
+		if !success {
+			_ = session.Close()
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err := session.RequestSubsystem("sftp"); err != nil {
+		return nil, err
+	}
+	writer, err := session.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	reader, err := session.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	sftpClient, err := sftp.NewClientPipe(reader, sessionWriter{WriteCloser: writer, session: session})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create SFTP client: %w", err)
 	}
-
-	client := &Client{
-		sftpClient: sftpClient,
-		sshClient:  sshClient,
-		serverID:   srv.ID.String(),
+	if err := ctx.Err(); err != nil {
+		_ = sftpClient.Close()
+		return nil, err
 	}
-	go func() {
-		_ = sftpClient.Wait()
-		client.closed.Store(true)
-	}()
+	client := &Client{ctx: ctx, action: access.Operation(ctx).Action, sftpClient: sftpClient, sshClient: sshClient, serverID: srv.ID.String()}
+	go func() { _ = sftpClient.Wait(); client.closed.Store(true); _ = session.Close() }()
+	success = true
 	return client, nil
 }
 
@@ -85,7 +126,7 @@ func (c *Client) RawClient() *sftp.Client {
 
 // ListDirectory 列出目录
 func (c *Client) ListDirectory(path string) (*DirectoryListing, error) {
-	return c.ListDirectoryContext(context.Background(), path)
+	return c.ListDirectoryContext(c.ctx, path)
 }
 
 func (c *Client) ListDirectoryContext(ctx context.Context, path string) (*DirectoryListing, error) {
@@ -94,7 +135,6 @@ func (c *Client) ListDirectoryContext(ctx context.Context, path string) (*Direct
 	}
 	stop := sftputil.CloseOnCancel(ctx, c.CloseSFTP)
 	defer stop()
-	path = strings.TrimSpace(path)
 	if path == "~" || strings.HasPrefix(path, "~/") {
 		home, err := c.sftpClient.RealPath(".")
 		if err != nil {
@@ -174,63 +214,40 @@ func (c *Client) GetFileInfo(path string) (*FileInfo, error) {
 	return fileInfo, nil
 }
 
-// UploadFile 上传文件
-func (c *Client) UploadFile(localReader io.Reader, remotePath string) error {
-	return c.UploadFileWithProgress(localReader, remotePath, nil)
-}
-
-// UploadFileWithProgress 上传文件并报告进度
-// onProgress: 进度回调函数，参数为已传输字节数
-func (c *Client) UploadFileWithProgress(localReader io.Reader, remotePath string, onProgress func(loaded int64)) error {
-	return c.UploadFileWithProgressWithContext(context.Background(), localReader, remotePath, onProgress)
-}
-
 // UploadFileWithProgressWithContext 上传文件并报告进度，支持上下文取消
-func (c *Client) UploadFileWithProgressWithContext(ctx context.Context, localReader io.Reader, remotePath string, onProgress func(loaded int64)) error {
+func (c *Client) UploadFileWithProgressWithContext(ctx context.Context, localReader io.Reader, remotePath string, onProgress func(int64)) error {
+	req := access.Requirement{Action: protocol.FilesUpload, ServerID: c.serverID}
+	if err := access.Current(ctx).Check(ctx, req); err != nil {
+		return err
+	}
 	remotePath = sftputil.NormalizePath(remotePath)
-	// 创建远程文件
-	remoteFile, err := c.sftpClient.Create(remotePath)
+	temporary := remotePath + ".easyssh-" + uuid.NewString()
+	file, err := c.sftpClient.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
 	if err != nil {
-		return fmt.Errorf("failed to create remote file: %w", err)
+		return err
 	}
-	defer remoteFile.Close()
-
-	// 如果没有进度回调，直接复制
-	if onProgress == nil {
-		_, err = io.Copy(remoteFile, &ctxReader{ctx: ctx, reader: localReader})
-		if err != nil {
-			// 取消或出错时删除已上传的部分文件
-			_ = c.sftpClient.Remove(remotePath)
-			if errors.Is(err, context.Canceled) {
-				return context.Canceled
-			}
-			return fmt.Errorf("failed to upload file: %w", err)
-		}
-		return nil
+	defer func() { _ = file.Close(); _ = c.sftpClient.Remove(temporary) }()
+	if err := c.sftpClient.Chmod(temporary, 0600); err != nil {
+		return err
 	}
-
-	// 使用带进度跟踪的复制
-	reader := &progressReader{
-		reader:      localReader,
-		onProgress:  onProgress,
-		lastReport:  0,
-		reportEvery: 65536, // 每 64KB 报告一次进度
-	}
-
-	_, err = io.Copy(remoteFile, &ctxReader{ctx: ctx, reader: reader})
+	stop := sftputil.CloseOnCancel(ctx, c.CloseSFTP)
+	defer stop()
+	metered, finish := access.MeterWriter(ctx, req, file)
+	defer finish()
+	writer := &progressWriter{writer: metered, onProgress: onProgress}
+	_, err = io.Copy(writer, &ctxReader{ctx: ctx, reader: localReader})
+	writer.report()
+	err = errors.Join(err, finish())
 	if err != nil {
-		// 取消或出错时删除已上传的部分文件
-		_ = c.sftpClient.Remove(remotePath)
-		if errors.Is(err, context.Canceled) {
-			return context.Canceled
-		}
 		return fmt.Errorf("failed to upload file: %w", err)
 	}
-
-	// 最后报告一次完整进度
-	onProgress(reader.loaded)
-
-	return nil
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := access.Current(ctx).Check(ctx, req); err != nil {
+		return err
+	}
+	return c.commitReplacement(temporary, remotePath, 0600)
 }
 
 // ctxReader 在每次读取前检查上下文是否已取消
@@ -248,105 +265,107 @@ func (r *ctxReader) Read(p []byte) (int, error) {
 	return r.reader.Read(p)
 }
 
-// progressReader 包装 io.Reader 以跟踪读取进度
-type progressReader struct {
-	reader      io.Reader
-	onProgress  func(loaded int64)
-	loaded      int64
-	lastReport  int64
-	reportEvery int64
+// Progress counts bytes accepted by the destination, not source read-ahead.
+type progressWriter struct {
+	writer             io.Writer
+	onProgress         func(int64)
+	loaded, lastReport int64
 }
 
-func (r *progressReader) Read(p []byte) (n int, err error) {
-	n, err = r.reader.Read(p)
-	r.loaded += int64(n)
-
-	// 每隔 reportEvery 字节报告一次进度，避免过度频繁
-	if r.loaded-r.lastReport >= r.reportEvery {
-		r.onProgress(r.loaded)
-		r.lastReport = r.loaded
+func (w *progressWriter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	w.loaded += int64(n)
+	if w.loaded-w.lastReport >= 65536 {
+		w.report()
 	}
-
 	return n, err
 }
-
-// DownloadFile 下载文件
-func (c *Client) DownloadFile(remotePath string, localWriter io.Writer) error {
-	return c.DownloadFileWithProgressWithContext(context.Background(), remotePath, localWriter, nil)
+func (w *progressWriter) report() {
+	if w.onProgress != nil {
+		w.onProgress(w.loaded)
+	}
+	w.lastReport = w.loaded
 }
 
-// DownloadFileWithProgressWithContext 下载文件并报告进度，支持上下文取消。
-func (c *Client) DownloadFileWithProgressWithContext(ctx context.Context, remotePath string, localWriter io.Writer, onProgress func(loaded int64)) error {
-	remotePath = sftputil.NormalizePath(remotePath)
-	// 打开远程文件
-	remoteFile, err := c.sftpClient.Open(remotePath)
+// DownloadFileToArtifactWithContext prepares a host-managed artifact. It keeps
+// all permission and cancellation checks, but delivery to the recipient owns
+// the download quota; the host's staging hop must not consume it a second time.
+func (c *Client) DownloadFileToArtifactWithContext(ctx context.Context, remotePath string, localWriter io.Writer, onProgress func(int64)) error {
+	req := access.Requirement{Action: protocol.FilesDownload, ServerID: c.serverID}
+	if err := access.Current(ctx).Check(ctx, req); err != nil {
+		return err
+	}
+	file, err := c.sftpClient.Open(sftputil.NormalizePath(remotePath))
 	if err != nil {
-		return fmt.Errorf("failed to open remote file: %w", err)
+		return err
 	}
-	defer remoteFile.Close()
-
-	reader := io.Reader(remoteFile)
-	var progress *progressReader
-	if onProgress != nil {
-		progress = &progressReader{
-			reader:      remoteFile,
-			onProgress:  onProgress,
-			lastReport:  0,
-			reportEvery: 65536,
-		}
-		reader = progress
-	}
-
-	// 复制数据
-	_, err = io.Copy(localWriter, &ctxReader{ctx: ctx, reader: reader})
+	defer file.Close()
+	stop := sftputil.CloseOnCancel(ctx, c.CloseSFTP)
+	defer stop()
+	info, err := file.Stat()
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
-			return context.Canceled
-		}
-		return fmt.Errorf("failed to download file: %w", err)
+		return err
 	}
-
-	if progress != nil {
-		onProgress(progress.loaded)
+	if !info.Mode().IsRegular() || info.Size() < 0 {
+		return fmt.Errorf("not a regular file")
 	}
-	return nil
+	writer := &progressWriter{writer: localWriter, onProgress: onProgress}
+	_, err = io.CopyN(writer, &ctxReader{ctx: ctx, reader: file}, info.Size())
+	writer.report()
+	return err
 }
 
 // CreateDirectory 创建目录
 func (c *Client) CreateDirectory(path string) error {
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
 	path = sftputil.NormalizePath(path)
 	err := c.sftpClient.Mkdir(path)
 	if err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
+		return fmt.Errorf("failed to create directory: %w", sftputil.MutationError(err))
 	}
 	return nil
 }
 
 // CreateDirectories 创建多级目录
 func (c *Client) CreateDirectories(path string) error {
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
 	path = sftputil.NormalizePath(path)
 	err := c.sftpClient.MkdirAll(path)
 	if err != nil {
-		return fmt.Errorf("failed to create directories: %w", err)
+		return fmt.Errorf("directory creation may be partial: %w", errors.Join(sftputil.ErrMutationOutcomeUnknown, err))
 	}
 	return nil
 }
 
 // DeleteFile 删除文件（直接删除）
 func (c *Client) DeleteFile(path string) error {
-	path = sftputil.NormalizePath(path)
+	var err error
+	path, err = sftputil.ValidateDeletePath(path)
+	if err != nil {
+		return err
+	}
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
 	if c.sftpClient == nil {
 		return fmt.Errorf("sftp client not initialized")
 	}
 	if err := c.sftpClient.Remove(path); err != nil {
-		return fmt.Errorf("failed to delete file: %w", err)
+		return fmt.Errorf("failed to delete file: %w", sftputil.MutationError(err))
 	}
 	return nil
 }
 
-// DeleteDirectory 删除目录（直接删除）
-func (c *Client) DeleteDirectory(path string) error {
-	return c.removeAll(path)
+// DeleteTree records each observed child result, including partial deletion.
+func (c *Client) DeleteTree(path string, report *sftputil.DeleteReport, observe sftputil.DeleteObserver) error {
+	if c.sftpClient == nil {
+		return fmt.Errorf("sftp client not initialized")
+	}
+	return sftputil.DeleteTree(c.ctx, c.sftpClient, path, report, observe)
 }
 
 // RemoveFile 永久删除文件（用于清理半文件/后台清理等）
@@ -356,85 +375,34 @@ func (c *Client) RemoveFile(path string) error {
 		return fmt.Errorf("sftp client not initialized")
 	}
 	if err := c.sftpClient.Remove(path); err != nil {
-		return fmt.Errorf("failed to remove file: %w", err)
+		return fmt.Errorf("failed to remove file: %w", sftputil.MutationError(err))
 	}
 	return nil
 }
 
-// RemoveAll 永久递归删除目录（类似 rm -rf）。
-func (c *Client) RemoveAll(path string) error {
-	return c.removeAll(path)
-}
-
-// removeAll 递归删除目录（类似 os.RemoveAll）
-func (c *Client) removeAll(path string) error {
-	path = sftputil.NormalizePath(path)
-	// 获取目录内容
-	entries, err := c.sftpClient.ReadDir(path)
-	if err != nil {
-		// 如果目录不存在或无法读取，尝试直接删除
-		// 可能是符号链接或特殊文件
-		slog.Debug("failed to read directory, trying direct remove",
-			"path", path,
-			"error", err)
-		// 尝试作为文件删除
-		if removeErr := c.sftpClient.Remove(path); removeErr == nil {
-			return nil
-		}
-		// 尝试作为目录删除
-		if removeDirErr := c.sftpClient.RemoveDirectory(path); removeDirErr == nil {
-			return nil
-		}
-		return err
-	}
-
-	// 递归删除所有子项
-	for _, entry := range entries {
-		childPath := sftputil.JoinPath(path, entry.Name())
-		if entry.IsDir() {
-			if err := c.removeAll(childPath); err != nil {
-				slog.Warn("failed to remove subdirectory",
-					"path", childPath,
-					"error", err)
-				return err
-			}
-		} else {
-			if err := c.sftpClient.Remove(childPath); err != nil {
-				slog.Warn("failed to remove file",
-					"path", childPath,
-					"error", err)
-				return err
-			}
-		}
-	}
-
-	// 删除空目录
-	err = c.sftpClient.RemoveDirectory(path)
-	if err != nil {
-		slog.Warn("failed to remove directory",
-			"path", path,
-			"error", err)
-	}
-	return err
-}
-
 // RenameFile 重命名文件或目录
 func (c *Client) RenameFile(oldPath, newPath string) error {
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
 	oldPath = sftputil.NormalizePath(oldPath)
 	newPath = sftputil.NormalizePath(newPath)
 	err := c.sftpClient.Rename(oldPath, newPath)
 	if err != nil {
-		return fmt.Errorf("failed to rename: %w", err)
+		return fmt.Errorf("failed to rename: %w", sftputil.MutationError(err))
 	}
 	return nil
 }
 
 // Chmod 修改文件或目录权限
 func (c *Client) Chmod(path string, mode os.FileMode) error {
+	if err := c.ctx.Err(); err != nil {
+		return err
+	}
 	path = sftputil.NormalizePath(path)
 	err := c.sftpClient.Chmod(path, mode)
 	if err != nil {
-		return fmt.Errorf("failed to chmod: %w", err)
+		return fmt.Errorf("failed to chmod: %w", sftputil.MutationError(err))
 	}
 	return nil
 }
@@ -466,39 +434,76 @@ func (c *Client) ChangeDirectory(path string) error {
 
 // ReadFile 读取文件内容
 func (c *Client) ReadFile(path string) ([]byte, error) {
-	path = sftputil.NormalizePath(path)
-	file, err := c.sftpClient.Open(path)
+	file, err := c.openRead(path, protocol.FilesRead)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
+		return nil, err
 	}
 	defer file.Close()
-
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > sftputil.MaxTextFileBytes {
+		return nil, fmt.Errorf("file exceeds text read limit")
+	}
 	return io.ReadAll(file)
 }
 
-// WriteFile 写入文件内容
 func (c *Client) WriteFile(path string, data []byte, perm os.FileMode) error {
+	if len(data) > sftputil.MaxTextFileBytes {
+		return fmt.Errorf("file exceeds text write limit")
+	}
+	req := access.Requirement{Action: protocol.FilesWrite, ServerID: c.serverID}
+	if err := access.Current(c.ctx).Check(c.ctx, req); err != nil {
+		return err
+	}
 	path = sftputil.NormalizePath(path)
-	file, err := c.sftpClient.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	temporary := path + ".easyssh-" + uuid.NewString()
+	file, err := c.sftpClient.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
 	if err != nil {
-		return fmt.Errorf("failed to open file for writing: %w", err)
+		return err
 	}
-	defer file.Close()
-
-	_, err = file.Write(data)
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
+	defer func() { _ = file.Close(); _ = c.sftpClient.Remove(temporary) }()
+	if err := c.sftpClient.Chmod(temporary, 0600); err != nil {
+		return err
 	}
+	metered, finish := access.MeterWriter(c.ctx, req, file)
+	defer finish()
+	_, copyErr := io.Copy(metered, bytes.NewReader(data))
+	if err := errors.Join(copyErr, finish()); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := access.Current(c.ctx).Check(c.ctx, req); err != nil {
+		return err
+	}
+	return c.commitReplacement(temporary, path, perm)
+}
 
-	// 设置权限
-	if perm != 0 {
-		err = c.sftpClient.Chmod(path, perm)
-		if err != nil {
-			return fmt.Errorf("failed to set permissions: %w", err)
+// commitReplacement keeps the existing target's permissions, including 0000.
+// Replacing links or special files is deliberately rejected.
+func (c *Client) commitReplacement(temporary, target string, newMode os.FileMode) error {
+	info, err := c.sftpClient.Lstat(target)
+	setMode := newMode != 0
+	if err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("target is not a regular file")
+		}
+		newMode, setMode = info.Mode().Perm(), true
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if setMode {
+		if err := c.sftpClient.Chmod(temporary, newMode.Perm()); err != nil {
+			return err
 		}
 	}
-
-	return nil
+	if _, supported := c.sftpClient.HasExtension("posix-rename@openssh.com"); supported {
+		return sftputil.MutationError(c.sftpClient.PosixRename(temporary, target))
+	}
+	return sftputil.MutationError(c.sftpClient.Rename(temporary, target))
 }
 
 // Exists 检查文件或目录是否存在
@@ -525,36 +530,59 @@ func (c *Client) GetDiskUsage(path string) (*DiskUsage, error) {
 		return nil, fmt.Errorf("failed to get disk usage: %w", err)
 	}
 
-	total := statvfs.Blocks * statvfs.Bsize
-	available := statvfs.Bavail * statvfs.Bsize
-	used := total - available
-	usedPercent := float64(used) / float64(total) * 100
-
-	return &DiskUsage{
-		Path:        path,
-		Total:       total,
-		Used:        used,
-		Available:   available,
-		UsedPercent: usedPercent,
-	}, nil
+	usage, err := sftputil.FilesystemUsage(path, statvfs.Blocks, statvfs.Bfree, statvfs.Bavail, statvfs.Frsize)
+	if err != nil {
+		return nil, err
+	}
+	return &usage, nil
 }
 
-// OpenFile 打开文件进行读取（用于跨服务器传输）
-func (c *Client) OpenFile(path string) (*sftp.File, error) {
-	path = sftputil.NormalizePath(path)
-	file, err := c.sftpClient.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open file: %w", err)
-	}
-	return file, nil
+// File exposes only metered I/O; embedding the raw SFTP file would accidentally
+// expose ReaderFrom/WriteTo and allow io.Copy to bypass quota accounting.
+type File struct {
+	snapshot os.FileInfo
+	file     *sftp.File
+	reader   io.Reader
+	settle   func() error
 }
 
-// CreateFile 创建文件进行写入（用于跨服务器传输）
-func (c *Client) CreateFile(path string) (*sftp.File, error) {
-	path = sftputil.NormalizePath(path)
-	file, err := c.sftpClient.Create(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create file: %w", err)
+func (f *File) Read(p []byte) (int, error) {
+	if f.reader == nil {
+		return 0, access.ErrForbidden
 	}
-	return file, nil
+	return f.reader.Read(p)
+}
+func (f *File) Close() error               { return errors.Join(f.file.Close(), f.settle()) }
+func (f *File) Stat() (os.FileInfo, error) { return f.snapshot, nil }
+
+func (c *Client) openRead(path string, action protocol.Action) (*File, error) {
+	req := access.Requirement{Action: action, ServerID: c.serverID}
+	if err := access.Current(c.ctx).Check(c.ctx, req); err != nil {
+		return nil, err
+	}
+	file, err := c.sftpClient.Open(sftputil.NormalizePath(path))
+	if err != nil {
+		return nil, err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() < 0 {
+		_ = file.Close()
+		return nil, fmt.Errorf("not a regular file")
+	}
+	// Read a bounded snapshot. Exact quota exhaustion at EOF is successful, and
+	// a growing log cannot evade a caller's earlier size/preview check.
+	metered, finish := access.MeterReader(c.ctx, req, file)
+	reader := io.LimitReader(metered, info.Size())
+	return &File{file: file, reader: reader, snapshot: info, settle: finish}, nil
+}
+func (c *Client) OpenFile(path string) (*File, error) {
+	action := protocol.FilesDownload
+	if c.action == protocol.FilesRead {
+		action = protocol.FilesRead
+	}
+	return c.openRead(path, action)
 }

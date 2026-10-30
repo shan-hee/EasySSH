@@ -2,1282 +2,573 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
+	"github.com/easyssh/shared/protocol"
+	"net/mail"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/easyssh/server/internal/domain/oauthprovider"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/domain/operationrecord"
+	"github.com/easyssh/server/internal/domain/security"
 	secretcrypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
-// SessionInfo 会话信息
 type SessionInfo struct {
-	DeviceType    string
-	DeviceName    string
-	IPAddress     string
-	UserAgent     string
-	RememberLogin bool
+	DeviceType string
+	DeviceName string
+	IPAddress  string
+	UserAgent  string
+}
+type LoginResult struct {
+	Owner     *Owner   `json:"owner"`
+	Session   *Session `json:"session"`
+	Token     string   `json:"-"`
+	CSRFToken string   `json:"csrf_token"`
 }
 
-// AuthenticateResult 认证结果
-type AuthenticateResult struct {
-	User          *User      // 认证成功时返回用户
-	IPLocked      bool       // IP 是否被锁定
-	AccountLocked bool       // 账户是否被锁定
-	UnlockAt      *time.Time // 解锁时间
-	IsNewDevice   bool       // 是否为新设备
-	IsNewLocation bool       // 是否为新地点
-	Location      string     // 地理位置
-}
-
-// Service 认证服务接口
-type Service interface {
-	// Register 注册新用户（username 自动生成）
-	Register(ctx context.Context, email, password string, role UserRole, emailVerified bool) (*User, error)
-
-	// AuthenticateUser 验证邮箱和密码，返回用户（不创建会话或令牌）
-	AuthenticateUser(ctx context.Context, email, password string) (*User, error)
-
-	// AuthenticateUserWithContext 验证邮箱和密码，支持账户锁定检查和登录检测
-	// ip 和 userAgent 用于账户锁定和登录检测
-	AuthenticateUserWithContext(ctx context.Context, email, password, ip, userAgent string) (*AuthenticateResult, error)
-
-	RecordOAuthSession(ctx context.Context, user *User, sessionID uuid.UUID, requestID string, sessionInfo *SessionInfo, expiresAt time.Time) error
-	TouchOAuthSession(ctx context.Context, requestID string, expiresAt time.Time) error
-
-	// GetUserByID 根据 ID 获取用户
-	GetUserByID(ctx context.Context, userID uuid.UUID) (*User, error)
-
-	// GetUserByEmail 根据邮箱获取用户
-	GetUserByEmail(ctx context.Context, email string) (*User, error)
-
-	// GetUserByGoogleSub 根据 Google OIDC subject 获取用户
-	GetUserByGoogleSub(ctx context.Context, googleSub string) (*User, error)
-
-	// BindGoogleSub 绑定 Google OIDC subject 到已有用户
-	BindGoogleSub(ctx context.Context, userID uuid.UUID, googleSub string) (*User, error)
-
-	// UnbindGoogleSub 解除当前用户的 Google OIDC 绑定
-	UnbindGoogleSub(ctx context.Context, userID uuid.UUID) (*User, error)
-
-	// RegisterOAuthUser 通过 OAuth 注册用户（不需要密码）
-	RegisterOAuthUser(ctx context.Context, username, email, avatar, googleSub string, role UserRole) (*User, error)
-
-	// ChangePassword 修改密码
-	ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error
-
-	// ResetPassword 重置密码（忘记密码，不需要旧密码）
-	ResetPassword(ctx context.Context, userID uuid.UUID, newPassword string) error
-
-	// UpdateProfile 更新用户资料（包含用户名）
-	UpdateProfile(ctx context.Context, userID uuid.UUID, username, email, avatar, language, timezone string) error
-
-	// ListUsers 获取用户列表（管理员功能）
-	ListUsers(ctx context.Context, limit, offset int) ([]*User, int64, error)
-
-	// DeleteUser 删除用户（管理员功能）
-	DeleteUser(ctx context.Context, userID uuid.UUID) error
-
-	// HasAdmin 检查是否存在管理员
-	HasAdmin(ctx context.Context) (bool, error)
-
-	// InitializeAdmin 初始化管理员账户（仅在没有管理员时）
-	InitializeAdmin(ctx context.Context, username, email, password, runMode string) (*User, error)
-
-	// 2FA 相关方法
-
-	// Enable2FA 启用双因子认证
-	Enable2FA(ctx context.Context, userID uuid.UUID, code string) ([]string, error)
-
-	// Disable2FA 禁用双因子认证
-	Disable2FA(ctx context.Context, userID uuid.UUID, code string) error
-
-	// Generate2FASecret 生成 2FA secret（第一步）
-	Generate2FASecret(ctx context.Context, userID uuid.UUID) (string, string, error)
-
-	// Verify2FACode 验证 2FA 代码
-	Verify2FACode(ctx context.Context, userID uuid.UUID, code string) (bool, error)
-
-	// Session management
-
-	// ListUserSessions 获取用户的所有活跃会话
-	ListUserSessions(ctx context.Context, userID uuid.UUID) ([]*Session, error)
-
-	// RevokeSession 撤销指定会话
-	RevokeSession(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID) error
-
-	// RevokeAllOtherSessions 撤销除当前会话外的所有其他会话
-	RevokeAllOtherSessions(ctx context.Context, userID uuid.UUID, currentSessionID uuid.UUID) error
-
-	// Notification settings
-
-	// UpdateNotificationSettings 更新通知设置
-	UpdateNotificationSettings(ctx context.Context, userID uuid.UUID, emailLogin, emailAlert, browser, newDevice, newLocation, suspicious, taskInApp, taskSuccess, taskFailure, taskPartial, taskExternal *bool) error
-
-	// Monitor Data Source settings
-
-	// UpdateMonitorDataSource 更新监控数据源设置
-	// setActive: 是否将此数据源设为当前激活的数据源
-	UpdateMonitorDataSource(ctx context.Context, userID uuid.UUID, dataSource, endpoint, token string, setActive bool) error
-}
-
-// authService 认证服务实现
-type authService struct {
+// Service manages the single owner. Visitor and device credentials are issued
+// by their own services and cannot be accepted as owner browser sessions.
+type Service struct {
+	db                    *gorm.DB
 	repo                  Repository
-	oauthProvider         *oauthprovider.Service
-	totpService           TOTPService
-	emailService          EmailService          // 可选的邮件服务
-	accountLockService    AccountLockService    // 账户锁定服务（可选）
-	loginDetectionService LoginDetectionService // 登录检测服务（可选）
 	encryptor             *secretcrypto.Encryptor
+	totpService           TOTPService
 	backupCodeKey         []byte
-	runMode               string // 存储运行模式
+	runtime               *access.Runtime
+	mu                    sync.Mutex
+	accountLockService    AccountLockService
+	loginDetectionService LoginDetectionService
+	security              security.Service
 }
 
-// EmailService 邮件服务接口（可选依赖）
-type EmailService interface {
-	SendLoginNotification(ctx context.Context, email, username, ipAddress, location, deviceInfo string, loginTime time.Time) error
-	Send2FAEnabledNotification(ctx context.Context, email, username string) error
-	SendPasswordChangedNotification(ctx context.Context, email, username string, changeTime time.Time) error
-	// 登录告警相关方法
-	SendNewDeviceAlert(ctx context.Context, email, username, deviceName, ip, location string, loginTime time.Time) error
-	SendNewLocationAlert(ctx context.Context, email, username, location, ip string, loginTime time.Time) error
-	SendSuspiciousLoginAlert(ctx context.Context, email, username, reason, ip, location string, loginTime time.Time) error
-	SendAccountLockedAlert(ctx context.Context, email, username, reason string, unlockTime time.Time) error
-}
-
-// NewService 创建认证服务
-func NewService(repo Repository, oauthProvider *oauthprovider.Service, encryptor *secretcrypto.Encryptor) Service {
-	var backupCodeKey []byte
-	if encryptor != nil {
-		backupCodeKey, _ = encryptor.DeriveKey("backup-code-hmac", 32)
+func NewService(db *gorm.DB, encryptor *secretcrypto.Encryptor, runtime *access.Runtime) (*Service, error) {
+	if encryptor == nil || runtime == nil {
+		return nil, errors.New("owner credentials and runtime are required")
 	}
-	return &authService{
-		repo:                  repo,
-		oauthProvider:         oauthProvider,
-		totpService:           NewTOTPService(backupCodeKey),
-		emailService:          nil, // 默认不启用邮件服务
-		accountLockService:    nil, // 默认不启用账户锁定
-		loginDetectionService: nil, // 默认不启用登录检测
-		encryptor:             encryptor,
-		backupCodeKey:         backupCodeKey,
-		runMode:               "production",
+	key, err := encryptor.DeriveKey("backup-code-hmac", 32)
+	if err != nil {
+		return nil, err
 	}
+	return &Service{db: db, repo: NewRepository(db), encryptor: encryptor, totpService: NewTOTPService(key), backupCodeKey: key, runtime: runtime, security: security.NewService(security.NewRepository(db))}, nil
 }
+func (s *Service) SetAccountLockService(v AccountLockService)       { s.accountLockService = v }
+func (s *Service) SetLoginDetectionService(v LoginDetectionService) { s.loginDetectionService = v }
 
-// SetEmailService 设置邮件服务（可选）
-func (s *authService) SetEmailService(emailService EmailService) {
-	s.emailService = emailService
-}
-
-// SetAccountLockService 设置账户锁定服务（可选）
-func (s *authService) SetAccountLockService(accountLockService AccountLockService) {
-	s.accountLockService = accountLockService
-}
-
-// SetLoginDetectionService 设置登录检测服务（可选）
-func (s *authService) SetLoginDetectionService(loginDetectionService LoginDetectionService) {
-	s.loginDetectionService = loginDetectionService
-}
-
-func (s *authService) Register(ctx context.Context, email, password string, role UserRole, emailVerified bool) (*User, error) {
-	// 参数验证
-	if email == "" || password == "" {
-		return nil, errors.New("email and password are required")
+func validOwnerProfile(name, email, timezone string) error {
+	if strings.TrimSpace(name) == "" || len(name) > 50 {
+		return fmt.Errorf("%w: owner name is required (maximum 50 bytes)", ErrInvalidInput)
 	}
-
-	// 密码策略验证
+	parsed, err := mail.ParseAddress(email)
+	if err != nil || parsed.Address != email || len(email) > 100 {
+		return fmt.Errorf("%w: invalid owner email", ErrInvalidInput)
+	}
+	if timezone != "" {
+		if _, err := time.LoadLocation(timezone); err != nil {
+			return fmt.Errorf("%w: invalid IANA timezone", ErrInvalidInput)
+		}
+	}
+	return nil
+}
+func (s *Service) Initialized(ctx context.Context) (bool, error) {
+	_, err := s.repo.Get(ctx)
+	if errors.Is(err, ErrOwnerNotFound) {
+		return false, nil
+	}
+	return err == nil, err
+}
+func (s *Service) Initialize(ctx context.Context, name, email, password string) (*Owner, error) {
+	name, email = strings.TrimSpace(name), strings.ToLower(strings.TrimSpace(email))
+	if err := validOwnerProfile(name, email, ""); err != nil {
+		return nil, err
+	}
 	if err := ValidatePasswordWithDefault(password); err != nil {
 		return nil, err
 	}
-
-	// 自动生成用户名：使用邮箱前缀 + 随机后缀
-	username := s.generateUsername(email)
-
-	// 生成头像
-	avatar, err := s.generateAvatarForUser(username, email)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	exists, err := s.Initialized(ctx)
 	if err != nil {
-		// 头像生成失败不应该阻止用户注册，记录日志但继续
-		fmt.Printf("Warning: failed to generate avatar for user %s: %v\n", username, err)
-		avatar = ""
-	}
-
-	// 创建用户
-	user := &User{
-		Username:      username,
-		Email:         email,
-		EmailVerified: emailVerified,
-		Role:          role,
-		Avatar:        avatar,
-	}
-
-	// 设置密码（bcrypt 加密）
-	if err := user.SetPassword(password); err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
-	}
-
-	// 保存到数据库
-	if err := s.repo.Create(ctx, user); err != nil {
 		return nil, err
 	}
-
-	return user, nil
+	if exists {
+		return nil, ErrInitialized
+	}
+	owner := &Owner{ID: uuid.New(), Slot: 1, Username: name, Email: email, MonitorDataSource: "easyssh"}
+	if err := owner.SetPassword(password); err != nil {
+		return nil, err
+	}
+	if err := s.repo.Create(ctx, owner); err != nil {
+		return nil, err
+	}
+	return owner, nil
+}
+func ownerDigest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+func ownerCSRF(token string) string { return ownerDigest("easyssh:owner:csrf:" + token) }
+func newOwnerToken() (string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
-// AuthenticateUser 验证邮箱和密码，返回用户信息（不创建会话或令牌）
-func (s *authService) AuthenticateUser(ctx context.Context, email, password string) (*User, error) {
-	// 使用邮箱查找用户
-	user, err := s.repo.FindByEmail(ctx, email)
-	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			return nil, ErrInvalidCredentials
-		}
-		return nil, err
-	}
-
-	// 验证密码
-	if !user.CheckPassword(password) {
+func (s *Service) Login(ctx context.Context, req protocol.OwnerLoginInput, info SessionInfo) (*LoginResult, error) {
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if len(req.Password) > 72 || len(req.Code) > 128 || len(req.Email) > 100 {
 		return nil, ErrInvalidCredentials
 	}
-
-	return user, nil
-}
-
-// AuthenticateUserWithContext 验证邮箱和密码，支持账户锁定检查和登录检测
-func (s *authService) AuthenticateUserWithContext(ctx context.Context, email, password, ip, userAgent string) (*AuthenticateResult, error) {
-	result := &AuthenticateResult{}
-
-	// 1. 检查 IP 是否被锁定
 	if s.accountLockService != nil {
-		ipLocked, unlockAt, err := s.accountLockService.CheckIPLock(ctx, ip)
+		locked, _, err := s.accountLockService.CheckIPLock(ctx, info.IPAddress)
 		if err != nil {
-			// 记录错误但不阻止登录流程
-			fmt.Printf("Warning: failed to check IP lock: %v\n", err)
-		} else if ipLocked {
-			result.IPLocked = true
-			result.UnlockAt = unlockAt
-			return result, ErrIPLocked
+			return nil, err
+		}
+		if locked {
+			return nil, ErrIPLocked
 		}
 	}
-
-	// 2. 检查账户是否被锁定
-	if s.accountLockService != nil {
-		accountLocked, unlockAt, err := s.accountLockService.CheckAccountLock(ctx, email)
-		if err != nil {
-			fmt.Printf("Warning: failed to check account lock: %v\n", err)
-		} else if accountLocked {
-			result.AccountLocked = true
-			result.UnlockAt = unlockAt
-			return result, ErrAccountLocked
-		}
-	}
-
-	// 3. 使用邮箱查找用户
-	user, err := s.repo.FindByEmail(ctx, email)
+	policy, err := s.security.Get(ctx)
 	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			// 记录失败尝试（即使用户不存在也记录，防止用户枚举）
-			if s.accountLockService != nil {
-				s.accountLockService.RecordFailedLogin(ctx, email, ip, userAgent, "user_not_found")
-			}
-			return result, ErrInvalidCredentials
-		}
-		return result, err
+		return nil, err
 	}
-
-	// 4. 验证密码
-	if !user.CheckPassword(password) {
-		// 记录失败尝试
-		if s.accountLockService != nil {
-			ipLocked, accountLocked, err := s.accountLockService.RecordFailedLogin(ctx, email, ip, userAgent, "invalid_password")
+	s.mu.Lock()
+	var result LoginResult
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var owner Owner
+		if err := tx.Where("slot = 1").First(&owner).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrInvalidCredentials
+			}
+			return err
+		}
+		if owner.IsLocked() {
+			return ErrAccountLocked
+		}
+		if owner.Email != req.Email || !owner.CheckPassword(req.Password) {
+			return ErrInvalidCredentials
+		}
+		if owner.TwoFactorEnabled {
+			if req.Code == "" {
+				return ErrTwoFactorRequired
+			}
+			ok, err := s.consumeTwoFactor(ctx, tx, &owner, req.Code)
 			if err != nil {
-				fmt.Printf("Warning: failed to record failed login: %v\n", err)
+				return err
 			}
-			if ipLocked {
-				result.IPLocked = true
-				return result, ErrIPLocked
-			}
-			if accountLocked {
-				result.AccountLocked = true
-				return result, ErrAccountLocked
+			if !ok {
+				return ErrInvalidTwoFactorCode
 			}
 		}
-		return result, ErrInvalidCredentials
+		token, err := newOwnerToken()
+		if err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		expiry := now.Add(time.Duration(policy.SessionTimeout) * time.Minute)
+		session := &Session{ID: uuid.New(), OwnerID: owner.ID, TokenHash: ownerDigest(token), CSRFHash: ownerDigest(ownerCSRF(token)),
+			DeviceType: info.DeviceType, DeviceName: info.DeviceName, IPAddress: info.IPAddress, UserAgent: info.UserAgent,
+			RememberLogin: req.Remember && policy.RememberLogin, LastActivity: now, CreatedAt: now, ExpiresAt: expiry}
+		if err := tx.Create(session).Error; err != nil {
+			return err
+		}
+		result = LoginResult{Owner: &owner, Session: session, Token: token, CSRFToken: ownerCSRF(token)}
+		return nil
+	})
+	s.mu.Unlock()
+	if err != nil {
+		if s.accountLockService != nil && (errors.Is(err, ErrInvalidCredentials) || errors.Is(err, ErrInvalidTwoFactorCode)) {
+			if _, _, recordErr := s.accountLockService.RecordFailedLogin(ctx, req.Email, info.IPAddress, info.UserAgent, "invalid_credentials"); recordErr != nil {
+				return nil, recordErr
+			}
+		}
+		return nil, err
 	}
-
-	// 5. 登录成功，清除失败计数
 	if s.accountLockService != nil {
-		if err := s.accountLockService.RecordSuccessLogin(ctx, email, ip, userAgent); err != nil {
-			fmt.Printf("Warning: failed to record success login: %v\n", err)
-		}
+		_ = s.accountLockService.RecordSuccessLogin(ctx, req.Email, info.IPAddress, info.UserAgent)
 	}
-
-	// 6. 登录检测（新设备/新地点）
 	if s.loginDetectionService != nil {
-		// 检查是否为新地点
-		isNewLocation, location, err := s.loginDetectionService.CheckNewLocation(ctx, user.ID, ip)
-		if err != nil {
-			fmt.Printf("Warning: failed to check new location: %v\n", err)
-		} else {
-			result.IsNewLocation = isNewLocation
-			result.Location = location
+		fingerprint := GenerateDeviceFingerprint(info.UserAgent, "", "")
+		if err := s.loginDetectionService.RecordLogin(ctx, result.Owner.ID, result.Session, fingerprint); err == nil {
+			row := result.Session
+			_ = s.db.WithContext(ctx).Model(&Session{}).Where("id = ? AND owner_id = ?", row.ID, row.OwnerID).Updates(map[string]any{"location": row.Location, "is_new_device": row.IsNewDevice, "is_new_location": row.IsNewLocation, "device_fingerprint": row.DeviceFingerprint}).Error
 		}
 	}
-
-	result.User = user
-	return result, nil
+	return &result, nil
 }
 
-func (s *authService) RecordOAuthSession(ctx context.Context, user *User, sessionID uuid.UUID, requestID string, sessionInfo *SessionInfo, expiresAt time.Time) error {
-	if user == nil || sessionID == uuid.Nil || strings.TrimSpace(requestID) == "" {
-		return errors.New("oauth session identity is incomplete")
+// sessionDeadline also applies a shorter current timeout to an existing session.
+// Increasing the setting never revives a session whose stored deadline passed.
+func sessionDeadline(row *Session, timeoutMinutes int) time.Time {
+	deadline := row.LastActivity.Add(time.Duration(timeoutMinutes) * time.Minute)
+	if row.ExpiresAt.Before(deadline) {
+		deadline = row.ExpiresAt
 	}
-	if sessionInfo == nil {
-		sessionInfo = &SessionInfo{}
+	return deadline
+}
+
+// Persist an observed idle expiration so a later timeout increase cannot revive it.
+// Compare the read values to avoid expiring a session renewed concurrently.
+func (s *Service) expireIdleSession(ctx context.Context, row *Session, deadline time.Time) error {
+	result := s.db.WithContext(ctx).Model(&Session{}).
+		Where("id = ? AND revoked_at IS NULL AND last_activity = ? AND expires_at = ?", row.ID, row.LastActivity, row.ExpiresAt).
+		UpdateColumn("expires_at", deadline)
+	if result.Error != nil {
+		return result.Error
 	}
-	session := &Session{
-		ID: sessionID, UserID: user.ID, OAuthRequestID: requestID,
-		DeviceType: sessionInfo.DeviceType, DeviceName: sessionInfo.DeviceName,
-		IPAddress: sessionInfo.IPAddress, UserAgent: sessionInfo.UserAgent,
-		LastActivity: time.Now(), ExpiresAt: expiresAt, RememberLogin: sessionInfo.RememberLogin,
+	if result.RowsAffected == 1 {
+		s.runtime.Invalidate("", row.ID.String(), "", access.ErrExpired)
 	}
-	if err := s.repo.CreateSession(ctx, session); err != nil {
+	return access.ErrExpired
+}
+
+func (s *Service) loadSession(ctx context.Context, id string) (*Session, error) {
+	var row Session
+	if err := s.db.WithContext(ctx).Where("id = ? AND revoked_at IS NULL AND expires_at > ?", id, time.Now().UTC()).First(&row).Error; err != nil {
+		return nil, access.ErrUnauthenticated
+	}
+	policy, err := s.security.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	deadline := sessionDeadline(&row, policy.SessionTimeout)
+	if !time.Now().Before(deadline) {
+		return nil, s.expireIdleSession(ctx, &row, deadline)
+	}
+	row.ExpiresAt = deadline
+	if _, err := s.repo.FindByID(ctx, row.OwnerID); err != nil {
+		return nil, access.ErrUnauthenticated
+	}
+	return &row, nil
+}
+
+// Authenticate renews an unexpired owner session after checking its token and
+// (for mutations) CSRF. Internal authorization checks never count as activity.
+func (s *Service) Authenticate(ctx context.Context, token, csrf string, mutation bool) (access.Scope, *Session, error) {
+	if token == "" || len(token) > 128 {
+		return access.Scope{}, nil, access.ErrUnauthenticated
+	}
+	// Serialize owner renewals with owner revocations, including runtime updates.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	policy, err := s.security.Get(ctx)
+	if err != nil {
+		return access.Scope{}, nil, err
+	}
+	var row Session
+	if err := s.db.WithContext(ctx).Where("token_hash = ? AND revoked_at IS NULL AND expires_at > ?", ownerDigest(token), time.Now().UTC()).First(&row).Error; err != nil {
+		return access.Scope{}, nil, access.ErrUnauthenticated
+	}
+	if mutation && subtle.ConstantTimeCompare([]byte(ownerDigest(csrf)), []byte(row.CSRFHash)) != 1 {
+		return access.Scope{}, nil, access.ErrForbidden
+	}
+	if _, err := s.repo.FindByID(ctx, row.OwnerID); err != nil {
+		return access.Scope{}, nil, access.ErrUnauthenticated
+	}
+	now := time.Now().UTC()
+	if deadline := sessionDeadline(&row, policy.SessionTimeout); !now.Before(deadline) {
+		return access.Scope{}, nil, s.expireIdleSession(ctx, &row, deadline)
+	}
+	expiry := now.Add(time.Duration(policy.SessionTimeout) * time.Minute)
+	remember := row.RememberLogin && policy.RememberLogin
+	updated := s.db.WithContext(ctx).Model(&Session{}).
+		Where("id = ? AND revoked_at IS NULL AND expires_at > ? AND last_activity > ?", row.ID, now, now.Add(-time.Duration(policy.SessionTimeout)*time.Minute)).
+		Updates(map[string]any{"last_activity": now, "expires_at": expiry, "remember_login": remember})
+	if updated.Error != nil {
+		return access.Scope{}, nil, updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		// MySQL may report zero changed rows for requests in the same millisecond.
+		current, err := s.loadSession(ctx, row.ID.String())
+		if err != nil {
+			return access.Scope{}, nil, err
+		}
+		row = *current
+	} else {
+		row.LastActivity, row.ExpiresAt, row.RememberLogin = now, expiry, remember
+	}
+	actor := protocol.Actor{Kind: protocol.Owner, ID: row.OwnerID.String(), SessionID: row.ID.String()}
+	scope, err := access.NewScope(actor, row.ExpiresAt, s)
+	if err != nil {
+		return access.Scope{}, nil, err
+	}
+	s.runtime.RefreshOwnerSession(row.ID.String(), row.ExpiresAt)
+	s.rememberSession(ctx, &row)
+	return scope, &row, nil
+}
+
+func (s *Service) CSRFToken(ctx context.Context, token string) (string, *Session, error) {
+	_, session, err := s.Authenticate(ctx, token, "", false)
+	if err != nil {
+		return "", nil, err
+	}
+	return ownerCSRF(token), session, nil
+}
+func (s *Service) Authorize(ctx context.Context, actor protocol.Actor, req access.Requirement) error {
+	if actor.Kind != protocol.Owner || !actor.Valid() || actor.SessionID == "" || !req.Action.Valid() {
+		return access.ErrForbidden
+	}
+	session, err := s.session(ctx, actor.SessionID)
+	if err != nil {
 		return err
 	}
-	if s.emailService != nil && user.NotifyEmailLogin {
-		go func() {
-			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			_ = s.emailService.SendLoginNotification(notifyCtx, user.Email, user.Username, sessionInfo.IPAddress, "", sessionInfo.DeviceName, time.Now())
-		}()
+	if session.OwnerID.String() != actor.ID {
+		return access.ErrForbidden
 	}
 	return nil
 }
-
-func (s *authService) TouchOAuthSession(ctx context.Context, requestID string, expiresAt time.Time) error {
-	session, err := s.repo.FindSessionByOAuthRequestID(ctx, requestID)
+func (s *Service) Restore(ctx context.Context, actor protocol.Actor) (access.Scope, error) {
+	if actor.Kind != protocol.Owner || !actor.Valid() || actor.SessionID == "" {
+		return access.Scope{}, access.ErrForbidden
+	}
+	session, err := s.session(ctx, actor.SessionID)
+	if err != nil {
+		return access.Scope{}, err
+	}
+	if session.OwnerID.String() != actor.ID {
+		return access.Scope{}, access.ErrForbidden
+	}
+	return access.NewScope(actor, session.ExpiresAt, s)
+}
+func (s *Service) requireOwner(ctx context.Context, id uuid.UUID) error {
+	scope, err := access.FromContext(ctx)
 	if err != nil {
 		return err
 	}
-	session.UpdateActivity()
-	if !expiresAt.IsZero() {
-		session.ExpiresAt = expiresAt
+	if scope.Actor().ID != id.String() {
+		return access.ErrForbidden
 	}
-	return s.repo.UpdateSession(ctx, session)
+	return scope.RequireOwner(ctx, protocol.OwnerManage)
 }
-
-func (s *authService) GetUserByID(ctx context.Context, userID uuid.UUID) (*User, error) {
-	return s.repo.FindByID(ctx, userID)
-}
-
-func (s *authService) GetUserByEmail(ctx context.Context, email string) (*User, error) {
-	return s.repo.FindByEmail(ctx, email)
-}
-
-func (s *authService) GetUserByGoogleSub(ctx context.Context, googleSub string) (*User, error) {
-	return s.repo.FindByGoogleSub(ctx, googleSub)
-}
-
-func (s *authService) BindGoogleSub(ctx context.Context, userID uuid.UUID, googleSub string) (*User, error) {
-	if googleSub == "" {
-		return nil, errors.New("google sub is required")
-	}
-
-	existingUser, err := s.repo.FindByGoogleSub(ctx, googleSub)
-	if err == nil && existingUser != nil && existingUser.ID != userID {
-		return nil, ErrUserAlreadyExists
-	}
-	if err != nil && !errors.Is(err, ErrUserNotFound) {
+func (s *Service) GetOwnerByID(ctx context.Context, id uuid.UUID) (*Owner, error) {
+	if err := s.requireOwner(ctx, id); err != nil {
 		return nil, err
 	}
-
-	user, err := s.repo.FindByID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	if user.GoogleSub != nil && *user.GoogleSub != "" && *user.GoogleSub != googleSub {
-		return nil, ErrUserAlreadyExists
-	}
-
-	user.GoogleSub = &googleSub
-	if err := s.repo.Update(ctx, user); err != nil {
-		return nil, err
-	}
-
-	return user, nil
+	return s.repo.FindByID(ctx, id)
 }
-
-func (s *authService) UnbindGoogleSub(ctx context.Context, userID uuid.UUID) (*User, error) {
-	user, err := s.repo.FindByID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	if user.Password == "" {
-		return nil, ErrLastLoginMethod
-	}
-
-	user.GoogleSub = nil
-	if err := s.repo.Update(ctx, user); err != nil {
-		return nil, err
-	}
-
-	return user, nil
-}
-
-func (s *authService) RegisterOAuthUser(ctx context.Context, username, email, avatar, googleSub string, role UserRole) (*User, error) {
-	// 参数验证
-	if email == "" {
-		return nil, errors.New("email is required")
-	}
-	if googleSub == "" {
-		return nil, errors.New("google sub is required")
-	}
-
-	// 检查邮箱是否已存在
-	existingUser, err := s.repo.FindByEmail(ctx, email)
-	if err == nil && existingUser != nil {
-		return nil, ErrUserAlreadyExists
-	}
-	if err != nil && !errors.Is(err, ErrUserNotFound) {
-		return nil, err
-	}
-
-	// 检查 Google subject 是否已存在
-	existingUser, err = s.repo.FindByGoogleSub(ctx, googleSub)
-	if err == nil && existingUser != nil {
-		return nil, ErrUserAlreadyExists
-	}
-	if err != nil && !errors.Is(err, ErrUserNotFound) {
-		return nil, err
-	}
-
-	// 如果没有提供用户名，使用邮箱前缀生成
-	if username == "" {
-		username = s.generateUsername(email)
-	}
-
-	// 如果没有提供头像，生成默认头像
-	if avatar == "" {
-		avatar, err = s.generateAvatarForUser(username, email)
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate avatar: %w", err)
-		}
-	}
-
-	// 创建用户（OAuth 用户不需要密码）
-	user := &User{
-		ID:            uuid.New(),
-		Username:      username,
-		Email:         email,
-		Password:      "", // OAuth 用户不设置密码
-		Role:          role,
-		Avatar:        avatar,
-		GoogleSub:     &googleSub,
-		EmailVerified: true,
-	}
-
-	if err := s.repo.Create(ctx, user); err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
-	}
-
-	return user, nil
-}
-
-func (s *authService) ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
-	if err != nil {
+func (s *Service) UpdateProfile(ctx context.Context, id uuid.UUID, name, email, avatar, language, timezone string) error {
+	if err := s.requireOwner(ctx, id); err != nil {
 		return err
 	}
-
-	// 验证旧密码
-	if !user.CheckPassword(oldPassword) {
-		return errors.New("invalid old password")
+	name, email = strings.TrimSpace(name), strings.ToLower(strings.TrimSpace(email))
+	if err := validOwnerProfile(name, email, timezone); err != nil {
+		return err
 	}
-
-	// 验证新密码策略
+	if len(avatar) > 1<<20 || len(language) > 20 {
+		return fmt.Errorf("%w: profile value is too large", ErrInvalidInput)
+	}
+	return s.updateOwnerPreferences(ctx, id, func(Owner) (map[string]any, error) {
+		return map[string]any{"username": name, "email": email, "avatar": avatar, "language": language, "timezone": timezone}, nil
+	})
+}
+func (s *Service) ChangePassword(ctx context.Context, id uuid.UUID, oldPassword, newPassword string) error {
+	if err := s.requireOwner(ctx, id); err != nil {
+		return err
+	}
 	if err := ValidatePasswordWithDefault(newPassword); err != nil {
 		return err
 	}
-
-	// 设置新密码
-	if err := user.SetPassword(newPassword); err != nil {
-		return fmt.Errorf("failed to hash new password: %w", err)
-	}
-
-	// 更新用户
-	if err := s.repo.Update(ctx, user); err != nil {
-		return err
-	}
-
-	// 安全措施：密码修改后撤销所有会话，强制用户重新登录
-	if err := s.revokeAllUserSessions(ctx, userID); err != nil {
-		// 记录错误但不阻止密码修改成功
-		fmt.Printf("Warning: failed to revoke all sessions after password change for user %s: %v\n", userID, err)
-	}
-
-	// 异步发送密码修改通知邮件
-	if s.emailService != nil {
-		go func() {
-			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			if err := s.emailService.SendPasswordChangedNotification(
-				notifyCtx,
-				user.Email,
-				user.Username,
-				time.Now(),
-			); err != nil {
-				fmt.Printf("Failed to send password changed notification email: %v\n", err)
-			}
-		}()
-	}
-
-	return nil
-}
-
-// ResetPassword 重置密码（忘记密码，不需要旧密码）
-func (s *authService) ResetPassword(ctx context.Context, userID uuid.UUID, newPassword string) error {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("find user failed: %w", err)
-	}
-
-	// 验证新密码策略
-	if err := ValidatePasswordWithDefault(newPassword); err != nil {
-		return fmt.Errorf("password validation failed: %w", err)
-	}
-
-	// 设置新密码
-	if err := user.SetPassword(newPassword); err != nil {
-		return fmt.Errorf("failed to hash new password: %w", err)
-	}
-
-	// 更新用户
-	if err := s.repo.Update(ctx, user); err != nil {
-		return fmt.Errorf("update user failed: %w", err)
-	}
-
-	// 安全措施：密码重置后撤销所有会话，强制用户重新登录
-	// 这确保了即使攻击者有之前的有效会话，也无法继续使用
-	if err := s.revokeAllUserSessions(ctx, userID); err != nil {
-		// 记录错误但不阻止密码重置成功
-		fmt.Printf("Warning: failed to revoke all sessions after password reset for user %s: %v\n", userID, err)
-	}
-
-	// 异步发送密码修改通知邮件
-	if s.emailService != nil {
-		go func() {
-			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			if err := s.emailService.SendPasswordChangedNotification(
-				notifyCtx,
-				user.Email,
-				user.Username,
-				time.Now(),
-			); err != nil {
-				fmt.Printf("Failed to send password changed notification email: %v\n", err)
-			}
-		}()
-	}
-
-	return nil
-}
-
-func (s *authService) UpdateProfile(ctx context.Context, userID uuid.UUID, username, email, avatar, language, timezone string) error {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return err
 	}
-
-	// 更新用户名（仅当非空时）
-	if username != "" {
-		user.Username = username
+	if !owner.CheckPassword(oldPassword) {
+		return ErrInvalidCredentials
 	}
-
-	// 更新邮箱（仅当非空时）
-	if email != "" && email != user.Email {
-		user.Email = email
-		user.EmailVerified = true
+	if err := owner.SetPassword(newPassword); err != nil {
+		return err
 	}
-
-	// 更新头像（\x00 表示不更新，空字符串表示移除，其他值表示设置新头像）
-	if avatar != "\x00" {
-		user.Avatar = avatar
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&Owner{}).Where("id = ?", id).Update("password", owner.Password).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&Session{}).Where("owner_id = ? AND revoked_at IS NULL", id).Update("revoked_at", time.Now().UTC()).Error; err != nil {
+			return err
+		}
+		return recordOwnerChange(tx, "security_update", "owner", id, []string{"password", "sessions"})
+	})
+	if err == nil {
+		s.runtime.InvalidateOwner(id.String(), access.ErrRevoked)
 	}
-
-	// 更新语言偏好（仅当非空时）
-	if language != "" {
-		user.Language = language
-	}
-
-	// 更新时区偏好（仅当非空时）
-	if timezone != "" {
-		user.Timezone = timezone
-	}
-
-	return s.repo.Update(ctx, user)
+	return err
 }
-
-func (s *authService) ListUsers(ctx context.Context, limit, offset int) ([]*User, int64, error) {
-	return s.repo.List(ctx, limit, offset)
+func (s *Service) ListSessions(ctx context.Context, id uuid.UUID) ([]Session, error) {
+	if err := s.requireOwner(ctx, id); err != nil {
+		return nil, err
+	}
+	var rows []Session
+	err := s.db.WithContext(ctx).Where("owner_id = ? AND revoked_at IS NULL AND expires_at > ?", id, time.Now().UTC()).Order("last_activity DESC").Find(&rows).Error
+	return rows, err
 }
-
-func (s *authService) DeleteUser(ctx context.Context, userID uuid.UUID) error {
-	return s.repo.Delete(ctx, userID)
-}
-
-// HasAdmin 检查是否存在管理员
-func (s *authService) HasAdmin(ctx context.Context) (bool, error) {
-	return s.repo.HasAdmin(ctx)
-}
-
-// InitializeAdmin 初始化管理员账户（仅在没有管理员时）
-func (s *authService) InitializeAdmin(ctx context.Context, username, email, password, runMode string) (*User, error) {
-	// 检查是否已存在管理员
-	hasAdmin, err := s.repo.HasAdmin(ctx)
+func (s *Service) Logout(ctx context.Context, ownerID uuid.UUID) error {
+	sessionID, err := uuid.Parse(access.Current(ctx).Actor().SessionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check admin existence: %w", err)
+		return access.ErrUnauthenticated
 	}
-
-	if hasAdmin {
-		return nil, errors.New("admin already exists")
+	return s.revokeSession(ctx, ownerID, sessionID, false)
+}
+func (s *Service) RevokeSession(ctx context.Context, ownerID, sessionID uuid.UUID) error {
+	return s.revokeSession(ctx, ownerID, sessionID, true)
+}
+func (s *Service) revokeSession(ctx context.Context, ownerID, sessionID uuid.UUID, recordChange bool) error {
+	if err := s.requireOwner(ctx, ownerID); err != nil {
+		return err
 	}
-
-	// 参数验证：邮箱和密码是必须的，用户名可选（为空则自动生成）
-	if email == "" || password == "" {
-		return nil, errors.New("email and password are required")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&Session{}).Where("id = ? AND owner_id = ? AND revoked_at IS NULL", sessionID, ownerID).Update("revoked_at", time.Now().UTC())
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 || !recordChange {
+			return nil
+		}
+		return recordOwnerChange(tx, "security_update", "owner_session", sessionID, []string{"revoked_at"})
+	})
+	if err == nil {
+		s.runtime.Invalidate("", sessionID.String(), "", access.ErrRevoked)
 	}
-
-	// 如果没有提供用户名，自动生成
-	if username == "" {
-		username = s.generateUsername(email)
+	return err
+}
+func (s *Service) RevokeAllOtherSessions(ctx context.Context, id, current uuid.UUID) error {
+	if err := s.requireOwner(ctx, id); err != nil {
+		return err
 	}
+	scope, _ := access.FromContext(ctx)
+	if current.String() != scope.Actor().SessionID {
+		return access.ErrForbidden
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var sessions []Session
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		sessions, err = revokeOtherSessions(tx, id, current)
+		if err != nil || len(sessions) == 0 {
+			return err
+		}
+		return recordOwnerChange(tx, "security_update", "owner", id, []string{"other_sessions"})
+	})
+	if err != nil {
+		return err
+	}
+	for _, session := range sessions {
+		s.runtime.Invalidate("", session.ID.String(), "", access.ErrRevoked)
+	}
+	return nil
+}
 
-	// 密码策略验证
+// Called with the service mutation mutex held and inside the source transaction.
+func revokeOtherSessions(tx *gorm.DB, id, current uuid.UUID) ([]Session, error) {
+	var sessions []Session
+	if err := tx.Where("owner_id = ? AND id <> ? AND revoked_at IS NULL", id, current).Find(&sessions).Error; err != nil {
+		return nil, err
+	}
+	if len(sessions) == 0 {
+		return sessions, nil
+	}
+	ids := make([]uuid.UUID, 0, len(sessions))
+	for _, session := range sessions {
+		ids = append(ids, session.ID)
+	}
+	err := tx.Model(&Session{}).Where("id IN ?", ids).Update("revoked_at", time.Now().UTC()).Error
+	return sessions, err
+}
+
+// RecoverFromHost is only called by the maintenance command after acquiring the
+// instance lock. It has no HTTP or Wails binding and cannot be invoked by visitors.
+func (s *Service) RecoverFromHost(ctx context.Context, password string, resetTwoFactor bool) error {
 	if err := ValidatePasswordWithDefault(password); err != nil {
-		return nil, err
+		return err
 	}
-
-	// 生成头像
-	avatar, err := s.generateAvatarForUser(username, email)
-	if err != nil {
-		// 头像生成失败不应该阻止管理员创建，记录日志但继续
-		fmt.Printf("⚠️  Warning: failed to generate avatar for admin %s: %v\n", username, err)
-		avatar = ""
-	}
-
-	// 创建管理员用户
-	user := &User{
-		Username: username,
-		Email:    email,
-		Role:     RoleAdmin,
-		Avatar:   avatar,
-	}
-
-	// 设置密码（bcrypt 加密）
-	if err := user.SetPassword(password); err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
-	}
-
-	// 保存到数据库
-	if err := s.repo.Create(ctx, user); err != nil {
-		return nil, fmt.Errorf("failed to create admin: %w", err)
-	}
-
-	// 保存运行模式到服务实例
-	s.runMode = runMode
-
-	// 根据运行模式执行不同的初始化逻辑
-	if err := s.initializeByRunMode(ctx, runMode, user); err != nil {
-		// 记录错误但不阻止管理员创建
-		fmt.Printf("⚠️  Warning: failed to initialize with run mode %s: %v\n", runMode, err)
-	}
-
-	return user, nil
-}
-
-// initializeByRunMode 根据运行模式执行不同的初始化逻辑
-func (s *authService) initializeByRunMode(ctx context.Context, runMode string, adminUser *User) error {
-	switch runMode {
-	case "demo":
-		return s.initializeDemoMode(ctx, adminUser)
-	case "development":
-		return s.initializeDevelopmentMode(ctx, adminUser)
-	case "production":
-		return s.initializeProductionMode(ctx, adminUser)
-	default:
-		fmt.Printf("⚠️  Unknown run mode: %s, treating as production\n", runMode)
-		return s.initializeProductionMode(ctx, adminUser)
-	}
-}
-
-// initializeDemoMode 演示模式初始化
-func (s *authService) initializeDemoMode(ctx context.Context, adminUser *User) error {
-	fmt.Println("🎭 ========================================")
-	fmt.Println("🎭 Initializing in DEMO Mode")
-	fmt.Println("🎭 Creating sample data for demonstration...")
-	fmt.Println("🎭 ========================================")
-
-	// TODO: 这里可以创建示例数据
-	// 由于需要server repository,暂时只打印日志
-	// 在后续可以通过依赖注入的方式传入其他repository
-
-	fmt.Println("📊 Demo data includes:")
-	fmt.Println("   - Sample SSH servers (coming soon)")
-	fmt.Println("   - Example scripts (coming soon)")
-	fmt.Println("   - Sample audit logs (coming soon)")
-	fmt.Println("   - Pre-configured server groups (coming soon)")
-	fmt.Println("")
-	fmt.Println("✅ Demo mode initialization completed")
-
-	return nil
-}
-
-// initializeDevelopmentMode 开发模式初始化
-func (s *authService) initializeDevelopmentMode(ctx context.Context, adminUser *User) error {
-	fmt.Println("🔧 ========================================")
-	fmt.Println("🔧 Initializing in DEVELOPMENT Mode")
-	fmt.Println("🔧 Enabling debug features...")
-	fmt.Println("🔧 ========================================")
-
-	fmt.Println("🐛 Development features enabled:")
-	fmt.Println("   ✅ Detailed SQL query logging")
-	fmt.Println("   ✅ Verbose error messages")
-	fmt.Println("   ✅ Hot reload support (via Air)")
-	fmt.Println("   ✅ CORS relaxed for localhost")
-	fmt.Println("   ✅ Debug endpoints available")
-	fmt.Println("")
-	fmt.Println("⚠️  WARNING: This mode is for development only!")
-	fmt.Println("   Do NOT use in production environment.")
-	fmt.Println("")
-	fmt.Println("✅ Development mode initialization completed")
-
-	return nil
-}
-
-// initializeProductionMode 生产模式初始化
-func (s *authService) initializeProductionMode(ctx context.Context, adminUser *User) error {
-	fmt.Println("🔒 ========================================")
-	fmt.Println("🔒 Initializing in PRODUCTION Mode")
-	fmt.Println("🔒 Applying security hardening...")
-	fmt.Println("🔒 ========================================")
-
-	fmt.Println("🛡️  Security features enabled:")
-	fmt.Println("   ✅ Strict CORS policy")
-	fmt.Println("   ✅ Rate limiting active")
-	fmt.Println("   ✅ HTTPS enforcement (if configured)")
-	fmt.Println("   ✅ SQL query logging minimized")
-	fmt.Println("   ✅ Error messages sanitized")
-	fmt.Println("   ✅ Security headers enforced")
-	fmt.Println("")
-	fmt.Println("📝 Remember to:")
-	fmt.Println("   - Configure SSL/TLS certificates")
-	fmt.Println("   - Set a strong OAuth provider global secret")
-	fmt.Println("   - Enable firewall rules")
-	fmt.Println("   - Regular security updates")
-	fmt.Println("")
-	fmt.Println("✅ Production mode initialization completed")
-
-	return nil
-}
-
-func (s *authService) resolveTwoFactorSecret(user *User) (string, error) {
-	if user == nil || strings.TrimSpace(user.TwoFactorSecret) == "" {
-		return "", nil
-	}
-	if s.encryptor == nil {
-		return "", fmt.Errorf("encryptor is required to decrypt two-factor secret")
-	}
-	return s.encryptor.DecryptSecret(user.TwoFactorSecret, s.userSecretAAD(user.ID, "two_factor_secret"))
-}
-
-// Generate2FASecret 生成 2FA secret（第一步：生成但不保存）
-func (s *authService) Generate2FASecret(ctx context.Context, userID uuid.UUID) (string, string, error) {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
-	if err != nil {
-		return "", "", err
-	}
-	if user.TwoFactorEnabled {
-		return "", "", errors.New("2FA is already enabled")
-	}
-
-	// 生成 TOTP secret
-	secret, qrCodeURL, err := s.totpService.GenerateSecret(user.Username)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to generate TOTP secret: %w", err)
-	}
-
-	encryptedSecret, err := s.encryptUserSecret(user.ID, "two_factor_secret", secret)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to encrypt TOTP secret: %w", err)
-	}
-
-	// 临时保存 secret 到数据库（此时还未启用 2FA）
-	user.TwoFactorSecret = encryptedSecret
-	if err := s.repo.Update(ctx, user); err != nil {
-		return "", "", fmt.Errorf("failed to save TOTP secret: %w", err)
-	}
-	if err := s.repo.ClearTwoFactorCounters(ctx, user.ID); err != nil {
-		return "", "", fmt.Errorf("failed to reset TOTP replay state: %w", err)
-	}
-
-	return secret, qrCodeURL, nil
-}
-
-// Enable2FA 启用双因子认证（第二步：验证代码并启用）
-func (s *authService) Enable2FA(ctx context.Context, userID uuid.UUID, code string) ([]string, error) {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 检查是否已启用
-	if user.TwoFactorEnabled {
-		return nil, errors.New("2FA is already enabled")
-	}
-
-	// 检查是否已生成 secret
-	if user.TwoFactorSecret == "" {
-		return nil, errors.New("2FA secret not generated, please generate first")
-	}
-
-	secret, err := s.resolveTwoFactorSecret(user)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load TOTP secret: %w", err)
-	}
-
-	// 验证 TOTP 代码
-	_, valid := s.totpService.ValidateCode(secret, code)
-	if !valid {
-		return nil, ErrInvalidTwoFactorCode
-	}
-
-	// 生成备份码
-	backupCodes, err := s.totpService.GenerateBackupCodes()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate backup codes: %w", err)
-	}
-
-	// 备份码采用不可逆哈希存储
-	hashedBackupCodes, err := HashBackupCodes(backupCodes, s.backupCodeKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash backup codes: %w", err)
-	}
-
-	// 启用 2FA
-	user.TwoFactorEnabled = true
-	user.BackupCodes = hashedBackupCodes
-
-	if err := s.repo.Update(ctx, user); err != nil {
-		return nil, fmt.Errorf("failed to enable 2FA: %w", err)
-	}
-
-	// 异步发送 2FA 启用通知邮件
-	if s.emailService != nil {
-		go func() {
-			notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			if err := s.emailService.Send2FAEnabledNotification(
-				notifyCtx,
-				user.Email,
-				user.Username,
-			); err != nil {
-				fmt.Printf("Failed to send 2FA enabled notification email: %v\n", err)
-			}
-		}()
-	}
-
-	return backupCodes, nil
-}
-
-// Disable2FA 禁用双因子认证
-func (s *authService) Disable2FA(ctx context.Context, userID uuid.UUID, code string) error {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	owner, err := s.repo.Get(ctx)
 	if err != nil {
 		return err
 	}
-
-	// 检查是否启用了 2FA
-	if !user.TwoFactorEnabled {
-		return errors.New("2FA is not enabled")
-	}
-
-	secret, err := s.resolveTwoFactorSecret(user)
-	if err != nil {
-		return fmt.Errorf("failed to load TOTP secret: %w", err)
-	}
-
-	// 验证 2FA 代码
-	counter, valid := s.totpService.ValidateCode(secret, code)
-	if !valid {
-		return ErrInvalidTwoFactorCode
-	}
-	consumed, err := s.repo.ConsumeTwoFactorCounter(ctx, user.ID, counter)
-	if err != nil {
-		return fmt.Errorf("failed to consume TOTP code: %w", err)
-	}
-	if !consumed {
-		return ErrInvalidTwoFactorCode
-	}
-
-	// 禁用 2FA
-	user.TwoFactorEnabled = false
-	user.TwoFactorSecret = ""
-	user.BackupCodes = ""
-
-	return s.repo.Update(ctx, user)
-}
-
-// Verify2FACode 验证 2FA 代码（用于登录）
-func (s *authService) Verify2FACode(ctx context.Context, userID uuid.UUID, code string) (bool, error) {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
-	if err != nil {
-		return false, err
-	}
-
-	// 检查是否启用了 2FA
-	if !user.TwoFactorEnabled {
-		return false, errors.New("2FA is not enabled")
-	}
-
-	secret, err := s.resolveTwoFactorSecret(user)
-	if err != nil {
-		return false, fmt.Errorf("failed to load TOTP secret: %w", err)
-	}
-
-	// 首先尝试验证 TOTP 代码
-	if counter, valid := s.totpService.ValidateCode(secret, code); valid {
-		consumed, err := s.repo.ConsumeTwoFactorCounter(ctx, user.ID, counter)
-		if err != nil {
-			return false, fmt.Errorf("failed to consume TOTP code: %w", err)
-		}
-		return consumed, nil
-	}
-
-	// 如果 TOTP 验证失败，尝试验证备份码
-	if user.BackupCodes != "" {
-		valid, updatedCodes, err := s.totpService.VerifyBackupCode(user.BackupCodes, code)
-		if err != nil {
-			return false, fmt.Errorf("failed to verify backup code: %w", err)
-		}
-
-		if valid {
-			consumed, err := s.repo.ConsumeBackupCodes(ctx, user.ID, user.BackupCodes, updatedCodes)
-			if err != nil {
-				return false, fmt.Errorf("failed to consume backup code: %w", err)
-			}
-			return consumed, nil
-		}
-	}
-
-	return false, nil
-}
-
-// === Session Management ===
-
-// ListUserSessions 获取用户的所有活跃会话
-func (s *authService) ListUserSessions(ctx context.Context, userID uuid.UUID) ([]*Session, error) {
-	return s.repo.ListUserSessions(ctx, userID)
-}
-
-// RevokeSession 撤销指定会话
-func (s *authService) RevokeSession(ctx context.Context, userID uuid.UUID, sessionID uuid.UUID) error {
-	// 首先验证会话属于该用户，并获取会话信息
-	sessions, err := s.repo.ListUserSessions(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("failed to list user sessions: %w", err)
-	}
-
-	// 检查会话是否属于该用户，并保存会话信息
-	var targetSession *Session
-	for _, session := range sessions {
-		if session.ID == sessionID {
-			targetSession = session
-			break
-		}
-	}
-
-	if targetSession == nil {
-		return errors.New("session not found or does not belong to user")
-	}
-
-	if s.oauthProvider != nil {
-		if err := s.oauthProvider.RevokeRequest(ctx, targetSession.OAuthRequestID); err != nil {
-			return fmt.Errorf("failed to revoke oauth grant: %w", err)
-		}
-	}
-	return s.repo.DeleteSession(ctx, sessionID)
-}
-
-// RevokeAllOtherSessions 撤销除当前会话外的所有其他会话
-func (s *authService) RevokeAllOtherSessions(ctx context.Context, userID uuid.UUID, currentSessionID uuid.UUID) error {
-	// 获取所有会话
-	sessions, err := s.repo.ListUserSessions(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("failed to list user sessions: %w", err)
-	}
-
-	// 删除除当前会话外的所有会话
-	for _, session := range sessions {
-		if session.ID != currentSessionID {
-			if s.oauthProvider != nil {
-				if err := s.oauthProvider.RevokeRequest(ctx, session.OAuthRequestID); err != nil {
-					return fmt.Errorf("failed to revoke oauth grant for session %s: %w", session.ID, err)
-				}
-			}
-			if err := s.repo.DeleteSession(ctx, session.ID); err != nil {
-				return fmt.Errorf("failed to delete session %s: %w", session.ID, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-func (s *authService) revokeAllUserSessions(ctx context.Context, userID uuid.UUID) error {
-	sessions, err := s.repo.ListUserSessions(ctx, userID)
-	if err != nil {
+	if err := owner.SetPassword(password); err != nil {
 		return err
 	}
-	for _, session := range sessions {
-		if s.oauthProvider != nil {
-			if err := s.oauthProvider.RevokeRequest(ctx, session.OAuthRequestID); err != nil {
+	values := map[string]any{"password": owner.Password, "locked_until": nil, "lock_reason": "", "failed_login_attempts": 0, "last_failed_login": nil}
+	if resetTwoFactor {
+		values["two_factor_enabled"] = false
+		values["two_factor_secret"] = ""
+		values["backup_codes"] = ""
+		values["pending_two_factor_secret"] = ""
+		values["pending_two_factor_expires_at"] = nil
+	}
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&Owner{}).Where("id = ?", owner.ID).Updates(values).Error; err != nil {
+			return err
+		}
+		if resetTwoFactor {
+			if err := tx.Where("owner_id = ?", owner.ID).Delete(&TOTPReplay{}).Error; err != nil {
 				return err
 			}
 		}
+		if err := tx.Model(&Session{}).Where("owner_id = ? AND revoked_at IS NULL", owner.ID).Update("revoked_at", time.Now().UTC()).Error; err != nil {
+			return err
+		}
+		if err := tx.Table("owner_devices").Where("owner_id = ?", owner.ID).Update("revoked", true).Error; err != nil {
+			return err
+		}
+		fields := []string{"password", "account_lock", "sessions", "devices"}
+		if resetTwoFactor {
+			fields = append(fields, "two_factor_enabled", "backup_codes")
+		}
+		return operationrecord.RecordConfiguration(tx, protocol.Actor{Kind: protocol.Owner, ID: owner.ID.String()}, operationrecord.ConfigurationChange{
+			Action: "security_update", ResourceKind: "owner", ResourceID: owner.ID.String(), Name: "宿主恢复",
+			Source: "manual", Fields: fields,
+		})
+	})
+	if err == nil {
+		s.runtime.InvalidateOwner(owner.ID.String(), access.ErrRevoked)
 	}
-	return s.repo.DeleteAllUserSessions(ctx, userID)
+	return err
+}
+func (s *Service) encryptOwnerSecret(id uuid.UUID, column, plaintext string) (string, error) {
+	return s.encryptor.EncryptSecret(plaintext, secretcrypto.SecretAAD("owners", id.String(), column))
+}
+func (s *Service) decryptOwnerSecret(id uuid.UUID, column, ciphertext string) (string, error) {
+	return s.encryptor.DecryptSecret(ciphertext, secretcrypto.SecretAAD("owners", id.String(), column))
 }
 
-// === Notification Settings ===
-
-// UpdateNotificationSettings 更新通知设置
-func (s *authService) UpdateNotificationSettings(ctx context.Context, userID uuid.UUID, emailLogin, emailAlert, browser, newDevice, newLocation, suspicious, taskInApp, taskSuccess, taskFailure, taskPartial, taskExternal *bool) error {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
-	if err != nil {
+func (s *Service) UpdateNotificationSettings(ctx context.Context, id uuid.UUID, values map[string]bool) error {
+	if err := s.requireOwner(ctx, id); err != nil {
 		return err
 	}
-
-	// 更新通知设置（仅更新非 nil 的字段）
-	if emailLogin != nil {
-		user.NotifyEmailLogin = *emailLogin
+	allowed := map[string]bool{"notify_email_login": true, "notify_email_alert": true, "notify_browser": true, "notify_new_device": true, "notify_new_location": true, "notify_suspicious": true, "notify_task_in_app": true, "notify_task_success": true, "notify_task_failure": true, "notify_task_partial": true, "notify_task_external": true}
+	updates := map[string]any{}
+	for k, v := range values {
+		if !allowed[k] {
+			return fmt.Errorf("unknown notification setting %q", k)
+		}
+		updates[k] = v
 	}
-	if emailAlert != nil {
-		user.NotifyEmailAlert = *emailAlert
-	}
-	if browser != nil {
-		user.NotifyBrowser = *browser
-	}
-	if newDevice != nil {
-		user.NotifyNewDevice = *newDevice
-	}
-	if newLocation != nil {
-		user.NotifyNewLocation = *newLocation
-	}
-	if suspicious != nil {
-		user.NotifySuspicious = *suspicious
-	}
-	if taskInApp != nil {
-		user.NotifyTaskInApp = *taskInApp
-	}
-	if taskSuccess != nil {
-		user.NotifyTaskSuccess = *taskSuccess
-	}
-	if taskFailure != nil {
-		user.NotifyTaskFailure = *taskFailure
-	}
-	if taskPartial != nil {
-		user.NotifyTaskPartial = *taskPartial
-	}
-	if taskExternal != nil {
-		user.NotifyTaskExternal = *taskExternal
-	}
-
-	return s.repo.Update(ctx, user)
+	return s.updateOwnerPreferences(ctx, id, func(Owner) (map[string]any, error) { return updates, nil })
 }
 
-// UpdateMonitorDataSource 更新监控数据源设置
-// dataSource: 要更新的数据源类型 (easyssh/nezha/komari)
-// endpoint: API 端点地址（仅 nezha/komari 有效）
-// token: API Token（仅 nezha/komari 有效）
-// setActive: 是否将此数据源设为当前激活的数据源
-func (s *authService) UpdateMonitorDataSource(ctx context.Context, userID uuid.UUID, dataSource, endpoint, token string, setActive bool) error {
-	// 查找用户
-	user, err := s.repo.FindByID(ctx, userID)
+func (s *Service) OpenWork(ctx context.Context, scope access.Scope, kind access.WorkKind, requirements ...access.Requirement) (*access.Lease, error) {
+	// Reserve rechecks persisted authority before and after registration. Never
+	// carry an HTTP request's cached session into a long-lived lease.
+	fresh, err := access.NewScope(scope.Actor(), scope.ExpiresAt(), s)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	// 验证数据源类型
-	dsType := MonitorDataSourceType(dataSource)
-	switch dsType {
-	case MonitorDataSourceEasySSH:
-		// EasySSH 无需额外配置，只需设置为当前数据源
-		if setActive {
-			user.MonitorDataSource = dataSource
-		}
-
-	case MonitorDataSourceNezha:
-		// 更新 Nezha 配置
-		if endpoint != "" {
-			user.NezhaAPIEndpoint = endpoint
-		}
-		if token != "" {
-			encrypted, err := s.encryptUserSecret(user.ID, "nezha_api_token", token)
-			if err != nil {
-				return fmt.Errorf("failed to encrypt Nezha token: %w", err)
-			}
-			user.NezhaAPIToken = encrypted
-		}
-		if setActive {
-			user.MonitorDataSource = dataSource
-		}
-
-	case MonitorDataSourceKomari:
-		// 更新 Komari 配置
-		if endpoint != "" {
-			user.KomariAPIEndpoint = endpoint
-		}
-		if token != "" {
-			encrypted, err := s.encryptUserSecret(user.ID, "komari_api_token", token)
-			if err != nil {
-				return fmt.Errorf("failed to encrypt Komari token: %w", err)
-			}
-			user.KomariAPIToken = encrypted
-		}
-		if setActive {
-			user.MonitorDataSource = dataSource
-		}
-
-	default:
-		return fmt.Errorf("invalid data source type: %s", dataSource)
-	}
-
-	return s.repo.Update(ctx, user)
-}
-
-func (s *authService) encryptUserSecret(userID uuid.UUID, column string, plaintext string) (string, error) {
-	if strings.TrimSpace(plaintext) == "" {
-		return "", nil
-	}
-	if s.encryptor == nil {
-		return "", fmt.Errorf("encryptor is required")
-	}
-	if secretcrypto.HasEncryptedPrefix(plaintext) {
-		return plaintext, nil
-	}
-	return s.encryptor.EncryptSecret(plaintext, s.userSecretAAD(userID, column))
-}
-
-func (s *authService) userSecretAAD(userID uuid.UUID, column string) []byte {
-	return secretcrypto.SecretAAD("users", userID.String(), column)
-}
-
-// generateAvatarForUser 为用户生成头像
-func (s *authService) generateAvatarForUser(username, email string) (string, error) {
-	// 生成确定性种子
-	seed := s.generateUserSeed(username, email)
-
-	// 调用DiceBear API生成头像
-	return s.generateDiceBearAvatar(seed)
-}
-
-// generateUserSeed 基于用户信息生成确定性种子
-func (s *authService) generateUserSeed(username, email string) string {
-	// 使用用户名作为主要种子
-	seedInput := strings.ToLower(username)
-
-	// 如果有邮箱，组合使用以增加唯一性
-	if email != "" {
-		seedInput += strings.ToLower(email)
-	}
-
-	// 使用SHA-256哈希生成确定性种子
-	hash := sha256.Sum256([]byte(seedInput))
-	return fmt.Sprintf("%x", hash)
-}
-
-// generateDiceBearAvatar 生成DiceBear头像
-func (s *authService) generateDiceBearAvatar(seed string) (string, error) {
-	// DiceBear API URL - 使用notionists-neutral风格
-	dicebearUrl := fmt.Sprintf("https://api.dicebear.com/7.x/notionists-neutral/svg?seed=%s", seed)
-
-	// 创建带超时的 HTTP 客户端
-	client := &http.Client{
-		Timeout: 10 * time.Second,
-	}
-
-	// 发起HTTP请求获取SVG
-	resp, err := client.Get(dicebearUrl)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch avatar from DiceBear API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("DiceBear API returned status %d", resp.StatusCode)
-	}
-
-	// 读取SVG内容
-	svgBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read SVG content: %w", err)
-	}
-
-	svgText := string(svgBytes)
-
-	// 对SVG内容进行URL编码，转换为data URL格式
-	encodedSVG := urlEncodeSVG(svgText)
-
-	return fmt.Sprintf("data:image/svg+xml,%s", encodedSVG), nil
-}
-
-// urlEncodeSVG 对SVG内容进行URL编码
-func urlEncodeSVG(svg string) string {
-	// 替换特殊字符
-	svg = strings.ReplaceAll(svg, "<", "%3C")
-	svg = strings.ReplaceAll(svg, ">", "%3E")
-	svg = strings.ReplaceAll(svg, "#", "%23")
-	svg = strings.ReplaceAll(svg, " ", "%20")
-	svg = strings.ReplaceAll(svg, "\"", "%22")
-	svg = strings.ReplaceAll(svg, "'", "%27")
-	svg = strings.ReplaceAll(svg, "\n", "")
-	svg = strings.ReplaceAll(svg, "\r", "")
-	svg = strings.ReplaceAll(svg, "\t", "")
-
-	return svg
-}
-
-// generateUsername 根据邮箱自动生成用户名
-func (s *authService) generateUsername(email string) string {
-	// 提取邮箱前缀（@之前的部分）
-	parts := strings.Split(email, "@")
-	prefix := parts[0]
-
-	// 限制前缀长度（最多20个字符）
-	if len(prefix) > 20 {
-		prefix = prefix[:20]
-	}
-
-	// 生成6位随机后缀
-	randomSuffix := fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
-
-	return fmt.Sprintf("%s_%s", prefix, randomSuffix)
+	return s.runtime.Reserve(withoutSessionCache(ctx), fresh, kind, 0, requirements...)
 }

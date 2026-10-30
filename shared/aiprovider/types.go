@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/easyssh/shared/protocol"
 	"strings"
 )
 
@@ -39,17 +40,7 @@ type Config struct {
 	Pricing  Pricing
 }
 
-type Attachment struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
-	Size      int64  `json:"size"`
-}
-
-func (a Attachment) DataURL() string {
-	return "data:" + a.MediaType + ";base64," + a.Data
-}
+type Attachment = protocol.AIImageAttachment
 
 func ValidateAttachments(attachments []Attachment) error {
 	_, err := validateAttachments(attachments)
@@ -70,6 +61,14 @@ func validateAttachments(attachments []Attachment) (int64, error) {
 			return 0, fmt.Errorf("不支持的图片类型: %s", attachment.MediaType)
 		}
 
+		// Validate encoded size before allocating a decoded copy. Declared Size
+		// cannot be trusted for native calls or imported history.
+		if len(attachment.Data) > base64.StdEncoding.EncodedLen(MaxImageBytes) {
+			return 0, fmt.Errorf("图片数据超出 %d MB 限制", MaxImageBytes/(1024*1024))
+		}
+		if len(attachment.Name) > 1024 || len(attachment.ID) > 256 || len(attachment.MediaType) > 128 {
+			return 0, errors.New("图片描述信息过长")
+		}
 		decoded, err := base64.StdEncoding.DecodeString(attachment.Data)
 		if err != nil {
 			return 0, fmt.Errorf("图片 %s 的 Base64 数据无效: %w", attachment.Name, err)
@@ -210,9 +209,4 @@ func (e *ProviderError) Unwrap() error {
 
 func NewLimitError(code, message string) error {
 	return &ProviderError{Code: code, Message: message, Retryable: false}
-}
-
-func IsProviderError(err error) bool {
-	var providerErr *ProviderError
-	return errors.As(err, &providerErr)
 }

@@ -142,7 +142,7 @@ func newQueueTestRepository(t *testing.T) Repository {
 	if err := database.AutoMigrate(&Job{}); err != nil {
 		t.Fatalf("migrate job queue: %v", err)
 	}
-	return NewRepository(database)
+	return NewRepository(database, nil, nil)
 }
 
 func waitForStarts(t *testing.T, started <-chan struct{}, count int) {

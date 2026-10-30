@@ -2,6 +2,10 @@ package operationrecord
 
 import (
 	"context"
+	"errors"
+	"github.com/easyssh/server/internal/storage/accessquery"
+	"github.com/easyssh/shared/contentstore"
+	"github.com/easyssh/shared/protocol"
 	"strings"
 	"time"
 
@@ -11,59 +15,114 @@ import (
 )
 
 type Repository interface {
+	Overview(context.Context, OverviewRequest) (*Overview, error)
+	EnsureCoverage(context.Context) error
+	RecoverInterrupted(context.Context) error
 	Upsert(ctx context.Context, record *OperationRecord) error
 	List(ctx context.Context, req *ListRequest) (*ListResponse, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*OperationRecord, error)
-	GetByUserID(ctx context.Context, userID, id uuid.UUID) (*OperationRecord, error)
 	GetStatistics(ctx context.Context, req *StatisticsRequest) (*Statistics, error)
-	DeleteBySource(ctx context.Context, sourceTable string, sourceID string) error
 	DeleteOld(ctx context.Context, before time.Time, category Category) (int64, error)
 }
 
 type repository struct {
-	db *gorm.DB
+	db     *gorm.DB
+	bodies Bodies
 }
 
-func NewRepository(db *gorm.DB) Repository {
-	return &repository{db: db}
+func NewRepository(db *gorm.DB, bodies Bodies) Repository {
+	return &repository{db: db, bodies: bodies}
 }
 
 func (r *repository) Upsert(ctx context.Context, record *OperationRecord) error {
 	if record == nil {
 		return nil
 	}
-	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "source_table"}, {Name: "source_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"user_id",
-			"username",
-			"type",
-			"category",
-			"action",
-			"status",
-			"server_id",
-			"server_name",
-			"title",
-			"resource",
-			"source",
-			"ip",
-			"user_agent",
-			"started_at",
-			"finished_at",
-			"duration_ms",
-			"progress",
-			"total_count",
-			"success_count",
-			"failure_count",
-			"bytes_total",
-			"bytes_processed",
-			"speed_bps",
-			"error_message",
-			"detail_json",
-			"updated_at",
-			"deleted_at",
-		}),
-	}).Create(record).Error
+	// Preserve the caller's observed detail if the transaction fails or is retried.
+	candidate := *record
+	err := r.transaction(ctx, func(tx *gorm.DB) error {
+		record := &candidate
+		if err := record.BeforeCreate(tx); err != nil {
+			return err
+		}
+		var stored OperationRecord
+		err := tx.Unscoped().Where("source_table = ? AND source_id = ?", record.SourceTable, record.SourceID).Take(&stored).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		if err == nil {
+			if stored.Actor != record.Actor {
+				return errors.New("activity source belongs to a different actor")
+			}
+			record.ID, record.WorkID, record.ParentWorkID, record.WorkStartedAt, record.Attempt = stored.ID, stored.WorkID, stored.ParentWorkID, stored.WorkStartedAt, stored.Attempt
+		}
+		if err := r.storeDetail(tx, record); err != nil {
+			return err
+		}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "source_table"}, {Name: "source_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"username",
+				"type",
+				"category",
+				"action",
+				"status",
+				"server_id",
+				"server_name",
+				"title",
+				"resource",
+				"source",
+				"ip",
+				"user_agent",
+				"started_at", "established_at", "connection_uncertain_until",
+				"finished_at",
+				"duration_ms",
+				"progress",
+				"total_count",
+				"success_count",
+				"failure_count",
+				"bytes_total",
+				"bytes_processed",
+				"bytes_completed",
+				"speed_bps",
+				"error_message",
+				"detail_json", "task_content_id", "task_content_size", "task_content_sha256", "detail_content_id", "detail_content_size", "detail_content_sha256",
+				"updated_at",
+			}),
+		}).Create(record).Error; err != nil {
+			return err
+		}
+		// Another writer may have inserted the same source after our initial read.
+		// Never attach a body/resources to the losing ID or overwrite another actor.
+		var committed OperationRecord
+		if err := tx.Unscoped().Where("source_table=? AND source_id=?", record.SourceTable, record.SourceID).First(&committed).Error; err != nil {
+			return err
+		}
+		if committed.Actor != record.Actor || committed.ID != record.ID {
+			return errors.New("activity source identity changed")
+		}
+		record.WorkID, record.ParentWorkID, record.WorkStartedAt, record.Attempt = committed.WorkID, committed.ParentWorkID, committed.WorkStartedAt, committed.Attempt
+		resources := append([]ResourceSnapshot(nil), record.Resources...)
+		if record.ServerID != nil {
+			resources = append(resources, ResourceSnapshot{ServerID: *record.ServerID, Name: record.ServerName})
+		}
+		for _, resource := range resources {
+			if resource.ServerID == uuid.Nil {
+				continue
+			}
+			row := Resource{RecordID: record.ID, ServerID: resource.ServerID, Name: resource.Name}
+			if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "record_id"}, {Name: "server_id"}}, DoUpdates: clause.Assignments(map[string]interface{}{"name": gorm.Expr("CASE WHEN operation_resources.name = '' THEN ? ELSE operation_resources.name END", resource.Name)})}).Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err == nil {
+		record.ID, record.WorkID, record.ParentWorkID, record.WorkStartedAt, record.Attempt = candidate.ID, candidate.WorkID, candidate.ParentWorkID, candidate.WorkStartedAt, candidate.Attempt
+		record.CreatedAt, record.UpdatedAt = candidate.CreatedAt, candidate.UpdatedAt
+		record.Source, record.Category, record.BytesCompleted = candidate.Source, candidate.Category, candidate.BytesCompleted
+	}
+	return err
 }
 
 func (r *repository) List(ctx context.Context, req *ListRequest) (*ListResponse, error) {
@@ -71,7 +130,11 @@ func (r *repository) List(ctx context.Context, req *ListRequest) (*ListResponse,
 		req = &ListRequest{}
 	}
 
-	query := r.applyListFilters(r.db.WithContext(ctx).Model(&OperationRecord{}), req)
+	query, err := accessquery.Visible(ctx, r.db.WithContext(ctx).Model(&OperationRecord{}))
+	if err != nil {
+		return nil, err
+	}
+	query = r.applyListFilters(query, req)
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -88,8 +151,8 @@ func (r *repository) List(ctx context.Context, req *ListRequest) (*ListResponse,
 		req.PageSize = 100
 	}
 
-	var records []*OperationRecordSummary
-	err := query.
+	records := make([]*OperationRecordSummary, 0)
+	err = query.
 		Order(r.listOrder(req)).
 		Limit(req.PageSize).
 		Offset((req.Page - 1) * req.PageSize).
@@ -114,16 +177,31 @@ func (r *repository) List(ctx context.Context, req *ListRequest) (*ListResponse,
 
 func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*OperationRecord, error) {
 	var record OperationRecord
-	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&record).Error; err != nil {
+	query, err := accessquery.Visible(ctx, r.db.WithContext(ctx))
+	if err != nil {
 		return nil, err
 	}
-	return &record, nil
-}
-
-func (r *repository) GetByUserID(ctx context.Context, userID, id uuid.UUID) (*OperationRecord, error) {
-	var record OperationRecord
-	if err := r.db.WithContext(ctx).Where("id = ? AND user_id = ?", id, userID).First(&record).Error; err != nil {
+	if err := query.Where("id = ?", id).First(&record).Error; err != nil {
 		return nil, err
+	}
+	resources, err := readResourceSnapshots(r.db.WithContext(ctx), []uuid.UUID{record.ID})
+	if err != nil {
+		return nil, err
+	}
+	record.Resources = resources[record.ID]
+	if record.TaskContentID != nil {
+		ref := protocol.ContentReference{ID: *record.TaskContentID, Size: record.TaskContentSize, Sha256: record.TaskContentSHA256, MediaType: "application/json"}
+		if err := contentstore.ValidateReference(ref); err != nil {
+			return nil, err
+		}
+		record.TaskContent = &ref
+	}
+	if record.DetailContentID != nil {
+		ref := protocol.ContentReference{ID: *record.DetailContentID, Size: record.DetailContentSize, Sha256: record.DetailContentSHA256, MediaType: "text/plain; charset=utf-8"}
+		if err := contentstore.ValidateReference(ref); err != nil {
+			return nil, err
+		}
+		record.DetailContent = &ref
 	}
 	return &record, nil
 }
@@ -142,7 +220,11 @@ func (r *repository) GetStatistics(ctx context.Context, req *StatisticsRequest) 
 		Status Status
 		Count  int64
 	}
-	if err := r.statisticsQuery(ctx, req).
+	query, err := accessquery.Visible(ctx, r.statisticsQuery(ctx, req))
+	if err != nil {
+		return nil, err
+	}
+	if err := query.
 		Select("type, status, count(*) as count").
 		Group("type, status").
 		Find(&rows).Error; err != nil {
@@ -165,26 +247,7 @@ func (r *repository) GetStatistics(ctx context.Context, req *StatisticsRequest) 
 	return stats, nil
 }
 
-func (r *repository) DeleteBySource(ctx context.Context, sourceTable string, sourceID string) error {
-	return r.db.WithContext(ctx).
-		Where("source_table = ? AND source_id = ?", sourceTable, sourceID).
-		Delete(&OperationRecord{}).Error
-}
-
-func (r *repository) DeleteOld(ctx context.Context, before time.Time, category Category) (int64, error) {
-	query := r.db.WithContext(ctx).Where("created_at < ?", before)
-	if category != "" {
-		query = query.Where("category = ?", category)
-	}
-
-	result := query.Delete(&OperationRecord{})
-	return result.RowsAffected, result.Error
-}
-
 func (r *repository) applyListFilters(query *gorm.DB, req *ListRequest) *gorm.DB {
-	if req.UserID != nil {
-		query = query.Where("user_id = ?", *req.UserID)
-	}
 	if len(req.Types) > 0 {
 		query = query.Where("type IN ?", req.Types)
 	} else if req.Type != "" {
@@ -204,7 +267,7 @@ func (r *repository) applyListFilters(query *gorm.DB, req *ListRequest) *gorm.DB
 		query = query.Where("status = ?", req.Status)
 	}
 	if req.ServerID != nil {
-		query = query.Where("server_id = ?", *req.ServerID)
+		query = query.Where("EXISTS (SELECT 1 FROM operation_resources ar WHERE ar.record_id = operation_records.id AND ar.server_id = ?)", *req.ServerID)
 	}
 	if req.Source != "" {
 		query = query.Where("source = ?", req.Source)
@@ -230,9 +293,6 @@ func (r *repository) applyListFilters(query *gorm.DB, req *ListRequest) *gorm.DB
 
 func (r *repository) statisticsQuery(ctx context.Context, req *StatisticsRequest) *gorm.DB {
 	query := r.db.WithContext(ctx).Model(&OperationRecord{})
-	if req.UserID != nil {
-		query = query.Where("user_id = ?", *req.UserID)
-	}
 	if req.Type != "" {
 		query = query.Where("type = ?", req.Type)
 	}

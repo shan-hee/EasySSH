@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/easyssh/shared/protocol"
+
 	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/monitoring"
 	"github.com/gin-gonic/gin"
@@ -12,11 +14,11 @@ import (
 // MonitoringHandler 监控处理器
 type MonitoringHandler struct {
 	monitoringService monitoring.Service
-	authService       auth.Service
+	authService       *auth.Service
 }
 
 // NewMonitoringHandler 创建监控处理器
-func NewMonitoringHandler(monitoringService monitoring.Service, authService auth.Service) *MonitoringHandler {
+func NewMonitoringHandler(monitoringService monitoring.Service, authService *auth.Service) *MonitoringHandler {
 	return &MonitoringHandler{
 		monitoringService: monitoringService,
 		authService:       authService,
@@ -26,7 +28,7 @@ func NewMonitoringHandler(monitoringService monitoring.Service, authService auth
 // GetAllResources 获取所有服务器的资源概览
 // GET /api/v1/monitoring/resources
 func (h *MonitoringHandler) GetAllResources(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
+	ownerID, err := getOwnerIDFromContext(c)
 	if err != nil {
 		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		return
@@ -34,15 +36,15 @@ func (h *MonitoringHandler) GetAllResources(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// 获取用户信息（包含数据源配置）
-	user, err := h.authService.GetUserByID(ctx, userID)
+	// 获取所有者信息（包含数据源配置）
+	owner, err := h.authService.GetOwnerByID(ctx, ownerID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "user_error", err.Error())
+		RespondError(c, http.StatusInternalServerError, "owner_error", err.Error())
 		return
 	}
 
-	// 使用用户配置的数据源获取资源
-	resources, err := h.monitoringService.GetAllServersResourcesWithUser(ctx, user)
+	// 使用所有者配置的数据源获取资源
+	resources, err := h.monitoringService.GetAllServersResourcesWithOwner(ctx, owner)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "monitoring_error", err.Error())
 		return
@@ -54,17 +56,14 @@ func (h *MonitoringHandler) GetAllResources(c *gin.Context) {
 // TestDataSourceConnection 测试数据源连接
 // POST /api/v1/monitoring/datasource/test
 func (h *MonitoringHandler) TestDataSourceConnection(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
+	ownerID, err := getOwnerIDFromContext(c)
 	if err != nil {
 		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		return
 	}
 
-	var req struct {
-		Type     string `json:"type" binding:"required"` // easyssh, nezha, komari
-		Endpoint string `json:"endpoint"`                // API 端点
-		Token    string `json:"token"`                   // API Token
-	}
+	var req protocol.MonitoringDataSourceTest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
@@ -73,10 +72,10 @@ func (h *MonitoringHandler) TestDataSourceConnection(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// 获取用户信息（EasySSH 数据源需要用户 ID）
-	user, err := h.authService.GetUserByID(ctx, userID)
+	// 获取所有者信息（EasySSH 数据源需要所有者 ID）
+	owner, err := h.authService.GetOwnerByID(ctx, ownerID)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "user_error", err.Error())
+		RespondError(c, http.StatusInternalServerError, "owner_error", err.Error())
 		return
 	}
 
@@ -88,11 +87,11 @@ func (h *MonitoringHandler) TestDataSourceConnection(c *gin.Context) {
 	}
 
 	// 测试连接
-	if err := h.monitoringService.TestDataSourceConnection(ctx, config, user); err != nil {
+	if err := h.monitoringService.TestDataSourceConnection(ctx, config, owner); err != nil {
 		log.Printf("[Monitoring] TestDataSourceConnection failed: type=%s, endpoint=%s, error=%v", config.Type, config.Endpoint, err)
 		RespondError(c, http.StatusBadRequest, "connection_failed", err.Error())
 		return
 	}
 
-	RespondSuccess(c, map[string]string{"message": "Connection successful"})
+	RespondSuccess(c, protocol.MessageResponse{Message: "Connection successful"})
 }

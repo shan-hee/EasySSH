@@ -2,6 +2,8 @@ package rest
 
 import (
 	"context"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"net/http"
 	"time"
 
@@ -23,18 +25,20 @@ func (h *SystemInfoHandler) Snapshot(c *gin.Context) {
 		RespondError(c, http.StatusBadRequest, "invalid_system_table", err.Error())
 		return
 	}
-	userID := c.GetString("user_id")
-	if userID == "" {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "unauthorized")
+	serverID := c.Param("serverId")
+	lease, err := access.Current(c.Request.Context()).OpenWork(c.Request.Context(), access.Task, access.Requirement{Action: protocol.MonitorRead, ServerID: serverID})
+	if err != nil {
+		accessError(c, err)
 		return
 	}
-	serverID := c.Param("serverId")
-	connection, err := h.pool.GetOrCreate(userID, serverID)
+	defer lease.Close(nil)
+	c.Request = c.Request.WithContext(lease.Context())
+	connection, err := h.pool.GetOrCreate(c.Request.Context(), serverID, protocol.MonitorRead)
 	if err != nil {
 		RespondError(c, http.StatusBadGateway, "ssh_connection_failed", err.Error())
 		return
 	}
-	defer h.pool.Release(userID, serverID)
+	defer h.pool.Release(connection)
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
 	defer cancel()
 	result, err := connection.Client.ExecuteCommandDetailedContext(ctx, command)

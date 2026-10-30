@@ -11,18 +11,8 @@ import (
 // remote server IDs from that space, never local database primary keys.
 const ServerOrderKey = "order/00000000-0000-4000-8000-000000000001"
 
-// ConfigurationProtocol includes server ordering across desktop and Web.
-const ConfigurationProtocol = 4
-
-func ConfigurationRecordCount(snapshot Snapshot) int {
-	count := 0
-	for key := range snapshot {
-		if strings.HasPrefix(key, "server/") || strings.HasPrefix(key, "script/") {
-			count++
-		}
-	}
-	return count
-}
+// ConfigurationProtocol includes independent groups and stable server references.
+const ConfigurationProtocol = 5
 
 func ParseServerOrder(value string) ([]string, error) {
 	if len(value) > 1<<20 {

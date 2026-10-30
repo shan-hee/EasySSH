@@ -1,6 +1,9 @@
 package completion
 
 import (
+	"context"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"log/slog"
 	"time"
 
@@ -36,25 +39,25 @@ type FetchOptions struct {
 }
 
 type Service interface {
-	FetchCompletionData(client *ssh.Client, userID uuid.UUID, serverID uuid.UUID, opts FetchOptions) (*CompletionData, error)
-	ClearCache(userID uuid.UUID, serverID uuid.UUID)
-	ClearUserCache(userID uuid.UUID)
+	FetchCompletionData(ctx context.Context, client *ssh.Client, serverID uuid.UUID, opts FetchOptions) (*CompletionData, error)
+	ClearCache(actor protocol.Actor, serverID uuid.UUID)
+	ClearActorCache(actor protocol.Actor)
 	ClearAllCache()
 }
 
 type cacheKey struct {
-	userID         uuid.UUID
+	actor          protocol.Actor
 	serverID       uuid.UUID
 	includeHistory bool
 	includeScripts bool
 }
 
 type service struct {
-	scriptRepo script.Repository
-	cache      *ttlcache.Cache[cacheKey, *CompletionData]
+	scripts script.Service
+	cache   *ttlcache.Cache[cacheKey, *CompletionData]
 }
 
-func NewService(scriptRepo script.Repository) Service {
+func NewService(scripts script.Service) Service {
 	cache := ttlcache.New(
 		ttlcache.WithTTL[cacheKey, *CompletionData](completionCacheTTL),
 		ttlcache.WithCapacity[cacheKey, *CompletionData](completionMaxCacheSize),
@@ -66,25 +69,32 @@ func NewService(scriptRepo script.Repository) Service {
 		"ttl_minutes", int(completionCacheTTL/time.Minute),
 		"max_entries", completionMaxCacheSize,
 	)
-	return &service{scriptRepo: scriptRepo, cache: cache}
+	return &service{scripts: scripts, cache: cache}
 }
 
-func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serverID uuid.UUID, opts FetchOptions) (*CompletionData, error) {
+func (s *service) FetchCompletionData(ctx context.Context, client *ssh.Client, serverID uuid.UUID, opts FetchOptions) (*CompletionData, error) {
+	scope := access.Current(ctx)
+	if err := scope.Check(ctx, access.Requirement{Action: protocol.TerminalConnect, ServerID: serverID.String()}); err != nil {
+		return nil, err
+	}
+	if scope.RequireOwner(ctx, protocol.ResourcesManage) != nil {
+		opts.IncludeScripts = false
+	}
 	key := cacheKey{
-		userID:         userID,
+		actor:          scope.Actor(),
 		serverID:       serverID,
 		includeHistory: opts.IncludeHistory,
 		includeScripts: opts.IncludeScripts,
 	}
 	if item := s.cache.Get(key); item != nil {
-		slog.Debug("completion cache hit", "user_id", userID, "server_id", serverID)
+		slog.Debug("completion cache hit", "actor", scope.Actor(), "server_id", serverID)
 		return cloneCompletionData(item.Value()), nil
 	}
 
-	slog.Debug("completion cache miss", "user_id", userID, "server_id", serverID)
+	slog.Debug("completion cache miss", "actor", scope.Actor(), "server_id", serverID)
 	history := []string{}
 	if opts.IncludeHistory {
-		remoteHistory, err := sshutil.FetchCompletionHistory(client)
+		remoteHistory, err := sshutil.FetchCompletionHistory(ctx, client)
 		if err != nil {
 			slog.Warn("failed to fetch shell history", "error", err)
 		} else {
@@ -94,7 +104,7 @@ func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serv
 
 	scripts := []ScriptItem{}
 	if opts.IncludeScripts {
-		scriptList, _, err := s.scriptRepo.List(userID, &script.ListScriptsRequest{
+		response, err := s.scripts.ListScripts(ctx, &script.ListScriptsRequest{
 			Page:      1,
 			Limit:     100,
 			SkipCount: true,
@@ -102,7 +112,7 @@ func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serv
 		if err != nil {
 			slog.Warn("failed to fetch completion scripts", "error", err)
 		} else {
-			for _, item := range scriptList {
+			for _, item := range response.Data {
 				scripts = append(scripts, ScriptItem{
 					Name:        item.Name,
 					Content:     item.Content,
@@ -114,19 +124,22 @@ func (s *service) FetchCompletionData(client *ssh.Client, userID uuid.UUID, serv
 		}
 	}
 
+	if err := scope.Check(ctx, access.Requirement{Action: protocol.TerminalConnect, ServerID: serverID.String()}); err != nil {
+		return nil, err
+	}
 	data := &CompletionData{History: history, Scripts: scripts}
 	s.cache.Set(key, cloneCompletionData(data), completionCacheTTL)
 	return data, nil
 }
 
-func (s *service) ClearCache(userID uuid.UUID, serverID uuid.UUID) {
+func (s *service) ClearCache(actor protocol.Actor, serverID uuid.UUID) {
 	s.deleteMatching(func(key cacheKey) bool {
-		return key.userID == userID && key.serverID == serverID
+		return key.actor == actor && key.serverID == serverID
 	})
 }
 
-func (s *service) ClearUserCache(userID uuid.UUID) {
-	s.deleteMatching(func(key cacheKey) bool { return key.userID == userID })
+func (s *service) ClearActorCache(actor protocol.Actor) {
+	s.deleteMatching(func(key cacheKey) bool { return key.actor == actor })
 }
 
 func (s *service) ClearAllCache() {

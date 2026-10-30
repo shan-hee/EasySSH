@@ -2,6 +2,7 @@ package auditlog
 
 import (
 	"context"
+	"github.com/easyssh/server/internal/storage/accessquery"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/operationrecord"
@@ -22,10 +23,10 @@ type repository struct {
 	records operationrecord.Repository
 }
 
-func NewRepository(db *gorm.DB) Repository {
+func NewRepository(db *gorm.DB, bodies operationrecord.Bodies) Repository {
 	return &repository{
 		db:      db,
-		records: operationrecord.NewRepository(db),
+		records: operationrecord.NewRepository(db, bodies),
 	}
 }
 
@@ -58,7 +59,7 @@ func (r *repository) GetByID(ctx context.Context, id uuid.UUID) (*AuditLog, erro
 
 func (r *repository) GetStatistics(ctx context.Context, req *AuditLogStatisticsRequest) (*AuditLogStatistics, error) {
 	stats := &AuditLogStatistics{
-		ActionStats: make(map[ActionType]int64),
+		ActionStats: make(map[string]int64),
 	}
 
 	var rows []struct {
@@ -66,7 +67,11 @@ func (r *repository) GetStatistics(ctx context.Context, req *AuditLogStatisticsR
 		Status operationrecord.Status
 		Count  int64
 	}
-	if err := r.statisticsQuery(ctx, req).
+	query, err := accessquery.Visible(ctx, r.statisticsQuery(ctx, req))
+	if err != nil {
+		return nil, err
+	}
+	if err := query.
 		Select("action, status, count(*) as count").
 		Group("action, status").
 		Find(&rows).Error; err != nil {
@@ -74,7 +79,7 @@ func (r *repository) GetStatistics(ctx context.Context, req *AuditLogStatisticsR
 	}
 	for _, row := range rows {
 		stats.TotalLogs += row.Count
-		stats.ActionStats[ActionType(row.Action)] += row.Count
+		stats.ActionStats[row.Action] += row.Count
 		switch row.Status {
 		case operationrecord.StatusSuccess:
 			stats.SuccessCount += row.Count
@@ -94,9 +99,6 @@ func (r *repository) statisticsQuery(ctx context.Context, req *AuditLogStatistic
 	query := r.db.WithContext(ctx).Model(&operationrecord.OperationRecord{})
 	if req == nil {
 		return query
-	}
-	if req.UserID != nil {
-		query = query.Where("user_id = ?", *req.UserID)
 	}
 	if req.Category != "" {
 		query = query.Where("category = ?", mapLogCategory(req.Category))

@@ -80,10 +80,10 @@ const (
 	TemplatePasswordChange   EmailTemplate = "password_changed"
 	TemplateVerificationCode EmailTemplate = "verification_code"
 	TemplatePasswordReset    EmailTemplate = "password_reset"
-	TemplateNewDevice        EmailTemplate = "new_device"        // 新设备登录告警
-	TemplateNewLocation      EmailTemplate = "new_location"      // 新地点登录告警
-	TemplateSuspiciousLogin  EmailTemplate = "suspicious_login"  // 可疑登录告警
-	TemplateAccountLocked    EmailTemplate = "account_locked"    // 账户锁定告警
+	TemplateNewDevice        EmailTemplate = "new_device"       // 新设备登录告警
+	TemplateNewLocation      EmailTemplate = "new_location"     // 新地点登录告警
+	TemplateSuspiciousLogin  EmailTemplate = "suspicious_login" // 可疑登录告警
+	TemplateAccountLocked    EmailTemplate = "account_locked"   // 账户锁定告警
 )
 
 // EmailData 邮件数据结构

@@ -1,190 +1,142 @@
 package rest
 
 import (
+	"errors"
+	"github.com/easyssh/shared/protocol"
+	"github.com/easyssh/shared/scriptutil"
 	"net/http"
 
+	"github.com/easyssh/server/internal/domain/batchtask"
 	"github.com/easyssh/server/internal/domain/script"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
-// ScriptHandler 脚本处理器
 type ScriptHandler struct {
-	scriptService script.Service
+	scripts script.Service
+	tasks   batchtask.Service
 }
 
-// NewScriptHandler 创建脚本处理器实例
-func NewScriptHandler(scriptService script.Service) *ScriptHandler {
-	return &ScriptHandler{
-		scriptService: scriptService,
+func NewScriptHandler(scripts script.Service, tasks batchtask.Service) *ScriptHandler {
+	return &ScriptHandler{scripts: scripts, tasks: tasks}
+}
+func scriptError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, script.ErrScriptNotFound):
+		RespondError(c, 404, "script_not_found", err.Error())
+	case errors.Is(err, script.ErrInvalidScriptData), errors.Is(err, scriptutil.ErrInvalidCatalogQuery):
+		RespondError(c, 400, "invalid_script", err.Error())
+	default:
+		accessError(c, err)
 	}
 }
-
-// Create 创建脚本
 func (h *ScriptHandler) Create(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
 	var req script.CreateScriptRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		RespondError(c, 400, "invalid_request", err.Error())
 		return
 	}
-
-	username := c.GetString("username")
-	uid, ok := requireCurrentUserID(c)
+	row, err := h.scripts.CreateScript(c.Request.Context(), c.GetString("username"), &req)
+	if err != nil {
+		scriptError(c, err)
+		return
+	}
+	RespondSuccess(c, row.Public())
+}
+func (h *ScriptHandler) Update(c *gin.Context) {
+	id, ok := accessID(c, "id")
 	if !ok {
 		return
 	}
-
-	createdScript, err := h.scriptService.CreateScript(uid, username, &req)
-	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "create_failed", err.Error())
-		return
-	}
-
-	RespondSuccess(c, createdScript)
-}
-
-// Update 更新脚本
-func (h *ScriptHandler) Update(c *gin.Context) {
-	scriptID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_script_id", err.Error())
-		return
-	}
-
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
 	var req script.UpdateScriptRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		RespondError(c, 400, "invalid_request", err.Error())
 		return
 	}
-
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-
-	updatedScript, err := h.scriptService.UpdateScript(uid, scriptID, &req)
+	row, err := h.scripts.UpdateScript(c.Request.Context(), id, &req)
 	if err != nil {
-		if err == script.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", err.Error())
-			return
-		}
-		if err == script.ErrScriptNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", err.Error())
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "update_failed", err.Error())
+		scriptError(c, err)
 		return
 	}
-
-	RespondSuccess(c, updatedScript)
+	RespondSuccess(c, row.Public())
 }
-
-// Delete 删除脚本
 func (h *ScriptHandler) Delete(c *gin.Context) {
-	scriptID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_script_id", err.Error())
-		return
-	}
-
-	uid, ok := requireCurrentUserID(c)
+	id, ok := accessID(c, "id")
 	if !ok {
 		return
 	}
-
-	if err := h.scriptService.DeleteScript(uid, scriptID); err != nil {
-		if err == script.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", err.Error())
-			return
-		}
-		if err == script.ErrScriptNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", err.Error())
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "delete_failed", err.Error())
+	if err := h.scripts.DeleteScript(c.Request.Context(), id); err != nil {
+		scriptError(c, err)
 		return
 	}
-
-	RespondSuccessWithMessage(c, nil, "script deleted successfully")
+	RespondSuccess(c, gin.H{"success": true})
 }
-
-// GetByID 获取脚本详情
 func (h *ScriptHandler) GetByID(c *gin.Context) {
-	scriptID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_script_id", err.Error())
-		return
-	}
-
-	uid, ok := requireCurrentUserID(c)
+	id, ok := accessID(c, "id")
 	if !ok {
 		return
 	}
-
-	scriptData, err := h.scriptService.GetScript(uid, scriptID)
+	row, err := h.scripts.GetScript(c.Request.Context(), id)
 	if err != nil {
-		if err == script.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", err.Error())
-			return
-		}
-		if err == script.ErrScriptNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", err.Error())
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "get_failed", err.Error())
+		scriptError(c, err)
 		return
 	}
-
-	RespondSuccess(c, scriptData)
+	RespondSuccess(c, row.Public())
 }
-
-// List 获取脚本列表
 func (h *ScriptHandler) List(c *gin.Context) {
 	var req script.ListScriptsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		RespondError(c, 400, "invalid_request", err.Error())
 		return
 	}
-
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-
-	response, err := h.scriptService.ListScripts(uid, &req)
+	rows, err := h.scripts.ListScripts(c.Request.Context(), &req)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "list_failed", err.Error())
+		scriptError(c, err)
 		return
 	}
-
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, rows)
+}
+func (h *ScriptHandler) Available(c *gin.Context) {
+	var input protocol.ScriptCatalogInput
+	if err := c.ShouldBindQuery(&input); err != nil {
+		RespondError(c, 400, "invalid_script", "invalid script catalogue query")
+		return
+	}
+	rows, err := h.scripts.Available(c.Request.Context(), c.Query("server_id"), input)
+	if err != nil {
+		scriptError(c, err)
+		return
+	}
+	RespondSuccess(c, rows)
 }
 
-// Execute 执行脚本（增加执行计数）
+// Execute creates actual queued work. The caller cannot replace stored source.
 func (h *ScriptHandler) Execute(c *gin.Context) {
-	scriptID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_script_id", err.Error())
-		return
-	}
-
-	uid, ok := requireCurrentUserID(c)
+	id, ok := accessID(c, "id")
 	if !ok {
 		return
 	}
-
-	if err := h.scriptService.ExecuteScript(uid, scriptID); err != nil {
-		if err == script.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", err.Error())
-			return
-		}
-		if err == script.ErrScriptNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", err.Error())
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "execute_failed", err.Error())
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, scriptutil.MaxExecuteBytes)
+	var req protocol.ScriptExecuteInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, 400, "invalid_request", err.Error())
 		return
 	}
-
-	RespondSuccessWithMessage(c, nil, "script execution recorded")
+	execution, err := h.scripts.Resolve(c.Request.Context(), id, req.ServerIDs, req.Parameters, req.Version)
+	if err != nil {
+		scriptError(c, err)
+		return
+	}
+	scriptID := id.String()
+	task, err := h.tasks.CreateBatchTask(c.Request.Context(), &protocol.CreateBatchTaskRequest{TaskName: execution.Name, TaskType: "script", ScriptID: &scriptID, ServerIDs: req.ServerIDs, ScriptVersion: execution.Version, Parameters: req.Parameters, ExecutionMode: protocol.BatchTaskExecutionMode(req.ExecutionMode)})
+	if err != nil {
+		batchTaskError(c, err)
+		return
+	}
+	if err := h.tasks.StartBatchTask(c.Request.Context(), task.ID); err != nil {
+		batchTaskError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, protocol.ScriptAccepted{TaskID: task.ID, BatchTaskID: task.ID, Status: "queued"})
 }

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/infra/config"
-	"github.com/easyssh/shared/dbmigration"
+	"github.com/easyssh/server/internal/storage/schema"
 	"github.com/easyssh/shared/instanceactivation"
 	"github.com/easyssh/shared/instancebackup"
 	"gorm.io/gorm"
@@ -45,7 +45,7 @@ func newInstanceHistory(cfg *config.Config, database *gorm.DB, freeze func(func(
 		return nil, errors.New("backup storage must be separate from the instance data directory")
 	}
 	return instancebackup.NewHistory(instancebackup.HistoryOptions{
-		AppVersion: readAppVersion(), Driver: cfg.Database.Driver, SchemaVersion: dbmigration.Latest,
+		AppVersion: readAppVersion(), Driver: cfg.Database.Driver, SchemaVersion: schema.Version,
 		Directory: directory,
 		Snapshot: func(ctx context.Context, output, password string) error {
 			return createInstanceArchive(ctx, cfg, database, output, password, func(capture func() error) error {
@@ -77,7 +77,7 @@ func newInstanceHistory(cfg *config.Config, database *gorm.DB, freeze func(func(
 			if m.Profile != "server" || m.Driver != cfg.Database.Driver {
 				return errors.New("backup profile/database type does not match this instance")
 			}
-			if m.SchemaVersion < 1 || m.SchemaVersion > dbmigration.Latest {
+			if m.SchemaVersion < 1 || m.SchemaVersion > schema.Version {
 				return errors.New("unsupported database migration version")
 			}
 			return instancebackup.CheckApplicationVersion(m.AppVersion, readAppVersion())

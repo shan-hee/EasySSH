@@ -3,6 +3,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"strings"
 
 	"github.com/easyssh/server/internal/domain/security"
 	"github.com/gin-gonic/gin"
@@ -12,44 +13,17 @@ import (
 // 只有在配置了 IP 白名单时才进行验证
 func OptionalIPWhitelistMiddleware(securityService security.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 暂时与日志、审计和会话记录使用相同的客户端 IP 解析逻辑。
-		clientIP := LogClientIP(c)
 
-		// 将客户端 IP 存入上下文
-		c.Set("client_ip", clientIP)
-		if IsHealthProbePath(c.Request.URL.Path) {
+		ownerEndpoint := strings.HasPrefix(c.Request.URL.Path, "/api/v1/owner/")
+		_, cookieErr := c.Cookie(OwnerCookieName)
+		visitor := c.GetHeader("X-EasySSH-Access-Session") != "" || strings.HasPrefix(c.GetHeader("Authorization"), "Access ") || strings.HasPrefix(c.Request.URL.Path, "/api/v1/access/")
+		if !ownerEndpoint && (cookieErr != nil || visitor) {
 			c.Next()
 			return
 		}
-
-		// 优先从上下文缓存获取配置
-		var allowed bool
-		var err error
-		if secConfig, ok := GetSecurityConfigFromContext(c); ok {
-			// 使用缓存的配置进行检查,避免重复查询数据库
-			allowed = securityService.CheckIPAllowedWithConfig(secConfig, clientIP)
-		} else {
-			// 缓存未命中,调用服务层的统一检查方法
-			allowed, err = securityService.CheckIPAllowed(c.Request.Context(), clientIP)
-			if err != nil {
-				// 记录错误但继续处理（避免配置错误导致服务不可用）
-				c.Error(err)
-				c.Next()
-				return
-			}
-		}
-
-		// 如果不允许，返回 403
-		if !allowed {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":   "forbidden",
-				"message": "IP address not allowed",
-				"ip":      clientIP,
-			})
-			c.Abort()
+		if !checkOwnerAddress(c, securityService) {
 			return
 		}
-
 		c.Next()
 	}
 }
@@ -119,4 +93,26 @@ func IsPrivateIP(ip string) bool {
 	}
 
 	return false
+}
+
+// Also used after owner ticket authentication, where no owner cookie is present.
+func checkOwnerAddress(c *gin.Context, service security.Service) bool {
+	ip := LogClientIP(c)
+	c.Set("client_ip", ip)
+	var allowed bool
+	var err error
+	if cfg, ok := GetSecurityConfigFromContext(c); ok {
+		allowed = service.CheckIPAllowedWithConfig(cfg, ip)
+	} else {
+		allowed, err = service.CheckIPAllowed(c.Request.Context(), ip)
+	}
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "owner_access_policy_unavailable"})
+		return false
+	}
+	if !allowed {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden", "message": "IP address not allowed"})
+		return false
+	}
+	return true
 }

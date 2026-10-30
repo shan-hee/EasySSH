@@ -1,19 +1,20 @@
 package runtime
 
 import (
+	"github.com/easyssh/shared/protocol"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/aichat/provider"
 	"github.com/easyssh/shared/aichatui"
 )
 
-type SessionStatus string
+type SessionStatus = protocol.AISessionStatus
 
 const (
-	SessionStatusIdle                SessionStatus = "idle"
-	SessionStatusRunning             SessionStatus = "running"
-	SessionStatusWaitingConfirmation SessionStatus = "waiting_confirmation"
-	SessionStatusClosed              SessionStatus = "closed"
+	SessionStatusIdle                = protocol.AISessionStatusIdle
+	SessionStatusRunning             = protocol.AISessionStatusRunning
+	SessionStatusWaitingConfirmation = protocol.AISessionStatusWaitingConfirmation
+	SessionStatusClosed              = protocol.AISessionStatusClosed
 )
 
 type TaskStatus = aichatui.TaskStatus
@@ -24,6 +25,7 @@ const (
 	TaskStatusRunning        = aichatui.TaskStatusRunning
 	TaskStatusSucceeded      = aichatui.TaskStatusSucceeded
 	TaskStatusFailed         = aichatui.TaskStatusFailed
+	TaskStatusUnknown        = aichatui.TaskStatusUnknown
 	TaskStatusCancelled      = aichatui.TaskStatusCancelled
 )
 
@@ -38,6 +40,7 @@ type EventType string
 
 const (
 	EventSessionStarted        EventType = "session.started"
+	EventHistoryChanged        EventType = "history.changed"
 	EventSessionUpdated        EventType = "session.updated"
 	EventAssistantDelta        EventType = "assistant.delta"
 	EventAssistantCompleted    EventType = "assistant.completed"
@@ -54,18 +57,13 @@ const (
 	EventSessionCompleted      EventType = "session.completed"
 )
 
-type TransportType string
+type TransportType = protocol.AITransportType
 
 const (
-	TransportAISDKUI TransportType = "ai_sdk_ui"
+	TransportAISDKUI = protocol.AISdkUI
 )
 
-type ToolView struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name,omitempty"`
-	Description string `json:"description"`
-	Dangerous   bool   `json:"dangerous"`
-}
+type ToolView = protocol.AIToolView
 
 type MessageView = aichatui.MessageView
 
@@ -99,59 +97,41 @@ type ErrorView struct {
 type UIMessage = aichatui.UIMessage
 type Attachment = provider.Attachment
 
-type SessionListItem struct {
-	Preview        string        `json:"preview,omitempty"`
-	ID             string        `json:"id"`
-	Model          string        `json:"model"`
-	PermissionMode string        `json:"permission_mode"`
-	Status         SessionStatus `json:"status"`
-	Scope          SessionScope  `json:"scope,omitempty"`
-	Title          string        `json:"title"`
-	CustomTitle    bool          `json:"custom_title"`
-	MessageCount   int           `json:"message_count"`
-	TaskCount      int           `json:"task_count"`
-	CreatedAt      time.Time     `json:"created_at"`
-	UpdatedAt      time.Time     `json:"updated_at"`
-}
+type SessionListItem = protocol.AISessionListItem
 
-type SessionScope struct {
-	Kind              string `json:"kind,omitempty"`
-	TerminalSessionID string `json:"terminal_session_id,omitempty"`
-	ServerID          string `json:"server_id,omitempty"`
-	ServerName        string `json:"server_name,omitempty"`
-	Host              string `json:"host,omitempty"`
-	Port              int    `json:"port,omitempty"`
-	Username          string `json:"username,omitempty"`
-}
+type SessionScope = protocol.AISessionScope
 
+// SessionView is an internal runtime snapshot. HTTP exposes AISessionOverview.
 type SessionView struct {
-	Title            string        `json:"title,omitempty"`
-	ID               string        `json:"id"`
-	Model            string        `json:"model"`
-	PermissionMode   string        `json:"permission_mode"`
-	Scope            SessionScope  `json:"scope,omitempty"`
-	Status           SessionStatus `json:"status"`
-	CreatedAt        time.Time     `json:"created_at"`
-	UpdatedAt        time.Time     `json:"updated_at"`
-	Messages         []MessageView `json:"messages"`
-	Tasks            []TaskView    `json:"tasks"`
-	UIMessages       []UIMessage   `json:"ui_messages"`
-	AvailableTools   []ToolView    `json:"available_tools"`
-	DefaultTransport TransportType `json:"default_transport"`
+	Actor            protocol.Actor         `json:"actor"`
+	Title            string                 `json:"title,omitempty"`
+	ID               string                 `json:"id"`
+	Model            string                 `json:"model"`
+	PermissionMode   string                 `json:"permission_mode"`
+	Scope            SessionScope           `json:"scope,omitempty"`
+	Status           SessionStatus          `json:"status"`
+	CreatedAt        time.Time              `json:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at"`
+	Messages         []aichatui.MessageView `json:"messages"`
+	Tasks            []aichatui.TaskView    `json:"tasks"`
+	UIMessages       []aichatui.UIMessage   `json:"ui_messages"`
+	AvailableTools   []ToolView             `json:"available_tools"`
+	DefaultTransport TransportType          `json:"default_transport"`
 }
 
 type Event struct {
-	ID           string              `json:"id"`
-	Type         EventType           `json:"type"`
-	SessionID    string              `json:"session_id"`
-	CreatedAt    time.Time           `json:"created_at"`
-	Session      *SessionView        `json:"session,omitempty"`
-	Assistant    *AssistantEventData `json:"assistant,omitempty"`
-	Task         *TaskView           `json:"task,omitempty"`
-	UIMessage    *UIMessage          `json:"ui_message,omitempty"`
-	Confirmation *ConfirmationView   `json:"confirmation,omitempty"`
-	Error        *ErrorView          `json:"error,omitempty"`
-	Provider     *provider.Event     `json:"provider_event,omitempty"`
+	History      *protocol.AIHistoryChange `json:"history,omitempty"`
+	ID           string                    `json:"id"`
+	Type         EventType                 `json:"type"`
+	SessionID    string                    `json:"session_id"`
+	CreatedAt    time.Time                 `json:"created_at"`
+	Session      *SessionView              `json:"session,omitempty"`
+	Assistant    *AssistantEventData       `json:"assistant,omitempty"`
+	Task         *TaskView                 `json:"task,omitempty"`
+	UIMessage    *UIMessage                `json:"ui_message,omitempty"`
+	Confirmation *ConfirmationView         `json:"confirmation,omitempty"`
+	Error        *ErrorView                `json:"error,omitempty"`
+	Provider     *provider.Event           `json:"provider_event,omitempty"`
 }
 
 type CreateSessionInput struct {

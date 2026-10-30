@@ -65,7 +65,8 @@ func (c *Client) call(ctx context.Context, path string, input, output any) error
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
 	// The private loopback channel must not use a deployment's HTTP proxy.
-	client := &http.Client{Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}}
+	client := &http.Client{Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	defer client.CloseIdleConnections()
 	resp, err := client.Do(req)
 	if err != nil {

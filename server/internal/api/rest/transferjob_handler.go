@@ -1,110 +1,95 @@
 package rest
 
 import (
+	"context"
 	"errors"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
+	"github.com/easyssh/shared/resultstore"
 	"io"
+	"mime"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	serverdomain "github.com/easyssh/server/internal/domain/server"
+	"github.com/easyssh/server/internal/domain/sftp"
 	"github.com/easyssh/server/internal/domain/transferjob"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type TransferJobHandler struct {
+	limiter *sftp.TransferLimiter
 	service transferjob.Service
 }
 
-func NewTransferJobHandler(service transferjob.Service) *TransferJobHandler {
-	return &TransferJobHandler{service: service}
+func NewTransferJobHandler(service transferjob.Service, limiter *sftp.TransferLimiter) *TransferJobHandler {
+	return &TransferJobHandler{service: service, limiter: limiter}
 }
 
 func (h *TransferJobHandler) CreateUpload(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10)
+	var input protocol.TransferUploadInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+	req := &transferjob.CreateUploadRequest{ServerID: input.ServerID, TargetPath: input.TargetPath, FileName: input.FileName, FileSize: *input.FileSize, Name: input.Name, Description: input.Description, RetentionDays: input.RetentionDays, DeferStart: input.DeferStart}
+	job, err := h.service.CreateUploadJob(c.Request.Context(), req)
+	respondTransferCreation(c, job, err)
+}
 
-	reader, err := c.Request.MultipartReader()
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_multipart", "Request must be multipart/form-data")
+func (h *TransferJobHandler) UploadContent(c *gin.Context) {
+	id, ok := accessID(c, "id")
+	if !ok {
 		return
 	}
-
-	req := &transferjob.CreateUploadRequest{
-		Name:          strings.TrimSpace(c.Query("name")),
-		ServerID:      strings.TrimSpace(c.Query("server_id")),
-		TargetPath:    strings.TrimSpace(c.Query("target_path")),
-		FileName:      strings.TrimSpace(c.Query("file_name")),
-		FileSize:      parseTransferJobInt64Value(c.Query("file_size"), 0),
-		RetentionDays: parseTransferJobIntValue(c.Query("retention_days"), 0),
-		Description:   strings.TrimSpace(c.Query("description")),
-		DeferStart:    parseTransferJobBoolValue(c.Query("defer_start")),
-	}
-
-	for {
-		part, err := reader.NextPart()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				RespondError(c, http.StatusBadRequest, "missing_file", "file part is required")
-			} else {
-				RespondError(c, http.StatusBadRequest, "invalid_multipart", err.Error())
-			}
-			return
-		}
-		if part.FormName() != "file" {
-			applyUploadFormField(req, part.FormName(), readMultipartField(part))
-			_ = part.Close()
-			continue
-		}
-		defer part.Close()
-
-		if req.FileName == "" {
-			req.FileName = part.FileName()
-		}
-		job, err := h.service.CreateUploadJob(c.Request.Context(), userID, req, part)
-		if err != nil {
-			respondTransferJobError(c, err)
-			return
-		}
-		RespondSuccess(c, job)
+	mediaType, _, err := mime.ParseMediaType(c.GetHeader("Content-Type"))
+	if err != nil || mediaType != "application/octet-stream" {
+		RespondError(c, http.StatusUnsupportedMediaType, "invalid_content_type", "Upload content must be application/octet-stream")
 		return
 	}
+	job, err := h.service.UploadJobContent(c.Request.Context(), id, c.Request.Body)
+	respondTransferCreation(c, job, err)
+}
+
+func (h *TransferJobHandler) CreateRelay(c *gin.Context) {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 16<<10)
+	var input protocol.TransferRelayInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	job, err := h.service.CreateRelayJob(c.Request.Context(), &input)
+	respondTransferCreation(c, job, err)
 }
 
 func (h *TransferJobHandler) CreateDownload(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 512<<10)
 
-	var req transferjob.CreateDownloadRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var input protocol.TransferDownloadInput
+	if err := c.ShouldBindJSON(&input); err != nil {
 		RespondError(c, http.StatusBadRequest, "validation_error", err.Error())
 		return
 	}
 
-	job, err := h.service.CreateDownloadJob(c.Request.Context(), userID, &req)
-	if err != nil {
-		respondTransferJobError(c, err)
-		return
+	req := &transferjob.CreateDownloadRequest{
+		ServerID: input.ServerID, SourcePath: input.SourcePath, SourcePaths: input.SourcePaths,
+		Name: input.Name, Description: input.Description, RetentionDays: input.RetentionDays,
 	}
-	RespondSuccess(c, job)
+	if input.ExcludePatterns != nil {
+		req.ExcludePatterns = make([]string, len(*input.ExcludePatterns))
+		copy(req.ExcludePatterns, *input.ExcludePatterns)
+	}
+	job, err := h.service.CreateDownloadJob(c.Request.Context(), req)
+	respondTransferCreation(c, job, err)
 }
 
 func (h *TransferJobHandler) List(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 
 	req := &transferjob.ListRequest{
-		UserID:   userID,
 		Kind:     transferjob.JobKind(strings.TrimSpace(c.Query("kind"))),
 		Status:   transferjob.JobStatus(strings.TrimSpace(c.Query("status"))),
 		Page:     parseTransferJobIntQuery(c, "page", 1),
@@ -119,13 +104,8 @@ func (h *TransferJobHandler) List(c *gin.Context) {
 }
 
 func (h *TransferJobHandler) GetStatistics(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return
-	}
 
-	stats, err := h.service.GetStatistics(c.Request.Context(), userID)
+	stats, err := h.service.GetStatistics(c.Request.Context())
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "statistics_failed", err.Error())
 		return
@@ -134,11 +114,11 @@ func (h *TransferJobHandler) GetStatistics(c *gin.Context) {
 }
 
 func (h *TransferJobHandler) GetByID(c *gin.Context) {
-	userID, id, ok := h.parseJobScope(c)
+	id, ok := accessID(c, "id")
 	if !ok {
 		return
 	}
-	job, err := h.service.GetJob(c.Request.Context(), userID, id)
+	job, err := h.service.GetJob(c.Request.Context(), id)
 	if err != nil {
 		respondTransferJobError(c, err)
 		return
@@ -147,35 +127,41 @@ func (h *TransferJobHandler) GetByID(c *gin.Context) {
 }
 
 func (h *TransferJobHandler) Cancel(c *gin.Context) {
-	userID, id, ok := h.parseJobScope(c)
+	id, ok := accessID(c, "id")
 	if !ok {
 		return
 	}
-	if err := h.service.CancelJob(c.Request.Context(), userID, id); err != nil {
+	if err := h.service.CancelJob(c.Request.Context(), id); err != nil {
 		respondTransferJobError(c, err)
 		return
 	}
-	RespondSuccess(c, gin.H{"success": true})
+	RespondSuccess(c, protocol.TransferMutationResult{Success: true})
 }
 
 func (h *TransferJobHandler) Delete(c *gin.Context) {
-	userID, id, ok := h.parseJobScope(c)
+	id, ok := accessID(c, "id")
 	if !ok {
 		return
 	}
-	if err := h.service.DeleteJob(c.Request.Context(), userID, id); err != nil {
+	if err := h.service.DeleteJob(c.Request.Context(), id); err != nil {
 		respondTransferJobError(c, err)
 		return
 	}
-	RespondSuccess(c, gin.H{"success": true})
+	RespondSuccess(c, protocol.TransferMutationResult{Success: true})
 }
 
 func (h *TransferJobHandler) DownloadArtifact(c *gin.Context) {
-	userID, id, ok := h.parseJobScope(c)
+	release, err := h.limiter.Acquire(c.Request.Context(), false)
+	if err != nil {
+		accessError(c, err)
+		return
+	}
+	defer release()
+	id, ok := accessID(c, "id")
 	if !ok {
 		return
 	}
-	job, artifactPath, err := h.service.GetArtifact(c.Request.Context(), userID, id)
+	job, artifactPath, err := h.service.GetArtifact(c.Request.Context(), id)
 	if err != nil {
 		respondTransferJobError(c, err)
 		return
@@ -187,25 +173,71 @@ func (h *TransferJobHandler) DownloadArtifact(c *gin.Context) {
 	if fileName == "" {
 		fileName = "transfer-artifact"
 	}
-	c.FileAttachment(artifactPath, fileName)
+	scope := access.Current(c.Request.Context())
+	requirements, err := h.service.ArtifactRequirements(c.Request.Context(), scope, id.String())
+	if err != nil {
+		respondTransferJobError(c, err)
+		return
+	}
+	lease, err := scope.OpenWork(c.Request.Context(), access.Task, requirements...)
+	if err != nil {
+		accessError(c, err)
+		return
+	}
+	defer lease.Close(nil)
+	file, err := os.Open(artifactPath)
+	if err != nil {
+		respondTransferJobError(c, transferjob.ErrArtifactNotReady)
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		respondTransferJobError(c, transferjob.ErrArtifactNotReady)
+		return
+	}
+	if err := scope.CheckBytes(lease.Context(), requirements[0], info.Size()); err != nil {
+		accessError(c, err)
+		return
+	}
+	controller := http.NewResponseController(c.Writer)
+	stop := context.AfterFunc(lease.Context(), func() { _ = controller.SetWriteDeadline(time.Now()); _ = file.Close() })
+	defer stop()
+	c.Header("Cache-Control", "no-store")
+	c.Header("Referrer-Policy", "no-referrer")
+	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": fileName}))
+	c.Header("Content-Length", strconv.FormatInt(info.Size(), 10))
+	c.Header("X-Content-Type-Options", "nosniff")
+	metered, finish := access.MeterWriter(lease.Context(), requirements[0], c.Writer)
+	defer finish()
+	_, err = io.Copy(metered, io.LimitReader(file, info.Size()))
+	err = errors.Join(err, finish())
+	if err != nil {
+		if !c.Writer.Written() {
+			c.Header("Content-Length", "")
+			c.Header("Content-Disposition", "")
+			accessError(c, err)
+		} else {
+			c.Abort()
+		}
+	}
 }
 
-func (h *TransferJobHandler) parseJobScope(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
-	userID, err := getUserIDFromContext(c)
+func respondTransferCreation(c *gin.Context, job *transferjob.TransferJob, err error) {
 	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
-		return uuid.Nil, uuid.Nil, false
+		respondTransferJobError(c, err)
+		return
 	}
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_id", "Invalid transfer job ID")
-		return uuid.Nil, uuid.Nil, false
-	}
-	return userID, id, true
+	RespondSuccess(c, job)
 }
 
 func respondTransferJobError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, resultstore.ErrUnavailable):
+		RespondError(c, http.StatusServiceUnavailable, "storage_unavailable", "Transfer storage is unavailable")
+	case errors.Is(err, transferjob.ErrOutcomeConflict):
+		RespondError(c, http.StatusConflict, "transfer_outcome_conflict", "Observed transfer outcome conflicts with the stored record")
 	case errors.Is(err, transferjob.ErrJobNotFound):
 		RespondError(c, http.StatusNotFound, "job_not_found", "Transfer job not found")
 	case errors.Is(err, transferjob.ErrForbiddenJob):
@@ -221,7 +253,7 @@ func respondTransferJobError(c *gin.Context, err error) {
 	case errors.Is(err, transferjob.ErrInvalidJobRequest):
 		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	default:
-		RespondError(c, http.StatusInternalServerError, "transfer_job_failed", err.Error())
+		accessError(c, err)
 	}
 }
 
@@ -239,57 +271,4 @@ func parseTransferJobIntValue(value string, fallback int) int {
 		return fallback
 	}
 	return parsed
-}
-
-func parseTransferJobInt64Value(value string, fallback int64) int64 {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return fallback
-	}
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return fallback
-	}
-	return parsed
-}
-
-func parseTransferJobBoolValue(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "1", "true", "yes", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-func readMultipartField(part interface{ Read([]byte) (int, error) }) string {
-	data, err := io.ReadAll(io.LimitReader(part, 4096))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(data))
-}
-
-func applyUploadFormField(req *transferjob.CreateUploadRequest, key string, value string) {
-	if req == nil || value == "" {
-		return
-	}
-	switch key {
-	case "name":
-		req.Name = value
-	case "server_id":
-		req.ServerID = value
-	case "target_path", "path":
-		req.TargetPath = value
-	case "file_name":
-		req.FileName = value
-	case "file_size", "size":
-		req.FileSize = parseTransferJobInt64Value(value, req.FileSize)
-	case "retention_days":
-		req.RetentionDays = parseTransferJobIntValue(value, req.RetentionDays)
-	case "description":
-		req.Description = value
-	case "defer_start":
-		req.DeferStart = parseTransferJobBoolValue(value)
-	}
 }

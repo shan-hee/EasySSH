@@ -1,6 +1,7 @@
 package jobqueue
 
 import (
+	"github.com/easyssh/shared/protocol"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,12 +20,13 @@ const (
 )
 
 type Job struct {
-	ID          uuid.UUID `gorm:"type:char(36);primaryKey" json:"id"`
-	Kind        string    `gorm:"size:80;not null;index" json:"kind"`
-	SourceType  string    `gorm:"size:80;not null;index:idx_job_queue_source,priority:1" json:"source_type"`
-	SourceID    string    `gorm:"size:191;not null;index:idx_job_queue_source,priority:2" json:"source_id"`
-	DedupeKey   *string   `gorm:"size:191;uniqueIndex" json:"dedupe_key,omitempty"`
-	PayloadJSON string    `gorm:"type:text;not null" json:"payload_json"`
+	Actor       protocol.Actor `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
+	ID          uuid.UUID      `gorm:"type:char(36);primaryKey" json:"id"`
+	Kind        string         `gorm:"size:80;not null;index" json:"kind"`
+	SourceType  string         `gorm:"size:80;not null;index:idx_job_queue_source,priority:1" json:"source_type"`
+	SourceID    string         `gorm:"size:191;not null;index:idx_job_queue_source,priority:2" json:"source_id"`
+	DedupeKey   *string        `gorm:"size:191;uniqueIndex" json:"dedupe_key,omitempty"`
+	PayloadJSON string         `gorm:"type:text;not null" json:"payload_json"`
 
 	Status      Status    `gorm:"size:20;not null;index:idx_job_queue_claim,priority:1" json:"status"`
 	Priority    int       `gorm:"not null;default:0;index:idx_job_queue_claim,priority:2,sort:desc" json:"priority"`

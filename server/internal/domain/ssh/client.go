@@ -4,19 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/easyssh/shared/protocol"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/shared/aiworkspace"
 	"github.com/easyssh/shared/secretcrypto"
+	"github.com/easyssh/shared/sftputil"
 	"github.com/easyssh/shared/sshutil"
 	"golang.org/x/crypto/ssh"
 )
 
 // Client SSH 客户端封装
 type Client struct {
+	mu        sync.RWMutex
+	closed    bool
 	conn      *ssh.Client
 	serverID  string
 	config    *ssh.ClientConfig
@@ -27,7 +33,9 @@ type Client struct {
 type CommandResult struct {
 	Command     string
 	Output      string
-	ExitCode    int
+	ExitCode    *int
+	Outcome     string
+	Error       string
 	DurationMs  int64
 	StartedAt   time.Time
 	CompletedAt time.Time
@@ -43,7 +51,7 @@ type clientOptions struct {
 	password             string
 	privateKey           string
 	privateKeyPassphrase string
-	hostKeyCallback      ssh.HostKeyCallback
+	hostKeyCallback      sshutil.HostKeyPolicy
 }
 
 // ClientOption configures optional SSH client behavior.
@@ -94,14 +102,21 @@ func WithPrivateKeyPassphrase(passphrase string) ClientOption {
 }
 
 // WithHostKeyCallback overrides host key verification for this SSH connection.
-func WithHostKeyCallback(callback ssh.HostKeyCallback) ClientOption {
+func WithHostKeyPolicy(callback sshutil.HostKeyPolicy) ClientOption {
 	return func(opts *clientOptions) {
 		opts.hostKeyCallback = callback
 	}
 }
 
 // NewClient 创建 SSH 客户端
-func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback ssh.HostKeyCallback, opts ...ClientOption) (*Client, error) {
+func NewClient(ctx context.Context, srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback sshutil.HostKeyPolicy, opts ...ClientOption) (*Client, error) {
+	if srv == nil {
+		return nil, access.ErrForbidden
+	}
+	scope := srv.ExecutionScope()
+	if err := scope.Check(ctx, access.Requirement{Action: protocol.WorkspaceRead, ServerID: srv.ID.String()}); err != nil {
+		return nil, err
+	}
 	if hostKeyCallback == nil {
 		return nil, ErrHostKeyCallbackRequired
 	}
@@ -112,6 +127,29 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 			opt(options)
 		}
 	}
+	if !scope.IsOwner() && (options.authMethod != nil || options.password != "" || options.privateKey != "" || options.privateKeyPassphrase != "") {
+		return nil, access.ErrForbidden
+	}
+	if options.keyboardInteractive != nil {
+		if !scope.IsOwner() && !srv.Auth.AuthMethod.SupportsKeyboardInteractive() {
+			options.keyboardInteractive = nil
+		} else {
+			challenge := options.keyboardInteractive
+			options.keyboardInteractive = func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+				if err := scope.CheckInteractive(ctx, srv.ID.String()); err != nil {
+					return nil, err
+				}
+				answers, err := challenge(user, instruction, questions, echos)
+				if err != nil {
+					return nil, err
+				}
+				if err := scope.CheckInteractive(ctx, srv.ID.String()); err != nil {
+					return nil, err
+				}
+				return answers, nil
+			}
+		}
+	}
 	if options.hostKeyCallback != nil {
 		hostKeyCallback = options.hostKeyCallback
 	}
@@ -119,7 +157,7 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 	// 解密认证信息
 	var authMethods []ssh.AuthMethod
 
-	authMethod := srv.AuthMethod
+	authMethod := srv.Auth.AuthMethod
 	if options.authMethod != nil {
 		authMethod = *options.authMethod
 	}
@@ -136,7 +174,7 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 			password := options.password
 			if password == "" {
 				var err error
-				password, err = encryptor.DecryptWithAAD(srv.Password, srv.CredentialAAD("password"))
+				password, err = encryptor.DecryptWithAAD(srv.Auth.Password, srv.CredentialAAD("password"))
 				if err != nil {
 					return nil, fmt.Errorf("failed to decrypt password: %w", err)
 				}
@@ -147,12 +185,19 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 			authMethods = append(authMethods, ssh.Password(password))
 		case server.AuthFactorKey:
 			privateKey := options.privateKey
-			if privateKey == "" && srv.SSHKeyID != nil {
-				if srv.SSHKey == nil || srv.SSHKey.ID != *srv.SSHKeyID || srv.SSHKey.UserID != srv.UserID {
+			phrase := options.privateKeyPassphrase
+			if privateKey == "" && srv.Auth.SSHKeyID != nil {
+				if srv.Auth.SSHKey == nil || srv.Auth.SSHKey.ID != *srv.Auth.SSHKeyID {
 					return nil, errors.New("saved SSH key is unavailable")
 				}
 				var err error
-				privateKey, err = encryptor.DecryptWithAAD(srv.SSHKey.PrivateKey, srv.SSHKey.PrivateKeyAAD())
+				if phrase == "" && srv.Auth.SSHKey.SavedPassphrase != "" {
+					phrase, err = encryptor.DecryptSecret(srv.Auth.SSHKey.SavedPassphrase, srv.Auth.SSHKey.PassphraseAAD())
+					if err != nil {
+						return nil, err
+					}
+				}
+				privateKey, err = encryptor.DecryptWithAAD(srv.Auth.SSHKey.PrivateKey, srv.Auth.SSHKey.PrivateKeyAAD())
 				if err != nil {
 					return nil, fmt.Errorf("failed to decrypt private key: %w", err)
 				}
@@ -161,7 +206,7 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 				return nil, ErrCredentialRequired
 			}
 
-			signer, err := sshutil.ParsePrivateKey(privateKey, options.privateKeyPassphrase)
+			signer, err := sshutil.ParsePrivateKey(privateKey, phrase)
 			if err != nil {
 				return nil, err
 			}
@@ -179,11 +224,16 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 		authMethods = append(authMethods, ssh.KeyboardInteractive(options.keyboardInteractive))
 	}
 
+	verifyHostKey, algorithms, err := hostKeyCallback(srv.Host, srv.Port)
+	if err != nil {
+		return nil, err
+	}
 	config := &ssh.ClientConfig{
-		User:            srv.Username,
-		Auth:            authMethods,
-		HostKeyCallback: hostKeyCallback,
-		Timeout:         30 * time.Second,
+		User:              srv.Username,
+		Auth:              authMethods,
+		HostKeyCallback:   verifyHostKey,
+		HostKeyAlgorithms: algorithms,
+		Timeout:           30 * time.Second,
 	}
 
 	client := &Client{
@@ -198,15 +248,13 @@ func NewClient(srv *server.Server, encryptor *crypto.Encryptor, hostKeyCallback 
 
 // Connect 连接到服务器
 func (c *Client) Connect(host string, port int) error {
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, fmt.Sprint(port))
 	conn, err := ssh.Dial("tcp", addr, c.config)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
-	c.conn = conn
-	c.connected = true
-	return nil
+	return c.attach(conn)
 }
 
 // ConnectContext 使用上下文连接到服务器（支持超时/取消）
@@ -219,7 +267,7 @@ func (c *Client) ConnectContext(ctx context.Context, host string, port int) erro
 		defer cancel()
 	}
 
-	addr := fmt.Sprintf("%s:%d", host, port)
+	addr := net.JoinHostPort(host, fmt.Sprint(port))
 	dialer := &net.Dialer{}
 	netConn, err := dialer.DialContext(ctxToUse, "tcp", addr)
 	if err != nil {
@@ -231,27 +279,47 @@ func (c *Client) ConnectContext(ctx context.Context, host string, port int) erro
 		_ = netConn.SetDeadline(deadline)
 	}
 
+	stopCancel := context.AfterFunc(ctxToUse, func() { _ = netConn.Close() })
+	defer stopCancel()
 	sshConn, chans, reqs, err := ssh.NewClientConn(netConn, addr, c.config)
 	if err != nil {
 		_ = netConn.Close()
 		return fmt.Errorf("failed to establish ssh connection: %w", err)
 	}
 
+	if !stopCancel() || ctxToUse.Err() != nil {
+		_ = netConn.Close()
+		return ctxToUse.Err()
+	}
+
 	// 清掉握手 deadline，避免影响后续读写
 	_ = netConn.SetDeadline(time.Time{})
 
-	c.conn = ssh.NewClient(sshConn, chans, reqs)
-	c.connected = true
-	return nil
+	return c.attach(ssh.NewClient(sshConn, chans, reqs))
 }
 
 // NewSession 创建新会话
-func (c *Client) NewSession() (*ssh.Session, error) {
-	if !c.connected || c.conn == nil {
+func (c *Client) NewSession(ctx context.Context) (*ssh.Session, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	conn := c.GetRawConnection()
+	if conn == nil {
 		return nil, fmt.Errorf("client not connected")
 	}
 
-	session, err := c.conn.NewSession()
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() { defer close(done); _ = conn.Close() })
+	session, err := conn.NewSession()
+	if !stop() {
+		<-done
+	}
+	if ctx.Err() != nil {
+		if session != nil {
+			_ = session.Close()
+		}
+		return nil, ctx.Err()
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
@@ -263,12 +331,13 @@ func (c *Client) NewSession() (*ssh.Session, error) {
 // starting a remote shell command. Unsupported keepalive requests still
 // require a server reply, so they are useful as a low-overhead RTT probe.
 func (c *Client) MeasureTransportLatency() (time.Duration, error) {
-	if !c.connected || c.conn == nil {
+	conn := c.GetRawConnection()
+	if conn == nil {
 		return 0, fmt.Errorf("client not connected")
 	}
 
 	start := time.Now()
-	_, _, err := c.conn.SendRequest("keepalive@openssh.com", true, nil)
+	_, _, err := conn.SendRequest("keepalive@openssh.com", true, nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to measure ssh latency: %w", err)
 	}
@@ -278,17 +347,30 @@ func (c *Client) MeasureTransportLatency() (time.Duration, error) {
 
 // Close 关闭连接
 func (c *Client) Close() error {
-	if c.conn != nil {
-		c.connected = false
-		return c.conn.Close()
+	c.mu.Lock()
+	c.closed = true
+	conn := c.conn
+	c.conn = nil
+	c.connected = false
+	c.mu.Unlock()
+	if conn != nil {
+		return conn.Close()
 	}
 	return nil
 }
-
-// IsConnected 检查是否已连接
-func (c *Client) IsConnected() bool {
-	return c.connected && c.conn != nil
+func (c *Client) attach(conn *ssh.Client) error {
+	c.mu.Lock()
+	if c.closed || c.conn != nil {
+		c.mu.Unlock()
+		_ = conn.Close()
+		return errors.New("SSH client is closed or already connected")
+	}
+	c.conn = conn
+	c.connected = true
+	c.mu.Unlock()
+	return nil
 }
+func (c *Client) IsConnected() bool { return c.GetRawConnection() != nil }
 
 // GetServerID 获取服务器 ID
 func (c *Client) GetServerID() string {
@@ -301,92 +383,54 @@ func (c *Client) GetUptime() time.Duration {
 }
 
 // ExecuteCommand 执行命令
-func (c *Client) ExecuteCommand(cmd string) (string, error) {
-	session, err := c.NewSession()
-	if err != nil {
+func (c *Client) ExecuteCommand(ctx context.Context, cmd string) (string, error) {
+	result, err := c.ExecuteCommandDetailedContext(ctx, cmd)
+	if result == nil {
 		return "", err
 	}
-	defer session.Close()
-
-	output, err := session.CombinedOutput(cmd)
-	if err != nil {
-		return "", fmt.Errorf("command execution failed: %w", err)
-	}
-
-	return string(output), nil
-}
-
-func (c *Client) ExecuteCommandDetailed(cmd string) (*CommandResult, error) {
-	return c.ExecuteCommandDetailedContext(context.Background(), cmd)
+	return result.Output, err
 }
 
 func (c *Client) ExecuteCommandDetailedContext(ctx context.Context, cmd string) (*CommandResult, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-
-	session, err := c.NewSession()
+	session, err := c.NewSession(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer session.Close()
-
-	started := time.Now().UTC()
-
-	type commandResponse struct {
-		output []byte
-		err    error
+	defer sshutil.CloseSession(session, c.GetRawConnection())
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
+	stop := sftputil.CloseOnCancel(ctx, c.Close)
+	defer stop()
+	started := time.Now().UTC()
 	output := aiworkspace.NewOutput(ctx)
 	session.Stdout, session.Stderr = output, output
-	done := make(chan commandResponse, 1)
+	done := make(chan error, 1)
 	go func() {
 		err := session.Run(cmd)
 		output.Flush()
-		done <- commandResponse{output: []byte(output.String()), err: err}
+		done <- err
 	}()
-
+	var runErr error
 	select {
-	case response := <-done:
-		completed := time.Now().UTC()
-		return sshCommandResult(cmd, response.output, response.err, started, completed), response.err
+	case runErr = <-done:
 	case <-ctx.Done():
-		_ = session.Close()
-		completed := time.Now().UTC()
-		exitCode := 130
-		statusText := "operation cancelled"
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			exitCode = 124
-			statusText = "command timed out"
-		}
-		return &CommandResult{
-			Command:     cmd,
-			Output:      output.String() + "\n" + statusText,
-			ExitCode:    exitCode,
-			DurationMs:  completed.Sub(started).Milliseconds(),
-			StartedAt:   started,
-			CompletedAt: completed,
-		}, ctx.Err()
+		_ = c.Close()
+		runErr = <-done
 	}
+	result := sshCommandResult(cmd, []byte(output.String()), runErr, started, time.Now().UTC())
+	if result.Outcome == "unknown" {
+		return result, errors.Join(sshutil.ErrCommandOutcomeUnknown, runErr)
+	}
+	return result, runErr
 }
 
 func sshCommandResult(cmd string, output []byte, err error, started time.Time, completed time.Time) *CommandResult {
-	exitCode := 0
-	if err != nil {
-		exitCode = 1
-		var exitErr *ssh.ExitError
-		if errors.As(err, &exitErr) {
-			exitCode = exitErr.ExitStatus()
-		}
-	}
-
+	outcome, exitCode, message := sshutil.CommandOutcome(err)
 	return &CommandResult{
-		Command:     cmd,
-		Output:      strings.TrimRight(strings.ReplaceAll(string(output), "\r\n", "\n"), "\n"),
-		ExitCode:    exitCode,
-		DurationMs:  completed.Sub(started).Milliseconds(),
-		StartedAt:   started,
-		CompletedAt: completed,
+		Command: cmd, Output: strings.TrimRight(strings.ReplaceAll(string(output), "\r\n", "\n"), "\n"),
+		Outcome: outcome, ExitCode: exitCode, Error: message,
+		DurationMs: completed.Sub(started).Milliseconds(), StartedAt: started, CompletedAt: completed,
 	}
 }
 
@@ -396,10 +440,12 @@ var osDetectionCommands = []string{
 	`cmd /C ver`,
 }
 
-func (c *Client) DetectOS() (string, error) {
+func (c *Client) DetectOS(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	var lastErr error
 	for _, command := range osDetectionCommands {
-		output, err := c.ExecuteCommand(command)
+		output, err := c.ExecuteCommand(ctx, command)
 		osValue := strings.TrimSpace(output)
 		if err == nil && osValue != "" {
 			return osValue, nil
@@ -417,5 +463,7 @@ func (c *Client) DetectOS() (string, error) {
 
 // GetRawConnection 获取原始 SSH 连接（用于 SFTP）
 func (c *Client) GetRawConnection() *ssh.Client {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.conn
 }

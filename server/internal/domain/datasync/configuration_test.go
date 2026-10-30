@@ -12,19 +12,19 @@ func TestInspectConfigurationWorksWithReadOnlyDatabase(t *testing.T) {
 	s := newSyncTestService(t)
 	ctx := context.Background()
 	owner := uuid.New()
-	for _, table := range []string{"servers", "scripts"} {
-		if err := s.DB.Exec("CREATE TABLE " + table + " (id TEXT PRIMARY KEY, user_id TEXT, deleted_at DATETIME)").Error; err != nil {
+	for _, table := range []string{"servers", "scripts", "server_groups"} {
+		if err := s.DB.Exec("CREATE TABLE " + table + " (id TEXT PRIMARY KEY, deleted_at DATETIME)").Error; err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := s.DB.Exec("INSERT INTO servers(id,user_id) VALUES(?,?)", uuid.NewString(), owner).Error; err != nil {
+	if err := s.DB.Exec("INSERT INTO servers(id) VALUES(?)", uuid.NewString()).Error; err != nil {
 		t.Fatal(err)
 	}
 	document, err := s.Engine.Run(ctx, EngineInput{Configuration: true, Current: syncdata.Snapshot{syncdata.ServerOrderKey: {"ids": "[]"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DB.Create(&State{UserID: owner, Document: Document(document.Document), Revision: 7}).Error; err != nil {
+	if err := s.DB.Create(&State{OwnerID: owner, Document: Document(document.Document), Revision: 7}).Error; err != nil {
 		t.Fatal(err)
 	}
 	raw, err := s.DB.DB()
@@ -45,7 +45,7 @@ func TestInspectConfigurationWorksWithReadOnlyDatabase(t *testing.T) {
 		t.Fatalf("uninitialized account inspection: count=%d error=%v", count, err)
 	}
 	var state State
-	if err := s.DB.First(&state, "user_id=?", owner).Error; err != nil {
+	if err := s.DB.First(&state, "owner_id=?", owner).Error; err != nil {
 		t.Fatal(err)
 	}
 	if state.Document != Document(document.Document) || state.Revision != 7 {

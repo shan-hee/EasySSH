@@ -20,6 +20,10 @@ func ValidateAttachments(attachments []Attachment) error {
 	return aiprovider.ValidateAttachments(attachments)
 }
 
+func ValidateContext(messages []Message) error {
+	return aiprovider.ValidateContext(toSharedMessages(messages))
+}
+
 const (
 	EventTextDelta              EventType = aiprovider.EventTextDelta
 	EventReasoningDelta         EventType = aiprovider.EventReasoningDelta

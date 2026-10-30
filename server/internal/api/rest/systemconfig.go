@@ -3,141 +3,46 @@ package rest
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/easyssh/server/internal/domain/jobqueue"
-	"github.com/easyssh/server/internal/domain/oauthprovider"
+	"github.com/easyssh/server/internal/domain/sftp"
 	"github.com/easyssh/server/internal/domain/systemconfig"
+	"github.com/easyssh/server/internal/domain/transferjob"
+	"github.com/easyssh/shared/protocol"
 	"github.com/gin-gonic/gin"
 )
 
 // SystemConfigHandler 系统配置处理器
 type SystemConfigHandler struct {
-	service  systemconfig.Service
-	jobQueue interface {
+	transferStorage transferjob.Service
+	transferLimiter *sftp.TransferLimiter
+	service         systemconfig.Service
+	jobQueue        interface {
 		SetMaxConcurrency(maxConcurrency int)
 		RuntimeStatus(ctx context.Context) (jobqueue.RuntimeStatus, error)
-	}
-	externalOAuthProviderGate *oauthprovider.ExternalProviderGate
-	roleService               interface {
-		RoleExists(ctx context.Context, key string) (bool, error)
 	}
 }
 
 // NewSystemConfigHandler 创建系统配置处理器
-func NewSystemConfigHandler(service systemconfig.Service, roleService interface {
-	RoleExists(ctx context.Context, key string) (bool, error)
-}, externalOAuthProviderGate *oauthprovider.ExternalProviderGate, jobQueue interface {
-	SetMaxConcurrency(maxConcurrency int)
-	RuntimeStatus(ctx context.Context) (jobqueue.RuntimeStatus, error)
-}) *SystemConfigHandler {
-	return &SystemConfigHandler{
-		service: service, roleService: roleService, externalOAuthProviderGate: externalOAuthProviderGate, jobQueue: jobQueue,
+func NewSystemConfigHandler(service systemconfig.Service, jobQueue interface {
+	SetMaxConcurrency(int)
+	RuntimeStatus(context.Context) (jobqueue.RuntimeStatus, error)
+}, transferLimiter *sftp.TransferLimiter, transferStorage transferjob.Service) *SystemConfigHandler {
+	return &SystemConfigHandler{service: service, jobQueue: jobQueue, transferLimiter: transferLimiter, transferStorage: transferStorage}
+}
+
+// GetPublicBranding exposes only the fields needed before owner login.
+func (h *SystemConfigHandler) GetPublicBranding(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	config, err := h.service.Get(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "branding_unavailable"})
+		return
 	}
-}
-
-// GetSystemConfigResponseV2 获取系统配置响应（新版）
-type GetSystemConfigResponseV2 struct {
-	Config *SystemConfigDTOV2 `json:"config"`
-}
-
-// SystemConfigDTOV2 系统配置DTO（新版）
-type SystemConfigDTOV2 struct {
-	SystemName              string `json:"system_name"`
-	SystemLogo              string `json:"system_logo"`
-	SystemFavicon           string `json:"system_favicon"`
-	DefaultLanguage         string `json:"default_language"`
-	DefaultTimezone         string `json:"default_timezone"`
-	DateFormat              string `json:"date_format"`
-	DownloadExcludePatterns string `json:"download_exclude_patterns"`
-	DefaultDownloadMode     string `json:"default_download_mode"`
-	SkipExcludedOnUpload    bool   `json:"skip_excluded_on_upload"`
-	MaxFileUploadSize       int    `json:"max_file_upload_size"`
-	TransferStoragePath     string `json:"transfer_storage_path"`
-	TransferRetentionDays   int    `json:"transfer_retention_days"`
-	TransferMaxStorageGB    int    `json:"transfer_max_storage_gb"`
-	TransferMaxConcurrency  int    `json:"transfer_max_concurrency"`
-	TransferCleanupEnabled  bool   `json:"transfer_cleanup_enabled"`
-	// 注册配置
-	RequireEmailVerification bool   `json:"require_email_verification"`
-	AllowRegistration        bool   `json:"allow_registration"`
-	DefaultRole              string `json:"default_role"`
-	// OAuth 配置
-	OAuthEnabled          bool   `json:"oauth_enabled"`
-	GoogleClientID        string `json:"google_client_id"`
-	GoogleClientSecret    string `json:"google_client_secret,omitempty"`
-	HasGoogleClientSecret bool   `json:"has_google_client_secret,omitempty"`
-	// OAuth/OIDC Provider 与令牌生命周期（根密钥从部署密钥派生，不返回前端）
-	OAuthAccessTokenMinutes         int    `json:"oauth_access_token_minutes"`
-	OAuthRefreshTokenDays           int    `json:"oauth_refresh_token_days"`
-	ExternalOAuthProviderEnabled    bool   `json:"external_oauth_provider_enabled"`
-	ExternalOAuthProviderConfigured bool   `json:"external_oauth_provider_configured"`
-	ExternalOAuthIssuer             string `json:"external_oauth_issuer"`
-	ExternalOAuthLoginURL           string `json:"external_oauth_login_url"`
-	ExternalOAuthRedirectURIs       string `json:"external_oauth_redirect_uris"`
-	// SFTP/SSH 连接池（保存后重启生效）
-	SFTPMaxIdleTimeSeconds     int `json:"sftp_max_idle_time_seconds"`
-	SFTPCleanupIntervalSeconds int `json:"sftp_cleanup_interval_seconds"`
-	SFTPMaxLifeTimeMinutes     int `json:"sftp_max_life_time_minutes"`
-	SFTPConnTimeoutSeconds     int `json:"sftp_conn_timeout_seconds"`
-	SFTPMaxSessionsPerConn     int `json:"sftp_max_sessions_per_conn"`
-	JobQueueMaxConcurrency     int `json:"job_queue_max_concurrency"`
-}
-
-type BasicInfoConfigDTO struct {
-	SystemName      string `json:"system_name"`
-	SystemLogo      string `json:"system_logo"`
-	SystemFavicon   string `json:"system_favicon"`
-	DefaultLanguage string `json:"default_language"`
-	DefaultTimezone string `json:"default_timezone"`
-	DateFormat      string `json:"date_format"`
-}
-
-type RegistrationConfigDTO struct {
-	RequireEmailVerification bool   `json:"require_email_verification"`
-	AllowRegistration        bool   `json:"allow_registration"`
-	DefaultRole              string `json:"default_role"`
-}
-
-type GoogleAuthConfigDTO struct {
-	OAuthEnabled       bool   `json:"oauth_enabled"`
-	GoogleClientID     string `json:"google_client_id"`
-	GoogleClientSecret string `json:"google_client_secret"`
-}
-
-type OAuthProviderConfigDTO struct {
-	OAuthAccessTokenMinutes      int    `json:"oauth_access_token_minutes"`
-	OAuthRefreshTokenDays        int    `json:"oauth_refresh_token_days"`
-	ExternalOAuthProviderEnabled bool   `json:"external_oauth_provider_enabled"`
-	ExternalOAuthIssuer          string `json:"external_oauth_issuer"`
-	ExternalOAuthLoginURL        string `json:"external_oauth_login_url"`
-	ExternalOAuthRedirectURIs    string `json:"external_oauth_redirect_uris"`
-}
-
-type FileTransferConfigDTO struct {
-	DownloadExcludePatterns    string `json:"download_exclude_patterns"`
-	DefaultDownloadMode        string `json:"default_download_mode"`
-	SkipExcludedOnUpload       bool   `json:"skip_excluded_on_upload"`
-	MaxFileUploadSize          int    `json:"max_file_upload_size"`
-	TransferStoragePath        string `json:"transfer_storage_path"`
-	TransferRetentionDays      int    `json:"transfer_retention_days"`
-	TransferMaxStorageGB       int    `json:"transfer_max_storage_gb"`
-	TransferMaxConcurrency     int    `json:"transfer_max_concurrency"`
-	TransferCleanupEnabled     bool   `json:"transfer_cleanup_enabled"`
-	SFTPMaxIdleTimeSeconds     int    `json:"sftp_max_idle_time_seconds"`
-	SFTPCleanupIntervalSeconds int    `json:"sftp_cleanup_interval_seconds"`
-	SFTPMaxLifeTimeMinutes     int    `json:"sftp_max_life_time_minutes"`
-	SFTPConnTimeoutSeconds     int    `json:"sftp_conn_timeout_seconds"`
-	SFTPMaxSessionsPerConn     int    `json:"sftp_max_sessions_per_conn"`
-}
-
-type ScheduledTaskConfigDTO struct {
-	JobQueueMaxConcurrency int `json:"job_queue_max_concurrency"`
-}
-
-type ScheduledTaskConfigResponse struct {
-	Config ScheduledTaskConfigDTO `json:"config"`
-	Status jobqueue.RuntimeStatus `json:"status"`
+	c.JSON(http.StatusOK, protocol.PublicBranding{
+		SystemName: config.SystemName, SystemLogo: config.SystemLogo,
+		SystemFavicon: config.SystemFavicon, DefaultLanguage: config.DefaultLanguage,
+	})
 }
 
 // GetSystemConfig 获取系统配置
@@ -145,7 +50,7 @@ type ScheduledTaskConfigResponse struct {
 // @Tags 系统设置
 // @Accept json
 // @Produce json
-// @Success 200 {object} GetSystemConfigResponse
+// @Success 200 {object} protocol.SystemConfigResponse
 // @Router /api/v1/settings/system [get]
 func (h *SystemConfigHandler) GetSystemConfig(c *gin.Context) {
 	config, err := h.service.Get(c.Request.Context())
@@ -157,47 +62,35 @@ func (h *SystemConfigHandler) GetSystemConfig(c *gin.Context) {
 	// 转换为DTO
 	dto := h.toDTO(config)
 
-	c.JSON(http.StatusOK, GetSystemConfigResponseV2{Config: dto})
+	c.JSON(http.StatusOK, protocol.SystemConfigResponse{Config: *dto})
 }
 
 // toDTO 将模型转换为DTO
-func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemConfigDTOV2 {
-	oauthTokenConfig := config.OAuthTokenConfig()
-	dto := &SystemConfigDTOV2{
-		SystemName:                      config.SystemName,
-		SystemLogo:                      config.SystemLogo,
-		SystemFavicon:                   config.SystemFavicon,
-		DefaultLanguage:                 config.DefaultLanguage,
-		DefaultTimezone:                 config.DefaultTimezone,
-		DateFormat:                      config.DateFormat,
-		DownloadExcludePatterns:         config.DownloadExcludePatterns,
-		DefaultDownloadMode:             config.DefaultDownloadMode,
-		SkipExcludedOnUpload:            config.SkipExcludedOnUpload,
-		MaxFileUploadSize:               config.MaxFileUploadSize,
-		TransferStoragePath:             config.TransferStoragePath,
-		TransferRetentionDays:           config.TransferRetentionDays,
-		TransferMaxStorageGB:            config.TransferMaxStorageGB,
-		TransferMaxConcurrency:          config.TransferMaxConcurrency,
-		TransferCleanupEnabled:          config.TransferCleanupEnabled,
-		AllowRegistration:               config.AllowRegistration,
-		RequireEmailVerification:        config.RequireEmailVerification,
-		DefaultRole:                     config.DefaultRole,
-		OAuthEnabled:                    config.OAuthEnabled,
-		GoogleClientID:                  config.GoogleClientID,
-		HasGoogleClientSecret:           config.GoogleClientSecret != "",
-		OAuthAccessTokenMinutes:         oauthTokenConfig.AccessTokenMinutes,
-		OAuthRefreshTokenDays:           oauthTokenConfig.RefreshTokenDays,
-		ExternalOAuthProviderEnabled:    oauthTokenConfig.ExternalOAuthProviderEnabled,
-		ExternalOAuthProviderConfigured: h.externalOAuthProviderGate != nil && h.externalOAuthProviderGate.Configured(),
-		ExternalOAuthIssuer:             oauthTokenConfig.Issuer,
-		ExternalOAuthLoginURL:           oauthTokenConfig.LoginURL,
-		ExternalOAuthRedirectURIs:       oauthTokenConfig.RedirectURIs,
-		SFTPMaxIdleTimeSeconds:          config.SFTPMaxIdleTimeSeconds,
-		SFTPCleanupIntervalSeconds:      config.SFTPCleanupIntervalSeconds,
-		SFTPMaxLifeTimeMinutes:          config.SFTPMaxLifeTimeMinutes,
-		SFTPConnTimeoutSeconds:          config.SFTPConnTimeoutSeconds,
-		SFTPMaxSessionsPerConn:          config.SFTPMaxSessionsPerConn,
-		JobQueueMaxConcurrency:          config.JobQueueMaxConcurrency,
+func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *protocol.SystemConfig {
+	dto := &protocol.SystemConfig{
+		PublicURL:                  config.PublicURL,
+		SystemName:                 config.SystemName,
+		SystemLogo:                 config.SystemLogo,
+		SystemFavicon:              config.SystemFavicon,
+		DefaultLanguage:            config.DefaultLanguage,
+		DefaultTimezone:            config.DefaultTimezone,
+		DateFormat:                 config.DateFormat,
+		DownloadExcludePatterns:    config.DownloadExcludePatterns,
+		SkipExcludedOnUpload:       config.SkipExcludedOnUpload,
+		MaxFileUploadSize:          config.MaxFileUploadSize,
+		TransferStoragePath:        config.TransferStoragePath,
+		TransferRetentionDays:      config.TransferRetentionDays,
+		TransferMaxStorageGB:       config.TransferMaxStorageGB,
+		TransferMaxConcurrency:     config.TransferMaxConcurrency,
+		TransferMaxEntries:         config.TransferMaxEntries,
+		TransferMaxDepth:           config.TransferMaxDepth,
+		TransferCleanupEnabled:     config.TransferCleanupEnabled,
+		SFTPMaxIdleTimeSeconds:     config.SFTPMaxIdleTimeSeconds,
+		SFTPCleanupIntervalSeconds: config.SFTPCleanupIntervalSeconds,
+		SFTPMaxLifeTimeMinutes:     config.SFTPMaxLifeTimeMinutes,
+		SFTPConnTimeoutSeconds:     config.SFTPConnTimeoutSeconds,
+		SFTPMaxSessionsPerConn:     config.SFTPMaxSessionsPerConn,
+		JobQueueMaxConcurrency:     config.JobQueueMaxConcurrency,
 	}
 
 	return dto
@@ -208,11 +101,12 @@ func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *SystemCo
 // @Tags 系统设置
 // @Accept json
 // @Produce json
-// @Param request body BasicInfoConfigDTO true "基本信息配置"
+// @Param request body protocol.SystemBasicUpdate true "基本信息配置"
 // @Success 200 {object} map[string]string
 // @Router /api/v1/settings/system/basic [patch]
 func (h *SystemConfigHandler) PatchBasicInfo(c *gin.Context) {
-	var dto BasicInfoConfigDTO
+	var dto protocol.SystemBasicUpdate
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 	if err := c.ShouldBindJSON(&dto); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
@@ -226,133 +120,33 @@ func (h *SystemConfigHandler) PatchBasicInfo(c *gin.Context) {
 	}
 
 	// 只更新基本信息字段
-	existingConfig.SystemName = dto.SystemName
-	existingConfig.SystemLogo = dto.SystemLogo
-	existingConfig.SystemFavicon = dto.SystemFavicon
-	existingConfig.DefaultLanguage = dto.DefaultLanguage
-	existingConfig.DefaultTimezone = dto.DefaultTimezone
-	existingConfig.DateFormat = dto.DateFormat
+	if dto.PublicURL != nil {
+		existingConfig.PublicURL = *dto.PublicURL
+	}
+	if dto.SystemName != nil {
+		existingConfig.SystemName = *dto.SystemName
+	}
+	if dto.SystemLogo != nil {
+		existingConfig.SystemLogo = *dto.SystemLogo
+	}
+	if dto.SystemFavicon != nil {
+		existingConfig.SystemFavicon = *dto.SystemFavicon
+	}
+	if dto.DefaultLanguage != nil {
+		existingConfig.DefaultLanguage = *dto.DefaultLanguage
+	}
+	if dto.DefaultTimezone != nil {
+		existingConfig.DefaultTimezone = *dto.DefaultTimezone
+	}
+	if dto.DateFormat != nil {
+		existingConfig.DateFormat = *dto.DateFormat
+	}
 	if err := h.service.SaveBasic(c.Request.Context(), existingConfig); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Basic info updated successfully"})
-}
-
-// PatchRegistrationConfig 更新用户注册配置。
-// @Summary 更新用户注册配置
-// @Tags 系统设置
-// @Accept json
-// @Produce json
-// @Param request body RegistrationConfigDTO true "用户注册配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/system/registration [patch]
-func (h *SystemConfigHandler) PatchRegistrationConfig(c *gin.Context) {
-	var dto RegistrationConfigDTO
-	if err := c.ShouldBindJSON(&dto); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-	if !h.validateDefaultRole(c, dto.DefaultRole) {
-		return
-	}
-	existingConfig, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	existingConfig.AllowRegistration = dto.AllowRegistration
-	existingConfig.RequireEmailVerification = dto.RequireEmailVerification
-	existingConfig.DefaultRole = dto.DefaultRole
-	if err := h.service.SaveRegistration(c.Request.Context(), existingConfig); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Registration configuration saved successfully"})
-}
-
-// PatchGoogleAuthConfig 更新 Google 登录配置。
-// @Summary 更新 Google 登录配置
-// @Tags 系统设置
-// @Accept json
-// @Produce json
-// @Param request body GoogleAuthConfigDTO true "Google 登录配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/system/google-auth [patch]
-func (h *SystemConfigHandler) PatchGoogleAuthConfig(c *gin.Context) {
-	var dto GoogleAuthConfigDTO
-	if err := c.ShouldBindJSON(&dto); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-	existingConfig, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	existingConfig.OAuthEnabled = dto.OAuthEnabled
-	existingConfig.GoogleClientID = dto.GoogleClientID
-	existingConfig.GoogleClientSecret = dto.GoogleClientSecret
-	if err := h.service.SaveGoogleAuth(c.Request.Context(), existingConfig); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "Google authentication configuration saved successfully"})
-}
-
-// PatchOAuthProviderConfig 更新对外 OAuth/OIDC Provider 配置。
-// @Summary 更新对外 OAuth/OIDC Provider 配置
-// @Tags 系统设置
-// @Accept json
-// @Produce json
-// @Param request body OAuthProviderConfigDTO true "OAuth/OIDC Provider 配置"
-// @Success 200 {object} map[string]string
-// @Router /api/v1/settings/system/oauth-provider [patch]
-func (h *SystemConfigHandler) PatchOAuthProviderConfig(c *gin.Context) {
-	var dto OAuthProviderConfigDTO
-	if err := c.ShouldBindJSON(&dto); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
-		return
-	}
-	if !h.validateExternalOAuthProvider(c, dto.ExternalOAuthProviderEnabled) {
-		return
-	}
-	existingConfig, err := h.service.Get(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	existingConfig.OAuthAccessTokenMinutes = dto.OAuthAccessTokenMinutes
-	existingConfig.OAuthRefreshTokenDays = dto.OAuthRefreshTokenDays
-	existingConfig.ExternalOAuthProviderEnabled = dto.ExternalOAuthProviderEnabled
-	existingConfig.ExternalOAuthIssuer = dto.ExternalOAuthIssuer
-	existingConfig.ExternalOAuthLoginURL = dto.ExternalOAuthLoginURL
-	existingConfig.ExternalOAuthRedirectURIs = dto.ExternalOAuthRedirectURIs
-	if err := h.service.SaveOAuthProvider(c.Request.Context(), existingConfig); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	_ = h.externalOAuthProviderGate.SetEnabled(existingConfig.ExternalOAuthProviderEnabled)
-	c.JSON(http.StatusOK, gin.H{"message": "OAuth/OIDC Provider configuration saved successfully"})
-}
-
-func (h *SystemConfigHandler) validateDefaultRole(c *gin.Context, key string) bool {
-	key = strings.TrimSpace(key)
-	if h.roleService == nil || key == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Default role is required"})
-		return false
-	}
-	exists, err := h.roleService.RoleExists(c.Request.Context(), key)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return false
-	}
-	if !exists {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Default role does not exist"})
-		return false
-	}
-	return true
+	c.JSON(http.StatusOK, protocol.MessageResponse{Message: "Basic info updated successfully"})
 }
 
 // PatchFileTransferConfig 部分更新文件传输配置
@@ -360,11 +154,12 @@ func (h *SystemConfigHandler) validateDefaultRole(c *gin.Context, key string) bo
 // @Tags 系统设置
 // @Accept json
 // @Produce json
-// @Param request body FileTransferConfigDTO true "文件传输配置"
+// @Param request body protocol.FileTransferConfigUpdate true "文件传输配置"
 // @Success 200 {object} map[string]string
 // @Router /api/v1/settings/system/file-transfer [patch]
 func (h *SystemConfigHandler) PatchFileTransferConfig(c *gin.Context) {
-	var dto FileTransferConfigDTO
+	var dto protocol.FileTransferConfigUpdate
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 	if err := c.ShouldBindJSON(&dto); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
@@ -378,34 +173,66 @@ func (h *SystemConfigHandler) PatchFileTransferConfig(c *gin.Context) {
 	}
 
 	// 只更新文件传输字段
-	existingConfig.DownloadExcludePatterns = dto.DownloadExcludePatterns
-	existingConfig.DefaultDownloadMode = dto.DefaultDownloadMode
-	existingConfig.SkipExcludedOnUpload = dto.SkipExcludedOnUpload
-	existingConfig.MaxFileUploadSize = dto.MaxFileUploadSize
-	existingConfig.TransferStoragePath = dto.TransferStoragePath
-	existingConfig.TransferRetentionDays = dto.TransferRetentionDays
-	existingConfig.TransferMaxStorageGB = dto.TransferMaxStorageGB
-	existingConfig.TransferMaxConcurrency = dto.TransferMaxConcurrency
-	existingConfig.TransferCleanupEnabled = dto.TransferCleanupEnabled
-	existingConfig.SFTPMaxIdleTimeSeconds = dto.SFTPMaxIdleTimeSeconds
-	existingConfig.SFTPCleanupIntervalSeconds = dto.SFTPCleanupIntervalSeconds
-	existingConfig.SFTPMaxLifeTimeMinutes = dto.SFTPMaxLifeTimeMinutes
-	existingConfig.SFTPConnTimeoutSeconds = dto.SFTPConnTimeoutSeconds
-	existingConfig.SFTPMaxSessionsPerConn = dto.SFTPMaxSessionsPerConn
+	if dto.DownloadExcludePatterns != nil {
+		existingConfig.DownloadExcludePatterns = *dto.DownloadExcludePatterns
+	}
+	if dto.SkipExcludedOnUpload != nil {
+		existingConfig.SkipExcludedOnUpload = *dto.SkipExcludedOnUpload
+	}
+	if dto.MaxFileUploadSize != nil {
+		existingConfig.MaxFileUploadSize = *dto.MaxFileUploadSize
+	}
+	if dto.TransferStoragePath != nil {
+		existingConfig.TransferStoragePath = *dto.TransferStoragePath
+	}
+	if dto.TransferRetentionDays != nil {
+		existingConfig.TransferRetentionDays = *dto.TransferRetentionDays
+	}
+	if dto.TransferMaxStorageGB != nil {
+		existingConfig.TransferMaxStorageGB = *dto.TransferMaxStorageGB
+	}
+	if dto.TransferMaxConcurrency != nil {
+		existingConfig.TransferMaxConcurrency = *dto.TransferMaxConcurrency
+	}
+	if dto.TransferMaxEntries != nil {
+		existingConfig.TransferMaxEntries = *dto.TransferMaxEntries
+	}
+	if dto.TransferMaxDepth != nil {
+		existingConfig.TransferMaxDepth = *dto.TransferMaxDepth
+	}
+	if dto.TransferCleanupEnabled != nil {
+		existingConfig.TransferCleanupEnabled = *dto.TransferCleanupEnabled
+	}
+	if dto.SFTPMaxIdleTimeSeconds != nil {
+		existingConfig.SFTPMaxIdleTimeSeconds = *dto.SFTPMaxIdleTimeSeconds
+	}
+	if dto.SFTPCleanupIntervalSeconds != nil {
+		existingConfig.SFTPCleanupIntervalSeconds = *dto.SFTPCleanupIntervalSeconds
+	}
+	if dto.SFTPMaxLifeTimeMinutes != nil {
+		existingConfig.SFTPMaxLifeTimeMinutes = *dto.SFTPMaxLifeTimeMinutes
+	}
+	if dto.SFTPConnTimeoutSeconds != nil {
+		existingConfig.SFTPConnTimeoutSeconds = *dto.SFTPConnTimeoutSeconds
+	}
+	if dto.SFTPMaxSessionsPerConn != nil {
+		existingConfig.SFTPMaxSessionsPerConn = *dto.SFTPMaxSessionsPerConn
+	}
 
-	if err := h.service.SaveFileTransfer(c.Request.Context(), existingConfig); err != nil {
+	if err := h.transferStorage.ConfigureStorage(c.Request.Context(), existingConfig); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "File transfer config updated successfully"})
+	h.transferLimiter.SetLimit(existingConfig.TransferMaxConcurrency)
+	c.JSON(http.StatusOK, protocol.MessageResponse{Message: "File transfer config updated successfully"})
 }
 
 // GetScheduledTaskConfig 获取后台任务队列配置与当前运行状态。
 // @Summary 获取定时任务运行配置
 // @Tags 系统设置
 // @Produce json
-// @Success 200 {object} ScheduledTaskConfigResponse
+// @Success 200 {object} protocol.ScheduledTaskConfigResponse
 // @Router /api/v1/settings/system/scheduled-tasks [get]
 func (h *SystemConfigHandler) GetScheduledTaskConfig(c *gin.Context) {
 	if h.jobQueue == nil {
@@ -422,8 +249,8 @@ func (h *SystemConfigHandler) GetScheduledTaskConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, ScheduledTaskConfigResponse{
-		Config: ScheduledTaskConfigDTO{JobQueueMaxConcurrency: config.JobQueueMaxConcurrency},
+	c.JSON(http.StatusOK, protocol.ScheduledTaskConfigResponse{
+		Config: protocol.ScheduledTaskConfig{JobQueueMaxConcurrency: config.JobQueueMaxConcurrency},
 		Status: status,
 	})
 }
@@ -433,15 +260,16 @@ func (h *SystemConfigHandler) GetScheduledTaskConfig(c *gin.Context) {
 // @Tags 系统设置
 // @Accept json
 // @Produce json
-// @Param request body ScheduledTaskConfigDTO true "定时任务运行配置"
-// @Success 200 {object} ScheduledTaskConfigResponse
+// @Param request body protocol.ScheduledTaskConfig true "定时任务运行配置"
+// @Success 200 {object} protocol.ScheduledTaskConfigResponse
 // @Router /api/v1/settings/system/scheduled-tasks [patch]
 func (h *SystemConfigHandler) PatchScheduledTaskConfig(c *gin.Context) {
 	if h.jobQueue == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Job queue runtime is unavailable"})
 		return
 	}
-	var dto ScheduledTaskConfigDTO
+	var dto protocol.ScheduledTaskConfig
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
 	if err := c.ShouldBindJSON(&dto); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
@@ -462,17 +290,5 @@ func (h *SystemConfigHandler) PatchScheduledTaskConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, ScheduledTaskConfigResponse{Config: dto, Status: status})
-}
-
-func (h *SystemConfigHandler) validateExternalOAuthProvider(c *gin.Context, enabled bool) bool {
-	if h.externalOAuthProviderGate == nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "External OAuth/OIDC Provider gate is unavailable"})
-		return false
-	}
-	if err := h.externalOAuthProviderGate.ValidateEnabled(enabled); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return false
-	}
-	return true
+	c.JSON(http.StatusOK, protocol.ScheduledTaskConfigResponse{Config: dto, Status: status})
 }

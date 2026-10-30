@@ -2,19 +2,26 @@ package dashboard
 
 import (
 	"context"
+	"github.com/easyssh/shared/protocol"
 	"sort"
 	"strings"
-	"time"
 
-	"github.com/google/uuid"
+	"database/sql"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/domain/operationrecord"
 	"gorm.io/gorm"
 )
 
+// A stored server.status is the last connection outcome, not current presence.
+const connectedServerPredicate = `EXISTS (
+ SELECT 1 FROM operation_records AS connections
+ WHERE connections.server_id = servers.id AND connections.type = 'connection'
+ AND connections.status = 'running' AND connections.established_at IS NOT NULL
+ AND connections.finished_at IS NULL AND connections.deleted_at IS NULL
+)`
+
 type Repository interface {
-	CountCommandsSince(ctx context.Context, userID *uuid.UUID, since time.Time) (int64, error)
-	CountActiveSessions(ctx context.Context, userID *uuid.UUID) (int64, error)
-	GetServerDistribution(ctx context.Context, userID *uuid.UUID) ([]RegionCount, error)
-	CountServers(ctx context.Context, userID *uuid.UUID) (total int64, online int64, err error)
+	Overview(context.Context, string) (*Overview, error)
 }
 
 type repository struct {
@@ -25,58 +32,34 @@ func NewRepository(db *gorm.DB) Repository {
 	return &repository{db: db}
 }
 
-func (r *repository) CountCommandsSince(ctx context.Context, userID *uuid.UUID, since time.Time) (int64, error) {
+func (r *repository) CountActiveSessions(ctx context.Context) (int64, error) {
 	query := r.db.WithContext(ctx).
 		Table("operation_records").
-		Where("deleted_at IS NULL").
-		Where("type IN ?", []string{"execution", "audit"}).
-		Where("started_at >= ? OR (started_at IS NULL AND created_at >= ?)", since, since)
-
-	if userID != nil {
-		query = query.Where("user_id = ?", *userID)
-	}
+		Where("type = ? AND status = ? AND established_at IS NOT NULL AND finished_at IS NULL AND deleted_at IS NULL", "connection", "running")
 
 	var count int64
 	err := query.Count(&count).Error
 	return count, err
 }
 
-func (r *repository) CountActiveSessions(ctx context.Context, userID *uuid.UUID) (int64, error) {
-	query := r.db.WithContext(ctx).
-		Table("operation_records").
-		Where("type = ? AND status = ? AND deleted_at IS NULL", "connection", "running")
-
-	if userID != nil {
-		query = query.Where("user_id = ?", *userID)
-	}
-
-	var count int64
-	err := query.Count(&count).Error
-	return count, err
-}
-
-func (r *repository) GetServerDistribution(ctx context.Context, userID *uuid.UUID) ([]RegionCount, error) {
+func (r *repository) GetServerDistribution(ctx context.Context) ([]protocol.DashboardRegionCount, error) {
 	var results []struct {
-		RegionServer
+		protocol.DashboardRegionServer
 		Country     string
 		CountryCode string
 	}
 
 	query := r.db.WithContext(ctx).
 		Table("servers").
-		Select("id, name, host, port, username, status, country, country_code").
+		Select("id, name, host, port, username, country, country_code, " + connectedServerPredicate + " AS connected").
 		Where("deleted_at IS NULL").
 		Order("sort_order ASC, name ASC, id ASC")
-
-	if userID != nil {
-		query = query.Where("user_id = ?", *userID)
-	}
 
 	if err := query.Scan(&results).Error; err != nil {
 		return nil, err
 	}
 
-	distribution := make([]RegionCount, 0, len(results))
+	distribution := make([]protocol.DashboardRegionCount, 0, len(results))
 	regionIndices := make(map[string]int)
 	for _, row := range results {
 		code := strings.ToUpper(strings.TrimSpace(row.CountryCode))
@@ -91,10 +74,10 @@ func (r *repository) GetServerDistribution(ctx context.Context, userID *uuid.UUI
 			}
 			index = len(distribution)
 			regionIndices[code] = index
-			distribution = append(distribution, RegionCount{Region: name, CountryCode: code})
+			distribution = append(distribution, protocol.DashboardRegionCount{Region: name, CountryCode: code})
 		}
 		region := &distribution[index]
-		region.Servers = append(region.Servers, row.RegionServer)
+		region.Servers = append(region.Servers, row.DashboardRegionServer)
 		region.Count = len(region.Servers)
 	}
 	sort.Slice(distribution, func(i, j int) bool {
@@ -106,21 +89,49 @@ func (r *repository) GetServerDistribution(ctx context.Context, userID *uuid.UUI
 	return distribution, nil
 }
 
-func (r *repository) CountServers(ctx context.Context, userID *uuid.UUID) (int64, int64, error) {
+func (r *repository) CountServers(ctx context.Context) (int64, int64, error) {
 	base := r.db.WithContext(ctx).Table("servers").Where("deleted_at IS NULL")
-	if userID != nil {
-		base = base.Where("user_id = ?", *userID)
-	}
 
 	var total int64
 	if err := base.Session(&gorm.Session{}).Count(&total).Error; err != nil {
 		return 0, 0, err
 	}
 
-	var online int64
-	if err := base.Session(&gorm.Session{}).Where("status = ?", "online").Count(&online).Error; err != nil {
+	var connected int64
+	if err := base.Session(&gorm.Session{}).Where(connectedServerPredicate).Count(&connected).Error; err != nil {
 		return 0, 0, err
 	}
 
-	return total, online, nil
+	return total, connected, nil
+}
+
+func (r *repository) Overview(ctx context.Context, timezone string) (*Overview, error) {
+	if err := access.Current(ctx).RequireOwner(ctx, protocol.ActivityRead); err != nil {
+		return nil, err
+	}
+	opts := &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}
+	if r.db.Dialector.Name() == "sqlite" {
+		opts = &sql.TxOptions{}
+	}
+	var out Overview
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// The activity request anchors the snapshot; resource counts use the same tx.
+		activity, err := operationrecord.NewRepository(tx, nil).Overview(ctx, operationrecord.OverviewRequest{Timezone: timezone, Range: "today"})
+		if err != nil {
+			return err
+		}
+		out.Activity = activity
+		snapshot := &repository{db: tx}
+		out.Stats.TotalServers, out.Stats.ConnectedServers, err = snapshot.CountServers(ctx)
+		if err != nil {
+			return err
+		}
+		out.Stats.ActiveSessions, err = snapshot.CountActiveSessions(ctx)
+		if err != nil {
+			return err
+		}
+		out.Distribution, err = snapshot.GetServerDistribution(ctx)
+		return err
+	}, opts)
+	return &out, err
 }

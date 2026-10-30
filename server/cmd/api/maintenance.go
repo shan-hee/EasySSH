@@ -8,6 +8,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -17,9 +18,12 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/api/rest"
+	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/infra/config"
 	dbinfra "github.com/easyssh/server/internal/infra/db"
+	"github.com/easyssh/server/internal/storage/schema"
 	"github.com/easyssh/shared/dbmigration"
 	"github.com/easyssh/shared/instancebackup"
 	crypto "github.com/easyssh/shared/secretcrypto"
@@ -48,7 +52,10 @@ func sqliteDatabasePath(dsn string) string {
 
 func runMaintenance(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: easyssh-api maintenance backup|inspect|restore [options]")
+		return errors.New("usage: easyssh-api maintenance backup|inspect|restore|owner-recover [options]")
+	}
+	if args[0] == "owner-recover" {
+		return recoverOwnerFromHost(args[1:])
 	}
 	flags := flag.NewFlagSet("maintenance "+args[0], flag.ContinueOnError)
 	file := flags.String("file", "", "encrypted .easyssh.age file")
@@ -152,7 +159,7 @@ func createInstanceArchive(ctx context.Context, cfg *config.Config, database *go
 	if err != nil {
 		return err
 	}
-	if version != dbmigration.Latest {
+	if version != schema.Version {
 		return errors.New("backup requires the matching application/database version")
 	}
 	stage, err := os.MkdirTemp("", "easyssh-backup-")
@@ -166,7 +173,7 @@ func createInstanceArchive(ctx context.Context, cfg *config.Config, database *go
 		if err != nil {
 			return err
 		}
-		if version == dbmigration.Latest {
+		if version == schema.Version {
 			if err = rest.VerifyStoredCredentials(ctx, database, encryptor); err != nil {
 				return err
 			}
@@ -390,7 +397,7 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 	if err := instancebackup.CheckApplicationVersion(manifest.AppVersion, readAppVersion()); err != nil {
 		return err
 	}
-	if manifest.SchemaVersion != dbmigration.Latest {
+	if manifest.SchemaVersion != schema.Version {
 		return errors.New("unsupported database migration version")
 	}
 	destination, err := filepath.Abs(into)
@@ -451,7 +458,7 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 	if err != nil {
 		return err
 	}
-	if version != manifest.SchemaVersion || version != dbmigration.Latest {
+	if version != manifest.SchemaVersion || version != schema.Version {
 		return errors.New("manifest and database schema versions differ")
 	}
 	encryptor, err := crypto.NewEncryptor(strings.TrimSpace(string(rootKey)))
@@ -467,10 +474,13 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 		return tx.Error
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"user_sessions", "auth_tickets", "totp_replays", "trusted_devices", "sync_authorizations", "sync_devices", "oauth_grants", "oauth_login_challenges", "oauth_client_assertions"} {
+	for _, table := range []string{"auth_tickets", "access_handoffs", "access_sessions", "access_containers", "owner_sessions", "totp_replays", "known_login_devices", "sync_authorizations", "owner_devices"} {
 		if err = tx.Exec("DELETE FROM " + table).Error; err != nil {
 			return err
 		}
+	}
+	if err = tx.Exec("UPDATE grants SET revoked_at = ?, version = version + 1", time.Now().UTC()).Error; err != nil {
+		return err
 	}
 	transferRoot := filepath.Join(destination, "transfers")
 	if err = tx.Exec("UPDATE system_config SET transfer_storage_path=?", transferRoot).Error; err != nil {
@@ -625,4 +635,104 @@ func postgresPublicDSN(dsn string) (string, error) {
 		}
 	}
 	return strings.Join(parts, " "), nil
+}
+
+// Recovery requires direct host access and the same exclusive locks as startup.
+// Passwords are read from a private file, never supplied in process arguments.
+func recoverOwnerFromHost(args []string) error {
+	flags := flag.NewFlagSet("maintenance owner-recover", flag.ContinueOnError)
+	passwordFile := flags.String("new-password-file", "", "private file containing the new owner password")
+	resetTwoFactor := flags.Bool("reset-two-factor", false, "clear the owner two-factor configuration and recovery codes")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected recovery arguments")
+	}
+	password, err := readOwnerRecoveryPassword(*passwordFile)
+	if err != nil {
+		return err
+	}
+	if err := auth.ValidatePasswordWithDefault(password); err != nil {
+		return err
+	}
+	_ = godotenv.Load("../.env")
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	dataDir, err := filepath.Abs(maintenanceDataDir(cfg))
+	if err != nil {
+		return err
+	}
+	lock, err := instancebackup.Lock(dataDir)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if cfg.Database.Driver != "sqlite" && cfg.Database.MaxOpenConns < 2 {
+		cfg.Database.MaxOpenConns = 2
+	}
+	database, err := dbinfra.NewDB(&cfg.Database)
+	if err != nil {
+		return err
+	}
+	sqlDB, err := database.DB()
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	release, err := instancebackup.DatabaseLock(ctx, sqlDB, cfg.Database.Driver)
+	if err != nil {
+		return err
+	}
+	defer release()
+	version, err := dbmigration.Version(ctx, sqlDB, cfg.Database.Driver)
+	if err != nil {
+		return err
+	}
+	if version != schema.Version {
+		return errors.New("database is not initialized with the current schema")
+	}
+	encryptor, err := crypto.NewEncryptor(cfg.Server.EncryptionKey)
+	if err != nil {
+		return err
+	}
+	service, err := auth.NewService(database, encryptor, access.NewRuntime())
+	if err != nil {
+		return err
+	}
+	if err := service.RecoverFromHost(ctx, password, *resetTwoFactor); err != nil {
+		return err
+	}
+	fmt.Fprintln(os.Stdout, "Owner access recovered; all owner sessions and device credentials have been revoked.")
+	return nil
+}
+
+func readOwnerRecoveryPassword(filename string) (string, error) {
+	if filename == "" {
+		return "", errors.New("--new-password-file is required")
+	}
+	f, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 4096 {
+		return "", errors.New("owner password file must be a regular private file (0600 or 0400), at most 4096 bytes")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, 4097))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > 4096 {
+		return "", errors.New("owner password file too large")
+	}
+	return strings.TrimRight(string(data), "\r\n"), nil
 }

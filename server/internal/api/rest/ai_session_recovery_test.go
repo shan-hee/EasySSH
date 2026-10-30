@@ -1,6 +1,7 @@
 package rest
 
 import (
+ "github.com/easyssh/shared/protocol"
 	"bufio"
 	"bytes"
 	"context"
@@ -42,7 +43,7 @@ func (r *recoveryTurnRunner) StreamTurn(ctx context.Context, _ provider.Config, 
 	}
 }
 
-func readRecoverySnapshot(t *testing.T, scanner *bufio.Scanner, match func(runtime.SessionView) bool) runtime.SessionView {
+func readRecoverySnapshot(t *testing.T, scanner *bufio.Scanner, match func(protocol.AISessionOverview) bool) protocol.AISessionOverview {
 	t.Helper()
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -50,8 +51,8 @@ func readRecoverySnapshot(t *testing.T, scanner *bufio.Scanner, match func(runti
 			continue
 		}
 		var chunk struct {
-			Type string              `json:"type"`
-			Data runtime.SessionView `json:"data"`
+			Type string                     `json:"type"`
+			Data protocol.AISessionOverview `json:"data"`
 		}
 		require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk))
 		if chunk.Type == "data-session-snapshot" && match(chunk.Data) {
@@ -60,18 +61,19 @@ func readRecoverySnapshot(t *testing.T, scanner *bufio.Scanner, match func(runti
 	}
 	require.NoError(t, scanner.Err())
 	t.Fatal("recovery stream ended before the expected snapshot")
-	return runtime.SessionView{}
+	return protocol.AISessionOverview{}
 }
 
 func TestAIChatRecoveryCatchesUpAndContinuesWithoutStartingAnotherTurn(t *testing.T) {
-	userID := uuid.New()
+	ownerID := uuid.New()
 	runner := &recoveryTurnRunner{deltas: make(chan string, 4)}
 	manager := runtime.NewManager(restFakeResolver{config: provider.Config{Model: "fake-model"}}, runner, nil, time.Minute)
-	session, err := manager.CreateSession(context.Background(), userID, runtime.CreateSessionInput{})
+	session, err := manager.CreateSession(testAIContext(t, ownerID), runtime.CreateSessionInput{})
 	require.NoError(t, err)
-	server := httptest.NewServer(newTestAISessionRouter(userID, NewAISessionHandler(manager)))
+	router := newTestAISessionRouter(t, ownerID, NewAISessionHandler(manager))
+	server := httptest.NewServer(router)
 	defer server.Close()
-	defer manager.CancelSession(context.Background(), userID, session.ID)
+	defer manager.CancelSession(testAIContext(t, ownerID), session.ID)
 	client := &http.Client{Timeout: 5 * time.Second}
 
 	body, err := json.Marshal(chatRequestBody("hello", nil))
@@ -99,7 +101,7 @@ func TestAIChatRecoveryCatchesUpAndContinuesWithoutStartingAnotherTurn(t *testin
 	// The provider continues while the browser has no subscription.
 	runner.deltas <- ", while offline"
 	require.Eventually(t, func() bool {
-		view, err := manager.GetSession(userID, session.ID)
+		view, err := manager.GetSession(testAIContext(t, ownerID), session.ID)
 		return err == nil && len(view.Messages) == 2 && view.Messages[1].Content == "before disconnect, while offline"
 	}, time.Second, 5*time.Millisecond)
 
@@ -109,18 +111,18 @@ func TestAIChatRecoveryCatchesUpAndContinuesWithoutStartingAnotherTurn(t *testin
 	defer recovered.Body.Close()
 	require.Equal(t, http.StatusOK, recovered.StatusCode)
 	scanner = bufio.NewScanner(recovered.Body)
-	first := readRecoverySnapshot(t, scanner, func(runtime.SessionView) bool { return true })
+	first := readRecoverySnapshot(t, scanner, func(protocol.AISessionOverview) bool { return true })
 	require.Equal(t, runtime.SessionStatusRunning, first.Status)
-	require.Equal(t, "before disconnect, while offline", first.Messages[1].Content)
+	require.Equal(t, "before disconnect, while offline", readAIHistory(t, router, session.ID).Messages[1].Content)
 
 	runner.deltas <- ", after reconnect"
-	live := readRecoverySnapshot(t, scanner, func(view runtime.SessionView) bool {
-		return len(view.Messages) == 2 && strings.HasSuffix(view.Messages[1].Content, ", after reconnect")
+	live := readRecoverySnapshot(t, scanner, func(view protocol.AISessionOverview) bool {
+		return view.MessageCount == 2 && view.UpdatedAt.After(first.UpdatedAt)
 	})
 	require.Equal(t, runtime.SessionStatusRunning, live.Status, "new output must arrive before generation finishes")
 	close(runner.deltas)
-	final := readRecoverySnapshot(t, scanner, func(view runtime.SessionView) bool { return view.Status == runtime.SessionStatusIdle })
-	require.Equal(t, "before disconnect, while offline, after reconnect", final.Messages[1].Content)
+	readRecoverySnapshot(t, scanner, func(view protocol.AISessionOverview) bool { return view.Status == runtime.SessionStatusIdle })
+	require.Equal(t, "before disconnect, while offline, after reconnect", readAIHistory(t, router, session.ID).Messages[1].Content)
 	foundDone := false
 	for scanner.Scan() {
 		foundDone = foundDone || scanner.Text() == "data: [DONE]"
@@ -133,10 +135,10 @@ func TestAIChatRecoveryCatchesUpAndContinuesWithoutStartingAnotherTurn(t *testin
 	completed, err := client.Get(resumeURL)
 	require.NoError(t, err)
 	defer completed.Body.Close()
-	readRecoverySnapshot(t, bufio.NewScanner(completed.Body), func(view runtime.SessionView) bool { return view.Status == runtime.SessionStatusIdle })
+	readRecoverySnapshot(t, bufio.NewScanner(completed.Body), func(view protocol.AISessionOverview) bool { return view.Status == runtime.SessionStatusIdle })
 	require.EqualValues(t, 1, runner.calls.Load())
 
-	otherUser := newTestAISessionRouter(uuid.New(), NewAISessionHandler(manager))
+	otherUser := newTestAISessionRouter(t, uuid.New(), NewAISessionHandler(manager))
 	denied := performJSONRequest(t, otherUser, http.MethodGet, "/sessions/"+session.ID+"/chat/stream", nil)
 	require.Equal(t, http.StatusNotFound, denied.Code)
 }

@@ -121,10 +121,6 @@ func (e *Encryptor) DecryptWithAAD(ciphertext string, aad []byte) (string, error
 	return string(plaintext), nil
 }
 
-func HasEncryptedPrefix(value string) bool {
-	return len(value) > len(encryptedValuePrefix) && value[:len(encryptedValuePrefix)] == encryptedValuePrefix
-}
-
 func SecretAAD(table string, rowID interface{}, column string) []byte {
 	return []byte(fmt.Sprintf("easyssh:%s:%v:%s", table, rowID, column))
 }

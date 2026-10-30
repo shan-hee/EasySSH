@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/easyssh/shared/aiworkspace"
-	"github.com/google/uuid"
 )
 
 // ToolCall AI 请求的工具调用
@@ -22,9 +21,11 @@ type ToolResult struct {
 	ToolCallID    string                    `json:"tool_call_id"`
 	Content       string                    `json:"content"`
 	IsError       bool                      `json:"is_error,omitempty"`
+	Unknown       bool                      `json:"unknown,omitempty"`
+	Cancelled     bool                      `json:"cancelled,omitempty"`
 }
 
 // ToolExecutor 工具执行器接口
 type ToolExecutor interface {
-	Execute(ctx context.Context, userID uuid.UUID, args json.RawMessage) (*ToolResult, error)
+	Execute(ctx context.Context, args json.RawMessage) (*ToolResult, error)
 }

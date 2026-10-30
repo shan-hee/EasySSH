@@ -1,30 +1,21 @@
 #!/bin/bash
-
-# 从唯一 OpenAPI 契约生成 Go 与 TypeScript 类型
-
-set -e
-
-echo "🔄 生成 API 契约代码..."
-
-if [ ! -f shared/openapi.yaml ]; then
-    echo "⚠️  未找到 shared/openapi.yaml 文件"
-    echo "请先创建 OpenAPI 规范文件"
-    exit 1
-fi
-
+# Generate all HTTP types from contracts/http/openapi.yaml.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mode="${1:---all}"
+case "$mode" in
+    --all|--go|--ts) ;;
+    *) echo "Usage: scripts/gen-types.sh [--all|--go|--ts]" >&2; exit 2 ;;
+esac
 node scripts/check-openapi-routes.mjs
-
-echo "📝 生成 Go 类型与嵌入规范..."
-(
-    cd server
-    go tool oapi-codegen --config oapi-codegen.yaml ../shared/openapi.yaml
-)
-
-echo "📝 生成 TypeScript 类型..."
-if [ ! -x web/node_modules/.bin/openapi-typescript ]; then
-    echo "❌ 缺少 web/node_modules 中固定版本的 openapi-typescript，请先执行依赖安装"
-    exit 1
+if [ "$mode" != --ts ]; then
+    # Uses the oapi-codegen version pinned by server/go.mod.
+    (cd server; go tool oapi-codegen --config ../contracts/http/go-models.yaml -o ../shared/protocol/generated.go ../contracts/http/openapi.yaml)
 fi
-web/node_modules/.bin/openapi-typescript shared/openapi.yaml -o web/src/types/openapi.ts
-
-echo "✅ API 契约代码生成完成！"
+if [ "$mode" != --go ]; then
+    if [ ! -x packages/app/node_modules/.bin/openapi-typescript ]; then
+        echo "缺少固定版本的 openapi-typescript，请先在仓库根目录执行 pnpm install" >&2
+        exit 1
+    fi
+    packages/app/node_modules/.bin/openapi-typescript contracts/http/openapi.yaml -o packages/app/src/generated/openapi.ts
+fi

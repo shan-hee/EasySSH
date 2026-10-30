@@ -81,3 +81,30 @@ func InspectPrivateKey(privateKey, passphrase string) (KeyMetadata, error) {
 	metadata.PassphraseRequired = errors.As(err, &missing)
 	return metadata, nil
 }
+
+// InspectPublicKey normalizes public metadata without requiring private material.
+func InspectPublicKey(value string) (KeyMetadata, error) {
+	pub, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(value))
+	if err != nil {
+		return KeyMetadata{}, err
+	}
+	if strings.TrimSpace(string(rest)) != "" {
+		return KeyMetadata{}, errors.New("expected exactly one public key")
+	}
+	metadata := KeyMetadata{PublicKey: string(ssh.MarshalAuthorizedKey(pub)), Fingerprint: ssh.FingerprintSHA256(pub)}
+	cryptoKey, ok := pub.(ssh.CryptoPublicKey)
+	if !ok {
+		return KeyMetadata{}, errors.New("unsupported public key")
+	}
+	switch key := cryptoKey.CryptoPublicKey().(type) {
+	case *rsa.PublicKey:
+		metadata.Algorithm, metadata.KeySize = "rsa", key.N.BitLen()
+	case ed25519.PublicKey:
+		metadata.Algorithm = "ed25519"
+	case *ecdsa.PublicKey:
+		metadata.Algorithm, metadata.KeySize = "ecdsa", key.Curve.Params().BitSize
+	default:
+		return KeyMetadata{}, errors.New("unsupported public key type")
+	}
+	return metadata, nil
+}

@@ -1,6 +1,7 @@
 package aichatui
 
 import (
+	"github.com/easyssh/shared/protocol"
 	"sort"
 	"strings"
 	"time"
@@ -16,10 +17,12 @@ const (
 	TaskStatusRunning        TaskStatus = "running"
 	TaskStatusSucceeded      TaskStatus = "succeeded"
 	TaskStatusFailed         TaskStatus = "failed"
+	TaskStatusUnknown        TaskStatus = "unknown"
 	TaskStatusCancelled      TaskStatus = "cancelled"
 )
 
 type MessageView struct {
+	ExternalContent  bool              `json:"external_content,omitempty"`
 	ServerReferences []ServerReference `json:"server_references,omitempty"`
 	ID               string            `json:"id"`
 	Role             string            `json:"role"`
@@ -93,12 +96,7 @@ func (t TaskView) Public() TaskView {
 	return t
 }
 
-type UIMessage struct {
-	ID       string                   `json:"id"`
-	Role     string                   `json:"role"`
-	Metadata map[string]interface{}   `json:"metadata,omitempty"`
-	Parts    []map[string]interface{} `json:"parts"`
-}
+type UIMessage = protocol.AIUIMessage
 
 func BuildMessages(messages []MessageView, tasks []TaskView) []UIMessage {
 	items := make([]timelineItem, 0, len(messages)+len(tasks))
@@ -358,6 +356,9 @@ func TaskPart(task TaskView) map[string]interface{} {
 	case TaskStatusSucceeded:
 		part["state"] = "output-available"
 		part["output"] = task.Result
+	case TaskStatusUnknown:
+		part["state"] = "output-error"
+		part["errorText"] = firstNonEmpty(task.Error, task.Result, "Execution outcome unknown; verify before retrying")
 	case TaskStatusFailed:
 		part["state"] = "output-error"
 		part["errorText"] = firstNonEmpty(task.Error, "Tool execution failed")

@@ -1,221 +1,128 @@
 package middleware
 
 import (
-	"errors"
-	"net/http"
-	"strings"
-
+	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/auth"
-	"github.com/easyssh/server/internal/domain/oauthprovider"
+	"github.com/easyssh/server/internal/domain/security"
+	"github.com/easyssh/shared/protocol"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"math"
+	"net/http"
+	"time"
 )
 
-const (
-	ticketQueryName  = "ticket"
-	ticketContextKey = "auth_ticket"
-)
-
-// 从 Authorization 头提取 Bearer Token
-func extractBearerToken(c *gin.Context) string {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader != "" {
-		parts := strings.Fields(authHeader)
-		if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
-			return strings.TrimSpace(parts[1])
-		}
-	}
-
-	return ""
-}
-
-func extractTicket(c *gin.Context) string {
-	if t := strings.TrimSpace(c.Query(ticketQueryName)); t != "" {
-		return t
-	}
-	return ""
-}
+const OwnerCookieName = "easyssh_owner"
+const ticketContextKey = "auth_ticket"
 
 func ticketExpectationForRequest(c *gin.Context) (auth.TicketExpectation, bool) {
 	switch c.FullPath() {
+	case "/api/v1/transfer-jobs/:id/artifact":
+		return auth.TicketExpectation{Type: auth.TicketTypeTransferArtifact, Ref: c.Param("id")}, true
 	case "/api/v1/backup/instances/:id/download":
 		return auth.TicketExpectation{Type: auth.TicketTypeInstanceBackupDownload, Ref: c.Param("id")}, true
 	case "/api/v1/ssh/terminal/:server_id":
 		return auth.TicketExpectation{Type: auth.TicketTypeWSTerminal, Ref: c.Param("server_id")}, true
 	case "/api/v1/monitor/server/:server_id":
 		return auth.TicketExpectation{Type: auth.TicketTypeWSMonitor, Ref: c.Param("server_id")}, true
-	case "/api/v1/sftp/upload/ws/:task_id":
-		return auth.TicketExpectation{Type: auth.TicketTypeWSSFTPUpload, Ref: c.Param("task_id")}, true
 	case "/api/v1/sftp/:server_id/auth/ws":
 		return auth.TicketExpectation{Type: auth.TicketTypeWSSFTPAuth, Ref: c.Param("server_id")}, true
-	case "/api/v1/sftp/transfer/ws/:task_id":
-		return auth.TicketExpectation{Type: auth.TicketTypeWSSFTPTransfer, Ref: c.Param("task_id")}, true
-	case "/api/v1/sftp/:server_id/download":
-		return auth.TicketExpectation{Type: auth.TicketTypeSFTPDownload, Ref: c.Param("server_id")}, true
-	case "/api/v1/sftp/:server_id/batch-download":
-		return auth.TicketExpectation{Type: auth.TicketTypeSFTPBatchDownload, Ref: c.Param("server_id")}, true
 	default:
 		return auth.TicketExpectation{}, false
 	}
 }
 
-func applyIdentityToContext(c *gin.Context, identity *oauthprovider.Identity) {
-	c.Set("user_id", identity.UserID.String())
-	c.Set("username", identity.Username)
-	c.Set("email", identity.Email)
-	c.Set("role", identity.Role)
-	if identity.SessionID != uuid.Nil {
-		c.Set("session_id", identity.SessionID.String())
-	}
+// Owner authentication never falls back from visitor credentials to a cookie.
+func AuthMiddleware(owner *auth.Service, tickets auth.TicketService, securityService security.Service) gin.HandlerFunc {
+	return authenticateContext(owner, tickets, securityService, nil)
 }
 
-func applyTicketToContext(c *gin.Context, t *auth.Ticket) {
-	c.Set("user_id", t.UserID.String())
-	c.Set("username", t.Username)
-	c.Set("email", t.Email)
-	c.Set("role", string(t.Role))
-	if t.SessionID != (uuid.UUID{}) {
-		c.Set("session_id", t.SessionID.String())
-	}
-	c.Set(ticketContextKey, t)
+// ExecutionAuth selects explicit visitor credentials without falling back to
+// owner cookies. Owner-only groups continue to use AuthMiddleware.
+func ExecutionAuth(owner *auth.Service, tickets auth.TicketService, securityService security.Service, visitor gin.HandlerFunc) gin.HandlerFunc {
+	return authenticateContext(owner, tickets, securityService, visitor)
 }
-
-// AuthMiddleware 认证中间件（支持 Authorization Bearer / 一次性 Ticket）
-func AuthMiddleware(oauthProvider *oauthprovider.Service, ticketService auth.TicketService, userRepo auth.Repository) gin.HandlerFunc {
+func authenticateContext(owner *auth.Service, tickets auth.TicketService, securityService security.Service, visitor gin.HandlerFunc) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 1) 优先 Bearer（用于常规 API 调用）
-		tokenString := extractBearerToken(c)
-		if tokenString != "" {
-			identity, err := oauthProvider.ValidateAccessToken(c.Request.Context(), tokenString)
-			if err != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token", "message": "Invalid or expired token"})
-				c.Abort()
-				return
-			}
-
-			// 检查用户是否被锁定
-			if userRepo != nil {
-				user, err := userRepo.FindByID(c.Request.Context(), identity.UserID)
-				if err != nil {
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"error":   "user_not_found",
-						"message": "User not found",
-					})
-					c.Abort()
-					return
-				}
-				if user.IsLocked() {
-					c.JSON(http.StatusForbidden, gin.H{
-						"error":     "account_locked",
-						"message":   "Account is locked. Please contact administrator.",
-						"unlock_at": user.LockedUntil,
-					})
-					c.Abort()
-					return
-				}
-				identity.Role = string(user.Role)
-			}
-
-			applyIdentityToContext(c, identity)
-			c.Next()
+		ctx, release := owner.RequestContext(c.Request.Context())
+		defer release()
+		c.Request = c.Request.WithContext(ctx)
+		if _, requiresTicket := ticketExpectationForRequest(c); requiresTicket && c.Request.Method == http.MethodGet && c.Query("ticket") == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "ticket_required"})
 			return
 		}
-
-		// 2) Ticket（用于 WebSocket 握手 / 原生下载等无法设置 Header 的场景）
-		if ticketService != nil {
-			ticket := extractTicket(c)
-			if ticket != "" {
-				expect, ok := ticketExpectationForRequest(c)
-				if !ok {
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"error":   "invalid_ticket",
-						"message": "Ticket not allowed for this endpoint",
-					})
-					c.Abort()
-					return
-				}
-				t, err := ticketService.Consume(c.Request.Context(), ticket, expect)
-				if err != nil {
-					code := "invalid_ticket"
-					msg := "Invalid ticket"
-					if errors.Is(err, auth.ErrExpiredTicket) {
-						code = "ticket_expired"
-						msg = "Ticket has expired"
-					} else if errors.Is(err, auth.ErrTicketUsed) {
-						code = "ticket_used"
-						msg = "Ticket has been used"
-					}
-					c.JSON(http.StatusUnauthorized, gin.H{
-						"error":   code,
-						"message": msg,
-					})
-					c.Abort()
-					return
-				}
-
-				applyTicketToContext(c, t)
-				c.Next()
-				return
-			}
-		}
-
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "unauthorized",
-			"message": "Missing authorization token",
-		})
-		c.Abort()
-		return
-	}
-}
-
-// OptionalAuth 可选认证中间件（不强制要求认证）
-func OptionalAuth(oauthProvider *oauthprovider.Service, ticketService auth.TicketService, userRepo auth.Repository) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		tokenString := extractBearerToken(c)
-
-		// 如果没有 token，直接继续（可选认证）
-		if tokenString == "" {
-			// 可选：允许 ticket（主要用于复用中间件形态，默认不会在此类端点使用）
-			if ticketService != nil {
-				if ticket := extractTicket(c); ticket != "" {
-					if expect, ok := ticketExpectationForRequest(c); ok {
-						if t, err := ticketService.Consume(c.Request.Context(), ticket, expect); err == nil {
-							applyTicketToContext(c, t)
-						}
-					}
-				}
-			}
-			c.Next()
+		if visitor != nil && c.Query("ticket") == "" && (c.GetHeader("Authorization") != "" || c.GetHeader("X-EasySSH-Access-Session") != "") {
+			visitor(c)
 			return
 		}
-
-		// 验证 token
-		identity, err := oauthProvider.ValidateAccessToken(c.Request.Context(), tokenString)
-		if err != nil {
-			c.Next()
+		var scope access.Scope
+		var session *auth.Session
+		var token string
+		var err error
+		if raw := c.Query("ticket"); raw != "" {
+			expect, ok := ticketExpectationForRequest(c)
+			if !ok {
+				c.AbortWithStatusJSON(401, gin.H{"error": "invalid_ticket"})
+				return
+			}
+			ticket, ticketErr := tickets.Consume(c.Request.Context(), raw, expect)
+			if ticketErr != nil {
+				c.AbortWithStatusJSON(401, gin.H{"error": "invalid_ticket"})
+				return
+			}
+			scope = ticket.Scope
+			c.Set(ticketContextKey, ticket)
+		} else {
+			if c.GetHeader("Authorization") != "" || c.GetHeader("X-EasySSH-Access-Session") != "" {
+				c.AbortWithStatusJSON(401, gin.H{"error": "wrong_access_context"})
+				return
+			}
+			token, _ = c.Cookie(OwnerCookieName)
+			mutation := c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead && c.Request.Method != http.MethodOptions
+			scope, session, err = owner.Authenticate(c.Request.Context(), token, c.GetHeader(CSRFTokenHeader), mutation)
+		}
+		if err != nil || !scope.IsOwner() && (visitor == nil || scope.Actor().Kind != protocol.Visitor) {
+			c.AbortWithStatusJSON(401, gin.H{"error": "owner_authentication_required"})
 			return
 		}
-
-		// 检查用户是否被锁定（可选认证时，锁定用户视为未认证，但设置锁定标记）
-		if userRepo != nil {
-			user, err := userRepo.FindByID(c.Request.Context(), identity.UserID)
-			if err != nil {
-				c.Next()
-				return
-			}
-			if user.IsLocked() {
-				// 设置锁定标记，供后续处理使用
-				c.Set("account_locked", true)
-				c.Set("locked_until", user.LockedUntil)
-				c.Set("lock_reason", user.LockReason)
-				c.Next()
-				return
-			}
-			identity.Role = string(user.Role)
+		if scope.IsOwner() && !checkOwnerAddress(c, securityService) {
+			return
 		}
-
-		applyIdentityToContext(c, identity)
-
+		if session != nil {
+			SetOwnerSessionCookie(c, token, session, securityService)
+		}
+		c.Request = c.Request.WithContext(access.WithScope(c.Request.Context(), scope))
 		c.Next()
 	}
+}
+
+// OwnerIdentity is used by owner-only operations. It is derived exclusively from
+// the authenticated scope and is never populated by request body or string keys.
+func OwnerIdentity(c *gin.Context) (any, bool) {
+	scope, err := access.FromContext(c.Request.Context())
+	if err != nil || !scope.IsOwner() {
+		return nil, false
+	}
+	if err := scope.RequireOwner(c.Request.Context(), protocol.OwnerManage); err != nil {
+		return nil, false
+	}
+	return scope.Actor().ID, true
+}
+func OwnerID(c *gin.Context) string {
+	value, ok := OwnerIdentity(c)
+	if !ok {
+		return ""
+	}
+	return value.(string)
+}
+
+// SetOwnerSessionCookie keeps browser persistence aligned with the renewed
+// server deadline. A session cookie has no Max-Age or Expires attributes.
+func SetOwnerSessionCookie(c *gin.Context, token string, session *auth.Session, securityService security.Service) {
+	cookie := &http.Cookie{Name: OwnerCookieName, Value: token, Path: "/", HttpOnly: true, Secure: RequestUsesHTTPS(c, securityService), SameSite: http.SameSiteStrictMode}
+	if session.RememberLogin {
+		cookie.Expires = session.ExpiresAt
+		cookie.MaxAge = max(1, int(math.Ceil(time.Until(session.ExpiresAt).Seconds())))
+	}
+	http.SetCookie(c.Writer, cookie)
+	c.Header("Cache-Control", "no-store")
 }

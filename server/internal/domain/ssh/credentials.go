@@ -1,7 +1,9 @@
 package ssh
 
 import (
-	"fmt"
+	"context"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"sync"
 	"time"
 
@@ -58,71 +60,82 @@ func CredentialOptions(credential *Credential) []ClientOption {
 
 type RuntimeCredentialStore struct {
 	mu         sync.RWMutex
-	credential map[string]runtimeCredentialEntry
+	credential map[credentialKey]runtimeCredentialEntry
 	ttl        time.Duration
 }
 
+type credentialKey struct {
+	SessionID string
+	ServerID  uuid.UUID
+}
 type runtimeCredentialEntry struct {
+	Revision   int64
+	Digest     [32]byte
+	Actor      protocol.Actor
 	Credential Credential
 	ExpiresAt  time.Time
 }
 
 func NewRuntimeCredentialStore() *RuntimeCredentialStore {
-	return &RuntimeCredentialStore{
-		credential: map[string]runtimeCredentialEntry{},
-		ttl:        defaultRuntimeCredentialTTL,
-	}
+	return &RuntimeCredentialStore{credential: map[credentialKey]runtimeCredentialEntry{}, ttl: defaultRuntimeCredentialTTL}
 }
-
-func runtimeCredentialKey(userID, serverID uuid.UUID) string {
-	return fmt.Sprintf("%s:%s", userID.String(), serverID.String())
-}
-
-func (s *RuntimeCredentialStore) Set(userID, serverID uuid.UUID, credential Credential) {
-	if s == nil || userID == uuid.Nil || serverID == uuid.Nil {
-		return
+func (s *RuntimeCredentialStore) Set(ctx context.Context, serverID uuid.UUID, revision int64, digest [32]byte, credential Credential) error {
+	scope := access.Current(ctx)
+	if err := scope.RequireOwner(ctx, protocol.CredentialsRead); err != nil {
+		return err
 	}
-
+	if revision < 1 {
+		return access.ErrResourceChanged
+	}
+	key := credentialKey{scope.Actor().SessionID, serverID}
 	s.mu.Lock()
-	s.credential[runtimeCredentialKey(userID, serverID)] = runtimeCredentialEntry{
-		Credential: credential,
-		ExpiresAt:  time.Now().Add(s.ttl),
+	if current, ok := s.credential[key]; ok && current.Revision > revision {
+		s.mu.Unlock()
+		return access.ErrResourceChanged
 	}
+	s.credential[key] = runtimeCredentialEntry{Actor: scope.Actor(), Revision: revision, Digest: digest, Credential: credential, ExpiresAt: time.Now().Add(s.ttl)}
 	s.mu.Unlock()
+	return nil
 }
-
-func (s *RuntimeCredentialStore) Get(userID, serverID uuid.UUID) (*Credential, bool) {
-	if s == nil || userID == uuid.Nil || serverID == uuid.Nil {
+func (s *RuntimeCredentialStore) Get(ctx context.Context, serverID uuid.UUID, revision int64, digest [32]byte) (*Credential, bool) {
+	scope := access.Current(ctx)
+	if scope.RequireOwner(ctx, protocol.CredentialsRead) != nil {
 		return nil, false
 	}
-
-	key := runtimeCredentialKey(userID, serverID)
-	s.mu.RLock()
+	key := credentialKey{scope.Actor().SessionID, serverID}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	entry, ok := s.credential[key]
-	s.mu.RUnlock()
 	if !ok {
 		return nil, false
 	}
-
-	if time.Now().After(entry.ExpiresAt) {
-		s.mu.Lock()
-		if current, exists := s.credential[key]; exists && current.ExpiresAt.Equal(entry.ExpiresAt) {
-			delete(s.credential, key)
-		}
-		s.mu.Unlock()
+	if entry.Actor != scope.Actor() || !time.Now().Before(entry.ExpiresAt) {
+		delete(s.credential, key)
 		return nil, false
 	}
-
-	credential := entry.Credential
-	return &credential, true
+	if revision < 1 || entry.Revision != revision || entry.Digest != digest {
+		if entry.Revision < revision {
+			delete(s.credential, key)
+		}
+		return nil, false
+	}
+	value := entry.Credential
+	return &value, true
+}
+func (s *RuntimeCredentialStore) Delete(ctx context.Context, serverID uuid.UUID) {
+	scope := access.Current(ctx)
+	s.mu.Lock()
+	delete(s.credential, credentialKey{scope.Actor().SessionID, serverID})
+	s.mu.Unlock()
 }
 
-func (s *RuntimeCredentialStore) Delete(userID, serverID uuid.UUID) {
-	if s == nil || userID == uuid.Nil || serverID == uuid.Nil {
-		return
-	}
-
+// Invalidate is called after a trusted resource mutation commits.
+func (s *RuntimeCredentialStore) Invalidate(ownerID, serverID uuid.UUID) {
 	s.mu.Lock()
-	delete(s.credential, runtimeCredentialKey(userID, serverID))
-	s.mu.Unlock()
+	defer s.mu.Unlock()
+	for key, entry := range s.credential {
+		if key.ServerID == serverID && entry.Actor.ID == ownerID.String() {
+			delete(s.credential, key)
+		}
+	}
 }

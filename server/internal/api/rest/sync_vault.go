@@ -11,7 +11,7 @@ import (
 )
 
 func (h *SyncHandler) VaultList(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
@@ -31,7 +31,7 @@ func (h *SyncHandler) VaultList(c *gin.Context) {
 	c.JSON(200, filtered)
 }
 func (h *SyncHandler) VaultPut(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
@@ -55,12 +55,12 @@ func (h *SyncHandler) VaultPut(c *gin.Context) {
 	c.JSON(200, gin.H{"saved": true})
 }
 func (h *SyncHandler) VaultGet(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
 	var object datasync.VaultObject
-	if err := h.service.DB.Select("kind").First(&object, "user_id=? AND id=?", owner, c.Param("id")).Error; err != nil {
+	if err := h.service.DB.Select("kind").First(&object, "owner_id=? AND id=?", owner, c.Param("id")).Error; err != nil {
 		RespondError(c, 404, "object_unavailable", "Object unavailable")
 		return
 	}
@@ -76,7 +76,7 @@ func (h *SyncHandler) VaultGet(c *gin.Context) {
 	c.JSON(200, gin.H{"value": value})
 }
 func (h *SyncHandler) VaultExchange(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
@@ -100,7 +100,7 @@ func (h *SyncHandler) VaultExchange(c *gin.Context) {
 		return
 	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(200, result)
+	c.JSON(200, result.VaultResult())
 }
 
 func vaultScope(c *gin.Context, kind string) bool {
@@ -109,14 +109,14 @@ func vaultScope(c *gin.Context, kind string) bool {
 		kind = "ai_session"
 	}
 	if !scopes.Allows(kind) {
-		RespondError(c, 403, "sync_scope_denied", "Reauthorize this device to enable this sync scope")
+		RespondError(c, 403, "sync_scope_denied", "The owner must allow this scope for the device")
 		return false
 	}
 	return true
 }
 
 func (h *SyncHandler) ForkVaultSession(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}

@@ -15,15 +15,6 @@ func NormalizeProvider(provider string) string {
 	}
 }
 
-func IsOpenAICompatibleProvider(provider string) bool {
-	switch NormalizeProvider(provider) {
-	case "openai", "openai-response", "gemini":
-		return true
-	default:
-		return false
-	}
-}
-
 func NormalizeOpenAIBaseURL(provider string, endpoint string) string {
 	baseURL := strings.TrimSpace(strings.TrimSuffix(endpoint, "/"))
 	if baseURL == "" {
@@ -70,25 +61,6 @@ func NormalizeAnthropicBaseURL(endpoint string) string {
 	}
 
 	return baseURL
-}
-
-func ParseModels(models string) []string {
-	if strings.TrimSpace(models) == "" {
-		return []string{}
-	}
-
-	parts := strings.Split(models, ",")
-	result := make([]string, 0, len(parts))
-	seen := map[string]bool{}
-	for _, part := range parts {
-		model := strings.TrimSpace(part)
-		if model == "" || seen[model] {
-			continue
-		}
-		seen[model] = true
-		result = append(result, model)
-	}
-	return result
 }
 
 func FirstModel(models []string) string {

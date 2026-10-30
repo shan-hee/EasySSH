@@ -44,10 +44,10 @@ test: sync-deps
 clean:
 	rm -rf bin/
 
-# Automerge worker runtime; Go remains CGO-free.
+# Automerge worker runtime; Go remains CGO-free. 依赖由仓库根 pnpm 工作区按锁文件安装。
 .PHONY: sync-deps
 sync-deps:
-	npm ci --prefix sync-runtime --ignore-scripts --no-audit --no-fund
+	cd .. && pnpm install --frozen-lockfile --ignore-scripts --filter "easyssh-sync-runtime..."
 
 # 安装依赖
 deps: sync-deps

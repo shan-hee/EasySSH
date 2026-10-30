@@ -1,89 +1,38 @@
 package dockerutil
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"github.com/easyssh/shared/protocol"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/distribution/reference"
-	"github.com/moby/moby/api/pkg/stdcopy"
 	containertypes "github.com/moby/moby/api/types/container"
 	mobyclient "github.com/moby/moby/client"
 )
 
 const DefaultResourceStatsLimit = 50
+const MaxStatsLimit = 256
+const MaxLogTail = 5000
 
-type Container struct {
-	ID      string            `json:"id"`
-	Names   []string          `json:"names"`
-	Image   string            `json:"image"`
-	ImageID string            `json:"imageId"`
-	Command string            `json:"command"`
-	Created int64             `json:"created"`
-	Status  string            `json:"status"`
-	State   string            `json:"state"`
-	Ports   []Port            `json:"ports"`
-	Labels  map[string]string `json:"labels"`
-	Mounts  []Mount           `json:"mounts"`
-}
+type Container = protocol.DockerContainer
 
-type Port struct {
-	IP          string `json:"ip,omitempty"`
-	PrivatePort int    `json:"privatePort"`
-	PublicPort  int    `json:"publicPort,omitempty"`
-	Type        string `json:"type"`
-}
+type Port = protocol.DockerPort
 
-type Mount struct {
-	Type        string `json:"type"`
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
-	Mode        string `json:"mode"`
-	RW          bool   `json:"rw"`
-}
+type Mount = protocol.DockerMount
 
-type ContainerStats struct {
-	ContainerID   string  `json:"containerId"`
-	Name          string  `json:"name"`
-	CPUPercent    float64 `json:"cpuPercent"`
-	MemoryUsage   int64   `json:"memoryUsage"`
-	MemoryLimit   int64   `json:"memoryLimit"`
-	MemoryPercent float64 `json:"memoryPercent"`
-	NetworkIn     int64   `json:"networkIn"`
-	NetworkOut    int64   `json:"networkOut"`
-	BlockRead     int64   `json:"blockRead"`
-	BlockWrite    int64   `json:"blockWrite"`
-	PIDs          int     `json:"pids"`
-}
+type ContainerStats = protocol.DockerContainerStats
 
-type Image struct {
-	ID          string `json:"id"`
-	Repository  string `json:"repository"`
-	Tag         string `json:"tag"`
-	Created     int64  `json:"created"`
-	Size        int64  `json:"size"`
-	VirtualSize int64  `json:"virtualSize"`
-}
+type Image = protocol.DockerImage
 
-type SystemInfo struct {
-	ContainersRunning int    `json:"containersRunning"`
-	ContainersPaused  int    `json:"containersPaused"`
-	ContainersStopped int    `json:"containersStopped"`
-	ContainersTotal   int    `json:"containersTotal"`
-	ImagesCount       int    `json:"imagesCount"`
-	DockerVersion     string `json:"dockerVersion"`
-	ServerVersion     string `json:"serverVersion"`
-	StorageDriver     string `json:"storageDriver"`
-	TotalMemory       int64  `json:"totalMemory"`
-	CPUs              int    `json:"cpus"`
-}
+type SystemInfo = protocol.DockerSystemInfo
 
 type ImageUpdate struct {
 	HasUpdate     bool
@@ -96,7 +45,8 @@ type ImageUpdate struct {
 type DialContextFunc func(context.Context, string, string) (net.Conn, error)
 
 type Client struct {
-	api *mobyclient.Client
+	api       *mobyclient.Client
+	transport *http.Transport
 }
 
 func NewClient(dial DialContextFunc, socketPath string) (*Client, error) {
@@ -108,20 +58,27 @@ func NewClient(dial DialContextFunc, socketPath string) (*Client, error) {
 		return nil, errors.New("docker socket path is required")
 	}
 
+	transport := &http.Transport{
+		DialContext:  func(ctx context.Context, _, _ string) (net.Conn, error) { return dial(ctx, "unix", socketPath) },
+		MaxIdleConns: 6, MaxIdleConnsPerHost: 6, MaxConnsPerHost: 8,
+		IdleConnTimeout: 30 * time.Second, ResponseHeaderTimeout: 45 * time.Second, MaxResponseHeaderBytes: 64 << 10,
+	}
+	httpClient := &http.Client{Transport: &boundedTransport{base: transport}, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("Docker redirects are disabled") }}
 	api, err := mobyclient.New(
 		mobyclient.WithHost("unix://"+socketPath),
 		mobyclient.WithAPIVersionNegotiation(),
-		mobyclient.WithDialContext(func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return dial(ctx, "unix", socketPath)
-		}),
+		mobyclient.WithHTTPClient(httpClient),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create docker client: %w", err)
 	}
-	return &Client{api: api}, nil
+	return &Client{api: api, transport: transport}, nil
 }
 
 func (c *Client) Close() error {
+	if c.transport != nil {
+		c.transport.CloseIdleConnections()
+	}
 	return c.api.Close()
 }
 
@@ -136,6 +93,9 @@ func (c *Client) ListContainers(ctx context.Context, all bool) ([]Container, err
 		return nil, err
 	}
 
+	if len(result.Items) > MaxListItems {
+		return nil, ErrResponseTooLarge
+	}
 	containers := make([]Container, 0, len(result.Items))
 	for _, item := range result.Items {
 		names := make([]string, 0, len(item.Names))
@@ -213,46 +173,20 @@ func (c *Client) Logs(ctx context.Context, containerID string, tail int) ([]byte
 	}
 	defer logs.Close()
 
-	var output bytes.Buffer
-	if inspect.Container.Config != nil && inspect.Container.Config.Tty {
-		_, err = io.Copy(&output, logs)
-	} else {
-		_, err = stdcopy.StdCopy(&output, &output, logs)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return output.Bytes(), nil
+	return readDockerLogs(logs, inspect.Container.Config != nil && inspect.Container.Config.Tty)
 }
 
 func (c *Client) Start(ctx context.Context, containerID string) error {
-	_, err := c.api.ContainerStart(ctx, containerID, mobyclient.ContainerStartOptions{})
-	return err
+	return c.Apply(ctx, protocol.DockerActionStart, containerID, false)
 }
-
 func (c *Client) Stop(ctx context.Context, containerID string) error {
-	_, err := c.api.ContainerStop(ctx, containerID, mobyclient.ContainerStopOptions{})
-	return err
+	return c.Apply(ctx, protocol.DockerActionStop, containerID, false)
 }
-
 func (c *Client) Restart(ctx context.Context, containerID string) error {
-	_, err := c.api.ContainerRestart(ctx, containerID, mobyclient.ContainerRestartOptions{})
-	return err
+	return c.Apply(ctx, protocol.DockerActionRestart, containerID, false)
 }
-
-func (c *Client) Pause(ctx context.Context, containerID string) error {
-	_, err := c.api.ContainerPause(ctx, containerID, mobyclient.ContainerPauseOptions{})
-	return err
-}
-
-func (c *Client) Unpause(ctx context.Context, containerID string) error {
-	_, err := c.api.ContainerUnpause(ctx, containerID, mobyclient.ContainerUnpauseOptions{})
-	return err
-}
-
 func (c *Client) Remove(ctx context.Context, containerID string, force bool) error {
-	_, err := c.api.ContainerRemove(ctx, containerID, mobyclient.ContainerRemoveOptions{Force: force})
-	return err
+	return c.Apply(ctx, protocol.DockerActionRemove, containerID, force)
 }
 
 func (c *Client) ListImages(ctx context.Context) ([]Image, error) {
@@ -261,8 +195,14 @@ func (c *Client) ListImages(ctx context.Context) ([]Image, error) {
 		return nil, err
 	}
 
+	if len(result.Items) > MaxListItems {
+		return nil, ErrResponseTooLarge
+	}
 	images := make([]Image, 0, len(result.Items))
 	for _, item := range result.Items {
+		if len(images)+max(1, len(item.RepoTags)) > MaxListItems {
+			return nil, ErrResponseTooLarge
+		}
 		repoTags := item.RepoTags
 		if len(repoTags) == 0 {
 			repoTags = []string{"<none>:<none>"}
@@ -306,9 +246,15 @@ func (c *Client) Stats(ctx context.Context, limit int) ([]ContainerStats, int, e
 	if limit == 0 {
 		limit = DefaultResourceStatsLimit
 	}
+	if limit < 1 || limit > MaxStatsLimit {
+		return nil, 0, errors.New("Docker stats limit must be between 1 and 256")
+	}
 	listed, err := c.api.ContainerList(ctx, mobyclient.ContainerListOptions{})
 	if err != nil {
 		return nil, 0, err
+	}
+	if len(listed.Items) > MaxListItems {
+		return nil, 0, ErrResponseTooLarge
 	}
 	runningTotal := len(listed.Items)
 	if limit > 0 && len(listed.Items) > limit {
@@ -346,6 +292,9 @@ func (c *Client) Stats(ctx context.Context, limit int) ([]ContainerStats, int, e
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, runningTotal, err
+	}
+	if missing := len(stats) - len(result); missing > 0 {
+		return result, runningTotal, fmt.Errorf("could not collect statistics for %d of %d selected containers", missing, len(stats))
 	}
 	return result, runningTotal, nil
 }
@@ -507,7 +456,7 @@ func ParseTail(value string) (int, error) {
 	if err != nil {
 		return 0, errors.New("tail must be a number")
 	}
-	if tail < 1 || tail > 5000 {
+	if tail < 1 || tail > MaxLogTail {
 		return 0, errors.New("tail must be between 1 and 5000")
 	}
 	return tail, nil
@@ -517,8 +466,8 @@ func NormalizeTail(tail int) int {
 	if tail <= 0 {
 		return 100
 	}
-	if tail > 5000 {
-		return 5000
+	if tail > MaxLogTail {
+		return MaxLogTail
 	}
 	return tail
 }

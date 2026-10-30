@@ -6,9 +6,10 @@ import (
 	"os"
 	"time"
 
+	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/auditlog"
+	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type AuditConfig struct {
@@ -30,15 +31,20 @@ func AuditLogMiddleware(auditService auditlog.Service, cfg *AuditConfig) gin.Han
 	}
 
 	return func(c *gin.Context) {
+		action := determineAction(c.Request.Method, c.FullPath())
+		if action == "" {
+			c.Next()
+			return
+		}
+		c.Request = c.Request.WithContext(operationrecord.WithRequestMetadata(c.Request.Context(), operationrecord.RequestMetadata{
+			Username: c.GetString("username"), IP: LogClientIP(c), UserAgent: c.Request.UserAgent(),
+		}))
 		startTime := time.Now()
 		c.Next()
 
-		action := determineAction(c.Request.Method, c.FullPath())
-		if action == "" {
-			return
-		}
-
-		userID, username, ok := auditUser(c)
+		actor := access.Current(c.Request.Context()).Actor()
+		username := c.GetString("username")
+		ok := actor.Valid()
 		if !ok && action != auditlog.ActionLogin && action != auditlog.ActionLogout {
 			return
 		}
@@ -51,10 +57,27 @@ func AuditLogMiddleware(auditService auditlog.Service, cfg *AuditConfig) gin.Han
 				errorMsg = c.Errors.String()
 			}
 		}
+		// Successful configuration mutations commit their own activity in the source
+		// transaction. Keep failed HTTP attempts, but never count success twice.
+		if status == auditlog.StatusSuccess {
+			switch action {
+			case auditlog.ActionServerCreate, auditlog.ActionServerUpdate, auditlog.ActionServerDelete, auditlog.ActionServerReorder,
+				auditlog.ActionServerGroupCreate, auditlog.ActionServerGroupUpdate, auditlog.ActionServerGroupDelete,
+				auditlog.ActionSSHKeyGenerate, auditlog.ActionSSHKeyImport, auditlog.ActionSSHKeyDelete, auditlog.ActionSSHKeyPassphraseUpdate,
+				auditlog.ActionScriptCreate, auditlog.ActionScriptUpdate, auditlog.ActionScriptDelete,
+				auditlog.ActionScheduledTaskCreate, auditlog.ActionScheduledTaskUpdate, auditlog.ActionScheduledTaskDelete, auditlog.ActionScheduledTaskToggle,
+				auditlog.ActionAIConfigUpdate,
+				auditlog.ActionGrantCreate, auditlog.ActionGrantUpdate, auditlog.ActionGrantRevoke,
+				auditlog.ActionGrantRotateSecret, auditlog.ActionGrantConfirmResource, auditlog.ActionGrantEndSession,
+				auditlog.ActionSystemSettingsUpdate, auditlog.ActionSecuritySettingsUpdate, auditlog.ActionNotificationSettingsUpdate,
+				auditlog.ActionProfileUpdate, auditlog.ActionSecurityUpdate:
+				return
+			}
+		}
 		clientIP := LogClientIP(c)
 
 		req := &auditlog.CreateAuditLogRequest{
-			UserID:    userID,
+			Actor:     actor,
 			Username:  username,
 			Action:    action,
 			Resource:  auditResource(c),
@@ -69,37 +92,12 @@ func AuditLogMiddleware(auditService auditlog.Service, cfg *AuditConfig) gin.Han
 			log.Printf("Audit: action=%s, user=%s, status=%s, ip=%s", action, username, status, clientIP)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), cfg.AsyncTimeout)
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), cfg.AsyncTimeout)
 		defer cancel()
 		if err := auditService.Log(ctx, req); err != nil {
 			log.Printf("Failed to log audit: %v (action=%s, user=%s)", err, req.Action, req.Username)
 		}
 	}
-}
-
-func auditUser(c *gin.Context) (uuid.UUID, string, bool) {
-	userID := uuid.Nil
-	username := ""
-
-	if value, exists := c.Get("user_id"); exists {
-		userIDString, ok := value.(string)
-		if !ok {
-			return uuid.Nil, "", false
-		}
-		parsed, err := uuid.Parse(userIDString)
-		if err != nil {
-			return uuid.Nil, "", false
-		}
-		userID = parsed
-	}
-
-	if value, exists := c.Get("username"); exists {
-		if parsed, ok := value.(string); ok {
-			username = parsed
-		}
-	}
-
-	return userID, username, userID != uuid.Nil || username != ""
 }
 
 func auditResource(c *gin.Context) string {
@@ -121,9 +119,8 @@ type auditRouteKey struct {
 }
 
 var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
-	{"POST", "/oauth/authorize"}:        auditlog.ActionLogin,
-	{"POST", "/api/v1/oauth/authorize"}: auditlog.ActionLogin,
-	{"POST", "/api/v1/oauth/logout"}:    auditlog.ActionLogout,
+	{"POST", "/api/v1/owner/login"}:  auditlog.ActionLogin,
+	{"POST", "/api/v1/owner/logout"}: auditlog.ActionLogout,
 
 	{"POST", "/api/v1/servers"}:          auditlog.ActionServerCreate,
 	{"PUT", "/api/v1/servers/:id"}:       auditlog.ActionServerUpdate,
@@ -132,12 +129,21 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 	{"POST", "/api/v1/servers/test"}:     auditlog.ActionServerTest,
 	{"PATCH", "/api/v1/servers/reorder"}: auditlog.ActionServerReorder,
 
-	{"POST", "/api/v1/users"}:              auditlog.ActionUserCreate,
-	{"PUT", "/api/v1/users/:id"}:           auditlog.ActionUserUpdate,
-	{"DELETE", "/api/v1/users/:id"}:        auditlog.ActionUserDelete,
-	{"POST", "/api/v1/users/:id/password"}: auditlog.ActionUserUpdate,
-	{"POST", "/api/v1/users/:id/lock"}:     auditlog.ActionUserUpdate,
-	{"POST", "/api/v1/users/:id/unlock"}:   auditlog.ActionUserUpdate,
+	{"POST", "/api/v1/server-groups"}:       auditlog.ActionServerGroupCreate,
+	{"PUT", "/api/v1/server-groups/:id"}:    auditlog.ActionServerGroupUpdate,
+	{"DELETE", "/api/v1/server-groups/:id"}: auditlog.ActionServerGroupDelete,
+
+	{"POST", "/api/v1/ssh-keys/generate"}:      auditlog.ActionSSHKeyGenerate,
+	{"POST", "/api/v1/ssh-keys/import"}:        auditlog.ActionSSHKeyImport,
+	{"DELETE", "/api/v1/ssh-keys/:id"}:         auditlog.ActionSSHKeyDelete,
+	{"PUT", "/api/v1/ssh-keys/:id/passphrase"}: auditlog.ActionSSHKeyPassphraseUpdate,
+
+	{"POST", "/api/v1/grants"}:                                  auditlog.ActionGrantCreate,
+	{"PUT", "/api/v1/grants/:id"}:                               auditlog.ActionGrantUpdate,
+	{"DELETE", "/api/v1/grants/:id"}:                            auditlog.ActionGrantRevoke,
+	{"POST", "/api/v1/grants/:id/rotate-secret"}:                auditlog.ActionGrantRotateSecret,
+	{"POST", "/api/v1/grants/:id/resources/:server_id/confirm"}: auditlog.ActionGrantConfirmResource,
+	{"DELETE", "/api/v1/grants/sessions/:id"}:                   auditlog.ActionGrantEndSession,
 
 	{"POST", "/api/v1/scheduled-tasks"}:             auditlog.ActionScheduledTaskCreate,
 	{"PUT", "/api/v1/scheduled-tasks/:id"}:          auditlog.ActionScheduledTaskUpdate,
@@ -145,23 +151,16 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 	{"POST", "/api/v1/scheduled-tasks/:id/toggle"}:  auditlog.ActionScheduledTaskToggle,
 	{"POST", "/api/v1/scheduled-tasks/:id/trigger"}: auditlog.ActionScheduledTaskTrigger,
 
-	{"PUT", "/api/v1/users/me"}:                         auditlog.ActionProfileUpdate,
-	{"PUT", "/api/v1/users/me/password"}:                auditlog.ActionSecurityUpdate,
-	{"POST", "/api/v1/users/me/2fa/enable"}:             auditlog.ActionSecurityUpdate,
-	{"POST", "/api/v1/users/me/2fa/disable"}:            auditlog.ActionSecurityUpdate,
-	{"DELETE", "/api/v1/users/me/sessions/:session_id"}: auditlog.ActionSecurityUpdate,
-	{"POST", "/api/v1/users/me/sessions/revoke-others"}: auditlog.ActionSecurityUpdate,
-	{"PUT", "/api/v1/users/me/notifications"}:           auditlog.ActionProfileUpdate,
-	{"PUT", "/api/v1/users/me/monitor-datasource"}:      auditlog.ActionProfileUpdate,
-	{"PUT", "/api/v1/users/me/ai-config"}:               auditlog.ActionAIConfigUpdate,
-	{"DELETE", "/api/v1/users/me/ai-config"}:            auditlog.ActionAIConfigUpdate,
-
-	{"POST", "/api/v1/roles"}:       auditlog.ActionRoleCreate,
-	{"PUT", "/api/v1/roles/:id"}:    auditlog.ActionRoleUpdate,
-	{"DELETE", "/api/v1/roles/:id"}: auditlog.ActionRoleDelete,
-
-	{"POST", "/api/v1/resource-grants"}:        auditlog.ActionResourceGrant,
-	{"POST", "/api/v1/resource-grants/revoke"}: auditlog.ActionResourceRevoke,
+	{"PUT", "/api/v1/owner/profile"}:                 auditlog.ActionProfileUpdate,
+	{"PUT", "/api/v1/owner/password"}:                auditlog.ActionSecurityUpdate,
+	{"POST", "/api/v1/owner/2fa/enable"}:             auditlog.ActionSecurityUpdate,
+	{"POST", "/api/v1/owner/2fa/disable"}:            auditlog.ActionSecurityUpdate,
+	{"DELETE", "/api/v1/owner/sessions/:session_id"}: auditlog.ActionSecurityUpdate,
+	{"POST", "/api/v1/owner/sessions/revoke-others"}: auditlog.ActionSecurityUpdate,
+	{"PUT", "/api/v1/owner/notifications"}:           auditlog.ActionProfileUpdate,
+	{"PUT", "/api/v1/owner/monitor-datasource"}:      auditlog.ActionProfileUpdate,
+	{"PUT", "/api/v1/owner/ai-config"}:               auditlog.ActionAIConfigUpdate,
+	{"DELETE", "/api/v1/owner/ai-config"}:            auditlog.ActionAIConfigUpdate,
 
 	{"POST", "/api/v1/scripts"}:             auditlog.ActionScriptCreate,
 	{"PUT", "/api/v1/scripts/:id"}:          auditlog.ActionScriptUpdate,
@@ -170,9 +169,6 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 
 	{"PATCH", "/api/v1/settings/system/basic"}:           auditlog.ActionSystemSettingsUpdate,
 	{"PATCH", "/api/v1/settings/system/file-transfer"}:   auditlog.ActionSystemSettingsUpdate,
-	{"PATCH", "/api/v1/settings/system/registration"}:    auditlog.ActionSystemSettingsUpdate,
-	{"PATCH", "/api/v1/settings/system/google-auth"}:     auditlog.ActionSystemSettingsUpdate,
-	{"PATCH", "/api/v1/settings/system/oauth-provider"}:  auditlog.ActionSystemSettingsUpdate,
 	{"PATCH", "/api/v1/settings/system/scheduled-tasks"}: auditlog.ActionSystemSettingsUpdate,
 	{"POST", "/api/v1/settings/workspace"}:               auditlog.ActionSecuritySettingsUpdate,
 	{"POST", "/api/v1/settings/login-session"}:           auditlog.ActionSecuritySettingsUpdate,
@@ -185,7 +181,6 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 	{"POST", "/api/v1/settings/webhook"}:                 auditlog.ActionNotificationSettingsUpdate,
 	{"POST", "/api/v1/settings/dingtalk"}:                auditlog.ActionNotificationSettingsUpdate,
 	{"POST", "/api/v1/settings/wecom"}:                   auditlog.ActionNotificationSettingsUpdate,
-	{"POST", "/api/v1/settings/ai/system"}:               auditlog.ActionAIConfigUpdate,
 	{"DELETE", "/api/v1/logs/cleanup"}:                   auditlog.ActionAuditLogsCleanup,
 }
 

@@ -3,123 +3,76 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/easyssh/shared/protocol"
 	"strings"
 	"time"
 
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
+	ErrInvalidServer       = errors.New("invalid server configuration")
 	ErrServerNotFound      = errors.New("server not found")
 	ErrServerAlreadyExists = errors.New("server already exists")
 	ErrUnauthorized        = errors.New("unauthorized to access this server")
 )
 
 // Repository 服务器数据访问接口
+type Query struct {
+	ServerIDs []string
+	Search    string
+	GroupID   string
+	Tag       string
+}
 type Repository interface {
-	// Create 创建服务器
-	Create(ctx context.Context, server *Server) error
-
-	// FindByID 根据 ID 查找服务器
-	FindByID(ctx context.Context, id uuid.UUID) (*Server, error)
-
-	// FindByUserID 根据用户 ID 查找服务器列表
-	FindByUserID(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Server, int64, error)
-
-	// FindByUserIDAndID 根据用户 ID 和服务器 ID 查找（权限检查）
-	FindByUserIDAndID(ctx context.Context, userID, serverID uuid.UUID) (*Server, error)
-
-	// Update 更新服务器信息
-	Update(ctx context.Context, server *Server) error
-
-	// UpdateStatus 仅更新服务器状态和最后连接时间（性能优化）
-	UpdateStatus(ctx context.Context, serverID uuid.UUID, status ServerStatus, lastConnected *time.Time) error
-
-	// UpdateOSIfEmpty 仅当 OS 为空时写入识别结果
-	UpdateOSIfEmpty(ctx context.Context, serverID uuid.UUID, os string) error
-
-	// Delete 删除服务器（软删除）
-	Delete(ctx context.Context, id uuid.UUID) error
-
-	// List 获取所有服务器列表（分页）
-	List(ctx context.Context, limit, offset int) ([]*Server, int64, error)
-
-	// Search 搜索服务器（按名称、主机、分组）
-	Search(ctx context.Context, userID uuid.UUID, query, group string, limit, offset int) ([]*Server, int64, error)
-
-	// FindByGroup 根据分组查找服务器
-	FindByGroup(ctx context.Context, userID uuid.UUID, group string, limit, offset int) ([]*Server, int64, error)
-
-	// CountByUserID 统计用户的服务器数量
-	CountByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
-
-	// Reorder 调整给定服务器在完整列表中的相对顺序。
-	Reorder(ctx context.Context, userID uuid.UUID, serverIDs []uuid.UUID) error
-	GetStatistics(ctx context.Context, userID uuid.UUID) (*ServerStatistics, error)
+	Create(context.Context, *Server) error
+	FindByID(context.Context, uuid.UUID) (*Server, error)
+	Query(context.Context, Query, int, int) ([]*Server, int64, error)
+	Update(context.Context, *Server) error
+	UpdateStatus(context.Context, uuid.UUID, ServerStatus, *time.Time) error
+	UpdateOSIfEmpty(context.Context, uuid.UUID, string) error
+	Delete(context.Context, uuid.UUID) error
+	Reorder(context.Context, []uuid.UUID) error
+	GetStatistics(context.Context, Query) (*protocol.ServerStatistics, error)
 }
 
 // gormRepository GORM 实现
 type gormRepository struct {
-	db *gorm.DB
+	db      *gorm.DB
+	runtime *access.Runtime
 }
 
 // NewRepository 创建服务器仓储
-func NewRepository(db *gorm.DB) Repository {
-	return &gormRepository{db: db}
+func NewRepository(db *gorm.DB, runtime *access.Runtime) Repository {
+	return &gormRepository{db: db, runtime: runtime}
 }
 
 func (r *gormRepository) Create(ctx context.Context, server *Server) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&Server{}).Where("user_id = ?", server.UserID).
+		if err := tx.Model(&Server{}).
 			Select("COALESCE(MAX(sort_order), -1) + 1").Scan(&server.SortOrder).Error; err != nil {
 			return err
 		}
-		return tx.Omit("SSHKey").Create(server).Error
+		if err := resolveServerGroup(tx, server); err != nil {
+			return err
+		}
+		if err := tx.Omit("Auth.SSHKey", "GroupRecord", "TagRecords").Create(server).Error; err != nil {
+			return err
+		}
+		if err := server.SaveTags(tx); err != nil {
+			return err
+		}
+		return recordServerConfiguration(tx, "server_create", *server, []string{"created"})
 	})
 }
 
 func (r *gormRepository) FindByID(ctx context.Context, id uuid.UUID) (*Server, error) {
 	var server Server
-	if err := r.db.WithContext(ctx).Preload("SSHKey").Where("id = ?", id).First(&server).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrServerNotFound
-		}
-		return nil, err
-	}
-	return &server, nil
-}
-
-func (r *gormRepository) FindByUserID(ctx context.Context, userID uuid.UUID, limit, offset int) ([]*Server, int64, error) {
-	var servers []*Server
-	var total int64
-
-	// 获取总数
-	if err := r.db.WithContext(ctx).Model(&Server{}).
-		Where("user_id = ?", userID).
-		Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	// 获取分页数据
-	if err := r.db.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Limit(limit).
-		Offset(offset).
-		Order("sort_order ASC, created_at ASC, id ASC").
-		Find(&servers).Error; err != nil {
-		return nil, 0, err
-	}
-
-	return servers, total, nil
-}
-
-func (r *gormRepository) FindByUserIDAndID(ctx context.Context, userID, serverID uuid.UUID) (*Server, error) {
-	var server Server
-	if err := r.db.WithContext(ctx).
-		Where("id = ? AND user_id = ?", serverID, userID).
-		Preload("SSHKey").
-		First(&server).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("Auth.SSHKey").Preload("GroupRecord").Preload("TagRecords").Where("id = ?", id).First(&server).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrServerNotFound
 		}
@@ -129,7 +82,47 @@ func (r *gormRepository) FindByUserIDAndID(ctx context.Context, userID, serverID
 }
 
 func (r *gormRepository) Update(ctx context.Context, server *Server) error {
-	return r.db.WithContext(ctx).Omit("SSHKey").Save(server).Error
+	changed := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var current Server
+		if err := resolveServerGroup(tx, server); err != nil {
+			return err
+		}
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Preload("Auth").Preload("TagRecords").Where("id = ?", server.ID).First(&current).Error; err != nil {
+			return err
+		}
+		if server.ConnectionRevision != current.ConnectionRevision || !server.UpdatedAt.Equal(current.UpdatedAt) {
+			return access.ErrResourceChanged
+		}
+		sameKey := current.Auth.SSHKeyID == nil && server.Auth.SSHKeyID == nil ||
+			current.Auth.SSHKeyID != nil && server.Auth.SSHKeyID != nil && *current.Auth.SSHKeyID == *server.Auth.SSHKeyID
+		changed = current.Host != server.Host || current.Port != server.Port || current.Username != server.Username || current.Auth.AuthMethod != server.Auth.AuthMethod || !sameKey
+		if changed {
+			server.ConnectionRevision++
+		}
+		result := tx.Model(&Server{}).Where("id = ? AND connection_revision = ? AND updated_at = ?", server.ID, current.ConnectionRevision, current.UpdatedAt).
+			Select("*").Omit("ID", "CreatedAt", "Auth", "GroupRecord", "TagRecords").Updates(server)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return access.ErrResourceChanged
+		}
+		if err := server.SaveAuth(tx); err != nil {
+			return err
+		}
+		if err := server.SaveTags(tx); err != nil {
+			return err
+		}
+		if fields := serverChangedFields(current, *server); len(fields) > 0 {
+			return recordServerConfiguration(tx, "server_update", *server, fields)
+		}
+		return nil
+	})
+	if err == nil && changed {
+		r.runtime.InvalidateVisitors(server.ID.String(), access.ErrResourceChanged)
+	}
+	return err
 }
 
 // UpdateStatus 仅更新服务器状态和最后连接时间（性能优化）
@@ -183,115 +176,55 @@ func (r *gormRepository) UpdateOSIfEmpty(ctx context.Context, serverID uuid.UUID
 }
 
 func (r *gormRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&Server{}).
-			Where("id = ?", id).
-			UpdateColumns(map[string]interface{}{
-				"password":   "",
-				"ssh_key_id": nil,
-			})
-		if result.Error != nil {
-			return result.Error
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row Server
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "name", "host").First(&row, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrServerNotFound
+			}
+			return err
 		}
-
-		result = tx.Delete(&Server{}, id)
-		if result.Error != nil {
-			return result.Error
+		if err := DeleteConfiguration(tx, id); err != nil {
+			return err
 		}
-		if result.RowsAffected == 0 {
-			return ErrServerNotFound
-		}
-		return nil
+		return recordServerConfiguration(tx, "server_delete", row, []string{"deleted"})
 	})
+	if err == nil {
+		r.runtime.InvalidateVisitors(id.String(), access.ErrResourceChanged)
+	}
+	return err
 }
 
-func (r *gormRepository) List(ctx context.Context, limit, offset int) ([]*Server, int64, error) {
-	var servers []*Server
+func (r *gormRepository) query(ctx context.Context, filter Query) *gorm.DB {
+	q := r.db.WithContext(ctx).Model(&Server{})
+	if filter.ServerIDs != nil {
+		q = q.Where("id IN ?", filter.ServerIDs)
+	}
+	if filter.Search != "" {
+		pattern := "%" + strings.ToLower(filter.Search) + "%"
+		q = q.Where("LOWER(name) LIKE ? OR LOWER(host) LIKE ? OR LOWER(username) LIKE ? OR EXISTS (SELECT 1 FROM server_groups g WHERE g.id = servers.group_id AND LOWER(g.name) LIKE ?) OR LOWER(description) LIKE ? OR EXISTS (SELECT 1 FROM server_tags st WHERE st.server_id=servers.id AND LOWER(st.tag_name) LIKE ?)", pattern, pattern, pattern, pattern, pattern, pattern)
+	}
+	if filter.GroupID != "" {
+		q = q.Where("group_id=?", filter.GroupID)
+	}
+	if filter.Tag != "" {
+		q = q.Where("EXISTS (SELECT 1 FROM server_tags st WHERE st.server_id=servers.id AND st.tag_name=?)", filter.Tag)
+	}
+	return q
+}
+func (r *gormRepository) Query(ctx context.Context, filter Query, limit, offset int) ([]*Server, int64, error) {
 	var total int64
-
-	// 获取总数
-	if err := r.db.WithContext(ctx).Model(&Server{}).Count(&total).Error; err != nil {
+	if err := r.query(ctx, filter).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-
-	// 获取分页数据
-	if err := r.db.WithContext(ctx).
-		Limit(limit).
-		Offset(offset).
-		Order("sort_order ASC, created_at ASC, id ASC").
-		Find(&servers).Error; err != nil {
-		return nil, 0, err
-	}
-
-	return servers, total, nil
-}
-
-func (r *gormRepository) Search(ctx context.Context, userID uuid.UUID, query, group string, limit, offset int) ([]*Server, int64, error) {
-	var servers []*Server
-	var total int64
-
-	normalizedPattern := "%" + strings.ToLower(query) + "%"
-	queryBuilder := r.db.WithContext(ctx).Model(&Server{}).
-		Where("user_id = ?", userID).
-		Where("LOWER(name) LIKE ? OR LOWER(host) LIKE ? OR LOWER(username) LIKE ? OR LOWER(server_group) LIKE ? OR LOWER(description) LIKE ? OR LOWER(tags) LIKE ?", normalizedPattern, normalizedPattern, normalizedPattern, normalizedPattern, normalizedPattern, normalizedPattern)
-	if group != "" {
-		queryBuilder = queryBuilder.Where("server_group = ?", group)
-	}
-
-	// 获取总数
-	if err := queryBuilder.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	// 获取分页数据
-	if err := queryBuilder.
-		Limit(limit).
-		Offset(offset).
-		Order("sort_order ASC, created_at ASC, id ASC").
-		Find(&servers).Error; err != nil {
-		return nil, 0, err
-	}
-
-	return servers, total, nil
-}
-
-func (r *gormRepository) FindByGroup(ctx context.Context, userID uuid.UUID, group string, limit, offset int) ([]*Server, int64, error) {
-	var servers []*Server
-	var total int64
-
-	queryBuilder := r.db.WithContext(ctx).Model(&Server{}).
-		Where("user_id = ? AND server_group = ?", userID, group)
-
-	// 获取总数
-	if err := queryBuilder.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	// 获取分页数据
-	if err := queryBuilder.
-		Limit(limit).
-		Offset(offset).
-		Order("sort_order ASC, created_at ASC, id ASC").
-		Find(&servers).Error; err != nil {
-		return nil, 0, err
-	}
-
-	return servers, total, nil
-}
-
-func (r *gormRepository) CountByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
-	var count int64
-	if err := r.db.WithContext(ctx).Model(&Server{}).
-		Where("user_id = ?", userID).
-		Count(&count).Error; err != nil {
-		return 0, err
-	}
-	return count, nil
+	rows := []*Server{}
+	err := r.query(ctx, filter).Preload("Auth.SSHKey").Preload("GroupRecord").Preload("TagRecords").Order("sort_order ASC,created_at ASC,id ASC").Limit(limit).Offset(offset).Find(&rows).Error
+	return rows, total, err
 }
 
 // Reorder 保留未提交服务器的位置，适用于分页和筛选后的拖拽。
 // 使用事务确保原子性，避免部分更新失败
-func (r *gormRepository) Reorder(ctx context.Context, userID uuid.UUID, serverIDs []uuid.UUID) error {
+func (r *gormRepository) Reorder(ctx context.Context, serverIDs []uuid.UUID) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		selected := make(map[uuid.UUID]bool, len(serverIDs))
 		for _, id := range serverIDs {
@@ -300,10 +233,15 @@ func (r *gormRepository) Reorder(ctx context.Context, userID uuid.UUID, serverID
 			}
 			selected[id] = true
 		}
-		var orderedIDs []uuid.UUID
-		if err := tx.Model(&Server{}).Where("user_id = ?", userID).
-			Order("sort_order ASC, created_at ASC, id ASC").Pluck("id", &orderedIDs).Error; err != nil {
+		var ordered []Server
+		if err := tx.Model(&Server{}).
+			Select("id", "name", "host", "sort_order").Order("sort_order ASC, created_at ASC, id ASC").Find(&ordered).Error; err != nil {
 			return err
+		}
+		orderedIDs := make([]uuid.UUID, len(ordered))
+		byID := make(map[uuid.UUID]Server, len(ordered))
+		for i, row := range ordered {
+			orderedIDs[i], byID[row.ID] = row.ID, row
 		}
 		var slots []int
 		for index, id := range orderedIDs {
@@ -317,35 +255,63 @@ func (r *gormRepository) Reorder(ctx context.Context, userID uuid.UUID, serverID
 		for index, slot := range slots {
 			orderedIDs[slot] = serverIDs[index]
 		}
+		resources := []operationrecord.ResourceSnapshot{}
 		for index, id := range orderedIDs {
-			if err := tx.Model(&Server{}).Where("id = ? AND user_id = ?", id, userID).
+			if byID[id].SortOrder == index {
+				continue
+			}
+			if err := tx.Model(&Server{}).Where("id = ?", id).
 				UpdateColumn("sort_order", index).Error; err != nil {
 				return err
 			}
+			resources = append(resources, serverActivityResource(byID[id]))
+		}
+		if len(resources) > 0 {
+			return operationrecord.RecordConfiguration(tx, access.Current(ctx).Actor(), operationrecord.ConfigurationChange{
+				Action: "server_reorder", ResourceKind: "workspace", ResourceID: "servers", Name: "服务器排列", Source: "manual",
+				Fields: []string{"sort_order"}, Resources: resources,
+			})
 		}
 		return nil
 	})
 }
 
-func (r *gormRepository) GetStatistics(ctx context.Context, userID uuid.UUID) (*ServerStatistics, error) {
-	var servers []Server
-	if err := r.db.WithContext(ctx).Model(&Server{}).Select("status", "server_group", "tags").
-		Where("user_id = ?", userID).Find(&servers).Error; err != nil {
-		return nil, err
-	}
-	stats := &ServerStatistics{Total: int64(len(servers)), ByGroup: make(map[string]int64), ByTag: make(map[string]int64)}
-	for _, server := range servers {
-		if server.Status == StatusOnline {
-			stats.Online++
-		} else {
-			stats.Offline++
+func (r *gormRepository) GetStatistics(ctx context.Context, filter Query) (*protocol.ServerStatistics, error) {
+	var online, offline int64
+	stats := &protocol.ServerStatistics{Online: &online, Offline: &offline, ByGroup: make(map[string]int64), ByTag: make(map[string]int64)}
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		scoped := &gormRepository{db: tx, runtime: r.runtime}
+		type countRow struct {
+			Name  string
+			Count int64
 		}
-		if server.Group != "" {
-			stats.ByGroup[server.Group]++
+		var statuses []countRow
+		if err := scoped.query(ctx, filter).Select("status AS name,COUNT(*) AS count").Group("status").Scan(&statuses).Error; err != nil {
+			return err
 		}
-		for _, tag := range server.Tags {
-			stats.ByTag[tag]++
+		for _, row := range statuses {
+			stats.Total += row.Count
+			if row.Name == string(StatusOnline) {
+				online += row.Count
+			} else {
+				offline += row.Count
+			}
 		}
-	}
-	return stats, nil
+		var groups []countRow
+		if err := scoped.query(ctx, filter).Where("group_id IS NOT NULL").Select("group_id AS name,COUNT(*) AS count").Group("group_id").Scan(&groups).Error; err != nil {
+			return err
+		}
+		for _, row := range groups {
+			stats.ByGroup[row.Name] = row.Count
+		}
+		var tags []countRow
+		if err := tx.Model(&ServerTag{}).Where("server_id IN (?)", scoped.query(ctx, filter).Select("id")).Select("tag_name AS name,COUNT(*) AS count").Group("tag_name").Scan(&tags).Error; err != nil {
+			return err
+		}
+		for _, row := range tags {
+			stats.ByTag[row.Name] = row.Count
+		}
+		return nil
+	})
+	return stats, err
 }

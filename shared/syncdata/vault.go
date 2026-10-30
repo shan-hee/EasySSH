@@ -10,10 +10,14 @@ import (
 	"time"
 
 	"github.com/easyssh/shared/aichatui"
+	sharedconfig "github.com/easyssh/shared/aiconfig"
+	"github.com/easyssh/shared/protocol"
 )
 
 const ValueKey = "value/00000000-0000-4000-8000-000000000001"
 const AIConfigID = "00000000-0000-4000-8000-000000000002"
+
+var ErrVaultPayloadTooLarge = errors.New("sync plaintext payload exceeds 32 MiB")
 
 type SyncScopes struct {
 	Credentials bool `json:"credentials"`
@@ -42,6 +46,8 @@ func (s SyncScopes) Allows(kind string) bool {
 }
 
 type KeyMaterial struct {
+	ID                 string `json:"id"`
+	SavedPassphrase    string `json:"saved_passphrase,omitempty"`
 	Name               string `json:"name"`
 	PublicKey          string `json:"public_key"`
 	PrivateKey         string `json:"private_key"`
@@ -54,13 +60,6 @@ type Credential struct {
 	Connection string       `json:"connection"`
 	Password   string       `json:"password"`
 	Key        *KeyMaterial `json:"key,omitempty"`
-}
-type AIConfig struct {
-	Enabled  bool   `json:"enabled"`
-	Provider string `json:"provider"`
-	Endpoint string `json:"endpoint"`
-	APIKey   string `json:"api_key"`
-	Models   string `json:"models"`
 }
 
 // Conversation contains presentation history, not executable tool calls or grants.
@@ -75,13 +74,13 @@ type Conversation struct {
 	Tasks     []aichatui.TaskView    `json:"tasks"`
 }
 type VaultPayload struct {
-	Source       string        `json:"source"`
-	UpdatedAt    time.Time     `json:"updated_at"`
-	Kind         string        `json:"kind"`
-	Deleted      bool          `json:"deleted,omitempty"`
-	Credential   *Credential   `json:"credential,omitempty"`
-	AIConfig     *AIConfig     `json:"ai_config,omitempty"`
-	Conversation *Conversation `json:"conversation,omitempty"`
+	Source       string                  `json:"source"`
+	UpdatedAt    time.Time               `json:"updated_at"`
+	Kind         string                  `json:"kind"`
+	Deleted      bool                    `json:"deleted,omitempty"`
+	Credential   *Credential             `json:"credential,omitempty"`
+	AIConfig     *protocol.AIConfigValue `json:"ai_config,omitempty"`
+	Conversation *Conversation           `json:"conversation,omitempty"`
 }
 
 func (p VaultPayload) Validate(kind string) error {
@@ -99,8 +98,19 @@ func (p VaultPayload) Validate(kind string) error {
 		if p.Credential == nil || p.AIConfig != nil || p.Conversation != nil {
 			return errors.New("invalid credential payload")
 		}
-		if _, err := ParseConnection(p.Credential.Connection); err != nil {
+		connection, err := ParseConnection(p.Credential.Connection)
+		if err != nil {
 			return err
+		}
+		if key := p.Credential.Key; key != nil {
+			if err := ValidateKey(key); err != nil {
+				return err
+			}
+			if connection.Key == nil || connection.Key.Fingerprint != key.Fingerprint {
+				return errors.New("key material does not match the connection identity")
+			}
+		} else if connection.Key != nil {
+			return errors.New("missing connection key metadata")
 		}
 		if len(p.Credential.Password) > 65536 {
 			return errors.New("password too large")
@@ -113,11 +123,8 @@ func (p VaultPayload) Validate(kind string) error {
 			return errors.New("invalid AI configuration")
 		}
 		c := p.AIConfig
-		if c.Provider != "openai" && c.Provider != "openai-response" && c.Provider != "anthropic" && c.Provider != "gemini" {
-			return errors.New("invalid AI provider")
-		}
-		if len(c.APIKey) > 65536 || len(c.Endpoint) > 4096 || len(c.Models) > 65536 {
-			return errors.New("AI configuration too large")
+		if _, err := sharedconfig.NormalizeInput(protocol.AIConfigInput{Enabled: c.Enabled, Provider: c.Provider, Endpoint: c.Endpoint, APIKey: &c.APIKey, Models: c.Models}, protocol.AIConfigInput{}); err != nil {
+			return err
 		}
 	case "ai_session":
 		if p.Conversation == nil || p.Credential != nil || p.AIConfig != nil {
@@ -163,9 +170,13 @@ func NormalizeConversation(c *Conversation) {
 	for i := range c.Tasks {
 		t := &c.Tasks[i]
 		t.RequiresConfirmation = false
-		if t.Status != aichatui.TaskStatusSucceeded && t.Status != aichatui.TaskStatusFailed && t.Status != aichatui.TaskStatusCancelled {
-			t.Status = aichatui.TaskStatusCancelled
-			t.Error = "Execution remained on the originating device"
+		if t.Status != aichatui.TaskStatusSucceeded && t.Status != aichatui.TaskStatusFailed && t.Status != aichatui.TaskStatusCancelled && t.Status != aichatui.TaskStatusUnknown {
+			if t.Status == aichatui.TaskStatusRunning {
+				t.Status = aichatui.TaskStatusUnknown
+			} else {
+				t.Status = aichatui.TaskStatusCancelled
+			}
+			t.Error = "Execution remained on the originating device; verify its outcome there before retrying"
 		}
 	}
 }
@@ -223,6 +234,10 @@ func HydrateAttachments(c *Conversation, get func(string) (string, error)) error
 	return nil
 }
 func DecodeVault(value, kind string) (VaultPayload, error) {
+	// Check before copying to []byte or allocating decoded message/task graphs.
+	if len(value) > MaxVaultPayloadBytes {
+		return VaultPayload{}, ErrVaultPayloadTooLarge
+	}
 	var p VaultPayload
 	err := json.Unmarshal([]byte(value), &p)
 	if err == nil {

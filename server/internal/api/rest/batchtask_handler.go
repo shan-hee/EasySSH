@@ -1,260 +1,116 @@
 package rest
 
 import (
+	"errors"
+	"github.com/easyssh/shared/protocol"
 	"net/http"
 
 	"github.com/easyssh/server/internal/domain/batchtask"
+	"github.com/easyssh/server/internal/domain/script"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
-// BatchTaskHandler 批量任务处理器
-type BatchTaskHandler struct {
-	batchTaskService batchtask.Service
-}
+type BatchTaskHandler struct{ service batchtask.Service }
 
-// NewBatchTaskHandler 创建批量任务处理器实例
-func NewBatchTaskHandler(batchTaskService batchtask.Service) *BatchTaskHandler {
-	return &BatchTaskHandler{
-		batchTaskService: batchTaskService,
+func NewBatchTaskHandler(service batchtask.Service) *BatchTaskHandler {
+	return &BatchTaskHandler{service: service}
+}
+func batchTaskError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, batchtask.ErrBatchTaskNotFound):
+		RespondError(c, 404, "batch_task_not_found", err.Error())
+	case errors.Is(err, batchtask.ErrInvalidBatchTaskData):
+		RespondError(c, 400, "invalid_batch_task", err.Error())
+	case errors.Is(err, script.ErrInvalidScriptData), errors.Is(err, script.ErrScriptNotFound):
+		scriptError(c, err)
+	default:
+		accessError(c, err)
 	}
 }
-
-// Create 创建批量任务
 func (h *BatchTaskHandler) Create(c *gin.Context) {
-	var req batchtask.CreateBatchTaskRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
+	var req protocol.CreateBatchTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		RespondError(c, 400, "invalid_request", err.Error())
 		return
 	}
-
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
+	task, err := h.service.CreateBatchTask(c.Request.Context(), &req)
 	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+		batchTaskError(c, err)
 		return
 	}
-
-	task, err := h.batchTaskService.CreateBatchTask(uid, &req)
-	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "create_failed", err.Error())
-		return
-	}
-
-	RespondSuccess(c, task)
+	RespondSuccess(c, task.Public())
 }
-
-// List 获取批量任务列表
 func (h *BatchTaskHandler) List(c *gin.Context) {
-	var req batchtask.ListBatchTasksRequest
-
-	// 解析查询参数
+	var req protocol.ListBatchTasksRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		RespondError(c, 400, "invalid_request", err.Error())
 		return
 	}
-
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
+	rows, err := h.service.ListBatchTasks(c.Request.Context(), &req)
 	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+		batchTaskError(c, err)
 		return
 	}
-
-	response, err := h.batchTaskService.ListBatchTasks(uid, &req)
-	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "list_failed", err.Error())
-		return
-	}
-
-	RespondSuccess(c, response)
+	c.JSON(http.StatusOK, rows)
 }
-
-// GetByID 获取批量任务详情
 func (h *BatchTaskHandler) GetByID(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
+	id, ok := accessID(c, "id")
+	if !ok {
+		return
+	}
+	task, err := h.service.GetBatchTask(c.Request.Context(), id)
 	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_id", "Invalid task ID format")
+		batchTaskError(c, err)
 		return
 	}
-
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
-		return
-	}
-
-	task, err := h.batchTaskService.GetBatchTask(uid, id)
-	if err != nil {
-		if err == batchtask.ErrBatchTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Batch task not found")
-			return
-		}
-		if err == batchtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "get_failed", err.Error())
-		return
-	}
-
-	RespondSuccess(c, task)
+	RespondSuccess(c, task.Public())
 }
-
-// Update 更新批量任务
 func (h *BatchTaskHandler) Update(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_id", "Invalid task ID format")
+	id, ok := accessID(c, "id")
+	if !ok {
 		return
 	}
-
-	var req batchtask.UpdateBatchTaskRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
+	var req protocol.UpdateBatchTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
+		RespondError(c, 400, "invalid_request", err.Error())
 		return
 	}
-
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
+	task, err := h.service.UpdateBatchTask(c.Request.Context(), id, &req)
 	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+		batchTaskError(c, err)
 		return
 	}
-
-	task, err := h.batchTaskService.UpdateBatchTask(uid, id, &req)
-	if err != nil {
-		if err == batchtask.ErrBatchTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Batch task not found")
-			return
-		}
-		if err == batchtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "update_failed", err.Error())
-		return
-	}
-
-	RespondSuccess(c, task)
+	RespondSuccess(c, task.Public())
 }
-
-// Delete 删除批量任务
 func (h *BatchTaskHandler) Delete(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_id", "Invalid task ID format")
+	id, ok := accessID(c, "id")
+	if !ok {
 		return
 	}
-
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
+	if err := h.service.DeleteBatchTask(c.Request.Context(), id); err != nil {
+		batchTaskError(c, err)
 		return
 	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
-		return
-	}
-
-	if err := h.batchTaskService.DeleteBatchTask(uid, id); err != nil {
-		if err == batchtask.ErrBatchTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Batch task not found")
-			return
-		}
-		if err == batchtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "delete_failed", err.Error())
-		return
-	}
-
-	RespondSuccess(c, gin.H{"message": "Batch task deleted successfully"})
+	RespondSuccess(c, protocol.BatchTaskDeleted{Success: true})
 }
-
-// GetStatistics 获取批量任务统计信息
 func (h *BatchTaskHandler) GetStatistics(c *gin.Context) {
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
-		return
-	}
-
-	uid, err := uuid.Parse(userID.(string))
+	stats, err := h.service.GetStatistics(c.Request.Context())
 	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
+		batchTaskError(c, err)
 		return
 	}
-
-	stats, err := h.batchTaskService.GetStatistics(uid)
-	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "get_statistics_failed", err.Error())
-		return
-	}
-
 	RespondSuccess(c, stats)
 }
-
-// Start 启动批量任务
 func (h *BatchTaskHandler) Start(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_id", "Invalid task ID format")
+	id, ok := accessID(c, "id")
+	if !ok {
 		return
 	}
-
-	userID, exists := c.Get("user_id")
-	if !exists {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", "user_id not found")
+	if err := h.service.StartBatchTask(c.Request.Context(), id); err != nil {
+		batchTaskError(c, err)
 		return
 	}
-
-	uid, err := uuid.Parse(userID.(string))
-	if err != nil {
-		RespondError(c, http.StatusBadRequest, "invalid_user_id", err.Error())
-		return
-	}
-
-	if err := h.batchTaskService.StartBatchTask(uid, id); err != nil {
-		if err == batchtask.ErrBatchTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Batch task not found")
-			return
-		}
-		if err == batchtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "start_failed", err.Error())
-		return
-	}
-
-	RespondSuccess(c, gin.H{"message": "Batch task queued successfully"})
+	c.JSON(http.StatusAccepted, protocol.BatchTaskAccepted{TaskID: id, Status: "queued"})
 }

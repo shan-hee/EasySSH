@@ -25,6 +25,8 @@ func NewKomariDataSource(endpoint, token string) *KomariDataSource {
 		token:    token,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
+			// Credentials belong to the configured endpoint, not redirect targets.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 		},
 	}
 }
@@ -148,13 +150,10 @@ func (k *KomariDataSource) getHTTPURL(path string) (string, error) {
 		return "", fmt.Errorf("invalid endpoint URL: %w", err)
 	}
 
-	// 确保使用 HTTP/HTTPS
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		parsed.Scheme = "https"
+	if (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return "", fmt.Errorf("invalid monitor endpoint URL")
 	}
-
-	parsed.Path = path
-	return parsed.String(), nil
+	return url.JoinPath(parsed.String(), path)
 }
 
 // TestConnection 测试连接

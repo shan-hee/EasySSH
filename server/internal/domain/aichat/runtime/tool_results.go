@@ -3,18 +3,19 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 
 	"github.com/easyssh/server/internal/domain/aichat/registry"
 	"github.com/easyssh/shared/aitooloutput"
 	"github.com/easyssh/shared/aiworkspace"
-	"github.com/google/uuid"
 )
 
 func (m *Manager) sessionToolSpec(s *session, name string) (registry.ToolSpec, bool) {
 	if name == aiworkspace.CreateTool {
 		return registry.ToolSpec{Name: name, DisplayName: "生成文件", Description: aiworkspace.CreateDescription,
 			Parameters: aiworkspace.CreateParameters(), ConfirmStrategy: registry.ConfirmNone,
-			Executor: func(ctx context.Context, userID uuid.UUID, raw json.RawMessage) (registry.ExecutionResult, error) {
+			Executor: func(ctx context.Context, raw json.RawMessage) (registry.ExecutionResult, error) {
 				if err := ctx.Err(); err != nil {
 					return registry.ExecutionResult{}, err
 				}
@@ -31,7 +32,7 @@ func (m *Manager) sessionToolSpec(s *session, name string) (registry.ToolSpec, b
 	return registry.ToolSpec{
 		Name: name, DisplayName: "查看执行结果", Description: aitooloutput.ReadResultDescription,
 		Parameters: aitooloutput.ReadResultParameters(), ConfirmStrategy: registry.ConfirmNone,
-		Executor: func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (registry.ExecutionResult, error) {
+		Executor: func(ctx context.Context, args json.RawMessage) (registry.ExecutionResult, error) {
 			if err := ctx.Err(); err != nil {
 				return registry.ExecutionResult{}, err
 			}
@@ -42,9 +43,9 @@ func (m *Manager) sessionToolSpec(s *session, name string) (registry.ToolSpec, b
 			m.mu.RLock()
 			var content string
 			found := false
-			if userID == s.userID && input.ToolCallID != "" {
+			if sameConversationActor(access.Current(ctx).Actor(), s.actor) && input.ToolCallID != "" {
 				for _, task := range s.tasks {
-					if task.toolCall.ID == input.ToolCallID && (task.view.Status == TaskStatusSucceeded || task.view.Status == TaskStatusFailed || task.view.Status == TaskStatusCancelled) {
+					if task.toolCall.ID == input.ToolCallID && (task.view.Status == TaskStatusSucceeded || task.view.Status == TaskStatusFailed || task.view.Status == TaskStatusCancelled || task.view.Status == TaskStatusUnknown) {
 						content, found = task.view.Result, true
 						break
 					}
@@ -63,17 +64,20 @@ func (m *Manager) sessionToolSpec(s *session, name string) (registry.ToolSpec, b
 	}, true
 }
 
-func (m *Manager) GetTaskFile(userID uuid.UUID, sessionID, taskID string) (*aiworkspace.FileArtifact, error) {
-	s, err := m.getOrRestoreSession(context.Background(), userID, sessionID)
+func (m *Manager) GetTaskFile(ctx context.Context, sessionID, taskID string) (protocol.ContentReference, error) {
+	if err := m.beginOperation(); err != nil {
+		return protocol.ContentReference{}, err
+	}
+	defer m.endOperation()
+	actor, err := access.RequireAIActor(ctx)
 	if err != nil {
-		return nil, err
+		return protocol.ContentReference{}, err
 	}
 	m.mu.RLock()
-	defer m.mu.RUnlock()
-	task, ok := s.tasks[taskID]
-	if !ok || task.view.Artifact == nil {
-		return nil, ErrTaskNotFound
+	store := m.store
+	m.mu.RUnlock()
+	if store == nil {
+		return protocol.ContentReference{}, ErrTaskNotFound
 	}
-	file := *task.view.Artifact
-	return &file, nil
+	return store.TaskFile(ctx, actor, sessionID, taskID)
 }

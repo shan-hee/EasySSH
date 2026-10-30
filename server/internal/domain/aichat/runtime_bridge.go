@@ -7,12 +7,10 @@ import (
 	"github.com/easyssh/server/internal/domain/aichat/registry"
 	"github.com/easyssh/server/internal/domain/aichat/runtime"
 	"github.com/easyssh/server/internal/domain/aiconfig"
-	"github.com/easyssh/server/internal/domain/useraiconfig"
 )
 
 func NewRuntimeManager(
 	aiConfigService aiconfig.Service,
-	userAIConfigService useraiconfig.Service,
 	toolExecutor *ToolExecutorService,
 ) *runtime.Manager {
 	toolRegistry := registry.NewToolRegistry(nil)
@@ -21,7 +19,7 @@ func NewRuntimeManager(
 	}
 
 	manager := runtime.NewManager(
-		NewConfigResolver(aiConfigService, userAIConfigService),
+		NewConfigResolver(aiConfigService),
 		provider.NewFactory(),
 		toolRegistry,
 		30*time.Minute,

@@ -16,6 +16,10 @@ func wrapOpenAIError(provider string, err error) error {
 	if err == nil {
 		return nil
 	}
+	var limitErr *ProviderError
+	if errors.As(err, &limitErr) {
+		return limitErr
+	}
 	if errors.Is(err, context.Canceled) {
 		return &ProviderError{Code: "cancelled", Message: "AI 请求已取消", Provider: provider, Retryable: false, Cause: err}
 	}
@@ -46,6 +50,10 @@ func wrapOpenAIError(provider string, err error) error {
 func wrapAnthropicError(err error) error {
 	if err == nil {
 		return nil
+	}
+	var limitErr *ProviderError
+	if errors.As(err, &limitErr) {
+		return limitErr
 	}
 	if errors.Is(err, context.Canceled) {
 		return &ProviderError{Code: "cancelled", Message: "AI 请求已取消", Provider: "anthropic", Retryable: false, Cause: err}

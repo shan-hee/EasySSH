@@ -9,7 +9,9 @@ import (
 	"net/http"
 
 	"github.com/easyssh/server/internal/domain/scheduledtask"
+	"github.com/easyssh/server/internal/domain/script"
 	"github.com/easyssh/server/internal/domain/transferjob"
+	"github.com/easyssh/shared/protocol"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -34,43 +36,35 @@ func (h *ScheduledTaskHandler) SetTransferJobService(service transferjob.Service
 
 // Create 创建定时任务
 func (h *ScheduledTaskHandler) Create(c *gin.Context) {
-	var req scheduledtask.CreateScheduledTaskRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
+	var req protocol.CreateScheduledTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
 
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-
-	if err := h.validateScheduledTransferTask(c.Request.Context(), uid, uuid.Nil, req.TaskType, req.PayloadJSON); err != nil {
+	if err := h.validateScheduledTransferTask(c.Request.Context(), uuid.Nil, string(req.TaskType), req.PayloadJSON); err != nil {
 		respondTransferJobError(c, err)
 		return
 	}
 
-	task, err := h.scheduledTaskService.CreateScheduledTask(uid, &req)
+	task, err := h.scheduledTaskService.CreateScheduledTask(c.Request.Context(), &req)
 	if err != nil {
-		if err == scheduledtask.ErrInvalidCronExpression {
-			RespondError(c, http.StatusBadRequest, "invalid_cron_expression", err.Error())
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "create_failed", err.Error())
+		scheduledTaskError(c, err)
 		return
 	}
-	if err := h.bindStagedTransferJob(c.Request.Context(), uid, task); err != nil {
-		_ = h.scheduledTaskService.DeleteScheduledTask(uid, task.ID)
+	if err := h.bindStagedTransferJob(c.Request.Context(), task); err != nil {
+		_ = h.scheduledTaskService.DeleteScheduledTask(c.Request.Context(), task.ID)
 		respondTransferJobError(c, err)
 		return
 	}
 
-	RespondSuccess(c, task)
+	RespondSuccess(c, task.Public())
 }
 
 // List 获取定时任务列表
 func (h *ScheduledTaskHandler) List(c *gin.Context) {
-	var req scheduledtask.ListScheduledTasksRequest
+	var req protocol.ListScheduledTasksRequest
 
 	// 解析查询参数
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -78,14 +72,9 @@ func (h *ScheduledTaskHandler) List(c *gin.Context) {
 		return
 	}
 
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-
-	response, err := h.scheduledTaskService.ListScheduledTasks(uid, &req)
+	response, err := h.scheduledTaskService.ListScheduledTasks(c.Request.Context(), &req)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "list_failed", err.Error())
+		scheduledTaskError(c, err)
 		return
 	}
 
@@ -101,26 +90,13 @@ func (h *ScheduledTaskHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-
-	task, err := h.scheduledTaskService.GetScheduledTask(uid, id)
+	task, err := h.scheduledTaskService.GetScheduledTask(c.Request.Context(), id)
 	if err != nil {
-		if err == scheduledtask.ErrScheduledTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Scheduled task not found")
-			return
-		}
-		if err == scheduledtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "get_failed", err.Error())
+		scheduledTaskError(c, err)
 		return
 	}
 
-	RespondSuccess(c, task)
+	RespondSuccess(c, task.Public())
 }
 
 // Update 更新定时任务
@@ -132,73 +108,49 @@ func (h *ScheduledTaskHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var req scheduledtask.UpdateScheduledTaskRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
+	var req protocol.UpdateScheduledTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
 
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-
-	existingTask, err := h.scheduledTaskService.GetScheduledTask(uid, id)
+	existingTask, err := h.scheduledTaskService.GetScheduledTask(c.Request.Context(), id)
 	if err != nil {
-		if err == scheduledtask.ErrScheduledTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Scheduled task not found")
-			return
-		}
-		if err == scheduledtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "get_failed", err.Error())
+		scheduledTaskError(c, err)
 		return
 	}
 
 	taskType := existingTask.TaskType
 	if req.TaskType != "" {
-		taskType = req.TaskType
+		taskType = string(req.TaskType)
 	}
 	payloadJSON := existingTask.PayloadJSON
 	if req.PayloadJSON != "" {
 		payloadJSON = req.PayloadJSON
 	}
-	if err := h.validateScheduledTransferTask(c.Request.Context(), uid, id, taskType, payloadJSON); err != nil {
+	if err := h.validateScheduledTransferTask(c.Request.Context(), id, taskType, payloadJSON); err != nil {
 		respondTransferJobError(c, err)
 		return
 	}
 
-	preboundID, detachPreboundOnFailure, err := h.prebindUpdatedStagedTransferJob(c.Request.Context(), uid, id, existingTask, taskType, payloadJSON)
+	preboundID, detachPreboundOnFailure, err := h.prebindUpdatedStagedTransferJob(c.Request.Context(), id, existingTask, taskType, payloadJSON)
 	if err != nil {
 		respondTransferJobError(c, err)
 		return
 	}
 
-	task, err := h.scheduledTaskService.UpdateScheduledTask(uid, id, &req)
+	task, err := h.scheduledTaskService.UpdateScheduledTask(c.Request.Context(), id, &req)
 	if err != nil {
 		if detachPreboundOnFailure {
-			h.detachStagedTransferJob(c.Request.Context(), uid, preboundID)
+			h.detachStagedTransferJob(c.Request.Context(), preboundID)
 		}
-		if err == scheduledtask.ErrScheduledTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Scheduled task not found")
-			return
-		}
-		if err == scheduledtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		if err == scheduledtask.ErrInvalidCronExpression {
-			RespondError(c, http.StatusBadRequest, "invalid_cron_expression", err.Error())
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "update_failed", err.Error())
+		scheduledTaskError(c, err)
 		return
 	}
-	h.cleanupReplacedStagedTransferJob(c.Request.Context(), uid, existingTask, task)
+	h.cleanupReplacedStagedTransferJob(c.Request.Context(), existingTask, task)
 
-	RespondSuccess(c, task)
+	RespondSuccess(c, task.Public())
 }
 
 // Delete 删除定时任务
@@ -210,40 +162,19 @@ func (h *ScheduledTaskHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-
-	task, err := h.scheduledTaskService.GetScheduledTask(uid, id)
+	task, err := h.scheduledTaskService.GetScheduledTask(c.Request.Context(), id)
 	if err != nil {
-		if err == scheduledtask.ErrScheduledTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Scheduled task not found")
-			return
-		}
-		if err == scheduledtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "get_failed", err.Error())
+		scheduledTaskError(c, err)
 		return
 	}
 
-	if err := h.scheduledTaskService.DeleteScheduledTask(uid, id); err != nil {
-		if err == scheduledtask.ErrScheduledTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Scheduled task not found")
-			return
-		}
-		if err == scheduledtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "delete_failed", err.Error())
+	if err := h.scheduledTaskService.DeleteScheduledTask(c.Request.Context(), id); err != nil {
+		scheduledTaskError(c, err)
 		return
 	}
-	h.cleanupStagedTransferJob(c.Request.Context(), uid, task)
+	h.cleanupStagedTransferJob(c.Request.Context(), task)
 
-	RespondSuccess(c, gin.H{"message": "Scheduled task deleted successfully"})
+	RespondSuccess(c, protocol.MessageResponse{Message: "Scheduled task deleted successfully"})
 }
 
 type scheduledTransferPayload struct {
@@ -279,17 +210,17 @@ func stagedTransferJobIDFromPayload(payloadJSON string) (uuid.UUID, bool) {
 	return id, true
 }
 
-func (h *ScheduledTaskHandler) validateScheduledTransferTask(ctx context.Context, userID uuid.UUID, taskID uuid.UUID, taskType string, payloadJSON string) error {
+func (h *ScheduledTaskHandler) validateScheduledTransferTask(ctx context.Context, taskID uuid.UUID, taskType string, payloadJSON string) error {
 	if taskType != string(transferjob.JobKindSFTPUpload) && taskType != string(transferjob.JobKindSFTPDownload) {
 		return nil
 	}
 	if h.transferJobService == nil {
 		return fmt.Errorf("%w: transfer job service is not initialized", transferjob.ErrInvalidJobRequest)
 	}
-	return h.transferJobService.ValidateScheduledTask(ctx, userID, taskID, taskType, payloadJSON)
+	return h.transferJobService.ValidateScheduledTask(ctx, taskID, taskType, payloadJSON)
 }
 
-func (h *ScheduledTaskHandler) cleanupReplacedStagedTransferJob(ctx context.Context, userID uuid.UUID, before, after *scheduledtask.ScheduledTask) {
+func (h *ScheduledTaskHandler) cleanupReplacedStagedTransferJob(ctx context.Context, before, after *scheduledtask.ScheduledTask) {
 	oldID, ok := stagedTransferJobID(before)
 	if !ok {
 		return
@@ -298,20 +229,19 @@ func (h *ScheduledTaskHandler) cleanupReplacedStagedTransferJob(ctx context.Cont
 	if hasNew && newID == oldID {
 		return
 	}
-	h.deleteStagedTransferJob(ctx, userID, oldID, before.ID)
+	h.deleteStagedTransferJob(ctx, oldID, before.ID)
 }
 
-func (h *ScheduledTaskHandler) cleanupStagedTransferJob(ctx context.Context, userID uuid.UUID, task *scheduledtask.ScheduledTask) {
+func (h *ScheduledTaskHandler) cleanupStagedTransferJob(ctx context.Context, task *scheduledtask.ScheduledTask) {
 	id, ok := stagedTransferJobID(task)
 	if !ok {
 		return
 	}
-	h.deleteStagedTransferJob(ctx, userID, id, task.ID)
+	h.deleteStagedTransferJob(ctx, id, task.ID)
 }
 
 func (h *ScheduledTaskHandler) prebindUpdatedStagedTransferJob(
 	ctx context.Context,
-	userID uuid.UUID,
 	taskID uuid.UUID,
 	existingTask *scheduledtask.ScheduledTask,
 	taskType string,
@@ -321,7 +251,7 @@ func (h *ScheduledTaskHandler) prebindUpdatedStagedTransferJob(
 	if !ok {
 		return uuid.Nil, false, nil
 	}
-	if err := h.bindStagedTransferPayload(ctx, userID, taskID, taskType, payloadJSON); err != nil {
+	if err := h.bindStagedTransferPayload(ctx, taskID, taskType, payloadJSON); err != nil {
 		return uuid.Nil, false, err
 	}
 	oldID, hasOld := stagedTransferJobID(existingTask)
@@ -329,14 +259,14 @@ func (h *ScheduledTaskHandler) prebindUpdatedStagedTransferJob(
 	return id, shouldDetachOnFailure, nil
 }
 
-func (h *ScheduledTaskHandler) bindStagedTransferJob(ctx context.Context, userID uuid.UUID, task *scheduledtask.ScheduledTask) error {
+func (h *ScheduledTaskHandler) bindStagedTransferJob(ctx context.Context, task *scheduledtask.ScheduledTask) error {
 	if task == nil {
 		return nil
 	}
-	return h.bindStagedTransferPayload(ctx, userID, task.ID, task.TaskType, task.PayloadJSON)
+	return h.bindStagedTransferPayload(ctx, task.ID, task.TaskType, task.PayloadJSON)
 }
 
-func (h *ScheduledTaskHandler) bindStagedTransferPayload(ctx context.Context, userID uuid.UUID, taskID uuid.UUID, taskType string, payloadJSON string) error {
+func (h *ScheduledTaskHandler) bindStagedTransferPayload(ctx context.Context, taskID uuid.UUID, taskType string, payloadJSON string) error {
 	if h.transferJobService == nil {
 		return nil
 	}
@@ -344,27 +274,27 @@ func (h *ScheduledTaskHandler) bindStagedTransferPayload(ctx context.Context, us
 	if !ok {
 		return nil
 	}
-	if err := h.transferJobService.AttachScheduledTask(ctx, userID, id, taskID); err != nil {
+	if err := h.transferJobService.AttachScheduledTask(ctx, id, taskID); err != nil {
 		log.Printf("[ScheduledTask] bind staged transfer job failed: taskID=%s, jobID=%s, error=%v", taskID, id, err)
 		return err
 	}
 	return nil
 }
 
-func (h *ScheduledTaskHandler) detachStagedTransferJob(ctx context.Context, userID uuid.UUID, id uuid.UUID) {
+func (h *ScheduledTaskHandler) detachStagedTransferJob(ctx context.Context, id uuid.UUID) {
 	if h.transferJobService == nil || id == uuid.Nil {
 		return
 	}
-	if err := h.transferJobService.DetachScheduledTask(ctx, userID, id); err != nil && !errors.Is(err, transferjob.ErrJobNotFound) {
+	if err := h.transferJobService.DetachScheduledTask(ctx, id); err != nil && !errors.Is(err, transferjob.ErrJobNotFound) {
 		log.Printf("[ScheduledTask] detach staged transfer job failed: jobID=%s, error=%v", id, err)
 	}
 }
 
-func (h *ScheduledTaskHandler) deleteStagedTransferJob(ctx context.Context, userID uuid.UUID, id uuid.UUID, excludeTaskID uuid.UUID) {
+func (h *ScheduledTaskHandler) deleteStagedTransferJob(ctx context.Context, id uuid.UUID, excludeTaskID uuid.UUID) {
 	if h.transferJobService == nil || id == uuid.Nil {
 		return
 	}
-	referenced, err := h.scheduledTaskService.IsStagedJobReferenced(userID, id, excludeTaskID)
+	referenced, err := h.scheduledTaskService.IsStagedJobReferenced(ctx, id, excludeTaskID)
 	if err != nil {
 		log.Printf("[ScheduledTask] check staged transfer references failed: jobID=%s, error=%v", id, err)
 		return
@@ -372,12 +302,12 @@ func (h *ScheduledTaskHandler) deleteStagedTransferJob(ctx context.Context, user
 	if referenced {
 		return
 	}
-	if err := h.transferJobService.DeleteScheduledInputJob(ctx, userID, id, excludeTaskID); err != nil && !errors.Is(err, transferjob.ErrJobNotFound) {
+	if err := h.transferJobService.DeleteScheduledInputJob(ctx, id, excludeTaskID); err != nil && !errors.Is(err, transferjob.ErrJobNotFound) {
 		log.Printf("[ScheduledTask] cleanup staged transfer job failed: jobID=%s, error=%v", id, err)
 		if !errors.Is(err, transferjob.ErrArtifactInUse) {
 			return
 		}
-		if detachErr := h.transferJobService.DetachScheduledTask(ctx, userID, id); detachErr != nil && !errors.Is(detachErr, transferjob.ErrJobNotFound) {
+		if detachErr := h.transferJobService.DetachScheduledTask(ctx, id); detachErr != nil && !errors.Is(detachErr, transferjob.ErrJobNotFound) {
 			log.Printf("[ScheduledTask] detach staged transfer job failed: jobID=%s, error=%v", id, detachErr)
 		}
 	}
@@ -385,14 +315,10 @@ func (h *ScheduledTaskHandler) deleteStagedTransferJob(ctx context.Context, user
 
 // GetStatistics 获取定时任务统计信息
 func (h *ScheduledTaskHandler) GetStatistics(c *gin.Context) {
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
 
-	stats, err := h.scheduledTaskService.GetStatistics(uid)
+	stats, err := h.scheduledTaskService.GetStatistics(c.Request.Context())
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "get_statistics_failed", err.Error())
+		scheduledTaskError(c, err)
 		return
 	}
 
@@ -408,33 +334,18 @@ func (h *ScheduledTaskHandler) Toggle(c *gin.Context) {
 		return
 	}
 
-	var req struct {
-		Enabled *bool `json:"enabled" binding:"required"`
-	}
+	var req protocol.ToggleScheduledTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
 
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
+	if err := h.scheduledTaskService.ToggleTask(c.Request.Context(), id, *req.Enabled); err != nil {
+		scheduledTaskError(c, err)
 		return
 	}
 
-	if err := h.scheduledTaskService.ToggleTask(uid, id, *req.Enabled); err != nil {
-		if err == scheduledtask.ErrScheduledTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Scheduled task not found")
-			return
-		}
-		if err == scheduledtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "toggle_failed", err.Error())
-		return
-	}
-
-	RespondSuccess(c, gin.H{"message": "Task toggled successfully"})
+	RespondSuccess(c, protocol.MessageResponse{Message: "Task toggled successfully"})
 }
 
 // Trigger 手动触发定时任务
@@ -446,24 +357,28 @@ func (h *ScheduledTaskHandler) Trigger(c *gin.Context) {
 		return
 	}
 
-	uid, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-
-	runID, err := h.scheduledTaskService.TriggerTask(uid, id)
+	runID, err := h.scheduledTaskService.TriggerTask(c.Request.Context(), id)
 	if err != nil {
-		if err == scheduledtask.ErrScheduledTaskNotFound {
-			RespondError(c, http.StatusNotFound, "not_found", "Scheduled task not found")
-			return
-		}
-		if err == scheduledtask.ErrUnauthorized {
-			RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
-			return
-		}
-		RespondError(c, http.StatusInternalServerError, "trigger_failed", err.Error())
+		scheduledTaskError(c, err)
 		return
 	}
 
-	RespondSuccess(c, gin.H{"message": "Task queued successfully", "task_run_id": runID})
+	c.JSON(http.StatusAccepted, protocol.ScheduledTaskAccepted{Message: "Task queued successfully", TaskRunID: runID})
+}
+
+func scheduledTaskError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, scheduledtask.ErrScheduledTaskNotFound):
+		RespondError(c, http.StatusNotFound, "scheduled_task_not_found", "Scheduled task not found")
+	case errors.Is(err, scheduledtask.ErrUnauthorized):
+		RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
+	case errors.Is(err, scheduledtask.ErrInvalidCronExpression):
+		RespondError(c, http.StatusBadRequest, "invalid_cron_expression", err.Error())
+	case errors.Is(err, scheduledtask.ErrInvalidScheduledTaskData):
+		RespondError(c, http.StatusBadRequest, "invalid_scheduled_task", err.Error())
+	case errors.Is(err, script.ErrInvalidScriptData), errors.Is(err, script.ErrScriptNotFound):
+		scriptError(c, err)
+	default:
+		accessError(c, err)
+	}
 }

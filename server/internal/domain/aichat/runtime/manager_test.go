@@ -19,7 +19,7 @@ type fakeResolver struct {
 	config provider.Config
 }
 
-func (r fakeResolver) Resolve(ctx context.Context, userID uuid.UUID) (provider.Config, error) {
+func (r fakeResolver) Resolve(ctx context.Context) (provider.Config, error) {
 	return r.config, nil
 }
 
@@ -80,7 +80,7 @@ func waitForEvent(t *testing.T, events <-chan Event, match func(Event) bool) Eve
 func TestManagerAutoExecutesSafeTaskAndCompletesSession(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
+	ownerID := uuid.New()
 	runner := &fakeTurnRunner{
 		scripts: []fakeTurnScript{
 			{
@@ -113,7 +113,7 @@ func TestManagerAutoExecutesSafeTaskAndCompletesSession(t *testing.T) {
 				Name:            "list_servers",
 				Description:     "列出服务器",
 				ConfirmStrategy: registry.ConfirmNone,
-				Executor: func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (registry.ExecutionResult, error) {
+				Executor: func(ctx context.Context, args json.RawMessage) (registry.ExecutionResult, error) {
 					executed++
 					return registry.ExecutionResult{Content: "共 3 台服务器"}, nil
 				},
@@ -122,16 +122,16 @@ func TestManagerAutoExecutesSafeTaskAndCompletesSession(t *testing.T) {
 		time.Minute,
 	)
 
-	session, err := manager.CreateSession(context.Background(), userID, CreateSessionInput{
+	session, err := manager.CreateSession(testAIContext(t, ownerID), CreateSessionInput{
 		PermissionMode: "balanced",
 	})
 	require.NoError(t, err)
 
-	events, unsubscribe, err := manager.Subscribe(userID, session.ID)
+	events, unsubscribe, err := manager.Subscribe(testAIContext(t, ownerID), session.ID)
 	require.NoError(t, err)
 	defer unsubscribe()
 
-	require.NoError(t, manager.SendUserMessage(context.Background(), userID, session.ID, "帮我看一下服务器情况"))
+	require.NoError(t, manager.SendUserMessage(testAIContext(t, ownerID), session.ID, "帮我看一下服务器情况"))
 
 	accepted := waitForEvent(t, events, func(evt Event) bool {
 		return evt.Type == EventSessionUpdated && evt.Session != nil
@@ -162,7 +162,7 @@ func TestManagerAutoExecutesSafeTaskAndCompletesSession(t *testing.T) {
 func TestManagerWaitsForConfirmationAndContinuesAfterConfirm(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
+	ownerID := uuid.New()
 	runner := &fakeTurnRunner{
 		scripts: []fakeTurnScript{
 			{
@@ -171,7 +171,7 @@ func TestManagerWaitsForConfirmationAndContinuesAfterConfirm(t *testing.T) {
 						{
 							ID:        "call-danger-1",
 							Name:      "execute_command",
-							Arguments: json.RawMessage(`{"server_id":"srv-1","command":"uptime"}`),
+							Arguments: json.RawMessage(`{"server_id":"11111111-1111-4111-8111-111111111111","command":"uptime"}`),
 						},
 					},
 				},
@@ -194,7 +194,7 @@ func TestManagerWaitsForConfirmationAndContinuesAfterConfirm(t *testing.T) {
 				Description:     "执行命令",
 				Dangerous:       true,
 				ConfirmStrategy: registry.ConfirmUser,
-				Executor: func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (registry.ExecutionResult, error) {
+				Executor: func(ctx context.Context, args json.RawMessage) (registry.ExecutionResult, error) {
 					executed++
 					return registry.ExecutionResult{Content: "load average: 0.10 0.20 0.30"}, nil
 				},
@@ -203,24 +203,30 @@ func TestManagerWaitsForConfirmationAndContinuesAfterConfirm(t *testing.T) {
 		time.Minute,
 	)
 
-	session, err := manager.CreateSession(context.Background(), userID, CreateSessionInput{
+	manager.SetServerReferenceResolver(func(_ context.Context, refs []aichatui.ServerReference) ([]aichatui.ServerReference, error) {
+		for i := range refs {
+			refs[i].Name = "test server"
+		}
+		return refs, nil
+	})
+
+	session, err := manager.CreateSession(testAIContext(t, ownerID), CreateSessionInput{
 		PermissionMode: "balanced",
 	})
 	require.NoError(t, err)
 
-	events, unsubscribe, err := manager.Subscribe(userID, session.ID)
+	events, unsubscribe, err := manager.Subscribe(testAIContext(t, ownerID), session.ID)
 	require.NoError(t, err)
 	defer unsubscribe()
 
-	require.NoError(t, manager.SendUserMessage(context.Background(), userID, session.ID, "执行 uptime"))
+	require.NoError(t, manager.SendUserMessage(testAIContext(t, ownerID), session.ID, "执行 uptime"))
 
 	confirmation := waitForEvent(t, events, func(evt Event) bool {
 		return evt.Type == EventConfirmationRequested && evt.Confirmation != nil
 	})
 
 	require.NoError(t, manager.ConfirmTasks(
-		context.Background(),
-		userID,
+		testAIContext(t, ownerID),
 		session.ID,
 		[]ConfirmTaskInput{{TaskID: confirmation.Confirmation.TaskID, Decision: DecisionConfirm}},
 	))
@@ -240,7 +246,7 @@ func TestManagerWaitsForConfirmationAndContinuesAfterConfirm(t *testing.T) {
 func TestManagerContinuesAfterRejectingDangerousTask(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
+	ownerID := uuid.New()
 	runner := &fakeTurnRunner{
 		scripts: []fakeTurnScript{
 			{
@@ -249,7 +255,7 @@ func TestManagerContinuesAfterRejectingDangerousTask(t *testing.T) {
 						{
 							ID:        "call-danger-2",
 							Name:      "delete_file",
-							Arguments: json.RawMessage(`{"server_id":"srv-1","path":"/tmp/demo.log"}`),
+							Arguments: json.RawMessage(`{"server_id":"11111111-1111-4111-8111-111111111111","path":"/tmp/demo.log"}`),
 						},
 					},
 				},
@@ -271,7 +277,7 @@ func TestManagerContinuesAfterRejectingDangerousTask(t *testing.T) {
 				Description:     "删除文件",
 				Dangerous:       true,
 				ConfirmStrategy: registry.ConfirmUser,
-				Executor: func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (registry.ExecutionResult, error) {
+				Executor: func(ctx context.Context, args json.RawMessage) (registry.ExecutionResult, error) {
 					return registry.ExecutionResult{Content: "should not execute"}, nil
 				},
 			},
@@ -279,24 +285,30 @@ func TestManagerContinuesAfterRejectingDangerousTask(t *testing.T) {
 		time.Minute,
 	)
 
-	session, err := manager.CreateSession(context.Background(), userID, CreateSessionInput{
+	manager.SetServerReferenceResolver(func(_ context.Context, refs []aichatui.ServerReference) ([]aichatui.ServerReference, error) {
+		for i := range refs {
+			refs[i].Name = "test server"
+		}
+		return refs, nil
+	})
+
+	session, err := manager.CreateSession(testAIContext(t, ownerID), CreateSessionInput{
 		PermissionMode: "balanced",
 	})
 	require.NoError(t, err)
 
-	events, unsubscribe, err := manager.Subscribe(userID, session.ID)
+	events, unsubscribe, err := manager.Subscribe(testAIContext(t, ownerID), session.ID)
 	require.NoError(t, err)
 	defer unsubscribe()
 
-	require.NoError(t, manager.SendUserMessage(context.Background(), userID, session.ID, "删除日志文件"))
+	require.NoError(t, manager.SendUserMessage(testAIContext(t, ownerID), session.ID, "删除日志文件"))
 
 	confirmation := waitForEvent(t, events, func(evt Event) bool {
 		return evt.Type == EventConfirmationRequested && evt.Confirmation != nil
 	})
 
 	require.NoError(t, manager.ConfirmTasks(
-		context.Background(),
-		userID,
+		testAIContext(t, ownerID),
 		session.ID,
 		[]ConfirmTaskInput{{TaskID: confirmation.Confirmation.TaskID, Decision: DecisionReject}},
 	))
@@ -314,7 +326,7 @@ func TestManagerContinuesAfterRejectingDangerousTask(t *testing.T) {
 func TestManagerMarksTaskFailedWhenToolExecutionFails(t *testing.T) {
 	t.Parallel()
 
-	userID := uuid.New()
+	ownerID := uuid.New()
 	runner := &fakeTurnRunner{
 		scripts: []fakeTurnScript{
 			{
@@ -344,7 +356,7 @@ func TestManagerMarksTaskFailedWhenToolExecutionFails(t *testing.T) {
 				Name:            "read_file",
 				Description:     "读取文件",
 				ConfirmStrategy: registry.ConfirmNone,
-				Executor: func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (registry.ExecutionResult, error) {
+				Executor: func(ctx context.Context, args json.RawMessage) (registry.ExecutionResult, error) {
 					return registry.ExecutionResult{}, errors.New("文件不存在")
 				},
 			},
@@ -352,16 +364,16 @@ func TestManagerMarksTaskFailedWhenToolExecutionFails(t *testing.T) {
 		time.Minute,
 	)
 
-	session, err := manager.CreateSession(context.Background(), userID, CreateSessionInput{
+	session, err := manager.CreateSession(testAIContext(t, ownerID), CreateSessionInput{
 		PermissionMode: "balanced",
 	})
 	require.NoError(t, err)
 
-	events, unsubscribe, err := manager.Subscribe(userID, session.ID)
+	events, unsubscribe, err := manager.Subscribe(testAIContext(t, ownerID), session.ID)
 	require.NoError(t, err)
 	defer unsubscribe()
 
-	require.NoError(t, manager.SendUserMessage(context.Background(), userID, session.ID, "读取配置文件"))
+	require.NoError(t, manager.SendUserMessage(testAIContext(t, ownerID), session.ID, "读取配置文件"))
 
 	completed := waitForEvent(t, events, func(evt Event) bool {
 		return evt.Type == EventSessionCompleted && evt.Session != nil && len(evt.Session.Tasks) == 1
@@ -374,7 +386,7 @@ func TestManagerMarksTaskFailedWhenToolExecutionFails(t *testing.T) {
 }
 
 func TestReferencedServersRejectToolTargetOutsideMessage(t *testing.T) {
-	userID := uuid.New()
+	ownerID := uuid.New()
 	runner := &fakeTurnRunner{scripts: []fakeTurnScript{
 		{result: provider.TurnResult{ToolCalls: []registry.ToolCall{
 			{ID: "outside", Name: "get_server_info", Arguments: json.RawMessage(`{"server_id":"c"}`)},
@@ -387,20 +399,20 @@ func TestReferencedServersRejectToolTargetOutsideMessage(t *testing.T) {
 		registry.NewToolRegistry([]registry.ToolSpec{{
 			Name: "get_server_info", ConfirmStrategy: registry.ConfirmNone,
 			Parameters: map[string]interface{}{"properties": map[string]interface{}{"server_id": map[string]interface{}{"type": "string"}}},
-			Executor: func(ctx context.Context, _ uuid.UUID, args json.RawMessage) (registry.ExecutionResult, error) {
+			Executor: func(ctx context.Context, args json.RawMessage) (registry.ExecutionResult, error) {
 				executed = append(executed, string(args))
 				return registry.ExecutionResult{Content: "ok"}, nil
 			},
 		}}), time.Minute)
-	manager.SetServerReferenceResolver(func(_ context.Context, _ uuid.UUID, refs []aichatui.ServerReference) ([]aichatui.ServerReference, error) {
+	manager.SetServerReferenceResolver(func(_ context.Context, refs []aichatui.ServerReference) ([]aichatui.ServerReference, error) {
 		return refs, nil
 	})
-	s, err := manager.CreateSession(context.Background(), userID, CreateSessionInput{PermissionMode: "balanced"})
+	s, err := manager.CreateSession(testAIContext(t, ownerID), CreateSessionInput{PermissionMode: "balanced"})
 	require.NoError(t, err)
-	events, unsubscribe, err := manager.Subscribe(userID, s.ID)
+	events, unsubscribe, err := manager.Subscribe(testAIContext(t, ownerID), s.ID)
 	require.NoError(t, err)
 	defer unsubscribe()
-	require.NoError(t, manager.SendUserMessageWithOptions(context.Background(), userID, s.ID, SendUserMessageInput{
+	require.NoError(t, manager.SendUserMessageWithOptions(testAIContext(t, ownerID), s.ID, SendUserMessageInput{
 		Content: "检查 @A 和 @B", ServerReferences: []aichatui.ServerReference{{ServerID: "a", Label: "A", Offset: 3}, {ServerID: "b", Label: "B", Offset: 8}},
 	}))
 	completed := waitForEvent(t, events, func(evt Event) bool {

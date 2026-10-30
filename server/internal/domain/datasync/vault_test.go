@@ -3,14 +3,16 @@ package datasync
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
+	"github.com/easyssh/shared/protocol"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/aichat/runtime"
-	"github.com/easyssh/server/internal/domain/useraiconfig"
+	"github.com/easyssh/server/internal/domain/aiconfig"
+	"github.com/easyssh/server/internal/domain/content"
+	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/shared/aichatui"
 	crypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/easyssh/shared/syncdata"
@@ -31,7 +33,7 @@ func newSyncTestService(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { raw.Close() })
-	if err := db.AutoMigrate(&State{}, &VaultDocument{}, &VaultObject{}, &useraiconfig.UserAIConfig{}, &runtime.AISessionRecord{}); err != nil {
+	if err := db.AutoMigrate(&operationrecord.OperationRecord{}, &operationrecord.Resource{}, &content.Record{}, &State{}, &VaultDocument{}, &VaultObject{}, &aiconfig.Config{}, &runtime.AISessionRecord{}, &runtime.AIMessageRecord{}, &runtime.AIModelMessageRecord{}, &runtime.AISessionTaskRecord{}, &runtime.ToolExecutionRecord{}); err != nil {
 		t.Fatal(err)
 	}
 	encryptor, err := crypto.NewEncryptor(base64.StdEncoding.EncodeToString(make([]byte, 32)))
@@ -45,7 +47,12 @@ func newSyncTestService(t *testing.T) *Service {
 	t.Setenv("EASYSSH_SYNC_ENGINE", path)
 	engine := &Engine{}
 	t.Cleanup(engine.Close)
-	return &Service{DB: db, Encryptor: encryptor, Engine: engine}
+	bodies, err := content.New(db, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bodies.Close() })
+	return &Service{DB: db, Encryptor: encryptor, Engine: engine, Content: bodies}
 }
 
 func TestSyncEnabledPreservesDocumentAndOtherOwners(t *testing.T) {
@@ -55,7 +62,7 @@ func TestSyncEnabledPreservesDocumentAndOtherOwners(t *testing.T) {
 	if enabled, err := s.Enabled(ctx, owner); err != nil || !enabled {
 		t.Fatalf("default: %v %v", enabled, err)
 	}
-	if err := s.DB.Create(&State{UserID: owner, Document: "document", Revision: 7}).Error; err != nil {
+	if err := s.DB.Create(&State{OwnerID: owner, Document: "document", Revision: 7}).Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, enabled := range []bool{false, true, false} {
@@ -68,7 +75,7 @@ func TestSyncEnabledPreservesDocumentAndOtherOwners(t *testing.T) {
 		}
 	}
 	var state State
-	if err := s.DB.First(&state, "user_id=?", owner).Error; err != nil {
+	if err := s.DB.First(&state, "owner_id=?", owner).Error; err != nil {
 		t.Fatal(err)
 	}
 	if state.Document != "document" || state.Revision != 7 {
@@ -84,7 +91,7 @@ func TestVaultObjectsAreEncryptedImmutableAndOwnerBound(t *testing.T) {
 	ctx := context.Background()
 	owner, other := uuid.New(), uuid.New()
 	ref := uuid.NewString()
-	p := syncdata.VaultPayload{Kind: "ai_config", AIConfig: &syncdata.AIConfig{Provider: "openai", APIKey: "secret-key"}}
+	p := syncdata.VaultPayload{Kind: "ai_config", AIConfig: &protocol.AIConfigValue{Provider: "openai", APIKey: "secret-key"}}
 	value := syncdata.JSON(p)
 	if err := s.PutVaultObject(ctx, owner, p.Kind, ref, syncdata.AIConfigID, value); err != nil {
 		t.Fatal(err)
@@ -93,10 +100,10 @@ func TestVaultObjectsAreEncryptedImmutableAndOwnerBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	var row VaultObject
-	if err := s.DB.First(&row, "user_id=? AND id=?", owner, ref).Error; err != nil {
+	if err := s.DB.First(&row, "owner_id=? AND id=?", owner, ref).Error; err != nil {
 		t.Fatal(err)
 	}
-	if !crypto.HasEncryptedPrefix(string(row.Ciphertext)) || strings.Contains(string(row.Ciphertext), "secret-key") {
+	if !strings.HasPrefix(string(row.Ciphertext), "enc:v2:") || strings.Contains(string(row.Ciphertext), "secret-key") {
 		t.Fatal("object not encrypted")
 	}
 	if _, err := s.GetVaultObject(ctx, other, ref); err == nil {
@@ -109,7 +116,7 @@ func TestVaultObjectsAreEncryptedImmutableAndOwnerBound(t *testing.T) {
 	if err := s.PutVaultObject(ctx, owner, p.Kind, ref, syncdata.AIConfigID, syncdata.JSON(p)); err == nil {
 		t.Fatal("overwrote immutable object")
 	}
-	row.UserID = other
+	row.OwnerID = other
 	if err := s.DB.Create(&row).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -120,10 +127,10 @@ func TestVaultObjectsAreEncryptedImmutableAndOwnerBound(t *testing.T) {
 
 func TestVaultAIConfigExchangeIsStable(t *testing.T) {
 	s := newSyncTestService(t)
-	ctx := context.Background()
 	owner := uuid.New()
+	ctx := syncActivityContext(t, owner)
 	ref := uuid.NewString()
-	p := syncdata.VaultPayload{Kind: "ai_config", Source: "desktop", UpdatedAt: time.Now(), AIConfig: &syncdata.AIConfig{Enabled: true, Provider: "openai", APIKey: "personal-key", Models: "test-model"}}
+	p := syncdata.VaultPayload{Kind: "ai_config", Source: "desktop", UpdatedAt: time.Now(), AIConfig: &protocol.AIConfigValue{Enabled: true, Provider: "openai", APIKey: "personal-key", Models: []string{"test-model"}}}
 	if err := s.PutVaultObject(ctx, owner, p.Kind, ref, syncdata.AIConfigID, syncdata.JSON(p)); err != nil {
 		t.Fatal(err)
 	}
@@ -138,14 +145,14 @@ func TestVaultAIConfigExchangeIsStable(t *testing.T) {
 	if len(first.Conflicts) != 0 {
 		t.Fatal("unexpected initial conflict")
 	}
-	var config useraiconfig.UserAIConfig
-	if err := s.DB.First(&config, "user_id=?", owner).Error; err != nil {
+	var config aiconfig.Config
+	if err := s.DB.First(&config, "id=?", aiconfig.ConfigID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if config.UseSystemConfig || !config.CustomEnabled {
-		t.Fatal("personal config replaced by system defaults")
+	if !config.Enabled {
+		t.Fatal("owner config was not enabled")
 	}
-	plain, err := s.Encryptor.DecryptSecret(config.CustomAPIKey, crypto.SecretAAD("user_ai_config", owner.String(), "custom_api_key"))
+	plain, err := s.Encryptor.DecryptSecret(config.APIKey, aiconfig.APIKeyAAD())
 	if err != nil || plain != "personal-key" {
 		t.Fatalf("key round trip: %v", err)
 	}
@@ -155,8 +162,8 @@ func TestVaultAIConfigExchangeIsStable(t *testing.T) {
 	if err := s.DB.Model(&config).UpdateColumn("updated_at", time.Now().Add(time.Minute)).Error; err != nil {
 		t.Fatal(err)
 	}
-	var updated useraiconfig.UserAIConfig
-	s.DB.First(&updated, "user_id=?", owner)
+	var updated aiconfig.Config
+	s.DB.First(&updated, "id=?", aiconfig.ConfigID)
 	for i := 0; i < 3; i++ {
 		result, err := s.VaultExchange(ctx, owner, p.Kind, syncdata.AIConfigID, Peer{Heads: first.Response.Heads}, nil)
 		if err != nil {
@@ -171,8 +178,8 @@ func TestVaultAIConfigExchangeIsStable(t *testing.T) {
 	if before != after {
 		t.Fatalf("sync echo created objects: %d -> %d", before, after)
 	}
-	var final useraiconfig.UserAIConfig
-	s.DB.First(&final, "user_id=?", owner)
+	var final aiconfig.Config
+	s.DB.First(&final, "id=?", aiconfig.ConfigID)
 	if !final.UpdatedAt.Equal(updated.UpdatedAt) {
 		t.Fatal("repeat sync reapplied unchanged configuration")
 	}
@@ -219,13 +226,17 @@ func TestVaultConcurrentConversationsCanBeForkedWithoutExecution(t *testing.T) {
 	if err := s.DB.First(&fork, "id=?", forkID).Error; err != nil {
 		t.Fatal(err)
 	}
+	if fork.ListTitle != "right" || fork.MessageCount != 1 || fork.TaskCount != 1 || !strings.Contains(fork.SearchFolded, "right") {
+		t.Fatalf("imported conversation missing list index: %+v", fork)
+	}
 	if fork.Title != "right" || fork.Status != "idle" || fork.PermissionMode != "readonly" {
 		t.Fatalf("unsafe imported session: %+v", fork)
 	}
-	var tasks []runtime.PersistedTask
-	if err := json.Unmarshal(fork.Tasks, &tasks); err != nil {
+	snapshot, err := runtime.NewGormSessionStore(s.DB, s.Content).Get(ctx, fork.Actor, fork.ID)
+	if err != nil {
 		t.Fatal(err)
 	}
+	tasks := snapshot.Tasks
 	if len(tasks) != 1 || tasks[0].View.Status != aichatui.TaskStatusCancelled || tasks[0].View.RequiresConfirmation {
 		t.Fatal("historical task remained executable")
 	}

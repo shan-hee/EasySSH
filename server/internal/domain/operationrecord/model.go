@@ -1,13 +1,15 @@
 package operationrecord
 
 import (
+	"github.com/easyssh/shared/activitystats"
+	"github.com/easyssh/shared/protocol"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-type RecordType string
+type RecordType = activitystats.Kind
 
 const (
 	TypeConnection RecordType = "connection"
@@ -16,14 +18,14 @@ const (
 	TypeAudit      RecordType = "audit"
 )
 
-type Category string
+type Category = protocol.ActivityCategory
 
 const (
 	CategoryActivity Category = "activity"
 	CategoryAudit    Category = "audit"
 )
 
-type Status string
+type Status = activitystats.Status
 
 const (
 	StatusPending  Status = "pending"
@@ -34,16 +36,35 @@ const (
 	StatusCanceled Status = "canceled"
 	StatusTimeout  Status = "timeout"
 	StatusWarning  Status = "warning"
+	StatusUnknown  Status = "unknown"
 )
 
 // OperationRecord 统一承载连接、传输、执行等用户操作型历史。
 type OperationRecord struct {
-	ID     uuid.UUID `gorm:"type:char(36);primary_key" json:"id"`
-	UserID uuid.UUID `gorm:"type:char(36);not null;index;index:idx_operation_user_time,priority:1" json:"user_id"`
+	DetailContentID     *uuid.UUID                 `gorm:"type:char(36);index" json:"-"`
+	DetailContentSize   int64                      `gorm:"not null;default:0" json:"-"`
+	DetailContentSHA256 string                     `gorm:"size:64;not null;default:''" json:"-"`
+	DetailContent       *protocol.ContentReference `gorm:"-" json:"detail_content,omitempty"`
+
+	TaskContentID     *uuid.UUID                 `gorm:"type:char(36);index" json:"-"`
+	TaskContentSize   int64                      `gorm:"not null;default:0" json:"-"`
+	TaskContentSHA256 string                     `gorm:"size:64;not null;default:''" json:"-"`
+	TaskContent       *protocol.ContentReference `gorm:"-" json:"task_content,omitempty"`
+
+	WorkID                   uuid.UUID  `gorm:"type:char(36);not null;index" json:"work_id"`
+	ParentWorkID             *uuid.UUID `gorm:"type:char(36);index" json:"parent_work_id,omitempty"`
+	WorkStartedAt            time.Time  `gorm:"not null;index" json:"work_started_at"`
+	Attempt                  int        `gorm:"not null" json:"attempt"`
+	EstablishedAt            *time.Time `json:"established_at,omitempty"`
+	ConnectionUncertainUntil *time.Time `json:"connection_uncertain_until,omitempty"`
+
+	Resources []ResourceSnapshot `gorm:"-" json:"resources,omitempty"`
+	Actor     protocol.Actor     `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
+	ID        uuid.UUID          `gorm:"type:char(36);primary_key" json:"id"`
 
 	Username string     `gorm:"size:50" json:"username"`
-	Type     RecordType `gorm:"type:varchar(30);not null;index;index:idx_operation_type_time,priority:1" json:"type"`
-	Category Category   `gorm:"type:varchar(20);not null;default:activity;index;index:idx_operation_category_time,priority:1" json:"category"`
+	Type     RecordType `gorm:"type:varchar(30);not null;index:idx_operation_type_time,priority:1" json:"type"`
+	Category Category   `gorm:"type:varchar(20);not null;default:activity;index:idx_operation_category_time,priority:1" json:"category"`
 	Action   string     `gorm:"type:varchar(50);not null;index" json:"action"`
 	Status   Status     `gorm:"type:varchar(30);not null;index" json:"status"`
 
@@ -66,6 +87,7 @@ type OperationRecord struct {
 
 	BytesTotal     int64 `gorm:"default:0" json:"bytes_total"`
 	BytesProcessed int64 `gorm:"default:0" json:"bytes_processed"`
+	BytesCompleted int64 `gorm:"default:0" json:"bytes_completed"`
 	SpeedBps       int64 `gorm:"default:0" json:"speed_bps"`
 
 	ErrorMessage string `gorm:"type:text" json:"error_message,omitempty"`
@@ -74,7 +96,7 @@ type OperationRecord struct {
 	SourceTable string `gorm:"size:80;not null;uniqueIndex:idx_operation_source" json:"source_table"`
 	SourceID    string `gorm:"size:80;not null;uniqueIndex:idx_operation_source" json:"source_id"`
 
-	CreatedAt time.Time      `gorm:"index;index:idx_operation_user_time,priority:2,sort:desc;index:idx_operation_type_time,priority:2,sort:desc;index:idx_operation_category_time,priority:2,sort:desc;index:idx_operation_ip_time,priority:2,sort:desc" json:"created_at"`
+	CreatedAt time.Time      `gorm:"index;index:idx_operation_type_time,priority:2,sort:desc;index:idx_operation_category_time,priority:2,sort:desc;index:idx_operation_ip_time,priority:2,sort:desc" json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
@@ -84,8 +106,28 @@ func (OperationRecord) TableName() string {
 }
 
 func (r *OperationRecord) BeforeCreate(tx *gorm.DB) error {
+	if r.Type == TypeTransfer && r.Status == StatusSuccess {
+		r.BytesCompleted = r.BytesProcessed
+	}
+	if r.Actor.GrantID != "" {
+		r.Source = "share"
+	} else if r.Source != "automation" {
+		r.Source = "manual"
+	}
 	if r.ID == uuid.Nil {
-		r.ID = uuid.New()
+		r.ID = uuid.NewSHA1(uuid.NameSpaceOID, []byte("easyssh:activity:"+r.SourceTable+":"+r.SourceID))
+	}
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = time.Now().UTC()
+	}
+	if r.WorkID == uuid.Nil {
+		r.WorkID = r.ID
+	}
+	if r.WorkStartedAt.IsZero() {
+		r.WorkStartedAt = r.CreatedAt
+	}
+	if r.Attempt < 1 {
+		r.Attempt = 1
 	}
 	if r.Category == "" {
 		r.Category = CategoryActivity
@@ -94,7 +136,6 @@ func (r *OperationRecord) BeforeCreate(tx *gorm.DB) error {
 }
 
 type ListRequest struct {
-	UserID     *uuid.UUID
 	Type       RecordType
 	Types      []RecordType
 	Category   Category
@@ -114,48 +155,12 @@ type ListRequest struct {
 	PageSize   int
 }
 
-type ListResponse struct {
-	Records    []*OperationRecordSummary `json:"records"`
-	Total      int64                     `json:"total"`
-	Page       int                       `json:"page"`
-	PageSize   int                       `json:"page_size"`
-	TotalPages int                       `json:"total_pages"`
-}
+type ListResponse = protocol.ActivityRecordList
 
 // OperationRecordSummary 是列表查询的轻量视图。UserAgent 与 DetailJSON 仅在详情查询返回。
-type OperationRecordSummary struct {
-	ID             uuid.UUID  `json:"id"`
-	UserID         uuid.UUID  `json:"user_id"`
-	Username       string     `json:"username"`
-	Type           RecordType `json:"type"`
-	Category       Category   `json:"category"`
-	Action         string     `json:"action"`
-	Status         Status     `json:"status"`
-	ServerID       *uuid.UUID `json:"server_id,omitempty"`
-	ServerName     string     `json:"server_name"`
-	Title          string     `json:"title"`
-	Resource       string     `json:"resource"`
-	Source         string     `json:"source"`
-	IP             string     `json:"ip"`
-	StartedAt      *time.Time `json:"started_at,omitempty"`
-	FinishedAt     *time.Time `json:"finished_at,omitempty"`
-	DurationMs     int64      `json:"duration_ms"`
-	Progress       int        `json:"progress"`
-	TotalCount     int        `json:"total_count"`
-	SuccessCount   int        `json:"success_count"`
-	FailureCount   int        `json:"failure_count"`
-	BytesTotal     int64      `json:"bytes_total"`
-	BytesProcessed int64      `json:"bytes_processed"`
-	SpeedBps       int64      `json:"speed_bps"`
-	ErrorMessage   string     `json:"error_message,omitempty"`
-	SourceTable    string     `json:"source_table"`
-	SourceID       string     `json:"source_id"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
-}
+type OperationRecordSummary = protocol.ActivityRecordSummary
 
 type StatisticsRequest struct {
-	UserID    *uuid.UUID
 	Type      RecordType
 	Category  Category
 	StartTime *time.Time
@@ -163,11 +168,15 @@ type StatisticsRequest struct {
 	Days      int
 }
 
-type Statistics struct {
-	Total        int64                `json:"total"`
-	SuccessCount int64                `json:"success_count"`
-	FailureCount int64                `json:"failure_count"`
-	RunningCount int64                `json:"running_count"`
-	ByType       map[RecordType]int64 `json:"by_type"`
-	ByStatus     map[Status]int64     `json:"by_status"`
+type Statistics = protocol.ActivityRecordStatistics
+
+// Resources retain the endpoint name observed during the operation; deleting a
+// server must not erase its historical attribution.
+type ResourceSnapshot = protocol.ActivityResourceSnapshot
+type Resource struct {
+	RecordID uuid.UUID `gorm:"type:char(36);primaryKey" json:"-"`
+	ServerID uuid.UUID `gorm:"type:char(36);primaryKey" json:"server_id"`
+	Name     string    `gorm:"size:120" json:"name"`
 }
+
+func (Resource) TableName() string { return "operation_resources" }

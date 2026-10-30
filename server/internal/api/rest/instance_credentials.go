@@ -22,17 +22,14 @@ func VerifyStoredCredentials(ctx context.Context, db *gorm.DB, encryptor *crypto
 		columns    []string
 		activeOnly bool
 	}{
-		{"system_config", []string{"google_client_secret"}, true},
-		{"notification_config", []string{"smtp_config", "webhook_config", "ding_talk_config"}, true},
-		{"ai_config", []string{"system_api_key"}, true},
-		{"users", []string{"id", "nezha_api_token", "komari_api_token"}, true},
-		{"servers", []string{"id", "user_id", "password"}, true},
-		{"ssh_keys", []string{"user_id", "fingerprint", "private_key"}, false},
-		{"user_ai_config", []string{"user_id", "custom_api_key"}, true},
-		// MFA, signing keys and sync objects also cover retained inactive records.
-		{"users", []string{"id", "two_factor_secret"}, false},
-		{"oauth_signing_keys", []string{"id", "encrypted_private_pem"}, false},
-		{"sync_vault_objects", []string{"user_id", "id", "ciphertext"}, false},
+		{"notification_config", []string{"smtp_config", "webhook_config", "ding_talk_config", "we_com_config"}, true},
+		{"ai_config", []string{"api_key"}, false},
+		{"owners", []string{"id", "nezha_api_token", "komari_api_token"}, false},
+		{"server_auth", []string{"server_id", "password"}, false},
+		{"ssh_keys", []string{"id", "private_key", "saved_passphrase"}, false},
+		// MFA and sync objects also cover retained inactive records.
+		{"owners", []string{"id", "two_factor_secret", "pending_two_factor_secret"}, false},
+		{"sync_vault_objects", []string{"owner_id", "id", "ciphertext"}, false},
 	}
 	for _, check := range checks {
 		query := db.WithContext(ctx).Table(check.table).Select(check.columns)
@@ -80,31 +77,31 @@ func verifyInstanceCredentialRow(table string, row map[string]string, encryptor 
 		return nil
 	}
 	switch table {
-	case "system_config":
-		return verify("google_client_secret", crypto.SecretAAD(table, "system", "google_client_secret"))
 	case "ai_config":
-		return verify("system_api_key", crypto.SecretAAD(table, "system", "system_api_key"))
-	case "users":
-		for _, column := range []string{"nezha_api_token", "komari_api_token", "two_factor_secret"} {
+		return verify("api_key", crypto.SecretAAD(table, "1", "api_key"))
+	case "owners":
+		for _, column := range []string{"nezha_api_token", "komari_api_token", "two_factor_secret", "pending_two_factor_secret"} {
 			if err := verify(column, crypto.SecretAAD(table, row["id"], column)); err != nil {
 				return err
 			}
 		}
-	case "servers":
-		return verify("password", []byte(fmt.Sprintf("easyssh:servers:%s:%s:password", row["user_id"], row["id"])))
+	case "server_auth":
+		return verify("password", crypto.SecretAAD(table, row["server_id"], "password"))
 	case "ssh_keys":
-		return verify("private_key", []byte(fmt.Sprintf("easyssh:ssh_keys:%s:%s:private_key", row["user_id"], row["fingerprint"])))
-	case "user_ai_config":
-		return verify("custom_api_key", crypto.SecretAAD(table, row["user_id"], "custom_api_key"))
-	case "oauth_signing_keys":
-		return verify("encrypted_private_pem", []byte("oauth-signing-key:"+row["id"]))
+		if err := verify("private_key", crypto.SecretAAD(table, row["id"], "private_key")); err != nil {
+			return err
+		}
+		return verify("saved_passphrase", crypto.SecretAAD(table, row["id"], "saved_passphrase"))
 	case "sync_vault_objects":
-		return verify("ciphertext", []byte("easyssh:sync-vault:"+row["user_id"]+":"+row["id"]))
+		return verify("ciphertext", []byte("easyssh:sync-vault:"+row["owner_id"]+":"+row["id"]))
 	case "notification_config":
 		for _, field := range []struct{ column, section, secret string }{
 			{"smtp_config", "smtp", "password"},
 			{"webhook_config", "webhook", "secret"},
+			{"webhook_config", "webhook", "url"},
 			{"ding_talk_config", "dingtalk", "secret"},
+			{"ding_talk_config", "dingtalk", "webhook_url"},
+			{"we_com_config", "wecom", "webhook_url"},
 		} {
 			raw := row[field.column]
 			if strings.TrimSpace(raw) == "" {

@@ -1,8 +1,10 @@
 package monitor
 
 import (
-	"bytes"
+	"context"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +23,9 @@ const (
 
 // Collector 系统指标采集器
 type Collector struct {
+	ctx              context.Context
+	cancel           context.CancelFunc
+	serverID         string
 	client           *sshDomain.Client // SSH 客户端（直接使用）
 	prevCPU          *monitoring.CPUStat
 	prevNet          map[string]monitoring.NetStat
@@ -34,70 +39,38 @@ type Collector struct {
 }
 
 // NewCollector 创建采集器（使用 SSH Client）
-func NewCollector(client *sshDomain.Client) *Collector {
+func NewCollector(ctx context.Context, serverID string, client *sshDomain.Client) *Collector {
+	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	now := time.Now()
 	return &Collector{
-		client:   client,
+		ctx: ctx, cancel: cancel, serverID: serverID, client: client,
 		prevCPU:  nil,
 		prevNet:  make(map[string]monitoring.NetStat),
 		prevTime: now,
 	}
 }
 
-// sshExec 执行 SSH 命令
+func (c *Collector) Close() { c.cancel() }
+
+func (c *Collector) execute(cmd string, timeout time.Duration, action protocol.Action) (string, error) {
+	ctx, cancel := context.WithTimeout(c.ctx, timeout)
+	defer cancel()
+	lease, err := access.Current(ctx).OpenWork(ctx, access.Task, access.Requirement{Action: action, ServerID: c.serverID})
+	if err != nil {
+		return "", err
+	}
+	defer lease.Close(nil)
+	result, err := c.client.ExecuteCommandDetailedContext(lease.Context(), cmd)
+	if result == nil {
+		return "", err
+	}
+	return result.Output, err
+}
 func (c *Collector) sshExec(cmd string) (string, error) {
 	start := time.Now()
-
-	// 通过 SSH Client 创建新会话执行命令
-	session, err := c.client.NewSession()
-	if err != nil {
-		return "", fmt.Errorf("failed to create session: %w", err)
-	}
-	defer session.Close()
-
-	output, err := session.CombinedOutput(cmd)
-
-	// 记录 SSH 命令延迟
+	output, err := c.execute(cmd, 15*time.Second, protocol.MonitorRead)
 	c.sshLatencyMs = time.Since(start).Milliseconds()
-
-	if err != nil {
-		return "", fmt.Errorf("failed to execute command: %w", err)
-	}
-
-	return string(output), nil
-}
-
-// sshExecWithTimeout 执行可能阻塞的辅助命令，超时后主动关闭 session。
-func (c *Collector) sshExecWithTimeout(cmd string, timeout time.Duration) (string, error) {
-	session, err := c.client.NewSession()
-	if err != nil {
-		return "", fmt.Errorf("failed to create session: %w", err)
-	}
-	defer session.Close()
-
-	var output bytes.Buffer
-	session.Stdout = &output
-	session.Stderr = &output
-
-	if err := session.Start(cmd); err != nil {
-		return "", fmt.Errorf("failed to start command: %w", err)
-	}
-
-	done := make(chan error, 1)
-	go func() {
-		done <- session.Wait()
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			return output.String(), fmt.Errorf("failed to execute command: %w", err)
-		}
-		return output.String(), nil
-	case <-time.After(timeout):
-		_ = session.Close()
-		return output.String(), fmt.Errorf("command timeout after %s", timeout)
-	}
+	return output, err
 }
 
 func (c *Collector) buildMetricsScript(includeStaticInfo bool) string {
@@ -131,7 +104,9 @@ func (c *Collector) Collect() (*pb.SystemMetrics, error) {
 	metrics.SystemInfo = c.buildSystemInfo(parsed.SystemInfo)
 	metrics.Cpu.CoreCount = metrics.SystemInfo.CpuCores
 
-	metrics.Docker = c.getDockerStats()
+	if access.Current(c.ctx).Check(c.ctx, access.Requirement{Action: protocol.DockerRead, ServerID: c.serverID}) == nil {
+		metrics.Docker = c.getDockerStats()
+	}
 
 	// 设置核心采集 SSH 延迟。Docker 统计低频单独采集，不计入图表数据链路延迟。
 	metrics.SshLatencyMs = coreLatencyMs
@@ -315,7 +290,7 @@ func cloneDockerStats(stats *pb.DockerStats) *pb.DockerStats {
 }
 
 func (c *Collector) collectDockerStats() (*pb.DockerStats, error) {
-	output, err := c.sshExecWithTimeout(monitoring.BuildDockerStatsScript(), dockerStatsCommandTimeout)
+	output, err := c.execute(monitoring.BuildDockerStatsScript(), dockerStatsCommandTimeout, protocol.DockerRead)
 	output = strings.TrimSpace(output)
 	if err != nil && output == "" {
 		return nil, err

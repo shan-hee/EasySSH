@@ -1,11 +1,13 @@
 package realtime
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
+	"github.com/google/uuid"
 	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 const subscriberBuffer = 32
@@ -16,43 +18,59 @@ type Event struct {
 	Data      json.RawMessage `json:"data"`
 	CreatedAt time.Time       `json:"created_at"`
 }
-
+type subscriber struct {
+	actor   protocol.Actor
+	owner   bool
+	channel chan Event
+}
 type Hub struct {
 	mu          sync.RWMutex
 	nextID      uint64
-	subscribers map[uuid.UUID]map[uint64]chan Event
+	subscribers map[uint64]subscriber
 }
 
-func NewHub() *Hub {
-	return &Hub{subscribers: make(map[uuid.UUID]map[uint64]chan Event)}
+func NewHub() *Hub { return &Hub{subscribers: make(map[uint64]subscriber)} }
+
+type Subscription struct {
+	Events      <-chan Event
+	lease       *access.Lease
+	unsubscribe func()
 }
 
-func (h *Hub) Subscribe(userID uuid.UUID) (<-chan Event, func()) {
+func (s *Subscription) Context() context.Context { return s.lease.Context() }
+func (s *Subscription) Close()                   { s.unsubscribe(); s.lease.Close(nil) }
+
+func (h *Hub) Subscribe(ctx context.Context) (*Subscription, error) {
+	scope := access.Current(ctx)
+	lease, err := scope.OpenWork(ctx, access.Task, access.Requirement{Action: protocol.WorkspaceRead})
+	if err != nil {
+		return nil, err
+	}
 	channel := make(chan Event, subscriberBuffer)
 	h.mu.Lock()
 	h.nextID++
-	subscriberID := h.nextID
-	if h.subscribers[userID] == nil {
-		h.subscribers[userID] = make(map[uint64]chan Event)
-	}
-	h.subscribers[userID][subscriberID] = channel
+	id := h.nextID
+	h.subscribers[id] = subscriber{actor: scope.Actor(), owner: scope.RequireOwner(ctx, protocol.ActivityRead) == nil, channel: channel}
 	h.mu.Unlock()
-
 	var once sync.Once
-	return channel, func() {
-		once.Do(func() {
-			h.mu.Lock()
-			delete(h.subscribers[userID], subscriberID)
-			if len(h.subscribers[userID]) == 0 {
-				delete(h.subscribers, userID)
-			}
-			h.mu.Unlock()
-		})
-	}
+	unsubscribe := func() { once.Do(func() { h.mu.Lock(); delete(h.subscribers, id); h.mu.Unlock() }) }
+	context.AfterFunc(lease.Context(), unsubscribe)
+	return &Subscription{Events: channel, lease: lease, unsubscribe: unsubscribe}, nil
 }
 
-func (h *Hub) Publish(userID uuid.UUID, eventType string, payload interface{}) {
-	if h == nil || userID == uuid.Nil || eventType == "" {
+// Publish sends work changes to their exact actor and the workspace owner.
+// Owner preferences/notifications use PublishOwner; no guessed owner ID is needed.
+func (h *Hub) Publish(actor protocol.Actor, eventType string, payload any) {
+	if !actor.Valid() {
+		return
+	}
+	h.publish(actor, eventType, payload)
+}
+func (h *Hub) PublishOwner(eventType string, payload any) {
+	h.publish(protocol.Actor{}, eventType, payload)
+}
+func (h *Hub) publish(actor protocol.Actor, eventType string, payload any) {
+	if h == nil || eventType == "" {
 		return
 	}
 	data, err := json.Marshal(payload)
@@ -62,9 +80,12 @@ func (h *Hub) Publish(userID uuid.UUID, eventType string, payload interface{}) {
 	event := Event{ID: uuid.NewString(), Type: eventType, Data: data, CreatedAt: time.Now().UTC()}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	for _, subscriber := range h.subscribers[userID] {
+	for _, sub := range h.subscribers {
+		if !sub.owner && (!actor.Valid() || sub.actor != actor) {
+			continue
+		}
 		select {
-		case subscriber <- event:
+		case sub.channel <- event:
 		default:
 		}
 	}

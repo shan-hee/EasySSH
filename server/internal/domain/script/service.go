@@ -1,180 +1,273 @@
 package script
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
-	"math"
+	"fmt"
+	"github.com/easyssh/shared/protocol"
+	"strings"
 
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/scriptutil"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 var (
-	ErrScriptNotFound      = errors.New("script not found")
-	ErrUnauthorized        = errors.New("unauthorized to access this script")
-	ErrInvalidScriptData   = errors.New("invalid script data")
-	ErrScriptNameDuplicate = errors.New("script name already exists")
+	ErrScriptNotFound    = errors.New("script not found")
+	ErrInvalidScriptData = errors.New("invalid script data")
 )
 
-// Service 脚本业务逻辑接口
+type ExecutionPolicy interface {
+	ScriptParameters(context.Context, access.Scope, access.Requirement) (map[string]protocol.GrantParameterRule, error)
+	CheckScript(context.Context, access.Scope, access.Requirement, map[string]string) error
+}
+
+type Execution struct {
+	ID      uuid.UUID
+	Name    string
+	Version string
+	Command string
+}
+
 type Service interface {
-	CreateScript(userID uuid.UUID, username string, req *CreateScriptRequest) (*Script, error)
-	UpdateScript(userID uuid.UUID, scriptID uuid.UUID, req *UpdateScriptRequest) (*Script, error)
-	DeleteScript(userID uuid.UUID, scriptID uuid.UUID) error
-	GetScript(userID uuid.UUID, scriptID uuid.UUID) (*Script, error)
-	ListScripts(userID uuid.UUID, req *ListScriptsRequest) (*ListScriptsResponse, error)
-	ExecuteScript(userID uuid.UUID, scriptID uuid.UUID) error
+	CreateScript(context.Context, string, *CreateScriptRequest) (*Script, error)
+	UpdateScript(context.Context, uuid.UUID, *UpdateScriptRequest) (*Script, error)
+	DeleteScript(context.Context, uuid.UUID) error
+	GetScript(context.Context, uuid.UUID) (*Script, error)
+	ListScripts(context.Context, *ListScriptsRequest) (*ListScriptsResponse, error)
+	Available(context.Context, string, protocol.ScriptCatalogInput) (*protocol.ScriptCatalogPage, error)
+	Resolve(context.Context, uuid.UUID, []string, map[string]string, string) (*Execution, error)
+	RecordExecution(context.Context, uuid.UUID, string, string, map[string]string) error
 }
 
 type service struct {
-	repo Repository
+	repo    Repository
+	policy  ExecutionPolicy
+	runtime *access.Runtime
 }
 
-// NewService 创建脚本服务实例
-func NewService(repo Repository) Service {
-	return &service{
-		repo: repo,
+func NewService(repo Repository, policy ExecutionPolicy, runtime *access.Runtime) Service {
+	return &service{repo: repo, policy: policy, runtime: runtime}
+}
+
+func validate(row *Script) error {
+	if err := scriptutil.ValidateMetadata(row.Name, row.Description, row.Tags); err != nil {
+		return ErrInvalidScriptData
 	}
+	if _, err := scriptutil.Command(row.Language, row.Content, nil); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidScriptData, err)
+	}
+	return nil
 }
-
-// CreateScript 创建脚本
-func (s *service) CreateScript(userID uuid.UUID, username string, req *CreateScriptRequest) (*Script, error) {
-	// 验证输入
-	if req.Name == "" || req.Content == "" {
+func owner(ctx context.Context) error {
+	return access.Current(ctx).RequireOwner(ctx, protocol.ResourcesManage)
+}
+func (s *service) CreateScript(ctx context.Context, author string, req *CreateScriptRequest) (*Script, error) {
+	if err := owner(ctx); err != nil {
+		return nil, err
+	}
+	if req == nil {
 		return nil, ErrInvalidScriptData
 	}
-
-	// 设置默认语言
-	if req.Language == "" {
-		req.Language = "bash"
+	language := req.Language
+	if language == "" {
+		language = "bash"
 	}
-
-	// 创建脚本
-	script := &Script{
-		UserID:      userID,
-		Name:        req.Name,
-		Description: req.Description,
-		Content:     req.Content,
-		Language:    req.Language,
-		Tags:        req.Tags,
-		Author:      username,
-		Executions:  0,
-	}
-
-	if err := s.repo.Create(script); err != nil {
+	row := &Script{Name: strings.TrimSpace(req.Name), Description: req.Description, Content: req.Content, Language: language, Tags: req.Tags, Author: author}
+	if err := validate(row); err != nil {
 		return nil, err
 	}
-
-	return script, nil
+	if err := s.repo.Create(ctx, row); err != nil {
+		return nil, err
+	}
+	return row, nil
 }
-
-// UpdateScript 更新脚本
-func (s *service) UpdateScript(userID uuid.UUID, scriptID uuid.UUID, req *UpdateScriptRequest) (*Script, error) {
-	// 检查脚本是否存在且属于当前用户
-	script, err := s.repo.GetByID(scriptID)
+func (s *service) UpdateScript(ctx context.Context, id uuid.UUID, req *UpdateScriptRequest) (*Script, error) {
+	if err := owner(ctx); err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return nil, ErrInvalidScriptData
+	}
+	row, err := s.lookup(ctx, id)
 	if err != nil {
-		return nil, ErrScriptNotFound
+		return nil, err
 	}
-
-	if script.UserID != userID {
-		return nil, ErrUnauthorized
+	before := row.Version
+	beforeContent, beforeLanguage := row.Content, row.Language
+	if req.Name != nil {
+		row.Name = strings.TrimSpace(*req.Name)
 	}
-
-	// 构建更新数据
-	updates := make(map[string]interface{})
-	if req.Name != "" {
-		updates["name"] = req.Name
+	if req.Description != nil {
+		row.Description = *req.Description
 	}
-	if req.Description != "" {
-		updates["description"] = req.Description
+	if req.Content != nil {
+		row.Content = *req.Content
 	}
-	if req.Content != "" {
-		updates["content"] = req.Content
-	}
-	if req.Language != "" {
-		updates["language"] = req.Language
+	if req.Language != nil {
+		row.Language = *req.Language
 	}
 	if req.Tags != nil {
-		updates["tags"] = req.Tags
+		row.Tags = req.Tags
 	}
-
-	// 更新脚本
-	if err := s.repo.Update(scriptID, updates); err != nil {
+	if err := validate(row); err != nil {
 		return nil, err
 	}
-
-	// 返回更新后的脚本
-	return s.repo.GetByID(scriptID)
-}
-
-// DeleteScript 删除脚本
-func (s *service) DeleteScript(userID uuid.UUID, scriptID uuid.UUID) error {
-	// 检查脚本是否存在且属于当前用户
-	script, err := s.repo.GetByID(scriptID)
-	if err != nil {
-		return ErrScriptNotFound
+	if err := s.repo.Update(ctx, id, beforeContent, beforeLanguage, map[string]interface{}{"name": row.Name, "description": row.Description, "content": row.Content, "language": row.Language, "tags": row.Tags}); err != nil {
+		return nil, err
 	}
-
-	if script.UserID != userID {
-		return ErrUnauthorized
+	if before != scriptutil.Version(row.Language, row.Content) {
+		s.runtime.InvalidateScript(id.String(), access.ErrResourceChanged)
 	}
-
-	return s.repo.Delete(scriptID)
+	return s.lookup(ctx, id)
 }
-
-// GetScript 获取脚本详情
-func (s *service) GetScript(userID uuid.UUID, scriptID uuid.UUID) (*Script, error) {
-	script, err := s.repo.GetByID(scriptID)
-	if err != nil {
+func (s *service) DeleteScript(ctx context.Context, id uuid.UUID) error {
+	if err := owner(ctx); err != nil {
+		return err
+	}
+	if _, err := s.lookup(ctx, id); err != nil {
+		return err
+	}
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	s.runtime.InvalidateScript(id.String(), access.ErrResourceChanged)
+	return nil
+}
+func (s *service) lookup(ctx context.Context, id uuid.UUID) (*Script, error) {
+	row, err := s.repo.GetByID(ctx, id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrScriptNotFound
 	}
-
-	// 验证所有权
-	if script.UserID != userID {
-		return nil, ErrUnauthorized
+	if err == nil && row.Version != scriptutil.Version(row.Language, row.Content) {
+		return nil, access.ErrResourceChanged
 	}
-
-	return script, nil
+	return row, err
 }
-
-// ListScripts 获取脚本列表
-func (s *service) ListScripts(userID uuid.UUID, req *ListScriptsRequest) (*ListScriptsResponse, error) {
-	// 设置默认值
-	if req.Page < 1 {
-		req.Page = 1
+func (s *service) GetScript(ctx context.Context, id uuid.UUID) (*Script, error) {
+	if err := owner(ctx); err != nil {
+		return nil, err
 	}
+	return s.lookup(ctx, id)
+}
+func (s *service) ListScripts(ctx context.Context, req *ListScriptsRequest) (*ListScriptsResponse, error) {
+	if err := owner(ctx); err != nil {
+		return nil, err
+	}
+	if req == nil {
+		req = &ListScriptsRequest{}
+	}
+	req.Page = max(1, req.Page)
 	if req.Limit < 1 {
 		req.Limit = 20
 	}
-
-	// 获取脚本列表
-	scripts, total, err := s.repo.List(userID, req)
+	req.Limit = min(100, req.Limit)
+	rows, total, err := s.repo.List(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-
-	// 计算总页数
-	totalPages := int(math.Ceil(float64(total) / float64(req.Limit)))
-
-	return &ListScriptsResponse{
-		Data:       scripts,
-		Total:      total,
-		Page:       req.Page,
-		PageSize:   req.Limit,
-		TotalPages: totalPages,
-	}, nil
+	items := make([]protocol.Script, len(rows))
+	for i := range rows {
+		items[i] = rows[i].Public()
+	}
+	return &ListScriptsResponse{Data: items, Total: total, Page: req.Page, PageSize: req.Limit, TotalPages: int((total + int64(req.Limit) - 1) / int64(req.Limit))}, nil
 }
-
-// ExecuteScript 执行脚本（增加执行计数）
-func (s *service) ExecuteScript(userID uuid.UUID, scriptID uuid.UUID) error {
-	// 检查脚本是否存在且属于当前用户
-	script, err := s.repo.GetByID(scriptID)
+func (s *service) Available(ctx context.Context, serverID string, input protocol.ScriptCatalogInput) (*protocol.ScriptCatalogPage, error) {
+	input, err := scriptutil.NormalizeCatalogInput(input)
 	if err != nil {
-		return ErrScriptNotFound
+		return nil, err
 	}
-
-	if script.UserID != userID {
-		return ErrUnauthorized
+	scope := access.Current(ctx)
+	if err := scope.Check(ctx, access.Requirement{Action: protocol.WorkspaceRead}); err != nil {
+		return nil, err
 	}
-
-	// 增加执行次数
-	return s.repo.IncrementExecutions(scriptID)
+	id, err := uuid.Parse(serverID)
+	if err != nil || id == uuid.Nil || id.String() != serverID {
+		return nil, ErrInvalidScriptData
+	}
+	grantID := scope.Actor().GrantID
+	if scope.IsOwner() {
+		if err := scope.RequireOwner(ctx, protocol.ResourcesManage); err != nil {
+			return nil, err
+		}
+	} else if grantID == "" {
+		return nil, access.ErrForbidden
+	}
+	rows, more, err := s.repo.Available(ctx, grantID, serverID, input)
+	if err != nil {
+		return nil, err
+	}
+	page := &protocol.ScriptCatalogPage{ServerID: serverID, Items: []protocol.AvailableScript{}, NextAfterID: input.AfterID, HasMore: more}
+	// Reserve envelope overhead; budget each encoded item before appending it.
+	bytes := 512
+	for _, candidate := range rows {
+		row := protocol.AvailableScript{ID: candidate.ID, Name: candidate.Name, Description: candidate.Description, Language: candidate.Language, Version: candidate.Version}
+		req := access.Requirement{Action: protocol.ScriptsExecute, ServerID: serverID, ScriptID: row.ID.String(), ScriptVersion: row.Version}
+		rules, err := s.policy.ScriptParameters(ctx, scope, req)
+		if err != nil {
+			if errors.Is(err, access.ErrForbidden) || errors.Is(err, access.ErrResourceChanged) {
+				page.NextAfterID = row.ID.String()
+				continue
+			}
+			return nil, err
+		}
+		if err := scriptutil.ValidateParameterRules(rules); err != nil {
+			return nil, err
+		}
+		row.Parameters = rules
+		encoded, err := json.Marshal(row)
+		if err != nil {
+			return nil, err
+		}
+		if bytes+len(encoded)+1 > scriptutil.MaxCatalogBytes {
+			// Do not consume this row. The next request must still see it.
+			if len(page.Items) == 0 {
+				return nil, ErrInvalidScriptData
+			}
+			page.HasMore = true
+			break
+		}
+		bytes += len(encoded) + 1
+		page.Items = append(page.Items, row)
+		page.NextAfterID = row.ID.String()
+	}
+	if err := scope.Check(ctx, access.Requirement{Action: protocol.WorkspaceRead}); err != nil {
+		return nil, err
+	}
+	return page, nil
+}
+func (s *service) Resolve(ctx context.Context, id uuid.UUID, servers []string, parameters map[string]string, expected string) (*Execution, error) {
+	if len(servers) == 0 || len(servers) > 100 {
+		return nil, ErrInvalidScriptData
+	}
+	if err := scriptutil.ValidateParameters(parameters); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidScriptData, err)
+	}
+	row, err := s.lookup(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	scope := access.Current(ctx)
+	if expected == "" && !scope.IsOwner() || expected != "" && expected != row.Version {
+		return nil, access.ErrResourceChanged
+	}
+	for _, serverID := range servers {
+		req := access.Requirement{Action: protocol.ScriptsExecute, ServerID: serverID, ScriptID: id.String(), ScriptVersion: row.Version}
+		if err := s.policy.CheckScript(ctx, scope, req, parameters); err != nil {
+			return nil, err
+		}
+	}
+	command, err := scriptutil.Command(row.Language, row.Content, parameters)
+	if err != nil {
+		return nil, err
+	}
+	return &Execution{ID: id, Name: row.Name, Version: row.Version, Command: command}, nil
+}
+func (s *service) RecordExecution(ctx context.Context, id uuid.UUID, serverID, version string, parameters map[string]string) error {
+	if _, err := s.Resolve(ctx, id, []string{serverID}, parameters, version); err != nil {
+		return err
+	}
+	return s.repo.IncrementExecutions(ctx, id, version)
 }

@@ -3,6 +3,8 @@ package ws
 import (
 	"context"
 	"encoding/json"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"log"
 	"net/http"
 	"strings"
@@ -122,13 +124,14 @@ func (h *MonitorHandler) getUpgrader() websocket.Upgrader {
 // HandleMonitor 处理监控 WebSocket 连接
 // WS /api/v1/monitor/server/:server_id?interval=2
 func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
-	// 从上下文获取用户 ID
-	userIDStr, exists := c.Get("user_id")
+	// 从可信作用域获取当前访问主体 ID
+	scope, scopeErr := access.FromContext(c.Request.Context())
+	exists := scopeErr == nil
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	userID := userIDStr.(string)
+	actorID := scope.Actor().ID
 
 	// 获取服务器 ID
 	serverID := c.Param("server_id")
@@ -141,6 +144,14 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_server_id"})
 		return
 	}
+
+	lease, leaseErr := access.OpenStream(c.Request.Context(), access.Requirement{Action: protocol.MonitorRead, ServerID: serverID})
+	if leaseErr != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access_denied"})
+		return
+	}
+	defer lease.Close(nil)
+	c.Request = c.Request.WithContext(lease.Context())
 
 	// 获取采集间隔（秒），默认为 2 秒
 	intervalParam := c.DefaultQuery("interval", "2")
@@ -159,6 +170,9 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 		return
 	}
 	defer wsConn.Close()
+	wsConn.SetReadLimit(64 << 10)
+	stopSocketCancel := context.AfterFunc(lease.Context(), func() { _ = wsConn.Close() })
+	defer stopSocketCancel()
 
 	// 发送握手完成消息
 	handshakeMsg := map[string]string{"type": "handshake_complete", "status": "connecting"}
@@ -167,53 +181,19 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 		_ = wsConn.WriteMessage(websocket.TextMessage, data)
 	}
 
-	// 异步获取或创建 SSH 连接
-	log.Printf("[Monitor] 尝试获取连接: userID=%s, serverID=%s", userID, serverID)
-	connChan := make(chan *monitor.PooledConnection, 1)
-	errChan := make(chan error, 1)
-
-	go func() {
-		pooledConn, err := h.connectionPool.GetOrCreate(userID, serverID)
-		if err != nil {
-			errChan <- err
-			return
-		}
-		connChan <- pooledConn
-	}()
-
-	// 等待连接建立或超时
-	var pooledConn *monitor.PooledConnection
-	select {
-	case pooledConn = <-connChan:
-		log.Printf("[Monitor] 成功获取连接: userID=%s, serverID=%s, refCount=%d", userID, serverID, pooledConn.GetRefCount())
-		// 发送连接就绪消息
-		readyMsg := map[string]string{"type": "ready"}
-		if data, err := json.Marshal(readyMsg); err == nil {
-			_ = wsConn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-			_ = wsConn.WriteMessage(websocket.TextMessage, data)
-		}
-	case err := <-errChan:
-		log.Printf("[Monitor] 获取连接失败: %v", err)
-		errMsg := map[string]string{"type": "error", "message": err.Error()}
-		if data, err := json.Marshal(errMsg); err == nil {
-			_ = wsConn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-			_ = wsConn.WriteMessage(websocket.TextMessage, data)
-		}
-		return
-	case <-time.After(10 * time.Second):
-		log.Printf("[Monitor] 获取连接超时")
-		errMsg := map[string]string{"type": "error", "message": "connection timeout"}
-		if data, err := json.Marshal(errMsg); err == nil {
-			_ = wsConn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-			_ = wsConn.WriteMessage(websocket.TextMessage, data)
-		}
+	pooledConn, err := h.connectionPool.GetOrCreate(c.Request.Context(), serverID, protocol.MonitorRead)
+	if err != nil {
+		_ = wsConn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+		_ = wsConn.WriteJSON(map[string]string{"type": "error", "message": err.Error()})
 		return
 	}
+	_ = wsConn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+	_ = wsConn.WriteJSON(map[string]string{"type": "ready"})
 
 	// 确保在函数退出时释放连接
 	defer func() {
-		h.connectionPool.Release(userID, serverID)
-		log.Printf("[Monitor] 释放连接: userID=%s, serverID=%s", userID, serverID)
+		h.connectionPool.Release(pooledConn)
+		log.Printf("[Monitor] 释放连接: actorID=%s, serverID=%s", actorID, serverID)
 	}()
 
 	log.Printf("Monitor WebSocket connected for server: %s, using pooled connection", serverID)
@@ -242,13 +222,14 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 		serverRepo: h.serverRepo,
 	}
 	// 使用工厂函数延迟创建 Collector，仅在首个订阅者时才实际创建
-	h.collectorManager.GetOrCreate(serverID, func() *monitor.Collector {
-		return monitor.NewCollector(pooledConn.Client)
+	collectorKey := string(access.Current(c.Request.Context()).Actor().Kind) + ":" + access.Current(c.Request.Context()).Actor().SessionID + ":" + serverID
+	h.collectorManager.GetOrCreate(collectorKey, func() *monitor.Collector {
+		return monitor.NewCollector(c.Request.Context(), serverID, pooledConn.Client)
 	}, interval, subscriber)
 
 	// 确保退出时取消订阅
 	defer func() {
-		h.collectorManager.Unsubscribe(serverID, subID)
+		h.collectorManager.Unsubscribe(collectorKey, subID)
 		log.Printf("[Monitor] 取消订阅: serverID=%s, subID=%s", serverID, subID)
 	}()
 

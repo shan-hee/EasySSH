@@ -102,7 +102,7 @@ func (h *SyncHandler) AuthorizationInfo(c *gin.Context) {
 	c.JSON(200, gin.H{"name": row.Name, "status": row.Status})
 }
 func (h *SyncHandler) ApproveAuthorization(c *gin.Context) {
-	owner, ok := requireCurrentUserID(c)
+	owner, ok := requireSyncOwnerID(c)
 	if !ok {
 		return
 	}
@@ -131,13 +131,13 @@ func (h *SyncHandler) ApproveAuthorization(c *gin.Context) {
 			return err
 		}
 		var count int64
-		if err := tx.Model(&datasync.Device{}).Where("user_id = ? AND expires_at > ?", owner, time.Now()).Count(&count).Error; err != nil {
+		if err := tx.Model(&datasync.Device{}).Where("owner_id = ? AND revoked = ? AND expires_at > ?", owner, false, time.Now()).Count(&count).Error; err != nil {
 			return err
 		}
 		if count >= 20 {
 			return errors.New("revoke an existing device first (maximum 20)")
 		}
-		return tx.Create(&datasync.Device{ID: row.ID, UserID: owner, Scopes: input.Scopes, Name: row.Name, TokenHash: row.TokenHash, ExpiresAt: time.Now().Add(90 * 24 * time.Hour)}).Error
+		return tx.Create(&datasync.Device{ID: row.ID, OwnerID: owner, Scopes: input.Scopes, Name: row.Name, TokenHash: row.TokenHash, ExpiresAt: time.Now().Add(90 * 24 * time.Hour)}).Error
 	})
 	if err != nil {
 		RespondError(c, 409, "authorization_failed", err.Error())

@@ -38,6 +38,10 @@ type Options struct {
 	DatabaseName         string
 	Key                  func(Target) (string, error)
 	Environment          func(Target, string, string) map[string]string
+	// ValidateLaunch enables a separate, restricted desktop launch inbox.
+	// An empty URL means only "show the window". No process arguments are forwarded.
+	ValidateLaunch   func(string) error
+	InitialLaunchURL string
 }
 
 type Target struct {
@@ -73,6 +77,7 @@ type supervisor struct {
 	permit    chan struct{}
 	commit    chan struct{}
 	requests  chan struct{}
+	launches  *launchInbox
 }
 
 func randomID() string {
@@ -225,6 +230,10 @@ func (s *supervisor) candidate(input Request) (Target, error) {
 }
 
 func (s *supervisor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.launches != nil && r.URL.Path == "/launch" {
+		s.launches.serveForward(w, r)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	w.Header().Set("Content-Type", "application/json")
@@ -238,6 +247,12 @@ func (s *supervisor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 	}
 	switch r.URL.Path {
+	case "/launches":
+		if s.launches == nil || !s.serving || s.stop {
+			fail(errors.New("launch inbox unavailable"))
+			return
+		}
+		s.launches.serveRead(w, r)
 	case "/info":
 		_ = json.NewEncoder(w).Encode(Info{Available: true, ActiveBackupID: s.state.Current.RecordID, ActiveDirectory: s.state.Current.Directory, CanRollback: s.state.Previous != nil, Operation: s.state.Operation})
 	case "/control":
@@ -405,11 +420,21 @@ func RunWithOptions(directory string, original Target, rootKey, backupDirectory 
 	if inside(original.Directory, directory) || inside(directory, original.Directory) || strings.EqualFold(directory, original.Directory) || inside(backupDirectory, directory) || inside(directory, backupDirectory) || strings.EqualFold(directory, backupDirectory) {
 		return errors.New("launcher state must be separate from database and backup storage")
 	}
+	if options.ValidateLaunch != nil {
+		if err := options.ValidateLaunch(options.InitialLaunchURL); err != nil {
+			return err
+		}
+	}
 	if err := secureDirectory(directory); err != nil {
 		return err
 	}
 	lock, err := instancebackup.Lock(directory)
 	if err != nil {
+		if options.ValidateLaunch != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			return ForwardLaunch(ctx, directory, options.InitialLaunchURL)
+		}
 		return err
 	}
 	defer lock.Close()
@@ -470,6 +495,19 @@ func RunWithOptions(directory string, original Target, rootKey, backupDirectory 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
+	}
+	if options.ValidateLaunch != nil {
+		s.launches = newLaunchInbox(options.ValidateLaunch)
+		if err = s.launches.add(LaunchMessage{ID: randomID(), URL: options.InitialLaunchURL}); err != nil {
+			listener.Close()
+			return err
+		}
+		endpointPath := filepath.Join(directory, "launch-endpoint.json")
+		if err = atomicJSON(endpointPath, launchEndpoint{"http://" + listener.Addr().String(), s.launches.token}); err != nil {
+			listener.Close()
+			return err
+		}
+		defer os.Remove(endpointPath)
 	}
 	broker := &http.Server{Handler: s, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second}
 	go func() { _ = broker.Serve(listener) }()

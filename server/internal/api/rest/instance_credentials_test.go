@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/easyssh/shared/dbmigration"
+	"github.com/easyssh/server/internal/storage/schema"
 	crypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -31,19 +31,19 @@ func TestInstanceCredentialVerification(t *testing.T) {
 		aad                      []byte
 		row                      map[string]any
 	}{
-		{"system_config", "google_client_secret", "", crypto.SecretAAD("system_config", "system", "google_client_secret"), nil},
-		{"ai_config", "system_api_key", "", crypto.SecretAAD("ai_config", "system", "system_api_key"), nil},
+		{"ai_config", "api_key", "", crypto.SecretAAD("ai_config", "1", "api_key"), map[string]any{"id": 1, "endpoint": "", "models": "[]"}},
 		{"notification_config", "smtp_config", "password", crypto.SecretAAD("notification_config", "smtp", "password"), nil},
 		{"notification_config", "webhook_config", "secret", crypto.SecretAAD("notification_config", "webhook", "secret"), nil},
 		{"notification_config", "ding_talk_config", "secret", crypto.SecretAAD("notification_config", "dingtalk", "secret"), nil},
-		{"users", "nezha_api_token", "", crypto.SecretAAD("users", "owner", "nezha_api_token"), nil},
-		{"users", "komari_api_token", "", crypto.SecretAAD("users", "owner", "komari_api_token"), nil},
-		{"users", "two_factor_secret", "", crypto.SecretAAD("users", "owner", "two_factor_secret"), nil},
-		{"servers", "password", "", []byte("easyssh:servers:owner:server:password"), map[string]any{"id": "server", "user_id": "owner", "host": "example.test", "username": "root", "auth_method": "password"}},
-		{"ssh_keys", "private_key", "", []byte("easyssh:ssh_keys:owner:fingerprint:private_key"), map[string]any{"user_id": "owner", "fingerprint": "fingerprint", "name": "fixture", "algorithm": "ed25519", "public_key": "fixture"}},
-		{"user_ai_config", "custom_api_key", "", crypto.SecretAAD("user_ai_config", "owner", "custom_api_key"), map[string]any{"user_id": "owner"}},
-		{"oauth_signing_keys", "encrypted_private_pem", "", []byte("oauth-signing-key:key"), map[string]any{"id": "key"}},
-		{"sync_vault_objects", "ciphertext", "", []byte("easyssh:sync-vault:owner:object"), map[string]any{"user_id": "owner", "id": "object", "kind": "ai_config", "resource_id": "config"}},
+		{"notification_config", "webhook_config", "url", crypto.SecretAAD("notification_config", "webhook", "url"), nil},
+		{"notification_config", "ding_talk_config", "webhook_url", crypto.SecretAAD("notification_config", "dingtalk", "webhook_url"), nil},
+		{"notification_config", "we_com_config", "webhook_url", crypto.SecretAAD("notification_config", "wecom", "webhook_url"), nil},
+		{"owners", "nezha_api_token", "", crypto.SecretAAD("owners", "owner", "nezha_api_token"), nil},
+		{"owners", "komari_api_token", "", crypto.SecretAAD("owners", "owner", "komari_api_token"), nil},
+		{"owners", "two_factor_secret", "", crypto.SecretAAD("owners", "owner", "two_factor_secret"), nil},
+		{"server_auth", "password", "", crypto.SecretAAD("server_auth", "server", "password"), map[string]any{"server_id": "server", "auth_method": "password"}},
+		{"ssh_keys", "private_key", "", crypto.SecretAAD("ssh_keys", "key", "private_key"), map[string]any{"id": "key", "fingerprint": "fingerprint", "name": "fixture", "algorithm": "ed25519", "public_key": "fixture"}},
+		{"sync_vault_objects", "ciphertext", "", []byte("easyssh:sync-vault:owner:object"), map[string]any{"owner_id": "owner", "id": "object", "kind": "ai_config", "resource_id": "config"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.table+"/"+tc.column, func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestInstanceCredentialVerification(t *testing.T) {
 			t.Cleanup(func() { raw.Close() })
 			raw.SetMaxOpenConns(1)
 			ctx := context.Background()
-			if err := dbmigration.Initialize(ctx, raw, "server", "sqlite"); err != nil {
+			if err := schema.Initialize(ctx, raw, "sqlite"); err != nil {
 				t.Fatal(err)
 			}
 			if err := VerifyStoredCredentials(ctx, db, encryptor); err != nil {
@@ -83,8 +83,13 @@ func TestInstanceCredentialVerification(t *testing.T) {
 			if row == nil {
 				row = map[string]any{}
 			}
-			if tc.table == "users" {
-				row = map[string]any{"id": "owner", "username": "fixture", "email": "fixture@example.test", "password": "unusable"}
+			if tc.table == "owners" {
+				row = map[string]any{"slot": 1, "id": "owner", "username": "fixture", "email": "fixture@example.test", "password": "unusable"}
+			}
+			if tc.table == "server_auth" {
+				if err := db.Table("servers").Create(map[string]any{"id": "server", "host": "example.test", "username": "root"}).Error; err != nil {
+					t.Fatal(err)
+				}
 			}
 			stored := encode(tc.aad)
 			row[tc.column] = stored

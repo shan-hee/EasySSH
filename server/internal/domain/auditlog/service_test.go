@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-
-	"github.com/google/uuid"
 )
 
 type flakyAuditRepository struct {
@@ -34,8 +32,9 @@ func (r *flakyAuditRepository) Create(context.Context, *AuditLog) error {
 func TestServiceRetriesAuditWrites(t *testing.T) {
 	repo := &flakyAuditRepository{}
 	service := NewService(repo)
+	_, actor := auditTestContext(t)
 	err := service.Log(context.Background(), &CreateAuditLogRequest{
-		UserID: uuid.New(), Username: "admin", Action: ActionSystemSettingsUpdate, Status: StatusSuccess,
+		Actor: actor, Username: "admin", Action: ActionSystemSettingsUpdate, Status: StatusSuccess,
 	})
 	if err != nil {
 		t.Fatal(err)

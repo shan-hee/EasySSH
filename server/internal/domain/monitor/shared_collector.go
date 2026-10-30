@@ -45,15 +45,11 @@ func (sc *SharedCollector) Subscribe(sub MetricsSubscriber) {
 
 	sc.mu.Lock()
 	sc.subscribers[subID] = sub
-	lastMetrics := sc.lastMetrics
 	total := len(sc.subscribers)
 	sc.mu.Unlock()
 
 	log.Printf("[SharedCollector] 添加订阅者: serverID=%s, subID=%s, total=%d", sc.serverID, subID, total)
 
-	if lastMetrics != nil {
-		go sub.OnMetrics(lastMetrics)
-	}
 }
 
 // Unsubscribe 移除订阅者
@@ -112,6 +108,7 @@ func (sc *SharedCollector) Stop() {
 	sc.running = false
 	sc.mu.Unlock()
 
+	sc.collector.Close()
 	close(sc.stopCh)
 }
 

@@ -5,346 +5,115 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/easyssh/server/internal/pkg/geoip"
 	"github.com/google/uuid"
 )
 
-// LoginDetectionService 登录检测服务接口
+// LoginDetectionService annotates successful owner sessions and sends login alerts.
 type LoginDetectionService interface {
-	// CheckNewDevice 检查是否为新设备
-	CheckNewDevice(ctx context.Context, userID uuid.UUID, fingerprint string) (isNew bool, err error)
-
-	// CheckNewLocation 检查是否为新地理位置
-	CheckNewLocation(ctx context.Context, userID uuid.UUID, ip string) (isNew bool, location string, err error)
-
-	// RecordLogin 记录登录信息并触发通知
-	RecordLogin(ctx context.Context, userID uuid.UUID, session *Session, fingerprint string) error
-
-	// AddTrustedDevice 添加可信设备
-	AddTrustedDevice(ctx context.Context, userID uuid.UUID, fingerprint, deviceType, deviceName, ip, location string) error
-
-	// ListTrustedDevices 获取用户的可信设备列表
-	ListTrustedDevices(ctx context.Context, userID uuid.UUID) ([]*TrustedDevice, error)
-
-	// RemoveTrustedDevice 移除可信设备
-	RemoveTrustedDevice(ctx context.Context, userID uuid.UUID, deviceID uuid.UUID) error
-
-	// ListLoginAlerts 获取登录告警列表
-	ListLoginAlerts(ctx context.Context, userID uuid.UUID, limit int) ([]*LoginAlert, error)
-
-	// AcknowledgeAlert 确认告警
-	AcknowledgeAlert(ctx context.Context, userID, alertID uuid.UUID) error
-
-	// GetUnacknowledgedAlertCount 获取未确认告警数量
-	GetUnacknowledgedAlertCount(ctx context.Context, userID uuid.UUID) (int64, error)
+	RecordLogin(context.Context, uuid.UUID, *Session, string) error
 }
 
-// loginDetectionService 登录检测服务实现
 type loginDetectionService struct {
-	trustedDeviceRepo TrustedDeviceRepository
-	loginAlertRepo    LoginAlertRepository
-	userRepo          Repository
-	geoipClient       *geoip.Client
-	emailService      EmailService
+	devices      KnownLoginDeviceRepository
+	ownerRepo    Repository
+	geoipClient  *geoip.Client
+	currentEmail func(context.Context) (EmailService, error)
 }
 
-// NewLoginDetectionService 创建登录检测服务
-func NewLoginDetectionService(
-	trustedDeviceRepo TrustedDeviceRepository,
-	loginAlertRepo LoginAlertRepository,
-	userRepo Repository,
-	geoipClient *geoip.Client,
-	emailService EmailService,
-) LoginDetectionService {
-	return &loginDetectionService{
-		trustedDeviceRepo: trustedDeviceRepo,
-		loginAlertRepo:    loginAlertRepo,
-		userRepo:          userRepo,
-		geoipClient:       geoipClient,
-		emailService:      emailService,
-	}
+func NewLoginDetectionService(devices KnownLoginDeviceRepository, ownerRepo Repository, geoipClient *geoip.Client, currentEmail func(context.Context) (EmailService, error)) LoginDetectionService {
+	return &loginDetectionService{devices: devices, ownerRepo: ownerRepo, geoipClient: geoipClient, currentEmail: currentEmail}
 }
 
-// GenerateDeviceFingerprint 生成设备指纹（后端基础版本）
+// GenerateDeviceFingerprint describes a browser; it cannot establish device identity.
 func GenerateDeviceFingerprint(userAgent, acceptLanguage, acceptEncoding string) string {
-	data := fmt.Sprintf("%s|%s|%s", userAgent, acceptLanguage, acceptEncoding)
-	hash := sha256.Sum256([]byte(data))
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%s", userAgent, acceptLanguage, acceptEncoding)))
 	return hex.EncodeToString(hash[:])
 }
 
-func (s *loginDetectionService) CheckNewDevice(ctx context.Context, userID uuid.UUID, fingerprint string) (bool, error) {
-	if fingerprint == "" {
-		return false, nil // 没有指纹信息，无法判断
-	}
-
-	device, err := s.trustedDeviceRepo.FindByUserAndFingerprint(ctx, userID, fingerprint)
-	if err != nil {
-		return false, err
-	}
-
-	return device == nil, nil
-}
-
-func (s *loginDetectionService) CheckNewLocation(ctx context.Context, userID uuid.UUID, ip string) (bool, string, error) {
-	// 获取当前 IP 的地理位置
-	var location string
-	if s.geoipClient != nil {
-		loc, err := s.geoipClient.Lookup(ctx, ip)
-		if err == nil && loc != nil {
-			if loc.City != "" {
-				location = fmt.Sprintf("%s, %s, %s", loc.City, loc.Region, loc.Country)
-			} else if loc.Region != "" {
-				location = fmt.Sprintf("%s, %s", loc.Region, loc.Country)
-			} else {
-				location = loc.Country
-			}
-		}
-	}
-
-	// 无法定位不代表位置发生变化，不能据此触发新位置告警。
-	if location == "" {
-		return false, "", nil
-	}
-
-	// 获取用户的可信设备列表，检查是否有相同位置
-	devices, err := s.trustedDeviceRepo.ListByUser(ctx, userID)
-	if err != nil {
-		return false, location, err
-	}
-
-	// 如果没有任何可信设备，第一次登录不算新位置
-	if len(devices) == 0 {
-		return false, location, nil
-	}
-
-	// 检查是否有相同位置的设备
-	for _, device := range devices {
-		if device.LastLocation == location {
-			return false, location, nil
-		}
-	}
-
-	return true, location, nil
-}
-
-func (s *loginDetectionService) RecordLogin(ctx context.Context, userID uuid.UUID, session *Session, fingerprint string) error {
-	// 获取用户信息
-	user, err := s.userRepo.FindByID(ctx, userID)
+func (s *loginDetectionService) RecordLogin(ctx context.Context, ownerID uuid.UUID, session *Session, fingerprint string) error {
+	owner, err := s.ownerRepo.FindByID(ctx, ownerID)
 	if err != nil {
 		return err
 	}
-
-	// 获取地理位置
 	var location string
 	if s.geoipClient != nil && session.IPAddress != "" {
-		loc, err := s.geoipClient.Lookup(ctx, session.IPAddress)
-		if err == nil && loc != nil {
+		loc, lookupErr := s.geoipClient.Lookup(ctx, session.IPAddress)
+		if lookupErr == nil && loc != nil {
+			location = loc.Country
 			if loc.City != "" {
 				location = fmt.Sprintf("%s, %s, %s", loc.City, loc.Region, loc.Country)
-			} else if loc.Region != "" {
-				location = fmt.Sprintf("%s, %s", loc.Region, loc.Country)
-			} else {
-				location = loc.Country
 			}
 		}
 	}
-
-	// 检查是否为新设备
-	isNewDevice := false
+	var existing *KnownLoginDevice
 	if fingerprint != "" {
-		device, err := s.trustedDeviceRepo.FindByUserAndFingerprint(ctx, userID, fingerprint)
-		if err == nil && device == nil {
-			isNewDevice = true
+		existing, err = s.devices.FindByOwnerAndFingerprint(ctx, ownerID, fingerprint)
+		if err != nil {
+			return err
 		}
 	}
-
-	// 检查是否为新位置
+	isNewDevice := fingerprint != "" && existing == nil
 	isNewLocation := false
-	devices, _ := s.trustedDeviceRepo.ListByUser(ctx, userID)
-	if len(devices) > 0 && location != "" {
-		isNewLocation = true
-		for _, d := range devices {
-			if d.LastLocation == location {
+	if location != "" {
+		devices, err := s.devices.ListByOwner(ctx, ownerID)
+		if err != nil {
+			return err
+		}
+		isNewLocation = len(devices) > 0
+		for _, device := range devices {
+			if device.LastLocation == location {
 				isNewLocation = false
 				break
 			}
 		}
 	}
-
-	// 更新会话信息
-	session.Location = location
-	session.IsNewDevice = isNewDevice
-	session.IsNewLocation = isNewLocation
-	session.DeviceFingerprint = fingerprint
-
-	// 如果是新设备，添加到可信设备列表
-	if isNewDevice && fingerprint != "" {
-		newDevice := &TrustedDevice{
-			UserID:            userID,
-			DeviceFingerprint: fingerprint,
-			DeviceType:        session.DeviceType,
-			DeviceName:        session.DeviceName,
-			LastIPAddress:     session.IPAddress,
-			LastLocation:      location,
-			TrustLevel:        1,
-			LastUsed:          time.Now(),
+	session.Location, session.IsNewDevice, session.IsNewLocation, session.DeviceFingerprint = location, isNewDevice, isNewLocation, fingerprint
+	if fingerprint != "" {
+		knownLocation := location
+		if existing != nil && location == "" && existing.LastIPAddress == session.IPAddress {
+			knownLocation = existing.LastLocation
 		}
-		if err := s.trustedDeviceRepo.Create(ctx, newDevice); err != nil {
-			fmt.Printf("Warning: failed to create trusted device: %v\n", err)
-		}
-	} else if fingerprint != "" {
-		// 更新现有设备的最后使用信息
-		device, _ := s.trustedDeviceRepo.FindByUserAndFingerprint(ctx, userID, fingerprint)
-		if device != nil {
-			if location != "" || device.LastIPAddress != session.IPAddress {
-				device.LastLocation = location
-			}
-			device.LastIPAddress = session.IPAddress
-			device.LastUsed = time.Now()
-			device.TrustLevel++ // 增加信任等级
-			if device.TrustLevel > 10 {
-				device.TrustLevel = 10
-			}
-			s.trustedDeviceRepo.Update(ctx, device)
+		err := s.devices.Upsert(ctx, &KnownLoginDevice{
+			OwnerID: ownerID, DeviceFingerprint: fingerprint,
+			DeviceType: session.DeviceType, DeviceName: session.DeviceName,
+			LastIPAddress: session.IPAddress, LastLocation: knownLocation, LastUsed: time.Now().UTC(),
+		})
+		if err != nil {
+			return err
 		}
 	}
-
-	// 创建告警并发送通知
-	if isNewDevice && user.NotifyNewDevice {
-		alert := &LoginAlert{
-			UserID:     userID,
-			SessionID:  session.ID,
-			AlertType:  AlertTypeNewDevice,
-			IPAddress:  session.IPAddress,
-			Location:   location,
-			DeviceInfo: fmt.Sprintf("%s - %s", session.DeviceType, session.DeviceName),
-		}
-		if err := s.loginAlertRepo.Create(ctx, alert); err != nil {
-			fmt.Printf("Warning: failed to create login alert: %v\n", err)
-		}
-
-		// 发送邮件通知
-		if s.emailService != nil {
-			go func() {
-				notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-
-				if err := s.emailService.SendNewDeviceAlert(
-					notifyCtx,
-					user.Email,
-					user.Username,
-					session.DeviceName,
-					session.IPAddress,
-					location,
-					time.Now(),
-				); err != nil {
-					fmt.Printf("Warning: failed to send new device alert email: %v\n", err)
-				} else {
-					// 更新通知时间
-					now := time.Now()
-					alert.NotifiedAt = &now
-					s.loginAlertRepo.Update(notifyCtx, alert)
-				}
-			}()
-		}
+	notifyDevice, notifyLocation := isNewDevice && owner.NotifyNewDevice, isNewLocation && owner.NotifyNewLocation
+	if s.currentEmail != nil && (notifyDevice || notifyLocation) {
+		// Copy the observation before returning; the login caller persists the session.
+		observation := *session
+		go s.notify(*owner, observation, notifyDevice, notifyLocation)
 	}
-
-	if isNewLocation && user.NotifyNewLocation {
-		alert := &LoginAlert{
-			UserID:     userID,
-			SessionID:  session.ID,
-			AlertType:  AlertTypeNewLocation,
-			IPAddress:  session.IPAddress,
-			Location:   location,
-			DeviceInfo: fmt.Sprintf("%s - %s", session.DeviceType, session.DeviceName),
-		}
-		if err := s.loginAlertRepo.Create(ctx, alert); err != nil {
-			fmt.Printf("Warning: failed to create login alert: %v\n", err)
-		}
-
-		// 发送邮件通知
-		if s.emailService != nil {
-			go func() {
-				notifyCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				defer cancel()
-
-				if err := s.emailService.SendNewLocationAlert(
-					notifyCtx,
-					user.Email,
-					user.Username,
-					location,
-					session.IPAddress,
-					time.Now(),
-				); err != nil {
-					fmt.Printf("Warning: failed to send new location alert email: %v\n", err)
-				} else {
-					now := time.Now()
-					alert.NotifiedAt = &now
-					s.loginAlertRepo.Update(notifyCtx, alert)
-				}
-			}()
-		}
-	}
-
 	return nil
 }
 
-func (s *loginDetectionService) AddTrustedDevice(ctx context.Context, userID uuid.UUID, fingerprint, deviceType, deviceName, ip, location string) error {
-	device := &TrustedDevice{
-		UserID:            userID,
-		DeviceFingerprint: fingerprint,
-		DeviceType:        deviceType,
-		DeviceName:        deviceName,
-		LastIPAddress:     ip,
-		LastLocation:      location,
-		TrustLevel:        5, // 手动添加的设备给予较高信任等级
-		LastUsed:          time.Now(),
-	}
-	return s.trustedDeviceRepo.Create(ctx, device)
-}
-
-func (s *loginDetectionService) ListTrustedDevices(ctx context.Context, userID uuid.UUID) ([]*TrustedDevice, error) {
-	return s.trustedDeviceRepo.ListByUser(ctx, userID)
-}
-
-func (s *loginDetectionService) RemoveTrustedDevice(ctx context.Context, userID uuid.UUID, deviceID uuid.UUID) error {
-	// 验证设备属于该用户
-	devices, err := s.trustedDeviceRepo.ListByUser(ctx, userID)
+func (s *loginDetectionService) notify(owner Owner, session Session, newDevice, newLocation bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	sender, err := s.currentEmail(ctx)
 	if err != nil {
-		return err
+		log.Printf("failed to load login notification configuration: %v", err)
+		return
 	}
-
-	for _, d := range devices {
-		if d.ID == deviceID {
-			return s.trustedDeviceRepo.Delete(ctx, deviceID)
+	if sender == nil {
+		return
+	}
+	if newDevice {
+		if err := sender.SendNewDeviceAlert(ctx, owner.Email, owner.Username, session.DeviceName, session.IPAddress, session.Location, session.CreatedAt); err != nil {
+			log.Printf("failed to send new device alert: %v", err)
 		}
 	}
-
-	return fmt.Errorf("device not found or does not belong to user")
-}
-
-func (s *loginDetectionService) ListLoginAlerts(ctx context.Context, userID uuid.UUID, limit int) ([]*LoginAlert, error) {
-	return s.loginAlertRepo.ListByUser(ctx, userID, limit)
-}
-
-func (s *loginDetectionService) AcknowledgeAlert(ctx context.Context, userID, alertID uuid.UUID) error {
-	// 验证告警属于该用户
-	alert, err := s.loginAlertRepo.FindByID(ctx, alertID)
-	if err != nil {
-		return err
+	if newLocation {
+		if err := sender.SendNewLocationAlert(ctx, owner.Email, owner.Username, session.Location, session.IPAddress, session.CreatedAt); err != nil {
+			log.Printf("failed to send new location alert: %v", err)
+		}
 	}
-	if alert == nil {
-		return fmt.Errorf("alert not found")
-	}
-	if alert.UserID != userID {
-		return fmt.Errorf("alert does not belong to user")
-	}
-
-	return s.loginAlertRepo.Acknowledge(ctx, alertID)
-}
-
-func (s *loginDetectionService) GetUnacknowledgedAlertCount(ctx context.Context, userID uuid.UUID) (int64, error) {
-	return s.loginAlertRepo.CountUnacknowledged(ctx, userID)
 }

@@ -2,7 +2,6 @@ package auditlog
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -11,8 +10,6 @@ import (
 
 type Service interface {
 	Log(ctx context.Context, req *CreateAuditLogRequest) error
-	LogSuccess(ctx context.Context, userID uuid.UUID, username string, action ActionType, resource string, details interface{}) error
-	LogFailure(ctx context.Context, userID uuid.UUID, username string, action ActionType, resource string, err error) error
 	List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLogSummary, int64, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*AuditLog, error)
 	GetStatistics(ctx context.Context, req *AuditLogStatisticsRequest) (*AuditLogStatistics, error)
@@ -28,16 +25,13 @@ func NewService(repo Repository) Service {
 }
 
 func (s *service) Log(ctx context.Context, req *CreateAuditLogRequest) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
 	}
 	log := &AuditLog{
-		UserID:    req.UserID,
+		Actor:     req.Actor,
 		Username:  req.Username,
 		ServerID:  req.ServerID,
 		Type:      req.Type,
@@ -73,35 +67,6 @@ func (s *service) Log(ctx context.Context, req *CreateAuditLogRequest) error {
 		}
 	}
 	return err
-}
-
-func (s *service) LogSuccess(ctx context.Context, userID uuid.UUID, username string, action ActionType, resource string, details interface{}) error {
-	detailsJSON := ""
-	if details != nil {
-		if data, err := json.Marshal(details); err == nil {
-			detailsJSON = string(data)
-		}
-	}
-
-	return s.Log(ctx, &CreateAuditLogRequest{
-		UserID:   userID,
-		Username: username,
-		Action:   action,
-		Resource: resource,
-		Status:   StatusSuccess,
-		Details:  detailsJSON,
-	})
-}
-
-func (s *service) LogFailure(ctx context.Context, userID uuid.UUID, username string, action ActionType, resource string, err error) error {
-	return s.Log(ctx, &CreateAuditLogRequest{
-		UserID:   userID,
-		Username: username,
-		Action:   action,
-		Resource: resource,
-		Status:   StatusFailure,
-		ErrorMsg: err.Error(),
-	})
 }
 
 func (s *service) List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLogSummary, int64, error) {

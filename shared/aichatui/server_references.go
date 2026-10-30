@@ -4,21 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/easyssh/shared/protocol"
 	"strings"
 )
 
 var ErrServerReferenceUnavailable = errors.New("引用的服务器不存在或不可访问")
 
 // ServerReference keeps identity separate from its display snapshot.
-type ServerReference struct {
-	ServerID string `json:"server_id"`
-	Name     string `json:"name"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Label    string `json:"label,omitempty"`
-	Offset   int    `json:"offset"`
-}
+type ServerReference = protocol.AIServerReference
 
 // ResolveServerReferences accepts only IDs from the client; all display and
 // connection details come from the current user's server repository.

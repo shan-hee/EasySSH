@@ -12,7 +12,7 @@ type LoginAttempt struct {
 	Email      string    `gorm:"size:100;index:idx_attempt_email_time,priority:1" json:"email"`  // 尝试登录的邮箱
 	IPAddress  string    `gorm:"size:45;index:idx_attempt_ip_time,priority:1" json:"ip_address"` // 来源 IP
 	UserAgent  string    `gorm:"type:text" json:"user_agent"`                                    // User-Agent
-	Success    bool      `gorm:"default:false;index" json:"success"`                             // 是否成功
+	Success    bool      `gorm:"default:false" json:"success"`                                   // 是否成功
 	FailReason string    `gorm:"size:100" json:"fail_reason"`                                    // 失败原因
 	CreatedAt  time.Time `gorm:"index:idx_attempt_email_time,priority:2;index:idx_attempt_ip_time,priority:2;index" json:"created_at"`
 }

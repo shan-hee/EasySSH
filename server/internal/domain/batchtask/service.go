@@ -5,369 +5,254 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
-	"time"
+	"github.com/easyssh/shared/protocol"
+	"strings"
 
+	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/jobqueue"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
+	"github.com/easyssh/server/internal/domain/script"
 	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/easyssh/server/internal/domain/taskexecutor"
 	"github.com/google/uuid"
 )
 
-// TaskExecutor 任务执行器接口
-type TaskExecutor interface {
-	Execute(ctx context.Context, task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, source taskexecutor.ExecutionSource) taskexecutor.ExecutionOutcome
-	ExecuteBatch(ctx context.Context, task *scheduledtask.ScheduledTask, trigger taskexecutor.TriggerType, source taskexecutor.ExecutionSource, executionMode string) taskexecutor.ExecutionOutcome
-}
-
 var (
 	ErrBatchTaskNotFound    = errors.New("batch task not found")
 	ErrInvalidBatchTaskData = errors.New("invalid batch task data")
-	ErrUnauthorized         = errors.New("unauthorized access to batch task")
 )
 
-// Service 批量任务业务逻辑接口
-type Service interface {
-	CreateBatchTask(userID uuid.UUID, req *CreateBatchTaskRequest) (*BatchTask, error)
-	UpdateBatchTask(userID uuid.UUID, id uuid.UUID, req *UpdateBatchTaskRequest) (*BatchTask, error)
-	DeleteBatchTask(userID uuid.UUID, id uuid.UUID) error
-	GetBatchTask(userID uuid.UUID, id uuid.UUID) (*BatchTask, error)
-	ListBatchTasks(userID uuid.UUID, req *ListBatchTasksRequest) (*ListBatchTasksResponse, error)
-	GetStatistics(userID uuid.UUID) (*BatchTaskStatistics, error)
-	StartBatchTask(userID uuid.UUID, id uuid.UUID) error
-	UpdateTaskProgress(id uuid.UUID, successCount, failedCount int) error
-	CompleteBatchTask(id uuid.UUID, status string) error
-	SetExecutor(executor TaskExecutor)
-	SetQueue(queue jobqueue.Enqueuer)
-	HandleQueueJob(ctx context.Context, job *jobqueue.Job) error
+type TaskExecutor interface {
+	ExecuteBatch(context.Context, uuid.UUID, *scheduledtask.ScheduledTask, taskexecutor.TriggerType, taskexecutor.ExecutionSource, string) taskexecutor.ExecutionOutcome
 }
-
+type Service interface {
+	CreateBatchTask(context.Context, *protocol.CreateBatchTaskRequest) (*BatchTask, error)
+	UpdateBatchTask(context.Context, uuid.UUID, *protocol.UpdateBatchTaskRequest) (*BatchTask, error)
+	DeleteBatchTask(context.Context, uuid.UUID) error
+	GetBatchTask(context.Context, uuid.UUID) (*BatchTask, error)
+	ListBatchTasks(context.Context, *protocol.ListBatchTasksRequest) (*protocol.ListBatchTasksResponse, error)
+	GetStatistics(context.Context) (*protocol.BatchTaskStatistics, error)
+	StartBatchTask(context.Context, uuid.UUID) error
+	SetExecutor(TaskExecutor)
+	SetTaskCenter(taskcenter.Service)
+	SetQueue(jobqueue.Queue)
+	HandleQueueJob(context.Context, *jobqueue.Job) error
+}
 type service struct {
 	repo     Repository
+	scripts  script.Service
 	executor TaskExecutor
-	queue    jobqueue.Enqueuer
+	runs     taskcenter.Service
+	queue    jobqueue.Queue
 }
 
-// NewService 创建批量任务服务实例
-func NewService(repo Repository) Service {
-	return &service{repo: repo}
+func NewService(repo Repository, scripts script.Service) Service {
+	return &service{repo: repo, scripts: scripts}
 }
+func (s *service) SetExecutor(e TaskExecutor)         { s.executor = e }
+func (s *service) SetTaskCenter(r taskcenter.Service) { s.runs = r }
+func (s *service) SetQueue(q jobqueue.Queue)          { s.queue = q }
 
-// SetExecutor 设置任务执行器
-func (s *service) SetExecutor(executor TaskExecutor) {
-	s.executor = executor
-}
-
-func (s *service) SetQueue(queue jobqueue.Enqueuer) { s.queue = queue }
-
-// CreateBatchTask 创建批量任务
-func (s *service) CreateBatchTask(userID uuid.UUID, req *CreateBatchTaskRequest) (*BatchTask, error) {
-	// 验证必填字段
-	if req.TaskName == "" {
-		return nil, ErrInvalidBatchTaskData
+func (s *service) validate(ctx context.Context, task *BatchTask) error {
+	if strings.TrimSpace(task.TaskName) == "" || len(task.TaskName) > 100 || len(task.ServerIDs) == 0 || len(task.ServerIDs) > 100 {
+		return ErrInvalidBatchTaskData
 	}
-
-	if len(req.ServerIDs) == 0 {
-		return nil, errors.New("server_ids cannot be empty")
+	if task.ExecutionMode != "parallel" && task.ExecutionMode != "sequential" {
+		return ErrInvalidBatchTaskData
 	}
-
-	// 验证任务类型
-	validTaskTypes := map[string]bool{"command": true, "script": true}
-	if !validTaskTypes[req.TaskType] {
-		return nil, errors.New("invalid task_type, must be one of: command, script")
-	}
-
-	// 验证执行模式
-	if req.ExecutionMode == "" {
-		req.ExecutionMode = "parallel"
-	}
-	validExecutionModes := map[string]bool{"parallel": true, "sequential": true}
-	if !validExecutionModes[req.ExecutionMode] {
-		return nil, errors.New("invalid execution_mode, must be one of: parallel, sequential")
-	}
-
-	// 转换 ScriptID
-	var scriptID *uuid.UUID
-	if req.ScriptID != nil && *req.ScriptID != "" {
-		sid, err := uuid.Parse(*req.ScriptID)
-		if err != nil {
-			return nil, errors.New("invalid script_id format")
+	seen := map[string]bool{}
+	for _, id := range task.ServerIDs {
+		parsed, err := uuid.Parse(id)
+		if err != nil || parsed == uuid.Nil || parsed.String() != id || seen[id] {
+			return ErrInvalidBatchTaskData
 		}
-		scriptID = &sid
+		seen[id] = true
 	}
-
-	// 构建批量任务
-	task := &BatchTask{
-		UserID:        userID,
-		TaskName:      req.TaskName,
-		TaskType:      req.TaskType,
-		Content:       req.Content,
-		ScriptID:      scriptID,
-		ServerIDs:     req.ServerIDs,
-		ExecutionMode: req.ExecutionMode,
-		Status:        "pending",
-		SuccessCount:  0,
-		FailedCount:   0,
-	}
-
-	if err := s.repo.Create(task); err != nil {
-		return nil, err
-	}
-
-	return task, nil
-}
-
-// UpdateBatchTask 更新批量任务
-func (s *service) UpdateBatchTask(userID uuid.UUID, id uuid.UUID, req *UpdateBatchTaskRequest) (*BatchTask, error) {
-	// 获取现有任务
-	existingTask, err := s.repo.GetByID(id)
-	if err != nil {
-		return nil, ErrBatchTaskNotFound
-	}
-
-	// 验证所有权
-	if existingTask.UserID != userID {
-		return nil, ErrUnauthorized
-	}
-
-	// 不允许修改正在运行的任务
-	if existingTask.Status == "queued" || existingTask.Status == "running" {
-		return nil, errors.New("cannot update running task")
-	}
-
-	// 构建更新字段
-	updates := make(map[string]interface{})
-
-	if req.TaskName != "" {
-		updates["task_name"] = req.TaskName
-	}
-
-	if req.Content != "" {
-		updates["content"] = req.Content
-	}
-
-	if req.ExecutionMode != "" {
-		validExecutionModes := map[string]bool{"parallel": true, "sequential": true}
-		if !validExecutionModes[req.ExecutionMode] {
-			return nil, errors.New("invalid execution_mode")
+	switch task.TaskType {
+	case "command":
+		if task.Content == "" || len(task.Content) > 1<<20 || task.ScriptID != nil || len(task.Parameters) > 0 || task.ScriptVersion != "" {
+			return ErrInvalidBatchTaskData
 		}
-		updates["execution_mode"] = req.ExecutionMode
-	}
-
-	if len(req.ServerIDs) > 0 {
-		updates["server_ids"] = req.ServerIDs
-	}
-
-	if len(updates) == 0 {
-		return existingTask, nil
-	}
-
-	// 执行更新
-	if err := s.repo.Update(id, updates); err != nil {
-		return nil, err
-	}
-
-	// 返回更新后的任务
-	return s.repo.GetByID(id)
-}
-
-// DeleteBatchTask 删除批量任务
-func (s *service) DeleteBatchTask(userID uuid.UUID, id uuid.UUID) error {
-	// 获取现有任务
-	existingTask, err := s.repo.GetByID(id)
-	if err != nil {
-		return ErrBatchTaskNotFound
-	}
-
-	// 验证所有权
-	if existingTask.UserID != userID {
-		return ErrUnauthorized
-	}
-
-	// 不允许删除正在运行的任务
-	if existingTask.Status == "queued" || existingTask.Status == "running" {
-		return errors.New("cannot delete running task")
-	}
-
-	return s.repo.Delete(id)
-}
-
-// GetBatchTask 获取批量任务详情
-func (s *service) GetBatchTask(userID uuid.UUID, id uuid.UUID) (*BatchTask, error) {
-	task, err := s.repo.GetByID(id)
-	if err != nil {
-		return nil, ErrBatchTaskNotFound
-	}
-
-	// 验证所有权
-	if task.UserID != userID {
-		return nil, ErrUnauthorized
-	}
-
-	return task, nil
-}
-
-// ListBatchTasks 获取批量任务列表
-func (s *service) ListBatchTasks(userID uuid.UUID, req *ListBatchTasksRequest) (*ListBatchTasksResponse, error) {
-	// 设置默认值
-	if req.Page < 1 {
-		req.Page = 1
-	}
-	if req.Limit < 1 {
-		req.Limit = 20
-	}
-
-	tasks, total, err := s.repo.List(userID, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// 计算总页数
-	totalPages := int(total) / req.Limit
-	if int(total)%req.Limit > 0 {
-		totalPages++
-	}
-
-	return &ListBatchTasksResponse{
-		Data:       tasks,
-		Total:      total,
-		Page:       req.Page,
-		PageSize:   req.Limit,
-		TotalPages: totalPages,
-	}, nil
-}
-
-// GetStatistics 获取批量任务统计信息
-func (s *service) GetStatistics(userID uuid.UUID) (*BatchTaskStatistics, error) {
-	return s.repo.GetStatistics(userID)
-}
-
-// StartBatchTask 启动批量任务
-func (s *service) StartBatchTask(userID uuid.UUID, id uuid.UUID) error {
-	// 获取任务
-	task, err := s.repo.GetByID(id)
-	if err != nil {
-		return ErrBatchTaskNotFound
-	}
-
-	// 验证所有权
-	if task.UserID != userID {
-		return ErrUnauthorized
-	}
-
-	// 验证状态
-	if task.Status != "pending" {
-		return errors.New("task is not in pending status")
-	}
-
-	if s.queue == nil {
-		return errors.New("job queue is not initialized")
-	}
-	queued, err := s.repo.UpdateIfStatus(id, []string{"pending"}, map[string]interface{}{
-		"status": "queued", "started_at": nil, "completed_at": nil, "duration": 0,
-		"success_count": 0, "failed_count": 0,
-	})
-	if err != nil {
-		return err
-	}
-	if !queued {
-		return errors.New("task is not in pending status")
-	}
-	_, err = s.queue.Enqueue(context.Background(), "batch.execute", "batch_task", task.ID.String(), map[string]string{"task_id": task.ID.String()}, jobqueue.EnqueueOptions{MaxAttempts: 3})
-	if err != nil {
-		_, _ = s.repo.UpdateIfStatus(id, []string{"queued"}, map[string]interface{}{"status": "pending"})
-	}
-	return err
-}
-
-func (s *service) HandleQueueJob(ctx context.Context, job *jobqueue.Job) error {
-	if s.executor == nil {
-		return errors.New("batch task executor is not initialized")
-	}
-	var payload struct {
-		TaskID string `json:"task_id"`
-	}
-	if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil {
-		return fmt.Errorf("decode batch task payload: %w", err)
-	}
-	taskID, err := uuid.Parse(payload.TaskID)
-	if err != nil {
-		return fmt.Errorf("invalid batch task id: %w", err)
-	}
-	task, err := s.repo.GetByID(taskID)
-	if err != nil {
-		return fmt.Errorf("load batch task: %w", err)
-	}
-	if task.Status == "completed" || task.Status == "failed" {
-		return nil
-	}
-	if task.Status == "queued" {
-		now := time.Now()
-		started, err := s.repo.UpdateIfStatus(task.ID, []string{"queued"}, map[string]interface{}{"status": "running", "started_at": &now})
+		for _, id := range task.ServerIDs {
+			if err := access.Current(ctx).Check(ctx, access.Requirement{Action: protocol.TerminalConnect, ServerID: id}); err != nil {
+				return err
+			}
+		}
+	case "script":
+		if task.ScriptID == nil || task.Content != "" {
+			return ErrInvalidBatchTaskData
+		}
+		execution, err := s.scripts.Resolve(ctx, *task.ScriptID, task.ServerIDs, task.Parameters, task.ScriptVersion)
 		if err != nil {
 			return err
 		}
-		if !started {
-			return errors.New("batch task could not enter running state")
-		}
-	} else if task.Status != "running" {
-		return fmt.Errorf("batch task has invalid queued state %s", task.Status)
+		task.ScriptVersion = execution.Version
+	default:
+		return ErrInvalidBatchTaskData
 	}
-
-	scheduledTask := &scheduledtask.ScheduledTask{
-		ID: task.ID, UserID: task.UserID, TaskName: task.TaskName, TaskType: task.TaskType,
-		Command: task.Content, ScriptID: task.ScriptID, ServerIDs: task.ServerIDs, Enabled: true,
-	}
-	log.Printf("[BatchTask] 开始执行批量任务: taskID=%s, type=%s", task.ID, task.TaskType)
-	outcome := s.executor.ExecuteBatch(ctx, scheduledTask, taskexecutor.TriggerManual, taskexecutor.SourceBatchTask, task.ExecutionMode)
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if err := s.UpdateTaskProgress(task.ID, outcome.SuccessCount, outcome.FailureCount); err != nil {
-		log.Printf("[BatchTask] 更新批量任务进度失败: taskID=%s, error=%v", task.ID, err)
-	}
-	status := "completed"
-	if outcome.Status == taskcenter.StatusFailed || outcome.Status == taskcenter.StatusCanceled || outcome.Status == taskcenter.StatusTimeout {
-		status = "failed"
-	}
-	if err := s.CompleteBatchTask(task.ID, status); err != nil {
-		return err
-	}
-	log.Printf("[BatchTask] 批量任务执行完成: taskID=%s, status=%s", task.ID, outcome.Status)
 	return nil
 }
-
-// UpdateTaskProgress 更新任务进度
-func (s *service) UpdateTaskProgress(id uuid.UUID, successCount, failedCount int) error {
-	return s.repo.UpdateProgress(id, successCount, failedCount)
-}
-
-// CompleteBatchTask 完成批量任务
-func (s *service) CompleteBatchTask(id uuid.UUID, status string) error {
-	// 验证状态
-	validStatuses := map[string]bool{"completed": true, "failed": true}
-	if !validStatuses[status] {
-		return errors.New("invalid completion status")
+func (s *service) CreateBatchTask(ctx context.Context, req *protocol.CreateBatchTaskRequest) (*BatchTask, error) {
+	if err := access.Current(ctx).Check(ctx, access.Requirement{Action: protocol.WorkspaceRead}); err != nil {
+		return nil, err
 	}
-
-	// 获取任务以计算执行时长
-	task, err := s.repo.GetByID(id)
+	if req == nil {
+		return nil, ErrInvalidBatchTaskData
+	}
+	task := &BatchTask{Actor: access.Current(ctx).Actor(), TaskName: strings.TrimSpace(req.TaskName), TaskType: string(req.TaskType), Content: req.Content, ServerIDs: append([]string(nil), req.ServerIDs...), ExecutionMode: string(req.ExecutionMode), ScriptVersion: req.ScriptVersion, Parameters: req.Parameters, Status: "pending"}
+	if task.ExecutionMode == "" {
+		task.ExecutionMode = "parallel"
+	}
+	if req.ScriptID != nil {
+		id, err := uuid.Parse(*req.ScriptID)
+		if err != nil || id == uuid.Nil || id.String() != *req.ScriptID {
+			return nil, ErrInvalidBatchTaskData
+		}
+		task.ScriptID = &id
+	}
+	if err := s.validate(ctx, task); err != nil {
+		return nil, err
+	}
+	if err := s.repo.Create(ctx, task); err != nil {
+		return nil, err
+	}
+	return task, nil
+}
+func mutable(ctx context.Context, task *BatchTask) error {
+	scope := access.Current(ctx)
+	if task.Actor == scope.Actor() {
+		return scope.Check(ctx, access.Requirement{Action: protocol.WorkspaceRead})
+	}
+	if task.Actor.Kind == protocol.Owner && task.Actor.ID == scope.Actor().ID {
+		return scope.RequireOwner(ctx, protocol.ResourcesManage)
+	}
+	return access.ErrForbidden
+}
+func (s *service) UpdateBatchTask(ctx context.Context, id uuid.UUID, req *protocol.UpdateBatchTaskRequest) (*BatchTask, error) {
+	if req == nil {
+		return nil, ErrInvalidBatchTaskData
+	}
+	task, err := s.repo.GetVisible(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := mutable(ctx, task); err != nil {
+		return nil, err
+	}
+	if task.Status != "pending" {
+		return nil, ErrInvalidBatchTaskData
+	}
+	if req.TaskName != "" {
+		task.TaskName = req.TaskName
+	}
+	if req.Content != "" {
+		task.Content = req.Content
+	}
+	if req.ServerIDs != nil {
+		task.ServerIDs = req.ServerIDs
+	}
+	if req.ExecutionMode != "" {
+		task.ExecutionMode = string(req.ExecutionMode)
+	}
+	if req.ScriptVersion != nil {
+		task.ScriptVersion = *req.ScriptVersion
+	}
+	if req.Parameters != nil {
+		task.Parameters = *req.Parameters
+	}
+	if err := s.validate(ctx, task); err != nil {
+		return nil, err
+	}
+	changed, err := s.repo.UpdateIfStatus(ctx, id, []string{"pending"}, map[string]interface{}{"task_name": task.TaskName, "content": task.Content, "server_ids": task.ServerIDs, "execution_mode": task.ExecutionMode, "script_version": task.ScriptVersion, "parameters": task.Parameters})
+	if err != nil {
+		return nil, err
+	}
+	if !changed {
+		return nil, ErrInvalidBatchTaskData
+	}
+	return s.repo.GetVisible(ctx, id)
+}
+func (s *service) DeleteBatchTask(ctx context.Context, id uuid.UUID) error {
+	if _, err := s.repo.GetVisible(ctx, id); err != nil {
+		return err
+	}
+	return s.repo.Delete(ctx, id)
+}
+func (s *service) GetBatchTask(ctx context.Context, id uuid.UUID) (*BatchTask, error) {
+	return s.repo.GetVisible(ctx, id)
+}
+func (s *service) ListBatchTasks(ctx context.Context, req *protocol.ListBatchTasksRequest) (*protocol.ListBatchTasksResponse, error) {
+	if req == nil {
+		req = &protocol.ListBatchTasksRequest{}
+	}
+	if req.Page < 0 || req.Page > 1000000 || req.Limit < 0 || req.Limit > 100 || req.Status != "" && !req.Status.Valid() || req.TaskType != "" && !req.TaskType.Valid() {
+		return nil, ErrInvalidBatchTaskData
+	}
+	req.Page = max(1, req.Page)
+	if req.Limit < 1 {
+		req.Limit = 20
+	}
+	req.Limit = min(100, req.Limit)
+	rows, total, err := s.repo.List(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]protocol.BatchTask, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.Public())
+	}
+	return &protocol.ListBatchTasksResponse{Data: items, Total: total, Page: req.Page, PageSize: req.Limit, TotalPages: int((total + int64(req.Limit) - 1) / int64(req.Limit))}, nil
+}
+func (s *service) GetStatistics(ctx context.Context) (*protocol.BatchTaskStatistics, error) {
+	return s.repo.GetStatistics(ctx)
+}
+func (s *service) StartBatchTask(ctx context.Context, id uuid.UUID) error {
+	task, err := s.repo.GetVisible(ctx, id)
 	if err != nil {
 		return err
 	}
-
-	now := time.Now()
-	var duration int
-	if task.StartedAt != nil {
-		duration = int(now.Sub(*task.StartedAt).Seconds())
+	if err := mutable(ctx, task); err != nil {
+		return err
 	}
-
-	updates := map[string]interface{}{
-		"status":       status,
-		"completed_at": now,
-		"duration":     duration,
+	if s.queue == nil || s.runs == nil {
+		return errors.New("task execution is unavailable")
 	}
+	if err := s.validate(ctx, task); err != nil {
+		return err
+	}
+	run, err := s.repo.Dispatch(ctx, task)
+	if err != nil {
+		return err
+	}
+	// Both side effects observe a committed source/run/event/activity/outbox.
+	s.runs.PublishCreated(run)
+	s.queue.NotifyEnqueued()
+	return nil
+}
 
-	return s.repo.Update(id, updates)
+func (s *service) HandleQueueJob(ctx context.Context, job *jobqueue.Job) error {
+	id, err := batchDispatchID(job)
+	if err != nil {
+		return err
+	}
+	task, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if task.Actor != job.Actor || task.Actor != access.Current(ctx).Actor() {
+		return access.ErrForbidden
+	}
+	if task.Status != "queued" {
+		return nil
+	}
+	if err := s.validate(ctx, task); err != nil {
+		return err
+	}
+	input, _ := json.Marshal(script.ExecutionInput{ScriptID: task.ScriptID, Version: task.ScriptVersion, Parameters: task.Parameters})
+	definition := &scheduledtask.ScheduledTask{ID: task.ID, TaskName: task.TaskName, TaskType: task.TaskType, Command: task.Content, ScriptID: task.ScriptID, ServerIDs: task.ServerIDs, PayloadJSON: string(input)}
+	if s.executor == nil {
+		return fmt.Errorf("batch executor is unavailable")
+	}
+	outcome := s.executor.ExecuteBatch(ctx, task.ID, definition, taskexecutor.TriggerManual, taskexecutor.SourceBatchTask, task.ExecutionMode)
+	return outcome.StorageError
 }

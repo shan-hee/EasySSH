@@ -1,10 +1,9 @@
-// Package dbmigration owns the immutable, numbered database schemas for both applications.
+// Package dbmigration initializes a host-owned schema in an empty database.
 package dbmigration
 
 import (
 	"context"
 	"database/sql"
-	"embed"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -12,27 +11,26 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-//go:embed server/*/*.sql desktop/*/*.sql
-var migrations embed.FS
+// Definition belongs to the executable that owns the database.
+// Files contains only this driver's initialization scripts at its root.
+type Definition struct {
+	Files   fs.FS
+	Version int64
+}
 
-const Latest int64 = 4
-
-func provider(db *sql.DB, profile, driver string) (*goose.Provider, error) {
-	if profile != "server" && profile != "desktop" {
-		return nil, errors.New("invalid migration profile")
+func provider(db *sql.DB, driver string, schema Definition) (*goose.Provider, error) {
+	if schema.Files == nil || schema.Version < 1 {
+		return nil, errors.New("invalid schema definition")
 	}
 	if driver != "sqlite" && driver != "postgres" && driver != "mysql" {
 		return nil, errors.New("invalid migration driver")
 	}
-	files, err := fs.Sub(migrations, profile+"/"+driver)
-	if err != nil {
-		return nil, err
-	}
+
 	dialect := goose.Dialect(driver)
 	if driver == "sqlite" {
 		dialect = goose.DialectSQLite3
 	}
-	return goose.NewProvider(dialect, db, files, goose.WithDisableGlobalRegistry(true))
+	return goose.NewProvider(dialect, db, schema.Files, goose.WithDisableGlobalRegistry(true))
 }
 
 // Version is read-only; it never creates a version table in an existing database.
@@ -49,7 +47,7 @@ func Version(ctx context.Context, db *sql.DB, driver string) (int64, error) {
 	}
 	if !found {
 		if len(names) != 0 {
-			return 0, errors.New("unversioned development database: preserve it with the matching previous application and initialize a new empty database; automatic conversion is not supported")
+			return 0, errors.New("database is not empty and has no schema version; initialize a new empty database")
 		}
 		return 0, nil
 	}
@@ -105,22 +103,25 @@ func Tables(ctx context.Context, db *sql.DB, driver string) ([]string, error) {
 }
 
 // Start initializes an empty installation and rejects unsupported database versions.
-func Start(ctx context.Context, db *sql.DB, profile, driver string) error {
+func Start(ctx context.Context, db *sql.DB, driver string, schema Definition) error {
+	if schema.Files == nil || schema.Version < 1 {
+		return errors.New("invalid schema definition")
+	}
 	version, err := Version(ctx, db, driver)
 	if err != nil {
 		return err
 	}
 	if version == 0 {
-		return Initialize(ctx, db, profile, driver)
+		return Initialize(ctx, db, driver, schema)
 	}
-	if version != Latest {
-		return fmt.Errorf("database version %d is not supported; initialize an empty database with schema %d", version, Latest)
+	if version != schema.Version {
+		return fmt.Errorf("database version %d is not supported; initialize an empty database with schema %d", version, schema.Version)
 	}
 	return nil
 }
 
 // Initialize must be called while the instance lock is held and application services are stopped.
-func Initialize(ctx context.Context, db *sql.DB, profile, driver string) error {
+func Initialize(ctx context.Context, db *sql.DB, driver string, schema Definition) error {
 	version, err := Version(ctx, db, driver)
 	if err != nil {
 		return err
@@ -128,10 +129,20 @@ func Initialize(ctx context.Context, db *sql.DB, profile, driver string) error {
 	if version != 0 {
 		return fmt.Errorf("database version %d is not supported; only empty databases can be initialized", version)
 	}
-	p, err := provider(db, profile, driver)
+	p, err := provider(db, driver, schema)
 	if err != nil {
 		return err
 	}
 	_, err = p.Up(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	installed, err := Version(ctx, db, driver)
+	if err != nil {
+		return err
+	}
+	if installed != schema.Version {
+		return fmt.Errorf("schema initialized at version %d, expected %d", installed, schema.Version)
+	}
+	return nil
 }

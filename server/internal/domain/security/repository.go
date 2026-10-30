@@ -4,8 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
+	"reflect"
+	"slices"
+	"strconv"
+
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/domain/operationrecord"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Repository 安全配置仓库接口
@@ -80,11 +88,38 @@ func (r *repository) Get(ctx context.Context) (*SecurityConfig, error) {
 }
 
 func (r *repository) update(ctx context.Context, values map[string]any) error {
-	existing, err := r.Get(ctx)
-	if err != nil {
-		return err
-	}
-	return r.db.WithContext(ctx).Model(&SecurityConfig{}).Where("id = ?", existing.ID).Updates(values).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		existing, err := (&repository{db: tx}).Get(ctx)
+		if err != nil {
+			return err
+		}
+		columns := slices.Sorted(maps.Keys(values))
+		before := map[string]any{}
+		if err := tx.Model(&SecurityConfig{}).Clauses(clause.Locking{Strength: "UPDATE"}).Select(columns).Where("id=?", existing.ID).Take(&before).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&SecurityConfig{}).Where("id=?", existing.ID).Updates(values).Error; err != nil {
+			return err
+		}
+		// Read both sides through the driver so numeric/bool representations match.
+		after := map[string]any{}
+		if err := tx.Model(&SecurityConfig{}).Select(columns).Where("id=?", existing.ID).Take(&after).Error; err != nil {
+			return err
+		}
+		fields := []string{}
+		for _, column := range columns {
+			if !reflect.DeepEqual(before[column], after[column]) {
+				fields = append(fields, column)
+			}
+		}
+		if len(fields) == 0 {
+			return nil
+		}
+		return operationrecord.RecordConfiguration(tx, access.Current(ctx).Actor(), operationrecord.ConfigurationChange{
+			Action: "security_settings_update", ResourceKind: "security_config", ResourceID: strconv.FormatUint(uint64(existing.ID), 10),
+			Name: "安全设置", Source: "manual", Fields: fields,
+		})
+	})
 }
 
 func (r *repository) SaveWorkspace(ctx context.Context, config *SecurityConfig) error {

@@ -1,12 +1,15 @@
 package rest
 
 import (
+	"errors"
+	"github.com/easyssh/shared/protocol"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/taskcenter"
+	"github.com/easyssh/shared/taskprotocol"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -21,11 +24,11 @@ func NewTaskCenterHandler(service taskcenter.Service, scheduledTasks scheduledta
 }
 
 func (h *TaskCenterHandler) Retry(c *gin.Context) {
-	userID, id, ok := taskCenterUserAndID(c)
+	id, ok := taskCenterID(c)
 	if !ok {
 		return
 	}
-	run, err := h.service.Get(c.Request.Context(), userID, id)
+	run, err := h.service.Get(c.Request.Context(), id)
 	if err != nil {
 		RespondError(c, http.StatusNotFound, "task_run_not_found", err.Error())
 		return
@@ -34,7 +37,7 @@ func (h *TaskCenterHandler) Retry(c *gin.Context) {
 		RespondError(c, http.StatusConflict, "task_not_retryable", "Task run cannot be retried")
 		return
 	}
-	retryRunID, err := h.scheduledTasks.RetryTask(userID, *run.DefinitionID, run.ID, run.Attempt+1)
+	retryRunID, err := h.scheduledTasks.RetryTask(c.Request.Context(), *run.DefinitionID, run.ID, run.Attempt+1)
 	if err != nil {
 		status := http.StatusInternalServerError
 		code := "retry_task_failed"
@@ -49,14 +52,10 @@ func (h *TaskCenterHandler) Retry(c *gin.Context) {
 		RespondError(c, status, code, err.Error())
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"id": retryRunID, "definition_id": run.DefinitionID, "retry_of_id": run.ID})
+	c.JSON(http.StatusAccepted, protocol.TaskRetryResult{ID: retryRunID, DefinitionID: *run.DefinitionID, RetryOfID: run.ID})
 }
 
 func (h *TaskCenterHandler) List(c *gin.Context) {
-	userID, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 	statuses := make([]taskcenter.Status, 0)
@@ -69,14 +68,21 @@ func (h *TaskCenterHandler) List(c *gin.Context) {
 		triggerTypes = append(triggerTypes, taskcenter.TriggerType(value))
 	}
 	result, err := h.service.List(c.Request.Context(), &taskcenter.ListRequest{
-		UserID: userID, Statuses: statuses, TaskTypes: taskTypes, TriggerTypes: triggerTypes,
+		Statuses: statuses, TaskTypes: taskTypes, TriggerTypes: triggerTypes,
 		Keyword: c.Query("keyword"), Page: page, PageSize: pageSize,
 	})
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "list_task_runs_failed", err.Error())
 		return
 	}
-	RespondSuccess(c, result)
+	runs := make([]*protocol.TaskOverview, 0, len(result.Runs))
+	for _, run := range result.Runs {
+		if run != nil {
+			value := taskprotocol.OverviewOf(run.Wire())
+			runs = append(runs, &value)
+		}
+	}
+	RespondSuccess(c, protocol.TaskRunList{Runs: runs, Total: result.Total, Page: result.Page, PageSize: result.PageSize, TotalPages: result.TotalPages})
 }
 
 func splitTaskFilterValues(raw string) []string {
@@ -95,66 +101,78 @@ func splitTaskFilterValues(raw string) []string {
 }
 
 func (h *TaskCenterHandler) Statistics(c *gin.Context) {
-	userID, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
-	result, err := h.service.Statistics(c.Request.Context(), userID)
+	result, err := h.service.Statistics(c.Request.Context())
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "task_statistics_failed", err.Error())
 		return
 	}
-	RespondSuccess(c, result)
+	RespondSuccess(c, result.Wire())
 }
 
 // Cleanup 删除当前用户保留期外的已结束任务运行记录。
 func (h *TaskCenterHandler) Cleanup(c *gin.Context) {
-	userID, ok := requireCurrentUserID(c)
-	if !ok {
-		return
-	}
 	retentionDays, err := strconv.Atoi(c.DefaultQuery("retention_days", "90"))
 	if err != nil || retentionDays < 1 || retentionDays > 3650 {
 		RespondError(c, http.StatusBadRequest, "invalid_retention_days", "Retention days must be between 1 and 3650")
 		return
 	}
-	result, err := h.service.Cleanup(c.Request.Context(), userID, retentionDays)
+	result, err := h.service.Cleanup(c.Request.Context(), retentionDays)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "cleanup_task_runs_failed", err.Error())
 		return
 	}
-	RespondSuccessWithMessage(c, gin.H{
-		"deleted_count":         result.DeletedCount,
-		"deleted_events":        result.DeletedEvents,
-		"deleted_notifications": result.DeletedNotifications,
-		"retention_days":        retentionDays,
-	}, "Old task runs cleaned up successfully")
+	RespondSuccess(c, protocol.TaskCleanupResult{DeletedCount: result.DeletedCount, DeletedEvents: result.DeletedEvents, DeletedNotifications: result.DeletedNotifications, RetentionDays: retentionDays})
 }
 
 func (h *TaskCenterHandler) Get(c *gin.Context) {
-	userID, id, ok := taskCenterUserAndID(c)
+	id, ok := taskCenterID(c)
 	if !ok {
 		return
 	}
-	run, err := h.service.Get(c.Request.Context(), userID, id)
+	detail, err := h.service.Details(c.Request.Context(), id)
 	if err != nil {
-		RespondError(c, http.StatusNotFound, "task_run_not_found", err.Error())
+		if errors.Is(err, taskcenter.ErrNotFound) {
+			RespondError(c, http.StatusNotFound, "task_run_not_found", "Task run not found")
+		} else {
+			RespondError(c, http.StatusInternalServerError, "task_content_failed", "Cannot read task content")
+		}
 		return
 	}
-	events, err := h.service.Events(c.Request.Context(), userID, id)
-	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "task_events_failed", err.Error())
+	c.Header("Cache-Control", "no-store")
+	RespondSuccess(c, detail)
+}
+
+func (h *TaskCenterHandler) Events(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	id, ok := taskCenterID(c)
+	if !ok {
 		return
 	}
-	RespondSuccess(c, gin.H{"run": run, "events": events})
+	afterID, err := strconv.ParseUint(c.DefaultQuery("after_id", "0"), 10, 63)
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "invalid_task_event_query", "Invalid event cursor")
+		return
+	}
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", strconv.Itoa(taskprotocol.DefaultEventLimit)))
+	if err != nil || limit < 1 || limit > taskprotocol.MaxEventLimit {
+		RespondError(c, http.StatusBadRequest, "invalid_task_event_query", "Invalid event page size")
+		return
+	}
+	result, err := h.service.Events(c.Request.Context(), id, protocol.TaskEventInput{AfterID: uint(afterID), Limit: limit})
+	if err != nil {
+		h.taskEventError(c, err)
+		return
+	}
+
+	RespondSuccess(c, result)
 }
 
 func (h *TaskCenterHandler) Cancel(c *gin.Context) {
-	userID, id, ok := taskCenterUserAndID(c)
+	id, ok := taskCenterID(c)
 	if !ok {
 		return
 	}
-	if err := h.service.RequestCancel(c.Request.Context(), userID, id); err != nil {
+	if err := h.service.RequestCancel(c.Request.Context(), id); err != nil {
 		status := http.StatusConflict
 		if err == taskcenter.ErrNotFound {
 			status = http.StatusNotFound
@@ -162,23 +180,19 @@ func (h *TaskCenterHandler) Cancel(c *gin.Context) {
 		RespondError(c, status, "task_cancel_failed", err.Error())
 		return
 	}
-	run, err := h.service.Get(c.Request.Context(), userID, id)
+	run, err := h.service.Get(c.Request.Context(), id)
 	if err != nil {
 		RespondError(c, http.StatusInternalServerError, "task_cancel_status_failed", err.Error())
 		return
 	}
-	RespondSuccess(c, gin.H{"id": id, "status": run.Status})
+	RespondSuccess(c, protocol.TaskCancellation{ID: id, Status: run.Status})
 }
 
-func taskCenterUserAndID(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
-	userID, ok := requireCurrentUserID(c)
-	if !ok {
-		return uuid.Nil, uuid.Nil, false
-	}
+func taskCenterID(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
+	if err != nil || id == uuid.Nil {
 		RespondError(c, http.StatusBadRequest, "invalid_task_run_id", "Invalid task run ID")
-		return uuid.Nil, uuid.Nil, false
+		return uuid.Nil, false
 	}
-	return userID, id, true
+	return id, true
 }

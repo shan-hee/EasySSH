@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/jobqueue"
-	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/script"
 	"github.com/easyssh/server/internal/domain/server"
@@ -19,8 +20,8 @@ import (
 	"github.com/easyssh/server/internal/domain/taskcenter"
 	"github.com/easyssh/server/internal/domain/transferjob"
 	"github.com/easyssh/shared/secretcrypto"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/google/uuid"
-	gossh "golang.org/x/crypto/ssh"
 )
 
 // TriggerType 触发类型
@@ -41,12 +42,13 @@ const (
 const QueueJobKind = "task.execute"
 
 type QueuePayload struct {
-	RunID     uuid.UUID       `json:"run_id"`
-	TaskID    uuid.UUID       `json:"task_id"`
-	Trigger   TriggerType     `json:"trigger"`
-	Source    ExecutionSource `json:"source"`
-	RetryOfID *uuid.UUID      `json:"retry_of_id,omitempty"`
-	Attempt   int             `json:"attempt"`
+	DefinitionVersion string          `json:"definition_version"`
+	RunID             uuid.UUID       `json:"run_id"`
+	TaskID            uuid.UUID       `json:"task_id"`
+	Trigger           TriggerType     `json:"trigger"`
+	Source            ExecutionSource `json:"source"`
+	RetryOfID         *uuid.UUID      `json:"retry_of_id,omitempty"`
+	Attempt           int             `json:"attempt"`
 }
 
 type ExecutionOutcome struct {
@@ -54,6 +56,7 @@ type ExecutionOutcome struct {
 	SuccessCount int
 	FailureCount int
 	ErrorMessage string
+	StorageError error
 }
 
 type executionStatus string
@@ -66,22 +69,27 @@ const (
 	executionStatusPartial  executionStatus = "partial"
 	executionStatusTimeout  executionStatus = "timeout"
 	executionStatusCanceled executionStatus = "canceled"
+	executionStatusUnknown  executionStatus = "unknown"
 )
 
 // Executor 任务执行引擎
 type Executor struct {
-	serverService    server.Service
-	scriptService    script.Service
-	taskRepo         scheduledtask.Repository
-	operationRecords operationrecord.Service
-	encryptor        *crypto.Encryptor
-	hostKeyCallback  gossh.HostKeyCallback
-	transferJobs     transferjob.Service
-	taskRuns         taskcenter.Service
-	queue            jobqueue.Enqueuer
-	maxConcurrency   int
-	cancelMu         sync.Mutex
-	cancels          map[uuid.UUID]context.CancelFunc
+	serverService   server.Service
+	scriptService   script.Service
+	taskRepo        scheduledtask.Repository
+	encryptor       *crypto.Encryptor
+	hostKeyCallback sshutil.HostKeyPolicy
+	transferJobs    transferjob.Service
+	taskRuns        taskcenter.Service
+	queue           jobqueue.Enqueuer
+	maxConcurrency  int
+	cancelMu        sync.Mutex
+	cancels         map[uuid.UUID]context.CancelFunc
+	stopped         bool
+	stopOnce        sync.Once
+	workWG          sync.WaitGroup
+	stoppedDone     chan struct{}
+	stopErr         error
 }
 
 // NewExecutor 创建执行引擎
@@ -91,27 +99,26 @@ func NewExecutor(
 	taskRepo scheduledtask.Repository,
 	encryptor *crypto.Encryptor,
 	maxConcurrency int,
-	operationRecords operationrecord.Service,
 	taskRuns taskcenter.Service,
 ) *Executor {
 	if maxConcurrency <= 0 {
 		maxConcurrency = 10
 	}
 	executor := &Executor{
-		serverService:    serverService,
-		scriptService:    scriptService,
-		taskRepo:         taskRepo,
-		encryptor:        encryptor,
-		maxConcurrency:   maxConcurrency,
-		operationRecords: operationRecords,
-		taskRuns:         taskRuns,
-		cancels:          make(map[uuid.UUID]context.CancelFunc),
+		serverService:  serverService,
+		scriptService:  scriptService,
+		taskRepo:       taskRepo,
+		encryptor:      encryptor,
+		maxConcurrency: maxConcurrency,
+		taskRuns:       taskRuns,
+		cancels:        make(map[uuid.UUID]context.CancelFunc),
+		stoppedDone:    make(chan struct{}),
 	}
 	return executor
 }
 
 // SetHostKeyCallback 设置主机密钥验证回调
-func (e *Executor) SetHostKeyCallback(callback gossh.HostKeyCallback) {
+func (e *Executor) SetHostKeyPolicy(callback sshutil.HostKeyPolicy) {
 	e.hostKeyCallback = callback
 }
 
@@ -128,88 +135,128 @@ func (e *Executor) Execute(ctx context.Context, task *scheduledtask.ScheduledTas
 	return e.execute(ctx, uuid.Nil, task, trigger, source, nil, 1, "parallel")
 }
 
-func (e *Executor) ExecuteBatch(ctx context.Context, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, executionMode string) ExecutionOutcome {
-	return e.execute(ctx, uuid.Nil, task, trigger, source, nil, 1, executionMode)
+func (e *Executor) ExecuteBatch(ctx context.Context, runID uuid.UUID, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, executionMode string) ExecutionOutcome {
+	return e.execute(ctx, runID, task, trigger, source, nil, 1, executionMode)
 }
 
-func (e *Executor) HandleQueueJob(ctx context.Context, job *jobqueue.Job) (handlerErr error) {
-	var payload QueuePayload
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			message := fmt.Sprintf("task execution panic: %v", recovered)
-			if payload.RunID != uuid.Nil {
-				e.failQueuedRun(context.Background(), payload.RunID, "execution_panic", message)
-				handlerErr = nil
-			} else {
-				handlerErr = errors.New(message)
-			}
-			log.Printf("[TaskExecutor] %s", message)
-		}
-	}()
-	if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil {
-		return fmt.Errorf("decode task execution payload: %w", err)
+// The queue owns pre-execution rejection atomically with its terminal state.
+// After admission, only the executor's observation can settle this task.
+func (e *Executor) HandleQueueJob(ctx context.Context, job *jobqueue.Job) error {
+	payload, err := scheduledDispatch(job)
+	if err != nil {
+		return err
 	}
-	if payload.TaskID == uuid.Nil {
-		return errors.New("task execution payload is missing task_id")
+	if job.Actor != access.Current(ctx).Actor() || e.taskRuns == nil {
+		return access.ErrForbidden
 	}
-	if payload.RunID == uuid.Nil {
-		return errors.New("task execution payload is missing run_id")
+	run, err := e.taskRuns.Get(ctx, payload.RunID)
+	if err != nil {
+		return err
+	}
+	if run.Actor != job.Actor || run.DefinitionID == nil || *run.DefinitionID != payload.TaskID || run.DefinitionVersion != payload.DefinitionVersion || run.Attempt != payload.Attempt || (run.SourceType != "scheduled_task" && run.SourceType != "transfer_job") {
+		return access.ErrForbidden
+	}
+	expectedTrigger := taskcenter.TriggerManual
+	if payload.Trigger == TriggerSchedule {
+		expectedTrigger = taskcenter.TriggerScheduled
+	}
+	if run.TriggerType != expectedTrigger {
+		return access.ErrForbidden
+	}
+	if run.SourceType == "transfer_job" || run.Status != taskcenter.StatusQueued {
+		return nil
+	}
+	if run.SourceID != payload.TaskID.String() {
+		return access.ErrForbidden
 	}
 	task, err := e.taskRepo.GetByID(payload.TaskID)
 	if err != nil {
-		e.failQueuedRun(ctx, payload.RunID, "task_definition_unavailable", fmt.Sprintf("load scheduled task: %v", err))
-		return nil
+		return fmt.Errorf("load scheduled task: %w", err)
+	}
+	if payload.DefinitionVersion != task.Version() {
+		return access.ErrResourceChanged
 	}
 	if payload.Trigger == TriggerSchedule && !task.Enabled {
-		if e.taskRuns != nil {
-			if err := e.taskRuns.Complete(ctx, payload.RunID, taskcenter.StatusCanceled, "", "task_disabled", "定时任务已禁用", 0, 0); err != nil {
-				log.Printf("[TaskExecutor] 标记已禁用任务取消失败: runID=%s, error=%v", payload.RunID, err)
-			}
+		if e.queue == nil {
+			return errors.New("scheduled task is disabled")
 		}
-		return nil
+		return e.queue.CancelBySource(ctx, "task_run", payload.RunID.String())
 	}
-	if payload.Source == "" {
-		payload.Source = SourceScheduledTask
-	}
-	if payload.Trigger == "" {
-		payload.Trigger = TriggerManual
-	}
-	e.execute(ctx, payload.RunID, task, payload.Trigger, payload.Source, payload.RetryOfID, payload.Attempt, "parallel")
-	return nil
+	outcome := e.execute(ctx, payload.RunID, task, payload.Trigger, payload.Source, payload.RetryOfID, payload.Attempt, "parallel")
+	return outcome.StorageError
 }
 
-func (e *Executor) failQueuedRun(ctx context.Context, runID uuid.UUID, code, message string) {
-	if e.taskRuns == nil {
-		return
+func scheduledDispatch(job *jobqueue.Job) (QueuePayload, error) {
+	var payload QueuePayload
+	if job == nil || job.Kind != QueueJobKind || job.SourceType != "task_run" || !job.Actor.Valid() || job.MaxAttempts != 1 {
+		return payload, access.ErrForbidden
 	}
-	if err := e.taskRuns.Complete(ctx, runID, taskcenter.StatusFailed, "", code, message, 0, 0); err != nil {
-		log.Printf("[TaskExecutor] 标记任务失败失败: runID=%s, error=%v", runID, err)
+	if err := json.Unmarshal([]byte(job.PayloadJSON), &payload); err != nil {
+		return payload, err
 	}
+	if payload.RunID == uuid.Nil || payload.TaskID == uuid.Nil || payload.Source != SourceScheduledTask || payload.Attempt < 1 || (payload.Trigger != TriggerManual && payload.Trigger != TriggerSchedule) || payload.DefinitionVersion == "" || job.SourceID != payload.RunID.String() || job.DedupeKey == nil || *job.DedupeKey != "task-run:"+payload.RunID.String() {
+		return payload, access.ErrForbidden
+	}
+	return payload, nil
 }
 
-func (e *Executor) execute(ctx context.Context, runID uuid.UUID, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, retryOfID *uuid.UUID, attempt int, executionMode string) ExecutionOutcome {
-	log.Printf("[TaskExecutor] 开始执行任务: taskID=%s, type=%s, trigger=%s",
-		task.ID, task.TaskType, trigger)
-
-	startTime := time.Now()
+func (e *Executor) execute(ctx context.Context, runID uuid.UUID, task *scheduledtask.ScheduledTask, trigger TriggerType, source ExecutionSource, retryOfID *uuid.UUID, attempt int, executionMode string) (outcome ExecutionOutcome) {
+	if task == nil || e.taskRuns == nil {
+		return ExecutionOutcome{StorageError: errors.New("task execution is unavailable")}
+	}
 	executionID := runID
 	if executionID == uuid.Nil {
 		executionID = uuid.New()
 	}
-	executionCtx, cancel := context.WithCancel(ctx)
-	e.cancelMu.Lock()
-	e.cancels[executionID] = cancel
-	e.cancelMu.Unlock()
+	executionCtx, done, err := e.begin(ctx, executionID)
+	if err != nil {
+		return ExecutionOutcome{StorageError: err}
+	}
+	defer done()
+	var record *taskExecutionRecord
+	var expected *taskcenter.TaskRun
 	defer func() {
-		cancel()
-		e.cancelMu.Lock()
-		delete(e.cancels, executionID)
-		e.cancelMu.Unlock()
+		if recovered := recover(); recovered != nil {
+			success, failed := 0, 0
+			if record != nil {
+				_, success, failed = summarizeServerExecution(record.ServerResults)
+			}
+			outcome = makeExecutionOutcome(executionStatusUnknown, success, failed, "执行器异常中断，远端效果需核对")
+			log.Printf("[TaskExecutor] execution panic: run=%s", executionID)
+		}
+		if expected == nil || (record != nil && record.SkipTaskCenter) || outcome.Status == "" {
+			return
+		}
+		var results []ServerExecutionResult
+		if record != nil {
+			results = record.ServerResults
+		}
+		encoded, encodeErr := json.Marshal(results)
+		if encodeErr != nil {
+			outcome.StorageError = encodeErr
+			return
+		}
+		finished := time.Now().UTC().Truncate(time.Millisecond)
+		if record != nil && record.EndTime != nil {
+			finished = record.EndTime.UTC().Truncate(time.Millisecond)
+		}
+		outcome.StorageError = e.saveResult(ctx, *expected, outcome.Status, string(encoded), outcome.ErrorMessage, outcome.SuccessCount, outcome.FailureCount, finished)
 	}()
+	scope := access.Current(ctx)
+	if source == SourceScheduledTask && (scope.Actor().Kind != protocol.Owner || scope.Actor().ID != task.OwnerID.String()) {
+		return makeExecutionOutcome(executionStatusFailed, 0, 0, access.ErrForbidden.Error())
+	}
+	if err := scope.Check(ctx, access.Requirement{Action: protocol.WorkspaceRead}); err != nil {
+		return makeExecutionOutcome(executionStatusFailed, 0, 0, err.Error())
+	}
+	log.Printf("[TaskExecutor] 开始执行任务: taskID=%s, type=%s, trigger=%s",
+		task.ID, task.TaskType, trigger)
 
-	record := taskExecutionRecord{
+	startTime := time.Now()
+
+	record = &taskExecutionRecord{
+		Actor:                 scope.Actor(),
 		ID:                    executionID,
-		UserID:                task.UserID,
 		TaskName:              task.TaskName,
 		TaskType:              task.TaskType,
 		TriggerType:           trigger,
@@ -230,16 +277,16 @@ func (e *Executor) execute(ctx context.Context, runID uuid.UUID, task *scheduled
 			triggerType = taskcenter.TriggerScheduled
 		}
 		run := &taskcenter.TaskRun{
-			ID: executionID, UserID: task.UserID,
-			RetryOfID: retryOfID, Attempt: attempt, MaxAttempts: attempt,
+			ID: executionID, RetryOfID: retryOfID, Attempt: attempt, MaxAttempts: attempt,
 			SourceType: string(source), SourceID: task.ID.String(), TaskType: task.TaskType,
 			Title: task.TaskName, Description: task.Description, TriggerType: triggerType, Runner: "server",
-			Status: taskcenter.StatusQueued, Resource: strings.Join(task.ServerIDs, ","), PayloadJSON: task.PayloadJSON,
+			Status: taskcenter.StatusQueued, Resource: strings.Join(task.ServerIDs, ","), TotalCount: len(task.ServerIDs), PayloadJSON: task.PayloadJSON,
 			Cancelable: !isTransferTask(task.TaskType), Retryable: record.IsScheduledDefinition,
 		}
 		if record.IsScheduledDefinition {
 			definitionID := task.ID
 			run.DefinitionID = &definitionID
+			run.DefinitionVersion = task.Version()
 		}
 		if err := e.taskRuns.Create(ctx, run); err != nil {
 			log.Printf("[TaskExecutor] 创建任务运行记录失败: runID=%s, error=%v", executionID, err)
@@ -247,67 +294,88 @@ func (e *Executor) execute(ctx context.Context, runID uuid.UUID, task *scheduled
 		}
 	}
 	if e.taskRuns != nil {
-		if err := e.taskRuns.Start(ctx, executionID, "executing"); err != nil {
+		observed, err := e.taskRuns.Get(ctx, executionID)
+		if err != nil {
+			return ExecutionOutcome{StorageError: err}
+		}
+		if observed.Actor != scope.Actor() || observed.SourceType != string(source) || observed.SourceID != task.ID.String() || observed.TaskType != task.TaskType {
+			return ExecutionOutcome{StorageError: access.ErrForbidden}
+		}
+		// A running identity is never an instruction to issue its commands again.
+		if observed.Status != taskcenter.StatusQueued {
+			return ExecutionOutcome{Status: observed.Status}
+		}
+		expected = observed
+		if err := e.taskRuns.Start(executionCtx, executionID, "executing"); err != nil {
 			log.Printf("[TaskExecutor] 启动任务运行记录失败: runID=%s, error=%v", executionID, err)
 			return makeExecutionOutcome(executionStatusFailed, 0, 0, err.Error())
 		}
-		currentRun, err := e.taskRuns.Get(ctx, task.UserID, executionID)
+		currentRun, err := e.taskRuns.Get(ctx, executionID)
 		if err != nil {
 			return makeExecutionOutcome(executionStatusFailed, 0, 0, err.Error())
 		}
-		if isTerminalTaskStatus(currentRun.Status) || currentRun.Status == taskcenter.StatusCanceling {
+		if currentRun.Status != taskcenter.StatusRunning {
+			if currentRun.Status != taskcenter.StatusCanceling || currentRun.StartedAt == nil {
+				// No command was issued; retain a concurrent terminal decision.
+				expected = nil
+				return ExecutionOutcome{Status: currentRun.Status}
+			}
 			return makeExecutionOutcome(executionStatusCanceled, 0, 0, "任务已取消")
 		}
 	}
-	e.upsertOperationRecord(record)
 
+	if source == SourceScheduledTask {
+		if err := e.taskRepo.CheckStage(executionCtx, task.ID, task.Version(), task.OwnerID, trigger == TriggerSchedule, ""); err != nil {
+			e.completeExecution(record, executionStatusFailed, err.Error(), 0, 0, nil)
+			return makeExecutionOutcome(executionStatusFailed, 0, 0, err.Error())
+		}
+	}
 	if isTransferTask(task.TaskType) {
-		return e.executeTransferTask(executionCtx, task, &record)
+		return e.executeTransferTask(executionCtx, task, record)
 	}
 
 	// 根据任务类型获取要执行的命令
-	command, err := e.resolveCommand(executionCtx, task)
+	command, scriptVersion, err := e.resolveCommand(executionCtx, task)
 	if err != nil {
 		log.Printf("[TaskExecutor] 解析命令失败: %v", err)
 		status := executionStatusFailed
 		if errors.Is(executionCtx.Err(), context.Canceled) {
 			status = executionStatusCanceled
 		}
-		e.completeExecution(&record, status, err.Error(), 0, 0, nil)
+		e.completeExecution(record, status, err.Error(), 0, 0, nil)
 		return makeExecutionOutcome(status, 0, 0, err.Error())
 	}
+	requirements := make([]access.Requirement, 0, len(task.ServerIDs))
+	for _, id := range task.ServerIDs {
+		req := access.Requirement{Action: protocol.TerminalConnect, ServerID: id}
+		if task.TaskType == "script" && task.ScriptID != nil {
+			req.Action = protocol.ScriptsExecute
+			req.ScriptID = task.ScriptID.String()
+			req.ScriptVersion = scriptVersion
+		}
+		requirements = append(requirements, req)
+	}
+	lease, err := scope.OpenWork(executionCtx, access.Task, requirements...)
+	if err != nil {
+		e.completeExecution(record, executionStatusFailed, err.Error(), 0, len(task.ServerIDs), nil)
+		return makeExecutionOutcome(executionStatusFailed, 0, len(task.ServerIDs), err.Error())
+	}
+	defer lease.Close(nil)
+	executionCtx = lease.Context()
 	record.Command = command
-	e.upsertOperationRecord(record)
 
 	// 并发执行到所有服务器
-	results := e.executeOnServers(executionCtx, task.UserID, task.ServerIDs, command, executionMode)
+	results := e.executeOnServers(executionCtx, task, command, scriptVersion, executionMode, source, trigger, func(observed []ServerExecutionResult) error {
+		// Keep the latest observation for final settlement even if a checkpoint
+		// cannot be stored. This callback is serialized by executeOnServers.
+		record.ServerResults = append(record.ServerResults[:0], observed...)
+		return e.saveTargets(ctx, *expected, observed)
+	})
 
-	// 统计结果
-	successCount := 0
-	failedCount := 0
-
-	for _, result := range results {
-		if result.Status == executionStatusSuccess {
-			successCount++
-		} else {
-			failedCount++
-		}
-	}
-
-	// 确定最终状态
-	var finalStatus executionStatus
-	if errors.Is(executionCtx.Err(), context.Canceled) {
-		finalStatus = executionStatusCanceled
-	} else if failedCount == 0 && successCount > 0 {
-		finalStatus = executionStatusSuccess
-	} else if successCount == 0 {
-		finalStatus = executionStatusFailed
-	} else {
-		finalStatus = executionStatusPartial
-	}
+	finalStatus, successCount, failedCount := summarizeServerExecution(results)
 
 	// 完成执行记录
-	e.completeExecution(&record, finalStatus, "", successCount, failedCount, results)
+	e.completeExecution(record, finalStatus, "", successCount, failedCount, results)
 
 	log.Printf("[TaskExecutor] 任务执行完成: taskID=%s, status=%s, success=%d, failed=%d",
 		task.ID, finalStatus, successCount, failedCount)
@@ -329,11 +397,6 @@ func (e *Executor) CancelTask(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func isTerminalTaskStatus(status taskcenter.Status) bool {
-	return status == taskcenter.StatusSucceeded || status == taskcenter.StatusFailed || status == taskcenter.StatusPartialSuccess ||
-		status == taskcenter.StatusCanceled || status == taskcenter.StatusTimeout
-}
-
 func isTransferTask(taskType string) bool {
 	return taskType == string(transferjob.JobKindSFTPUpload) || taskType == string(transferjob.JobKindSFTPDownload)
 }
@@ -346,14 +409,22 @@ func (e *Executor) executeTransferTask(ctx context.Context, task *scheduledtask.
 	}
 
 	job, err := e.transferJobs.RunScheduledTask(ctx, transferjob.RunScheduledRequest{
-		UserID:          task.UserID,
 		ScheduledTaskID: task.ID,
 		TaskName:        task.TaskName,
 		TaskType:        task.TaskType,
 		PayloadJSON:     task.PayloadJSON,
 		TaskRunID:       record.ID,
 	})
+	if job != nil {
+		// Admission already owns a stable transfer identity, even if its
+		// source/queue transaction is awaiting a receipt. Preparation must not
+		// complete the TaskRun while that handoff is being retried.
+		record.SkipTaskCenter = true
+	}
 	if err != nil {
+		if job != nil {
+			return ExecutionOutcome{StorageError: err}
+		}
 		log.Printf("[TaskExecutor] 触发传输任务失败: taskID=%s, error=%v", task.ID, err)
 		e.completeExecution(record, executionStatusFailed, err.Error(), 0, 1, nil)
 		return makeExecutionOutcome(executionStatusFailed, 0, 1, err.Error())
@@ -362,6 +433,14 @@ func (e *Executor) executeTransferTask(ctx context.Context, task *scheduledtask.
 	record.TransferJobID = job.ID
 	record.SkipTaskCenter = true
 	record.Command = fmt.Sprintf("transfer_job:%s", job.ID)
+	switch job.Status {
+	case transferjob.JobStatusFailed:
+		return makeExecutionOutcome(executionStatusFailed, 0, 1, job.ErrorMessage)
+	case transferjob.JobStatusCancelled:
+		return makeExecutionOutcome(executionStatusCanceled, 0, 0, job.ErrorMessage)
+	case transferjob.JobStatusUnknown:
+		return makeExecutionOutcome(executionStatusUnknown, 0, 0, job.ErrorMessage)
+	}
 	record.TotalServers = 1
 	var serverID uuid.UUID
 	if job.TargetServerID != nil {
@@ -391,6 +470,7 @@ func makeExecutionOutcome(status executionStatus, successCount, failureCount int
 		executionStatusPartial:  taskcenter.StatusPartialSuccess,
 		executionStatusTimeout:  taskcenter.StatusTimeout,
 		executionStatusCanceled: taskcenter.StatusCanceled,
+		executionStatusUnknown:  taskcenter.StatusUnknown,
 	}
 	return ExecutionOutcome{
 		Status:       statusMap[status],
@@ -415,48 +495,79 @@ type ServerExecutionResult struct {
 }
 
 // resolveCommand 解析要执行的命令
-func (e *Executor) resolveCommand(ctx context.Context, task *scheduledtask.ScheduledTask) (string, error) {
+func (e *Executor) resolveCommand(ctx context.Context, task *scheduledtask.ScheduledTask) (string, string, error) {
 	switch task.TaskType {
 	case "command":
 		if task.Command == "" {
-			return "", fmt.Errorf("command is empty")
+			return "", "", fmt.Errorf("command is empty")
 		}
-		return task.Command, nil
+		return task.Command, "", nil
 
 	case "script":
 		if task.ScriptID == nil {
-			return "", fmt.Errorf("script_id is required for script type")
+			return "", "", fmt.Errorf("script_id is required for script type")
 		}
-		scriptObj, err := e.scriptService.GetScript(task.UserID, *task.ScriptID)
+		var input script.ExecutionInput
+		if task.PayloadJSON != "" {
+			if err := json.Unmarshal([]byte(task.PayloadJSON), &input); err != nil {
+				return "", "", err
+			}
+		}
+		execution, err := e.scriptService.Resolve(ctx, *task.ScriptID, task.ServerIDs, input.Parameters, input.Version)
 		if err != nil {
-			return "", fmt.Errorf("failed to get script: %w", err)
+			return "", "", err
 		}
-		return scriptObj.Content, nil
+		return execution.Command, execution.Version, nil
 
 	default:
-		return "", fmt.Errorf("unknown task type: %s", task.TaskType)
+		return "", "", fmt.Errorf("unknown task type: %s", task.TaskType)
 	}
 }
 
 // executeOnServers 并发执行到多个服务器
 func (e *Executor) executeOnServers(
 	ctx context.Context,
-	userID uuid.UUID,
-	serverIDs []string,
-	command string,
+	task *scheduledtask.ScheduledTask,
+	command, scriptVersion string,
 	executionMode string,
+	source ExecutionSource,
+	trigger TriggerType,
+	observe func([]ServerExecutionResult) error,
 ) []ServerExecutionResult {
+	serverIDs := task.ServerIDs
 	if len(serverIDs) == 0 {
 		return nil
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	results := make([]ServerExecutionResult, len(serverIDs))
+	var mu sync.Mutex
+	storageFailed := false
+	store := func(index int, result ServerExecutionResult) {
+		mu.Lock()
+		defer mu.Unlock()
+		results[index] = result
+		if result.Status == executionStatusUnknown {
+			cancel()
+		}
+		if storageFailed {
+			return
+		}
+		observed := make([]ServerExecutionResult, 0, len(results))
+		for _, target := range results {
+			if target.Status != "" {
+				observed = append(observed, target)
+			}
+		}
+		if err := observe(observed); err != nil {
+			storageFailed = true
+			cancel()
+		}
+	}
 	if executionMode == "sequential" {
 		for index, serverID := range serverIDs {
-			if ctx.Err() != nil {
-				break
-			}
-			results[index] = e.executeOnSingleServer(ctx, userID, serverID, command)
+			store(index, e.executeOnSingleServer(ctx, task, serverID, command, scriptVersion, source, trigger))
 		}
 		return results
 	}
@@ -464,7 +575,6 @@ func (e *Executor) executeOnServers(
 	// 使用信号量控制并发
 	sem := make(chan struct{}, e.maxConcurrency)
 	var wg sync.WaitGroup
-	var mu sync.Mutex
 
 	for i, serverIDStr := range serverIDs {
 		wg.Add(1)
@@ -472,14 +582,18 @@ func (e *Executor) executeOnServers(
 			defer wg.Done()
 
 			// 获取信号量
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				end := time.Now()
+				id, _ := uuid.Parse(sidStr)
+				store(index, ServerExecutionResult{ServerID: id, Status: executionStatusCanceled, StartTime: end, EndTime: &end, ErrorMessage: ctx.Err().Error()})
+				return
+			}
 
-			result := e.executeOnSingleServer(ctx, userID, sidStr, command)
-
-			mu.Lock()
-			results[index] = result
-			mu.Unlock()
+			result := e.executeOnSingleServer(ctx, task, sidStr, command, scriptVersion, source, trigger)
+			store(index, result)
 		}(i, serverIDStr)
 	}
 
@@ -490,14 +604,38 @@ func (e *Executor) executeOnServers(
 // executeOnSingleServer 在单个服务器上执行命令
 func (e *Executor) executeOnSingleServer(
 	ctx context.Context,
-	userID uuid.UUID,
+	task *scheduledtask.ScheduledTask,
 	serverIDStr string,
-	command string,
-) ServerExecutionResult {
+	command, scriptVersion string,
+	source ExecutionSource,
+	trigger TriggerType,
+) (result ServerExecutionResult) {
 	startTime := time.Now()
-	result := ServerExecutionResult{
+	result = ServerExecutionResult{
 		StartTime: startTime,
 		Status:    executionStatusFailed,
+	}
+	commandAttempted := false
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			result.Status = executionStatusFailed
+			if commandAttempted {
+				result.Status = executionStatusUnknown
+			}
+			result.ErrorMessage = "执行器异常中断，远端效果需核对"
+			end := time.Now()
+			result.EndTime, result.Duration = &end, end.Sub(startTime).Milliseconds()
+		}
+		if !commandAttempted && ctx.Err() != nil {
+			result.Status = executionStatusCanceled
+			result.ErrorMessage = ctx.Err().Error()
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		result.ServerID, _ = uuid.Parse(serverIDStr)
+		end := time.Now()
+		result.EndTime = &end
+		return result
 	}
 
 	// 解析服务器ID
@@ -511,8 +649,30 @@ func (e *Executor) executeOnSingleServer(
 	}
 	result.ServerID = serverID
 
+	req := access.Requirement{Action: protocol.TerminalConnect, ServerID: serverIDStr}
+	if task.TaskType == "script" && task.ScriptID != nil {
+		req.Action = protocol.ScriptsExecute
+		req.ScriptID = task.ScriptID.String()
+		req.ScriptVersion = scriptVersion
+	}
+	if err := access.Current(ctx).Check(ctx, req); err != nil {
+		end := time.Now()
+		result.EndTime = &end
+		result.ErrorMessage = err.Error()
+		result.Duration = end.Sub(startTime).Milliseconds()
+		return result
+	}
+	if source == SourceScheduledTask {
+		if err := e.taskRepo.CheckStage(ctx, task.ID, task.Version(), task.OwnerID, trigger == TriggerSchedule, serverIDStr); err != nil {
+			end := time.Now()
+			result.EndTime = &end
+			result.Duration = end.Sub(startTime).Milliseconds()
+			result.ErrorMessage = err.Error()
+			return result
+		}
+	}
 	// 获取服务器信息
-	srv, err := e.serverService.GetByID(ctx, userID, serverID)
+	srv, err := e.serverService.GetByID(ctx, access.Current(ctx), serverID)
 	if err != nil {
 		result.ErrorMessage = fmt.Sprintf("failed to get server: %v", err)
 		endTime := time.Now()
@@ -524,7 +684,7 @@ func (e *Executor) executeOnSingleServer(
 	result.ServerHost = fmt.Sprintf("%s:%d", srv.Host, srv.Port)
 
 	// 创建SSH客户端
-	client, err := ssh.NewClient(srv, e.encryptor, e.hostKeyCallback)
+	client, err := ssh.NewClient(ctx, srv, e.encryptor, e.hostKeyCallback)
 	if err != nil {
 		result.ErrorMessage = fmt.Sprintf("failed to create ssh client: %v", err)
 		endTime := time.Now()
@@ -535,7 +695,7 @@ func (e *Executor) executeOnSingleServer(
 	defer client.Close()
 
 	// 连接服务器
-	if err := client.Connect(srv.Host, srv.Port); err != nil {
+	if err := client.ConnectContext(ctx, srv.Host, srv.Port); err != nil {
 		result.ErrorMessage = fmt.Sprintf("failed to connect: %v", err)
 		endTime := time.Now()
 		result.EndTime = &endTime
@@ -543,30 +703,44 @@ func (e *Executor) executeOnSingleServer(
 		return result
 	}
 
+	if task.TaskType == "script" && task.ScriptID != nil {
+		var input script.ExecutionInput
+		if task.PayloadJSON != "" {
+			if err := json.Unmarshal([]byte(task.PayloadJSON), &input); err != nil {
+				result.ErrorMessage = err.Error()
+				end := time.Now()
+				result.EndTime = &end
+				return result
+			}
+		}
+		if err := e.scriptService.RecordExecution(ctx, *task.ScriptID, serverIDStr, scriptVersion, input.Parameters); err != nil {
+			result.ErrorMessage = err.Error()
+			end := time.Now()
+			result.EndTime = &end
+			return result
+		}
+	}
 	// 执行命令
+	commandAttempted = true
 	commandResult, err := client.ExecuteCommandDetailedContext(ctx, command)
 	endTime := time.Now()
 	result.EndTime = &endTime
 	result.Duration = endTime.Sub(startTime).Milliseconds()
-	if commandResult != nil {
-		result.Output = commandResult.Output
-		exitCode := commandResult.ExitCode
-		result.ExitCode = &exitCode
+	if commandResult == nil {
+		commandAttempted = false
+		if err != nil {
+			result.ErrorMessage = err.Error()
+		}
+		return result
 	}
-
-	if err != nil {
-		result.ErrorMessage = err.Error()
-		if result.ExitCode == nil {
-			exitCode := 1
-			result.ExitCode = &exitCode
-		}
-		result.Status = executionStatusFailed
-	} else {
-		if result.ExitCode == nil {
-			exitCode := 0
-			result.ExitCode = &exitCode
-		}
+	result.Output, result.ExitCode, result.ErrorMessage = commandResult.Output, commandResult.ExitCode, commandResult.Error
+	switch commandResult.Outcome {
+	case "succeeded":
 		result.Status = executionStatusSuccess
+	case "unknown":
+		result.Status = executionStatusUnknown
+	default:
+		result.Status = executionStatusFailed
 	}
 
 	return result
@@ -589,30 +763,14 @@ func (e *Executor) completeExecution(
 	execution.FailedCount = failedCount
 	execution.ErrorMessage = errorMsg
 	execution.ServerResults = serverResults
-	e.upsertOperationRecord(*execution)
-	if e.taskRuns != nil && !execution.SkipTaskCenter {
-		statusMap := map[executionStatus]taskcenter.Status{
-			executionStatusSuccess:  taskcenter.StatusSucceeded,
-			executionStatusFailed:   taskcenter.StatusFailed,
-			executionStatusPartial:  taskcenter.StatusPartialSuccess,
-			executionStatusTimeout:  taskcenter.StatusTimeout,
-			executionStatusCanceled: taskcenter.StatusCanceled,
-		}
-		taskStatus, ok := statusMap[status]
-		if ok {
-			resultJSON, _ := json.Marshal(serverResults)
-			if err := e.taskRuns.Complete(context.Background(), execution.ID, taskStatus, string(resultJSON), "", errorMsg, successCount, failedCount); err != nil {
-				log.Printf("[TaskExecutor] 完成任务运行记录失败: runID=%s, error=%v", execution.ID, err)
-			}
-		}
-	}
+
 }
 
 type taskExecutionRecord struct {
+	Actor                 protocol.Actor
 	ID                    uuid.UUID
 	ScheduledTaskID       uuid.UUID
 	TransferJobID         uuid.UUID
-	UserID                uuid.UUID
 	SourceID              uuid.UUID
 	TaskName              string
 	TaskType              string
@@ -632,96 +790,32 @@ type taskExecutionRecord struct {
 	IsScheduledDefinition bool
 }
 
-func (e *Executor) upsertOperationRecord(execution taskExecutionRecord) {
-	if e.operationRecords == nil || execution.UserID == uuid.Nil || execution.ID == uuid.Nil {
-		return
+// Unknown/canceled targets are not confirmed failures. A late parent cancel
+// cannot overwrite a set of already confirmed remote exits.
+func summarizeServerExecution(results []ServerExecutionResult) (executionStatus, int, int) {
+	success, failed, canceled, unknown := 0, 0, 0, 0
+	for _, result := range results {
+		switch result.Status {
+		case executionStatusSuccess:
+			success++
+		case executionStatusFailed:
+			failed++
+		case executionStatusCanceled:
+			canceled++
+		case executionStatusUnknown:
+			unknown++
+		}
 	}
-
-	status := operationrecord.StatusRunning
-	switch execution.Status {
-	case executionStatusPending:
-		status = operationrecord.StatusPending
-	case executionStatusSuccess:
-		status = operationrecord.StatusSuccess
-	case executionStatusFailed:
-		status = operationrecord.StatusFailure
-	case executionStatusPartial:
-		status = operationrecord.StatusPartial
-	case executionStatusTimeout:
-		status = operationrecord.StatusTimeout
-	case executionStatusCanceled:
-		status = operationrecord.StatusCanceled
+	switch {
+	case unknown > 0:
+		return executionStatusUnknown, success, failed
+	case canceled > 0:
+		return executionStatusCanceled, success, failed
+	case success == len(results) && success > 0:
+		return executionStatusSuccess, success, failed
+	case success > 0:
+		return executionStatusPartial, success, failed
+	default:
+		return executionStatusFailed, success, failed
 	}
-	detail, _ := json.Marshal(map[string]interface{}{
-		"scheduled_task_id": execution.ScheduledTaskID,
-		"transfer_job_id":   execution.TransferJobID,
-		"source_type":       execution.SourceType,
-		"source_id":         execution.SourceID,
-		"task_type":         execution.TaskType,
-		"trigger_type":      execution.TriggerType,
-		"server_results":    execution.ServerResults,
-	})
-	now := time.Now()
-
-	record := &operationrecord.OperationRecord{
-		UserID:       execution.UserID,
-		Type:         operationrecord.TypeExecution,
-		Action:       "task_execute",
-		Status:       status,
-		Title:        execution.TaskName,
-		Resource:     execution.Command,
-		Source:       string(execution.TriggerType),
-		StartedAt:    &execution.StartTime,
-		FinishedAt:   execution.EndTime,
-		DurationMs:   execution.Duration,
-		TotalCount:   execution.TotalServers,
-		SuccessCount: execution.SuccessCount,
-		FailureCount: execution.FailedCount,
-		ErrorMessage: execution.ErrorMessage,
-		DetailJSON:   string(detail),
-		SourceTable:  "task_runs",
-		SourceID:     execution.ID.String(),
-		CreatedAt:    execution.StartTime,
-		UpdatedAt:    now,
-	}
-
-	if err := e.operationRecords.Upsert(context.Background(), record); err != nil {
-		log.Printf("[TaskExecutor] persist operation record failed: run=%s error=%v", execution.ID, err)
-	}
-}
-
-// updateTaskStatus 更新任务状态
-func (e *Executor) updateTaskStatus(taskID uuid.UUID, status string) {
-	now := time.Now()
-
-	// 获取当前任务
-	task, err := e.taskRepo.GetByID(taskID)
-	if err != nil {
-		log.Printf("[TaskExecutor] 获取任务失败: %v", err)
-		return
-	}
-
-	updates := map[string]interface{}{
-		"last_run_at": now,
-		"last_status": status,
-		"run_count":   task.RunCount + 1,
-	}
-
-	if status == "failed" {
-		updates["failure_count"] = task.FailureCount + 1
-	}
-
-	if err := e.taskRepo.Update(taskID, updates); err != nil {
-		log.Printf("[TaskExecutor] 更新任务状态失败: %v", err)
-	}
-}
-
-func (e *Executor) UpdateDefinitionStatus(taskID uuid.UUID, status taskcenter.Status) {
-	definitionStatus := "failed"
-	if status == taskcenter.StatusSucceeded {
-		definitionStatus = "success"
-	} else if status == taskcenter.StatusCanceled {
-		definitionStatus = "canceled"
-	}
-	e.updateTaskStatus(taskID, definitionStatus)
 }

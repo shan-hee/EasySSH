@@ -36,8 +36,8 @@ type FileSummary struct {
 	Kind      string `json:"kind"`
 }
 
-// File bodies are persisted with their originating task, never in public task
-// snapshots. The authenticated file endpoint loads them only when requested.
+// File snapshots are stored as separate content bodies referenced by their task.
+// Public task views carry only FileSummary; the content endpoint authorizes reads.
 type FileArtifact struct {
 	FileSummary
 	Content      string  `json:"content"`
@@ -49,7 +49,7 @@ type FileArtifact struct {
 
 func NewFile(name, content, encoding string) (*FileArtifact, error) {
 	name = path.Base(strings.ReplaceAll(strings.TrimSpace(name), "\\", "/"))
-	if name == "" || name == "." || name == ".." || name == "/" {
+	if name == "" || name == "." || name == ".." || name == "/" || len(name) > 255 || !utf8.ValidString(name) {
 		return nil, errors.New("file name is required")
 	}
 	if len(content) > MaxFileBytes*2 {

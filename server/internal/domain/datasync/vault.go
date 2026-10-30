@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	servermodel "github.com/easyssh/server/internal/domain/server"
+	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/syncdata"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -17,7 +19,7 @@ import (
 )
 
 type VaultDocument struct {
-	UserID      uuid.UUID `gorm:"type:char(36);primaryKey"`
+	OwnerID     uuid.UUID `gorm:"type:char(36);primaryKey"`
 	Kind        string    `gorm:"size:20;primaryKey"`
 	ResourceID  string    `gorm:"size:36;primaryKey"`
 	Document    Document
@@ -32,7 +34,7 @@ type VaultDocument struct {
 func (VaultDocument) TableName() string { return "sync_vault_documents" }
 
 type VaultObject struct {
-	UserID     uuid.UUID `gorm:"type:char(36);primaryKey"`
+	OwnerID    uuid.UUID `gorm:"type:char(36);primaryKey"`
 	ID         string    `gorm:"size:64;primaryKey"`
 	Kind       string    `gorm:"size:20;not null"`
 	ResourceID string    `gorm:"size:36;not null"`
@@ -78,8 +80,14 @@ func (s *Service) PutVaultObject(ctx context.Context, owner uuid.UUID, kind, id,
 	return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error { return s.putVaultObject(tx, owner, kind, id, resource, value) })
 }
 func (s *Service) putVaultObject(tx *gorm.DB, owner uuid.UUID, kind, id, resource, value string) error {
+	if kind == "credential" {
+		var target servermodel.Server
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&target, "id=?", resource).Error; err != nil {
+			return err
+		}
+	}
 	var old VaultObject
-	err := tx.First(&old, "user_id = ? AND id = ?", owner, id).Error
+	err := tx.First(&old, "owner_id = ? AND id = ?", owner, id).Error
 	if err == nil {
 		plain, e := s.Encryptor.DecryptSecret(string(old.Ciphertext), vaultAAD(owner, id))
 		if e != nil {
@@ -97,21 +105,21 @@ func (s *Service) putVaultObject(tx *gorm.DB, owner uuid.UUID, kind, id, resourc
 	if err != nil {
 		return err
 	}
-	return tx.Create(&VaultObject{UserID: owner, ID: id, Kind: kind, ResourceID: resource, Ciphertext: Document(ciphertext)}).Error
+	return tx.Create(&VaultObject{OwnerID: owner, ID: id, Kind: kind, ResourceID: resource, Ciphertext: Document(ciphertext)}).Error
 }
 func (s *Service) GetVaultObject(ctx context.Context, owner uuid.UUID, id string) (string, error) {
 	return s.getVaultObject(s.DB.WithContext(ctx), owner, id)
 }
 func (s *Service) getVaultObject(tx *gorm.DB, owner uuid.UUID, id string) (string, error) {
 	var row VaultObject
-	if err := tx.First(&row, "user_id = ? AND id = ?", owner, id).Error; err != nil {
+	if err := tx.First(&row, "owner_id = ? AND id = ?", owner, id).Error; err != nil {
 		return "", err
 	}
 	return s.Encryptor.DecryptSecret(string(row.Ciphertext), vaultAAD(owner, id))
 }
 func (s *Service) vaultPayload(tx *gorm.DB, owner uuid.UUID, kind, resource, ref string) (syncdata.VaultPayload, error) {
 	var row VaultObject
-	if err := tx.First(&row, "user_id=? AND id=? AND kind=? AND resource_id=?", owner, ref, kind, resource).Error; err != nil {
+	if err := tx.First(&row, "owner_id=? AND id=? AND kind=? AND resource_id=?", owner, ref, kind, resource).Error; err != nil {
 		return syncdata.VaultPayload{}, err
 	}
 	plain, err := s.Encryptor.DecryptSecret(string(row.Ciphertext), vaultAAD(owner, ref))
@@ -131,14 +139,20 @@ func (s *Service) VaultExchange(ctx context.Context, owner uuid.UUID, kind, id s
 	applied := false
 	run := func() error {
 		return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			state := VaultDocument{UserID: owner, Kind: kind, ResourceID: id}
+			if kind == "credential" {
+				var target servermodel.Server
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").First(&target, "id=?", id).Error; err != nil {
+					return err
+				}
+			}
+			state := VaultDocument{OwnerID: owner, Kind: kind, ResourceID: id}
 			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&state).Error; err != nil {
 				return err
 			}
-			if err := tx.Model(&state).Where("user_id=? AND kind=? AND resource_id=?", owner, kind, id).UpdateColumn("revision", gorm.Expr("revision+1")).Error; err != nil {
+			if err := tx.Model(&state).Where("owner_id=? AND kind=? AND resource_id=?", owner, kind, id).UpdateColumn("revision", gorm.Expr("revision+1")).Error; err != nil {
 				return err
 			}
-			if err := tx.First(&state, "user_id=? AND kind=? AND resource_id=?", owner, kind, id).Error; err != nil {
+			if err := tx.First(&state, "owner_id=? AND kind=? AND resource_id=?", owner, kind, id).Error; err != nil {
 				return err
 			}
 			current, err := s.captureVault(tx, owner, kind, id)
@@ -178,6 +192,7 @@ func (s *Service) VaultExchange(ctx context.Context, owner uuid.UUID, kind, id s
 			if err != nil {
 				return err
 			}
+			result.AffectedGrants = []protocol.SyncAffectedGrant{}
 			if len(result.Snapshot) > 1 {
 				return errors.New("invalid vault document")
 			}
@@ -204,7 +219,18 @@ func (s *Service) VaultExchange(ctx context.Context, owner uuid.UUID, kind, id s
 				if err != nil {
 					return err
 				}
+				var grants []syncGrantResource
+				if kind == "credential" {
+					grants, err = captureSyncGrantResources(tx, []uuid.UUID{uuid.MustParse(id)})
+					if err != nil {
+						return err
+					}
+				}
 				if err = s.applyVault(tx, owner, kind, id, payload); err != nil {
+					return err
+				}
+				result.AffectedGrants, err = resolveSyncGrantChanges(tx, grants)
+				if err != nil {
 					return err
 				}
 				applied = true
@@ -241,6 +267,10 @@ func (s *Service) VaultExchange(ctx context.Context, owner uuid.UUID, kind, id s
 		})
 	}
 	var err error
+	if kind == "ai_session" {
+		transaction := run
+		run = func() error { return s.Content.WithStorage(transaction) }
+	}
 	if kind == "ai_session" && s.WithSessionSync != nil {
 		err = s.WithSessionSync(owner, id, run)
 	} else {
@@ -259,7 +289,7 @@ func (s *Service) VaultList(ctx context.Context, owner uuid.UUID) ([]VaultEntry,
 		Name string
 	}
 	var sessions []entry
-	if err := s.DB.WithContext(ctx).Table("ai_sessions").Select("id,title AS name").Where("user_id=? AND deleted_at IS NULL", owner).Scan(&sessions).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Table("ai_sessions").Select("id,title AS name").Where("actor_kind=? AND actor_id=? AND deleted_at IS NULL", "owner", owner.String()).Scan(&sessions).Error; err != nil {
 		return nil, err
 	}
 	for _, e := range sessions {
@@ -267,7 +297,7 @@ func (s *Service) VaultList(ctx context.Context, owner uuid.UUID) ([]VaultEntry,
 	}
 	// Keep tombstones discoverable after deletion.
 	var docs []VaultDocument
-	if err := s.DB.WithContext(ctx).Select("kind,resource_id").Where("user_id=?", owner).Find(&docs).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Select("kind,resource_id").Where("owner_id=?", owner).Find(&docs).Error; err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
@@ -283,7 +313,7 @@ func (s *Service) VaultList(ctx context.Context, owner uuid.UUID) ([]VaultEntry,
 }
 func requireConfigSnapshot(snapshot syncdata.Snapshot) error {
 	for key := range snapshot {
-		if key != syncdata.ServerOrderKey && !strings.HasPrefix(key, "server/") && !strings.HasPrefix(key, "script/") {
+		if key != syncdata.ServerOrderKey && !strings.HasPrefix(key, "server/") && !strings.HasPrefix(key, "script/") && !strings.HasPrefix(key, "group/") {
 			return fmt.Errorf("invalid configuration record")
 		}
 	}
@@ -292,7 +322,7 @@ func requireConfigSnapshot(snapshot syncdata.Snapshot) error {
 
 func (s *Service) VaultConflicts(ctx context.Context, owner uuid.UUID) ([]syncdata.VaultConflict, error) {
 	var docs []VaultDocument
-	if err := s.DB.WithContext(ctx).Where("user_id=?", owner).Find(&docs).Error; err != nil {
+	if err := s.DB.WithContext(ctx).Where("owner_id=?", owner).Find(&docs).Error; err != nil {
 		return nil, err
 	}
 	result := []syncdata.VaultConflict{}
@@ -305,15 +335,17 @@ func (s *Service) VaultConflicts(ctx context.Context, owner uuid.UUID) ([]syncda
 // Fork preserves a selected version as a separate, non-executing conversation.
 func (s *Service) ForkVaultSession(ctx context.Context, owner uuid.UUID, id, ref string) (string, error) {
 	newID := uuid.NewString()
-	err := s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		p, err := s.vaultPayload(tx, owner, "ai_session", id, ref)
-		if err != nil {
-			return err
-		}
-		if p.Deleted {
-			return errors.New("deleted conversation cannot be copied")
-		}
-		return s.applyVault(tx, owner, "ai_session", newID, p)
+	err := s.Content.WithStorage(func() error {
+		return s.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			p, err := s.vaultPayload(tx, owner, "ai_session", id, ref)
+			if err != nil {
+				return err
+			}
+			if p.Deleted {
+				return errors.New("deleted conversation cannot be copied")
+			}
+			return s.applyVault(tx, owner, "ai_session", newID, p)
+		})
 	})
 	return newID, err
 }

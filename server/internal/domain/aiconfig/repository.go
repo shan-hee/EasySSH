@@ -3,73 +3,88 @@ package aiconfig
 import (
 	"context"
 	"errors"
+	"slices"
 
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/domain/operationrecord"
+	"github.com/easyssh/shared/protocol"
+	"github.com/easyssh/shared/secretcrypto"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
-// Repository AI配置仓库接口
 type Repository interface {
-	// GetSystemConfig 获取系统级AI配置
-	GetSystemConfig(ctx context.Context) (*AIConfig, error)
-
-	// SaveSystemConfig 保存系统级AI配置
-	SaveSystemConfig(ctx context.Context, config *AIConfig) error
+	Get(context.Context) (*Config, error)
+	Save(context.Context, *Config) error
 }
-
 type repository struct {
-	db *gorm.DB
+	db        *gorm.DB
+	encryptor *crypto.Encryptor
 }
 
-// NewRepository 创建AI配置仓库
-func NewRepository(db *gorm.DB) Repository {
-	return &repository{db: db}
+func NewRepository(db *gorm.DB, encryptor *crypto.Encryptor) Repository {
+	return &repository{db: db, encryptor: encryptor}
 }
-
-// GetSystemConfig 获取系统级AI配置
-func (r *repository) GetSystemConfig(ctx context.Context) (*AIConfig, error) {
-	var config AIConfig
-
-	// 查询第一条记录（系统配置只有一条）
-	err := r.db.WithContext(ctx).First(&config).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 如果不存在，创建默认系统配置
-			config = AIConfig{
-				SystemEnabled: false,
-			}
-
-			// 创建默认配置
-			if err := r.db.WithContext(ctx).Create(&config).Error; err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
-		}
-	}
-
-	return &config, nil
-}
-
-// SaveSystemConfig 保存系统级AI配置
-func (r *repository) SaveSystemConfig(ctx context.Context, config *AIConfig) error {
-	// 查询是否存在系统配置
-	var existing AIConfig
-	err := r.db.WithContext(ctx).First(&existing).Error
-
+func (r *repository) Get(ctx context.Context) (*Config, error) {
+	var config Config
+	err := r.db.WithContext(ctx).First(&config, ConfigID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		// 不存在则创建
-		return r.db.WithContext(ctx).Create(config).Error
-	} else if err != nil {
-		return err
+		return &Config{ID: ConfigID, Provider: "openai", Models: []string{}}, nil
 	}
-
-	// 存在则更新（保留ID）
-	config.ID = existing.ID
-
-	// 如果新配置的 API Key 为空，保留原有的 API Key（避免误删除）
-	if config.SystemAPIKey == "" && existing.SystemAPIKey != "" {
-		config.SystemAPIKey = existing.SystemAPIKey
-	}
-
-	return r.db.WithContext(ctx).Save(config).Error
+	return &config, err
+}
+func (r *repository) Save(ctx context.Context, config *Config) error {
+	config.ID = ConfigID
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var before Config
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&before, ConfigID).Error
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		fields := []string{}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			fields = append(fields, "created")
+		} else {
+			keyChanged := before.APIKey != config.APIKey
+			if keyChanged {
+				if r.encryptor == nil {
+					return errors.New("AI secret encryption is unavailable")
+				}
+				previous, err := r.encryptor.DecryptSecret(before.APIKey, APIKeyAAD())
+				if err != nil {
+					return err
+				}
+				next, err := r.encryptor.DecryptSecret(config.APIKey, APIKeyAAD())
+				if err != nil {
+					return err
+				}
+				keyChanged = previous != next
+			}
+			for _, field := range []struct {
+				name    string
+				changed bool
+			}{
+				{"enabled", before.Enabled != config.Enabled}, {"provider", before.Provider != config.Provider},
+				{"endpoint", before.Endpoint != config.Endpoint}, {"api_key", keyChanged}, {"models", !slices.Equal(before.Models, config.Models)},
+			} {
+				if field.changed {
+					fields = append(fields, field.name)
+				}
+			}
+		}
+		if len(fields) == 0 {
+			return nil
+		}
+		if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "id"}}, DoUpdates: clause.AssignmentColumns([]string{"enabled", "provider", "endpoint", "api_key", "models", "updated_at"})}).Create(config).Error; err != nil {
+			return err
+		}
+		actor := access.Current(ctx).Actor()
+		source := "manual"
+		if actor.Kind == protocol.Device {
+			source = "automation"
+		}
+		return operationrecord.RecordConfiguration(tx, actor, operationrecord.ConfigurationChange{
+			Action: "ai_config_update", ResourceKind: "ai_config", ResourceID: "1", Name: "AI 配置", Source: source, Fields: fields,
+		})
+	})
 }

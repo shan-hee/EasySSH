@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/easyssh/shared/protocol"
 	"log"
 	"math"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/easyssh/server/internal/access"
 	"github.com/google/uuid"
 )
 
@@ -23,7 +25,9 @@ type Enqueuer interface {
 
 type Queue interface {
 	Enqueuer
+	NotifyEnqueued()
 	Register(kind string, handler Handler)
+	SetAccessRejectionHandler(func(context.Context, *Job, error) error)
 	Start(ctx context.Context) error
 	Stop()
 	SetMaxConcurrency(maxConcurrency int)
@@ -31,6 +35,8 @@ type Queue interface {
 }
 
 type Options struct {
+	Restore          func(context.Context, protocol.Actor) (access.Scope, error)
+	OnAccessRejected func(context.Context, *Job, error) error
 	// StartGate delays background work until instance activation is committed.
 	// A nil gate preserves the existing startup behavior.
 	StartGate            <-chan struct{}
@@ -40,12 +46,7 @@ type Options struct {
 	Retention            time.Duration
 }
 
-type RuntimeStatus struct {
-	MaxConcurrency int   `json:"max_concurrency"`
-	Active         int   `json:"active"`
-	Queued         int64 `json:"queued"`
-	ScalingDown    bool  `json:"scaling_down"`
-}
+type RuntimeStatus = protocol.JobQueueRuntimeStatus
 
 type queue struct {
 	repo Repository
@@ -100,12 +101,23 @@ func (q *queue) Enqueue(ctx context.Context, kind, sourceType, sourceID string, 
 	if kind == "" || sourceType == "" || sourceID == "" {
 		return nil, errors.New("job kind, source type and source id are required")
 	}
+	var actor protocol.Actor
+	if requiresAccess(kind) {
+		scope, err := access.FromContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err := scope.Check(ctx, access.Requirement{Action: protocol.WorkspaceRead}); err != nil {
+			return nil, err
+		}
+		actor = scope.Actor()
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
 	job := &Job{
-		Kind: kind, SourceType: sourceType, SourceID: sourceID, PayloadJSON: string(raw),
+		Actor: actor, Kind: kind, SourceType: sourceType, SourceID: sourceID, PayloadJSON: string(raw),
 		Status: StatusQueued, AvailableAt: options.AvailableAt, MaxAttempts: options.MaxAttempts, Priority: options.Priority,
 	}
 	if options.DedupeKey != "" {
@@ -117,6 +129,10 @@ func (q *queue) Enqueue(ctx context.Context, kind, sourceType, sourceID string, 
 	q.wake()
 	return job, nil
 }
+
+// NotifyEnqueued wakes workers after an execution outbox has committed in a
+// source transaction. The queue's polling path still observes durable jobs.
+func (q *queue) NotifyEnqueued() { q.wake() }
 
 func (q *queue) SetMaxConcurrency(maxConcurrency int) {
 	if maxConcurrency < 1 {
@@ -308,6 +324,30 @@ func (q *queue) process(workerID string, job *Job) {
 	q.handlerMu.RLock()
 	handler := q.handlers[job.Kind]
 	q.handlerMu.RUnlock()
+	var accessErr error
+	if requiresAccess(job.Kind) {
+		if q.opts.Restore == nil {
+			accessErr = access.ErrUnauthenticated
+		} else {
+			var scope access.Scope
+			scope, accessErr = q.opts.Restore(handlerCtx, job.Actor)
+			if accessErr == nil {
+				handlerCtx = access.WithScope(handlerCtx, scope)
+			}
+		}
+	}
+	if accessErr != nil {
+		cancel()
+		<-heartbeatDone
+		if q.opts.OnAccessRejected != nil {
+			if rejectErr := q.opts.OnAccessRejected(q.ctx, job, accessErr); rejectErr != nil {
+				_, _ = q.repo.Fail(q.ctx, job.ID, workerID, rejectErr.Error(), time.Now().Add(retryBackoff(job.Attempt)))
+				return
+			}
+		}
+		_, _ = q.repo.Reject(q.ctx, job.ID, workerID, accessErr.Error())
+		return
+	}
 	if handler == nil {
 		err = fmt.Errorf("no handler registered for job kind %s", job.Kind)
 	} else {
@@ -415,4 +455,13 @@ func retryBackoff(attempt int) time.Duration {
 		seconds = 60
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+func requiresAccess(kind string) bool {
+	return kind == "task.execute" || kind == "batch.execute" || kind == "transfer.execute"
+}
+
+// Configured before Start, together with kind handlers.
+func (q *queue) SetAccessRejectionHandler(handler func(context.Context, *Job, error) error) {
+	q.opts.OnAccessRejected = handler
 }

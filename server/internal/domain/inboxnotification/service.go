@@ -3,7 +3,11 @@ package inboxnotification
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/easyssh/shared/resultstore"
+	"github.com/easyssh/shared/taskprotocol"
+	"gorm.io/gorm"
 	"log"
 	"strings"
 	"sync"
@@ -25,23 +29,22 @@ const (
 )
 
 type Service interface {
-	taskcenter.CompletionNotifier
 	Create(ctx context.Context, item *Notification) error
 	List(ctx context.Context, req *ListRequest) (*ListResponse, error)
-	MarkRead(ctx context.Context, userID, id uuid.UUID) error
-	MarkAllRead(ctx context.Context, userID uuid.UUID) error
-	Delete(ctx context.Context, userID, id uuid.UUID) error
-	ClearRead(ctx context.Context, userID uuid.UUID) error
+	MarkRead(ctx context.Context, ownerID, id uuid.UUID) error
+	MarkAllRead(ctx context.Context, ownerID uuid.UUID) error
+	Delete(ctx context.Context, ownerID, id uuid.UUID) error
+	ClearRead(ctx context.Context, ownerID uuid.UUID) error
 	Start(ctx context.Context)
 	Stop()
 }
 
 type service struct {
-	repo    Repository
-	users   auth.Repository
-	configs notificationconfig.Service
-	email   notification.EmailService
-	events  *realtime.Hub
+	repo      Repository
+	ownerRepo auth.Repository
+	configs   notificationconfig.Service
+	email     notification.EmailService
+	events    *realtime.Hub
 
 	workerMu     sync.Mutex
 	workerCancel context.CancelFunc
@@ -69,46 +72,46 @@ type deliveryTaskView struct {
 	FinishedAt   *time.Time        `json:"finished_at,omitempty"`
 }
 
-func NewService(repo Repository, users auth.Repository, configs notificationconfig.Service, email notification.EmailService, events *realtime.Hub) Service {
-	return &service{repo: repo, users: users, configs: configs, email: email, events: events, wake: make(chan struct{}, 1)}
+func NewService(repo Repository, ownerRepo auth.Repository, configs notificationconfig.Service, email notification.EmailService, events *realtime.Hub) Service {
+	return &service{repo: repo, ownerRepo: ownerRepo, configs: configs, email: email, events: events, wake: make(chan struct{}, 1)}
 }
 
 func (s *service) Create(ctx context.Context, item *Notification) error {
 	if err := s.repo.Create(ctx, item); err != nil {
 		return err
 	}
-	s.publish("notification.created", item.UserID, map[string]interface{}{"notification_id": item.ID})
+	s.publish("notification.created", item.OwnerID, map[string]interface{}{"notification_id": item.ID})
 	return nil
 }
 func (s *service) List(ctx context.Context, req *ListRequest) (*ListResponse, error) {
 	return s.repo.List(ctx, req)
 }
-func (s *service) MarkRead(ctx context.Context, userID, id uuid.UUID) error {
-	if err := s.repo.MarkRead(ctx, userID, id); err != nil {
+func (s *service) MarkRead(ctx context.Context, ownerID, id uuid.UUID) error {
+	if err := s.repo.MarkRead(ctx, ownerID, id); err != nil {
 		return err
 	}
-	s.publish("notification.changed", userID, map[string]interface{}{"notification_id": id, "action": "read"})
+	s.publish("notification.changed", ownerID, map[string]interface{}{"notification_id": id, "action": "read"})
 	return nil
 }
-func (s *service) MarkAllRead(ctx context.Context, userID uuid.UUID) error {
-	if err := s.repo.MarkAllRead(ctx, userID); err != nil {
+func (s *service) MarkAllRead(ctx context.Context, ownerID uuid.UUID) error {
+	if err := s.repo.MarkAllRead(ctx, ownerID); err != nil {
 		return err
 	}
-	s.publish("notification.changed", userID, map[string]interface{}{"action": "read_all"})
+	s.publish("notification.changed", ownerID, map[string]interface{}{"action": "read_all"})
 	return nil
 }
-func (s *service) Delete(ctx context.Context, userID, id uuid.UUID) error {
-	if err := s.repo.Delete(ctx, userID, id); err != nil {
+func (s *service) Delete(ctx context.Context, ownerID, id uuid.UUID) error {
+	if err := s.repo.Delete(ctx, ownerID, id); err != nil {
 		return err
 	}
-	s.publish("notification.changed", userID, map[string]interface{}{"notification_id": id, "action": "delete"})
+	s.publish("notification.changed", ownerID, map[string]interface{}{"notification_id": id, "action": "delete"})
 	return nil
 }
-func (s *service) ClearRead(ctx context.Context, userID uuid.UUID) error {
-	if err := s.repo.ClearRead(ctx, userID); err != nil {
+func (s *service) ClearRead(ctx context.Context, ownerID uuid.UUID) error {
+	if err := s.repo.ClearRead(ctx, ownerID); err != nil {
 		return err
 	}
-	s.publish("notification.changed", userID, map[string]interface{}{"action": "clear_read"})
+	s.publish("notification.changed", ownerID, map[string]interface{}{"action": "clear_read"})
 	return nil
 }
 
@@ -136,13 +139,28 @@ func (s *service) Stop() {
 	s.workerWG.Wait()
 }
 
-func (s *service) NotifyTaskFinished(ctx context.Context, run *taskcenter.TaskRun) error {
-	user, err := s.users.FindByID(ctx, run.UserID)
+func (s *service) prepareCompletion(ctx context.Context, pending *Delivery) error {
+	run, err := s.repo.CompletionTask(ctx, pending)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return s.commitCompletion(ctx, pending, nil, false, nil)
+	}
 	if err != nil {
 		return err
 	}
-	if !shouldNotifyTask(user, run.Status) || (!user.NotifyTaskInApp && !user.NotifyTaskExternal) {
-		return nil
+	owner, err := s.ownerRepo.Get(ctx)
+	if err != nil {
+		return err
+	}
+	if !shouldNotifyTask(owner, run.Status) || (!owner.NotifyTaskInApp && !owner.NotifyTaskExternal) {
+		return s.commitCompletion(ctx, pending, nil, false, nil)
+	}
+	// Notifications contain a display summary; complete results stay on the source.
+	for _, field := range []*string{&run.Title, &run.Resource, &run.ErrorMessage} {
+		preview, shortened := taskprotocol.PreviewText(*field)
+		if shortened {
+			preview += "…"
+		}
+		*field = preview
 	}
 	severity, eventType, title := taskNotificationMeta(run)
 	message := taskNotificationMessage(run)
@@ -152,42 +170,55 @@ func (s *service) NotifyTaskFinished(ctx context.Context, run *taskcenter.TaskRu
 	})
 	now := time.Now()
 	item := &Notification{
-		ID: uuid.New(), UserID: run.UserID, EventType: eventType, Severity: severity, Title: title, Message: message,
-		SourceType: "task_run", SourceID: run.ID.String(), ActionURL: "/dashboard/tasks?run=" + run.ID.String(), DataJSON: string(data), CreatedAt: now,
+		ID: pending.NotificationID, OwnerID: owner.ID, EventType: eventType, Severity: severity, Title: title, Message: message,
+		SourceType: "task_run", SourceID: run.ID.String(), DataJSON: string(data), CreatedAt: now,
 	}
-	deliveries, err := s.buildExternalDeliveries(ctx, user, item, run)
+	deliveries, err := s.buildExternalDeliveries(ctx, owner, item, run)
 	if err != nil {
 		return err
 	}
-	if err := s.repo.CreateNotificationAndDeliveries(ctx, item, user.NotifyTaskInApp, deliveries); err != nil {
+	return s.commitCompletion(ctx, pending, item, owner.NotifyTaskInApp, deliveries)
+}
+
+func (s *service) commitCompletion(ctx context.Context, pending *Delivery, item *Notification, inApp bool, channels []*Delivery) error {
+	created := false
+	err := resultstore.Write(ctx, func(attempt context.Context) error {
+		var err error
+		created, err = s.repo.CommitCompletion(attempt, pending, item, inApp, channels)
+		return err
+	})
+	if err != nil {
 		return err
 	}
-	if len(deliveries) > 0 {
+	if len(channels) > 0 {
 		s.signalWorker()
 	}
-	if user.NotifyTaskInApp {
-		s.publish("notification.created", run.UserID, map[string]interface{}{"notification_id": item.ID, "task_id": run.ID})
+	if created {
+		s.publish("notification.created", item.OwnerID, map[string]interface{}{"notification_id": item.ID, "task_id": pending.SourceID})
 	}
 	return nil
 }
 
-func (s *service) publish(eventType string, userID uuid.UUID, payload interface{}) {
+func (s *service) publish(eventType string, ownerID uuid.UUID, payload interface{}) {
 	if s.events != nil {
-		s.events.Publish(userID, eventType, payload)
+		s.events.PublishOwner(eventType, payload)
 	}
 }
 
-func (s *service) buildExternalDeliveries(ctx context.Context, user *auth.User, item *Notification, run *taskcenter.TaskRun) ([]*Delivery, error) {
-	if !user.NotifyTaskExternal {
+func (s *service) buildExternalDeliveries(ctx context.Context, owner *auth.Owner, item *Notification, run *taskcenter.TaskRun) ([]*Delivery, error) {
+	if !owner.NotifyTaskExternal {
 		return nil, nil
 	}
-	channels := s.configuredChannels(ctx, user.Email != "")
+	channels, err := s.configuredChannels(ctx, owner.Email != "")
+	if err != nil {
+		return nil, err
+	}
 	if len(channels) == 0 {
 		return nil, nil
 	}
 	payloadJSON, err := json.Marshal(deliveryPayload{
-		Username:     user.Username,
-		Email:        user.Email,
+		Username:     owner.Username,
+		Email:        owner.Email,
 		Notification: *item,
 		Task: deliveryTaskView{
 			ID: run.ID, TaskType: run.TaskType, Title: run.Title, Status: run.Status, Resource: run.Resource,
@@ -202,33 +233,29 @@ func (s *service) buildExternalDeliveries(ctx context.Context, user *auth.User, 
 	for _, channel := range channels {
 		deliveries = append(deliveries, &Delivery{
 			NotificationID: item.ID,
-			UserID:         user.ID,
-			Channel:        channel,
-			Status:         "queued",
-			PayloadJSON:    string(payloadJSON),
-			MaxAttempts:    5,
-			NextAttemptAt:  time.Now(),
+			SourceType:     "task_run", SourceID: run.ID.String(),
+			Channel:       channel,
+			Status:        "queued",
+			PayloadJSON:   string(payloadJSON),
+			MaxAttempts:   5,
+			NextAttemptAt: time.Now(),
 		})
 	}
 	return deliveries, nil
 }
 
-func (s *service) configuredChannels(ctx context.Context, hasEmail bool) []string {
+func (s *service) configuredChannels(ctx context.Context, hasEmail bool) ([]string, error) {
 	channels := make([]string, 0, 4)
 	emailEnabled := s.email != nil
 	if s.configs == nil {
 		if emailEnabled && hasEmail {
 			channels = append(channels, "email")
 		}
-		return channels
+		return channels, nil
 	}
 	config, err := s.configs.GetAllConfig(ctx)
 	if err != nil {
-		log.Printf("[NotificationQueue] 读取外部通知配置失败: %v", err)
-		if emailEnabled && hasEmail {
-			channels = append(channels, "email")
-		}
-		return channels
+		return nil, err
 	}
 	emailEnabled = config != nil && config.SMTP != nil && config.SMTP.Enabled
 	if emailEnabled && hasEmail {
@@ -243,17 +270,17 @@ func (s *service) configuredChannels(ctx context.Context, hasEmail bool) []strin
 	if config != nil && config.WeCom != nil && config.WeCom.Enabled {
 		channels = append(channels, "wecom")
 	}
-	return channels
+	return channels, nil
 }
 
-func shouldNotifyTask(user *auth.User, status taskcenter.Status) bool {
+func shouldNotifyTask(owner *auth.Owner, status taskcenter.Status) bool {
 	switch status {
 	case taskcenter.StatusSucceeded:
-		return user.NotifyTaskSuccess
+		return owner.NotifyTaskSuccess
 	case taskcenter.StatusPartialSuccess:
-		return user.NotifyTaskPartial
-	case taskcenter.StatusFailed, taskcenter.StatusTimeout:
-		return user.NotifyTaskFailure
+		return owner.NotifyTaskPartial
+	case taskcenter.StatusFailed, taskcenter.StatusTimeout, taskcenter.StatusUnknown:
+		return owner.NotifyTaskFailure
 	default:
 		return false
 	}
@@ -265,6 +292,8 @@ func taskNotificationMeta(run *taskcenter.TaskRun) (string, string, string) {
 		return "success", "task.succeeded", "任务执行成功"
 	case taskcenter.StatusPartialSuccess:
 		return "warning", "task.partial_success", "任务部分成功"
+	case taskcenter.StatusUnknown:
+		return "warning", "task.unknown", "任务结果未知，请核对远端效果"
 	default:
 		return "error", "task.failed", "任务执行失败"
 	}
@@ -339,8 +368,16 @@ func (s *service) processDueDeliveries(ctx context.Context) {
 
 func (s *service) processDelivery(workerCtx context.Context, delivery *Delivery) {
 	ctx, cancel := context.WithTimeout(workerCtx, 30*time.Second)
-	err := s.deliver(ctx, delivery)
+	var err error
+	if delivery.Channel == "completion" {
+		err = s.prepareCompletion(ctx, delivery)
+	} else {
+		err = s.deliver(ctx, delivery)
+	}
 	cancel()
+	if delivery.Channel == "completion" && err == nil {
+		return
+	}
 
 	updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer updateCancel()
@@ -350,7 +387,7 @@ func (s *service) processDelivery(workerCtx context.Context, delivery *Delivery)
 		updates["status"] = "sent"
 		updates["sent_at"] = &now
 		updates["error_message"] = ""
-	} else if delivery.AttemptCount >= delivery.MaxAttempts {
+	} else if delivery.Channel != "completion" && delivery.AttemptCount >= delivery.MaxAttempts {
 		updates["status"] = "failed"
 		updates["error_message"] = err.Error()
 	} else {
@@ -358,7 +395,7 @@ func (s *service) processDelivery(workerCtx context.Context, delivery *Delivery)
 		updates["next_attempt_at"] = time.Now().Add(deliveryRetryDelay(delivery.AttemptCount))
 		updates["error_message"] = err.Error()
 	}
-	if updateErr := s.repo.UpdateDelivery(updateCtx, delivery.ID, updates); updateErr != nil {
+	if updateErr := resultstore.Write(updateCtx, func(attempt context.Context) error { return s.repo.UpdateDelivery(attempt, delivery.ID, updates) }); updateErr != nil {
 		log.Printf("[NotificationQueue] 更新投递状态失败: deliveryID=%d, error=%v", delivery.ID, updateErr)
 	}
 }

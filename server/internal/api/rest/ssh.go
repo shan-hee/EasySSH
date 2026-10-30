@@ -2,6 +2,8 @@ package rest
 
 import (
 	"errors"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"net/http"
 
 	"github.com/easyssh/server/internal/domain/ssh"
@@ -24,32 +26,29 @@ func NewSSHHandler(sessionManager *ssh.SessionManager) *SSHHandler {
 // GET /api/v1/ssh/sessions
 func (h *SSHHandler) ListSessions(c *gin.Context) {
 	// 从上下文获取用户 ID
-	userID, err := getUserIDFromContext(c)
+	scope, err := access.FromContext(c.Request.Context())
 	if err != nil {
 		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		return
 	}
 
 	// 获取用户的所有会话
-	sessions := h.sessionManager.GetByUserID(userID.String())
+	sessions := h.sessionManager.GetByActor(scope.Actor())
 
 	// 转换为公开信息
-	publicSessions := make([]interface{}, len(sessions))
+	publicSessions := make([]protocol.SSHSession, len(sessions))
 	for i, session := range sessions {
 		publicSessions[i] = session.ToPublic()
 	}
 
-	RespondSuccess(c, gin.H{
-		"sessions": publicSessions,
-		"total":    len(publicSessions),
-	})
+	RespondSuccess(c, protocol.SSHSessionList{Sessions: publicSessions, Total: len(publicSessions)})
 }
 
 // GetSession 获取会话详情
 // GET /api/v1/ssh/sessions/:id
 func (h *SSHHandler) GetSession(c *gin.Context) {
 	// 从上下文获取用户 ID
-	userID, err := getUserIDFromContext(c)
+	scope, err := access.FromContext(c.Request.Context())
 	if err != nil {
 		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		return
@@ -57,6 +56,10 @@ func (h *SSHHandler) GetSession(c *gin.Context) {
 
 	// 获取会话 ID
 	sessionID := c.Param("id")
+	if !protocol.ValidConnectionID(sessionID) {
+		RespondError(c, http.StatusBadRequest, "invalid_session_id", "Invalid connection ID")
+		return
+	}
 
 	// 查找会话
 	session, err := h.sessionManager.Get(sessionID)
@@ -70,11 +73,15 @@ func (h *SSHHandler) GetSession(c *gin.Context) {
 	}
 
 	// 验证权限
-	if session.UserID != userID.String() {
+	if session.Actor != scope.Actor() {
 		RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
 
+	if err := scope.Check(c.Request.Context(), access.Requirement{Action: protocol.TerminalConnect, ServerID: session.ServerID}); err != nil {
+		accessError(c, err)
+		return
+	}
 	RespondSuccess(c, session.ToPublic())
 }
 
@@ -82,7 +89,7 @@ func (h *SSHHandler) GetSession(c *gin.Context) {
 // DELETE /api/v1/ssh/sessions/:id
 func (h *SSHHandler) CloseSession(c *gin.Context) {
 	// 从上下文获取用户 ID
-	userID, err := getUserIDFromContext(c)
+	scope, err := access.FromContext(c.Request.Context())
 	if err != nil {
 		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		return
@@ -90,6 +97,10 @@ func (h *SSHHandler) CloseSession(c *gin.Context) {
 
 	// 获取会话 ID
 	sessionID := c.Param("id")
+	if !protocol.ValidConnectionID(sessionID) {
+		RespondError(c, http.StatusBadRequest, "invalid_session_id", "Invalid connection ID")
+		return
+	}
 
 	// 查找会话
 	session, err := h.sessionManager.Get(sessionID)
@@ -103,7 +114,7 @@ func (h *SSHHandler) CloseSession(c *gin.Context) {
 	}
 
 	// 验证权限
-	if session.UserID != userID.String() {
+	if session.Actor != scope.Actor() {
 		RespondError(c, http.StatusForbidden, "forbidden", "Access denied")
 		return
 	}
@@ -114,22 +125,22 @@ func (h *SSHHandler) CloseSession(c *gin.Context) {
 		return
 	}
 
-	RespondSuccessWithMessage(c, nil, "Session closed successfully")
+	RespondSuccess(c, protocol.MessageResponse{Message: "Session closed successfully"})
 }
 
 // GetStatistics 获取会话统计
 // GET /api/v1/ssh/statistics
 func (h *SSHHandler) GetStatistics(c *gin.Context) {
 	// 从上下文获取用户 ID
-	userID, err := getUserIDFromContext(c)
+	scope, err := access.FromContext(c.Request.Context())
 	if err != nil {
 		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
 		return
 	}
 
 	// 获取统计信息
-	userSessions := h.sessionManager.GetByUserID(userID.String())
-	totalSessions := h.sessionManager.Count()
+	userSessions := h.sessionManager.GetByActor(scope.Actor())
+	totalSessions := len(userSessions)
 
 	activeSessions := 0
 	for _, session := range userSessions {
@@ -138,9 +149,5 @@ func (h *SSHHandler) GetStatistics(c *gin.Context) {
 		}
 	}
 
-	RespondSuccess(c, gin.H{
-		"user_sessions":   len(userSessions),
-		"active_sessions": activeSessions,
-		"total_sessions":  totalSessions,
-	})
+	RespondSuccess(c, protocol.SSHSessionStatistics{ActiveSessions: activeSessions, TotalSessions: totalSessions})
 }

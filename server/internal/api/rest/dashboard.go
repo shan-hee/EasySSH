@@ -1,58 +1,35 @@
 package rest
 
 import (
-	"context"
+	"errors"
+	"github.com/easyssh/server/internal/domain/operationrecord"
+	"github.com/easyssh/shared/protocol"
 	"net/http"
 
 	"github.com/easyssh/server/internal/domain/dashboard"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // DashboardHandler 仪表盘处理器
-type DashboardHandler struct {
-	dashboardService dashboard.Service
-	permission       interface {
-		Authorize(ctx context.Context, userID uuid.UUID, roleKey, permissionCode, resource string) (bool, error)
-	}
-}
+type DashboardHandler struct{ dashboardService dashboard.Service }
 
-// NewDashboardHandler 创建仪表盘处理器
-func NewDashboardHandler(dashboardService dashboard.Service, permissionService interface {
-	Authorize(ctx context.Context, userID uuid.UUID, roleKey, permissionCode, resource string) (bool, error)
-}) *DashboardHandler {
-	return &DashboardHandler{
-		dashboardService: dashboardService,
-		permission:       permissionService,
-	}
+func NewDashboardHandler(service dashboard.Service) *DashboardHandler {
+	return &DashboardHandler{dashboardService: service}
 }
 
 // GetOverview 获取仪表盘聚合概览
 // GET /api/v1/dashboard/overview
 func (h *DashboardHandler) GetOverview(c *gin.Context) {
-	// 获取当前用户
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		RespondError(c, http.StatusUnauthorized, "unauthorized", err.Error())
+	overview, err := h.dashboardService.GetOverview(c.Request.Context(), c.DefaultQuery("timezone", "UTC"))
+	if errors.Is(err, operationrecord.ErrInvalidWindow) {
+		RespondError(c, http.StatusBadRequest, "invalid_activity_window", "Use a valid IANA timezone")
 		return
 	}
-
-	var userIDPtr *uuid.UUID
-	role, _ := c.Get("role")
-	roleKey, _ := role.(string)
-	viewAll := false
-	if h.permission != nil {
-		viewAll, _ = h.permission.Authorize(c.Request.Context(), userID, roleKey, "dashboard:view-all", "dashboard/*")
-	}
-	if !viewAll {
-		userIDPtr = &userID
-	}
-
-	overview, err := h.dashboardService.GetOverview(c.Request.Context(), userIDPtr)
 	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "overview_failed", err.Error())
+		accessError(c, err)
 		return
 	}
-
-	RespondSuccess(c, overview)
+	RespondSuccess(c, protocol.DashboardOverview{
+		Activity: activityOverviewResponse(overview.Activity), Stats: overview.Stats, Distribution: overview.Distribution,
+	})
 }

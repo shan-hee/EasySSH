@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
@@ -49,9 +48,9 @@ func NewDingTalkService(config *DingTalkConfig) (DingTalkService, error) {
 
 // DingTalkMessage 钉钉消息结构
 type DingTalkMessage struct {
-	MsgType  string                 `json:"msgtype"`
-	Text     *DingTalkText          `json:"text,omitempty"`
-	Markdown *DingTalkMarkdown      `json:"markdown,omitempty"`
+	MsgType  string            `json:"msgtype"`
+	Text     *DingTalkText     `json:"text,omitempty"`
+	Markdown *DingTalkMarkdown `json:"markdown,omitempty"`
 }
 
 // DingTalkText 文本消息
@@ -110,11 +109,11 @@ func (s *dingTalkService) send(ctx context.Context, message DingTalkMessage) err
 		// 添加签名参数
 		u, err := url.Parse(requestURL)
 		if err != nil {
-			return fmt.Errorf("invalid webhook URL: %w", err)
+			return fmt.Errorf("invalid notification webhook URL")
 		}
 		q := u.Query()
-		q.Add("timestamp", fmt.Sprintf("%d", timestamp))
-		q.Add("sign", sign)
+		q.Set("timestamp", fmt.Sprintf("%d", timestamp))
+		q.Set("sign", sign)
 		u.RawQuery = q.Encode()
 		requestURL = u.String()
 	}
@@ -122,36 +121,18 @@ func (s *dingTalkService) send(ctx context.Context, message DingTalkMessage) err
 	// 创建请求
 	req, err := http.NewRequestWithContext(ctx, "POST", requestURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create notification request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	// 发送请求
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		return notificationRequestError(err)
 	}
 	defer resp.Body.Close()
 
-	// 读取响应
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// 解析响应
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	// 检查错误码
-	if errCode, ok := result["errcode"].(float64); ok && errCode != 0 {
-		errMsg, _ := result["errmsg"].(string)
-		return fmt.Errorf("dingtalk error %d: %s", int(errCode), errMsg)
-	}
-
-	return nil
+	return checkRobotResponse(resp)
 }
 
 // generateSign 生成钉钉签名

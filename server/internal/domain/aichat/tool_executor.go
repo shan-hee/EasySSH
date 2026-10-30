@@ -4,7 +4,10 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"strings"
 	"time"
 
@@ -16,8 +19,8 @@ import (
 	sharedmonitoring "github.com/easyssh/shared/monitoring"
 	"github.com/easyssh/shared/secretcrypto"
 	"github.com/easyssh/shared/sftputil"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/ssh"
 )
 
 // ToolExecutorService 工具执行服务
@@ -25,7 +28,7 @@ type ToolExecutorService struct {
 	serverService   server.Service
 	sftpPool        *sftp.Pool
 	encryptor       *crypto.Encryptor
-	hostKeyCallback ssh.HostKeyCallback
+	hostKeyCallback sshutil.HostKeyPolicy
 }
 
 // NewToolExecutorService 创建工具执行服务
@@ -33,7 +36,7 @@ func NewToolExecutorService(
 	serverService server.Service,
 	sftpPool *sftp.Pool,
 	encryptor *crypto.Encryptor,
-	hostKeyCallback ssh.HostKeyCallback,
+	hostKeyCallback sshutil.HostKeyPolicy,
 ) *ToolExecutorService {
 	return &ToolExecutorService{
 		serverService:   serverService,
@@ -44,7 +47,32 @@ func NewToolExecutorService(
 }
 
 // ExecuteTool 执行工具调用
-func (s *ToolExecutorService) ExecuteTool(ctx context.Context, userID uuid.UUID, toolCall *ToolCall, permissionMode PermissionMode) (*ToolResult, error) {
+func (s *ToolExecutorService) ExecuteTool(ctx context.Context, toolCall *ToolCall, permissionMode PermissionMode) (*ToolResult, error) {
+	scope := access.Current(ctx)
+	requirements := []access.Requirement{{Action: protocol.WorkspaceRead}}
+	if toolCall.Name != "list_servers" {
+		var target struct {
+			ServerID string `json:"server_id"`
+		}
+		if err := json.Unmarshal(toolCall.Arguments, &target); err != nil {
+			return nil, err
+		}
+		if _, err := uuid.Parse(target.ServerID); err != nil {
+			return nil, access.ErrForbidden
+		}
+		actions := map[string]protocol.Action{"get_server_info": protocol.WorkspaceRead, "execute_command": protocol.TerminalConnect, "list_directory": protocol.FilesList, "read_file": protocol.FilesRead, "write_file": protocol.FilesWrite, "create_directory": protocol.FilesWrite, "delete_file": protocol.FilesDelete, "get_system_info": protocol.MonitorRead}
+		action, ok := actions[toolCall.Name]
+		if !ok {
+			return nil, access.ErrForbidden
+		}
+		requirements = []access.Requirement{{Action: protocol.AIUse, ServerID: target.ServerID}, {Action: action, ServerID: target.ServerID}}
+	}
+	lease, err := scope.OpenWork(ctx, access.Task, requirements...)
+	if err != nil {
+		return nil, err
+	}
+	defer lease.Close(nil)
+	ctx = lease.Context()
 	mode := NormalizePermissionMode(string(permissionMode))
 	if !IsToolAllowedInMode(mode, toolCall.Name) {
 		return nil, &ToolPermissionError{
@@ -59,23 +87,23 @@ func (s *ToolExecutorService) ExecuteTool(ctx context.Context, userID uuid.UUID,
 
 	switch toolCall.Name {
 	case "list_servers":
-		return s.executeListServers(ctx, userID, toolCall)
+		return s.executeListServers(ctx, toolCall)
 	case "get_server_info":
-		return s.executeGetServerInfo(ctx, userID, toolCall)
+		return s.executeGetServerInfo(ctx, toolCall)
 	case "execute_command":
-		return s.executeCommand(ctx, userID, toolCall)
+		return s.executeCommand(ctx, toolCall)
 	case "list_directory":
-		return s.executeListDirectory(ctx, userID, toolCall)
+		return s.executeListDirectory(ctx, toolCall)
 	case "read_file":
-		return s.executeReadFile(ctx, userID, toolCall)
+		return s.executeReadFile(ctx, toolCall)
 	case "write_file":
-		return s.executeWriteFile(ctx, userID, toolCall)
+		return s.executeWriteFile(ctx, toolCall)
 	case "create_directory":
-		return s.executeCreateDirectory(ctx, userID, toolCall)
+		return s.executeCreateDirectory(ctx, toolCall)
 	case "delete_file":
-		return s.executeDeleteFile(ctx, userID, toolCall)
+		return s.executeDeleteFile(ctx, toolCall)
 	case "get_system_info":
-		return s.executeGetSystemInfo(ctx, userID, toolCall)
+		return s.executeGetSystemInfo(ctx, toolCall)
 	default:
 		result.Content = fmt.Sprintf("未知工具: %s", toolCall.Name)
 		result.IsError = true
@@ -84,10 +112,10 @@ func (s *ToolExecutorService) ExecuteTool(ctx context.Context, userID uuid.UUID,
 }
 
 // executeListServers 列出服务器
-func (s *ToolExecutorService) executeListServers(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error) {
+func (s *ToolExecutorService) executeListServers(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
-	servers, _, err := s.serverService.List(ctx, userID, 100, 0)
+	servers, _, err := s.serverService.List(ctx, access.Current(ctx), 100, 0)
 	if err != nil {
 		result.Content = fmt.Sprintf("获取服务器列表失败: %v", err)
 		result.IsError = true
@@ -109,34 +137,37 @@ func (s *ToolExecutorService) executeListServers(ctx context.Context, userID uui
 		LastConnected *time.Time        `json:"last_connected,omitempty"`
 	}
 
-	serverList := make([]serverInfo, len(servers))
-	for i, srv := range servers {
+	serverList := make([]serverInfo, 0, len(servers))
+	for _, srv := range servers {
+		if access.Current(ctx).Check(ctx, access.Requirement{Action: protocol.AIUse, ServerID: srv.ID.String()}) != nil {
+			continue
+		}
 		name := srv.Host
 		if srv.Name != "" {
 			name = srv.Name
 		}
-		serverList[i] = serverInfo{
+		serverList = append(serverList, serverInfo{
 			ID:            srv.ID.String(),
 			Name:          name,
 			Host:          srv.Host,
 			Port:          srv.Port,
 			Username:      srv.Username,
-			AuthMethod:    srv.AuthMethod,
+			AuthMethod:    srv.Auth.AuthMethod,
 			Status:        string(srv.Status),
 			Group:         srv.Group,
 			Tags:          srv.Tags,
 			Description:   srv.Description,
 			OS:            srv.OS,
 			LastConnected: srv.LastConnected,
-		}
+		})
 	}
 
-	result.Content = aiToolJSON(fmt.Sprintf("找到 %d 台服务器", len(servers)), serverList)
+	result.Content = aiToolJSON(fmt.Sprintf("找到 %d 台服务器", len(serverList)), serverList)
 	return result, nil
 }
 
 // executeGetServerInfo 获取服务器详情
-func (s *ToolExecutorService) executeGetServerInfo(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error) {
+func (s *ToolExecutorService) executeGetServerInfo(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	var args struct {
@@ -155,7 +186,7 @@ func (s *ToolExecutorService) executeGetServerInfo(ctx context.Context, userID u
 		return result, nil
 	}
 
-	srv, err := s.serverService.GetByID(ctx, userID, serverID)
+	srv, err := s.serverService.GetByID(ctx, access.Current(ctx), serverID)
 	if err != nil {
 		result.Content = fmt.Sprintf("获取服务器信息失败: %v", err)
 		result.IsError = true
@@ -168,15 +199,15 @@ func (s *ToolExecutorService) executeGetServerInfo(ctx context.Context, userID u
 		"host":            srv.Host,
 		"port":            srv.Port,
 		"username":        srv.Username,
-		"auth_method":     srv.AuthMethod,
+		"auth_method":     srv.Auth.AuthMethod,
 		"status":          srv.Status,
 		"group":           srv.Group,
 		"tags":            srv.Tags,
 		"description":     srv.Description,
 		"os":              srv.OS,
 		"last_connected":  srv.LastConnected,
-		"has_password":    srv.Password != "",
-		"has_private_key": srv.SSHKeyID != nil,
+		"has_password":    srv.Auth.Password != "",
+		"has_private_key": srv.Auth.SSHKeyID != nil,
 		"country":         srv.Country,
 		"city":            srv.City,
 	}
@@ -186,7 +217,7 @@ func (s *ToolExecutorService) executeGetServerInfo(ctx context.Context, userID u
 }
 
 // executeCommand 执行命令
-func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error) {
+func (s *ToolExecutorService) executeCommand(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	var args struct {
@@ -214,7 +245,7 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 		return result, nil
 	}
 
-	srv, err := s.serverService.GetByID(ctx, userID, serverID)
+	srv, err := s.serverService.GetByID(ctx, access.Current(ctx), serverID)
 	if err != nil {
 		result.Content = fmt.Sprintf("获取服务器信息失败: %v", err)
 		result.IsError = true
@@ -222,7 +253,7 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 	}
 
 	// 创建 SSH 客户端
-	sshClient, err := sshDomain.NewClient(srv, s.encryptor, s.hostKeyCallback)
+	sshClient, err := sshDomain.NewClient(ctx, srv, s.encryptor, s.hostKeyCallback)
 	if err != nil {
 		result.Content = fmt.Sprintf("创建SSH客户端失败: %v", err)
 		result.IsError = true
@@ -244,6 +275,10 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 
 	commandResult, err := sshClient.ExecuteCommandDetailedContext(commandCtx, args.Command)
 	if err != nil && commandResult == nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			result.Cancelled, result.Content = true, "命令未开始，已取消。"
+			return result, nil
+		}
 		result.Content = fmt.Sprintf("命令执行失败: %v", err)
 		result.IsError = true
 		return result, nil
@@ -256,12 +291,19 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 		"server_id":    serverID.String(),
 		"command":      commandResult.Command,
 		"exit_code":    commandResult.ExitCode,
+		"outcome":      commandResult.Outcome,
+		"error":        commandResult.Error,
 		"duration_ms":  commandResult.DurationMs,
 		"started_at":   commandResult.StartedAt.Format(time.RFC3339Nano),
 		"completed_at": commandResult.CompletedAt.Format(time.RFC3339Nano),
 		"output":       output,
 	}
-	if err != nil || commandResult.ExitCode != 0 {
+	if commandResult.Outcome == "unknown" {
+		result.Content = aiToolJSON("命令结果未知，先只读核对，不能直接重试", payload)
+		result.Unknown = true
+		return result, nil
+	}
+	if commandResult.Outcome != "succeeded" {
 		result.Content = aiToolJSON("命令执行失败", payload)
 		result.IsError = true
 		return result, nil
@@ -272,7 +314,7 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, userID uuid.UU
 }
 
 // executeListDirectory 列出目录
-func (s *ToolExecutorService) executeListDirectory(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error) {
+func (s *ToolExecutorService) executeListDirectory(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	var args struct {
@@ -297,7 +339,7 @@ func (s *ToolExecutorService) executeListDirectory(ctx context.Context, userID u
 	}
 
 	// 获取 SFTP 客户端
-	client, err := s.sftpPool.Get(ctx, userID, serverID)
+	client, err := s.sftpPool.Get(ctx, serverID, protocol.FilesList)
 	if err != nil {
 		result.Content = fmt.Sprintf("连接服务器失败: %v", err)
 		result.IsError = true
@@ -338,7 +380,7 @@ func (s *ToolExecutorService) executeListDirectory(ctx context.Context, userID u
 }
 
 // executeReadFile 读取文件
-func (s *ToolExecutorService) executeReadFile(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error) {
+func (s *ToolExecutorService) executeReadFile(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	var args struct {
@@ -367,7 +409,7 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, userID uuid.U
 	}
 
 	// 获取 SFTP 客户端
-	client, err := s.sftpPool.Get(ctx, userID, serverID)
+	client, err := s.sftpPool.Get(ctx, serverID, protocol.FilesRead)
 	if err != nil {
 		result.Content = fmt.Sprintf("连接服务器失败: %v", err)
 		result.IsError = true
@@ -409,7 +451,7 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, userID uuid.U
 }
 
 // executeWriteFile 写入文件
-func (s *ToolExecutorService) executeWriteFile(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error) {
+func (s *ToolExecutorService) executeWriteFile(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	var args struct {
@@ -431,7 +473,7 @@ func (s *ToolExecutorService) executeWriteFile(ctx context.Context, userID uuid.
 	}
 
 	// 获取 SFTP 客户端
-	client, err := s.sftpPool.Get(ctx, userID, serverID)
+	client, err := s.sftpPool.Get(ctx, serverID, protocol.FilesWrite)
 	if err != nil {
 		result.Content = fmt.Sprintf("连接服务器失败: %v", err)
 		result.IsError = true
@@ -453,24 +495,32 @@ func (s *ToolExecutorService) executeWriteFile(ctx context.Context, userID uuid.
 
 	// 写入文件
 	if err := client.WriteFile(args.Path, []byte(args.Content), 0644); err != nil {
-		result.Content = fmt.Sprintf("写入文件失败: %v", err)
-		result.IsError = true
+		result.Content = fmt.Sprintf("写入文件未完成: %v", err)
+		result.Unknown = errors.Is(err, sftputil.ErrMutationOutcomeUnknown)
+		result.IsError = !result.Unknown
+		if result.Unknown {
+			result.Content = "写入结果未知，先只读核对，不能直接重试：" + err.Error()
+		}
 		return result, nil
 	}
 
 	info, err := client.GetFileInfo(args.Path)
 	if err != nil {
-		result.Content = fmt.Sprintf("获取文件信息失败: %v", err)
-		result.IsError = true
+		result.Content = fmt.Sprintf("文件已写入，后续读取属性未完成；不能据此重复写入：%v", err)
+		result.Artifact = prepared
 		return result, nil
 	}
 
 	actual, existsAfter, verifyErr := readPreviewFile(client.Client, args.Path)
 	if verifyErr != nil {
-		return nil, fmt.Errorf("文件已写入，但无法核对写入结果: %w", verifyErr)
+		result.Artifact = prepared
+		result.Content = "文件已写入，后续核对未完成；先重新读取，不能直接重复写入：" + verifyErr.Error()
+		return result, nil
 	}
 	if !existsAfter || actual != args.Content {
-		return nil, fmt.Errorf("文件写入后内容不一致，请重新读取核对")
+		result.Artifact = prepared
+		result.Content = "写入请求已成功，但后续读取内容不一致；请重新读取核对，不自动重复写入。"
+		return result, nil
 	}
 	result.Artifact = prepared
 
@@ -479,7 +529,7 @@ func (s *ToolExecutorService) executeWriteFile(ctx context.Context, userID uuid.
 }
 
 // executeCreateDirectory 创建目录
-func (s *ToolExecutorService) executeCreateDirectory(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error) {
+func (s *ToolExecutorService) executeCreateDirectory(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	var args struct {
@@ -500,7 +550,7 @@ func (s *ToolExecutorService) executeCreateDirectory(ctx context.Context, userID
 	}
 
 	// 获取 SFTP 客户端
-	client, err := s.sftpPool.Get(ctx, userID, serverID)
+	client, err := s.sftpPool.Get(ctx, serverID, protocol.FilesWrite)
 	if err != nil {
 		result.Content = fmt.Sprintf("连接服务器失败: %v", err)
 		result.IsError = true
@@ -508,17 +558,19 @@ func (s *ToolExecutorService) executeCreateDirectory(ctx context.Context, userID
 	}
 	defer client.Release()
 
-	// 创建目录（递归）
+	// 创建目录（递归）。失败前可能已有父目录创建，不能直接重试。
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err := client.CreateDirectories(args.Path); err != nil {
-		result.Content = fmt.Sprintf("创建目录失败: %v", err)
-		result.IsError = true
+		result.Content = fmt.Sprintf("多级目录创建未完成，可能已有目录创建；先只读核对：%v", err)
+		result.Unknown = true
 		return result, nil
 	}
 
 	info, err := client.GetFileInfo(args.Path)
 	if err != nil {
-		result.Content = fmt.Sprintf("获取目录信息失败: %v", err)
-		result.IsError = true
+		result.Content = fmt.Sprintf("目录已创建，后续读取属性未完成；不能据此重复创建：%v", err)
 		return result, nil
 	}
 
@@ -527,7 +579,7 @@ func (s *ToolExecutorService) executeCreateDirectory(ctx context.Context, userID
 }
 
 // executeDeleteFile 删除文件
-func (s *ToolExecutorService) executeDeleteFile(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error) {
+func (s *ToolExecutorService) executeDeleteFile(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	var args struct {
@@ -548,7 +600,7 @@ func (s *ToolExecutorService) executeDeleteFile(ctx context.Context, userID uuid
 	}
 
 	// 获取 SFTP 客户端
-	client, err := s.sftpPool.Get(ctx, userID, serverID)
+	client, err := s.sftpPool.Get(ctx, serverID, protocol.FilesDelete)
 	if err != nil {
 		result.Content = fmt.Sprintf("连接服务器失败: %v", err)
 		result.IsError = true
@@ -556,35 +608,23 @@ func (s *ToolExecutorService) executeDeleteFile(ctx context.Context, userID uuid
 	}
 	defer client.Release()
 
-	// 获取文件信息
-	info, err := client.GetFileInfo(args.Path)
+	var report sftputil.DeleteReport
+	err = client.DeleteTree(args.Path, &report, nil)
+	result.Unknown = errors.Is(err, sftputil.ErrMutationOutcomeUnknown)
+	result.IsError = err != nil && !result.Unknown
+	message := "文件或目录已删除"
 	if err != nil {
-		result.Content = fmt.Sprintf("获取文件信息失败: %v", err)
-		result.IsError = true
-		return result, nil
-	}
-
-	// 删除
-	if info.IsDir {
-		if err := client.DeleteDirectory(args.Path); err != nil {
-			result.Content = fmt.Sprintf("删除目录失败: %v", err)
-			result.IsError = true
-			return result, nil
-		}
-	} else {
-		if err := client.DeleteFile(args.Path); err != nil {
-			result.Content = fmt.Sprintf("删除文件失败: %v", err)
-			result.IsError = true
-			return result, nil
+		message = "删除未完成：" + err.Error()
+		if result.Unknown {
+			message = "删除回执丢失，先只读核对，不能直接重试：" + err.Error()
 		}
 	}
-
-	result.Content = aiToolJSON("文件或目录已删除", info)
+	result.Content = aiToolJSON(message, report)
 	return result, nil
 }
 
 // executeGetSystemInfo 获取系统信息
-func (s *ToolExecutorService) executeGetSystemInfo(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error) {
+func (s *ToolExecutorService) executeGetSystemInfo(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	var args struct {
@@ -603,7 +643,7 @@ func (s *ToolExecutorService) executeGetSystemInfo(ctx context.Context, userID u
 		return result, nil
 	}
 
-	srv, err := s.serverService.GetByID(ctx, userID, serverID)
+	srv, err := s.serverService.GetByID(ctx, access.Current(ctx), serverID)
 	if err != nil {
 		result.Content = fmt.Sprintf("获取服务器信息失败: %v", err)
 		result.IsError = true
@@ -611,7 +651,7 @@ func (s *ToolExecutorService) executeGetSystemInfo(ctx context.Context, userID u
 	}
 
 	// 创建 SSH 客户端
-	sshClient, err := sshDomain.NewClient(srv, s.encryptor, s.hostKeyCallback)
+	sshClient, err := sshDomain.NewClient(ctx, srv, s.encryptor, s.hostKeyCallback)
 	if err != nil {
 		result.Content = fmt.Sprintf("创建SSH客户端失败: %v", err)
 		result.IsError = true
@@ -630,7 +670,7 @@ func (s *ToolExecutorService) executeGetSystemInfo(ctx context.Context, userID u
 
 	command := sharedmonitoring.BuildMetricsScript(sharedmonitoring.MetricsScriptOptions{
 		IncludeStaticInfo:  true,
-		IncludeDockerStats: true,
+		IncludeDockerStats: access.Current(ctx).Check(ctx, access.Requirement{Action: protocol.DockerRead, ServerID: serverID.String()}) == nil,
 	})
 	commandCtx, commandCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer commandCancel()
@@ -640,10 +680,10 @@ func (s *ToolExecutorService) executeGetSystemInfo(ctx context.Context, userID u
 		result.IsError = true
 		return result, nil
 	}
-	if commandResult.ExitCode != 0 {
+	if commandResult.Outcome != "succeeded" {
 		message := strings.TrimSpace(commandResult.Output)
 		if message == "" {
-			message = fmt.Sprintf("monitor command failed with exit code %d", commandResult.ExitCode)
+			message = "monitor command " + commandResult.Outcome + ": " + commandResult.Error
 		}
 		result.Content = "获取系统信息失败: " + message
 		result.IsError = true

@@ -1,12 +1,39 @@
 package rest
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
+
+// Omitted values use the documented default; malformed destructive/query inputs never silently fall back.
+func parseBoundedQueryInt(c *gin.Context, key string, fallback, minimum, maximum int) (int, bool) {
+	raw, present := c.GetQuery(key)
+	if !present {
+		// GetQuery treats an explicitly empty value as missing; preserve that distinction.
+		if _, present = c.Request.URL.Query()[key]; !present {
+			return fallback, true
+		}
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < minimum || value > maximum {
+		RespondError(c, http.StatusBadRequest, "invalid_"+key, fmt.Sprintf("%s must be between %d and %d", key, minimum, maximum))
+		return 0, false
+	}
+	return value, true
+}
+
+func validQueryTimeRange(c *gin.Context, start, end *time.Time) bool {
+	if start != nil && end != nil && start.After(*end) {
+		RespondError(c, http.StatusBadRequest, "invalid_date_range", "start_date must not be after end_date")
+		return false
+	}
+	return true
+}
 
 func parseQueryTime(c *gin.Context, key string, endOfDay bool) (*time.Time, bool) {
 	value := c.Query(key)

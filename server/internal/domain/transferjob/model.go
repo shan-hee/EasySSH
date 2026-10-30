@@ -1,6 +1,7 @@
 package transferjob
 
 import (
+	"github.com/easyssh/shared/protocol"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,15 +23,17 @@ const (
 	JobStatusStaging   JobStatus = "staging"
 	JobStatusQueued    JobStatus = "queued"
 	JobStatusRunning   JobStatus = "running"
+	JobStatusCanceling JobStatus = "canceling"
+	JobStatusUnknown   JobStatus = "unknown"
 	JobStatusCompleted JobStatus = "completed"
 	JobStatusFailed    JobStatus = "failed"
 	JobStatusCancelled JobStatus = "cancelled"
-	JobStatusExpired   JobStatus = "expired"
 )
 
 type JobStage string
 
 const (
+	JobStageAwaitingInput      JobStage = "awaiting_input"
 	JobStageStaging            JobStage = "staging"
 	JobStageTransferToRemote   JobStage = "transfer_to_remote"
 	JobStageDownloadFromRemote JobStage = "download_from_remote"
@@ -39,8 +42,8 @@ const (
 )
 
 type TransferJob struct {
-	ID     uuid.UUID `gorm:"type:char(36);primary_key" json:"id"`
-	UserID uuid.UUID `gorm:"type:char(36);not null;index;index:idx_transfer_jobs_user_time,priority:1" json:"user_id"`
+	Actor protocol.Actor `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
+	ID    uuid.UUID      `gorm:"type:char(36);primary_key" json:"id"`
 
 	Name        string    `gorm:"size:160;not null" json:"name"`
 	Kind        JobKind   `gorm:"type:varchar(40);not null;index" json:"kind"`
@@ -58,24 +61,29 @@ type TransferJob struct {
 	ArtifactName      string     `gorm:"size:255" json:"artifact_name"`
 	ArtifactPath      string     `gorm:"type:text" json:"-"`
 	ArtifactSize      int64      `gorm:"default:0" json:"artifact_size"`
-	ArtifactManaged   bool       `gorm:"not null;default:true" json:"artifact_managed"`
+	ArtifactManaged   bool       `gorm:"not null" json:"artifact_managed"`
+	ArtifactCleanedAt *time.Time `json:"artifact_cleaned_at,omitempty"`
 	ArtifactExpiresAt *time.Time `gorm:"index" json:"artifact_expires_at,omitempty"`
 
-	Progress       int   `gorm:"default:0" json:"progress"`
-	BytesTotal     int64 `gorm:"default:0" json:"bytes_total"`
-	BytesProcessed int64 `gorm:"default:0" json:"bytes_processed"`
-	SpeedBps       int64 `gorm:"default:0" json:"speed_bps"`
+	Progress       int    `gorm:"default:0" json:"progress"`
+	BytesTotal     int64  `gorm:"default:0" json:"bytes_total"`
+	BytesProcessed int64  `gorm:"default:0" json:"bytes_processed"`
+	BytesCompleted int64  `gorm:"default:0" json:"bytes_completed"`
+	FilesTotal     int    `gorm:"default:0" json:"files_total"`
+	FilesCompleted int    `gorm:"default:0" json:"files_completed"`
+	ResultPath     string `gorm:"type:text" json:"result_path"`
+	SpeedBps       int64  `gorm:"default:0" json:"speed_bps"`
 
 	RetryCount      int        `gorm:"default:0" json:"retry_count"`
 	MaxRetries      int        `gorm:"default:0" json:"max_retries"`
 	ScheduledTaskID *uuid.UUID `gorm:"type:char(36);index" json:"scheduled_task_id,omitempty"`
-	TaskRunID       *uuid.UUID `gorm:"type:char(36);index" json:"task_run_id,omitempty"`
+	TaskRunID       *uuid.UUID `gorm:"type:char(36);uniqueIndex" json:"task_run_id,omitempty"`
 	ErrorMessage    string     `gorm:"type:text" json:"error_message,omitempty"`
 	DetailJSON      string     `gorm:"type:text" json:"detail_json,omitempty"`
 
 	StartedAt  *time.Time     `gorm:"index" json:"started_at,omitempty"`
 	FinishedAt *time.Time     `gorm:"index" json:"finished_at,omitempty"`
-	CreatedAt  time.Time      `gorm:"index;index:idx_transfer_jobs_user_time,priority:2,sort:desc" json:"created_at"`
+	CreatedAt  time.Time      `gorm:"index" json:"created_at"`
 	UpdatedAt  time.Time      `json:"updated_at"`
 	DeletedAt  gorm.DeletedAt `gorm:"index" json:"-"`
 }
@@ -92,30 +100,29 @@ func (j *TransferJob) BeforeCreate(tx *gorm.DB) error {
 }
 
 type CreateUploadRequest struct {
-	Name            string     `json:"name"`
-	ServerID        string     `json:"server_id" binding:"required"`
-	TargetPath      string     `json:"target_path" binding:"required"`
-	FileName        string     `json:"file_name"`
-	FileSize        int64      `json:"file_size"`
-	RetentionDays   int        `json:"retention_days"`
-	Description     string     `json:"description"`
-	DeferStart      bool       `json:"defer_start"`
-	ScheduledTaskID *uuid.UUID `json:"scheduled_task_id,omitempty"`
-	TaskRunID       *uuid.UUID `json:"-"`
+	Name          string `json:"name"`
+	ServerID      string `json:"server_id" binding:"required"`
+	TargetPath    string `json:"target_path" binding:"required"`
+	FileName      string `json:"file_name"`
+	FileSize      int64  `json:"file_size"`
+	RetentionDays int    `json:"retention_days"`
+	Description   string `json:"description"`
+	DeferStart    bool   `json:"defer_start"`
 }
 
 type CreateDownloadRequest struct {
 	Name            string     `json:"name"`
 	ServerID        string     `json:"server_id" binding:"required"`
-	SourcePath      string     `json:"source_path" binding:"required"`
+	SourcePath      string     `json:"source_path"`
+	SourcePaths     []string   `json:"source_paths"`
+	ExcludePatterns []string   `json:"exclude_patterns"`
 	RetentionDays   int        `json:"retention_days"`
 	Description     string     `json:"description"`
-	ScheduledTaskID *uuid.UUID `json:"scheduled_task_id,omitempty"`
+	ScheduledTaskID *uuid.UUID `json:"-"`
 	TaskRunID       *uuid.UUID `json:"-"`
 }
 
 type ListRequest struct {
-	UserID   uuid.UUID
 	Kind     JobKind
 	Status   JobStatus
 	Page     int
@@ -130,19 +137,6 @@ type ListResponse struct {
 	TotalPages int            `json:"total_pages"`
 }
 
-type Statistics struct {
-	Total          int64 `json:"total"`
-	Queued         int64 `json:"queued"`
-	Running        int64 `json:"running"`
-	Completed      int64 `json:"completed"`
-	Failed         int64 `json:"failed"`
-	Cancelled      int64 `json:"cancelled"`
-	Expired        int64 `json:"expired"`
-	BytesTotal     int64 `json:"bytes_total"`
-	BytesProcessed int64 `json:"bytes_processed"`
-	StorageBytes   int64 `json:"storage_bytes"`
-}
-
 type ScheduledPayload struct {
 	ServerID      string `json:"server_id,omitempty"`
 	SourcePath    string `json:"source_path,omitempty"`
@@ -155,7 +149,6 @@ type ScheduledPayload struct {
 }
 
 type RunScheduledRequest struct {
-	UserID          uuid.UUID
 	ScheduledTaskID uuid.UUID
 	TaskName        string
 	TaskType        string

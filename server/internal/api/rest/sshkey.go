@@ -2,187 +2,128 @@ package rest
 
 import (
 	"errors"
-	"gorm.io/gorm"
+	"github.com/easyssh/shared/protocol"
 	"net/http"
-	"strconv"
 
 	"github.com/easyssh/server/internal/domain/sshkey"
-
 	"github.com/gin-gonic/gin"
 )
 
-// SSHKeyHandler handles SSH key related HTTP requests
-type SSHKeyHandler struct {
-	service sshkey.Service
-}
+type SSHKeyHandler struct{ service sshkey.Service }
 
-// NewSSHKeyHandler creates a new SSH key handler
-func NewSSHKeyHandler(service sshkey.Service) *SSHKeyHandler {
-	return &SSHKeyHandler{
-		service: service,
+func NewSSHKeyHandler(service sshkey.Service) *SSHKeyHandler { return &SSHKeyHandler{service: service} }
+func keyError(c *gin.Context, err error) {
+	var inUse *sshkey.InUseError
+	if errors.As(err, &inUse) {
+		c.AbortWithStatusJSON(http.StatusConflict, protocol.SSHKeyInUse{Error: "key_in_use", References: inUse.References})
+		return
 	}
+	if errors.Is(err, sshkey.ErrInvalidImport) {
+		RespondError(c, 400, "invalid_key", err.Error())
+		return
+	}
+	accessError(c, err)
 }
-
-// GetSSHKeys godoc
-// @Summary Get user's SSH keys
-// @Description Get all SSH keys for the authenticated user
-// @Tags sshkeys
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Success 200 {array} sshkey.SSHKey
-// @Failure 401 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/ssh-keys [get]
 func (h *SSHKeyHandler) GetSSHKeys(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, ErrorResponse{
-			Error: err.Error(),
-		})
+	scope, ok := currentAccess(c)
+	if !ok {
 		return
 	}
-
-	keys, err := h.service.GetUserKeys(userID)
+	keys, err := h.service.ListKeys(c.Request.Context(), scope)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error: "Failed to retrieve SSH keys",
-		})
+		keyError(c, err)
 		return
 	}
-
-	c.JSON(http.StatusOK, keys)
+	items := make([]protocol.SSHKey, 0, len(keys))
+	for _, key := range keys {
+		items = append(items, key.Public())
+	}
+	noStoreAccess(c)
+	c.JSON(http.StatusOK, items)
 }
-
-// GenerateSSHKey godoc
-// @Summary Generate a new SSH key pair
-// @Description Generate a new SSH key pair (RSA or ED25519)
-// @Tags sshkeys
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param request body sshkey.CreateSSHKeyRequest true "SSH key generation request"
-// @Success 201 {object} sshkey.SSHKeyResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/ssh-keys/generate [post]
 func (h *SSHKeyHandler) GenerateSSHKey(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
+	scope, ok := currentAccess(c)
+	if !ok {
+		return
+	}
+	var req protocol.SSHKeyGenerateInput
+	if !accessBody(c, &req) {
+		return
+	}
+	key, err := h.service.GenerateKeyPair(c.Request.Context(), scope, &req)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, ErrorResponse{
-			Error: err.Error(),
-		})
+		keyError(c, err)
 		return
 	}
-
-	var req sshkey.CreateSSHKeyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{
-			Error: "Invalid request: " + err.Error(),
-		})
-		return
-	}
-
-	keyResponse, err := h.service.GenerateKeyPair(&req, userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, ErrorResponse{
-			Error: "Failed to generate SSH key: " + err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusCreated, keyResponse)
+	noStoreAccess(c)
+	c.JSON(http.StatusCreated, key)
 }
-
-// ImportSSHKey godoc
-// @Summary Import an existing SSH key
-// @Description Import an existing SSH private key
-// @Tags sshkeys
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param request body sshkey.ImportSSHKeyRequest true "SSH key import request"
-// @Success 201 {object} sshkey.SSHKeyResponse
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/ssh-keys/import [post]
 func (h *SSHKeyHandler) ImportSSHKey(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
+	scope, ok := currentAccess(c)
+	if !ok {
+		return
+	}
+	var req protocol.SSHKeyImportInput
+	if !accessBody(c, &req) {
+		return
+	}
+	key, err := h.service.ImportKeyPair(c.Request.Context(), scope, &req)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, ErrorResponse{
-			Error: err.Error(),
-		})
+		keyError(c, err)
 		return
 	}
-
-	var req sshkey.ImportSSHKeyRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{
-			Error: "Invalid request: " + err.Error(),
-		})
+	noStoreAccess(c)
+	c.JSON(http.StatusCreated, key)
+}
+func (h *SSHKeyHandler) DeleteSSHKey(c *gin.Context) {
+	scope, ok := currentAccess(c)
+	if !ok {
 		return
 	}
-
-	keyResponse, err := h.service.ImportKeyPair(&req, userID)
-	if err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, sshkey.ErrInvalidImport) {
-			status = http.StatusBadRequest
-		}
-		c.JSON(status, ErrorResponse{
-			Error: "Failed to import SSH key: " + err.Error(),
-		})
+	id, ok := accessID(c, "id")
+	if !ok {
 		return
 	}
-
-	c.JSON(http.StatusCreated, keyResponse)
+	if err := h.service.DeleteKey(c.Request.Context(), scope, id); err != nil {
+		keyError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
-// DeleteSSHKey godoc
-// @Summary Delete an SSH key
-// @Description Delete an SSH key by ID
-// @Tags sshkeys
-// @Accept json
-// @Produce json
-// @Security BearerAuth
-// @Param id path int true "SSH Key ID"
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} ErrorResponse
-// @Failure 401 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Failure 500 {object} ErrorResponse
-// @Router /api/ssh-keys/{id} [delete]
-func (h *SSHKeyHandler) DeleteSSHKey(c *gin.Context) {
-	userID, err := getUserIDFromContext(c)
+func (h *SSHKeyHandler) GetReferences(c *gin.Context) {
+	scope, ok := currentAccess(c)
+	if !ok {
+		return
+	}
+	id, ok := accessID(c, "id")
+	if !ok {
+		return
+	}
+	result, err := h.service.KeyReferences(c.Request.Context(), scope, id)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, ErrorResponse{
-			Error: err.Error(),
-		})
+		keyError(c, err)
 		return
 	}
-
-	keyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{
-			Error: "Invalid key ID",
-		})
+	noStoreAccess(c)
+	c.JSON(http.StatusOK, result)
+}
+func (h *SSHKeyHandler) SetPassphrase(c *gin.Context) {
+	scope, ok := currentAccess(c)
+	if !ok {
 		return
 	}
-
-	if err := h.service.DeleteKey(uint(keyID), userID); err != nil {
-		status := http.StatusConflict
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			status = http.StatusNotFound
-		}
-		c.JSON(status, ErrorResponse{
-			Error: err.Error(),
-		})
+	id, ok := accessID(c, "id")
+	if !ok {
 		return
 	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "SSH key deleted successfully",
-	})
+	var req protocol.SSHKeyPassphraseInput
+	if !accessBody(c, &req) {
+		return
+	}
+	if err := h.service.SetPassphrase(c.Request.Context(), scope, id, req.Passphrase, req.Save); err != nil {
+		keyError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

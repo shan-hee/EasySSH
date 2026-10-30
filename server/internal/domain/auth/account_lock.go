@@ -49,9 +49,9 @@ type failCounter struct {
 }
 
 type accountLockService struct {
-	repo     LoginAttemptRepository
-	userRepo Repository
-	config   AccountLockConfig
+	repo      LoginAttemptRepository
+	ownerRepo Repository
+	config    AccountLockConfig
 
 	mu           sync.Mutex
 	ipFails      map[string]failCounter
@@ -60,10 +60,10 @@ type accountLockService struct {
 }
 
 // NewAccountLockService 创建账户锁定服务。短期失败计数保存在进程内，账户锁定状态同步写入数据库。
-func NewAccountLockService(repo LoginAttemptRepository, userRepo Repository, config AccountLockConfig) AccountLockService {
+func NewAccountLockService(repo LoginAttemptRepository, ownerRepo Repository, config AccountLockConfig) AccountLockService {
 	return &accountLockService{
 		repo:         repo,
-		userRepo:     userRepo,
+		ownerRepo:    ownerRepo,
 		config:       config,
 		ipFails:      make(map[string]failCounter),
 		accountFails: make(map[string]failCounter),
@@ -99,19 +99,19 @@ func (s *accountLockService) CheckAccountLock(ctx context.Context, email string)
 	if !s.config.Enabled {
 		return false, nil, nil
 	}
-	if s.userRepo == nil {
+	if s.ownerRepo == nil {
 		return false, nil, nil
 	}
 
-	user, err := s.userRepo.FindByEmail(ctx, email)
+	owner, err := s.ownerRepo.FindByEmail(ctx, email)
 	if err != nil {
-		if err == ErrUserNotFound {
+		if err == ErrOwnerNotFound {
 			return false, nil, nil
 		}
 		return false, nil, err
 	}
-	if user.IsLocked() {
-		return true, user.LockedUntil, nil
+	if owner.IsLocked() {
+		return true, owner.LockedUntil, nil
 	}
 	return false, nil, nil
 }
@@ -152,22 +152,22 @@ func (s *accountLockService) RecordFailedLogin(ctx context.Context, email, ip, u
 	if accountCount >= s.config.MaxAccountFailAttempts {
 		accountLocked = true
 		unlockTime := now.Add(s.config.AccountLockDuration)
-		if s.userRepo != nil {
-			user, err := s.userRepo.FindByEmail(ctx, email)
+		if s.ownerRepo != nil {
+			owner, err := s.ownerRepo.FindByEmail(ctx, email)
 			if err == nil {
-				user.FailedLoginAttempts = accountCount
-				user.LastFailedLogin = &now
-				user.LockedUntil = &unlockTime
-				user.LockReason = fmt.Sprintf("连续 %d 次登录失败", accountCount)
-				_ = s.userRepo.Update(ctx, user)
+				owner.FailedLoginAttempts = accountCount
+				owner.LastFailedLogin = &now
+				owner.LockedUntil = &unlockTime
+				owner.LockReason = fmt.Sprintf("连续 %d 次登录失败", accountCount)
+				_ = s.ownerRepo.Update(ctx, owner)
 			}
 		}
-	} else if s.userRepo != nil {
-		user, err := s.userRepo.FindByEmail(ctx, email)
+	} else if s.ownerRepo != nil {
+		owner, err := s.ownerRepo.FindByEmail(ctx, email)
 		if err == nil {
-			user.FailedLoginAttempts = accountCount
-			user.LastFailedLogin = &now
-			_ = s.userRepo.Update(ctx, user)
+			owner.FailedLoginAttempts = accountCount
+			owner.LastFailedLogin = &now
+			_ = s.ownerRepo.Update(ctx, owner)
 		}
 	}
 
@@ -205,12 +205,12 @@ func (s *accountLockService) ClearFailedAttempts(ctx context.Context, email, ip 
 	delete(s.accountFails, hashEmail(email))
 	s.mu.Unlock()
 
-	if s.userRepo != nil {
-		user, err := s.userRepo.FindByEmail(ctx, email)
+	if s.ownerRepo != nil {
+		owner, err := s.ownerRepo.FindByEmail(ctx, email)
 		if err == nil {
-			user.FailedLoginAttempts = 0
-			user.LastFailedLogin = nil
-			return s.userRepo.Update(ctx, user)
+			owner.FailedLoginAttempts = 0
+			owner.LastFailedLogin = nil
+			return s.ownerRepo.Update(ctx, owner)
 		}
 	}
 	return nil
@@ -222,16 +222,16 @@ func (s *accountLockService) LockAccount(ctx context.Context, email string, reas
 	}
 	unlockTime := time.Now().Add(duration)
 
-	if s.userRepo == nil {
+	if s.ownerRepo == nil {
 		return nil
 	}
-	user, err := s.userRepo.FindByEmail(ctx, email)
+	owner, err := s.ownerRepo.FindByEmail(ctx, email)
 	if err != nil {
 		return err
 	}
-	user.LockedUntil = &unlockTime
-	user.LockReason = reason
-	return s.userRepo.Update(ctx, user)
+	owner.LockedUntil = &unlockTime
+	owner.LockReason = reason
+	return s.ownerRepo.Update(ctx, owner)
 }
 
 func (s *accountLockService) UnlockAccount(ctx context.Context, email string) error {
@@ -239,14 +239,14 @@ func (s *accountLockService) UnlockAccount(ctx context.Context, email string) er
 	delete(s.accountFails, hashEmail(email))
 	s.mu.Unlock()
 
-	if s.userRepo != nil {
-		user, err := s.userRepo.FindByEmail(ctx, email)
+	if s.ownerRepo != nil {
+		owner, err := s.ownerRepo.FindByEmail(ctx, email)
 		if err == nil {
-			user.FailedLoginAttempts = 0
-			user.LastFailedLogin = nil
-			user.LockedUntil = nil
-			user.LockReason = ""
-			return s.userRepo.Update(ctx, user)
+			owner.FailedLoginAttempts = 0
+			owner.LastFailedLogin = nil
+			owner.LockedUntil = nil
+			owner.LockReason = ""
+			return s.ownerRepo.Update(ctx, owner)
 		}
 	}
 	return nil

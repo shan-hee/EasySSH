@@ -1,6 +1,7 @@
 package sshkey
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
@@ -8,6 +9,8 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"strings"
 
 	"github.com/easyssh/shared/secretcrypto"
@@ -19,11 +22,13 @@ var ErrInvalidImport = errors.New("invalid SSH key import")
 
 // Service defines the interface for SSH key business logic
 type Service interface {
-	GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error)
-	ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error)
-	GetKey(keyID uint, userID uuid.UUID) (*SSHKey, error)
-	GetUserKeys(userID uuid.UUID) ([]SSHKey, error)
-	DeleteKey(keyID uint, userID uuid.UUID) error
+	GenerateKeyPair(ctx context.Context, scope access.Scope, req *protocol.SSHKeyGenerateInput) (*protocol.SSHKeyCreated, error)
+	ImportKeyPair(ctx context.Context, scope access.Scope, req *protocol.SSHKeyImportInput) (*protocol.SSHKey, error)
+	GetKey(ctx context.Context, scope access.Scope, keyID uuid.UUID) (*SSHKey, error)
+	ListKeys(ctx context.Context, scope access.Scope) ([]SSHKey, error)
+	DeleteKey(ctx context.Context, scope access.Scope, keyID uuid.UUID) error
+	KeyReferences(ctx context.Context, scope access.Scope, keyID uuid.UUID) (protocol.SSHKeyReferences, error)
+	SetPassphrase(ctx context.Context, scope access.Scope, keyID uuid.UUID, passphrase string, save bool) error
 }
 
 type service struct {
@@ -40,7 +45,13 @@ func NewService(repo Repository, encryptor *crypto.Encryptor) Service {
 }
 
 // GenerateKeyPair generates a new SSH key pair
-func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error) {
+func (s *service) GenerateKeyPair(ctx context.Context, scope access.Scope, req *protocol.SSHKeyGenerateInput) (*protocol.SSHKeyCreated, error) {
+	if err := scope.RequireOwner(ctx, protocol.ResourcesManage); err != nil {
+		return nil, err
+	}
+	if req == nil || strings.TrimSpace(req.Name) == "" || len(req.Name) > 100 {
+		return nil, fmt.Errorf("%w: key name is required (maximum 100 bytes)", ErrInvalidImport)
+	}
 	var privateKey interface{}
 	var err error
 	var keySize int
@@ -52,7 +63,7 @@ func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*
 			keySize = 2048 // 默认2048位
 		}
 		if keySize < 2048 || keySize > 4096 {
-			return nil, errors.New("RSA key size must be between 2048 and 4096")
+			return nil, fmt.Errorf("%w: RSA key size must be between 2048 and 4096", ErrInvalidImport)
 		}
 		privateKey, err = rsa.GenerateKey(rand.Reader, keySize)
 		if err != nil {
@@ -65,7 +76,7 @@ func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*
 			return nil, fmt.Errorf("failed to generate ED25519 key: %w", err)
 		}
 	default:
-		return nil, errors.New("unsupported algorithm, must be rsa or ed25519")
+		return nil, fmt.Errorf("%w: unsupported algorithm, must be rsa or ed25519", ErrInvalidImport)
 	}
 
 	// 将私钥转换为PEM格式
@@ -74,19 +85,33 @@ func (s *service) GenerateKeyPair(req *CreateSSHKeyRequest, userID uuid.UUID) (*
 		return nil, fmt.Errorf("failed to encode private key: %w", err)
 	}
 
-	result, err := s.ImportKeyPair(&ImportSSHKeyRequest{Name: req.Name, PrivateKey: privateKeyPEM}, userID)
+	result, err := s.importKeyPair(ctx, scope, &protocol.SSHKeyImportInput{Name: req.Name, PrivateKey: privateKeyPEM}, "ssh_key_generate")
 	if err != nil {
 		return nil, err
 	}
-	result.PrivateKey = privateKeyPEM
-	return result, nil
+	return &protocol.SSHKeyCreated{ID: result.ID, Name: result.Name, CreatedAt: result.CreatedAt,
+		PublicKey: result.PublicKey, PrivateKey: privateKeyPEM, Fingerprint: result.Fingerprint,
+		Algorithm: result.Algorithm, KeySize: result.KeySize, PassphraseRequired: result.PassphraseRequired}, nil
 }
 
 // ImportKeyPair preserves the original key's passphrase protection.
-func (s *service) ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SSHKeyResponse, error) {
+func (s *service) ImportKeyPair(ctx context.Context, scope access.Scope, req *protocol.SSHKeyImportInput) (*protocol.SSHKey, error) {
+	return s.importKeyPair(ctx, scope, req, "ssh_key_import")
+}
+
+func (s *service) importKeyPair(ctx context.Context, scope access.Scope, req *protocol.SSHKeyImportInput, action string) (*protocol.SSHKey, error) {
+	if err := scope.RequireOwner(ctx, protocol.ResourcesManage); err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return nil, ErrInvalidImport
+	}
 	name := strings.TrimSpace(req.Name)
-	if name == "" {
+	if name == "" || len(name) > 100 {
 		return nil, fmt.Errorf("%w: key name is required", ErrInvalidImport)
+	}
+	if len(req.PrivateKey) > 1<<20 || len(req.Passphrase) > 4096 {
+		return nil, fmt.Errorf("%w: key material exceeds limit", ErrInvalidImport)
 	}
 	material := strings.TrimSpace(req.PrivateKey)
 	metadata, err := sshutil.InspectPrivateKey(material, req.Passphrase)
@@ -94,7 +119,7 @@ func (s *service) ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SS
 		return nil, fmt.Errorf("%w: %v", ErrInvalidImport, err)
 	}
 	key := &SSHKey{
-		UserID: userID, Name: name, PublicKey: metadata.PublicKey,
+		ID: uuid.New(), Name: name, PublicKey: metadata.PublicKey,
 		Fingerprint: metadata.Fingerprint, Algorithm: metadata.Algorithm,
 		KeySize: metadata.KeySize, PassphraseRequired: metadata.PassphraseRequired,
 	}
@@ -102,28 +127,51 @@ func (s *service) ImportKeyPair(req *ImportSSHKeyRequest, userID uuid.UUID) (*SS
 	if err != nil {
 		return nil, err
 	}
-	if err = s.repo.Create(key); err != nil {
+	if req.SavePassphrase && metadata.PassphraseRequired {
+		key.SavedPassphrase, err = s.encryptor.EncryptSecret(req.Passphrase, key.PassphraseAAD())
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err = s.repo.Create(access.WithScope(ctx, scope), key, action); err != nil {
 		return nil, err
 	}
-	return &SSHKeyResponse{
-		ID: key.ID, CreatedAt: key.CreatedAt, UserID: key.UserID, Name: key.Name,
-		PublicKey: key.PublicKey, Fingerprint: key.Fingerprint, Algorithm: key.Algorithm,
-		KeySize: key.KeySize, PassphraseRequired: key.PassphraseRequired,
-	}, nil
+	result := key.Public()
+	return &result, nil
 }
 
-func (s *service) GetKey(keyID uint, userID uuid.UUID) (*SSHKey, error) {
-	return s.repo.FindByID(keyID, userID)
+func (s *service) GetKey(ctx context.Context, scope access.Scope, keyID uuid.UUID) (*SSHKey, error) {
+	if err := scope.RequireOwner(ctx, protocol.CredentialsRead); err != nil {
+		return nil, err
+	}
+	return s.repo.FindByID(ctx, keyID)
 }
 
 // GetUserKeys retrieves all SSH keys for a user
-func (s *service) GetUserKeys(userID uuid.UUID) ([]SSHKey, error) {
-	return s.repo.FindByUserID(userID)
+func (s *service) ListKeys(ctx context.Context, scope access.Scope) ([]SSHKey, error) {
+	if err := scope.RequireOwner(ctx, protocol.CredentialsRead); err != nil {
+		return nil, err
+	}
+	return s.repo.List(ctx)
 }
 
 // DeleteKey deletes an SSH key
-func (s *service) DeleteKey(keyID uint, userID uuid.UUID) error {
-	return s.repo.Delete(keyID, userID)
+func (s *service) DeleteKey(ctx context.Context, scope access.Scope, keyID uuid.UUID) error {
+	if err := scope.RequireOwner(ctx, protocol.ResourcesManage); err != nil {
+		return err
+	}
+	return s.repo.Delete(access.WithScope(ctx, scope), keyID)
+}
+
+func (s *service) KeyReferences(ctx context.Context, scope access.Scope, keyID uuid.UUID) (protocol.SSHKeyReferences, error) {
+	if err := scope.RequireOwner(ctx, protocol.CredentialsRead); err != nil {
+		return protocol.SSHKeyReferences{}, err
+	}
+	refs, err := s.repo.References(ctx, keyID)
+	if err != nil {
+		return protocol.SSHKeyReferences{}, err
+	}
+	return protocol.SSHKeyReferences{KeyID: keyID, References: refs}, nil
 }
 
 func (s *service) encryptPrivateKey(key *SSHKey, privateKeyPEM string) (string, error) {
@@ -157,4 +205,33 @@ func encodePrivateKeyToPEM(privateKey interface{}) (string, error) {
 	}
 
 	return string(pem.EncodeToMemory(pemBlock)), nil
+}
+
+func (s *service) SetPassphrase(ctx context.Context, scope access.Scope, id uuid.UUID, phrase string, save bool) error {
+	if err := scope.RequireOwner(ctx, protocol.ResourcesManage); err != nil {
+		return err
+	}
+	key, err := s.repo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	encrypted := ""
+	if save {
+		material, err := s.encryptor.DecryptSecret(key.PrivateKey, key.PrivateKeyAAD())
+		if err != nil {
+			return err
+		}
+		metadata, err := sshutil.InspectPrivateKey(material, phrase)
+		if err != nil {
+			return fmt.Errorf("%w: invalid passphrase", ErrInvalidImport)
+		}
+		if metadata.Fingerprint != key.Fingerprint || !metadata.PassphraseRequired {
+			return fmt.Errorf("%w: key does not require this passphrase", ErrInvalidImport)
+		}
+		encrypted, err = s.encryptor.EncryptSecret(phrase, key.PassphraseAAD())
+		if err != nil {
+			return err
+		}
+	}
+	return s.repo.SetPassphrase(access.WithScope(ctx, scope), key, encrypted)
 }

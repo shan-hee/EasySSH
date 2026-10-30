@@ -2,7 +2,8 @@ package monitor
 
 import (
 	"context"
-	"fmt"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"log"
 	"sync"
 	"time"
@@ -10,19 +11,21 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/shared/secretcrypto"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/ssh"
 )
 
 // PooledConnection 池化的监控连接
 type PooledConnection struct {
+	Revision   int64
 	Client     *sshDomain.Client // SSH 客户端
 	RefCount   int               // 引用计数（多少个监控 WebSocket 在使用）
 	ServerID   string            // 服务器 ID
-	UserID     string            // 用户 ID
-	CreatedAt  time.Time         // 创建时间
-	LastUsedAt time.Time         // 最后使用时间
-	mu         sync.RWMutex      // 连接级别的锁
+	Actor      protocol.Actor    // 已认证发起主体
+	key        string
+	CreatedAt  time.Time    // 创建时间
+	LastUsedAt time.Time    // 最后使用时间
+	mu         sync.RWMutex // 连接级别的锁
 }
 
 // IncRef 增加引用计数
@@ -67,16 +70,16 @@ func (pc *PooledConnection) IsHealthy() bool {
 
 // ConnectionPool 监控专用连接池
 type ConnectionPool struct {
-	connections       map[string]*PooledConnection // key: userID:serverID
+	connections       map[string]*PooledConnection // key: actor kind/session/resource
 	mu                sync.RWMutex
 	serverService     server.Service // 服务器服务，用于获取服务器配置
 	encryptor         *crypto.Encryptor
 	connectionTimeout time.Duration // 连接超时时间
-	hostKeyCallback   ssh.HostKeyCallback
+	hostKeyCallback   sshutil.HostKeyPolicy
 }
 
 // NewConnectionPool 创建监控连接池
-func NewConnectionPool(serverService server.Service, encryptor *crypto.Encryptor, hostKeyCallback ssh.HostKeyCallback) *ConnectionPool {
+func NewConnectionPool(serverService server.Service, encryptor *crypto.Encryptor, hostKeyCallback sshutil.HostKeyPolicy) *ConnectionPool {
 	return &ConnectionPool{
 		connections:       make(map[string]*PooledConnection),
 		serverService:     serverService,
@@ -91,182 +94,111 @@ func (p *ConnectionPool) SetConnectionTimeout(timeout time.Duration) {
 	p.connectionTimeout = timeout
 }
 
-// getKey 生成连接池键
-func (p *ConnectionPool) getKey(userID, serverID string) string {
-	return fmt.Sprintf("%s:%s", userID, serverID)
-}
-
-// GetOrCreate 获取或创建连接（增加引用计数）
-func (p *ConnectionPool) GetOrCreate(userID, serverID string) (*PooledConnection, error) {
-	key := p.getKey(userID, serverID)
-
-	// 先尝试获取已存在的连接
-	p.mu.RLock()
-	if conn, exists := p.connections[key]; exists {
-		p.mu.RUnlock()
-
-		// 检查连接是否健康
-		if conn.IsHealthy() {
-			conn.IncRef()
-			log.Printf("[ConnectionPool] 复用现有连接: key=%s, refCount=%d", key, conn.GetRefCount())
-			return conn, nil
-		}
-
-		// 连接不健康，需要移除并重新创建
-		log.Printf("[ConnectionPool] 连接不健康，移除: key=%s", key)
-		p.mu.Lock()
-		delete(p.connections, key)
-		p.mu.Unlock()
-	} else {
-		p.mu.RUnlock()
-	}
-
-	// 双重检查（持有写锁）
-	p.mu.Lock()
-	if conn, exists := p.connections[key]; exists {
-		if conn.IsHealthy() {
-			p.mu.Unlock()
-			conn.IncRef()
-			log.Printf("[ConnectionPool] 复用刚创建的连接: key=%s, refCount=%d", key, conn.GetRefCount())
-			return conn, nil
-		}
-		delete(p.connections, key)
-	}
-	p.mu.Unlock()
-
-	// 从数据库获取服务器配置（不持有锁）
-	userUUID, err := uuid.Parse(userID)
+// GetOrCreate authorizes every borrow, including an existing transport. Transports
+// are isolated by authenticated session so revocation cannot inherit another login.
+func (p *ConnectionPool) GetOrCreate(ctx context.Context, serverID string, action protocol.Action) (*PooledConnection, error) {
+	scope, err := access.FromContext(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("invalid user id: %w", err)
+		return nil, err
 	}
-
+	switch action {
+	case protocol.MonitorRead, protocol.DockerRead, protocol.DockerManage:
+	default:
+		return nil, access.ErrForbidden
+	}
+	requirement := access.Requirement{Action: action, ServerID: serverID}
+	if err := scope.Check(ctx, requirement); err != nil {
+		return nil, err
+	}
 	serverUUID, err := uuid.Parse(serverID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid server id: %w", err)
+		return nil, err
 	}
-
-	srv, err := p.serverService.GetByID(context.Background(), userUUID, serverUUID)
+	srv, err := p.serverService.GetByID(ctx, scope, serverUUID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get server config: %w", err)
+		return nil, err
 	}
-
-	// 创建SSH连接（不持有锁）
-	// 使用更短的超时时间
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// 在 goroutine 中执行连接操作
-	type result struct {
-		conn *PooledConnection
-		err  error
-	}
-	resultChan := make(chan result, 1)
-
-	go func() {
-		client, err := sshDomain.NewClient(srv, p.encryptor, p.hostKeyCallback)
-		if err != nil {
-			resultChan <- result{nil, fmt.Errorf("failed to create ssh client: %w", err)}
-			return
-		}
-
-		// 连接到服务器
-		if err := client.Connect(srv.Host, srv.Port); err != nil {
-			resultChan <- result{nil, fmt.Errorf("failed to connect to server: %w", err)}
-			return
-		}
-
-		// 创建池化连接
-		pooledConn := &PooledConnection{
-			Client:     client,
-			RefCount:   1, // 初始引用计数为 1
-			ServerID:   serverID,
-			UserID:     userID,
-			CreatedAt:  time.Now(),
-			LastUsedAt: time.Now(),
-		}
-
-		resultChan <- result{pooledConn, nil}
-	}()
-
-	// 等待连接完成或超时
-	var newConn *PooledConnection
-	select {
-	case <-ctx.Done():
-		log.Printf("[ConnectionPool] 连接超时: key=%s, timeout=10s", key)
-		return nil, fmt.Errorf("connection timeout after 10s")
-	case res := <-resultChan:
-		if res.err != nil {
-			return nil, res.err
-		}
-		newConn = res.conn
-	}
-
-	// 加入连接池（持有写锁，但时间很短）
+	key := string(scope.Actor().Kind) + ":" + scope.Actor().SessionID + ":" + serverID
 	p.mu.Lock()
-	// 再次检查是否已被其他goroutine创建
-	if conn, exists := p.connections[key]; exists && conn.IsHealthy() {
+	existing := p.connections[key]
+	if existing != nil && existing.Revision == srv.ConnectionRevision && existing.IsHealthy() {
+		existing.IncRef()
 		p.mu.Unlock()
-		// 关闭刚创建的连接
-		if newConn.Client != nil {
-			newConn.Client.Close()
-		}
-		conn.IncRef()
-		log.Printf("[ConnectionPool] 复用其他goroutine创建的连接: key=%s, refCount=%d", key, conn.GetRefCount())
-		return conn, nil
+		return existing, nil
 	}
-	p.connections[key] = newConn
-	p.mu.Unlock()
-
-	log.Printf("[ConnectionPool] 创建新连接: key=%s, serverHost=%s:%d", key, srv.Host, srv.Port)
-	return newConn, nil
-}
-
-// Release 释放连接（减少引用计数，归零时立即关闭）
-func (p *ConnectionPool) Release(userID, serverID string) {
-	key := p.getKey(userID, serverID)
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	conn, exists := p.connections[key]
-	if !exists {
-		log.Printf("[ConnectionPool] 释放连接失败，连接不存在: key=%s", key)
-		return
-	}
-
-	newRefCount := conn.DecRef()
-	log.Printf("[ConnectionPool] 释放连接: key=%s, refCount=%d", key, newRefCount)
-
-	// 引用计数归零，立即关闭连接
-	if newRefCount == 0 {
-		log.Printf("[ConnectionPool] 引用计数归零，立即关闭连接: key=%s", key)
-		if conn.Client != nil {
-			conn.Client.Close()
-		}
+	if existing != nil {
 		delete(p.connections, key)
 	}
+	p.mu.Unlock()
+	if existing != nil {
+		_ = existing.Client.Close()
+	}
+	client, err := sshDomain.NewClient(ctx, srv, p.encryptor, p.hostKeyCallback)
+	if err != nil {
+		return nil, err
+	}
+	dialCtx, cancel := context.WithTimeout(ctx, p.connectionTimeout)
+	defer cancel()
+	if err := client.ConnectContext(dialCtx, srv.Host, srv.Port); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	if err := scope.Check(ctx, requirement); err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+	current, err := p.serverService.GetByID(ctx, scope, serverUUID)
+	if err != nil || current.ConnectionRevision != srv.ConnectionRevision || current.CredentialDigest() != srv.CredentialDigest() {
+		_ = client.Close()
+		return nil, access.ErrResourceChanged
+	}
+	created := &PooledConnection{Client: client, Revision: srv.ConnectionRevision, RefCount: 1, ServerID: serverID, Actor: scope.Actor(), key: key, CreatedAt: time.Now(), LastUsedAt: time.Now()}
+	p.mu.Lock()
+	if existing = p.connections[key]; existing != nil && existing.Revision == srv.ConnectionRevision && existing.IsHealthy() {
+		existing.IncRef()
+		p.mu.Unlock()
+		_ = client.Close()
+		return existing, nil
+	}
+	displaced := p.connections[key]
+	p.connections[key] = created
+	p.mu.Unlock()
+	if displaced != nil {
+		_ = displaced.Client.Close()
+	}
+	return created, nil
 }
 
-// ForceClose 强制关闭连接（无视引用计数）
-func (p *ConnectionPool) ForceClose(userID, serverID string) error {
-	key := p.getKey(userID, serverID)
-
+// Release operates on the borrowed transport, never an untrusted identity/key.
+func (p *ConnectionPool) Release(conn *PooledConnection) {
+	if conn == nil {
+		return
+	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	conn, exists := p.connections[key]
-	if !exists {
-		return fmt.Errorf("connection not found: %s", key)
+	closeClient := conn.DecRef() == 0
+	if closeClient && p.connections[conn.key] == conn {
+		delete(p.connections, conn.key)
 	}
-
-	// 关闭 SSH 连接
-	if conn.Client != nil {
-		conn.Client.Close()
+	p.mu.Unlock()
+	if closeClient {
+		_ = conn.Client.Close()
 	}
+}
 
-	delete(p.connections, key)
-	log.Printf("[ConnectionPool] 强制关闭连接: key=%s", key)
-
+// ForceClose removes all sessions belonging to the affected owner/resource.
+func (p *ConnectionPool) ForceClose(ownerID, serverID string) error {
+	p.mu.Lock()
+	var matches []*PooledConnection
+	for key, conn := range p.connections {
+		if conn.Actor.Kind == protocol.Owner && conn.Actor.ID == ownerID && conn.ServerID == serverID {
+			matches = append(matches, conn)
+			delete(p.connections, key)
+		}
+	}
+	p.mu.Unlock()
+	for _, conn := range matches {
+		_ = conn.Client.Close()
+	}
 	return nil
 }
 
@@ -304,7 +236,7 @@ func (p *ConnectionPool) GetAllConnections() []map[string]interface{} {
 		result = append(result, map[string]interface{}{
 			"key":          key,
 			"server_id":    conn.ServerID,
-			"user_id":      conn.UserID,
+			"actor":        conn.Actor,
 			"ref_count":    conn.GetRefCount(),
 			"created_at":   conn.CreatedAt,
 			"last_used_at": conn.LastUsedAt,

@@ -13,9 +13,9 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 		return registry.NewToolRegistry(nil)
 	}
 
-	exec := func(fn func(ctx context.Context, userID uuid.UUID, toolCall *ToolCall) (*ToolResult, error), toolName string) registry.ToolExecutor {
-		return func(ctx context.Context, userID uuid.UUID, args json.RawMessage) (registry.ExecutionResult, error) {
-			result, err := fn(ctx, userID, &ToolCall{
+	exec := func(fn func(ctx context.Context, toolCall *ToolCall) (*ToolResult, error), toolName string) registry.ToolExecutor {
+		return func(ctx context.Context, args json.RawMessage) (registry.ExecutionResult, error) {
+			result, err := fn(ctx, &ToolCall{
 				ID:        uuid.NewString(),
 				Name:      toolName,
 				Arguments: args,
@@ -28,6 +28,8 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 				Content:       result.Content,
 				Artifact:      result.Artifact,
 				IsError:       result.IsError,
+				Unknown:       result.Unknown,
+				Cancelled:     result.Cancelled,
 			}, nil
 		}
 	}

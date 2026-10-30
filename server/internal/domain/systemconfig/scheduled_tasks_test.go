@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -17,11 +18,12 @@ func TestScheduledTaskConcurrencyDefaultsAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test database: %v", err)
 	}
-	if err := database.AutoMigrate(&SystemConfig{}); err != nil {
+	if err := database.AutoMigrate(&SystemConfig{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
 		t.Fatalf("migrate system config: %v", err)
 	}
 
-	service := NewService(NewRepository(database), nil, false)
+	ctx := settingsContext(t)
+	service := NewService(NewRepository(database))
 	config, err := service.Get(context.Background())
 	if err != nil {
 		t.Fatalf("get default config: %v", err)
@@ -31,7 +33,7 @@ func TestScheduledTaskConcurrencyDefaultsAndPersists(t *testing.T) {
 	}
 
 	config.JobQueueMaxConcurrency = 6
-	if err := service.SaveScheduledTasks(context.Background(), config); err != nil {
+	if err := service.SaveScheduledTasks(ctx, config); err != nil {
 		t.Fatalf("save scheduled task config: %v", err)
 	}
 	persisted, err := service.Get(context.Background())
@@ -44,7 +46,7 @@ func TestScheduledTaskConcurrencyDefaultsAndPersists(t *testing.T) {
 }
 
 func TestScheduledTaskConcurrencyRejectsOutOfRangeValues(t *testing.T) {
-	service := NewService(nil, nil, false)
+	service := NewService(nil)
 	for _, value := range []int{0, 17} {
 		config := &SystemConfig{JobQueueMaxConcurrency: value}
 		if err := service.SaveScheduledTasks(context.Background(), config); err == nil {

@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -88,14 +87,14 @@ func (s *webhookService) SendNotification(ctx context.Context, event string, dat
 	if s.config.Method == "POST" {
 		req, err = http.NewRequestWithContext(ctx, "POST", s.config.URL, bytes.NewBuffer(jsonData))
 		if err != nil {
-			return fmt.Errorf("failed to create request: %w", err)
+			return fmt.Errorf("failed to create notification request")
 		}
 		req.Header.Set("Content-Type", "application/json")
 	} else {
 		// GET 方法：将数据作为查询参数
 		req, err = http.NewRequestWithContext(ctx, "GET", s.config.URL, nil)
 		if err != nil {
-			return fmt.Errorf("failed to create request: %w", err)
+			return fmt.Errorf("failed to create notification request")
 		}
 		q := req.URL.Query()
 		q.Add("event", event)
@@ -114,37 +113,42 @@ func (s *webhookService) SendNotification(ctx context.Context, event string, dat
 // sendWithRetry 带重试的发送
 func (s *webhookService) sendWithRetry(req *http.Request, maxRetries int) error {
 	var lastErr error
-
 	for i := 0; i < maxRetries; i++ {
-		resp, err := s.client.Do(req)
+		if err := req.Context().Err(); err != nil {
+			return err
+		}
+		attempt := req.Clone(req.Context())
+		if i > 0 && req.GetBody != nil {
+			body, err := req.GetBody()
+			if err != nil {
+				return err
+			}
+			attempt.Body = body
+		}
+		resp, err := s.client.Do(attempt)
 		if err != nil {
-			lastErr = err
-			// 指数退避
-			time.Sleep(time.Duration(1<<uint(i)) * time.Second)
-			continue
+			lastErr = notificationRequestError(err)
+		} else {
+			resp.Body.Close()
+			if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+				return nil
+			}
+			lastErr = fmt.Errorf("webhook returned HTTP %d", resp.StatusCode)
+			if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+				return lastErr
+			}
 		}
-
-		// 读取响应体
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		// 检查状态码
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return nil
+		if i+1 < maxRetries {
+			timer := time.NewTimer(time.Duration(1<<uint(i)) * time.Second)
+			select {
+			case <-req.Context().Done():
+				timer.Stop()
+				return req.Context().Err()
+			case <-timer.C:
+			}
 		}
-
-		lastErr = fmt.Errorf("webhook returned status %d: %s", resp.StatusCode, string(body))
-
-		// 如果是 4xx 错误，不重试
-		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
-			return lastErr
-		}
-
-		// 5xx 错误，重试
-		time.Sleep(time.Duration(1<<uint(i)) * time.Second)
 	}
-
-	return fmt.Errorf("webhook failed after %d retries: %w", maxRetries, lastErr)
+	return fmt.Errorf("webhook failed after %d attempts: %w", maxRetries, lastErr)
 }
 
 // generateSignature 生成 HMAC-SHA256 签名

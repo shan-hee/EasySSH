@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -44,9 +43,9 @@ func NewWeComService(config *WeComConfig) (WeComService, error) {
 
 // WeComMessage 企业微信消息结构
 type WeComMessage struct {
-	MsgType  string            `json:"msgtype"`
-	Text     *WeComText        `json:"text,omitempty"`
-	Markdown *WeComMarkdown    `json:"markdown,omitempty"`
+	MsgType  string         `json:"msgtype"`
+	Text     *WeComText     `json:"text,omitempty"`
+	Markdown *WeComMarkdown `json:"markdown,omitempty"`
 }
 
 // WeComText 文本消息
@@ -94,36 +93,18 @@ func (s *weComService) send(ctx context.Context, message WeComMessage) error {
 	// 创建请求
 	req, err := http.NewRequestWithContext(ctx, "POST", s.config.WebhookURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("failed to create notification request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	// 发送请求
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		return notificationRequestError(err)
 	}
 	defer resp.Body.Close()
 
-	// 读取响应
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-
-	// 解析响应
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	// 检查错误码
-	if errCode, ok := result["errcode"].(float64); ok && errCode != 0 {
-		errMsg, _ := result["errmsg"].(string)
-		return fmt.Errorf("wechat work error %d: %s", int(errCode), errMsg)
-	}
-
-	return nil
+	return checkRobotResponse(resp)
 }
 
 // TestWeComConnection 测试企业微信连接

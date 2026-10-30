@@ -3,10 +3,14 @@ package auth
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/shared/protocol"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/easyssh/server/internal/domain/security"
 	secretcrypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
@@ -27,19 +31,16 @@ func TestVerify2FACodeConsumesTOTPOnce(t *testing.T) {
 		t.Fatalf("expected exactly one successful TOTP consumption, got %d", validCount)
 	}
 
-	valid, err := service.Verify2FACode(context.Background(), user.ID, code)
+	valid, err := verifyLoginCode(service, context.Background(), user.ID, code)
 	if err != nil {
 		t.Fatalf("verify consumed TOTP: %v", err)
 	}
 	if valid {
 		t.Fatal("expected consumed TOTP to be rejected")
 	}
-	if err := service.Disable2FA(context.Background(), user.ID, code); err == nil {
-		t.Fatal("expected consumed TOTP to be rejected when disabling 2FA")
-	}
 
 	var replayCount int64
-	if err := database.Model(&TOTPReplay{}).Where("user_id = ?", user.ID).Count(&replayCount).Error; err != nil {
+	if err := database.Model(&TOTPReplay{}).Where("owner_id = ?", user.ID).Count(&replayCount).Error; err != nil {
 		t.Fatalf("count TOTP replay records: %v", err)
 	}
 	if replayCount != 1 {
@@ -55,7 +56,7 @@ func TestVerify2FACodeConsumesBackupCodeOnce(t *testing.T) {
 		t.Fatalf("expected exactly one successful backup-code consumption, got %d", validCount)
 	}
 
-	valid, err := service.Verify2FACode(context.Background(), user.ID, backupCodes[0])
+	valid, err := verifyLoginCode(service, context.Background(), user.ID, backupCodes[0])
 	if err != nil {
 		t.Fatalf("verify consumed backup code: %v", err)
 	}
@@ -64,7 +65,7 @@ func TestVerify2FACodeConsumesBackupCodeOnce(t *testing.T) {
 	}
 }
 
-func newTwoFactorTestService(t *testing.T) (*authService, *gorm.DB, *User, string, []string) {
+func newTwoFactorTestService(t *testing.T) (*Service, *gorm.DB, *Owner, string, []string) {
 	t.Helper()
 
 	database, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -77,7 +78,7 @@ func newTwoFactorTestService(t *testing.T) (*authService, *gorm.DB, *User, strin
 	}
 	sqlDB.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	if err := database.AutoMigrate(&User{}, &TOTPReplay{}); err != nil {
+	if err := database.AutoMigrate(&security.SecurityConfig{}, &Owner{}, &TOTPReplay{}, &Session{}); err != nil {
 		t.Fatalf("migrate database: %v", err)
 	}
 
@@ -93,12 +94,12 @@ func newTwoFactorTestService(t *testing.T) (*authService, *gorm.DB, *User, strin
 	}
 
 	repository := NewRepository(database)
-	service := NewService(repository, nil, encryptor).(*authService)
-	user := &User{
+	service, err := NewService(database, encryptor, access.NewRuntime())
+	require.NoError(t, err)
+	user := &Owner{
 		ID:               uuid.New(),
 		Username:         "totp-replay-test",
 		Email:            uuid.NewString() + "@example.com",
-		Role:             RoleUser,
 		TwoFactorEnabled: true,
 	}
 	if err := user.SetPassword("Acceptance-2026-Only9"); err != nil {
@@ -108,7 +109,7 @@ func newTwoFactorTestService(t *testing.T) (*authService, *gorm.DB, *User, strin
 	if err != nil {
 		t.Fatalf("generate TOTP secret: %v", err)
 	}
-	user.TwoFactorSecret, err = service.encryptUserSecret(user.ID, "two_factor_secret", secret)
+	user.TwoFactorSecret, err = service.encryptOwnerSecret(user.ID, "two_factor_secret", secret)
 	if err != nil {
 		t.Fatalf("encrypt TOTP secret: %v", err)
 	}
@@ -128,7 +129,7 @@ func newTwoFactorTestService(t *testing.T) (*authService, *gorm.DB, *User, strin
 	return service, database, user, secret, backupCodes
 }
 
-func verifyCodeConcurrently(t *testing.T, service *authService, userID uuid.UUID, code string, workers int) int {
+func verifyCodeConcurrently(t *testing.T, service *Service, ownerID uuid.UUID, code string, workers int) int {
 	t.Helper()
 
 	start := make(chan struct{})
@@ -140,7 +141,7 @@ func verifyCodeConcurrently(t *testing.T, service *authService, userID uuid.UUID
 		go func() {
 			defer waitGroup.Done()
 			<-start
-			valid, err := service.Verify2FACode(context.Background(), userID, code)
+			valid, err := verifyLoginCode(service, context.Background(), ownerID, code)
 			if err != nil {
 				errors <- err
 				return
@@ -162,4 +163,17 @@ func verifyCodeConcurrently(t *testing.T, service *authService, userID uuid.UUID
 		}
 	}
 	return validCount
+}
+
+// Exercise the real transaction which consumes MFA and inserts a session.
+func verifyLoginCode(service *Service, ctx context.Context, id uuid.UUID, code string) (bool, error) {
+	owner, err := service.repo.FindByID(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	_, err = service.Login(ctx, protocol.OwnerLoginInput{Email: owner.Email, Password: "Acceptance-2026-Only9", Code: code}, SessionInfo{})
+	if errors.Is(err, ErrInvalidTwoFactorCode) {
+		return false, nil
+	}
+	return err == nil, err
 }

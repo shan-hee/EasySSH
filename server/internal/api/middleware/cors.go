@@ -32,9 +32,12 @@ func CORS(cfg *config.Config, securityService security.Service) gin.HandlerFunc 
 			"Content-Type",
 			"Authorization",
 			"X-CSRF-Token",
+			"X-EasySSH-Access-Session",
+			"X-EasySSH-Connection",
 			"X-Requested-With",
 		},
 		ExposeHeaders: []string{
+			"X-Task-ID",
 			"X-CSRF-Token",
 			"X-RateLimit-Limit",
 			"X-RateLimit-Remaining",

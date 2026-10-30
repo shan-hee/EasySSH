@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/syncdata"
 )
 
@@ -39,10 +40,41 @@ type EngineInput struct {
 	Resolution    *Resolution       `json:"resolution,omitempty"`
 }
 type EngineResult struct {
-	Document  string            `json:"document"`
-	Snapshot  syncdata.Snapshot `json:"snapshot"`
-	Conflicts []Conflict        `json:"conflicts"`
-	Response  Peer              `json:"response"`
+	Document       string                       `json:"document"`
+	Snapshot       syncdata.Snapshot            `json:"snapshot"`
+	Conflicts      []Conflict                   `json:"conflicts"`
+	Response       Peer                         `json:"response"`
+	AffectedGrants []protocol.SyncAffectedGrant `json:"affected_grants"`
+}
+
+func (peer Peer) Public() protocol.SyncPeer {
+	var result protocol.SyncPeer
+	if peer.Document != "" {
+		result.Document = &peer.Document
+	}
+	if peer.Changes != nil {
+		result.Changes = &peer.Changes
+	}
+	if peer.Heads != nil {
+		result.Heads = &peer.Heads
+	}
+	return result
+}
+
+func (result EngineResult) ExchangeResult() protocol.SyncExchangeResult {
+	return protocol.SyncExchangeResult{Response: result.Response.Public(), AffectedGrants: result.AffectedGrants}
+}
+
+func (result EngineResult) VaultResult() protocol.SyncVaultResult {
+	output := protocol.SyncVaultResult{Response: result.Response.Public(), AffectedGrants: result.AffectedGrants,
+		Snapshot: make(map[string]map[string]string, len(result.Snapshot)), Conflicts: make([]protocol.SyncConflict, 0, len(result.Conflicts))}
+	for key, record := range result.Snapshot {
+		output.Snapshot[key] = map[string]string(record)
+	}
+	for _, conflict := range result.Conflicts {
+		output.Conflicts = append(output.Conflicts, protocol.SyncConflict{Key: conflict.Key, Field: protocol.SyncConflictField(conflict.Field), Values: conflict.Values})
+	}
+	return output
 }
 
 type Engine struct {
