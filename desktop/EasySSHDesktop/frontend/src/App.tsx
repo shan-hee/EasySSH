@@ -1,15 +1,14 @@
 import { startDesktopSync } from "./adapters/desktop-sync"
-import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { RoutePending } from "@/components/route-pending"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { RoutePending } from "@easyssh/app/components/route-pending"
 import { useTranslation } from "react-i18next"
 import {
   DEFAULT_SYSTEM_CONFIG,
-  SftpServerPickerDialog,
   SshWorkspace,
-  TerminalComponent,
-  TerminalSftpTabContent,
   WORKSPACE_CAPABILITY_PRESETS,
+  WORKBENCH_VIEW,
+  Workbench,
+  WorkspaceShell,
   createTerminalWorkspaceSessionControllerAdapter,
   createTerminalWorkspaceSessionStoreAdapter,
   createWorkspaceAdapters,
@@ -17,21 +16,17 @@ import {
   createWorkspaceI18nAdapter,
   createWorkspaceSettingsAdapter,
   toast,
-  useTerminalStore,
-  type Server,
+  useWorkbenchSessions,
   type DirectTransferOptions,
   type SshWorkspaceApiClient,
-  type TerminalConnectionPhase,
-  type TerminalExtraSessionRenderOptions,
-  type TerminalSession,
-} from "@easyssh/ssh-workspace/desktop"
-import { i18n, type Locale } from "@/i18n"
-import { getEffectiveLocale, saveLocaleToStorage } from "@/utils/datetime"
-import { createDesktopActivityLogAdapter, createDesktopTransferHistoryAdapter, recordDesktopTerminalOpened } from "./adapters/desktop-activity-log-adapter"
+} from "@easyssh/app/desktop"
+import { i18n, type Locale } from "@easyssh/app/i18n"
+import { getEffectiveLocale, saveLocaleToStorage } from "@easyssh/app/utils/datetime"
+import { createDesktopActivityLogAdapter, createDesktopTransferHistoryAdapter } from "./adapters/desktop-activity-log-adapter"
 import { createDesktopAIAssistantAdapters } from "./adapters/desktop-ai-adapters"
 import { createDesktopPreferenceAdapter, loadDesktopPreferenceSnapshot, type DesktopPreferenceSnapshot } from "./adapters/desktop-preferences"
 import { createDesktopRuntime, loadDesktopRuntime, type DesktopRuntimeBindingInfo } from "./adapters/desktop-runtime"
-import { createDesktopServerApi, markDesktopServerConnected, saveDesktopVerifiedCredential } from "./adapters/desktop-server-api"
+import { createDesktopServerApi, saveDesktopVerifiedCredential } from "./adapters/desktop-server-api"
 import { createDesktopDockerApi } from "./adapters/desktop-docker-api"
 import { createDesktopMonitorApi } from "./adapters/desktop-monitor-api"
 import { createDesktopScriptAdapters } from "./adapters/desktop-script-api"
@@ -44,7 +39,8 @@ import { DesktopViewBoundary } from "./shell/desktop-view-boundary"
 import { desktopViews, preloadDesktopView, type DesktopView } from "./shell/desktop-view-registry"
 import { DesktopUpdateFailureDialog } from "./shell/desktop-update-failure-dialog"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
-import { useFileTransfer, type FileTransferSftpApi } from "@/hooks/useFileTransfer"
+import { useFileTransfer, type FileTransferSftpApi } from "@easyssh/app/hooks/useFileTransfer"
+import type { TransferStartOptions } from "@easyssh/app/desktop"
 
 const DesktopAIAssistantView = desktopViews.ai.Component
 const DesktopActivityLogsView = desktopViews["activity-logs"].Component
@@ -54,113 +50,15 @@ const DesktopScriptsView = desktopViews.scripts.Component
 const DesktopSSHKeysView = desktopViews["ssh-keys"].Component
 const DesktopTaskCenterView = desktopViews.tasks.Component
 
-const defaultMaxTabs = 50
-
-function statusFromConnectionPhase(phase: TerminalConnectionPhase) {
-  if (phase === "ready") return "connected" as const
-  if (phase === "failed" || phase === "closed" || phase === "idle") return "disconnected" as const
-  return "reconnecting" as const
-}
-
-function createTerminalSessionFromServer(
-  sessionId: string,
-  server: Server,
-  now = Date.now(),
-): TerminalSession {
-  return {
-    id: sessionId,
-    serverId: String(server.id),
-    authMethod: server.auth_method,
-    serverName: server.name || `${server.username}@${server.host}:${server.port}`,
-    host: server.host,
-    port: server.port,
-    username: server.username,
-    shouldConnect: true,
-    connectionPhase: "idle",
-    status: "reconnecting",
-    lastActivity: now,
-    group: server.group,
-    tags: server.tags,
-    pinned: false,
-    type: "terminal",
-  }
-}
-
-type DesktopSftpTab = {
-  id: string
-  label: string
-  server: Server
-  pinned: boolean
-  initialPath: string
-  connectionPhase: TerminalConnectionPhase
-  createdAt: number
-}
-
-function createSftpTabId() {
-  return `desktop-sftp-session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function getServerDisplayName(server: Server) {
-  return server.name || `${server.username}@${server.host}:${server.port}`
-}
-
-function createSftpTabSession(tab: DesktopSftpTab): TerminalSession {
-  return {
-    id: tab.id,
-    currentPath: tab.initialPath,
-    serverId: String(tab.server.id),
-    authMethod: tab.server.auth_method,
-    serverName: tab.label,
-    host: tab.server.host,
-    port: tab.server.port,
-    username: tab.server.username,
-    shouldConnect: false,
-    connectionPhase: tab.connectionPhase,
-    status: statusFromConnectionPhase(tab.connectionPhase),
-    lastActivity: tab.createdAt,
-    group: tab.server.group,
-    tags: tab.server.tags,
-    pinned: tab.pinned,
-    type: "sftp",
-  }
-}
-
-function shouldCheckTerminalInactivity(session: TerminalSession) {
-  return (
-    session.type === "terminal" &&
-    !!session.serverId &&
-    session.connectionPhase === "ready" &&
-    session.status === "connected"
-  )
-}
-
 function App() {
   useEffect(() => startDesktopSync(), [])
   const [locale, setLocale] = useState<Locale>(() => getEffectiveLocale(null, DEFAULT_SYSTEM_CONFIG))
   const [runtime, setRuntime] = useState<DesktopRuntimeBindingInfo | null>(null)
   const [runtimeLoaded, setRuntimeLoaded] = useState(false)
   const [preferenceSnapshot, setPreferenceSnapshot] = useState<DesktopPreferenceSnapshot | null>(null)
-  const [activeView, setActiveView] = useState<DesktopView>("terminal")
-  const [aiAssistantMounted, setAiAssistantMounted] = useState(false)
-  const [scriptsMounted, setScriptsMounted] = useState(false)
-  const [tasksMounted, setTasksMounted] = useState(false)
+  const [activeView, setActiveView] = useState<DesktopView>(WORKBENCH_VIEW)
   const [requestedTaskRunID, setRequestedTaskRunID] = useState<string | null>(null)
-  const [activityLogsMounted, setActivityLogsMounted] = useState(false)
-  const [backupRestoreMounted, setBackupRestoreMounted] = useState(false)
-  const maxTabs = defaultMaxTabs
-  const inactiveMinutes = useTerminalSettingsStore(state => state.settings.inactiveMinutes)
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
-  const [sftpTabs, setSftpTabs] = useState<DesktopSftpTab[]>([])
-  const [activeSftpTabId, setActiveSftpTabId] = useState<string | null>(null)
-  const [sftpPickerOpen, setSftpPickerOpen] = useState(false)
-  const inactivityNotifiedRef = useRef<Set<string>>(new Set())
-
-  const sessions = useTerminalStore((state) => state.sessions)
-  const activeSessionId = useTerminalStore((state) => state.activeSessionId)
-  const setSessions = useTerminalStore((state) => state.setSessions)
-  const setActiveSessionId = useTerminalStore((state) => state.setActiveSessionId)
-  const updateSessionActivity = useTerminalStore((state) => state.updateSessionActivity)
-  const getSessionLastActivity = useTerminalStore((state) => state.getSessionLastActivity)
   const { t: tCommon } = useTranslation("common")
   const { t: tTerminal } = useTranslation("terminal")
   const { t: tSftp } = useTranslation("sftp")
@@ -173,7 +71,6 @@ function App() {
   const workspaceSessionStore = useMemo(() => createTerminalWorkspaceSessionStoreAdapter(), [])
   const workspaceSessionController = useMemo(() => createTerminalWorkspaceSessionControllerAdapter(), [])
   const workspacePreferences = useMemo(() => createDesktopPreferenceAdapter(preferenceSnapshot ?? {}), [preferenceSnapshot])
-  const desktopTransferTicketProvider = useCallback(async () => ({ ticket: "desktop" }), [])
   const desktopGateway = runtime?.gateway
   const desktopGatewayWsBaseUrl = desktopGateway?.wsBaseUrl
   const desktopGatewayToken = desktopGateway?.token
@@ -182,9 +79,6 @@ function App() {
   const sftpApi = useMemo(() => createDesktopSftpApi(desktopGateway, runtimeLoaded), [desktopGateway, runtimeLoaded])
   const fileTransfer = useFileTransfer({
     api: sftpApi as FileTransferSftpApi,
-    createTicket: desktopTransferTicketProvider,
-    uploadUsesProgressSocket: sftpApi.uploadUsesProgressSocket,
-    serverTransferUsesProgressSocket: sftpApi.serverTransferUsesProgressSocket,
   })
   const monitorApi = useMemo(
     () => createDesktopMonitorApi(desktopGateway),
@@ -196,23 +90,9 @@ function App() {
   const capabilities = useMemo(() => (
     createWorkspaceCapabilitiesFromRuntime(runtimeInfo, WORKSPACE_CAPABILITY_PRESETS.desktop)
   ), [runtimeInfo])
-  const totalTabCount = sessions.length + sftpTabs.length
-  const sftpTabSessions = useMemo(() => sftpTabs.map(createSftpTabSession), [sftpTabs])
-  const visibleTerminalSessions = useMemo(() => (
-    desktopTerminalTransportReady
-      ? sessions
-      : sessions.map((session) => (
-        session.type === "terminal" && session.shouldConnect
-          ? {
-              ...session,
-              shouldConnect: false,
-              connectionPhase: "idle" as TerminalConnectionPhase,
-            }
-          : session
-      ))
-  ), [desktopTerminalTransportReady, sessions])
-  const combinedSessionsRef = useRef<TerminalSession[]>([])
-  combinedSessionsRef.current = [...sessions, ...sftpTabSessions]
+  // 连接活动与最近连接时间由桌面服务在连接建立时记录。
+  const workbench = useWorkbenchSessions()
+  const { getCombinedSessions } = workbench
 
   const workspaceApi = useMemo<SshWorkspaceApiClient>(() => ({
     sftp: {
@@ -222,17 +102,17 @@ function App() {
         sourcePath: string,
         targetServerId: string,
         targetPath: string,
-        options?: DirectTransferOptions,
+        options: DirectTransferOptions & TransferStartOptions,
       ) => {
-        const sourceSession = combinedSessionsRef.current.find((session) => session.serverId === sourceServerId)
-        const targetSession = combinedSessionsRef.current.find((session) => session.serverId === targetServerId)
+        const sourceSession = getCombinedSessions().find((session) => session.serverId === sourceServerId)
+        const targetSession = getCombinedSessions().find((session) => session.serverId === targetServerId)
 
         return sftpApi.directTransfer?.(sourceServerId, sourcePath, targetServerId, targetPath, {
           ...options,
-          sourceServerName: options?.sourceServerName ?? sourceSession?.serverName ?? sourceServerId,
-          sourceAuthMethod: options?.sourceAuthMethod ?? sourceSession?.authMethod ?? "password",
-          targetServerName: options?.targetServerName ?? targetSession?.serverName ?? targetServerId,
-          targetAuthMethod: options?.targetAuthMethod ?? targetSession?.authMethod ?? "password",
+          sourceServerName: options.sourceServerName ?? sourceSession?.serverName ?? sourceServerId,
+          sourceAuthMethod: options.sourceAuthMethod ?? sourceSession?.authMethod ?? "password",
+          targetServerName: options.targetServerName ?? targetSession?.serverName ?? targetServerId,
+          targetAuthMethod: options.targetAuthMethod ?? targetSession?.authMethod ?? "password",
         }) ?? Promise.reject(new Error("SFTP direct transfer is unavailable"))
       },
     },
@@ -260,7 +140,7 @@ function App() {
         await saveDesktopVerifiedCredential({ serverId, authMethod, secret, password, privateKey, privateKeyPassphrase })
       },
     },
-  }), [desktopGatewayToken, desktopGatewayWsBaseUrl, desktopTerminalGatewayReady, dockerApi, monitorApi, runtimeLoaded, scriptAdapters.scripts, sftpApi, terminalSocket])
+  }), [desktopGatewayToken, desktopGatewayWsBaseUrl, desktopTerminalGatewayReady, dockerApi, getCombinedSessions, monitorApi, runtimeLoaded, scriptAdapters.scripts, sftpApi, terminalSocket])
 
   const handleLocaleChange = useCallback((nextLocale: Locale) => {
     if (nextLocale === locale) {
@@ -306,8 +186,6 @@ function App() {
       batchDownload: fileTransfer.batchDownload,
       uploadFile: fileTransfer.uploadFile,
       directTransfer: fileTransfer.directTransfer,
-      createTransferTask: fileTransfer.createTransferTask,
-      addTask: fileTransfer.addTask,
       updateTask: fileTransfer.updateTask,
       removeTask: fileTransfer.removeTask,
       clearAll: fileTransfer.clearAll,
@@ -327,13 +205,11 @@ function App() {
     tTerminal,
     workspaceApi,
     desktopGatewayToken,
-    fileTransfer.addTask,
     fileTransfer.batchDownload,
     fileTransfer.cancelDirectTransfer,
     fileTransfer.cancelTask,
     fileTransfer.clearAll,
     fileTransfer.clearCompleted,
-    fileTransfer.createTransferTask,
     fileTransfer.directTransfer,
     fileTransfer.downloadFile,
     fileTransfer.removeTask,
@@ -390,251 +266,29 @@ function App() {
     }
   }, [])
 
-  const handleOpenSftpPicker = useCallback(() => {
-    if (totalTabCount >= maxTabs) {
-      toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
-      return
-    }
-
-    setSftpPickerOpen(true)
-  }, [maxTabs, tTerminal, totalTabCount])
-
-  const handleCreateSftpTabFromServer = useCallback((server: Server, initialPath = "~"): boolean => {
-    if (totalTabCount >= maxTabs) {
-      toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
-      return false
-    }
-
-    const now = Date.now()
-    const id = createSftpTabId()
-    setSftpTabs((current) => [
-      ...current,
-      {
-        id,
-        label: getServerDisplayName(server),
-        server,
-        createdAt: now,
-        pinned: false,
-        initialPath,
-        connectionPhase: "ssh_connecting",
-      },
-    ])
-    setActiveSftpTabId(id)
-    return true
-  }, [maxTabs, tTerminal, totalTabCount])
-
-  const handleCloseSftpTab = useCallback((tabId: string) => {
-    setSftpTabs((current) => current.filter((tab) => tab.id !== tabId))
-    setActiveSftpTabId((current) => current === tabId ? null : current)
-  }, [])
-
-  const handleReorderSftpTabs = useCallback((newOrderIds: string[]) => {
-    setSftpTabs((current) => {
-      const tabMap = new Map(current.map((tab) => [tab.id, tab]))
-      const ordered = newOrderIds
-        .map((id) => tabMap.get(id))
-        .filter((tab): tab is DesktopSftpTab => Boolean(tab))
-      const orderedIds = new Set(ordered.map((tab) => tab.id))
-      const remaining = current.filter((tab) => !orderedIds.has(tab.id))
-
-      return [...ordered, ...remaining]
-    })
-  }, [])
-
-  const handleRenameSftpTab = useCallback((tabId: string, label: string) => {
-    const trimmedLabel = label.trim()
-    if (!trimmedLabel) return
-
-    setSftpTabs((current) => current.map((tab) => (
-      tab.id === tabId ? { ...tab, label: trimmedLabel } : tab
-    )))
-  }, [])
-
-  const handleStartConnection = useCallback((server: Server): string | void => {
-    if (useTerminalStore.getState().sessions.length + sftpTabs.length >= maxTabs) {
-      toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
-      return
-    }
-
-    const now = Date.now()
-    const sessionId = `session-${now}-${Math.random().toString(36).slice(2, 10)}`
-    setSessions((current) => [...current, createTerminalSessionFromServer(sessionId, server, now)])
-    setActiveSftpTabId(null)
-    setActiveSessionId(sessionId)
-    updateSessionActivity(sessionId, now)
-
-    void markDesktopServerConnected(server.id)
-      .catch((error) => console.error("Failed to mark desktop server connected:", error))
-    void recordDesktopTerminalOpened(server)
-      .catch((error) => console.error("Failed to record desktop connection activity:", error))
-    return sessionId
-  }, [maxTabs, sftpTabs.length, setActiveSessionId, setSessions, tTerminal, updateSessionActivity])
-
-  const handleCloseSession = useCallback((sessionId: string) => {
-    const currentIndex = sessions.findIndex((session) => session.id === sessionId)
-    if (activeSessionId === sessionId && currentIndex !== -1) {
-      const nextIndex = currentIndex < sessions.length - 1 ? currentIndex + 1 : currentIndex - 1
-      setActiveSessionId(sessions[nextIndex]?.id ?? null)
-    }
-
-    setSessions((current) => current.filter((session) => session.id !== sessionId))
-  }, [activeSessionId, sessions, setActiveSessionId, setSessions])
-
-  const handleCloseSessions = useCallback((sessionIds: string[]) => {
-    const closing = new Set(sessionIds)
-    const remaining = sessions.filter((session) => !closing.has(session.id))
-    if (activeSessionId && closing.has(activeSessionId)) {
-      setActiveSessionId(remaining[0]?.id ?? null)
-    }
-    setSessions(remaining)
-  }, [activeSessionId, sessions, setActiveSessionId, setSessions])
-
-  const handleDuplicateSession = useCallback((sessionId: string) => {
-    const sftpTab = sftpTabs.find(tab => tab.id === sessionId)
-    if (sftpTab) { handleCreateSftpTabFromServer(sftpTab.server, sftpTab.initialPath); return }
-    const source = sessions.find((session) => session.id === sessionId)
-    if (!source) return
-    if (totalTabCount >= maxTabs) {
-      toast.error(tTerminal("errorMaxTabsReached", { max: maxTabs }))
-      return
-    }
-
-    const now = Date.now()
-    const duplicate: TerminalSession = {
-      ...source,
-      id: `session-${now}`,
-      lastActivity: now,
-      pinned: false,
-      connectionPhase: source.type === "terminal" ? "idle" : source.connectionPhase,
-      status: source.type === "terminal" ? "reconnecting" : source.status,
-    }
-
-    setSessions((current) => [...current, duplicate])
-    setActiveSessionId(duplicate.id)
-    updateSessionActivity(duplicate.id, now)
-  }, [sftpTabs, handleCreateSftpTabFromServer, maxTabs, sessions, setActiveSessionId, setSessions, tTerminal, totalTabCount, updateSessionActivity])
-
-  const handleCloseOthers = useCallback((sessionId: string) => {
-    setSftpTabs(current => current.filter(tab => tab.id === sessionId || tab.pinned))
-    setActiveSftpTabId(sftpTabs.some(tab => tab.id === sessionId) ? sessionId : null)
-    setSessions((current) => current.filter((session) => session.id === sessionId || session.pinned))
-    setActiveSessionId(sessions.some(session => session.id === sessionId) ? sessionId : null)
-  }, [sessions, sftpTabs, setActiveSessionId, setSessions])
-
-  const handleCloseAll = useCallback(() => {
-    setSftpTabs(current => current.filter(tab => tab.pinned))
-    setActiveSftpTabId(null)
-    const pinned = sessions.filter((session) => session.pinned)
-    setSessions(pinned)
-    setActiveSessionId(pinned[0]?.id ?? null)
-  }, [sessions, setActiveSessionId, setSessions])
-
-  const handleTogglePin = useCallback((sessionId: string) => {
-    setSftpTabs(current => current.map(tab => tab.id === sessionId ? { ...tab, pinned: !tab.pinned } : tab))
-    setSessions((current) => current.map((session) => (
-      session.id === sessionId
-        ? { ...session, pinned: !session.pinned }
-        : session
-    )))
-  }, [setSessions])
-
-  const handleReorder = useCallback((newOrderIds: string[]) => {
-    const sessionMap = new Map(sessions.map((session) => [session.id, session]))
-    const next = newOrderIds.map((id) => sessionMap.get(id)).filter((session): session is TerminalSession => !!session)
-    if (next.length === sessions.length) {
-      setSessions(next)
-    }
-  }, [sessions, setSessions])
-
-  const handleSendCommand = useCallback((sessionId: string, command: string) => {
-    if (command.trim()) {
-      updateSessionActivity(sessionId)
-      inactivityNotifiedRef.current.delete(sessionId)
-    }
-  }, [updateSessionActivity])
-
-  const handleConnectionPhaseChange = useCallback((sessionId: string, phase: TerminalConnectionPhase) => {
-    setSessions((current) => current.map((session) => (
-      session.id === sessionId
-        ? {
-            ...session,
-            connectionPhase: phase,
-            status: statusFromConnectionPhase(phase),
-          }
-        : session
-    )))
-    if (phase === "ready") {
-      updateSessionActivity(sessionId)
-    }
-  }, [setSessions, updateSessionActivity])
-
-  const renderSftpTabContent = useCallback((session: TerminalSession, options?: TerminalExtraSessionRenderOptions) => {
-    const tab = sftpTabs.find((item) => item.id === session.id)
-    if (!tab) return null
-
-    return (
-      <TerminalSftpTabContent
-        sessionId={tab.id}
-        isActive={options?.isActive ?? true}
-        externalTransferTasks={options?.externalTransferTasks}
-        onClearExternalTransfers={options?.onClearExternalTransfers}
-        onCancelExternalTransfer={options?.onCancelExternalTransfer}
-        server={tab.server}
-        label={tab.label}
-        chrome={options?.chrome}
-        surface={options?.surface}
-        onConnectionStateChange={(connected, loading) => {
-          const phase: TerminalConnectionPhase = connected ? "ready" : loading ? "ssh_connecting" : "failed"
-          setSftpTabs(current => current.some(item => item.id === tab.id && item.connectionPhase !== phase) ? current.map(item => item.id === tab.id ? { ...item, connectionPhase: phase } : item) : current)
-        }}
-        onPathChange={(path) => {
-          options?.onPathChange?.(path)
-          setSftpTabs(current => current.some(item => item.id === tab.id && item.initialPath !== path) ? current.map(item => item.id === tab.id ? { ...item, initialPath: path } : item) : current)
-        }}
-        refreshRequestVersion={options?.refreshRequestVersion}
-        initialPath={options?.initialPath ?? tab.initialPath}
-        initialPathBackStack={options?.initialPathBackStack}
-        initialPathForwardStack={options?.initialPathForwardStack}
-        onHistoryChange={options?.onHistoryChange}
-        onClose={() => handleCloseSftpTab(tab.id)}
-        onRenameSession={(label) => handleRenameSftpTab(tab.id, label)}
-      />
-    )
-  }, [handleCloseSftpTab, handleRenameSftpTab, sftpTabs])
-
-  const handleAuthCancelled = useCallback((sessionId: string) => {
-    useTerminalStore.getState().destroySession(sessionId)
-    handleCloseSession(sessionId)
-  }, [handleCloseSession])
-
   const handleToggleAiAssistant = useCallback(() => {
     preloadDesktopView("ai")
-    setAiAssistantMounted(true)
-    setActiveView((current) => (current === "ai" ? "terminal" : "ai"))
+    setActiveView((current) => (current === "ai" ? WORKBENCH_VIEW : "ai"))
   }, [])
 
   const handleOpenScripts = useCallback(() => {
     preloadDesktopView("scripts")
-    setScriptsMounted(true)
     setActiveView("scripts")
   }, [])
 
   const handleOpenTasks = useCallback((taskID?: string) => {
     preloadDesktopView("tasks")
-    setTasksMounted(true)
     setRequestedTaskRunID(taskID || null)
     setActiveView("tasks")
   }, [])
 
   const handleOpenActivityLogs = useCallback(() => {
     preloadDesktopView("activity-logs")
-    setActivityLogsMounted(true)
     setActiveView("activity-logs")
   }, [])
 
   const handleOpenBackupRestore = useCallback(() => {
     preloadDesktopView("backup-restore")
-    setBackupRestoreMounted(true)
     setActiveView("backup-restore")
   }, [])
 
@@ -647,42 +301,10 @@ function App() {
     setActiveView("ssh-keys")
   }, [])
 
-  const handleReturnToTerminal = useCallback(() => {
+  const handleReturnToWorkbench = useCallback(() => {
     setRequestedTaskRunID(null)
-    setActiveView("terminal")
+    setActiveView(WORKBENCH_VIEW)
   }, [])
-
-  useEffect(() => {
-    if (inactiveMinutes === 0) return
-    const timer = window.setInterval(() => {
-      const now = Date.now()
-      const threshold = inactiveMinutes * 60 * 1000
-
-      sessions.forEach((session) => {
-        if (!shouldCheckTerminalInactivity(session)) {
-          inactivityNotifiedRef.current.delete(session.id)
-          return
-        }
-
-        const lastActivity = getSessionLastActivity(session.id) ?? session.lastActivity
-        if (now - lastActivity < threshold || inactivityNotifiedRef.current.has(session.id)) {
-          return
-        }
-        inactivityNotifiedRef.current.add(session.id)
-        toast(tTerminal("inactiveToastTitle", { name: session.serverName }), {
-          description: tTerminal("inactiveToastDescription", { minutes: inactiveMinutes }),
-          action: {
-            label: tTerminal("inactiveToastActionLabel"),
-            onClick: () => handleCloseSession(session.id),
-          },
-        })
-      })
-    }, 60 * 1000)
-
-    return () => window.clearInterval(timer)
-  }, [getSessionLastActivity, handleCloseSession, inactiveMinutes, sessions, tTerminal])
-
-  useEffect(() => { inactivityNotifiedRef.current.clear() }, [inactiveMinutes])
 
   const windowActions = (
     <DesktopWindowActions
@@ -718,111 +340,45 @@ function App() {
   return (
     <DesktopProviders aiAssistantActive={activeView === "ai"}>
       <SshWorkspace adapters={adapters} capabilities={capabilities} layout="desktop">
-        <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
-          {activeView !== "terminal" && (
-            <DesktopPageHeader view={activeView} onReturnToTerminal={handleReturnToTerminal} actions={windowActions} />
+        <WorkspaceShell
+          activeView={activeView}
+          viewHeader={activeView !== WORKBENCH_VIEW && (
+            <DesktopPageHeader view={activeView} onReturnToTerminal={handleReturnToWorkbench} actions={windowActions} />
           )}
-          <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-            {activeView === "ssh-keys" && (
-              <section className="absolute inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden">
-                <DesktopViewBoundary view="ssh-keys">
-                  <DesktopSSHKeysView locale={locale} />
-                </DesktopViewBoundary>
-              </section>
-            )}
-            <section
-              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
-              data-active={activeView === "terminal"}
-              aria-hidden={activeView !== "terminal"}
-            >
-              <SftpServerPickerDialog
-                open={sftpPickerOpen}
-                ready
-                serverApi={serverApi}
-                onOpenChange={setSftpPickerOpen}
-                onSelect={handleCreateSftpTabFromServer}
-          currentServerId={sessions.find(session => session.id === activeSessionId)?.serverId}
-          openedServerIds={sftpTabs.map(tab => String(tab.server.id))}
-              />
-              <TerminalComponent
-                sessions={visibleTerminalSessions}
-                extraSessions={sftpTabSessions}
-                extraNewSessionActions={[{
-                  id: "new-desktop-sftp-session",
-                  label: "SFTP+",
-                  ariaLabel: tTerminal("sftpPickerActionLabel"),
-                  title: tTerminal("sftpPickerActionLabel"),
-                  onCreate: handleOpenSftpPicker,
-                }]}
-                renderExtraSessionContent={renderSftpTabContent}
-                onOpenSftpSession={async (session, path) => {
-              if (!session.serverId) return
-              try { handleCreateSftpTabFromServer(await serverApi.getById(session.serverId), path ?? "~") }
-              catch { toast.error(tTerminal("sftpPickerFailed")) }
-            }}
-            onCloseExtraSession={handleCloseSftpTab}
-                onReorderExtraSessions={handleReorderSftpTabs}
-                externalActiveExtraSessionId={activeSftpTabId}
-                onActiveExtraSessionChange={setActiveSftpTabId}
-                onCloseSession={handleCloseSession}
-                onCloseSessions={handleCloseSessions}
-                onSendCommand={handleSendCommand}
-                onDuplicateSession={handleDuplicateSession}
-                onCloseOthers={handleCloseOthers}
-                onCloseAll={handleCloseAll}
-                onTogglePin={handleTogglePin}
-                onReorderSessions={handleReorder}
-                onStartConnection={handleStartConnection}
-                onAuthCancelled={handleAuthCancelled}
-                externalActiveSessionId={activeSessionId}
-                onActiveSessionChange={setActiveSessionId}
-                onConnectionPhaseChange={handleConnectionPhaseChange}
-                serverApi={serverApi}
-                serverConfigsReady
-                aiAssistantAdapters={aiAssistantAdapters}
-                hidePageHeader
-                unframed
-                settingsDialogOpen={terminalSettingsOpen}
-                onSettingsDialogOpenChange={setTerminalSettingsOpen}
-                tabBarEndContent={activeView === "terminal" ? windowActions : undefined}
-              />
-            </section>
-            <section
-              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
-              data-active={activeView === "ai"}
-              aria-hidden={activeView !== "ai"}
-              inert={activeView !== "ai"}
-            >
-              {aiAssistantMounted ? (
+          workbench={(
+            <Workbench
+              workbench={workbench}
+              serverApi={serverApi}
+              serversReady
+              terminalTransportReady={desktopTerminalTransportReady}
+              aiAssistantAdapters={aiAssistantAdapters}
+              hidePageHeader
+              unframed
+              settingsDialogOpen={terminalSettingsOpen}
+              onSettingsDialogOpenChange={setTerminalSettingsOpen}
+              tabBarEndContent={activeView === WORKBENCH_VIEW ? windowActions : undefined}
+            />
+          )}
+          views={[
+            {
+              id: "ai",
+              content: (
                 <DesktopViewBoundary view="ai">
-                  <DesktopAIAssistantView
-                    active={activeView === "ai"}
-                    adapters={aiAssistantAdapters}
-                    locale={locale}
-                  />
+                  <DesktopAIAssistantView active={activeView === "ai"} adapters={aiAssistantAdapters} locale={locale} />
                 </DesktopViewBoundary>
-              ) : null}
-            </section>
-            <section
-              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
-              data-active={activeView === "scripts"}
-              aria-hidden={activeView !== "scripts"}
-            >
-              {scriptsMounted ? (
+              ),
+            },
+            {
+              id: "scripts",
+              content: (
                 <DesktopViewBoundary view="scripts">
-                  <DesktopScriptsView
-                    adapters={scriptAdapters}
-                    locale={locale}
-                  />
+                  <DesktopScriptsView adapters={scriptAdapters} locale={locale} />
                 </DesktopViewBoundary>
-              ) : null}
-            </section>
-            <section
-              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
-              data-active={activeView === "tasks"}
-              aria-hidden={activeView !== "tasks"}
-            >
-              {tasksMounted ? (
+              ),
+            },
+            {
+              id: "tasks",
+              content: (
                 <DesktopViewBoundary view="tasks">
                   <DesktopTaskCenterView
                     locale={locale}
@@ -830,43 +386,45 @@ function App() {
                     onClearRequestedRun={() => setRequestedTaskRunID(null)}
                   />
                 </DesktopViewBoundary>
-              ) : null}
-            </section>
-            <section
-              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
-              data-active={activeView === "activity-logs"}
-              aria-hidden={activeView !== "activity-logs"}
-            >
-              {activityLogsMounted ? (
+              ),
+            },
+            {
+              id: "activity-logs",
+              content: (
                 <DesktopViewBoundary view="activity-logs">
-                  <DesktopActivityLogsView
-                    locale={locale}
-                  />
+                  <DesktopActivityLogsView locale={locale} />
                 </DesktopViewBoundary>
-              ) : null}
-            </section>
-            <section
-              className="pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 overflow-hidden opacity-0 data-[active=true]:pointer-events-auto data-[active=true]:visible data-[active=true]:opacity-100"
-              data-active={activeView === "backup-restore"}
-              aria-hidden={activeView !== "backup-restore"}
-            >
-              {backupRestoreMounted ? (
+              ),
+            },
+            {
+              id: "backup-restore",
+              content: (
                 <DesktopViewBoundary view="backup-restore">
-                  <DesktopBackupRestoreView
-                    locale={locale}
-                  />
+                  <DesktopBackupRestoreView locale={locale} />
                 </DesktopViewBoundary>
-              ) : null}
-            </section>
-            {activeView === "sync" && (
-              <section className="absolute inset-0 flex min-h-0 min-w-0 overflow-hidden">
+              ),
+            },
+            {
+              id: "ssh-keys",
+              keepAlive: false,
+              className: "flex-col",
+              content: (
+                <DesktopViewBoundary view="ssh-keys">
+                  <DesktopSSHKeysView locale={locale} />
+                </DesktopViewBoundary>
+              ),
+            },
+            {
+              id: "sync",
+              keepAlive: false,
+              content: (
                 <DesktopViewBoundary view="sync">
                   <DesktopSyncView locale={locale} />
                 </DesktopViewBoundary>
-              </section>
-            )}
-          </div>
-        </main>
+              ),
+            },
+          ]}
+        />
         <DesktopUpdateFailureDialog />
       </SshWorkspace>
     </DesktopProviders>

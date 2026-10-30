@@ -7,14 +7,14 @@ import type {
   WorkspaceDockerPort,
   WorkspaceDockerResourcesResponse,
   WorkspaceDockerSystemInfo,
-} from "@easyssh/ssh-workspace/desktop"
-import { DesktopDockerService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+} from "@easyssh/app/desktop"
+import { DesktopDockerService } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 import { toFiniteNumber } from "./desktop-adapter-utils"
 
 type DesktopDockerApi = NonNullable<SshWorkspaceApiClient["docker"]>
 type DesktopDockerContainerModel = Awaited<ReturnType<typeof DesktopDockerService.ListContainers>>["data"][number]
 type DesktopDockerImageModel = Awaited<ReturnType<typeof DesktopDockerService.ListImages>>["data"][number]
-type DesktopDockerStatsModel = Awaited<ReturnType<typeof DesktopDockerService.GetContainerStats>>[number]
+type DesktopDockerStatsModel = Awaited<ReturnType<typeof DesktopDockerService.GetContainerStats>>["data"][number]
 type DesktopDockerSystemInfoModel = Awaited<ReturnType<typeof DesktopDockerService.GetSystemInfo>>
 
 const validContainerStates = new Set<WorkspaceDockerContainerState>([
@@ -37,7 +37,7 @@ export function createDesktopDockerApi(): DesktopDockerApi {
       }
     },
     async getContainerStats(serverId) {
-      return (await DesktopDockerService.GetContainerStats({ serverId })).map(mapStats)
+      return ((await DesktopDockerService.GetContainerStats({ serverId })).data || []).map(mapStats)
     },
     async getContainerStat(serverId, containerId) {
       return mapStats(await DesktopDockerService.GetContainerStat({ serverId, containerId }))

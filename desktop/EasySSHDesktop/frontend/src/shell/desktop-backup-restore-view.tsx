@@ -1,6 +1,6 @@
 import { useMemo } from "react"
-import { BackupRestoreTab } from "@easyssh/ssh-workspace/desktop"
-import type { Locale } from "@/i18n"
+import { BackupRestoreTab } from "@easyssh/app/desktop"
+import type { Locale } from "@easyssh/app/i18n"
 import { createDesktopBackupRestoreAdapter } from "../adapters/desktop-backup-restore-api"
 import { DesktopPageContent, DesktopWebViewShell } from "./desktop-view-shell"
 

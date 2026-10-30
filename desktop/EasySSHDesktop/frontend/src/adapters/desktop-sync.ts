@@ -1,4 +1,5 @@
-import { Browser, Call, Events } from "@wailsio/runtime"
+import { Browser, Events } from "@wailsio/runtime"
+import * as DesktopSyncService from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopsyncservice"
 import type {
   SyncAdapter,
   SyncStatus,
@@ -6,8 +7,8 @@ import type {
   SyncLogin,
   SyncScopes,
   SyncConflict,
-} from "@/lib/sync/types"
-import type { SyncSnapshot, SyncPeer } from "@/lib/sync/automerge"
+} from "@easyssh/app/lib/sync/types"
+import type { SyncSnapshot, SyncPeer } from "@easyssh/app/lib/sync/automerge"
 
 type LocalState = {
   scopes: SyncScopes
@@ -23,8 +24,8 @@ type LocalState = {
   snapshot: SyncSnapshot
   hash: string
 }
-const call = <T>(method: string, ...args: unknown[]): Promise<T> =>
-  Call.ByName(`main.DesktopSyncService.${method}`, ...args)
+const call = <T>(method: keyof typeof DesktopSyncService, ...args: unknown[]): Promise<T> =>
+  (DesktopSyncService[method] as unknown as (...input: unknown[]) => Promise<T>)(...args)
 let active: Promise<void> | null = null
 let lastError = ""
 let changingAccount = false
@@ -90,7 +91,7 @@ async function synchronizeConfiguration() {
   // Lazy loading keeps WASM off the startup path for users without sync.
   let state = await call<LocalState>("Load")
   if (!state.enabled || !state.space_id) return { changed: false, serversChanged: false }
-  const engine = await import("@/lib/sync/automerge")
+  const engine = await import("@easyssh/app/lib/sync/automerge")
   for (let attempt = 0; attempt < 3; attempt++) {
     if (attempt) state = await call<LocalState>("Load")
     if (!state.enabled) return { changed: false, serversChanged: false }
@@ -142,7 +143,7 @@ type VaultState = VaultEntry & {
 const valueKey = "value/00000000-0000-4000-8000-000000000001"
 
 async function synchronizeVault(entry: VaultEntry) {
-  const engine = await import("@/lib/sync/automerge")
+  const engine = await import("@easyssh/app/lib/sync/automerge")
   for (let attempt = 0; attempt < 3; attempt++) {
     const state = await call<VaultState>("PrepareVault", entry.kind, entry.id)
     let doc = engine.loadDocument(state.document)
@@ -244,7 +245,7 @@ function syncNow(): Promise<void> {
 export const desktopSyncAdapter: SyncAdapter = {
   async status(): Promise<SyncStatus> {
     const state = await call<LocalState>("Load")
-    const engine = state.document ? await import("@/lib/sync/automerge") : null
+    const engine = state.document ? await import("@easyssh/app/lib/sync/automerge") : null
     let conflicts: SyncStatus["conflicts"] = []
     if (engine) {
       const doc = engine.loadDocument(state.document)
@@ -356,7 +357,7 @@ export const desktopSyncAdapter: SyncAdapter = {
   },
   async resolve(key, field, value) {
     if (active) await active.catch(() => {})
-    const engine = await import("@/lib/sync/automerge")
+    const engine = await import("@easyssh/app/lib/sync/automerge")
     if (key.startsWith("vault/")) {
       const [, kind, id] = key.split("/")
       const state = await call<VaultState>("PrepareVault", kind, id)

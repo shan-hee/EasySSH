@@ -1,10 +1,10 @@
 import { useTranslation } from "react-i18next"
 import { Copy, ExternalLink, Loader2, RefreshCw } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { useSystemConfig } from "@/contexts/system-config-context"
-import { useUpdateCheck } from "@/hooks/use-update-check"
-import { appVersion, getCurrentYear } from "@/lib/app-metadata"
-import { DEFAULT_BRAND_LOGO, DEFAULT_BRAND_NAME } from "@/lib/brand"
+import { Button } from "@easyssh/app/components/ui/button"
+import { useSystemConfig } from "@easyssh/app/contexts/system-config-context"
+import { useUpdateCheck } from "@easyssh/app/hooks/use-update-check"
+import { appVersion, getCurrentYear } from "../../lib/app-metadata"
+import { DEFAULT_BRAND_LOGO, DEFAULT_BRAND_NAME } from "@easyssh/app/lib/brand"
 
 export function AccountAbout() {
   const { t } = useTranslation("accountSettings")

@@ -2,22 +2,22 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "re
 import { MotionConfig } from "motion/react"
 import { Outlet, useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import SidebarProviderServer from "@/components/sidebar-provider-server"
-import { AppSidebar } from "@/components/app-sidebar"
-import { AISidebarHost } from "@/components/ai-agent/ai-sidebar-host"
-import { PageHeaderHost } from "@/components/page-header"
-import { SidebarInset, useSidebar } from "@/components/ui/sidebar"
-import { ClientAuthProvider } from "@/components/client-auth-provider"
-import { useSystemConfig } from "@/contexts/system-config-context"
-import { DashboardI18nProvider } from "@/providers/dashboard-i18n-provider"
-import { getAuthRedirectDecision, getCurrentBrowserPath } from "@/lib/auth-redirect"
-import { RuntimeProvider, useRuntime } from "@/shell/runtime/runtime-provider"
-import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-policy"
-import { Button } from "@/components/ui/button"
-import { AppLoadingScreen } from "@/components/app-loading"
-import { cn } from "@/lib/utils"
+import SidebarProviderServer from "../components/sidebar-provider-server"
+import { AppSidebar } from "../shell/app-sidebar"
+import { AISidebarHost } from "@easyssh/app/components/ai-agent/ai-sidebar-host"
+import { PageHeaderHost } from "@easyssh/app/components/page-header"
+import { SidebarInset, useSidebar } from "@easyssh/app/components/ui/sidebar"
+import { ClientAuthProvider } from "../platform/client-auth-provider"
+import { useSystemConfig } from "@easyssh/app/contexts/system-config-context"
+import { DashboardI18nProvider } from "@easyssh/app/providers/dashboard-i18n-provider"
+import { getAuthRedirectDecision, getCurrentBrowserPath } from "../platform/auth-redirect"
+import { RuntimeProvider, useRuntime } from "@easyssh/app/shell/runtime/runtime-provider"
+import { getRouteFallback, isRouteAllowed } from "@easyssh/app/shell/navigation/route-policy"
+import { Button } from "@easyssh/app/components/ui/button"
+import { AppLoadingScreen } from "@easyssh/app/components/app-loading"
+import { cn } from "@easyssh/app/lib/utils"
 
-const AIAssistantPage = lazy(() => import("@/pages/dashboard/ai-assistant-page"))
+const AIAssistantPage = lazy(() => import("@easyssh/app/pages/dashboard/ai-assistant-page"))
 
 function MobileSidebarRouteCloser() {
   const { pathname } = useLocation()
@@ -78,7 +78,6 @@ function DashboardLayoutContent() {
   const { pathname } = useLocation()
   const { authStatus, error, isLoading, refreshConfig } = useSystemConfig()
   const { runtime, isLoading: isRuntimeLoading } = useRuntime()
-  const user = authStatus?.is_authenticated ? authStatus.user : null
   const usesViewportWorkspace = ["/dashboard/terminal", "/dashboard/ai-assistant"].some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   )
@@ -103,11 +102,9 @@ function DashboardLayoutContent() {
   useEffect(() => {
     if (isLoading || (error && !authStatus?.is_authenticated) || isRuntimeLoading || !runtime)
       return
-    const permissions = user?.permissions || []
-    const isOwner = runtime.principal.role === "owner"
-    if (isRouteAllowed(runtime, pathname, permissions, isOwner)) return
+    if (isRouteAllowed(runtime, pathname)) return
 
-    navigate(getRouteFallback(pathname, runtime, permissions, isOwner), { replace: true })
+    navigate(getRouteFallback(pathname, runtime), { replace: true })
   }, [
     authStatus?.is_authenticated,
     error,
@@ -116,7 +113,6 @@ function DashboardLayoutContent() {
     navigate,
     pathname,
     runtime,
-    user?.permissions,
   ])
 
   if (isLoading && !authStatus) {
@@ -128,7 +124,7 @@ function DashboardLayoutContent() {
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md space-y-4 text-center">
           <p className="text-muted-foreground">{t("authStatusUnavailable")}</p>
-          <Button onClick={() => void refreshConfig({ refreshAuth: true }).catch(() => undefined)}>{t("retry")}</Button>
+          <Button onClick={() => void refreshConfig().catch(() => undefined)}>{t("retry")}</Button>
         </div>
       </div>
     )

@@ -1,10 +1,10 @@
 
 import { Outlet } from "react-router-dom"
-import { useTheme } from "@/components/theme-provider"
+import { useTheme } from "@easyssh/app/components/theme-provider"
 import { lazy, Suspense } from "react"
-import { AuthI18nProvider } from "@/providers/auth-i18n-provider"
+import { AuthI18nProvider } from "../providers/auth-i18n-provider"
 
-const LightRays = lazy(() => import("@/components/LightRays"))
+const LightRays = lazy(() => import("../components/LightRays"))
 
 export default function AuthLayout() {
   const { resolvedTheme } = useTheme()

@@ -1,0 +1,23 @@
+{
+  "name": "@easyssh/frontend-tooling",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./code-splitting": "./code-splitting.ts",
+    "./eslint": "./eslint.js"
+  },
+  "scripts": {
+    "check:boundaries": "tsx check-import-boundaries.ts"
+  },
+  "dependencies": {
+    "@eslint/js": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "eslint-plugin-react-refresh": "catalog:",
+    "typescript-eslint": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:"
+  }
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { toast } from "@easyssh/ssh-workspace/desktop"
+import { toast } from "@easyssh/app/desktop"
 import { useTranslation } from "react-i18next"
 import {
   desktopUpdateApi,
@@ -7,7 +7,7 @@ import {
   type DesktopUpdateProgress,
   type DesktopUpdateStatus,
 } from "../adapters/desktop-update-api"
-import { cn } from "@/lib/utils"
+import { cn } from "@easyssh/app/lib/utils"
 
 type DesktopInlineUpdateActionProps = {
   initialResult?: DesktopUpdateCheckResult | null

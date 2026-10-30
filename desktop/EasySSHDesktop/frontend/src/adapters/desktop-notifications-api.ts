@@ -1,4 +1,4 @@
-import { DesktopNotificationService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import { DesktopNotificationService } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 
 export interface DesktopNotification {
   id: string

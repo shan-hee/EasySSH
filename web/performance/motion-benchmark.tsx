@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { motion } from 'motion/react'
-import { motionDurations, motionEase } from '../src/lib/motion'
+import { motionDurations, motionEase } from '@easyssh/app/lib/motion'
 
 // A deliberately small reference animation, built separately from the app.
 // It establishes the browser's frame pacing floor, not feature equivalence.

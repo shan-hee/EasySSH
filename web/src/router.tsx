@@ -1,16 +1,16 @@
 import type { ComponentType } from "react"
 import { createBrowserRouter, Navigate, type LoaderFunctionArgs, type RouteObject } from "react-router-dom"
-import { App } from "@/app"
-import { AppLoadingScreen } from "@/components/app-loading"
-import { RouteErrorBoundary } from "@/components/route-error-boundary"
-import { ThemeProvider } from "@/components/theme-provider"
-import { InstanceRestartPage } from "@/pages/instance-restart-page"
-import HomePage from "@/pages/home-page"
-import AuthTransition from "@/layouts/auth-transition"
-import { preloadNamespaces } from "@/i18n"
-import { createQueryClient } from "@/lib/query-client"
-import { dashboardRouteRegistry } from "@/lib/dashboard-route-registry"
-import { createDashboardPageLoader, requireDashboardAccess } from "@/lib/dashboard-route-loader"
+import { App } from "./app"
+import { AppLoadingScreen } from "@easyssh/app/components/app-loading"
+import { RouteErrorBoundary } from "./components/route-error-boundary"
+import { ThemeProvider } from "@easyssh/app/components/theme-provider"
+import { InstanceRestartPage } from "./pages/instance-restart-page"
+import HomePage from "./pages/home-page"
+import AuthTransition from "./layouts/auth-transition"
+import { preloadNamespaces } from "@easyssh/app/i18n"
+import { createQueryClient } from "@easyssh/app/lib/query-client"
+import { dashboardRouteRegistry } from "./lib/dashboard-route-registry"
+import { createDashboardPageLoader, requireDashboardAccess } from "./lib/dashboard-route-loader"
 
 const queryClient = createQueryClient()
 
@@ -34,7 +34,8 @@ const dashboardRoutes: RouteObject[] = dashboardRouteRegistry.map((route): Route
   ErrorBoundary: RouteErrorBoundary,
 }))
 
-export const router = createBrowserRouter([
+// 创建路由会立即执行当前地址的 loader，必须由入口在安装平台传输后调用。
+export const createAppRouter = () => createBrowserRouter([
   {
     path: "/instance-restart",
     element: <ThemeProvider defaultTheme="light" enableSystem disableTransitionOnChange><InstanceRestartPage /></ThemeProvider>,
@@ -46,27 +47,24 @@ export const router = createBrowserRouter([
     ErrorBoundary: RouteErrorBoundary,
     children: [
       { index: true, Component: HomePage },
-      { path: "setup", lazy: lazyPage(() => import("@/pages/setup-page"), ["setup", "auth"]) },
-      { path: "auth/google/callback", lazy: lazyPage(() => import("@/pages/auth/google-callback-page"), ["auth"]) },
+      { path: "setup", lazy: lazyPage(() => import("./pages/setup-page"), ["setup", "auth"]) },
       {
-        lazy: lazyPage(() => import("@/layouts/auth-layout"), ["auth"]),
+        lazy: lazyPage(() => import("./layouts/auth-layout"), ["auth"]),
         children: [
-          { path: "login", lazy: lazyPage(() => import("@/pages/auth/login-page"), ["auth"], true) },
-          { path: "register", lazy: lazyPage(() => import("@/pages/auth/register-page"), ["auth"], true) },
-          { path: "forgot-password", lazy: lazyPage(() => import("@/pages/auth/forgot-password-page"), ["auth"], true) },
+          { path: "login", lazy: lazyPage(() => import("./pages/auth/login-page"), ["auth"], true) },
         ],
       },
       {
         path: "dashboard",
-        lazy: lazyPage(() => import("@/layouts/dashboard-layout"), ["nav", "dashboard", "headerActions"]),
+        lazy: lazyPage(() => import("./layouts/dashboard-layout"), ["nav", "dashboard", "headerActions"]),
         loader: dashboardLoader,
         ErrorBoundary: RouteErrorBoundary,
         children: [
           ...dashboardRoutes,
-          { path: "sync-authorize", loader: dashboardLoader, lazy: lazyPage(() => import("@/pages/dashboard/sync-authorize-page"), ["settingsManagementBackup"]), ErrorBoundary: RouteErrorBoundary },
+          { path: "sync-authorize", loader: dashboardLoader, lazy: lazyPage(() => import("@easyssh/app/pages/dashboard/sync-authorize-page"), ["settingsManagementBackup"]), ErrorBoundary: RouteErrorBoundary },
           { path: "sftp", element: <Navigate to="/dashboard/terminal?sftpPicker=1" replace /> },
           { path: "error", lazy: async () => {
-            const [{ default: DashboardError }] = await Promise.all([import("@/pages/dashboard/dashboard-error"), preloadNamespaces(["errors"])])
+            const [{ default: DashboardError }] = await Promise.all([import("@easyssh/app/pages/dashboard/dashboard-error"), preloadNamespaces(["errors"])])
             return { Component: () => <DashboardError error={new Error("Dashboard error")} reset={() => window.location.reload()} /> }
           } },
         ],

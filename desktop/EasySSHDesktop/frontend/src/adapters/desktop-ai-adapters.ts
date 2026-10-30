@@ -1,5 +1,5 @@
-import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
-import { Call, Events } from "@wailsio/runtime"
+import type { AIAssistantWorkspaceAdapters } from "@easyssh/app/components/ai-agent/ai-assistant-workspace-view"
+import { Events } from "@wailsio/runtime"
 import { requestDesktopSync } from "./desktop-sync"
 import type {
   AgentFileArtifact,
@@ -7,23 +7,33 @@ import type {
   AgentSessionStatus,
   AgentTaskStatus,
   AgentTransportType,
+  AIHistoryChange,
+  AIHistoryPage,
+  AITaskOutputDelta,
+  AITextDelta,
   CreateSessionResponse,
   ListSessionsResponse,
-  MessageView,
   PermissionMode,
-  SaveUserAIConfigRequest,
   SessionListItem,
-  SessionView,
+  SessionOverview,
+  SessionOverviewResponse,
   TaskView,
   ToolView,
-} from "@/lib/ai-agent-types"
-import type { ServerConnectionConfigsApi } from "@easyssh/ssh-workspace/desktop"
-import * as DesktopAIService from "../../bindings/github.com/easyssh/easyssh-desktop/desktopaiservice"
+} from "@easyssh/app/lib/ai-agent-types"
+import {
+  loadAISessionHistory,
+  readContentJSON,
+  withEmptyHistory,
+  type AIHistoryReader,
+  type ContentChunk,
+  type ServerConnectionConfigsApi,
+} from "@easyssh/app/desktop"
+import * as DesktopAIService from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopaiservice"
+import * as DesktopContentService from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopcontentservice"
 import { ServerReference } from "../../bindings/github.com/easyssh/shared/aichatui/models"
 import {
   DesktopAIToolApprovalInput,
   DesktopAICreateSessionInput,
-  DesktopAIModelsProbeRequest,
   type DesktopAICreateSessionResponse,
   type DesktopAIListSessionsResult,
   DesktopAIPermissionMode,
@@ -33,27 +43,39 @@ import {
   type DesktopAISessionListItem,
   type DesktopAISessionScope,
   type DesktopAISessionView,
-  type DesktopAITaskView,
   type DesktopAIToolView,
-  type DesktopAIMessageView,
-} from "../../bindings/github.com/easyssh/easyssh-desktop/models"
+} from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/models"
 
 const desktopAiConfigQueryKey = ["desktopAiConfig"]
 const desktopAISessionEvent = "easyssh:desktop-ai:session-event"
 
-type DesktopAITaskViewWithAssistantMessage = DesktopAITaskView & {
-  assistant_message_id?: string
-}
-
-type DesktopAIUIMessage = SessionView["ui_messages"][number]
+/** 桌面实时事件中的工具任务，状态以字符串传递。 */
+type DesktopAITaskPayload = Omit<TaskView, "status"> & { status: string }
 
 type DesktopAISessionEvent = {
   session_id?: string
   type?: string
   session?: DesktopAISessionView
-  ui_message?: DesktopAIUIMessage
-  task?: DesktopAITaskView
+  delta?: AITextDelta
+  output?: AITaskOutputDelta
+  task?: DesktopAITaskPayload
+  history?: AIHistoryChange
   error?: string
+}
+
+// 绑定以 Go 结构生成类，字段与实例契约一致。
+const desktopHistoryReader: AIHistoryReader = {
+  page: async (sessionId, kind, afterId) => (
+    await DesktopAIService.History(sessionId, { kind, after_id: afterId, limit: 100 })
+  ) as unknown as AIHistoryPage,
+  readChunk: async (reference, offset) => (
+    await DesktopContentService.ReadContent(reference.id, { sha256: reference.sha256, offset, limit: 0 })
+  ) as unknown as ContentChunk,
+}
+
+/** 桌面会话概况加上本地已提交历史。 */
+function loadDesktopSession(response: DesktopAICreateSessionResponse): Promise<CreateSessionResponse> {
+  return loadAISessionHistory(fromDesktopSessionResponse(response), desktopHistoryReader)
 }
 
 export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConfigsApi): AIAssistantWorkspaceAdapters {
@@ -64,31 +86,33 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
     },
     aiSettings: {
       queryKey: desktopAiConfigQueryKey,
-      getUserAIConfig: async () => DesktopAIService.GetUserAIConfig(),
-      saveUserAIConfig: async (config: SaveUserAIConfigRequest) => {
-        await DesktopAIService.SaveUserAIConfig(config)
+      getConfig: () => DesktopAIService.GetOwnerAIConfig(),
+      saveConfig: async (config) => {
+        const saved = await DesktopAIService.SaveOwnerAIConfig(config)
         requestDesktopSync()
+        return saved
       },
-      probeModels: async (config) => DesktopAIService.ProbeAIModels(
-        new DesktopAIModelsProbeRequest(config),
-      ),
+      probeModels: (input) => DesktopAIService.ProbeAIModels(input),
     },
     aiSession: {
-      getTaskFile: (sessionId, taskId) => Call.ByName("main.DesktopAIService.GetTaskFile", sessionId, taskId) as Promise<AgentFileArtifact>,
-      saveTaskFile: (sessionId, taskId) => Call.ByName("main.DesktopAIService.SaveTaskFile", sessionId, taskId) as Promise<void>,
-      getSession: async (sessionId: string) => fromDesktopSessionResponse(await DesktopAIService.GetSession(sessionId)),
+      getTaskFile: async (sessionId, taskId) => {
+        const reference = await DesktopAIService.GetTaskFile(sessionId, taskId)
+        return readContentJSON<AgentFileArtifact>(reference, desktopHistoryReader.readChunk)
+      },
+      saveTaskFile: (sessionId, taskId) => DesktopAIService.SaveTaskFile(sessionId, taskId),
+      getSession: async (sessionId: string) => loadDesktopSession(await DesktopAIService.GetSession(sessionId)),
       getLatestSession: async (scope?: AgentSessionScope) => {
         const response = await DesktopAIService.GetLatestSession(toDesktopSessionScope(scope))
-        return response ? fromDesktopSessionResponse(response) : null
+        return response ? loadDesktopSession(response) : null
       },
-      createSession: async (input) => fromDesktopSessionResponse(
+      createSession: async (input) => withEmptyHistory(fromDesktopSessionResponse(
         await DesktopAIService.CreateSession(new DesktopAICreateSessionInput({
           model: input.model,
           permission_mode: toDesktopPermissionMode(input.permission_mode),
           scope: toDesktopSessionScope(input.scope),
         }))
-      ),
-      sendMessage: async (input) => fromDesktopSessionResponse(
+      )),
+      sendMessage: async (input) => loadDesktopSession(
         await DesktopAIService.SendMessage(new DesktopAISendMessageInput({
           reasoning_effort: input.reasoning_effort,
           session_id: input.session_id,
@@ -101,7 +125,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           attachments: input.attachments,
         }))
       ),
-      updateMessage: async (input) => fromDesktopSessionResponse(
+      updateMessage: async (input) => loadDesktopSession(
         await DesktopAIService.UpdateMessage(new DesktopAIUpdateMessageInput({
           session_id: input.session_id,
           message_id: input.message_id,
@@ -109,7 +133,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           server_references: input.server_references?.map((ref) => new ServerReference(ref)),
         }))
       ),
-      regenerateMessage: async (input) => fromDesktopSessionResponse(
+      regenerateMessage: async (input) => loadDesktopSession(
         await DesktopAIService.RegenerateMessage(new DesktopAIRegenerateMessageInput({
           reasoning_effort: input.reasoning_effort,
           session_id: input.session_id,
@@ -120,7 +144,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           scope: toDesktopSessionScope(input.scope),
         }))
       ),
-      deleteMessage: async (input) => fromDesktopSessionResponse(
+      deleteMessage: async (input) => loadDesktopSession(
         await DesktopAIService.DeleteMessage(input.session_id, input.message_id)
       ),
       subscribeSessionEvents: (callback) => Events.On(desktopAISessionEvent, (event) => {
@@ -133,12 +157,14 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
           session_id: data.session_id,
           type: data.type,
           session: data.session ? fromDesktopSession(data.session) : undefined,
-          ui_message: data.ui_message,
+          delta: data.delta,
+          output: data.output,
           task: data.task ? fromDesktopTask(data.task) : undefined,
+          history: data.history,
           error: data.error,
         })
       }),
-      respondToToolApproval: async (input) => fromDesktopSessionResponse(
+      respondToToolApproval: async (input) => loadDesktopSession(
         await DesktopAIService.RespondToToolApproval(new DesktopAIToolApprovalInput({
           reasoning_effort: input.reasoning_effort,
           session_id: input.session_id,
@@ -248,7 +274,7 @@ function fromDesktopSessionScope(scope?: DesktopAISessionScope | null): AgentSes
   }
 }
 
-function fromDesktopSessionResponse(response: DesktopAICreateSessionResponse): CreateSessionResponse {
+function fromDesktopSessionResponse(response: DesktopAICreateSessionResponse): SessionOverviewResponse {
   return {
     session_id: response.session_id,
     session: fromDesktopSession(response.session),
@@ -256,7 +282,7 @@ function fromDesktopSessionResponse(response: DesktopAICreateSessionResponse): C
   }
 }
 
-function fromDesktopSession(session: DesktopAISessionView): SessionView {
+function fromDesktopSession(session: DesktopAISessionView): SessionOverview {
   return {
     title: session.title,
     id: session.id,
@@ -266,9 +292,8 @@ function fromDesktopSession(session: DesktopAISessionView): SessionView {
     status: fromDesktopSessionStatus(session.status),
     created_at: session.created_at,
     updated_at: session.updated_at,
-    messages: session.messages.map(fromDesktopMessage),
-    tasks: session.tasks.map(fromDesktopTask),
-    ui_messages: session.ui_messages as SessionView["ui_messages"],
+    message_count: session.message_count,
+    task_count: session.task_count,
     available_tools: session.available_tools.map(fromDesktopTool),
     default_transport: fromDesktopTransport(session.default_transport),
   }
@@ -298,29 +323,12 @@ function fromDesktopSessionListItem(item: DesktopAISessionListItem): SessionList
   }
 }
 
-function fromDesktopMessage(message: DesktopAIMessageView): MessageView {
-  return {
-    id: message.id,
-    role: fromDesktopMessageRole(message.role),
-    content: message.content,
-    server_references: message.server_references,
-    reasoning: message.reasoning,
-    attachments: message.attachments,
-    usage: message.usage ?? undefined,
-    provider_metadata: message.provider_metadata ?? undefined,
-    created_at: message.created_at,
-    stopped_at: message.stopped_at,
-  }
-}
-
-function fromDesktopTask(task: DesktopAITaskView): TaskView {
-  const desktopTask = task as DesktopAITaskViewWithAssistantMessage
-
+function fromDesktopTask(task: DesktopAITaskPayload): TaskView {
   return {
     id: task.id,
     file: task.file,
     command_output: task.command_output,
-    assistant_message_id: desktopTask.assistant_message_id,
+    assistant_message_id: task.assistant_message_id,
     tool_call_id: task.tool_call_id,
     tool_name: task.tool_name,
     tool_display_name: task.tool_display_name,
@@ -346,18 +354,6 @@ function fromDesktopTool(tool: DesktopAIToolView): ToolView {
   }
 }
 
-function fromDesktopMessageRole(role: string): MessageView["role"] {
-  switch (role) {
-    case "user":
-    case "assistant":
-    case "system":
-    case "tool":
-      return role
-    default:
-      return "assistant"
-  }
-}
-
 function fromDesktopSessionStatus(status: string): AgentSessionStatus {
   switch (status) {
     case "running":
@@ -377,6 +373,7 @@ function fromDesktopTaskStatus(status: string): AgentTaskStatus {
     case "running":
     case "succeeded":
     case "failed":
+    case "unknown":
     case "cancelled":
       return status
     default:

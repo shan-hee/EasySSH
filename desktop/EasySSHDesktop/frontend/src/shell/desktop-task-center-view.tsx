@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 
-import { TaskCenterView } from "@/components/task-center/task-center-view"
-import type { Locale } from "@/i18n"
+import { TaskCenterView } from "@easyssh/app/components/task-center/task-center-view"
+import type { Locale } from "@easyssh/app/i18n"
 import { createDesktopTaskCenterApi, subscribeDesktopTaskEvents } from "../adapters/desktop-task-center-api"
 import { DesktopPageContent, DesktopWebViewShell } from "./desktop-view-shell"
 

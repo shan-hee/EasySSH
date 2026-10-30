@@ -5,89 +5,16 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as protocol$0 from "../protocol/models.js";
+
 /**
  * ServerReference keeps identity separate from its display snapshot.
  */
-export class ServerReference {
-    "server_id": string;
-    "name": string;
-    "host": string;
-    "port": number;
-    "username": string;
-    "label"?: string;
-    "offset": number;
+export const ServerReference = protocol$0.AIServerReference;
 
-    /** Creates a new ServerReference instance. */
-    constructor($$source: Partial<ServerReference> = {}) {
-        if (!("server_id" in $$source)) {
-            this["server_id"] = "";
-        }
-        if (!("name" in $$source)) {
-            this["name"] = "";
-        }
-        if (!("host" in $$source)) {
-            this["host"] = "";
-        }
-        if (!("port" in $$source)) {
-            this["port"] = 0;
-        }
-        if (!("username" in $$source)) {
-            this["username"] = "";
-        }
-        if (!("offset" in $$source)) {
-            this["offset"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new ServerReference instance from a string or object.
-     */
-    static createFrom($$source: any = {}): ServerReference {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new ServerReference($$parsedSource as Partial<ServerReference>);
-    }
-}
-
-export class UIMessage {
-    "id": string;
-    "role": string;
-    "metadata"?: { [_ in string]?: any };
-    "parts": { [_ in string]?: any }[];
-
-    /** Creates a new UIMessage instance. */
-    constructor($$source: Partial<UIMessage> = {}) {
-        if (!("id" in $$source)) {
-            this["id"] = "";
-        }
-        if (!("role" in $$source)) {
-            this["role"] = "";
-        }
-        if (!("parts" in $$source)) {
-            this["parts"] = [];
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new UIMessage instance from a string or object.
-     */
-    static createFrom($$source: any = {}): UIMessage {
-        const $$createField2_0 = $$createType0;
-        const $$createField3_0 = $$createType1;
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        if ("metadata" in $$parsedSource) {
-            $$parsedSource["metadata"] = $$createField2_0($$parsedSource["metadata"]);
-        }
-        if ("parts" in $$parsedSource) {
-            $$parsedSource["parts"] = $$createField3_0($$parsedSource["parts"]);
-        }
-        return new UIMessage($$parsedSource as Partial<UIMessage>);
-    }
-}
-
-// Private type creation functions
-const $$createType0 = $Create.Map($Create.Any, $Create.Any);
-const $$createType1 = $Create.Array($$createType0);
+/**
+ * ServerReference keeps identity separate from its display snapshot.
+ */
+export type ServerReference = protocol$0.AIServerReference;

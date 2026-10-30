@@ -1,6 +1,6 @@
 import * as React from "react"
-import { LogsClient } from "@easyssh/ssh-workspace/desktop"
-import type { Locale } from "@/i18n"
+import { LogsClient } from "@easyssh/app/desktop"
+import type { Locale } from "@easyssh/app/i18n"
 import { createDesktopLogsApi } from "../adapters/desktop-logs-api"
 import { DesktopPageContent, DesktopWebViewShell } from "./desktop-view-shell"
 

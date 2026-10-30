@@ -9,22 +9,21 @@ import type {
   Server,
   ServerListResponse,
   UpdateScriptRequest,
-} from "@easyssh/ssh-workspace/desktop"
-import type { ServerConnectionConfigsApi } from "@easyssh/ssh-workspace/desktop"
+} from "@easyssh/app/desktop"
+import type { ServerConnectionConfigsApi } from "@easyssh/app/desktop"
 import type {
   DesktopBatchTask,
   DesktopBatchTaskInput,
   DesktopScript,
   DesktopScriptInput,
-} from "../../bindings/github.com/easyssh/easyssh-desktop"
-import * as DesktopScriptService from "../../bindings/github.com/easyssh/easyssh-desktop/desktopscriptservice"
-import { DESKTOP_LOCAL_DATA_USER_ID } from "./desktop-local-identity"
+} from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
+import * as DesktopScriptService from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopscriptservice"
 import { requestDesktopSync } from "./desktop-sync"
 
 function mapDesktopScript(script: DesktopScript): Script {
   return {
     id: script.id,
-    user_id: script.user_id || DESKTOP_LOCAL_DATA_USER_ID,
+    version: script.version,
     name: script.name,
     description: script.description || "",
     content: script.content,
@@ -52,7 +51,6 @@ function mapDesktopBatchTask(task: DesktopBatchTask): BatchTask {
   }
   return {
     id: task.id,
-    user_id: task.user_id || DESKTOP_LOCAL_DATA_USER_ID,
     task_name: task.task_name,
     task_type: task.task_type,
     content: task.content || "",
@@ -82,6 +80,8 @@ function toDesktopScriptInput(input: CreateScriptRequest | UpdateScriptRequest):
 
 function toDesktopBatchTaskInput(input: CreateBatchTaskRequest): DesktopBatchTaskInput {
   return {
+    script_version: "",
+    parameters: {},
     task_name: input.task_name,
     task_type: input.task_type,
     content: input.content || "",
@@ -121,7 +121,7 @@ export function createDesktopScriptAdapters(serverApi: ServerConnectionConfigsAp
           data: (result.data || []).map(mapDesktopScript),
           total: result.total,
           page: result.page,
-          limit: result.limit,
+          page_size: result.limit,
           total_pages: result.total_pages,
         }
       },
@@ -134,9 +134,6 @@ export function createDesktopScriptAdapters(serverApi: ServerConnectionConfigsAp
       async delete(id: string): Promise<void> {
         await DesktopScriptService.Delete(id)
         requestDesktopSync()
-      },
-      async execute(id: string): Promise<void> {
-        await DesktopScriptService.Execute(id)
       },
     },
     servers: {
@@ -165,7 +162,7 @@ export function createDesktopScriptAdapters(serverApi: ServerConnectionConfigsAp
       },
       async start(id: string): Promise<{ message: string }> {
         const result = await DesktopScriptService.StartBatchTask(id)
-        return { message: result.message || "batch task started" }
+        return { message: result.status || "batch task started" }
       },
     },
   }

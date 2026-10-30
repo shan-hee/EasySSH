@@ -1,24 +1,22 @@
 import type { QueryClient } from "@tanstack/react-query"
 import { redirect, type LoaderFunctionArgs } from "react-router-dom"
-import type { DashboardRouteDefinition } from "@/lib/dashboard-route-registry"
-import { authStatusQueryOptions } from "@/lib/auth-status-query"
-import { getAuthRedirectDecision } from "@/lib/auth-redirect"
-import { runtimeInfoQueryOptions } from "@/shell/runtime/use-runtime-info"
-import { getRouteFallback, isRouteAllowed } from "@/shell/navigation/route-policy"
+import type { DashboardRouteDefinition } from "./dashboard-route-registry"
+import { authStatusQueryOptions } from "../platform/auth-status-query"
+import { getAuthRedirectDecision } from "../platform/auth-redirect"
+import { runtimeInfoQueryOptions } from "@easyssh/app/shell/runtime/use-runtime-info"
+import { getRouteFallback, isRouteAllowed } from "@easyssh/app/shell/navigation/route-policy"
 
 export async function requireDashboardAccess(queryClient: QueryClient, request: Request) {
   const url = new URL(request.url)
-  const status = await queryClient.fetchQuery(authStatusQueryOptions(true))
+  const status = await queryClient.fetchQuery(authStatusQueryOptions())
   request.signal.throwIfAborted()
   const decision = getAuthRedirectDecision("dashboard", status, { currentPath: `${url.pathname}${url.search}${url.hash}` })
   if (decision.type === "redirect") throw redirect(decision.href)
 
   const runtime = await queryClient.ensureQueryData(runtimeInfoQueryOptions())
   request.signal.throwIfAborted()
-  const permissions = status.user?.permissions ?? []
-  const isOwner = runtime.principal.role === "owner"
-  if (!isRouteAllowed(runtime, url.pathname, permissions, isOwner)) {
-    throw redirect(getRouteFallback(url.pathname, runtime, permissions, isOwner))
+  if (!isRouteAllowed(runtime, url.pathname)) {
+    throw redirect(getRouteFallback(url.pathname, runtime))
   }
 }
 

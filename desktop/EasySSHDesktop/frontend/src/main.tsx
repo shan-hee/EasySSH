@@ -1,12 +1,12 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { Call } from "@wailsio/runtime"
+import * as DesktopActivationService from "../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopactivationservice"
 import { I18nextProvider } from "react-i18next"
-import { i18n, preloadNamespaces } from "@/i18n"
-import { createPreloadableComponent } from "@/lib/preloadable-component"
-import { ResourceBoundary } from "@/components/resource-boundary"
-import { AppLoadingScreen } from "@/components/app-loading"
-import "@/styles/vendor-styles"
+import { i18n, preloadNamespaces } from "@easyssh/app/i18n"
+import { createPreloadableComponent } from "@easyssh/app/lib/preloadable-component"
+import { ResourceBoundary } from "@easyssh/app/components/resource-boundary"
+import { AppLoadingScreen } from "@easyssh/app/components/app-loading"
+import "@easyssh/app/styles/vendor-styles"
 import "./styles.css"
 
 const desktopApp = createPreloadableComponent(async () => {
@@ -20,7 +20,7 @@ const App = desktopApp.Component
 
 async function startDesktop() {
   void desktopApp.preload().catch(() => undefined)
-  await Call.ByName("main.DesktopActivationService.WaitForStartup")
+  await DesktopActivationService.WaitForStartup()
   ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
     <React.StrictMode>
       <ResourceBoundary listenForResourceErrors>

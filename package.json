@@ -1,0 +1,20 @@
+{
+  "name": "easyssh",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.1.3",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter easyssh-web dev",
+    "build:web": "pnpm --filter easyssh-web build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "lint": "pnpm -r --if-present lint",
+    "check:boundaries": "pnpm --filter @easyssh/frontend-tooling check:boundaries",
+    "openapi:check": "node scripts/check-openapi-routes.mjs",
+    "openapi:gen": "./scripts/gen-types.sh"
+  }
+}

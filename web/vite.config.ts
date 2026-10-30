@@ -3,8 +3,9 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath, URL } from "node:url"
 import { defineConfig, loadEnv } from "vite"
+import { appSingletonDependencies, appSourceAliases } from "@easyssh/app/vite"
+import { chunkOutput } from "@easyssh/frontend-tooling/code-splitting"
 import { precompress } from "./plugins/precompress.ts"
-import { chunkOutput } from "./plugins/code-splitting.ts"
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url))
 const version = readFileSync(join(projectRoot, "VERSION"), "utf-8").trim()
@@ -26,26 +27,21 @@ export default defineConfig(({ mode }) => {
     ...process.env,
   }
   const webPort = parsePort(env.WEB_PORT)
+  // 开发时经同源代理访问后端，所有者 Cookie、CSRF 与 WebSocket 票据和生产部署行为一致。
+  const backendURL = env.VITE_BACKEND_URL?.trim() || "http://localhost:8520"
 
   return {
     envDir: "..",
     plugins: [react(), precompress()],
-    server: webPort
-      ? {
-          port: webPort,
-          strictPort: true,
-        }
-      : undefined,
-    resolve: {
-      alias: {
-        "@": fileURLToPath(new URL("./src", import.meta.url)),
-        "@easyssh/ssh-workspace": fileURLToPath(
-          new URL("./packages/ssh-workspace/src/index.ts", import.meta.url),
-        ),
-        "@protobufjs/inquire": fileURLToPath(
-          new URL("./src/lib/proto/browser-inquire.cjs", import.meta.url),
-        ),
+    server: {
+      ...(webPort ? { port: webPort, strictPort: true } : {}),
+      proxy: {
+        "/api": { target: backendURL, ws: true },
       },
+    },
+    resolve: {
+      dedupe: appSingletonDependencies,
+      alias: appSourceAliases,
     },
     define: {
       "import.meta.env.VITE_APP_VERSION": JSON.stringify(version),

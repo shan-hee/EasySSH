@@ -8,6 +8,6 @@ No active exceptions.
 
 ## Rules
 
-- Do not add new Web Dashboard imports to `@easyssh/ssh-workspace/desktop`.
+- Do not add new Web Dashboard imports to `@easyssh/app/desktop`.
 - New exceptions must explain why an adapter contract is not enough yet.
 - When touching an exception, either reduce its scope or update the exit condition.

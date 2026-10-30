@@ -1,5 +1,5 @@
-import type { WorkspaceMonitorApi, WorkspaceMonitorMetrics } from "@easyssh/ssh-workspace/desktop"
-import { DesktopMonitorService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import type { WorkspaceMonitorApi, WorkspaceMonitorMetrics } from "@easyssh/app/desktop"
+import { DesktopMonitorService } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 import type { DesktopGatewayInfo } from "./desktop-runtime"
 import { toFiniteNumber } from "./desktop-adapter-utils"
 

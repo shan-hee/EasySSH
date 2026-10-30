@@ -1,26 +1,12 @@
 import type { TFunction } from "i18next"
-import { isApiError } from "@/lib/api-client"
+import { isApiError } from "@easyssh/app/lib/api-client"
 
 const AUTH_ERROR_KEYS = {
   invalid_credentials: "errorInvalidCredentials",
-  account_locked: "errorAccountLocked",
-  ip_locked: "errorIpLocked",
-  invalid_temp_token: "errorInvalidTempToken",
-  invalid_code: "errorInvalidTwoFactorCode",
-  invalid_grant: "errorInvalidGrant",
-  invalid_client: "errorInvalidClient",
+  login_temporarily_locked: "errorLoginTemporarilyLocked",
+  already_initialized: "errorAlreadyInitialized",
   invalid_request: "errorInvalidRequest",
-  validation_error: "errorInvalidRequest",
-  unsupported_grant_type: "errorInvalidRequest",
-  invalid_token: "errorInvalidToken",
-  csrf_token_invalid: "errorCsrfTokenInvalid",
-  oauth_disabled: "errorOAuthDisabled",
-  oauth_not_configured: "errorOAuthNotConfigured",
-  email_not_verified: "errorEmailNotVerified",
-  registration_disabled: "errorRegistrationDisabled",
-  oauth_account_conflict: "errorOAuthAccountConflict",
-  too_frequent: "errorTooFrequent",
-  service_unavailable: "errorServiceUnavailable",
+  invalid_origin: "errorInvalidOrigin",
   internal_error: "errorServiceUnavailable",
 } as const satisfies Record<string, string>
 

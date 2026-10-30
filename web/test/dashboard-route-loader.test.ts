@@ -2,26 +2,26 @@ import assert from "node:assert/strict"
 import { afterEach, describe, it, mock } from "node:test"
 import { QueryClient } from "@tanstack/react-query"
 import { createMemoryRouter } from "react-router-dom"
-import { authApi, type AuthStatusResponse } from "../src/lib/api/auth"
-import type { SystemConfig } from "../src/lib/api/settings"
-import { authStatusQueryKey, authStatusQueryOptions } from "../src/lib/auth-status-query"
+import type { AuthStatusResponse } from "@easyssh/app/lib/api/auth"
+import type { SystemConfig } from "@easyssh/app/lib/api/settings"
+import { authSession } from "../src/platform/auth-session"
+import { authStatusQueryKey, authStatusQueryOptions } from "../src/platform/auth-status-query"
 import { createDashboardPageLoader } from "../src/lib/dashboard-route-loader"
 import type { DashboardRouteDefinition } from "../src/lib/dashboard-route-registry"
-import { runtimeApi } from "../src/shell/runtime/api"
-import { runtimeInfoQueryKey } from "../src/shell/runtime/use-runtime-info"
-import type { RuntimeInfo } from "../src/shell/runtime/types"
+import { runtimeApi } from "@easyssh/app/shell/runtime/api"
+import { runtimeInfoQueryKey } from "@easyssh/app/shell/runtime/use-runtime-info"
+import type { RuntimeInfo } from "@easyssh/app/shell/runtime/types"
 
 const status: AuthStatusResponse = {
   need_init: false,
   is_authenticated: true,
-  access_token_ttl_seconds: 60,
   system_config: { system_name: "EasySSH" } as SystemConfig,
-  user: { id: "user-1", username: "user", email: "user@example.com", role: "user", created_at: "", updated_at: "", permissions: [] },
+  user: { id: "owner-1", username: "owner", email: "owner@example.com", created_at: "", updated_at: "" },
 }
 const runtime: RuntimeInfo = {
-  profile: "web", principal: { kind: "user", role: "user" },
-  single_user: false, portable: false, managed: false,
-  capabilities: { servers: true, terminal: true, users: true },
+  profile: "web", principal: { kind: "owner" },
+  single_user: true, portable: false, managed: false,
+  capabilities: { servers: true, terminal: true },
 }
 const clients: QueryClient[] = []
 function client(auth = status) {
@@ -59,10 +59,10 @@ describe("dashboard data navigation", () => {
     assert.equal(loadData.mock.callCount(), 0)
   })
 
-  it("checks target permissions before starting business data requests", async () => {
+  it("checks target capabilities before starting business data requests", async () => {
     const loadData = mock.fn(async () => undefined)
     const loader = createDashboardPageLoader(client(), route(loadData))
-    await assert.rejects(loader(args("/dashboard/users")), (error: unknown) => (
+    await assert.rejects(loader(args("/dashboard/logs")), (error: unknown) => (
       error instanceof Response && error.headers.get("Location") === "/dashboard/terminal"
     ))
     assert.equal(loadData.mock.callCount(), 0)
@@ -72,12 +72,12 @@ describe("dashboard data navigation", () => {
     const queryClient = client()
     queryClient.removeQueries({ queryKey: authStatusQueryKey })
     const pending = deferred<AuthStatusResponse>()
-    const checkStatus = mock.method(authApi, "checkStatus", () => pending.promise)
+    const checkStatus = mock.method(authSession, "checkStatus", () => pending.promise)
     mock.method(runtimeApi, "getRuntime", async () => runtime)
     const loader = createDashboardPageLoader(queryClient, route(async () => undefined))
     const work = Promise.all([
       loader(args("/dashboard/terminal")), loader(args("/dashboard/terminal")),
-      queryClient.fetchQuery(authStatusQueryOptions(true)),
+      queryClient.fetchQuery(authStatusQueryOptions()),
     ])
     pending.resolve(status)
     await work
@@ -88,7 +88,7 @@ describe("dashboard data navigation", () => {
     const queryClient = client()
     queryClient.removeQueries({ queryKey: authStatusQueryKey })
     const pending = deferred<AuthStatusResponse>()
-    mock.method(authApi, "checkStatus", () => pending.promise)
+    mock.method(authSession, "checkStatus", () => pending.promise)
     const loadData = mock.fn(async () => undefined)
     const controller = new AbortController()
     const result = createDashboardPageLoader(queryClient, route(loadData))(args("/dashboard/terminal", controller.signal))

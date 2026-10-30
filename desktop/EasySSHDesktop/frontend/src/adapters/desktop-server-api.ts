@@ -3,31 +3,37 @@ import type {
   Server,
   ServerConnectionConfigsApi,
   WorkspaceTerminalCredentialSaveRequest,
-} from "@easyssh/ssh-workspace/desktop"
+} from "@easyssh/app/desktop"
 import {
   primaryCredentialMethod,
   requiresPassword,
   requiresPrivateKey,
-} from "@easyssh/ssh-workspace/desktop"
+} from "@easyssh/app/desktop"
 import {
   DesktopServerAuthMethod,
   DesktopServerService,
-  type DesktopServer,
-  type DesktopServerInput,
-} from "../../bindings/github.com/easyssh/easyssh-desktop"
-import { DESKTOP_LOCAL_DATA_USER_ID } from "./desktop-local-identity"
+} from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
+import type {
+  Server as DesktopServer,
+  ServerAuthMethod,
+  ServerGroup,
+  ServerCreate,
+  ServerUpdate,
+} from "../../bindings/github.com/easyssh/shared/protocol/models"
 import { requestDesktopSync } from "./desktop-sync"
-import { Call } from "@wailsio/runtime"
 
-export const desktopSSHKeyApi: ServerConnectionConfigsApi["sshKeys"] = {
-  list: () => DesktopServerService.ListSSHKeys(),
+type SSHKeyApi = ServerConnectionConfigsApi["sshKeys"]
+type SSHKey = Awaited<ReturnType<SSHKeyApi["list"]>>[number]
+
+export const desktopSSHKeyApi: SSHKeyApi = {
+  list: async () => await DesktopServerService.ListSSHKeys() as SSHKey[],
   async import(input) {
     const key = await DesktopServerService.ImportSSHKey({
       ...input,
       passphrase: input.passphrase ?? "",
     })
     requestDesktopSync()
-    return key
+    return key as SSHKey
   },
   async delete(id) {
     await DesktopServerService.DeleteSSHKey(id)
@@ -71,59 +77,64 @@ export function desktopAuthRequiresPrivateKey(authMethod?: AuthMethod | string) 
 export function mapDesktopServer(server: DesktopServer): Server {
   return {
     id: server.id,
-    user_id: server.user_id || DESKTOP_LOCAL_DATA_USER_ID,
     name: server.name || undefined,
     host: server.host,
     port: server.port || 22,
     username: server.username,
-    auth_method: fromDesktopAuthMethod(server.auth_method),
-    ssh_key_id: server.ssh_key_id,
+    auth_method: fromDesktopAuthMethod(server.auth_method || "password"),
+    ssh_key_id: server.ssh_key_id ?? null,
     has_password: Boolean(server.has_password),
     has_private_key: Boolean(server.has_private_key),
     group: server.group || undefined,
-    tags: server.tags || [],
+    group_id: server.group_id || undefined,
+    tags: server.tags ?? [],
     status: server.status === "online" ? "online" : "offline",
-    last_connected: server.last_connected || undefined,
+    last_connected: server.last_connected ? String(server.last_connected) : undefined,
     description: server.description || undefined,
     os: server.os || undefined,
-    created_at: server.created_at,
-    updated_at: server.updated_at,
+    created_at: String(server.created_at ?? ""),
+    updated_at: String(server.updated_at ?? ""),
   }
 }
 
-export function mapServerInput(input: Parameters<ServerConnectionConfigsApi["create"]>[0]): DesktopServerInput {
-  const passwordSet = Object.prototype.hasOwnProperty.call(input, "password") && input.password !== undefined
-  const privateKeySet = Object.prototype.hasOwnProperty.call(input, "private_key") && input.private_key !== undefined
-
-  return {
-    name: input.name || "",
-    host: input.host,
-    port: input.port || 22,
-    username: input.username,
-    auth_method: toDesktopAuthMethod(input.auth_method),
-    password: input.password || "",
-    private_key: input.private_key || "",
-    password_set: passwordSet,
-    private_key_set: privateKeySet,
-    ssh_key_id: input.ssh_key_id ?? null,
-    private_key_passphrase: input.private_key_passphrase,
-    group: input.group || "",
-    tags: input.tags || [],
-    description: input.description || "",
-  }
-}
-
+// 桌面服务与实例使用同一份服务器契约，认证方式枚举值一致。
 export function createDesktopServerApi(): ServerConnectionConfigsApi {
   return {
     sshKeys: desktopSSHKeyApi,
-    getStatistics: () => Call.ByName("main.DesktopServerService.GetStatistics"),
+    groups: {
+      async list() {
+        const groups: ServerGroup[] = []
+        for (let page = 1; ; page++) {
+          const result = await DesktopServerService.ListGroups(page, 100)
+          groups.push(...(result?.items ?? []))
+          if (!result || result.items.length === 0 || groups.length >= result.total) return groups
+        }
+      },
+      async create(name) {
+        const group = await DesktopServerService.CreateGroup({ name })
+        requestDesktopSync()
+        return group
+      },
+    },
+    getStatistics: async () => {
+      const statistics = await DesktopServerService.GetStatistics()
+      return {
+        total: statistics.total,
+        online: statistics.online ?? undefined,
+        offline: statistics.offline ?? undefined,
+        connected_servers: statistics.connected_servers ?? undefined,
+        by_group: compactCounts(statistics.by_group),
+        by_tag: compactCounts(statistics.by_tag),
+      }
+    },
     async getById(id) { return mapDesktopServer(await DesktopServerService.GetById(id)) },
     async list(params) {
       const result = await DesktopServerService.List({
         page: params?.page,
         limit: params?.limit,
-        group: params?.group,
-        search: params?.search,
+        group_id: params?.groupId,
+        q: params?.search,
+        tag: params?.tag,
       })
 
       return {
@@ -131,36 +142,19 @@ export function createDesktopServerApi(): ServerConnectionConfigsApi {
         total: result.total,
         page: result.page,
         limit: result.limit,
+        total_pages: result.total_pages,
       }
     },
     async create(input) {
-      const server = await DesktopServerService.Create(mapServerInput(input))
+      const server = await DesktopServerService.Create({ ...input, auth_method: input.auth_method as ServerAuthMethod } as ServerCreate)
       requestDesktopSync()
       return mapDesktopServer(server)
     },
     async update(id, input) {
-      const current = await DesktopServerService.GetById(id)
-      const mergedInput: Parameters<ServerConnectionConfigsApi["create"]>[0] = {
-        name: input.name ?? current.name ?? "",
-        host: input.host ?? current.host,
-        port: input.port ?? current.port ?? 22,
-        username: input.username ?? current.username,
-        auth_method: input.auth_method ?? fromDesktopAuthMethod(current.auth_method),
-        group: input.group ?? current.group ?? "",
-        tags: input.tags ?? current.tags ?? [],
-        description: input.description ?? current.description ?? "",
-      }
-
-      if (Object.prototype.hasOwnProperty.call(input, "password")) {
-        mergedInput.password = input.password ?? ""
-      }
-      mergedInput.ssh_key_id = input.ssh_key_id
-      mergedInput.private_key_passphrase = input.private_key_passphrase
-      if (Object.prototype.hasOwnProperty.call(input, "private_key")) {
-        mergedInput.private_key = input.private_key ?? ""
-      }
-
-      const server = await DesktopServerService.Update(id, mapServerInput(mergedInput))
+      const server = await DesktopServerService.Update(id, {
+        ...input,
+        auth_method: input.auth_method as ServerAuthMethod | undefined,
+      } as ServerUpdate)
       requestDesktopSync()
       return mapDesktopServer(server)
     },
@@ -169,12 +163,17 @@ export function createDesktopServerApi(): ServerConnectionConfigsApi {
       requestDesktopSync()
     },
     async reorder(serverIds) {
-      await DesktopServerService.Reorder(serverIds)
+      await DesktopServerService.Reorder({ server_ids: serverIds })
       requestDesktopSync()
     },
   }
 }
 
+function compactCounts(counts: { [key: string]: number | undefined }): Record<string, number> {
+  return Object.fromEntries(Object.entries(counts).filter((entry): entry is [string, number] => entry[1] !== undefined))
+}
+
+/** 连接验证成功的凭据按实例相同的规则保存：只改认证相关字段。 */
 export async function saveDesktopVerifiedCredential({
   serverId,
   authMethod,
@@ -183,18 +182,11 @@ export async function saveDesktopVerifiedCredential({
   privateKey,
   privateKeyPassphrase,
 }: WorkspaceTerminalCredentialSaveRequest): Promise<void> {
-  const current = await DesktopServerService.GetById(serverId)
-  const input: Parameters<ServerConnectionConfigsApi["create"]>[0] = {
-    name: current.name ?? "",
-    host: current.host,
-    port: current.port || 22,
-    username: current.username,
-    auth_method: authMethod,
-    group: current.group ?? "",
-    tags: current.tags ?? [],
-    description: current.description ?? "",
+  const input: ServerUpdate = {
+    auth_method: authMethod as ServerAuthMethod,
+    verified_connection_credential: true,
+    private_key_passphrase: privateKeyPassphrase ?? "",
   }
-
   if (password !== undefined) input.password = password
   if (privateKey !== undefined) input.private_key = privateKey
   if (password === undefined && privateKey === undefined) {
@@ -202,11 +194,6 @@ export async function saveDesktopVerifiedCredential({
     else input.password = secret
   }
 
-  input.private_key_passphrase = privateKeyPassphrase
-  await DesktopServerService.Update(serverId, mapServerInput(input))
+  await DesktopServerService.Update(serverId, input)
   requestDesktopSync()
-}
-
-export async function markDesktopServerConnected(serverId: string): Promise<void> {
-  await DesktopServerService.MarkConnected(serverId)
 }

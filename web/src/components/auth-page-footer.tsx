@@ -2,8 +2,8 @@ import { useTranslation } from "react-i18next"
 import {
   DEFAULT_SYSTEM_CONFIG,
   useSystemConfig,
-} from "@/contexts/system-config-context"
-import { appVersion, getCurrentYear } from "@/lib/app-metadata"
+} from "@easyssh/app/contexts/system-config-context"
+import { appVersion, getCurrentYear } from "../lib/app-metadata"
 
 export function AuthPageFooter() {
   const { config } = useSystemConfig()

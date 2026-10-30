@@ -1,12 +1,12 @@
-import { authStatusQueryKey } from "@/lib/auth-status-query"
-import type { AuthStatusResponse } from "@/lib/api/auth"
-import { runtimeInfoQueryKey } from "@/shell/runtime/use-runtime-info"
-import type { RuntimeInfo } from "@/shell/runtime/types"
-import { isRouteAllowed } from "@/shell/navigation/route-policy"
-import { preloadNamespaces } from "@/i18n"
+import { authStatusQueryKey } from "../platform/auth-status-query"
+import type { AuthStatusResponse } from "@easyssh/app/lib/api/auth"
+import { runtimeInfoQueryKey } from "@easyssh/app/shell/runtime/use-runtime-info"
+import type { RuntimeInfo } from "@easyssh/app/shell/runtime/types"
+import { isRouteAllowed } from "@easyssh/app/shell/navigation/route-policy"
+import { preloadNamespaces } from "@easyssh/app/i18n"
 import type { QueryClient } from "@tanstack/react-query"
 
-import { getDashboardRouteDefinition } from "@/lib/dashboard-route-registry"
+import { getDashboardRouteDefinition } from "./dashboard-route-registry"
 
 type NetworkInformation = {
   saveData?: boolean
@@ -34,7 +34,7 @@ export function preloadDashboardRoute(url: string, queryClient?: QueryClient, in
 
   const auth = queryClient?.getQueryData<AuthStatusResponse>(authStatusQueryKey)
   const runtime = queryClient?.getQueryData<RuntimeInfo>(runtimeInfoQueryKey)
-  const allowed = auth?.is_authenticated && runtime && isRouteAllowed(runtime, route.url, auth.user?.permissions ?? [], runtime.principal.role === "owner")
+  const allowed = auth?.is_authenticated && runtime && isRouteAllowed(runtime, route.url)
   const dataPreload = allowed && queryClient && route.loadData
     ? route.loadData(queryClient, url)
     : Promise.resolve()

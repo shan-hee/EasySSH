@@ -1,17 +1,15 @@
 import { Events } from "@wailsio/runtime"
-import type { AuthMethod, TerminalWebSocketConstructor } from "@easyssh/ssh-workspace/desktop"
+import type { AuthMethod, TerminalWebSocketConstructor } from "@easyssh/app/desktop"
 import {
   authMethodCredentialFields,
   requiresPrivateKey,
   supportsKeyboardInteractive,
-} from "@easyssh/ssh-workspace/desktop"
+} from "@easyssh/app/desktop"
 import {
-  ActivityLogService,
-  DesktopActivityLogStatus,
   DesktopScriptService,
   DesktopServerService,
   DesktopTerminalService,
-} from "../../bindings/github.com/easyssh/easyssh-desktop"
+} from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 import { fromDesktopAuthMethod, toDesktopAuthMethod } from "../adapters/desktop-server-api"
 
 const desktopTerminalOutputEvent = "easyssh:desktop-terminal:output"
@@ -78,7 +76,7 @@ const createDesktopTerminalClientId = () => {
 const desktopTerminalAuthMaxAttempts = 3
 const desktopTerminalKeyboardInteractiveGatewayRequired = "desktop gateway is required for keyboard-interactive authentication"
 
-const getDesktopTerminalAuthMethod = (value?: string): DesktopAuthMethod => fromDesktopAuthMethod(value || "password")
+const getDesktopTerminalAuthMethod = (value?: string | null): DesktopAuthMethod => fromDesktopAuthMethod(value || "password")
 
 const desktopTerminalCredentialFields = (authMethod?: DesktopAuthMethod | string): Array<"password" | "key"> => {
   return authMethodCredentialFields(authMethod)
@@ -533,12 +531,6 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
 
         this.emitControl("connected")
         void this.refreshSshLatency()
-        void ActivityLogService.Record({
-          action: "ssh_connect",
-          resource: this.serverId,
-          status: DesktopActivityLogStatus.DesktopActivityLogSuccess,
-          serverId: this.serverId,
-        }).catch((error) => console.error("Failed to record desktop terminal activity:", error))
       } catch (error) {
         const message = getDesktopErrorMessage(error)
         const errorCode = getDesktopTerminalAuthErrorCode(error)
@@ -546,13 +538,6 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
           error: errorCode,
           message,
         })
-        void ActivityLogService.Record({
-          action: "ssh_connect",
-          resource: this.serverId,
-          status: DesktopActivityLogStatus.DesktopActivityLogFailure,
-          serverId: this.serverId,
-          detail: message,
-        }).catch((error) => console.error("Failed to record desktop terminal activity:", error))
         this.close(1011, message)
       }
     }

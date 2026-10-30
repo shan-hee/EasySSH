@@ -1,6 +1,6 @@
 import { Suspense, type ReactNode } from "react"
-import { ResourceBoundary } from "@/components/resource-boundary"
-import { RoutePending } from "@/components/route-pending"
+import { ResourceBoundary } from "@easyssh/app/components/resource-boundary"
+import { RoutePending } from "@easyssh/app/components/route-pending"
 import { desktopViews, type DesktopContentView } from "./desktop-view-registry"
 
 export function DesktopViewBoundary({ view, children }: { view: DesktopContentView; children: ReactNode }) {

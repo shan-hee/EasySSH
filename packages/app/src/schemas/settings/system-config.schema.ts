@@ -1,0 +1,53 @@
+import { z } from "zod"
+
+// 基本信息 Schema（包含国际化设置）
+export const basicInfoSchema = z.object({
+  public_url: z.string().url("settingsValidation.urlInvalid").or(z.literal("")),
+  system_name: z
+    .string()
+    .min(1, "settingsValidation.systemNameRequired")
+    .max(100, "settingsValidation.systemNameMax"),
+  system_logo: z.string().url("settingsValidation.urlInvalid").or(z.literal("")),
+  system_favicon: z.string().url("settingsValidation.urlInvalid").or(z.literal("")),
+  default_language: z.enum(["zh-CN", "en-US"], {
+    message: "settingsValidation.defaultLanguageInvalid",
+  }),
+  default_timezone: z.string().min(1, "settingsValidation.defaultTimezoneRequired"),
+  date_format: z.string().min(1, "settingsValidation.dateFormatRequired"),
+})
+
+// 文件传输设置 Schema（包含上传大小限制）
+export const fileTransferSchema = z.object({
+  // 下载排除规则（每行一个）
+  download_exclude_patterns: z.string().default(
+    "node_modules\n.git\n.svn\n.hg\n__pycache__\n.pytest_cache\ndist\nbuild\ntarget\nvendor\n.DS_Store\nthumbs.db"
+  ),
+  // 上传时自动跳过排除的文件
+  skip_excluded_on_upload: z.boolean().default(true),
+  // 最大文件上传大小
+  max_file_upload_size: z
+    .number()
+    .min(1, "settingsValidation.fileUploadSizeMin")
+    .max(1024, "settingsValidation.fileUploadSizeMax"),
+  transfer_storage_path: z.string().default(""),
+  transfer_retention_days: z.number().min(1).max(30).default(3),
+  transfer_max_storage_gb: z.number().min(1).max(1024).default(10),
+  transfer_max_concurrency: z.number().min(1).max(16).default(2),
+  transfer_max_entries: z.number().int().min(1).max(1000000).default(100000),
+  transfer_max_depth: z.number().int().min(1).max(256).default(128),
+  transfer_cleanup_enabled: z.boolean().default(true),
+  sftp_max_idle_time_seconds: z.number().min(5).max(3600).default(120),
+  sftp_cleanup_interval_seconds: z.number().min(5).max(600).default(30),
+  sftp_max_life_time_minutes: z.number().min(0).max(1440).default(0),
+  sftp_conn_timeout_seconds: z.number().min(1).max(120).default(10),
+  sftp_max_sessions_per_conn: z.number().min(0).max(64).default(8),
+})
+
+export const scheduledTaskConfigSchema = z.object({
+  job_queue_max_concurrency: z.number().int().min(1).max(16),
+})
+
+// 导出类型
+export type BasicInfoFormData = z.infer<typeof basicInfoSchema>
+export type FileTransferFormData = z.infer<typeof fileTransferSchema>
+export type ScheduledTaskConfigFormData = z.infer<typeof scheduledTaskConfigSchema>

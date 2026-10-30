@@ -1,8 +1,8 @@
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
-import { ArrowLeft } from "@easyssh/ssh-workspace/desktop"
-import { Button } from "@/components/ui/button"
-import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
+import { ArrowLeft } from "@easyssh/app/desktop"
+import { Button } from "@easyssh/app/components/ui/button"
+import { SidebarTrigger, useSidebar } from "@easyssh/app/components/ui/sidebar"
 import { desktopViews, type DesktopContentView } from "./desktop-view-registry"
 
 /** The window controls stay mounted while the page code or translations load. */

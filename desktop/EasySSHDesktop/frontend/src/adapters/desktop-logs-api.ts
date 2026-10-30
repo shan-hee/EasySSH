@@ -2,14 +2,14 @@ import {
   ActivityLogService,
   type DesktopActivityLogItem,
   type DesktopActivityLogListParams,
-} from "../../bindings/github.com/easyssh/easyssh-desktop"
+} from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 import type {
   AuditLog,
   AuditLogCleanupResponse,
   AuditLogListParams,
   AuditLogListResponse,
   AuditLogStatisticsResponse,
-} from "@easyssh/ssh-workspace/desktop"
+} from "@easyssh/app/desktop"
 import {
   mapDesktopActivityLogItemToAuditLog,
   normalizeDesktopActivityLogStatusFilter,

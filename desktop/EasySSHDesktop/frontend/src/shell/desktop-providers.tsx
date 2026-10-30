@@ -6,8 +6,8 @@ import {
   StaticSystemConfigProvider,
   ThemeProvider,
   Toaster,
-} from "@easyssh/ssh-workspace/desktop"
-import { QueryProvider } from "@/providers/query-provider"
+} from "@easyssh/app/desktop"
+import { QueryProvider } from "@easyssh/app/providers/query-provider"
 import { DesktopInstanceNotice } from "./desktop-instance-notice"
 
 export function DesktopProviders({

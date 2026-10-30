@@ -1,8 +1,8 @@
 
-import { useAuthStatusRedirect } from "@/hooks/use-auth-status-redirect"
-import { useSystemConfig } from "@/contexts/system-config-context"
-import { AppLoadingScreen } from "@/components/app-loading"
-import { Button } from "@/components/ui/button"
+import { useAuthStatusRedirect } from "../hooks/use-auth-status-redirect"
+import { useSystemConfig } from "@easyssh/app/contexts/system-config-context"
+import { AppLoadingScreen } from "@easyssh/app/components/app-loading"
+import { Button } from "@easyssh/app/components/ui/button"
 import { useTranslation } from "react-i18next"
 
 export default function Home() {
@@ -22,7 +22,7 @@ export default function Home() {
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md space-y-4 text-center">
           <p className="text-muted-foreground">{t("authStatusUnavailable")}</p>
-          <Button onClick={() => void refreshConfig({ refreshAuth: true }).catch(() => undefined)}>
+          <Button onClick={() => void refreshConfig().catch(() => undefined)}>
             {t("retry")}
           </Button>
         </div>

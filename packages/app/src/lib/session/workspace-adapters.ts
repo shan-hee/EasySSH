@@ -1,0 +1,376 @@
+import type {
+  SshWorkspaceAdapters,
+  SshWorkspaceApiClient,
+  SshWorkspaceAuthTicketProvider,
+  SshWorkspaceI18n,
+  SshWorkspaceNotifier,
+  SshWorkspacePreferenceAdapter,
+  SshWorkspaceServerPicker,
+  SshWorkspaceActivityLogAdapter,
+  SshWorkspaceSessionController,
+  SshWorkspaceSessionStoreAdapter,
+  SshWorkspaceSettingsAdapter,
+  SshWorkspaceThemeAdapter,
+  SshWorkspaceTransferManager,
+  WorkspaceSessionSnapshot,
+  WorkspaceNotifierActionOptions,
+  WorkspaceTransferTask,
+} from "./workspace"
+import type { TerminalWebSocketAuthTicketProvider } from "./terminal-types"
+import {
+  parseWorkspaceDownloadExcludePatterns,
+  type WorkspaceDownloadExcludePatternSource,
+} from "./workspace-settings"
+
+export type WorkspaceTranslator = (key: string, params?: Record<string, string | number>) => string
+export type WorkspaceTranslatorLike = unknown
+
+export interface CreateWorkspaceI18nAdapterOptions {
+  locale?: string
+  timezone?: string
+  common?: WorkspaceTranslatorLike
+  terminal?: WorkspaceTranslatorLike
+  sftp?: WorkspaceTranslatorLike
+  fallback?: WorkspaceTranslatorLike
+}
+
+export function createWorkspaceI18nAdapter({
+  locale,
+  timezone,
+  common,
+  terminal,
+  sftp,
+  fallback,
+}: CreateWorkspaceI18nAdapterOptions): SshWorkspaceI18n {
+  const call = (translator: WorkspaceTranslatorLike | undefined, key: string, params?: Record<string, string | number>) => {
+    if (typeof translator !== "function") {
+      return undefined
+    }
+
+    return (translator as WorkspaceTranslator)(key, params)
+  }
+  const resolve = (translator: WorkspaceTranslatorLike | undefined, key: string, params?: Record<string, string | number>) =>
+    call(translator, key, params) ?? call(fallback, key, params) ?? key
+
+  return {
+    locale,
+    timezone,
+    t(namespace, key, params) {
+      if (namespace === "common") {
+        return resolve(common, key, params)
+      }
+      if (namespace === "terminal") {
+        return resolve(terminal, key, params)
+      }
+      if (namespace === "sftp") {
+        return resolve(sftp, key, params)
+      }
+      return resolve(fallback, key, params)
+    },
+  }
+}
+
+export interface WorkspaceNotifierLike {
+  success: (message: string) => unknown
+  error: (message: string) => unknown
+  action?: (message: string, options: WorkspaceNotifierActionOptions) => unknown
+  promise: <T>(
+    promise: Promise<T>,
+    messages: {
+      loading: string
+      success: string | ((data: T) => string)
+      error: string | ((error: unknown) => string)
+    },
+  ) => unknown
+}
+
+export function createWorkspaceNotifierAdapter(notifier: WorkspaceNotifierLike): SshWorkspaceNotifier {
+  const callableNotifier = typeof notifier === "function"
+    ? notifier as ((message: string, options?: unknown) => unknown)
+    : null
+  const action = notifier.action ?? (callableNotifier
+    ? (message: string, options: WorkspaceNotifierActionOptions) => callableNotifier(message, {
+        description: options.description,
+        action: {
+          label: options.actionLabel,
+          onClick: options.onAction,
+        },
+      })
+    : undefined)
+
+  const workspaceNotifier: SshWorkspaceNotifier = {
+    success: notifier.success,
+    error: notifier.error,
+    promise: notifier.promise,
+  }
+
+  if (action) {
+    workspaceNotifier.action = action
+  }
+
+  return workspaceNotifier
+}
+
+export function createWorkspaceTerminalAuthTicketProviderAdapter(
+  authTicketProvider: SshWorkspaceAuthTicketProvider,
+): TerminalWebSocketAuthTicketProvider
+export function createWorkspaceTerminalAuthTicketProviderAdapter(
+  authTicketProvider?: SshWorkspaceAuthTicketProvider,
+): TerminalWebSocketAuthTicketProvider | undefined
+export function createWorkspaceTerminalAuthTicketProviderAdapter(
+  authTicketProvider?: SshWorkspaceAuthTicketProvider,
+): TerminalWebSocketAuthTicketProvider | undefined {
+  if (!authTicketProvider) {
+    return undefined
+  }
+
+  return ({ type, server_id }) => authTicketProvider(type, { server_id })
+}
+
+export interface CreateWorkspaceTransferManagerAdapterOptions {
+  tasks: WorkspaceTransferTask[]
+  downloadFile?: SshWorkspaceTransferManager["downloadFile"]
+  batchDownload?: SshWorkspaceTransferManager["batchDownload"]
+  uploadFile?: SshWorkspaceTransferManager["uploadFile"]
+  directTransfer?: SshWorkspaceTransferManager["directTransfer"]
+  updateTask?: SshWorkspaceTransferManager["updateTask"]
+  removeTask?: SshWorkspaceTransferManager["removeTask"]
+  clearAll?: SshWorkspaceTransferManager["clearAll"]
+  clearCompleted?: () => void
+  cancelTask?: (taskId: string) => void
+  cancelDirectTransfer?: SshWorkspaceTransferManager["cancelDirectTransfer"]
+  history?: SshWorkspaceTransferManager["history"]
+}
+
+export function createWorkspaceTransferManagerAdapter({
+  tasks,
+  downloadFile,
+  batchDownload,
+  uploadFile,
+  directTransfer,
+  updateTask,
+  removeTask,
+  clearAll,
+  clearCompleted,
+  cancelTask,
+  cancelDirectTransfer,
+  history,
+}: CreateWorkspaceTransferManagerAdapterOptions): SshWorkspaceTransferManager {
+  const transferManager: SshWorkspaceTransferManager = {
+    tasks,
+  }
+
+  if (downloadFile) {
+    transferManager.downloadFile = downloadFile
+  }
+  if (batchDownload) {
+    transferManager.batchDownload = batchDownload
+  }
+  if (uploadFile) {
+    transferManager.uploadFile = uploadFile
+  }
+  if (directTransfer) {
+    transferManager.directTransfer = directTransfer
+  }
+  if (updateTask) {
+    transferManager.updateTask = updateTask
+  }
+  if (removeTask) {
+    transferManager.removeTask = removeTask
+  }
+  if (clearAll) {
+    transferManager.clearAll = clearAll
+  }
+  if (clearCompleted) {
+    transferManager.clearCompleted = clearCompleted
+  }
+  if (cancelTask) {
+    transferManager.cancelTask = cancelTask
+  }
+  if (cancelDirectTransfer) {
+    transferManager.cancelDirectTransfer = cancelDirectTransfer
+  }
+  if (history) {
+    transferManager.history = history
+  }
+
+  return transferManager
+}
+
+export interface CreateCompositeWorkspaceSessionStoreAdapterOptions {
+  stores: SshWorkspaceSessionStoreAdapter[]
+  getTransferTasks?: () => WorkspaceTransferTask[]
+  getActiveSessionId?: (snapshots: readonly WorkspaceSessionSnapshot[]) => string | null | undefined
+}
+
+export function createCompositeWorkspaceSessionStoreAdapter({
+  stores,
+  getTransferTasks,
+  getActiveSessionId,
+}: CreateCompositeWorkspaceSessionStoreAdapterOptions): SshWorkspaceSessionStoreAdapter {
+  const readSnapshots = () => stores.map((store) => store.getSnapshot())
+  const mergeSnapshots = (snapshots: readonly WorkspaceSessionSnapshot[]): WorkspaceSessionSnapshot => ({
+    terminalSessions: snapshots.flatMap((snapshot) => snapshot.terminalSessions),
+    sftpSessions: snapshots.flatMap((snapshot) => snapshot.sftpSessions),
+    transferTasks: getTransferTasks?.() ?? snapshots.flatMap((snapshot) => snapshot.transferTasks),
+    activeSessionId:
+      getActiveSessionId?.(snapshots)
+      ?? snapshots.find((snapshot) => snapshot.activeSessionId)?.activeSessionId
+      ?? null,
+  })
+
+  return {
+    getSnapshot: () => mergeSnapshots(readSnapshots()),
+    subscribe: (listener) => {
+      const emit = () => listener(mergeSnapshots(readSnapshots()))
+      const unsubscribers = stores
+        .map((store) => store.subscribe?.(emit))
+        .filter((unsubscribe): unsubscribe is () => void => typeof unsubscribe === "function")
+
+      return () => {
+        unsubscribers.forEach((unsubscribe) => unsubscribe())
+      }
+    },
+  }
+}
+
+export function createCompositeWorkspaceSessionController(
+  ...controllers: Array<SshWorkspaceSessionController | undefined | null>
+): SshWorkspaceSessionController {
+  const merged: SshWorkspaceSessionController = {}
+
+  for (const controller of controllers) {
+    if (!controller) {
+      continue
+    }
+
+    if (controller.terminal) {
+      merged.terminal = controller.terminal
+    }
+    if (controller.sftp) {
+      merged.sftp = controller.sftp
+    }
+  }
+
+  if (controllers.some((controller) => controller?.resetAll)) {
+    merged.resetAll = () => {
+      controllers.forEach((controller) => controller?.resetAll?.())
+    }
+  }
+
+  return merged
+}
+
+export interface CreateWorkspaceSettingsAdapterOptions {
+  sftp?: {
+    downloadExcludePatterns?: WorkspaceDownloadExcludePatternSource
+  }
+}
+
+export function createWorkspaceSettingsAdapter({
+  sftp,
+}: CreateWorkspaceSettingsAdapterOptions = {}): SshWorkspaceSettingsAdapter {
+  if (!sftp) {
+    return {}
+  }
+
+  return {
+    sftp: {
+      downloadExcludePatterns: parseWorkspaceDownloadExcludePatterns(sftp.downloadExcludePatterns),
+    },
+  }
+}
+
+export interface CreateWorkspaceAdaptersOptions {
+  apiClient?: SshWorkspaceApiClient
+  authTicketProvider?: SshWorkspaceAuthTicketProvider
+  i18n: SshWorkspaceI18n
+  notifier: SshWorkspaceNotifier
+  theme?: SshWorkspaceThemeAdapter
+  settings?: SshWorkspaceSettingsAdapter
+  preferences?: SshWorkspacePreferenceAdapter
+  serverPicker?: SshWorkspaceServerPicker
+  transferManager?: SshWorkspaceTransferManager
+  activityLog?: SshWorkspaceActivityLogAdapter
+  sessionStore?: SshWorkspaceSessionStoreAdapter
+  sessionController?: SshWorkspaceSessionController
+}
+
+export function createWorkspaceAdapters({
+  apiClient,
+  authTicketProvider,
+  i18n,
+  notifier,
+  theme,
+  settings,
+  preferences,
+  serverPicker,
+  transferManager,
+  activityLog,
+  sessionStore,
+  sessionController,
+}: CreateWorkspaceAdaptersOptions): SshWorkspaceAdapters {
+  return {
+    apiClient,
+    authTicketProvider,
+    i18n,
+    notifier,
+    theme,
+    settings,
+    preferences,
+    serverPicker,
+    transferManager,
+    activityLog,
+    sessionStore,
+    sessionController,
+  }
+}
+
+export interface WorkspacePreferenceStorageLike {
+  getItem: (key: string) => string | null
+  setItem: (key: string, value: string) => void
+  removeItem?: (key: string) => void
+}
+
+export interface CreateBrowserWorkspacePreferenceAdapterOptions {
+  storage?: WorkspacePreferenceStorageLike | null
+  keyPrefix?: string
+}
+
+export function createBrowserWorkspacePreferenceAdapter({
+  storage,
+  keyPrefix = "",
+}: CreateBrowserWorkspacePreferenceAdapterOptions = {}): SshWorkspacePreferenceAdapter {
+  const resolveStorage = () => {
+    if (storage !== undefined) {
+      return storage
+    }
+
+    return typeof window !== "undefined" ? window.localStorage : null
+  }
+  const resolveKey = (key: string) => `${keyPrefix}${key}`
+
+  return {
+    getString(key) {
+      try {
+        return resolveStorage()?.getItem(resolveKey(key)) ?? null
+      } catch {
+        return null
+      }
+    },
+    setString(key, value) {
+      try {
+        resolveStorage()?.setItem(resolveKey(key), value)
+      } catch (error) {
+        void error
+      }
+    },
+    removeString(key) {
+      try {
+        resolveStorage()?.removeItem?.(resolveKey(key))
+      } catch (error) {
+        void error
+      }
+    },
+  }
+}

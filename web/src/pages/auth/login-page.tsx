@@ -1,7 +1,7 @@
 
-import { LoginForm } from "@/components/login-form"
-import { useAuthStatusRedirect } from "@/hooks/use-auth-status-redirect"
-import { PageLoading } from "@/components/page-loading"
+import { LoginForm } from "../../components/login-form"
+import { useAuthStatusRedirect } from "../../hooks/use-auth-status-redirect"
+import { PageLoading } from "@easyssh/app/components/page-loading"
 
 export default function LoginPage() {
   const { isChecking } = useAuthStatusRedirect("login")

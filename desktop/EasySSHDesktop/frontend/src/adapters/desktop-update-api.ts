@@ -2,7 +2,7 @@ import { Events } from "@wailsio/runtime"
 import {
   DesktopUpdateService,
   type DesktopUpdateCheckResult as DesktopUpdateCheckResultModel,
-} from "../../bindings/github.com/easyssh/easyssh-desktop"
+} from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 
 export const desktopUpdateStatusEvent = "easyssh:desktop:update-status"
 

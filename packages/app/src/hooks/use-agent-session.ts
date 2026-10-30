@@ -1,0 +1,1149 @@
+import { WebSpeechDictationAdapter, WebSpeechSynthesisAdapter } from "@assistant-ui/react"
+import { useTranslation } from "react-i18next"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useChat, type UIMessage, type UseChatHelpers } from "@ai-sdk/react"
+import { useAISDKRuntime } from "@assistant-ui/ai-sdk"
+import { DefaultChatTransport, isToolUIPart } from "ai"
+import {
+  cancelAISession,
+  createAISession,
+  deleteAISession,
+  deleteAIMessage,
+  getAISession,
+  getLatestAISession,
+  updateAIMessage,
+  type AgentSessionScope,
+  type AgentImageAttachment,
+  type AgentServerReference,
+  type CreateSessionResponse,
+  type MessageView,
+  type PermissionMode,
+  type SessionView,
+  type TaskView,
+  type ToolView,
+} from "@/lib/api/ai-agent"
+import { getApiUrl } from "@/lib/api-client"
+import { useAgentFeedback } from "@/hooks/use-agent-feedback"
+import { useAgentComposerDrafts } from "@/hooks/use-agent-composer-draft"
+import { useAISessionRecovery } from "@/hooks/use-ai-session-recovery"
+import {
+  applyTaskOutputDelta,
+  applyTextDelta,
+  isSessionOverview,
+  mergeSessionOverview,
+  mergeTaskView,
+  upsertTaskUIPart,
+} from "@/lib/ai-agent/history"
+import { fetchAIChatStream, isRecoverableAIStreamError } from "@/lib/ai-agent/stream-transport"
+import { resolveOutgoingUserMessageId } from "@/lib/ai-agent/message-transport"
+
+import type {
+  AgentFileArtifact,
+  AIHistoryChange,
+  AITaskOutputDelta,
+  AITextDelta,
+  ReasoningEffort,
+  SessionOverview,
+} from "@/lib/ai-agent-types"
+
+type TransportState = "idle" | "connecting" | "ai_sdk_ui"
+const TARGET_SESSION_ID_BODY_KEY = "__easyssh_target_session_id"
+
+export interface AgentSessionAdapter {
+  getTaskFile: (sessionId: string, taskId: string) => Promise<AgentFileArtifact>
+  saveTaskFile: (sessionId: string, taskId: string) => Promise<void>
+  getSession: (sessionId: string) => Promise<CreateSessionResponse>
+  getLatestSession: (scope?: AgentSessionScope) => Promise<CreateSessionResponse | null>
+  createSession: (input: {
+    model?: string
+    permission_mode?: PermissionMode
+    scope?: AgentSessionScope
+  }) => Promise<CreateSessionResponse>
+  sendMessage: (input: {
+    session_id: string
+    reasoning_effort?: Exclude<ReasoningEffort, "auto">
+    content: string
+    server_references: AgentServerReference[]
+    context?: string
+    model?: string
+    permission_mode?: PermissionMode
+    scope?: AgentSessionScope
+    attachments?: AgentImageAttachment[]
+  }) => Promise<CreateSessionResponse>
+  updateMessage: (input: {
+    session_id: string
+    message_id: string
+    content: string
+    server_references: AgentServerReference[]
+  }) => Promise<CreateSessionResponse>
+  regenerateMessage: (input: {
+    session_id: string
+    reasoning_effort?: Exclude<ReasoningEffort, "auto">
+    message_id: string
+    context?: string
+    model?: string
+    permission_mode?: PermissionMode
+    scope?: AgentSessionScope
+  }) => Promise<CreateSessionResponse>
+  deleteMessage: (input: {
+    session_id: string
+    message_id: string
+  }) => Promise<CreateSessionResponse>
+  subscribeSessionEvents: (callback: (event: AgentSessionEvent) => void) => () => void
+  respondToToolApproval: (input: {
+    session_id: string
+    reasoning_effort?: Exclude<ReasoningEffort, "auto">
+    id: string
+    approved: boolean
+    reason?: string
+  }) => Promise<CreateSessionResponse>
+  cancelSession: (sessionId: string) => Promise<void>
+  deleteSession: (sessionId: string) => Promise<void>
+}
+
+/**
+ * 宿主推送的实时会话事件。正文以增量到达，提交后通过 history 通知；
+ * 增量不是持久回放，断开后以重新读取历史为准。
+ */
+export interface AgentSessionEvent {
+  session_id?: string
+  type?: string
+  session?: SessionOverview
+  delta?: AITextDelta
+  output?: AITaskOutputDelta
+  task?: TaskView
+  history?: AIHistoryChange
+  error?: string
+}
+
+// 恢复期间按概况变化重新读取历史，间隔不低于该值。
+const RECOVERY_REFRESH_INTERVAL_MS = 1000
+
+function createLocalId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function toErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function compareTaskExecutionOrder(left: TaskView, right: TaskView) {
+  return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+}
+
+function getSessionChatApi(sessionId?: string | null) {
+  return getApiUrl(`/ai/sessions/${sessionId?.trim() || "__idle__"}/chat`)
+}
+
+function getSessionMessagesSyncKey(session: SessionView) {
+  const messages = session.ui_messages ?? []
+  const lastMessage = messages.at(-1)
+  const lastTextLength = lastMessage ? getUIMessageTextLength(lastMessage) : 0
+  const lastPart = lastMessage?.parts.at(-1) as { state?: unknown; toolCallId?: unknown } | undefined
+
+  return [
+    session.id,
+    session.updated_at,
+    messages.length,
+    lastMessage?.id ?? "",
+    lastMessage?.parts.length ?? 0,
+    lastTextLength,
+    typeof lastPart?.state === "string" ? lastPart.state : "",
+    typeof lastPart?.toolCallId === "string" ? lastPart.toolCallId : "",
+  ].join(":")
+}
+
+function getSessionScopeKey(scope?: AgentSessionScope) {
+  return [
+    scope?.kind ?? "global",
+    scope?.terminal_session_id?.trim() ?? "",
+    scope?.server_id?.trim() ?? "",
+  ].join(":")
+}
+
+function mergeUIMessage(messages: UIMessage[], nextMessage: UIMessage) {
+  const existingIndex = messages.findIndex((message) => message.id === nextMessage.id)
+  if (existingIndex < 0) {
+    return [...messages, nextMessage]
+  }
+
+  const existingMessage = messages[existingIndex]
+  if (isStreamingUIMessage(nextMessage) && !isStreamingUIMessage(existingMessage)) {
+    return messages
+  }
+  if (isStreamingUIMessage(nextMessage) && getUIMessageTextLength(nextMessage) < getUIMessageTextLength(existingMessage)) {
+    return messages
+  }
+
+  const nextMessages = [...messages]
+  nextMessages[existingIndex] = nextMessage
+  return nextMessages
+}
+
+function isStreamingUIMessage(message: UIMessage) {
+  if (message.metadata && typeof message.metadata === "object" && "pending" in message.metadata) {
+    return Boolean((message.metadata as { pending?: unknown }).pending)
+  }
+
+  return message.parts.some((part) => (
+    "state" in part && (part as { state?: unknown }).state === "streaming"
+  ))
+}
+
+function getUIMessageTextLength(message: UIMessage) {
+  return message.parts.reduce((length, part) => {
+    if ("text" in part && typeof part.text === "string") {
+      return length + part.text.length
+    }
+    return length
+  }, 0)
+}
+
+function createOptimisticUserUIMessage(
+  id: string,
+  content: string,
+  attachments: AgentImageAttachment[],
+  serverReferences: AgentServerReference[],
+): UIMessage {
+  return {
+    id,
+    role: "user",
+    metadata: { createdAt: new Date().toISOString(), serverReferences },
+    parts: [
+      ...attachments.map((attachment) => ({
+        type: "file" as const,
+        filename: attachment.name,
+        mediaType: attachment.media_type,
+        url: `data:${attachment.media_type};base64,${attachment.data}`,
+      })),
+      ...(content ? [{ type: "text" as const, text: content }] : []),
+    ],
+  }
+}
+
+function createOptimisticUserMessage(
+  id: string,
+  content: string,
+  createdAt: string,
+  serverReferences: AgentServerReference[],
+): MessageView {
+  return {
+    id,
+    role: "user",
+    content,
+    created_at: createdAt,
+    server_references: serverReferences,
+  }
+}
+
+export function useAgentSession(adapter?: AgentSessionAdapter) {
+  const { i18n } = useTranslation()
+  const dictation = useMemo(() => WebSpeechDictationAdapter.isSupported()
+    ? new WebSpeechDictationAdapter({ language: i18n.resolvedLanguage || i18n.language })
+    : undefined, [i18n.language, i18n.resolvedLanguage])
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort>("auto")
+  const requestReasoningEffort = reasoningEffort === "auto" ? undefined : reasoningEffort
+  const [session, setSession] = useState<SessionView | null>(null)
+  const [transport, setTransport] = useState<TransportState>("idle")
+  const [error, setError] = useState<string | null>(null)
+  const [needsRecovery, setNeedsRecovery] = useState(false)
+  const [recoveryBlocked, setRecoveryBlocked] = useState(false)
+
+  const sessionRef = useRef<SessionView | null>(null)
+  const lastRestoreKeyRef = useRef<string | null>(null)
+  const closingSessionIdRef = useRef<string | null>(null)
+  const syncedMessagesKeyRef = useRef<string | null>(null)
+  const idleChatIdRef = useRef(createLocalId("agent-chat"))
+  const approvalSubmissionRef = useRef(false)
+  const chatErrorRef = useRef<Error | null>(null)
+  const sessionRevisionRef = useRef(0)
+  const snapshotRevisionRef = useRef(0)
+  // 桌面实时文本按消息与片段记录已收到的字节数，用于发现缺失的增量。
+  const streamedTextRef = useRef(new Map<string, number>())
+  const recoveryRefreshRef = useRef<{ running: boolean; pending: boolean; lastAt: number }>({ running: false, pending: false, lastAt: 0 })
+
+  useEffect(() => {
+    sessionRef.current = session
+  }, [session])
+
+  const sessionId = session?.id ?? null
+  const chatId = idleChatIdRef.current
+
+  const chatTransport = useMemo(
+    () => new DefaultChatTransport<UIMessage>({
+      api: getSessionChatApi(null),
+      fetch: fetchAIChatStream,
+      prepareReconnectToStreamRequest: ({ id }) => ({ api: `${getSessionChatApi(id)}/stream` }),
+      prepareSendMessagesRequest(options) {
+        const body = options.body ?? {}
+        const targetSessionIdValue = body[TARGET_SESSION_ID_BODY_KEY]
+        const targetSessionId = typeof targetSessionIdValue === "string"
+          ? targetSessionIdValue.trim()
+          : ""
+        const requestBody = { ...body }
+        delete requestBody[TARGET_SESSION_ID_BODY_KEY]
+        const latestMessage = options.messages.at(-1)
+        const requestMessages = latestMessage
+          ? [{
+              ...latestMessage,
+              parts: latestMessage.parts.filter((part) => part.type !== "file"),
+            }]
+          : []
+
+        return {
+          api: targetSessionId ? getSessionChatApi(targetSessionId) : options.api,
+          headers: options.headers,
+          credentials: options.credentials,
+          body: {
+            ...requestBody,
+            id: options.id,
+            messages: requestMessages,
+            trigger: options.trigger,
+            messageId: resolveOutgoingUserMessageId(latestMessage, options.messageId),
+          },
+        }
+      },
+    }),
+    []
+  )
+
+  const commitSessionSnapshot = useCallback((
+    nextSession: SessionView,
+    input: { syncMessages?: boolean } = {},
+  ) => {
+    closingSessionIdRef.current = null
+    snapshotRevisionRef.current++
+    if (sessionRef.current?.id !== nextSession.id) streamedTextRef.current.clear()
+    sessionRef.current = nextSession
+    setSession(nextSession)
+    setTransport("ai_sdk_ui")
+    syncedMessagesKeyRef.current = input.syncMessages === false
+      ? getSessionMessagesSyncKey(nextSession)
+      : null
+  }, [])
+
+  const refreshSessionSnapshot = useCallback(async (
+    targetSessionId = sessionRef.current?.id,
+    input: { syncMessages?: boolean } = {}
+  ) => {
+    if (!targetSessionId || closingSessionIdRef.current === targetSessionId) {
+      return null
+    }
+
+    const revision = sessionRevisionRef.current
+    const snapshotRevision = snapshotRevisionRef.current
+    try {
+      const response = adapter
+        ? await adapter.getSession(targetSessionId)
+        : await getAISession(targetSessionId)
+      if (closingSessionIdRef.current === targetSessionId || sessionRef.current?.id !== targetSessionId || revision !== sessionRevisionRef.current) {
+        return null
+      }
+      // A reconnect may already have delivered a newer snapshot while this GET
+      // was in flight. Never replace it with an older response.
+      if (snapshotRevision !== snapshotRevisionRef.current) return sessionRef.current
+      commitSessionSnapshot(response.session, input)
+      if (!adapter) setNeedsRecovery(response.session.status === "running")
+      return response.session
+    } catch (refreshError) {
+      const message = toErrorMessage(refreshError)
+      if (sessionRef.current?.id === targetSessionId && revision === sessionRevisionRef.current && snapshotRevision === snapshotRevisionRef.current) {
+        if (!adapter && sessionRef.current.status === "running") setNeedsRecovery(true)
+        else setError(message)
+      }
+      return null
+    }
+  }, [adapter, commitSessionSnapshot])
+
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible" && sessionRef.current?.status === "idle") void refreshSessionSnapshot()
+    }
+    const timer = !adapter ? window.setInterval(refresh, 15000) : undefined
+    window.addEventListener("easyssh:sync-applied", refresh)
+    window.addEventListener("focus", refresh)
+    return () => {
+      if (timer !== undefined) window.clearInterval(timer)
+      window.removeEventListener("easyssh:sync-applied", refresh)
+      window.removeEventListener("focus", refresh)
+    }
+  }, [adapter, refreshSessionSnapshot])
+
+  const updateWorkspaceTask = useCallback((targetSessionId: string, task: TaskView) => {
+    const current = sessionRef.current
+    if (!current || current.id !== targetSessionId || closingSessionIdRef.current === targetSessionId) return
+    const previous = current.tasks.find((item) => item.id === task.id)
+    // A final/cancel snapshot can arrive before an already queued progress event.
+    if (previous && ["succeeded", "failed", "cancelled"].includes(previous.status)
+      && ["queued", "waiting_confirm", "running"].includes(task.status)) return
+    snapshotRevisionRef.current++
+    const next = { ...current, tasks: mergeTaskView(current.tasks, task) }
+    sessionRef.current = next
+    setSession(next)
+  }, [])
+
+  // 命令输出增量不改变快照版本：它不是持久内容，不能阻止已提交历史的刷新结果。
+  const applyWorkspaceTaskOutput = useCallback((targetSessionId: string, delta: AITaskOutputDelta) => {
+    const current = sessionRef.current
+    if (!current || current.id !== targetSessionId || closingSessionIdRef.current === targetSessionId) return
+    const tasks = applyTaskOutputDelta(current.tasks, delta)
+    if (!tasks) return
+    const next = { ...current, tasks }
+    sessionRef.current = next
+    setSession(next)
+  }, [])
+
+  const applySessionOverview = useCallback((overview: SessionOverview) => {
+    const current = sessionRef.current
+    if (!current || current.id !== overview.id || closingSessionIdRef.current === overview.id) return
+    const next = mergeSessionOverview(current, overview)
+    sessionRef.current = next
+    setSession(next)
+  }, [])
+
+  const chat = useChat<UIMessage>({
+    id: chatId,
+    messages: [],
+    transport: chatTransport,
+    onError(chatError) {
+      chatErrorRef.current = chatError
+      if (isRecoverableAIStreamError(chatError)) {
+        setNeedsRecovery(true)
+      } else {
+        setRecoveryBlocked(true)
+        setError(chatError.message)
+      }
+      setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
+    },
+    onData(dataPart) {
+      if (dataPart.type === "data-workspace-task") {
+        const value = dataPart.data as { session_id?: string; task?: TaskView }
+        if (value?.session_id && value.task?.id) updateWorkspaceTask(value.session_id, value.task)
+      }
+      if (dataPart.type === "data-task-output-delta") {
+        const delta = dataPart.data as AITaskOutputDelta | undefined
+        if (delta?.session_id && delta.task_id) applyWorkspaceTaskOutput(delta.session_id, delta)
+      }
+      if (dataPart.type === "data-session" && isSessionOverview(dataPart.data)) {
+        applySessionOverview(dataPart.data)
+      }
+    },
+    onFinish({ isAbort, isError }) {
+      if (isAbort || (isError && isRecoverableAIStreamError(chatErrorRef.current))) return
+      if (!approvalSubmissionRef.current) void refreshSessionSnapshot()
+    },
+  })
+  const setChatMessages = chat.setMessages
+
+  /**
+   * 恢复流只报告概况变化；串行地重新读取已提交历史，并限制频率，
+   * 避免生成过程中的频繁更新反复读取整段历史。
+   */
+  const refreshRecoveredHistory = useCallback(async (targetSessionId: string) => {
+    const state = recoveryRefreshRef.current
+    if (state.running) {
+      state.pending = true
+      return
+    }
+    state.running = true
+    try {
+      do {
+        state.pending = false
+        const wait = state.lastAt + RECOVERY_REFRESH_INTERVAL_MS - Date.now()
+        if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
+        state.lastAt = Date.now()
+        if (sessionRef.current?.id !== targetSessionId) return
+        const refreshed = await refreshSessionSnapshot(targetSessionId, { syncMessages: false })
+        // 中断的 SDK 流不再写入，直接以历史替换时间线。
+        if (refreshed) setChatMessages(refreshed.ui_messages)
+      } while (state.pending)
+    } finally {
+      state.running = false
+    }
+  }, [refreshSessionSnapshot, setChatMessages])
+
+  const { reconnecting, stopRecovery } = useAISessionRecovery({
+    sessionId,
+    revision: sessionRevisionRef.current,
+    enabled: !adapter && transport !== "connecting" && !recoveryBlocked && needsRecovery
+      && chat.status !== "submitted" && chat.status !== "streaming",
+    transport: chatTransport,
+    onSnapshot(overview) {
+      if (sessionRef.current?.id !== overview.id) return
+      applySessionOverview(overview)
+      chat.clearError()
+      chatErrorRef.current = null
+      setNeedsRecovery(overview.status === "running")
+      setError(null)
+      void refreshRecoveredHistory(overview.id)
+    },
+    onError(message) {
+      setRecoveryBlocked(true)
+      setNeedsRecovery(false)
+      setError(message)
+    },
+  })
+
+  const resetRecovery = useCallback(() => {
+    stopRecovery()
+    setNeedsRecovery(false)
+    setRecoveryBlocked(false)
+    chatErrorRef.current = null
+  }, [stopRecovery])
+
+  useEffect(() => {
+    if (!session?.id) {
+      syncedMessagesKeyRef.current = null
+      return
+    }
+
+    const syncKey = getSessionMessagesSyncKey(session)
+    if (syncedMessagesKeyRef.current === syncKey) {
+      return
+    }
+
+    setChatMessages(session.ui_messages || [])
+    syncedMessagesKeyRef.current = syncKey
+  }, [session, setChatMessages])
+
+  useEffect(() => {
+    if (!adapter) {
+      return
+    }
+
+    return adapter.subscribeSessionEvents((event) => {
+      const activeSession = sessionRef.current
+      if (!activeSession || event.session_id !== activeSession.id || closingSessionIdRef.current === activeSession.id) {
+        return
+      }
+
+      if (event.error) {
+        setError(event.error)
+      }
+
+      if (event.session) {
+        applySessionOverview(event.session)
+        setTransport("ai_sdk_ui")
+      }
+
+      if (event.task) {
+        const task = event.task
+        updateWorkspaceTask(activeSession.id, task)
+        setChatMessages((current) => upsertTaskUIPart(current, task))
+      }
+
+      if (event.output) applyWorkspaceTaskOutput(activeSession.id, event.output)
+
+      if (event.delta) {
+        const delta = event.delta
+        const key = `${delta.message_id}:${delta.kind}`
+        if (delta.offset > (streamedTextRef.current.get(key) ?? 0)) {
+          // 缺失的增量无法补齐，改读已提交历史。
+          void refreshSessionSnapshot(activeSession.id)
+          return
+        }
+        streamedTextRef.current.set(key, delta.next_offset)
+        setChatMessages((current) => applyTextDelta(current, delta) ?? current)
+        setTransport("ai_sdk_ui")
+      }
+
+      // 运行中由发送调用结束时的快照统一刷新，避免替换正在生成的消息。
+      if (event.history && sessionRef.current?.status !== "running") {
+        void refreshSessionSnapshot(activeSession.id)
+      }
+    })
+  }, [adapter, applySessionOverview, applyWorkspaceTaskOutput, refreshSessionSnapshot, setChatMessages, updateWorkspaceTask])
+
+  const pushLocalError = useCallback((message: string) => {
+    setError(message)
+  }, [])
+
+  const clearError = useCallback(() => {
+    setError(null)
+    chat.clearError()
+  }, [chat])
+
+  const applySessionResponse = useCallback((
+    response: CreateSessionResponse,
+    input: { syncMessages?: boolean } = {}
+  ) => {
+    setError(null)
+    commitSessionSnapshot(response.session, input)
+    if (!adapter) setNeedsRecovery(response.session.status === "running")
+    return response
+  }, [adapter, commitSessionSnapshot])
+
+  const restoreLatestSession = useCallback(async (scope?: AgentSessionScope) => {
+    const restoreKey = getSessionScopeKey(scope)
+    if (lastRestoreKeyRef.current === restoreKey || sessionRef.current || transport !== "idle") {
+      return false
+    }
+
+    lastRestoreKeyRef.current = restoreKey
+    const revision = ++sessionRevisionRef.current
+    setTransport("connecting")
+
+    try {
+      const response = adapter
+        ? await adapter.getLatestSession(scope)
+        : await getLatestAISession(scope)
+      if (revision !== sessionRevisionRef.current) return false
+      if (!response) {
+        setTransport("idle")
+        return false
+      }
+
+      applySessionResponse(response)
+      return true
+    } catch (restoreError) {
+      if (revision !== sessionRevisionRef.current) return false
+      setTransport("idle")
+      const message = toErrorMessage(restoreError)
+      pushLocalError(message)
+      return false
+    }
+  }, [adapter, applySessionResponse, pushLocalError, transport])
+
+  const restoreSession = useCallback(async (targetSessionId: string, input: { silent?: boolean } = {}) => {
+    if (!targetSessionId) {
+      return false
+    }
+
+    resetRecovery()
+    const revision = ++sessionRevisionRef.current
+    setTransport("connecting")
+
+    try {
+      if (!adapter) {
+        await chat.stop()
+        chat.clearError()
+      }
+      const response = adapter
+        ? await adapter.getSession(targetSessionId)
+        : await getAISession(targetSessionId)
+      if (revision !== sessionRevisionRef.current) return false
+      applySessionResponse(response)
+      return true
+    } catch (restoreError) {
+      if (revision !== sessionRevisionRef.current) return false
+      setTransport(sessionRef.current ? "ai_sdk_ui" : "idle")
+      const message = toErrorMessage(restoreError)
+      if (!input.silent) {
+        pushLocalError(message)
+      }
+      return false
+    }
+  }, [adapter, applySessionResponse, chat, pushLocalError, resetRecovery])
+
+  const startNewSession = useCallback(async (input: {
+    model?: string
+    permissionMode?: PermissionMode
+    scope?: AgentSessionScope
+  }) => {
+    resetRecovery()
+    sessionRevisionRef.current++
+    lastRestoreKeyRef.current = getSessionScopeKey(input.scope)
+    setError(null)
+    setTransport("connecting")
+
+    const currentSession = sessionRef.current
+    if (!adapter) {
+      await chat.stop()
+      chat.clearError()
+    }
+    if (currentSession?.status === "running") {
+      try {
+        if (adapter) {
+          await adapter.cancelSession(currentSession.id)
+        } else {
+          await cancelAISession(currentSession.id)
+        }
+      } catch {
+        // ignore cancellation race when starting a replacement session
+      }
+    }
+
+    try {
+      const createInput = {
+        model: input.model,
+        permission_mode: input.permissionMode,
+        scope: input.scope,
+      }
+      const response = adapter
+        ? await adapter.createSession(createInput)
+        : await createAISession(createInput)
+      chat.setMessages([])
+      applySessionResponse(response, { syncMessages: false })
+      return response
+    } catch (createError) {
+      setTransport(currentSession ? "ai_sdk_ui" : "idle")
+      const message = toErrorMessage(createError)
+      pushLocalError(message)
+      return null
+    }
+  }, [adapter, applySessionResponse, chat, pushLocalError, resetRecovery])
+
+  const sendMessage = useCallback(async (
+    content: string,
+    contextText?: string,
+    model?: string,
+    permissionMode?: PermissionMode,
+    scope?: AgentSessionScope,
+    attachments: AgentImageAttachment[] = [],
+    serverReferences: AgentServerReference[] = [],
+  ) => {
+    const activeSessionId = sessionRef.current?.id
+    const normalizedContent = content.trim()
+    if (!activeSessionId || (!normalizedContent && attachments.length === 0)) {
+      return "failed" as const
+    }
+
+    resetRecovery()
+    sessionRevisionRef.current++
+    const createdAt = new Date().toISOString()
+    const outgoingMessageId = createLocalId("user")
+    const optimisticUIMessage = createOptimisticUserUIMessage(
+      outgoingMessageId,
+      normalizedContent,
+      attachments,
+      serverReferences,
+    )
+    const activeSession = sessionRef.current
+    if (!activeSession) {
+      return "failed" as const
+    }
+    const previousMessageCount = activeSession.messages.length
+    const optimisticSession: SessionView = {
+      ...activeSession,
+      model: model || activeSession.model,
+      permission_mode: permissionMode || activeSession.permission_mode,
+      scope: scope || activeSession.scope,
+      status: "running",
+      updated_at: createdAt,
+      messages: [
+        ...activeSession.messages.filter((message) => message.id !== outgoingMessageId),
+        createOptimisticUserMessage(outgoingMessageId, normalizedContent, createdAt, serverReferences),
+      ],
+      ui_messages: adapter
+        ? mergeUIMessage(activeSession.ui_messages, optimisticUIMessage)
+        : activeSession.ui_messages,
+    }
+
+    setError(null)
+    commitSessionSnapshot(optimisticSession, { syncMessages: false })
+    if (adapter) {
+      setChatMessages((current) => mergeUIMessage(current, optimisticUIMessage))
+    }
+
+    try {
+      if (adapter) {
+        const response = await adapter.sendMessage({
+          session_id: activeSessionId,
+          content: normalizedContent,
+          server_references: serverReferences,
+          context: contextText,
+          model,
+          reasoning_effort: requestReasoningEffort,
+          permission_mode: permissionMode,
+          scope,
+          attachments,
+        })
+        if (sessionRef.current?.id === activeSessionId) applySessionResponse(response)
+        return "sent" as const
+      }
+
+      await chat.sendMessage(optimisticUIMessage, {
+        body: {
+          [TARGET_SESSION_ID_BODY_KEY]: activeSessionId,
+          context: contextText,
+          model,
+          reasoning_effort: requestReasoningEffort,
+          permission_mode: permissionMode,
+          scope,
+          attachments,
+          server_references: serverReferences,
+        },
+      })
+      if (chatErrorRef.current) {
+        if (isRecoverableAIStreamError(chatErrorRef.current)) return "accepted" as const
+        throw chatErrorRef.current
+      }
+      return "sent" as const
+    } catch (sendError) {
+      const message = toErrorMessage(sendError)
+      let refreshed: SessionView | null = null
+      if (sessionRef.current?.id === activeSessionId) {
+        pushLocalError(message)
+        refreshed = await refreshSessionSnapshot(activeSessionId)
+      } else {
+        // An old request must neither overwrite the selected conversation nor
+        // restore an already accepted message as an unsent draft.
+        try {
+          const response = adapter
+            ? await adapter.getSession(activeSessionId)
+            : await getAISession(activeSessionId)
+          refreshed = response.session
+        } catch {
+          // Keep the submitted content as a draft when acceptance is unknown.
+        }
+      }
+      const accepted = Boolean(refreshed && (
+        refreshed.messages.some((item) => item.id === outgoingMessageId)
+        || refreshed.messages.length > previousMessageCount
+      ))
+      return accepted ? "accepted" as const : "failed" as const
+    }
+  }, [requestReasoningEffort, adapter, applySessionResponse, chat, commitSessionSnapshot, pushLocalError, refreshSessionSnapshot, resetRecovery, setChatMessages])
+
+  const regenerateAfterUpdate = useCallback(async (
+    activeSessionId: string,
+    messageId: string,
+    content: string,
+    input: {
+      contextText?: string
+      model?: string
+      permissionMode?: PermissionMode
+      scope?: AgentSessionScope
+    } = {}
+  ) => {
+    resetRecovery()
+    sessionRevisionRef.current++
+    setError(null)
+    setSession((current) => current
+      ? { ...current, status: "running", updated_at: new Date().toISOString() }
+      : current
+    )
+    setTransport("ai_sdk_ui")
+
+    try {
+      if (adapter) {
+        const response = await adapter.regenerateMessage({
+          session_id: activeSessionId,
+          message_id: messageId,
+          context: input.contextText,
+          model: input.model,
+          reasoning_effort: requestReasoningEffort,
+          permission_mode: input.permissionMode,
+          scope: input.scope,
+        })
+        applySessionResponse(response)
+        return true
+      }
+
+      await chat.sendMessage({ text: content, messageId }, {
+        body: {
+          [TARGET_SESSION_ID_BODY_KEY]: activeSessionId,
+          mode: "regenerate",
+          context: input.contextText,
+          model: input.model,
+          reasoning_effort: requestReasoningEffort,
+          permission_mode: input.permissionMode,
+          scope: input.scope,
+        },
+      })
+      if (chatErrorRef.current && !isRecoverableAIStreamError(chatErrorRef.current)) throw chatErrorRef.current
+      return true
+    } catch (regenerateError) {
+      const message = toErrorMessage(regenerateError)
+      pushLocalError(message)
+      void refreshSessionSnapshot(activeSessionId)
+      return false
+    }
+  }, [requestReasoningEffort, adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot, resetRecovery])
+
+  const continuationRef = useRef(false)
+  const continueRun = useCallback(async (messageId: string, prompt: string, input: {
+    contextText?: string
+    model?: string
+    permissionMode?: PermissionMode
+  } = {}) => {
+    const current = sessionRef.current
+    const index = current?.messages.findIndex(message => message.id === messageId && !!message.stopped_at) ?? -1
+    if (!current || index < 0 || current.status !== "idle" || continuationRef.current || chat.status === "submitted" || chat.status === "streaming" || current.messages.slice(index + 1).some(message => message.role === "user")) return false
+    continuationRef.current = true
+    try {
+      const references = current.messages.slice(0, index + 1).reverse().find((message) => message.role === "user")?.server_references ?? []
+      return await sendMessage(prompt, input.contextText, input.model, input.permissionMode, current.scope, [], references) !== "failed"
+    } finally { continuationRef.current = false }
+  }, [chat.status, sendMessage])
+
+  const regenerationRef = useRef(false)
+  const regenerateMessage = useCallback(async (
+    messageId: string,
+    input: { contextText?: string; model?: string; permissionMode?: PermissionMode; scope?: AgentSessionScope } = {}
+  ) => {
+    const current = sessionRef.current
+    const message = current?.messages.find((item) => item.id === messageId && item.role === "user")
+    if (!current || !message || current.status === "running" || regenerationRef.current || chat.status === "submitted" || chat.status === "streaming") return false
+    regenerationRef.current = true
+    try {
+      return await regenerateAfterUpdate(current.id, messageId, message.content, input)
+    } finally {
+      regenerationRef.current = false
+    }
+  }, [chat.status, regenerateAfterUpdate])
+
+  const updateMessage = useCallback(async (
+    messageId: string,
+    content: string,
+    input: {
+      serverReferences?: AgentServerReference[]
+      regenerate?: boolean
+      contextText?: string
+      model?: string
+      permissionMode?: PermissionMode
+      scope?: AgentSessionScope
+    } = {}
+  ) => {
+    const activeSessionId = sessionRef.current?.id
+    const normalizedContent = content.trim()
+    if (!activeSessionId || !messageId || !normalizedContent) {
+      return false
+    }
+
+    const serverReferences = input.serverReferences ?? sessionRef.current?.messages.find((message) => message.id === messageId)?.server_references ?? []
+    sessionRevisionRef.current++
+    setError(null)
+    setTransport("ai_sdk_ui")
+    try {
+      const response = adapter
+        ? await adapter.updateMessage({
+          session_id: activeSessionId,
+          message_id: messageId,
+          content: normalizedContent,
+          server_references: serverReferences,
+        })
+        : await updateAIMessage(activeSessionId, messageId, { content: normalizedContent, server_references: serverReferences })
+      applySessionResponse(response)
+      setChatMessages(response.session.ui_messages || [])
+      if (input.regenerate !== false) {
+        void regenerateAfterUpdate(activeSessionId, messageId, normalizedContent, input)
+      }
+      return true
+    } catch (updateError) {
+      const message = toErrorMessage(updateError)
+      pushLocalError(message)
+      void refreshSessionSnapshot(activeSessionId)
+      return false
+    }
+  }, [adapter, applySessionResponse, pushLocalError, refreshSessionSnapshot, regenerateAfterUpdate, setChatMessages])
+
+  const deleteMessage = useCallback(async (messageId: string) => {
+    const activeSessionId = sessionRef.current?.id
+    if (!activeSessionId || !messageId) {
+      return false
+    }
+
+    sessionRevisionRef.current++
+    setError(null)
+    setTransport("ai_sdk_ui")
+    try {
+      const response = adapter
+        ? await adapter.deleteMessage({
+          session_id: activeSessionId,
+          message_id: messageId,
+        })
+        : await deleteAIMessage(activeSessionId, messageId)
+      applySessionResponse(response)
+      return true
+    } catch (deleteError) {
+      const message = toErrorMessage(deleteError)
+      pushLocalError(message)
+      void refreshSessionSnapshot(activeSessionId)
+      return false
+    }
+  }, [adapter, applySessionResponse, pushLocalError, refreshSessionSnapshot])
+
+  const respondToToolApproval: UseChatHelpers<UIMessage>["addToolApprovalResponse"] = useCallback(async ({ id, approved, reason }) => {
+    const activeSessionId = sessionRef.current?.id
+    if (!activeSessionId || sessionRef.current?.status === "running" || needsRecovery || reconnecting || approvalSubmissionRef.current || chat.status === "submitted" || chat.status === "streaming") {
+      throw new Error("当前会话暂时无法提交审批，请稍后重试")
+    }
+    const messages = chat.messages
+    const pending = messages.some((message) => message.parts.some((part) => (
+      isToolUIPart(part) && part.state === "approval-requested" && part.approval.id === id
+    )))
+    if (!pending) {
+      throw new Error("该操作已不再等待审批")
+    }
+    approvalSubmissionRef.current = true
+    resetRecovery()
+    sessionRevisionRef.current++
+    chatErrorRef.current = null
+    setError(null)
+
+    try {
+      if (adapter) {
+        setTransport("ai_sdk_ui")
+        const response = await adapter.respondToToolApproval({
+          session_id: activeSessionId,
+          id,
+          approved,
+          reason,
+          reasoning_effort: requestReasoningEffort,
+        })
+        if (sessionRef.current?.id === activeSessionId) applySessionResponse(response)
+        return
+      }
+
+      setTransport("ai_sdk_ui")
+      await chat.addToolApprovalResponse({ id, approved, reason })
+      await chat.sendMessage(undefined, {
+        body: {
+          [TARGET_SESSION_ID_BODY_KEY]: activeSessionId,
+        },
+      })
+      if (chatErrorRef.current) {
+        if (isRecoverableAIStreamError(chatErrorRef.current)) return
+        throw chatErrorRef.current
+      }
+      // useChat calls onError without rejecting sendMessage. Restore the server
+      // snapshot before accepting another approval from the same message.
+      await refreshSessionSnapshot(activeSessionId)
+    } catch (confirmError) {
+      if (sessionRef.current?.id === activeSessionId) {
+        pushLocalError(toErrorMessage(confirmError))
+        const refreshed = await refreshSessionSnapshot(activeSessionId)
+        if (!refreshed && sessionRef.current?.id === activeSessionId) setChatMessages(messages)
+      }
+      throw confirmError
+    } finally {
+      approvalSubmissionRef.current = false
+    }
+  }, [requestReasoningEffort, adapter, applySessionResponse, chat, needsRecovery, pushLocalError, reconnecting, refreshSessionSnapshot, resetRecovery, setChatMessages])
+
+  const cancelSession = useCallback(async () => {
+    const activeSessionId = sessionRef.current?.id
+    if (!activeSessionId) {
+      return
+    }
+
+    stopRecovery()
+    setNeedsRecovery(false)
+    setRecoveryBlocked(true)
+    sessionRevisionRef.current++
+    const results = adapter
+      ? await Promise.allSettled([adapter.cancelSession(activeSessionId)])
+      : await Promise.allSettled([chat.stop(), cancelAISession(activeSessionId)])
+    await refreshSessionSnapshot(activeSessionId)
+
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected")
+    if (failure) {
+      pushLocalError(toErrorMessage(failure.reason))
+    }
+  }, [adapter, chat, pushLocalError, refreshSessionSnapshot, stopRecovery])
+
+  const detachSession = useCallback((targetSessionId?: string) => {
+    if (targetSessionId && sessionRef.current?.id !== targetSessionId) return
+    resetRecovery()
+    sessionRevisionRef.current++
+    closingSessionIdRef.current = sessionRef.current?.id ?? null
+    lastRestoreKeyRef.current = getSessionScopeKey(sessionRef.current?.scope)
+    setSession(null)
+    sessionRef.current = null
+    setError(null)
+    chat.setMessages([])
+    syncedMessagesKeyRef.current = null
+    setTransport("idle")
+  }, [chat, resetRecovery])
+
+  const startDraftSession = useCallback(async (scope?: AgentSessionScope) => {
+    if (sessionRef.current?.status === "running") await cancelSession()
+    if (!adapter) await chat.stop()
+    detachSession()
+    lastRestoreKeyRef.current = getSessionScopeKey(scope)
+  }, [adapter, cancelSession, chat, detachSession])
+
+  const discardSessionIfEmpty = useCallback(async (targetSessionId: string) => {
+    if (!targetSessionId) {
+      return false
+    }
+
+    try {
+      const response = adapter
+        ? await adapter.getSession(targetSessionId)
+        : await getAISession(targetSessionId)
+      const targetSession = response.session
+      if (
+        targetSession.messages.length > 0
+        || targetSession.ui_messages.length > 0
+        || targetSession.tasks.length > 0
+      ) {
+        return false
+      }
+
+      if (adapter) {
+        await adapter.deleteSession(targetSessionId)
+      } else {
+        await deleteAISession(targetSessionId)
+      }
+      if (sessionRef.current?.id === targetSessionId) {
+        detachSession()
+      }
+      return true
+    } catch {
+      return false
+    }
+  }, [adapter, detachSession])
+
+  const tasks = useMemo(
+    () => [...(session?.tasks || [])].sort(compareTaskExecutionOrder),
+    [session?.tasks]
+  )
+  const availableTools = useMemo<ToolView[]>(
+    () => session?.available_tools ?? [],
+    [session?.available_tools]
+  )
+  const canSend = Boolean(sessionId) && !needsRecovery && !reconnecting && session?.status === "idle" && (Boolean(adapter) || chat.status === "ready")
+  const uiMessages = chat.messages
+  const pendingApprovalCount = uiMessages.reduce((count, message) => count + message.parts.filter(
+    (part) => isToolUIPart(part) && part.state === "approval-requested"
+  ).length, 0)
+  const speech = useMemo(() => typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window
+    ? new WebSpeechSynthesisAdapter() : undefined, [])
+  const { messages: runtimeMessages, feedback } = useAgentFeedback(sessionId, uiMessages)
+  const runtime = useAISDKRuntime({
+    ...chat,
+    // One composer runtime, with explicitly managed drafts per conversation.
+    id: chat.id,
+    messages: runtimeMessages,
+    error: needsRecovery && !recoveryBlocked ? undefined : chat.error,
+    status: !recoveryBlocked && (needsRecovery || (session?.status === "running" && chat.status === "ready")) ? "streaming" : chat.status,
+    addToolApprovalResponse: respondToToolApproval,
+    stop: cancelSession,
+  }, { joinStrategy: "none", cancelPendingToolCallsOnSend: false, adapters: { dictation, speech, feedback } })
+  const composerDrafts = useAgentComposerDrafts(runtime, sessionId)
+
+  return {
+    session,
+    sessionId,
+    transport,
+    chatStatus: chat.status,
+    uiMessages,
+    tasks,
+    pendingApprovalCount,
+    runtime,
+    respondToToolApproval,
+    availableTools,
+    error,
+    reconnecting,
+    clearError,
+    canSend,
+    restoreLatestSession,
+    restoreSession,
+    startNewSession,
+    startDraftSession,
+    recoverComposerDraft: composerDrafts.recover,
+    forgetComposerDraft: composerDrafts.forget,
+    sendMessage,
+    reasoningEffort,
+    setReasoningEffort,
+    updateMessage,
+    regenerateMessage,
+    continueRun,
+    deleteMessage,
+    cancelSession,
+    detachSession,
+    discardSessionIfEmpty,
+  }
+}

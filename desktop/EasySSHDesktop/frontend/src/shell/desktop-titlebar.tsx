@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Browser, Window } from "@wailsio/runtime"
-import { Button } from "@/components/ui/button"
+import { Button } from "@easyssh/app/components/ui/button"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from "@easyssh/app/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +15,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@easyssh/app/components/ui/dropdown-menu"
 import {
   Activity,
   ArchiveRestore,
@@ -33,9 +33,9 @@ import {
   Square,
   X,
   toast,
-} from "@easyssh/ssh-workspace/desktop"
-import type { Locale } from "@/i18n"
-import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+} from "@easyssh/app/desktop"
+import type { Locale } from "@easyssh/app/i18n"
+import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 import type { DesktopRuntimeBindingInfo } from "../adapters/desktop-runtime"
 import { DesktopHeaderActions } from "./desktop-header-actions"
 import { DesktopSyncAction } from "./desktop-sync-action"
@@ -43,8 +43,8 @@ import { DesktopProxyDialog } from "./desktop-proxy-dialog"
 import { desktopUpdateApi, type DesktopUpdateCheckResult } from "../adapters/desktop-update-api"
 import { DesktopInlineUpdateAction } from "./desktop-inline-update-action"
 import { useTranslation } from "react-i18next"
-import { cn } from "@/lib/utils"
-import { useIntentPreload } from "@/hooks/use-intent-preload"
+import { cn } from "@easyssh/app/lib/utils"
+import { useIntentPreload } from "@easyssh/app/hooks/use-intent-preload"
 import { preloadDesktopView, type DesktopContentView, type DesktopView } from "./desktop-view-registry"
 
 const windowActionErrorMessage = "Failed to run window action:"

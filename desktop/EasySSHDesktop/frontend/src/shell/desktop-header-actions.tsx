@@ -1,11 +1,11 @@
-import { Button } from "@/components/ui/button"
-import { ThemeMenu } from "@/components/theme-menu"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Button } from "@easyssh/app/components/ui/button"
+import { ThemeMenu } from "@easyssh/app/components/theme-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@easyssh/app/components/ui/tooltip"
 import {
   Check,
   Languages,
-} from "@easyssh/ssh-workspace/desktop"
-import type { Locale } from "@/i18n"
+} from "@easyssh/app/desktop"
+import type { Locale } from "@easyssh/app/i18n"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +13,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@easyssh/app/components/ui/dropdown-menu"
 import { useTranslation } from "react-i18next"
 import { DesktopNotificationCenter } from "./desktop-notification-center"
 

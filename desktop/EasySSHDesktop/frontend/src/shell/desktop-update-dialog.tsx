@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Browser } from "@wailsio/runtime"
-import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import { Download, ExternalLink, Loader2, RefreshCw, RotateCw } from "@easyssh/ssh-workspace/desktop"
-import { toast } from "@easyssh/ssh-workspace/desktop"
+import { Button } from "@easyssh/app/components/ui/button"
+import { Progress } from "@easyssh/app/components/ui/progress"
+import { Download, ExternalLink, Loader2, RefreshCw, RotateCw } from "@easyssh/app/desktop"
+import { toast } from "@easyssh/app/desktop"
 import { useTranslation } from "react-i18next"
 import {
   desktopUpdateApi,

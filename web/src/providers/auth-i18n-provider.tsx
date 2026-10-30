@@ -2,9 +2,9 @@
 import type { ReactNode } from "react"
 import { useEffect } from "react"
 import { I18nextProvider } from "react-i18next"
-import { useSystemConfig } from "@/contexts/system-config-context"
-import { getEffectiveLocale } from "@/utils/datetime"
-import { i18n } from "@/i18n"
+import { useSystemConfig } from "@easyssh/app/contexts/system-config-context"
+import { getEffectiveLocale } from "@easyssh/app/utils/datetime"
+import { i18n } from "@easyssh/app/i18n"
 
 interface AuthI18nProviderProps {
   children: ReactNode

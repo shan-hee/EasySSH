@@ -1,6 +1,6 @@
-import { Call } from "@wailsio/runtime"
-import type { SshWorkspaceApiClient } from "@easyssh/ssh-workspace/desktop"
+import * as DesktopServerService from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopserverservice"
+import type { SshWorkspaceApiClient, SystemSnapshot } from "@easyssh/app/desktop"
 
 export const desktopSystemInfoApi: NonNullable<SshWorkspaceApiClient["systemInfo"]> = {
-  snapshot: (serverId, kind) => Call.ByName("main.DesktopServerService.SystemSnapshot", serverId, kind),
+  snapshot: async (serverId, kind) => await DesktopServerService.SystemSnapshot(serverId, kind) as SystemSnapshot,
 }

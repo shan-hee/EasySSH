@@ -1,13 +1,13 @@
 
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useSystemConfig } from "@/contexts/system-config-context"
+import { useSystemConfig } from "@easyssh/app/contexts/system-config-context"
 import {
   getAuthRedirectDecision,
   getCurrentBrowserPath,
   isLoginPath,
   type AuthGatePage,
-} from "@/lib/auth-redirect"
+} from "../platform/auth-redirect"
 
 type EntryPage = Extract<AuthGatePage, "home" | "login">
 

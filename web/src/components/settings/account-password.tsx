@@ -1,19 +1,18 @@
-import { authApi } from "@/lib/api/auth"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Loader2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Field, FieldLabel } from "@/components/ui/field"
-import { SettingsSection } from "./settings-section"
-import { useClientAuth } from "@/components/client-auth-provider"
+import { Button } from "@easyssh/app/components/ui/button"
+import { Input } from "@easyssh/app/components/ui/input"
+import { Field, FieldLabel } from "@easyssh/app/components/ui/field"
+import { SettingsSection } from "@easyssh/app/components/settings/settings-section"
+import { ownerApi } from "../../lib/api/owner"
+import { ownerSession } from "../../platform/owner-session"
 import { toast } from "sonner"
-import { getErrorMessage } from "@/lib/error-utils"
+import { getErrorMessage } from "@easyssh/app/lib/error-utils"
 
 export function AccountPassword() {
   const { t } = useTranslation("accountSettings")
   const { t: tAuth } = useTranslation("auth")
-  const { logout } = useClientAuth()
   const [oldPassword, setOldPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmation, setConfirmation] = useState("")
@@ -26,10 +25,11 @@ export function AccountPassword() {
     if ([...newPassword].length < 9) { setError(tAuth("passwordLengthHint")); return }
     setBusy(true); setError("")
     try {
-      await authApi.changePassword({ old_password: oldPassword, new_password: newPassword })
-      setOldPassword(""); setNewPassword(""); setConfirmation("")
+      await ownerApi.changePassword({ old_password: oldPassword, new_password: newPassword })
+      // 修改密码会撤销包括当前会话在内的所有会话，重新加载到登录页以清空本地状态。
       toast.success(t("securityPasswordChanged"))
-      await logout()
+      ownerSession.end()
+      window.location.assign("/login")
     } catch (error) { setError(getErrorMessage(error, t("securityPasswordChangeFailed"))) }
     finally { setBusy(false) }
   }

@@ -1,4 +1,5 @@
 {
+  "extends": "@easyssh/app/tsconfig.consumer.json",
   "compilerOptions": {
     "target": "ES2017",
     "lib": [
@@ -16,15 +17,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "react-jsx",
-    "paths": {
-      "@easyssh/ssh-workspace": [
-        "./packages/ssh-workspace/src/index.ts"
-      ],
-      "@/*": [
-        "./src/*"
-      ]
-    }
+    "jsx": "react-jsx"
   },
   "include": [
     "**/*.ts",

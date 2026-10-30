@@ -1,18 +1,14 @@
 import {
   DesktopActivityLogStatus,
   type DesktopActivityLogItem,
-} from "../../bindings/github.com/easyssh/easyssh-desktop"
+} from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 import type {
   AuditLog,
   WorkspaceActivityLogItem,
   WorkspaceActivityLogStatus,
-} from "@easyssh/ssh-workspace/desktop"
-import {
-  DESKTOP_LOCAL_OWNER_ID,
-  DESKTOP_LOCAL_USERNAME,
-} from "./desktop-local-identity"
+} from "@easyssh/app/desktop"
+import { DESKTOP_LOCAL_USERNAME } from "./desktop-local-identity"
 
-export const desktopLogUserId = DESKTOP_LOCAL_OWNER_ID
 export const desktopLogUsername = DESKTOP_LOCAL_USERNAME
 export const desktopLogSource = "desktop"
 
@@ -52,7 +48,6 @@ export function mapDesktopActivityLogItemToAuditLog(item: DesktopActivityLogItem
   const action = item.action || ""
   return {
     id: item.id,
-    user_id: desktopLogUserId,
     username: desktopLogUsername,
     server_id: item.serverId || undefined,
     type: desktopAuditLogTypeFromAction(action),

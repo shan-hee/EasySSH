@@ -4,37 +4,32 @@ import * as React from "react"
 
 import { Loader2, Upload, X, Paintbrush } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Button } from "@easyssh/app/components/ui/button"
+import { Input } from "@easyssh/app/components/ui/input"
+import { Label } from "@easyssh/app/components/ui/label"
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@easyssh/app/components/ui/select"
 
-import { useClientAuth } from "@/components/client-auth-provider"
-import { useSystemConfig } from "@/contexts/system-config-context"
+import { useClientAuth } from "@easyssh/app/components/client-auth-provider"
+import { useSystemConfig } from "@easyssh/app/contexts/system-config-context"
 
-import { authApi } from "@/lib/api/auth"
+import { ownerApi } from "../../lib/api/owner"
 
 import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
-import { getErrorMessage } from "@/lib/error-utils"
+import { getErrorMessage } from "@easyssh/app/lib/error-utils"
 
 export function AccountProfile() {
   const { t: tAccount } = useTranslation("accountSettings")
-  const { t: tCommon } = useTranslation("common")
-  const { user, refreshUser } = useClientAuth()
+  const { user, refreshUser, updatePreferences } = useClientAuth()
   const { config } = useSystemConfig()
   // 个人信息表单状态
   const [profileForm, setProfileForm] = React.useState({
     username: "",
     email: "",
-    verificationCode: "", // 邮箱验证码
   })
   const [profileLoading, setProfileLoading] = React.useState(false)
-  const [sendingCode, setSendingCode] = React.useState(false) // 发送验证码加载状态
-  const [countdown, setCountdown] = React.useState(0) // 验证码倒计时
-  const [originalEmail, setOriginalEmail] = React.useState("") // 原始邮箱地址，用于判断是否修改
 
   // 头像上传状态
   const [avatarFile, setAvatarFile] = React.useState<File | null>(null)
@@ -47,7 +42,7 @@ export function AccountProfile() {
   })
   const [preferencesLoading, setPreferencesLoading] = React.useState(false)
 
-  React.useEffect(() => { if (user) { setProfileForm({ username: user.username || "", email: user.email || "", verificationCode: "" }); setOriginalEmail(user.email || ""); setAvatarFile(null); setAvatarPreview(user.avatar || ""); setPreferencesForm({ timezone: user.timezone || config?.default_timezone || "Asia/Shanghai" }) } }, [user, config?.default_timezone])
+  React.useEffect(() => { if (user) { setProfileForm({ username: user.username || "", email: user.email || "" }); setAvatarFile(null); setAvatarPreview(user.avatar || ""); setPreferencesForm({ timezone: user.timezone || config?.default_timezone || "Asia/Shanghai" }) } }, [user, config?.default_timezone])
   // 处理头像文件选择
   const handleAvatarSelect = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -162,86 +157,33 @@ export function AccountProfile() {
     })
   }
 
-  // 验证码倒计时逻辑
-  React.useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [countdown])
-
-  // 发送验证码
-  const handleSendVerificationCode = React.useCallback(async () => {
-    // 验证邮箱格式
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!profileForm.email || !emailRegex.test(profileForm.email)) {
-      toast.error(tAccount("toastInvalidEmail"))
-      return
-    }
-
-    // 检查邮箱是否已修改
-    if (profileForm.email === originalEmail) {
-      toast.error(tAccount("toastEmailNotChanged"))
-      return
-    }
-
-    setSendingCode(true)
-    try {
-      await authApi.sendVerificationCode(profileForm.email, "email_change")
-      toast.success(tAccount("toastCodeSent"))
-      setCountdown(60) // 开始60秒倒计时
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, tAccount("toastCodeSendFailed")))
-    } finally {
-      setSendingCode(false)
-    }
-  }, [profileForm.email, originalEmail, tAccount])
-
-  // 保存个人信息
+  // 保存个人信息：资料接口整体替换，语言与时区沿用当前值
   const handleSaveProfile = React.useCallback(async () => {
-
-    // 验证邮箱格式
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (profileForm.email && !emailRegex.test(profileForm.email)) {
+    if (!emailRegex.test(profileForm.email)) {
       toast.error(tAccount("toastInvalidEmail"))
       return
-    }
-
-    // 如果用户修改了邮箱，必须输入验证码
-    if (profileForm.email !== originalEmail) {
-      if (!profileForm.verificationCode || profileForm.verificationCode.length !== 6) {
-        toast.error(tAccount("toastVerificationCodeRequired"))
-        return
-      }
     }
 
     setProfileLoading(true)
     try {
-      let finalAvatar = avatarPreview
-
-      // 如果选择了新图片文件，需要压缩
-      if (avatarFile) {
-        finalAvatar = await compressImage(avatarFile, 128, 128)
-      }
-
-      // 保存个人信息和头像（包含验证码如果邮箱有变更）
-      await authApi.updateProfile({
-        username: profileForm.username,
-        email: profileForm.email,
-        avatar: finalAvatar, // 包含头像数据
-        verification_code: profileForm.email !== originalEmail ? profileForm.verificationCode : undefined,
+      const avatar = avatarFile ? await compressImage(avatarFile, 128, 128) : avatarPreview
+      await ownerApi.updateProfile({
+        username: profileForm.username.trim(),
+        email: profileForm.email.trim(),
+        avatar,
+        language: user?.language,
+        timezone: user?.timezone,
       })
       await refreshUser()
-      setAvatarFile(null) // 清除文件选择状态
-      setProfileForm(prev => ({ ...prev, verificationCode: "" })) // 清除验证码
-      setOriginalEmail(profileForm.email) // 更新原始邮箱
+      setAvatarFile(null)
       toast.success(tAccount("toastProfileSaved"))
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, tAccount("toastSaveFailed")))
     } finally {
       setProfileLoading(false)
     }
-  }, [profileForm, originalEmail, avatarFile, avatarPreview, refreshUser, tAccount])
+  }, [profileForm, avatarFile, avatarPreview, refreshUser, tAccount, user?.language, user?.timezone])
 
   // 保存个人偏好（时区）
   const handleSavePreferences = React.useCallback(async () => {
@@ -252,17 +194,14 @@ export function AccountProfile() {
 
     setPreferencesLoading(true)
     try {
-      await authApi.updateProfile({
-        timezone: preferencesForm.timezone,
-      })
-      await refreshUser()
+      await updatePreferences?.({ timezone: preferencesForm.timezone })
       toast.success(tAccount("toastPreferencesSaved"))
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, tAccount("toastSaveFailed")))
     } finally {
       setPreferencesLoading(false)
     }
-  }, [preferencesForm, refreshUser, tAccount])
+  }, [preferencesForm, tAccount, updatePreferences])
 
 return (<div className="space-y-4">
                     <div className="rounded-lg border p-4">
@@ -363,37 +302,6 @@ return (<div className="space-y-4">
                             onChange={(e) => setProfileForm(prev => ({ ...prev, email: e.target.value }))}
                           />
                         </div>
-                        {/* 如果邮箱已修改，显示验证码输入 */}
-                        {profileForm.email !== originalEmail && profileForm.email && (
-                          <div className="space-y-2">
-                            <Label htmlFor="verification-code">
-                              {tAccount("verificationCodeLabel")}
-                            </Label>
-                            <div className="flex gap-2">
-                              <Input
-                                id="verification-code"
-                                placeholder={tAccount("verificationCodePlaceholder")}
-                                value={profileForm.verificationCode}
-                                onChange={(e) => setProfileForm(prev => ({ ...prev, verificationCode: e.target.value }))}
-                                maxLength={6}
-                                className="flex-1"
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={handleSendVerificationCode}
-                                disabled={sendingCode || countdown > 0}
-                                className="shrink-0"
-                              >
-                                {sendingCode && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                {countdown > 0 ? `${countdown}s` : tAccount("sendCodeButton")}
-                              </Button>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              {tAccount("verificationCodeHint")}
-                            </p>
-                          </div>
-                        )}
                         <Button
                           className="mt-4"
                           onClick={handleSaveProfile}

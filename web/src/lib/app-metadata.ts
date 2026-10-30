@@ -1,4 +1,4 @@
-import { viteEnv } from "@/lib/vite-env"
+import { viteEnv } from "@easyssh/app/lib/vite-env"
 
 export const appVersion = viteEnv.VITE_APP_VERSION?.trim() ?? ""
 

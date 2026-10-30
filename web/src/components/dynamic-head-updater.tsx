@@ -1,7 +1,7 @@
 
 import { useEffect, useRef } from "react"
-import { useSystemConfig } from "@/contexts/system-config-context"
-import { DEFAULT_BRAND_ICON, DEFAULT_BRAND_NAME } from "@/lib/brand"
+import { useSystemConfig } from "@easyssh/app/contexts/system-config-context"
+import { DEFAULT_BRAND_ICON, DEFAULT_BRAND_NAME } from "@easyssh/app/lib/brand"
 
 /**
  * 动态页面头部更新组件

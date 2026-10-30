@@ -1,5 +1,5 @@
-import type { SshWorkspacePreferenceAdapter } from "@easyssh/ssh-workspace/desktop"
-import { DesktopService, type DesktopPreferenceSnapshot } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import type { SshWorkspacePreferenceAdapter } from "@easyssh/app/desktop"
+import { DesktopService, type DesktopPreferenceSnapshot } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 
 export type { DesktopPreferenceSnapshot }
 

@@ -1,5 +1,5 @@
-import { AccountSSHKeys } from "@/components/settings/account-ssh-keys"
-import type { Locale } from "@/i18n"
+import { AccountSSHKeys } from "@easyssh/app/components/settings/account-ssh-keys"
+import type { Locale } from "@easyssh/app/i18n"
 import { desktopSSHKeyApi } from "../adapters/desktop-server-api"
 import { DesktopPageContent, DesktopWebViewShell } from "./desktop-view-shell"
 

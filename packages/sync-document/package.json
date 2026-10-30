@@ -1,0 +1,13 @@
+{
+  "name": "@easyssh/sync-document",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./document.d.mts",
+      "default": "./document.mjs"
+    }
+  }
+}

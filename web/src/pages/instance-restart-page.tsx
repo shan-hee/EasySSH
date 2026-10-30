@@ -2,12 +2,10 @@ import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Loader2, CheckCircle2, AlertTriangle } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { getApiUrl } from "@/lib/config"
-import { clearCSRFToken } from "@/lib/csrf"
-import { suspendSessionRefresh } from "@/lib/session-refresh"
-import { useAuthStore } from "@/stores/auth-store"
-import type { components } from "@/types/openapi"
+import { Button } from "@easyssh/app/components/ui/button"
+import { getApiUrl } from "../platform/config"
+import { ownerSession } from "../platform/owner-session"
+import type { components } from "@easyssh/app/generated/openapi"
 
 type Operation = components["schemas"]["InstanceActivationOperation"]
 
@@ -22,10 +20,8 @@ export function InstanceRestartPage() {
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    void suspendSessionRefresh().then(() => {
-      useAuthStore.getState().clearToken()
-      clearCSRFToken()
-    })
+    // 恢复后的实例可能不再认可当前会话，完成后重新登录。
+    ownerSession.end()
     if (!/^[a-f0-9]{64}$/.test(id)) { setTimedOut(true); return }
     let cancelled = false
     let timer: ReturnType<typeof setTimeout>

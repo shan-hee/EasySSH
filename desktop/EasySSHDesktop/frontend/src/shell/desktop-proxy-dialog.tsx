@@ -1,12 +1,12 @@
 import { useEffect, useId, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { Globe, Loader2, Monitor, SlidersHorizontal, Unplug, toast } from "@easyssh/ssh-workspace/desktop"
-import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { cn } from "@/lib/utils"
+import { Globe, Loader2, Monitor, SlidersHorizontal, Unplug, toast } from "@easyssh/app/desktop"
+import { Button } from "@easyssh/app/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@easyssh/app/components/ui/dialog"
+import { Input } from "@easyssh/app/components/ui/input"
+import { Label } from "@easyssh/app/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@easyssh/app/components/ui/radio-group"
+import { cn } from "@easyssh/app/lib/utils"
 import {
   defaultDesktopProxyConfig,
   isValidDesktopProxyCredentials,

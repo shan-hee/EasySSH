@@ -1,18 +1,23 @@
-import { Call } from "@wailsio/runtime"
-import type { InstanceBackupAdapter } from "@easyssh/ssh-workspace/desktop"
+import * as DesktopBackupService from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopbackupservice"
+import type { InstanceBackupAdapter } from "@easyssh/app/desktop"
 
+type BackupList = Awaited<ReturnType<InstanceBackupAdapter["list"]>>
+type BackupRecord = Awaited<ReturnType<InstanceBackupAdapter["create"]>>
+type ActivationOperation = Awaited<ReturnType<NonNullable<InstanceBackupAdapter["rollback"]>>>
+
+// 桌面服务以字符串返回状态枚举，值域与实例契约一致。
 export function createDesktopBackupRestoreAdapter(): InstanceBackupAdapter {
   return {
     nativeFilePicker: true,
     nativeRestart: true,
-    list: () => Call.ByName("main.DesktopBackupService.ListInstanceBackups"),
-    create: password => Call.ByName("main.DesktopBackupService.CreateInstanceBackup", password),
-    upload: () => Call.ByName("main.DesktopBackupService.UploadInstanceBackup"),
-    download: async record => { await Call.ByName("main.DesktopBackupService.DownloadInstanceBackup", record.id) },
-    remove: async id => { await Call.ByName("main.DesktopBackupService.DeleteInstanceBackup", id) },
-    inspect: (id, password) => Call.ByName("main.DesktopBackupService.InspectInstanceBackup", id, password),
-    restore: (id, password) => Call.ByName("main.DesktopBackupService.RestoreInstanceBackup", id, password, true),
-    activate: record => Call.ByName("main.DesktopBackupService.ActivateInstanceBackup", record.id, record.restored_to, true),
-    rollback: () => Call.ByName("main.DesktopBackupService.RollbackInstance", true),
+    list: async () => await DesktopBackupService.ListInstanceBackups() as BackupList,
+    create: async password => await DesktopBackupService.CreateInstanceBackup(password) as BackupRecord,
+    upload: async () => await DesktopBackupService.UploadInstanceBackup() as BackupRecord | null,
+    download: async record => { await DesktopBackupService.DownloadInstanceBackup(record.id) },
+    remove: async id => { await DesktopBackupService.DeleteInstanceBackup(id) },
+    inspect: async (id, password) => await DesktopBackupService.InspectInstanceBackup(id, password) as BackupRecord,
+    restore: async (id, password) => await DesktopBackupService.RestoreInstanceBackup(id, password, true) as BackupRecord,
+    activate: async record => await DesktopBackupService.ActivateInstanceBackup(record.id, record.restored_to ?? "", true) as ActivationOperation,
+    rollback: async () => await DesktopBackupService.RollbackInstance(true) as ActivationOperation,
   }
 }

@@ -1,6 +1,6 @@
 import * as A from '@automerge/automerge'
 import { createInterface } from 'node:readline'
-import { createEngine } from '../../shared/syncjs/document.mjs'
+import { createEngine } from '@easyssh/sync-document'
 
 const engine = createEngine(A)
 // No listening socket: the Go parent is the only caller, through stdio.

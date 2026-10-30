@@ -2,20 +2,18 @@ import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { Check } from "lucide-react"
-import { Spinner } from "@/components/ui/spinner"
-import { authApi } from "@/lib/api/auth"
-import { useSystemConfig } from "@/contexts/system-config-context"
-import { getAuthRedirectDecision, getCurrentBrowserPath } from "@/lib/auth-redirect"
-import { useAuthStore } from "@/stores/auth-store"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Field, FieldLabel } from "@/components/ui/field"
-import { AuthI18nProvider } from "@/providers/auth-i18n-provider"
-import { beginAuthenticatedSession } from "@/lib/auth-session-activity"
-import { resumeSessionRefresh } from "@/lib/session-refresh"
-import { DEFAULT_BRAND_LOGO } from "@/lib/brand"
-import { getErrorMessage } from "@/lib/error-utils"
-import { AnimatedStateText } from "@/components/motion/animated-state-text"
+import { Spinner } from "@easyssh/app/components/ui/spinner"
+import { ownerApi } from "../lib/api/owner"
+import { ownerSession } from "../platform/owner-session"
+import { useSystemConfig } from "@easyssh/app/contexts/system-config-context"
+import { AUTHENTICATED_FALLBACK, getAuthRedirectDecision, getCurrentBrowserPath } from "../platform/auth-redirect"
+import { Button } from "@easyssh/app/components/ui/button"
+import { Input } from "@easyssh/app/components/ui/input"
+import { Field, FieldLabel } from "@easyssh/app/components/ui/field"
+import { AuthI18nProvider } from "../providers/auth-i18n-provider"
+import { DEFAULT_BRAND_LOGO } from "@easyssh/app/lib/brand"
+import { getErrorMessage } from "@easyssh/app/lib/error-utils"
+import { AnimatedStateText } from "@easyssh/app/components/motion/animated-state-text"
 
 type SetupPhase = "idle" | "creating" | "created"
 
@@ -44,12 +42,11 @@ function SetupPageInner() {
     if ([...password].length < 9) { setError(t("passwordLength")); return }
     setPhase("creating")
     try {
-      const response = await authApi.initializeAdmin({ username, email, password })
-      useAuthStore.getState().setToken(response.access_token, response.expires_in)
-      resumeSessionRefresh(); beginAuthenticatedSession()
+      const result = await ownerApi.initialize({ username, email, password })
+      ownerSession.begin(result.csrf_token)
       setPhase("created")
-      await refreshConfig({ refreshAuth: true })
-      await navigate("/dashboard", { replace: true })
+      await refreshConfig()
+      await navigate(AUTHENTICATED_FALLBACK, { replace: true })
     } catch (error) {
       setError(getErrorMessage(error, t("failed")))
       setPhase("idle")

@@ -1,8 +1,8 @@
 import { lazy, Suspense } from "react"
 import { useTranslation } from "react-i18next"
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { PageLoading } from "@/components/page-loading"
-import { ResourceBoundary } from "@/components/resource-boundary"
+import { Dialog, DialogContent, DialogTitle } from "@easyssh/app/components/ui/dialog"
+import { PageLoading } from "@easyssh/app/components/page-loading"
+import { ResourceBoundary } from "@easyssh/app/components/resource-boundary"
 
 const AccountSettingsContent = lazy(() => import("./account-settings-content"))
 

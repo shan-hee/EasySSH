@@ -3,7 +3,7 @@ import { useReducedMotion } from "motion/react"
 import NProgress from "nprogress"
 import { useNavigation } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import "@/styles/navigation-progress.css"
+import "../styles/navigation-progress.css"
 
 /** 只绑定路由状态；进度推进、完成和淡出均由 NProgress 管理。 */
 export function NavigationProgress() {

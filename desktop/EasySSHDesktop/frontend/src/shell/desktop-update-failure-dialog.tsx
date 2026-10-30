@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Clipboard as WailsClipboard } from "@wailsio/runtime"
-import { Button } from "@/components/ui/button"
+import { Button } from "@easyssh/app/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -8,8 +8,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Clipboard, FileText, FolderOpen, TriangleAlert, toast } from "@easyssh/ssh-workspace/desktop"
+} from "@easyssh/app/components/ui/dialog"
+import { Clipboard, FileText, FolderOpen, TriangleAlert, toast } from "@easyssh/app/desktop"
 import { useTranslation } from "react-i18next"
 import {
   clearDesktopUpdateFailureNotice,

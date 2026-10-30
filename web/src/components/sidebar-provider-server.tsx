@@ -1,6 +1,6 @@
-
 import { useState } from "react"
-import { SidebarProvider } from "@/components/ui/sidebar"
+import { useLocation } from "react-router-dom"
+import { SidebarProvider } from "@easyssh/app/components/ui/sidebar"
 
 /**
  * 客户端侧边栏提供者
@@ -13,6 +13,8 @@ export default function SidebarProviderServer({
   children: React.ReactNode
   className?: string
 }) {
+  const { pathname } = useLocation()
+  const terminalActive = pathname === "/dashboard/terminal" || pathname.startsWith("/dashboard/terminal/")
   const [defaultOpen] = useState(() => {
     if (typeof window === "undefined") {
       return true
@@ -23,7 +25,11 @@ export default function SidebarProviderServer({
   })
 
   return (
-    <SidebarProvider defaultOpen={defaultOpen} className={className}>
+    <SidebarProvider
+      keyboardShortcutEnabled={!terminalActive}
+      defaultOpen={defaultOpen}
+      className={className}
+    >
       {children}
     </SidebarProvider>
   )

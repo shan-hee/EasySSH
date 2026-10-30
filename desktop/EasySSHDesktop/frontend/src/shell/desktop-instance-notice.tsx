@@ -1,14 +1,14 @@
 import { useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { Call } from "@wailsio/runtime"
-import { toast } from "@easyssh/ssh-workspace/desktop"
+import * as DesktopBackupService from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopbackupservice"
+import { toast } from "@easyssh/app/desktop"
 
 export function DesktopInstanceNotice() {
   const { t } = useTranslation("settingsManagementBackup")
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const info = await Call.ByName("main.DesktopBackupService.GetInstanceActivation") as {
+      const info = await DesktopBackupService.GetInstanceActivation() as {
         operation?: { id: string; status: string }
       }
       const operation = info.operation

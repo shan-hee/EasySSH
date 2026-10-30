@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Bell, Check, CheckCheck, CircleCheck, Info, Trash2, TriangleAlert, XCircle, toast } from "@easyssh/ssh-workspace/desktop"
+import { Bell, Check, CheckCheck, CircleCheck, Info, Trash2, TriangleAlert, XCircle, toast } from "@easyssh/app/desktop"
 
-import { Button } from "@/components/ui/button"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { cn } from "@/lib/utils"
+import { Button } from "@easyssh/app/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@easyssh/app/components/ui/popover"
+import { ScrollArea } from "@easyssh/app/components/ui/scroll-area"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@easyssh/app/components/ui/tooltip"
+import { cn } from "@easyssh/app/lib/utils"
 import { desktopNotificationsApi, type DesktopNotification } from "../adapters/desktop-notifications-api"
 import { subscribeDesktopTaskEvents } from "../adapters/desktop-task-center-api"
 

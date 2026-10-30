@@ -1,4 +1,4 @@
-import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 
 const proxyPreferenceKey = "easyssh:network-proxy"
 export type DesktopProxyMode = "system" | "direct" | "manual"

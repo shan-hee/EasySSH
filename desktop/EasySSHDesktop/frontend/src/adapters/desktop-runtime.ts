@@ -1,5 +1,5 @@
-import type { RuntimeInfo } from "@easyssh/ssh-workspace/desktop"
-import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop"
+import type { RuntimeInfo } from "@easyssh/app/desktop"
+import { DesktopService } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 
 export interface DesktopGatewayInfo {
   httpBaseUrl?: string
@@ -49,7 +49,6 @@ export function createDesktopRuntime(runtime: DesktopRuntimeBindingInfo | null):
     profile: "desktop",
     principal: {
       kind: "local_owner",
-      role: "owner",
     },
     single_user: true,
     portable: false,
@@ -72,8 +71,6 @@ export function createDesktopRuntime(runtime: DesktopRuntimeBindingInfo | null):
       open_data_dir: runtimeCapabilities.open_data_dir ?? true,
       portable_mode: runtimeCapabilities.portable_mode ?? false,
       automation: false,
-      users: false,
-      permissions: false,
       audit: false,
       login_logs: false,
       notifications: true,

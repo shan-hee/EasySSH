@@ -1,5 +1,5 @@
-import { SyncPanel } from "@/components/settings/sync-panel"
-import type { Locale } from "@/i18n"
+import { SyncPanel } from "@easyssh/app/components/settings/sync-panel"
+import type { Locale } from "@easyssh/app/i18n"
 import { desktopSyncAdapter } from "../adapters/desktop-sync"
 import { DesktopPageContent, DesktopWebViewShell } from "./desktop-view-shell"
 

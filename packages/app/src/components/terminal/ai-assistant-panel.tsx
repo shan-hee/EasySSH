@@ -1,0 +1,988 @@
+import { AgentWorkspaceProvider, AgentWorkspacePanel, AgentWorkspaceToolbar } from "@/components/ai-agent/agent-workspace-panel"
+import type { AgentServerReference } from "@/lib/ai-agent-types"
+import { AssistantRuntimeProvider } from "@assistant-ui/react"
+import { Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent } from "react"
+import { Link } from "react-router-dom"
+import {
+  Loader2,
+  Settings2,
+  Shield,
+  SquarePen,
+  X,
+} from "lucide-react"
+import { useTranslation } from "react-i18next"
+
+import { AISessionHistoryPopover } from "@/components/ai-agent/ai-session-history-popover"
+import { AIAssistantConfigPopover } from "@/components/ai-agent/ai-config-popover"
+import {
+  ComposerContextReferences,
+  ComposerAttachmentList,
+  MAX_COMPOSER_ATTACHMENTS,
+  buildAgentMessageContext,
+  toAgentImageAttachments,
+  type ComposerContextReference,
+  useComposerAttachments,
+} from "@/components/ai-agent/composer"
+import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
+import { Button } from "@/components/ui/button"
+import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
+import { ErrorState } from "@/components/assistant-ui/elements/error-state"
+import { toast } from "@/components/ui/sonner"
+import { AgentComposer, AgentComposerInput, AgentComposerSubmit, AgentComposerToolbar, AgentComposerTools, AgentComposerAttachButton, AgentComposerDictation } from "@/components/ai-agent/agent-composer"
+import { AgentReasoningSelector } from "@/components/ai-agent/agent-reasoning-selector"
+import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
+import { modelSelectorTriggerVariants } from "@/components/assistant-ui/elements/model-selector"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useSetAgentComposerDraft, useSessionDraftState } from "@/hooks/use-agent-composer-draft"
+import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
+import { useAISessionHistory } from "@/hooks/use-ai-session-history"
+import {
+  deleteAISession as deleteAISessionAPI,
+  listAISessions as listAISessionsAPI,
+  renameAISession as renameAISessionAPI,
+  type AgentSessionScope,
+  type PermissionMode,
+} from "@/lib/api/ai-agent"
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
+import { cn } from "@/lib/utils"
+import type { TerminalSession } from "./types"
+import { TerminalAIContextPicker } from "./terminal-ai-context-picker"
+import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
+import { PageLoading } from "@/components/page-loading"
+import { PanelPositionControl } from "./panel-position-control"
+import type { TerminalPanelPosition } from "@/stores/tab-ui-store"
+import { PreloadedAgentThread as AgentThread } from "@/lib/ai-assistant-preload"
+
+const ANIMATION_DELAY = 160
+const PANEL_OPEN_SETTLE_DELAY = 180
+
+interface AiAssistantPanelProps {
+  position: TerminalPanelPosition
+  onPositionChange: (position: TerminalPanelPosition) => void
+  layoutStyle?: CSSProperties
+  isOpen: boolean
+  onClose: () => void
+  terminalSession: TerminalSession
+  adapters?: AIAssistantWorkspaceAdapters
+  backgroundColor?: string
+}
+
+const TERMINAL_AI_SESSION_STORAGE_KEY = "easyssh:terminal-ai-assistant:sessions"
+const TERMINAL_AI_SESSION_STORAGE_LIMIT = 80
+
+function readTerminalAISessionMap() {
+  if (typeof window === "undefined") {
+    return {} as Record<string, string>
+  }
+
+  try {
+    const storedValue = window.localStorage.getItem(TERMINAL_AI_SESSION_STORAGE_KEY)
+    if (!storedValue) {
+      return {} as Record<string, string>
+    }
+
+    const parsed = JSON.parse(storedValue)
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, string>
+      : {}
+  } catch {
+    return {} as Record<string, string>
+  }
+}
+
+function getStoredTerminalAISessionId(terminalSessionId: string) {
+  return readTerminalAISessionMap()[terminalSessionId] || null
+}
+
+function storeTerminalAISessionId(terminalSessionId: string, aiSessionId: string) {
+  if (typeof window === "undefined" || !terminalSessionId || !aiSessionId) {
+    return
+  }
+
+  try {
+    const nextMap = readTerminalAISessionMap()
+    delete nextMap[terminalSessionId]
+    nextMap[terminalSessionId] = aiSessionId
+    const staleKeys = Object.keys(nextMap).slice(0, -TERMINAL_AI_SESSION_STORAGE_LIMIT)
+    staleKeys.forEach((key) => delete nextMap[key])
+    window.localStorage.setItem(TERMINAL_AI_SESSION_STORAGE_KEY, JSON.stringify(nextMap))
+  } catch {
+    // ignore unavailable storage
+  }
+}
+
+function removeStoredTerminalAISessionId(terminalSessionId: string, aiSessionId?: string) {
+  if (typeof window === "undefined" || !terminalSessionId) {
+    return
+  }
+
+  try {
+    const nextMap = readTerminalAISessionMap()
+    if (!aiSessionId || nextMap[terminalSessionId] === aiSessionId) {
+      delete nextMap[terminalSessionId]
+      window.localStorage.setItem(TERMINAL_AI_SESSION_STORAGE_KEY, JSON.stringify(nextMap))
+    }
+  } catch {
+    // ignore unavailable storage
+  }
+}
+
+function assertDesktopAIAdapters(layout: string | undefined, adapters?: AIAssistantWorkspaceAdapters) {
+  if (layout !== "desktop") {
+    return
+  }
+
+  if (
+    !adapters?.aiConfig ||
+    !adapters.aiSettings ||
+    !adapters.aiSession ||
+    !adapters.listAISessions ||
+    !adapters.renameAISession ||
+    !adapters.deleteAISession
+  ) {
+    throw new Error("Desktop terminal AI requires local AI session and settings adapters")
+  }
+}
+
+export function AiAssistantPanel({
+  position,
+  onPositionChange,
+  layoutStyle,
+  isOpen,
+  onClose,
+  terminalSession,
+  adapters,
+  backgroundColor,
+}: AiAssistantPanelProps) {
+  const { t: tAI } = useTranslation("aiAssistant")
+  const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
+  const workspace = useOptionalSshWorkspace()
+  const canUseWebSettingsFallback = workspace?.layout !== "desktop"
+  assertDesktopAIAdapters(workspace?.layout, adapters)
+  const controller = useAIAssistantController({
+    aiConfigAdapter: adapters?.aiConfig,
+    aiSessionAdapter: adapters?.aiSession,
+    includeAutoModel: true,
+  })
+  const {
+    config: {
+      isConfigured,
+      isLoading: isConfigLoading,
+      refetch: refetchAIConfig,
+    },
+    agentSession,
+    model,
+    setModel,
+    modelOptions,
+    activeModel,
+    permissionMode,
+    setPermissionMode,
+    isChatRequestActive,
+    isAssistantActive,
+    assistantLoadingState,
+  } = controller
+  const {
+    session,
+    sessionId,
+    transport,
+    error,
+    clearError,
+    canSend: canSendToSession,
+    restoreSession,
+    startNewSession,
+    startDraftSession,
+    recoverComposerDraft,
+    forgetComposerDraft,
+    sendMessage,
+    updateMessage: updateUserMessage,
+    regenerateMessage,
+    deleteMessage: deleteUserMessage,
+    cancelSession,
+    continueRun,
+    detachSession,
+    discardSessionIfEmpty,
+  } = agentSession
+  const listSessions = adapters?.listAISessions ?? listAISessionsAPI
+  const renameSession = adapters?.renameAISession ?? renameAISessionAPI
+  const deleteSession = adapters?.deleteAISession ?? deleteAISessionAPI
+
+  const setInput = useSetAgentComposerDraft(agentSession.runtime)
+  const attachmentLimitNotice = useCallback(() => {
+    toast.info(tAI("attachmentLimitHint", { count: MAX_COMPOSER_ATTACHMENTS }))
+  }, [tAI])
+  const attachmentRejectedNotice = useCallback((file: File, reason: "total-size" | "read") => {
+    toast.error(reason === "total-size"
+      ? tAI("attachmentTotalSizeHint")
+      : tAI("attachmentReadFailed", { file: file.name }))
+  }, [tAI])
+  const {
+    attachments,
+    loading: attachmentsLoading,
+    addFiles: addAttachmentFiles,
+    remove: removeAttachment,
+    forget: forgetAttachments,
+    detach: detachAttachments,
+    restore: restoreAttachments,
+    release: releaseAttachments,
+  } = useComposerAttachments({
+    sessionId,
+    onLimit: attachmentLimitNotice,
+    onRejected: attachmentRejectedNotice,
+  })
+  const [contextReferences, setContextReferences, forgetContextReferences] = useSessionDraftState<ComposerContextReference[]>(sessionId, [])
+  const [configOpen, setConfigOpen] = useState(false)
+  const [sessionCreating, setSessionCreating] = useState(false)
+  const [isOpenSettled, setIsOpenSettled] = useState(false)
+  const [hasMountedThread, setHasMountedThread] = useState(false)
+
+  const inputRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const sessionCreatingRef = useRef(false)
+  const restoreAttemptKeyRef = useRef<string | null>(null)
+
+  const terminalScope = useMemo<AgentSessionScope>(() => ({
+    kind: "terminal",
+    terminal_session_id: terminalSession.id,
+    server_id: terminalSession.serverId,
+    server_name: terminalSession.serverName,
+    host: terminalSession.host,
+    port: terminalSession.port,
+    username: terminalSession.username,
+  }), [
+    terminalSession.host,
+    terminalSession.id,
+    terminalSession.port,
+    terminalSession.serverId,
+    terminalSession.serverName,
+    terminalSession.username,
+  ])
+  const history = useAISessionHistory({
+    enabled: isConfigured && !isConfigLoading,
+    listSessions,
+    renameSession,
+    deleteSession,
+    scope: terminalScope,
+    loadErrorMessage: tAI("sessionListLoadFailed"),
+    renameErrorMessage: tAI("renameSessionFailed"),
+    deleteErrorMessage: tAI("deleteSessionFailed"),
+  })
+  const {
+    actionLoadingId: historyActionLoadingId,
+    forget: forgetHistorySession,
+    remove: removeHistorySession,
+    renamingId: historyRenamingId,
+    setOpen: setHistoryOpen,
+    syncSession: syncHistorySession,
+  } = history
+
+  useEffect(() => {
+    if (session?.id) {
+      syncHistorySession(session, tAI("newSession"))
+    }
+  }, [session, syncHistorySession, tAI])
+
+  const permissionOptions = useMemo(
+    () => [
+      {
+        value: "readonly" as const,
+        label: tAI("permissionModeReadonly"),
+        description: tAI("permissionModeReadonlyDesc"),
+      },
+      {
+        value: "balanced" as const,
+        label: tAI("permissionModeBalanced"),
+        description: tAI("permissionModeBalancedDesc"),
+      },
+      {
+        value: "privileged" as const,
+        label: tAI("permissionModePrivileged"),
+        description: tAI("permissionModePrivilegedDesc"),
+      },
+    ],
+    [tAI]
+  )
+
+  const terminalContextText = useMemo(() => {
+    const lines = [
+      tAI("terminalContextHeader"),
+      `- terminal_session_id: ${terminalSession.id}`,
+    ]
+
+    if (terminalSession.serverId) {
+      lines.push(`- server_id: ${terminalSession.serverId}`)
+    }
+    if (terminalSession.serverName) {
+      lines.push(`- server_name: ${terminalSession.serverName}`)
+    }
+    if (terminalSession.username || terminalSession.host || terminalSession.port) {
+      const target = `${terminalSession.username ? `${terminalSession.username}@` : ""}${terminalSession.host || ""}${terminalSession.port ? `:${terminalSession.port}` : ""}`
+      if (target) {
+        lines.push(`- connection: ${target}`)
+      }
+    }
+
+    lines.push(tAI("terminalContextRule"))
+    return lines.join("\n")
+  }, [
+    tAI,
+    terminalSession.host,
+    terminalSession.id,
+    terminalSession.port,
+    terminalSession.serverId,
+    terminalSession.serverName,
+    terminalSession.username,
+  ])
+  const composerContextText = useMemo(() => buildAgentMessageContext({
+    attachments,
+    selectedServers: [],
+    references: contextReferences,
+    t: tAI,
+  }), [attachments, contextReferences, tAI])
+  const outboundContextText = useMemo(
+    () => [terminalContextText, composerContextText].filter(Boolean).join("\n\n"),
+    [composerContextText, terminalContextText]
+  )
+
+  const resolvedModel = model || "auto"
+  const canSend =
+    isConfigured &&
+    !isConfigLoading &&
+    !sessionCreating && !attachmentsLoading &&
+    !isChatRequestActive &&
+    (canSendToSession || (!session && transport === "idle") || session?.status === "closed")
+  const createSessionDisabled = !isConfigured || isConfigLoading || sessionCreating || attachmentsLoading
+  useEffect(() => {
+    if (!isOpen) {
+      setHistoryOpen(false)
+      setIsOpenSettled(false)
+      return
+    }
+
+    let timer = 0
+    const frame = window.requestAnimationFrame(() => {
+      timer = window.setTimeout(() => {
+        setIsOpenSettled(true)
+        setHasMountedThread(true)
+      }, PANEL_OPEN_SETTLE_DELAY)
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(timer)
+    }
+  }, [isOpen, setHistoryOpen])
+
+  useEffect(() => {
+    if (!isOpenSettled) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      inputRef.current?.focus()
+    }, ANIMATION_DELAY)
+
+    return () => window.clearTimeout(timer)
+  }, [isOpenSettled])
+
+  useEffect(() => {
+    if (!isOpenSettled || !isConfigured || isConfigLoading || session || transport !== "idle" || error) {
+      return
+    }
+
+    if (restoreAttemptKeyRef.current === terminalSession.id) {
+      return
+    }
+    restoreAttemptKeyRef.current = terminalSession.id
+
+    const restoreLatestTerminalSession = async () => {
+      try {
+        const response = await listSessions({ limit: 1, scope: terminalScope })
+        const latestSessionId = response.items[0]?.id
+        if (!latestSessionId) {
+          return
+        }
+
+        const restored = await restoreSession(latestSessionId, { silent: true })
+        if (restored) {
+          storeTerminalAISessionId(terminalSession.id, latestSessionId)
+        }
+      } catch {
+        // Opening the panel should stay instant even if history lookup fails.
+      }
+    }
+
+    const storedSessionId = getStoredTerminalAISessionId(terminalSession.id)
+    if (storedSessionId) {
+      void restoreSession(storedSessionId, { silent: true }).then((restored) => {
+        if (restored) {
+          return
+        }
+
+        removeStoredTerminalAISessionId(terminalSession.id, storedSessionId)
+        void restoreLatestTerminalSession()
+      })
+      return
+    }
+
+    void restoreLatestTerminalSession()
+  }, [
+    error,
+    isOpenSettled,
+    isConfigured,
+    isConfigLoading,
+    listSessions,
+    restoreSession,
+    session,
+    terminalScope,
+    terminalSession.id,
+    transport,
+  ])
+
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    const handleEscClose = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return
+      }
+
+      onClose()
+    }
+
+    window.addEventListener("keydown", handleEscClose)
+    return () => {
+      window.removeEventListener("keydown", handleEscClose)
+    }
+  }, [isOpen, onClose])
+
+  const focusComposer = useCallback(() => {
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+    })
+  }, [])
+
+  const handleCreateNewSession = useCallback(async () => {
+    if (createSessionDisabled || sessionCreatingRef.current) return
+    sessionCreatingRef.current = true
+    setSessionCreating(true)
+
+    try {
+      if (isAssistantActive) {
+        const confirmed = await requestConfirm({
+          description: tAI("replaceRunningSessionConfirm"),
+          variant: "destructive",
+        })
+        if (!confirmed) return
+      }
+      await startDraftSession(terminalScope)
+      restoreAttemptKeyRef.current = terminalSession.id
+      removeStoredTerminalAISessionId(terminalSession.id)
+      setHistoryOpen(false)
+      focusComposer()
+    } finally {
+      sessionCreatingRef.current = false
+      setSessionCreating(false)
+    }
+  }, [
+    createSessionDisabled,
+    focusComposer,
+    requestConfirm,
+    setHistoryOpen,
+    isAssistantActive,
+    startDraftSession,
+    terminalScope,
+    terminalSession.id,
+    tAI,
+  ])
+
+  const handleRestoreSession = useCallback(async (targetSessionId: string) => {
+    if (!targetSessionId || sessionCreatingRef.current || attachmentsLoading || historyRenamingId) {
+      return
+    }
+
+    if (targetSessionId === sessionId) {
+      setHistoryOpen(false)
+      focusComposer()
+      return
+    }
+
+    const restored = await restoreSession(targetSessionId)
+    if (restored) {
+      storeTerminalAISessionId(terminalSession.id, targetSessionId)
+      setHistoryOpen(false)
+      focusComposer()
+    }
+  }, [attachmentsLoading, focusComposer, historyRenamingId, restoreSession, sessionId, setHistoryOpen, terminalSession.id])
+
+  const handleDeleteSession = useCallback(async (targetSessionId: string) => {
+    if (!targetSessionId || historyActionLoadingId) {
+      return
+    }
+
+    const confirmed = await requestConfirm({
+      description: tAI("deleteSessionConfirm"),
+      variant: "destructive",
+    })
+    if (!confirmed) {
+      return
+    }
+
+    const removed = await removeHistorySession(targetSessionId)
+    if (removed) {
+      forgetComposerDraft(targetSessionId)
+      forgetAttachments(targetSessionId)
+      forgetContextReferences(targetSessionId)
+      removeStoredTerminalAISessionId(terminalSession.id, targetSessionId)
+      if (targetSessionId === sessionId) {
+        detachSession(targetSessionId)
+      }
+    }
+  }, [
+    detachSession,
+    forgetComposerDraft,
+    forgetAttachments,
+    forgetContextReferences,
+    historyActionLoadingId,
+    removeHistorySession,
+    requestConfirm,
+    sessionId,
+    tAI,
+    terminalSession.id,
+  ])
+
+  const handleUpdateUserMessage = useCallback(async (messageId: string, content: string, serverReferences?: AgentServerReference[]) => {
+    return updateUserMessage(messageId, content, {
+      regenerate: true,
+      serverReferences,
+      contextText: terminalContextText,
+      model: activeModel,
+      permissionMode,
+      scope: terminalScope,
+    })
+  }, [activeModel, permissionMode, terminalContextText, terminalScope, updateUserMessage])
+
+  const handleRegenerateUserMessage = useCallback(async (messageId: string) => {
+    const messages = session?.messages ?? []
+    const index = messages.findIndex((message) => message.id === messageId)
+    if (index >= 0 && messages.slice(index + 1).some((message) => message.role === "user")) {
+      const confirmed = await requestConfirm({ description: tAI("regenerateMessageConfirm"), variant: "destructive" })
+      if (!confirmed) return false
+    }
+    return regenerateMessage(messageId, {
+      contextText: terminalContextText,
+      model: activeModel,
+      permissionMode,
+      scope: terminalScope,
+    })
+  }, [activeModel, permissionMode, terminalContextText, terminalScope, regenerateMessage, requestConfirm, session?.messages, tAI])
+
+  const handleDeleteUserMessage = useCallback(async (messageId: string) => {
+    const stopped = session?.messages.some((message) => message.id === messageId && !!message.stopped_at)
+    const confirmed = await requestConfirm({
+      description: tAI(stopped ? "auiDiscardRunConfirm" : "deleteMessageConfirm"),
+      variant: "destructive",
+    })
+    if (!confirmed) {
+      return false
+    }
+
+    return deleteUserMessage(messageId)
+  }, [deleteUserMessage, requestConfirm, session?.messages, tAI])
+
+  const handleAttachmentSelection = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ""
+    if (sessionCreatingRef.current) return
+    void addAttachmentFiles(files)
+  }, [addAttachmentFiles])
+
+  const handleAttachmentPaste = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
+    if (sessionCreatingRef.current) return
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (files.length === 0) {
+      return
+    }
+    event.preventDefault()
+    void addAttachmentFiles(files)
+  }, [addAttachmentFiles])
+
+  const handleSubmit = useCallback(async (messageText: string) => {
+    const normalizedInput = messageText.trim()
+    if ((!normalizedInput && attachments.length === 0 && contextReferences.length === 0) || !isConfigured || isConfigLoading || sessionCreatingRef.current || attachmentsLoading || transport === "connecting") {
+      return
+    }
+
+    if (isChatRequestActive || (session && session.status !== "closed" && !canSendToSession)) {
+      return
+    }
+
+    const submittedAttachments = detachAttachments()
+    const submittedReferences = contextReferences
+    setContextReferences([])
+    setInput("")
+    let createdSessionId: string | null = null
+    let submittedSessionId = sessionId
+    const recoverDraft = () => {
+      recoverComposerDraft(submittedSessionId, messageText)
+      restoreAttachments(submittedAttachments, submittedSessionId)
+      setContextReferences((current) => [...submittedReferences, ...current], submittedSessionId)
+    }
+
+    sessionCreatingRef.current = true
+    setSessionCreating(true)
+    let preparing = true
+    try {
+      let imageAttachments
+      try {
+        imageAttachments = await toAgentImageAttachments(submittedAttachments)
+      } catch {
+        recoverDraft()
+        toast.error(tAI("attachmentReadFailed"))
+        return
+      }
+
+      if (!sessionId || session?.status === "closed") {
+        const response = await startNewSession({
+          model: activeModel,
+          permissionMode,
+          scope: terminalScope,
+        })
+        if (!response) {
+          recoverDraft()
+          return
+        }
+        createdSessionId = response.session_id
+        submittedSessionId = response.session_id
+        storeTerminalAISessionId(terminalSession.id, response.session_id)
+      }
+
+      const sending = sendMessage(
+        normalizedInput || tAI("contextOnlyPrompt"),
+        outboundContextText,
+        activeModel,
+        permissionMode,
+        terminalScope,
+        imageAttachments,
+      )
+      // sendMessage installs the outgoing message synchronously. Navigation can
+      // resume while the reply streams; recovery still targets this draft.
+      sessionCreatingRef.current = false
+      setSessionCreating(false)
+      preparing = false
+      const sendResult = await sending
+      if (sendResult !== "failed") {
+        releaseAttachments(submittedAttachments)
+        return
+      }
+      if (createdSessionId && await discardSessionIfEmpty(createdSessionId)) {
+        forgetHistorySession(createdSessionId)
+        submittedSessionId = null
+        removeStoredTerminalAISessionId(terminalSession.id, createdSessionId)
+      }
+      recoverDraft()
+    } finally {
+      if (preparing) {
+        sessionCreatingRef.current = false
+        setSessionCreating(false)
+      }
+    }
+  }, [
+    activeModel,
+    attachments,
+    canSendToSession,
+    contextReferences,
+    detachAttachments,
+    discardSessionIfEmpty,
+    forgetHistorySession,
+    isConfigLoading,
+    isConfigured,
+    isChatRequestActive,
+    recoverComposerDraft,
+    sessionId,
+    transport,
+    attachmentsLoading,
+    setContextReferences,
+    outboundContextText,
+    permissionMode,
+    releaseAttachments,
+    restoreAttachments,
+    sendMessage,
+    session,
+    setInput,
+    startNewSession,
+    terminalScope,
+    terminalSession.id,
+    tAI,
+  ])
+  const handleContinueStoppedRun = useCallback((id: string) => (
+    continueRun(id, tAI("auiContinuePrompt"), { contextText: terminalContextText, model: activeModel, permissionMode })
+  ), [continueRun, tAI, terminalContextText, activeModel, permissionMode])
+
+  const toolbar = (
+    <div className="terminal-ai-glass-toolbar relative z-[1] flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-1 px-3 text-foreground">
+      <div className="min-w-0">
+        <span className="truncate text-sm font-medium">{tAI("terminalPanelTitle")}</span>
+      </div>
+
+      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
+        <AgentWorkspaceToolbar />
+        <div className="hidden md:block"><PanelPositionControl position={position} onChange={onPositionChange} /></div>
+        <AISessionHistoryPopover
+          activeSessionId={sessionId}
+          history={history}
+          onDelete={handleDeleteSession}
+          onRestore={handleRestoreSession}
+          t={tAI}
+          triggerClassName="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="terminal-ai-glass-popover text-popover-foreground"
+        />
+
+        <TooltipIconButton
+          type="button"
+          className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={createSessionDisabled}
+          onClick={() => void handleCreateNewSession()}
+          tooltip={tAI("newSession")}
+        >
+          {sessionCreating ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <SquarePen className="size-4" />
+          )}
+        </TooltipIconButton>
+
+        <TooltipIconButton
+          type="button"
+          className="size-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          onClick={onClose}
+          tooltip={tAI("panelHintClose")}
+        >
+          <X className="size-4" />
+        </TooltipIconButton>
+      </div>
+    </div>
+  )
+
+  return (
+    <AssistantRuntimeProvider runtime={agentSession.runtime}>
+    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} messages={session?.messages} scope={session?.scope} active={isOpen} loadFile={adapters?.aiSession?.getTaskFile} saveFile={adapters?.aiSession?.saveTaskFile} approve={async (id, approved) => { await agentSession.respondToToolApproval({ id, approved }) }} stop={cancelSession}>
+    <aside
+      data-terminal-panel
+      role="complementary"
+      aria-label={tAI("panelAriaPanelLabel")}
+      className={cn(
+        "terminal-ai-glass absolute inset-0 z-40 flex h-full min-h-0 min-w-0 w-full shrink-0 flex-col overflow-hidden text-foreground",
+        "md:relative md:inset-auto md:translate-x-0",
+        "transition-transform duration-180 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+        isOpen ? "translate-x-0" : "translate-x-full"
+      )}
+      style={{
+        pointerEvents: isOpen ? "auto" : "none",
+        ...layoutStyle,
+      } as CSSProperties}
+      inert={!isOpen}
+      aria-hidden={!isOpen}
+    >
+      <div className="relative flex h-full min-h-0 w-full shrink-0 flex-col">
+      {confirmDialog}
+      {backgroundColor && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 z-0 md:hidden"
+          style={{ backgroundColor }}
+        />
+      )}
+      <div
+        aria-hidden="true"
+        className="terminal-ai-glass-surface pointer-events-none absolute inset-0 z-0"
+      />
+      {toolbar}
+      <div
+        className={cn(
+          "relative z-[1] flex min-h-0 w-full flex-1 flex-col overflow-hidden text-foreground shadow-2xl md:shadow-none",
+          "transition-opacity duration-150 ease-out",
+          isOpen
+            ? "opacity-100"
+            : "opacity-0"
+        )}
+        aria-hidden={!isOpen}
+      >
+        <Suspense fallback={<PageLoading className="min-h-0" delay={0} />}>
+        {hasMountedThread ? <AgentThread
+          key={sessionId ?? "new"}
+          tText={tAI}
+          scope={session?.scope}
+          onUpdateUserMessage={handleUpdateUserMessage}
+          onRegenerateUserMessage={handleRegenerateUserMessage}
+          onContinueStoppedRun={handleContinueStoppedRun}
+          onDeleteUserMessage={handleDeleteUserMessage}
+          assistantLoadingState={assistantLoadingState}
+          emptyDescription={tAI("terminalEmptyDescription")}
+          compact
+          className="z-[1] min-h-0 w-full flex-1"
+        /> : <PageLoading className="min-h-0" />}
+        </Suspense>
+
+        <div className="relative z-[1] shrink-0 p-3">
+          {agentSession.reconnecting && (
+            <div role="status" className="mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground">
+              <Loader2 className="size-3 shrink-0 animate-spin" />
+              {tAI("auiReconnecting")}
+            </div>
+          )}
+          {error && (
+            <ErrorState detail={error} className="mb-2 px-3 py-2" action={
+              <TooltipIconButton type="button" className="-my-1 size-6 shrink-0" onClick={clearError} tooltip={tAI("cancel")}>
+                <X className="size-3" />
+              </TooltipIconButton>
+            } />
+          )}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/gif,image/webp,text/*,.json,.yaml,.yml,.xml,.csv,.md,.log,.sh,.py,.js,.ts,.tsx,.go,.rs,.java,.sql"
+            className="hidden"
+            onChange={handleAttachmentSelection}
+          />
+
+          <AgentComposer
+            onSubmit={(text) => handleSubmit(text)}
+            className="terminal-ai-glass-composer"
+          >
+            <ComposerAttachmentList
+              attachments={attachments}
+              onRemoveAttachment={removeAttachment}
+              t={tAI}
+            />
+
+          <ComposerContextReferences
+            references={contextReferences}
+            onRemove={(referenceId) => setContextReferences((current) => current.filter((reference) => reference.id !== referenceId))}
+          />
+            <AgentComposerInput
+              ref={inputRef}
+              onPaste={handleAttachmentPaste}
+              placeholder={
+                isConfigLoading
+                  ? tAI("checkingConfig")
+                  : !isConfigured
+                    ? tAI("aiNotConfiguredPlaceholder")
+                    : tAI("terminalPanelInputPlaceholder")
+              }
+              disabled={
+                isConfigLoading ||
+                !isConfigured ||
+                sessionCreating ||
+                transport === "connecting" ||
+                (Boolean(session) && !canSendToSession && session?.status !== "closed")
+              }
+            />
+
+            <AgentComposerToolbar className="flex-wrap gap-2">
+              <AgentComposerTools className="flex flex-wrap items-center gap-1.5">
+                <AgentComposerAttachButton onClick={() => fileInputRef.current?.click()} disabled={attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || !isConfigured || sessionCreating || transport === "connecting"} aria-busy={attachmentsLoading} title={tAI("attachFile")} />
+                <TerminalAIContextPicker
+                  session={terminalSession}
+                  disabled={!isConfigured || isConfigLoading || sessionCreating || transport === "connecting"}
+                  onAdd={(reference) => setContextReferences((current) => [
+                    ...current.filter((item) => item.kind !== reference.kind),
+                    reference,
+                  ])}
+                />
+                {isConfigured ? (
+                  <>
+
+                    <Select
+                      value={permissionMode}
+                      onValueChange={(value) => setPermissionMode(value as PermissionMode)}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className={cn(modelSelectorTriggerVariants({ variant: "ghost", size: "sm" }), "max-w-[150px] rounded-full text-muted-foreground")}
+                        title={permissionOptions.find((option) => option.value === permissionMode)?.description}
+                      >
+                        <Shield className="size-3.5 shrink-0" />
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent
+                        align="start"
+                        sideOffset={6}
+                        className="terminal-ai-glass-popover w-auto rounded-xl data-[side=bottom]:translate-y-0 data-[side=left]:translate-x-0 data-[side=right]:translate-x-0 data-[side=top]:translate-y-0"
+                      >
+                        {permissionOptions.map((option) => (
+                          <SelectItem
+                            key={option.value}
+                            value={option.value}
+                            className="rounded-lg py-2 pl-3 pr-9 font-medium [&>span:first-child]:right-3"
+                          >
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </>
+                ) : isConfigLoading ? (
+                  <div className="flex h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    <span>{tAI("checkingConfig")}</span>
+                  </div>
+                ) : adapters?.aiSettings ? (
+                  <AIAssistantConfigPopover
+                    open={configOpen}
+                    onOpenChange={setConfigOpen}
+                    adapter={adapters.aiSettings}
+                    onSaved={() => void refetchAIConfig()}
+                    trigger={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+                      >
+                        <Settings2 className="size-3.5" />
+                        <span>{tAI("configureAI")}</span>
+                      </Button>
+                    }
+                  />
+                ) : canUseWebSettingsFallback ? (
+                  <Button
+                    asChild
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+                  >
+                    <Link to="/dashboard/settings?tab=ai">
+                      <Settings2 className="size-3.5" />
+                      <span>{tAI("configureAI")}</span>
+                    </Link>
+                  </Button>
+                ) : null}
+              </AgentComposerTools>
+
+              <div className="ml-auto flex min-w-0 items-center gap-1">
+                {isConfigured && <>
+                  <AgentReasoningSelector value={agentSession.reasoningEffort} onValueChange={agentSession.setReasoningEffort} disabled={isConfigLoading} />
+                  <AgentModelSelector models={modelOptions} value={resolvedModel} onValueChange={setModel} />
+                </>}
+                <AgentComposerDictation disabled={isConfigLoading || !isConfigured || isAssistantActive} />
+                <AgentComposerSubmit running={isAssistantActive} disabled={!canSend} hasContent={attachments.length > 0 || contextReferences.length > 0} onCancel={cancelSession} />
+              </div>
+            </AgentComposerToolbar>
+          </AgentComposer>
+        </div>
+      </div>
+      </div>
+    <AgentWorkspacePanel compact />
+    </aside>
+    </AgentWorkspaceProvider>
+    </AssistantRuntimeProvider>
+  )
+}

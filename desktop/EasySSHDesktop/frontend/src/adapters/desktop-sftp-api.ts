@@ -1,22 +1,20 @@
 import { Dialogs } from "@wailsio/runtime"
-import type { AuthMethod, SshWorkspaceApiClient } from "@easyssh/ssh-workspace/desktop"
-import { supportsKeyboardInteractive } from "@easyssh/ssh-workspace/desktop"
+import type { AuthMethod, SshWorkspaceApiClient } from "@easyssh/app/desktop"
+import { supportsKeyboardInteractive } from "@easyssh/app/desktop"
 import type {
   BatchDeleteResponse,
   DirectTransferOptions,
-  DirectTransferResponse,
   DiskUsageResponse,
   DirectoryListResponse,
   FileInfo,
   SftpDeletePathsResult,
-  UploadTaskStatus,
-  UploadTaskListResponse,
-} from "@/lib/sftp-types"
-import { sftpRemoteBaseName } from "@/lib/sftp-file-utils"
+} from "@easyssh/app/lib/sftp-types"
+import type { TransferJob } from "@easyssh/app/desktop"
+import { sftpRemoteBaseName } from "@easyssh/app/lib/sftp-file-utils"
 import {
   DesktopSFTPService,
   type DesktopSSHCredential,
-} from "../../bindings/github.com/easyssh/easyssh-desktop"
+} from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 import { desktopAuthRequiresPassword, desktopAuthRequiresPrivateKey, toDesktopAuthMethod } from "./desktop-server-api"
 import type { DesktopGatewayInfo } from "./desktop-runtime"
 
@@ -24,7 +22,6 @@ type DesktopSftpApi = NonNullable<SshWorkspaceApiClient["sftp"]>
 type DesktopSftpPreAuthPrompt = Parameters<Parameters<NonNullable<DesktopSftpApi["preAuthenticate"]>>[2]>[0]
 type DesktopSftpHostKeyPrompt = Parameters<NonNullable<Parameters<NonNullable<DesktopSftpApi["preAuthenticate"]>>[3]>>[0]
 
-const desktopDownloadCancelledMessage = "已取消保存"
 const desktopKeyboardInteractiveGatewayRequired = "desktop gateway is required for keyboard-interactive authentication"
 
 type DesktopDirectTransferSide = "source" | "target"
@@ -152,7 +149,8 @@ async function chooseSavePath(filename: string) {
   })
 
   if (!localPath) {
-    throw new Error(desktopDownloadCancelledMessage)
+    // 用户关闭保存对话框视为取消，而不是传输失败。
+    throw new DOMException("Save cancelled", "AbortError")
   }
 
   return localPath
@@ -368,76 +366,63 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
     async chmod(serverId, remotePath, mode) {
       await DesktopSFTPService.Chmod({ serverId, path: remotePath, mode })
     },
-    async downloadFile(serverId, remotePath, taskId) {
+    async getTransfer(id) {
+      return await DesktopSFTPService.GetTransfer(id) as TransferJob
+    },
+    async listTransfers() {
+      const result = await DesktopSFTPService.ListTransfers({ page: 1, page_size: 50 })
+      return result.jobs as TransferJob[]
+    },
+    async cancelTransfer(id) {
+      await DesktopSFTPService.CancelTransfer(id)
+    },
+    // 桌面传输以调用方的任务 ID 落库，启动调用在传输结束后返回。
+    async downloadFile(serverId, remotePath, { taskId, onStarted }) {
       const localPath = await chooseSavePath(sftpRemoteBaseName(remotePath, "download"))
+      onStarted(taskId)
       await DesktopSFTPService.DownloadFile({ serverId, path: remotePath, localPath, taskId })
     },
-    async batchDownload(serverId, paths, mode, excludePatterns, taskId) {
-      const extension = mode === "fast" ? "tar.gz" : "zip"
+    async batchDownload(serverId, paths, excludePatterns, { taskId, onStarted }) {
       const fallbackName = paths.length === 1
-        ? `${sftpRemoteBaseName(paths[0] || "", "download")}.${extension}`
-        : `easyssh-download.${extension}`
+        ? `${sftpRemoteBaseName(paths[0] || "", "download")}.zip`
+        : "easyssh-download.zip"
       const localPath = await chooseSavePath(fallbackName)
+      onStarted(taskId)
       await DesktopSFTPService.BatchDownload({
         serverId,
         paths,
         localPath,
-        mode,
         excludePatterns,
         taskId,
       })
     },
-    async uploadFile(serverId, remotePath, file, onProgress, wsTaskId) {
+    async uploadFile(serverId, remotePath, file, { taskId, onStarted, onProgress }) {
       const data = await readFileAsBase64(file)
-      const fileInfo = normalizeFileInfo(await DesktopSFTPService.UploadFile({
+      onStarted(taskId)
+      await DesktopSFTPService.UploadFile({
         serverId,
         path: remotePath,
         fileName: file.name,
         data,
-        taskId: wsTaskId,
-      }) as FileInfo)
-
+        taskId,
+      })
       onProgress?.(file.size, file.size)
-      return fileInfo
-    },
-    async createUploadTask() {
-      const result = await DesktopSFTPService.CreateUploadTask()
-      return { task_id: result.task_id || `desktop-upload-${Date.now()}` }
-    },
-    async listUploadTasks() {
-      return await DesktopSFTPService.ListUploadTasks() as UploadTaskListResponse
-    },
-    async getUploadTask(taskId) {
-      return await DesktopSFTPService.GetUploadTask(taskId) as UploadTaskStatus
-    },
-    async getTransferTask(taskId) {
-      return await DesktopSFTPService.GetTransferTask(taskId) as UploadTaskStatus
-    },
-    async cancelUploadTask(taskId) {
-      await DesktopSFTPService.CancelUploadTask(taskId)
     },
     async directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, options) {
+      options.onStarted(options.taskId)
       try {
-        return await DesktopSFTPService.DirectTransfer({
+        await DesktopSFTPService.DirectTransfer({
           sourceServerId,
           sourcePath,
           targetServerId,
           targetPath,
-          taskId: options?.taskId,
-          sourceCredential: toDesktopTransferCredential(options?.sourceCredential),
-          targetCredential: toDesktopTransferCredential(options?.targetCredential),
-        }) as DirectTransferResponse
+          taskId: options.taskId,
+          sourceCredential: toDesktopTransferCredential(options.sourceCredential),
+          targetCredential: toDesktopTransferCredential(options.targetCredential),
+        })
       } catch (error) {
         throw normalizeDesktopDirectTransferError(error)
       }
     },
-    async cancelTransfer(taskId) {
-      await DesktopSFTPService.CancelTransfer(taskId)
-    },
-    async closeConnection(serverId) {
-      await DesktopSFTPService.CloseConnection(serverId)
-    },
-    uploadUsesProgressSocket: false,
-    serverTransferUsesProgressSocket: false,
   }
 }

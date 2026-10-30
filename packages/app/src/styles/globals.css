@@ -1,0 +1,1026 @@
+@import "tailwindcss" source(none);
+@import "tw-animate-css";
+@import "tw-shimmer";
+
+@source "../";
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/math/dist/*.js";
+@source "../../node_modules/@streamdown/mermaid/dist/*.js";
+@source "../../node_modules/@streamdown/cjk/dist/*.js";
+
+@custom-variant dark (&:is(.dark *));
+
+@keyframes aui-stream-word {
+  from { opacity: 0.25; color: var(--primary); }
+  to { opacity: 1; color: inherit; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aui-streaming-text span { animation: none !important; }
+}
+
+@supports not (anchor-name: --cobe-marker) {
+  .cobe-server-marker {
+    display: none;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-inter), "Inter", var(--font-noto-sans-sc), "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "Fira Code", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-status-connected: var(--status-connected);
+  --color-status-warning: var(--status-warning);
+  --color-status-danger: var(--status-danger);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-table: var(--table);
+  --color-table-header: var(--table-header);
+  --color-table-row-hover: var(--table-row-hover);
+  --color-table-row-selected: var(--table-row-selected);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --animate-overlay-content-in: overlay-content-in var(--motion-duration-content)
+    var(--motion-ease-enter);
+  --animate-overlay-content-out: overlay-content-out var(--motion-duration-exit)
+    var(--motion-ease-exit);
+
+  @keyframes overlay-content-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes overlay-content-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+}
+
+:root {
+  --motion-duration-fast: 120ms;
+  --motion-duration-exit: 120ms;
+  --motion-duration-state: 160ms;
+  --motion-duration-page: 160ms;
+  --motion-duration-content: 180ms;
+  --motion-duration-layout: 260ms;
+  --motion-ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --window-opacity: 1;
+  --font-inter: "Inter Variable";
+  --font-noto-sans-sc: "Noto Sans SC Variable";
+  --font-jetbrains-mono: "JetBrains Mono Variable";
+  --radius: 0.65rem;
+  --background: oklch(0.98 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.95 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.965 0 0);
+  --muted-foreground: oklch(0.50 0 0);
+  --accent: oklch(0.935 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.89 0 0);
+  --input: oklch(0.88 0 0);
+  --ring: oklch(0.64 0 0);
+  --chart-1: oklch(0.60 0.17 259);
+  --chart-2: oklch(0.55 0.13 165);
+  --chart-3: oklch(0.72 0.19 50);
+  --chart-4: oklch(0.73 0.13 306);
+  --chart-5: oklch(0.65 0.21 7);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.955 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.91 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.86 0 0);
+  --sidebar-ring: oklch(0.64 0 0);
+  --table: var(--card);
+  --table-header: color-mix(in oklab, var(--card) 35%, var(--muted));
+  --table-row-hover: color-mix(in oklab, var(--card) 25%, var(--accent));
+  --table-row-selected: color-mix(in oklab, var(--card) 86%, var(--primary));
+  /* 状态色（固定，不随主题变化） */
+  /* 连接: 稍沉的终端绿；警告: 柔和琥珀；危险: 稳定红 */
+  --status-connected: oklch(0.809 0.174 142.0);
+  --status-warning: oklch(0.905 0.173 102.0);
+  --status-danger: oklch(0.628 0.257 25.5);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.19 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.225 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.245 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.215 0 0);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(0.285 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 20%);
+  --ring: oklch(0.60 0 0);
+  --chart-1: oklch(0.60 0.17 259);
+  --chart-2: oklch(0.55 0.13 165);
+  --chart-3: oklch(0.72 0.19 50);
+  --chart-4: oklch(0.73 0.13 306);
+  --chart-5: oklch(0.65 0.21 7);
+  --sidebar: oklch(0.175 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.255 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.60 0 0);
+  --table: var(--card);
+  --table-header: color-mix(in oklab, var(--card) 40%, var(--muted));
+  --table-row-hover: color-mix(in oklab, var(--card) 40%, var(--accent));
+  --table-row-selected: color-mix(in oklab, var(--card) 88%, var(--primary));
+  /* 状态色（深色主题同样固定） */
+  --status-connected: oklch(0.809 0.174 142.0);
+  --status-warning: oklch(0.905 0.173 102.0);
+  --status-danger: oklch(0.628 0.257 25.5);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    @apply h-full w-full;
+    margin: 0;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-transparent text-foreground;
+    /* Desktop opts in to window opacity; Web always uses full opacity. */
+    opacity: var(--window-opacity);
+  }
+
+  #root {
+    @apply bg-background;
+  }
+}
+
+/* The frosted-glass color scheme owns surface effects across the application. */
+:root[data-theme-preset="frosted-glass"] {
+  --app-glass-backdrop:
+    radial-gradient(ellipse at 12% 8%, color-mix(in oklab, var(--primary) 14%, transparent), transparent 55%),
+    radial-gradient(ellipse at 88% 92%, color-mix(in oklab, var(--chart-2) 10%, transparent), transparent 55%);
+  --app-glass-highlight: rgb(255 255 255 / 55%);
+}
+
+:root.dark[data-theme-preset="frosted-glass"] {
+  --app-glass-highlight: rgb(255 255 255 / 12%);
+}
+
+:root[data-theme-preset="frosted-glass"] #root,
+:root[data-theme-preset="frosted-glass"] [data-terminal-background] {
+  background-image: var(--app-glass-backdrop);
+}
+
+:root[data-theme-preset="frosted-glass"] :is([data-slot="sidebar-wrapper"], [data-slot="sidebar-inset"]) {
+  background-color: transparent;
+}
+
+:root[data-theme-preset="frosted-glass"] [data-slot="sidebar-inner"] {
+  background-color: color-mix(in oklab, var(--sidebar) 65%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.1);
+  backdrop-filter: blur(24px) saturate(1.1);
+}
+
+:where(:root[data-theme-preset="frosted-glass"]) [data-slot="card"] {
+  background-color: color-mix(in oklab, var(--card) 72%, transparent);
+  box-shadow: inset 0 1px var(--app-glass-highlight), var(--shadow-sm);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  backdrop-filter: blur(20px) saturate(1.1);
+}
+
+:root[data-theme-preset="frosted-glass"] :is(
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="sheet-content"],
+  [data-slot="popover-content"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="context-menu-content"],
+  [data-slot="context-menu-sub-content"],
+  [data-slot="select-content"]
+) {
+  background-color: color-mix(in oklab, var(--popover) 86%, transparent);
+  box-shadow: inset 0 1px var(--app-glass-highlight), var(--shadow-lg);
+  -webkit-backdrop-filter: blur(28px) saturate(1.1);
+  backdrop-filter: blur(28px) saturate(1.1);
+}
+
+/* The terminal owns one background beneath its home, tabs and session panes. */
+[data-terminal-background-enabled="true"] [data-server-connection-configs] {
+  background-color: transparent;
+}
+
+[data-terminal-background-enabled="true"] .easyssh-dockview {
+  --dv-group-view-background-color: transparent;
+}
+
+[data-terminal-background-enabled="true"] .terminal-mobile-monitor-surface {
+  background-color: color-mix(in oklab, var(--background) 65%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+/* Glass changes surface treatment, never the terminal's color palette. */
+.terminal-workspace-glass {
+  --terminal-glass-panel: rgb(255 255 255 / 16%);
+  --terminal-glass-raised: rgb(255 255 255 / 28%);
+  --terminal-glass-hover: rgb(255 255 255 / 40%);
+  --terminal-glass-selected: rgb(255 255 255 / 52%);
+  --terminal-glass-border: rgb(255 255 255 / 36%);
+  --terminal-glass-hover-border: rgb(255 255 255 / 62%);
+  --terminal-glass-highlight: rgb(255 255 255 / 64%);
+  --terminal-glass-sheen: linear-gradient(135deg, rgb(255 255 255 / 16%), transparent 45%, rgb(255 255 255 / 3%));
+  --terminal-glass-edge-shadow: 0 0 0 1px rgb(0 0 0 / 4%);
+  --terminal-glass-shadow: 0 3px 8px rgb(0 0 0 / 3%), 0 12px 28px rgb(0 0 0 / 5%);
+  --terminal-glass-text-shadow: 0 1px 1px rgb(255 255 255 / 30%);
+  --foreground: rgb(24 24 24);
+  --muted-foreground: rgb(78 78 78);
+  --accent: var(--terminal-glass-hover);
+  --accent-foreground: var(--foreground);
+  --secondary: var(--terminal-glass-selected);
+  --secondary-foreground: var(--foreground);
+  --card: var(--terminal-glass-raised);
+  --card-foreground: var(--foreground);
+  --muted: var(--terminal-glass-panel);
+  --border: var(--terminal-glass-border);
+  --input: var(--terminal-glass-border);
+  --ring: color-mix(in srgb, var(--foreground) 45%, transparent);
+  --table: var(--card);
+  --table-header: var(--terminal-glass-selected);
+  --table-row-hover: var(--terminal-glass-hover);
+  --table-row-selected: var(--terminal-glass-selected);
+}
+
+.terminal-workspace-glass[data-terminal-theme-mode="dark"] {
+  --terminal-glass-panel: rgb(24 24 24 / 28%);
+  --terminal-glass-raised: rgb(32 32 32 / 40%);
+  --terminal-glass-hover: rgb(54 54 54 / 48%);
+  --terminal-glass-selected: rgb(72 72 72 / 56%);
+  --terminal-glass-border: rgb(255 255 255 / 12%);
+  --terminal-glass-hover-border: rgb(255 255 255 / 24%);
+  --terminal-glass-highlight: rgb(255 255 255 / 16%);
+  --terminal-glass-sheen: linear-gradient(135deg, rgb(255 255 255 / 7%), transparent 45%, rgb(255 255 255 / 1%));
+  --terminal-glass-edge-shadow: 0 0 0 1px rgb(0 0 0 / 10%);
+  --terminal-glass-shadow: 0 3px 8px rgb(0 0 0 / 10%), 0 12px 28px rgb(0 0 0 / 16%);
+  --terminal-glass-text-shadow: 0 1px 2px rgb(0 0 0 / 35%);
+  --foreground: rgb(245 245 245);
+  --muted-foreground: rgb(190 190 190);
+}
+
+/* Panels reuse the workspace material instead of defining another tinted glass. */
+.terminal-workspace-glass :is(.terminal-ai-glass, .terminal-sftp-glass) {
+  --terminal-glass-panel: inherit;
+  --terminal-glass-raised: inherit;
+  --terminal-glass-border: inherit;
+  --terminal-glass-highlight: inherit;
+  --terminal-glass-sheen: inherit;
+  --terminal-glass-edge-shadow: inherit;
+  --terminal-glass-shadow: inherit;
+  --terminal-glass-text-shadow: inherit;
+}
+
+.terminal-workspace-glass :is([data-slot="card"], .bg-card, .bg-table) {
+  background-color: var(--terminal-glass-raised);
+  background-image: var(--terminal-glass-sheen);
+  -webkit-backdrop-filter: blur(20px) saturate(1.05);
+  backdrop-filter: blur(20px) saturate(1.05);
+}
+
+.terminal-workspace-glass .server-connection-item {
+  border-color: var(--terminal-glass-border);
+  border-radius: 14px;
+  /* Outer shadows overlap between rows and expose the scroll container's clip edge. */
+  box-shadow: inset 0 1px var(--terminal-glass-highlight);
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .terminal-workspace-glass .server-connection-item:hover {
+    background-color: var(--terminal-glass-hover);
+    border-color: var(--terminal-glass-hover-border);
+  }
+}
+
+.terminal-workspace-glass .server-connection-item:active {
+  background-color: var(--terminal-glass-selected);
+}
+
+.terminal-workspace-glass .server-connection-item:focus-visible {
+  background-color: var(--terminal-glass-hover);
+  border-color: var(--terminal-glass-hover-border);
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.terminal-workspace-glass :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
+  background-color: var(--terminal-glass-panel);
+  border-color: var(--terminal-glass-border);
+  -webkit-backdrop-filter: blur(16px) saturate(1.05);
+  backdrop-filter: blur(16px) saturate(1.05);
+}
+
+.terminal-workspace-glass .terminal-mobile-monitor-surface {
+  background-color: var(--terminal-glass-raised);
+}
+
+.terminal-workspace-glass .terminal-sftp-glass :is(.bg-table-row-selected, [data-selected="true"], [data-sftp-create-entry]),
+.terminal-workspace-glass [data-sftp-toolbar] button.bg-accent {
+  background-color: var(--terminal-glass-selected);
+}
+
+.terminal-workspace-glass [data-server-group-selected] {
+  background-color: var(--terminal-glass-panel);
+  color: var(--foreground);
+  border-color: var(--terminal-glass-border);
+}
+
+.terminal-workspace-glass [data-server-group-selected]:hover {
+  background-color: var(--terminal-glass-hover);
+}
+
+.terminal-workspace-glass [data-server-group-selected="true"],
+.terminal-workspace-glass [data-server-group-selected="true"]:hover {
+  background-color: var(--terminal-glass-selected);
+  border-color: var(--terminal-glass-hover-border);
+  box-shadow: inset 0 1px var(--terminal-glass-highlight), var(--terminal-glass-edge-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal-workspace-glass .server-connection-item {
+    transition: none;
+  }
+}
+
+@layer components {
+  .terminal-ai-glass,
+  .terminal-sftp-glass {
+    --terminal-glass-panel: rgb(255 255 255 / 18%);
+    --terminal-glass-raised: rgb(255 255 255 / 52%);
+    --terminal-glass-border: rgb(255 255 255 / 66%);
+    --terminal-glass-highlight: rgb(255 255 255 / 82%);
+    --terminal-glass-sheen: linear-gradient(135deg, rgb(255 255 255 / 24%), transparent 42%, rgb(255 255 255 / 6%));
+    --terminal-glass-edge-shadow: 0 0 0 1px rgb(15 23 42 / 8%);
+    --terminal-glass-shadow: 0 12px 32px rgb(15 23 42 / 12%);
+    --terminal-glass-text-shadow: 0 1px 1px rgb(255 255 255 / 55%);
+  }
+
+  .dark .terminal-ai-glass,
+  .dark .terminal-sftp-glass {
+    --terminal-glass-panel: rgb(4 8 12 / 24%);
+    --terminal-glass-raised: rgb(6 9 13 / 58%);
+    --terminal-glass-border: rgb(255 255 255 / 13%);
+    --terminal-glass-highlight: rgb(255 255 255 / 9%);
+    --terminal-glass-sheen: linear-gradient(135deg, rgb(255 255 255 / 8%), transparent 42%, rgb(255 255 255 / 2%));
+    --terminal-glass-edge-shadow: 0 0 0 1px rgb(255 255 255 / 3%);
+    --terminal-glass-shadow: 0 14px 36px rgb(0 0 0 / 26%);
+    --terminal-glass-text-shadow: 0 1px 2px rgb(0 0 0 / 55%);
+  }
+
+  .terminal-ai-glass:not(.terminal-workspace-glass *) {
+    --terminal-glass-panel: var(--background);
+    --terminal-glass-raised: var(--muted);
+    --terminal-glass-border: var(--border);
+    --terminal-glass-highlight: var(--accent);
+    --terminal-glass-sheen: none;
+    --terminal-glass-edge-shadow: 0 0 0 1px var(--border);
+    --terminal-glass-shadow: var(--shadow-md);
+    --terminal-glass-text-shadow: none;
+  }
+
+  .terminal-ai-glass-surface,
+  .terminal-sftp-glass-surface {
+    background-color: var(--terminal-glass-panel);
+    background-image: var(--terminal-glass-sheen);
+    -webkit-backdrop-filter: blur(7px) saturate(1.14);
+    backdrop-filter: blur(7px) saturate(1.14);
+  }
+
+  .terminal-ai-glass-toolbar {
+    background: transparent;
+  }
+
+  .terminal-ai-glass-toolbar button:hover {
+    background-color: color-mix(in oklab, var(--terminal-glass-raised) 46%, transparent);
+  }
+
+  .terminal-ai-glass [data-role="user"] .agent-message-content,
+  .terminal-ai-glass .terminal-ai-glass-composer,
+  .terminal-ai-glass .terminal-ai-glass-editor,
+  .terminal-ai-glass .terminal-ai-glass-control,
+  .terminal-ai-glass .terminal-ai-glass-status,
+  .terminal-ai-glass .terminal-ai-glass-card {
+    border-color: var(--terminal-glass-border);
+    border-width: 1px;
+    border-style: solid;
+    background-color: var(--terminal-glass-raised);
+    background-image: var(--terminal-glass-sheen);
+    box-shadow:
+      inset 0 1px var(--terminal-glass-highlight),
+      var(--terminal-glass-edge-shadow),
+      var(--terminal-glass-shadow);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    backdrop-filter: blur(18px) saturate(1.2);
+  }
+
+  .terminal-ai-glass [data-role="assistant"] > .agent-message-content {
+    text-shadow: var(--terminal-glass-text-shadow);
+  }
+
+  .terminal-ai-glass .terminal-ai-glass-composer {
+    border-width: 1px;
+    outline: 1px solid color-mix(in oklab, var(--terminal-glass-highlight) 40%, transparent);
+    outline-offset: -1px;
+  }
+
+  .terminal-ai-glass .terminal-ai-glass-editor {
+    width: 34rem;
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .terminal-ai-glass .terminal-ai-glass-composer:has(textarea:focus-visible) {
+    border-color: color-mix(in oklab, var(--ring) 58%, var(--terminal-glass-border));
+    box-shadow:
+      inset 0 1px var(--terminal-glass-highlight),
+      0 0 0 2px color-mix(in oklab, var(--ring) 18%, transparent),
+      var(--terminal-glass-edge-shadow),
+      var(--terminal-glass-shadow);
+  }
+
+  .dark .terminal-ai-glass .terminal-ai-glass-control,
+  .dark .terminal-ai-glass .terminal-ai-glass-control:hover {
+    background-color: var(--terminal-glass-raised);
+  }
+
+  .terminal-ai-glass-popover {
+    border-color: var(--border);
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: var(--shadow-lg);
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .terminal-ai-glass-surface,
+    .terminal-sftp-glass-surface {
+      background-color: color-mix(in oklab, var(--background) 72%, transparent);
+      background-image: none;
+    }
+
+    .terminal-ai-glass [data-role="user"] .agent-message-content,
+    .terminal-ai-glass .terminal-ai-glass-composer,
+    .terminal-ai-glass .terminal-ai-glass-editor,
+    .terminal-ai-glass .terminal-ai-glass-control,
+    .terminal-ai-glass .terminal-ai-glass-status,
+    .terminal-ai-glass .terminal-ai-glass-card {
+      background-color: color-mix(in oklab, var(--background) 84%, transparent);
+      background-image: none;
+    }
+
+  }
+
+  .prism-code {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  code[class*="language-"],
+  pre[class*="language-"] {
+    text-align: left;
+    white-space: pre;
+    word-spacing: normal;
+    word-break: normal;
+    word-wrap: normal;
+    line-height: 1.5;
+    tab-size: 2;
+    hyphens: none;
+  }
+
+  .token.comment,
+  .token.prolog,
+  .token.doctype,
+  .token.cdata {
+    color: #6a737d;
+    font-style: italic;
+  }
+
+  .token.punctuation {
+    color: #24292e;
+  }
+
+  .token.namespace {
+    opacity: 0.7;
+  }
+
+  .token.property,
+  .token.tag,
+  .token.boolean,
+  .token.number,
+  .token.constant,
+  .token.symbol,
+  .token.deleted {
+    color: #005cc5;
+  }
+
+  .token.selector,
+  .token.attr-name,
+  .token.string,
+  .token.char,
+  .token.builtin,
+  .token.inserted {
+    color: #22863a;
+  }
+
+  .token.operator,
+  .token.entity,
+  .token.url,
+  .language-css .token.string,
+  .style .token.string {
+    color: #d73a49;
+  }
+
+  .token.atrule,
+  .token.attr-value,
+  .token.keyword {
+    color: #d73a49;
+  }
+
+  .token.function,
+  .token.class-name {
+    color: #6f42c1;
+  }
+
+  .token.regex,
+  .token.important,
+  .token.variable {
+    color: #e36209;
+  }
+
+  .token.important,
+  .token.bold {
+    font-weight: bold;
+  }
+
+  .token.italic {
+    font-style: italic;
+  }
+
+  .token.entity {
+    cursor: help;
+  }
+
+  .dark .token.comment,
+  .dark .token.prolog,
+  .dark .token.doctype,
+  .dark .token.cdata {
+    color: #6b7280;
+    font-style: italic;
+  }
+
+  .dark .token.punctuation {
+    color: #abb2bf;
+  }
+
+  .dark .token.namespace {
+    opacity: 0.7;
+  }
+
+  .dark .token.property,
+  .dark .token.tag,
+  .dark .token.boolean,
+  .dark .token.number,
+  .dark .token.constant,
+  .dark .token.symbol,
+  .dark .token.deleted {
+    color: #e06c75;
+  }
+
+  .dark .token.selector,
+  .dark .token.attr-name,
+  .dark .token.string,
+  .dark .token.char,
+  .dark .token.builtin,
+  .dark .token.inserted {
+    color: #98c379;
+  }
+
+  .dark .token.operator,
+  .dark .token.entity,
+  .dark .token.url,
+  .dark .language-css .token.string,
+  .dark .style .token.string {
+    color: #56b6c2;
+  }
+
+  .dark .token.atrule,
+  .dark .token.attr-value,
+  .dark .token.keyword {
+    color: #c678dd;
+  }
+
+  .dark .token.function,
+  .dark .token.class-name {
+    color: #61afef;
+  }
+
+  .dark .token.regex,
+  .dark .token.important,
+  .dark .token.variable {
+    color: #d19a66;
+  }
+
+  .dark .token.important,
+  .dark .token.bold {
+    font-weight: bold;
+  }
+
+  .dark .token.italic {
+    font-style: italic;
+  }
+
+  .dark .token.entity {
+    cursor: help;
+  }
+}
+
+@layer utilities {
+  .terminal-sftp-glass [data-sftp-toolbar] {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .terminal-sftp-glass [data-sftp-toolbar] button:hover {
+    background-color: color-mix(in oklab, var(--terminal-glass-raised) 46%, transparent);
+  }
+
+  .terminal-sftp-glass [data-sftp-toolbar] button.bg-accent {
+    background-color: color-mix(in oklab, var(--primary) 14%, var(--terminal-glass-raised));
+  }
+
+  .terminal-sftp-glass [data-sftp-glass-control],
+  .terminal-sftp-glass [data-slot="input"] {
+    border: 1px solid var(--terminal-glass-border);
+    background-color: color-mix(in oklab, var(--terminal-glass-raised) 78%, transparent);
+    background-image: var(--terminal-glass-sheen);
+    box-shadow:
+      inset 0 1px var(--terminal-glass-highlight),
+      var(--terminal-glass-edge-shadow);
+    -webkit-backdrop-filter: blur(14px) saturate(1.16);
+    backdrop-filter: blur(14px) saturate(1.16);
+  }
+
+  .terminal-sftp-glass [data-sftp-browser="files"] {
+    background-color: color-mix(in oklab, var(--terminal-glass-panel) 24%, transparent);
+    text-shadow: var(--terminal-glass-text-shadow);
+  }
+
+  .terminal-sftp-glass .sftp-table {
+    background-color: transparent;
+  }
+
+  .terminal-sftp-glass .sftp-table thead {
+    background-color: color-mix(in oklab, var(--terminal-glass-raised) 82%, transparent);
+    background-image: var(--terminal-glass-sheen);
+    box-shadow: inset 0 -1px color-mix(in oklab, var(--terminal-glass-border) 62%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(1.16);
+    backdrop-filter: blur(16px) saturate(1.16);
+  }
+
+  .terminal-sftp-glass .sftp-table th {
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .terminal-sftp-glass .sftp-table tbody tr:hover,
+  .terminal-sftp-glass [data-sftp-browser="files"] [data-sftp-file-item]:hover {
+    background-color: color-mix(in oklab, var(--terminal-glass-raised) 42%, transparent);
+  }
+
+  .terminal-sftp-glass .sftp-table tbody tr.bg-table-row-selected,
+  .terminal-sftp-glass .sftp-table tbody tr.bg-table-row-selected:hover,
+  .terminal-sftp-glass [data-sftp-browser="files"] [data-sftp-file-item][data-selected="true"],
+  .terminal-sftp-glass [data-sftp-browser="files"] [data-sftp-file-item][data-selected="true"]:hover,
+  .terminal-sftp-glass [data-sftp-browser="files"] [data-sftp-create-entry] {
+    background-color: color-mix(in oklab, var(--primary) 14%, var(--terminal-glass-raised));
+  }
+
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .terminal-sftp-glass [data-sftp-glass-control],
+    .terminal-sftp-glass [data-slot="input"],
+    .terminal-sftp-glass .sftp-table thead {
+      background-color: color-mix(in oklab, var(--background) 86%, transparent);
+      background-image: none;
+    }
+  }
+
+  /* 自定义滚动条样式 */
+  .scrollbar-none {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* Internet Explorer 10+ */
+  }
+
+  .scrollbar-none::-webkit-scrollbar {
+    display: none; /* WebKit */
+  }
+
+  /* 自定义滚动条 - 透明背景 */
+  :where(html, body, .scrollbar-custom) {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.65 0 0 / 50%) transparent;
+    /* 不使用 scrollbar-gutter，避免浏览器按系统厚度(约14–17px)预留空间导致行高被撑大 */
+  }
+
+  :where(html, body, .scrollbar-custom)::-webkit-scrollbar {
+    width: 6px;
+    height: 4px; /* 横向滚动条高度，配合 Tab 栏预留 4px */
+  }
+
+  :where(html, body, .scrollbar-custom)::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :where(html, body, .scrollbar-custom)::-webkit-scrollbar-thumb {
+    background-color: oklch(0.65 0 0 / 40%);
+    border-radius: 3px;
+  }
+
+  :where(html, body, .scrollbar-custom)::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(0.65 0 0 / 60%);
+  }
+
+  /* 弹窗内所有滚动容器统一使用系统细滚动条 */
+  :where(.dialog-scrollbar-root, .dialog-scrollbar-root *) {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.65 0 0 / 50%) transparent;
+  }
+
+  :where(.dialog-scrollbar-root, .dialog-scrollbar-root *)::-webkit-scrollbar {
+    width: 6px;
+    height: 4px;
+  }
+
+  :where(.dialog-scrollbar-root, .dialog-scrollbar-root *)::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :where(.dialog-scrollbar-root, .dialog-scrollbar-root *)::-webkit-scrollbar-thumb {
+    background-color: oklch(0.65 0 0 / 40%);
+    border-radius: 3px;
+  }
+
+  :where(.dialog-scrollbar-root, .dialog-scrollbar-root *)::-webkit-scrollbar-thumb:hover {
+    background-color: oklch(0.65 0 0 / 60%);
+  }
+
+  /* 监控面板滚动条样式 */
+  .monitor-panel-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--border) 80%, transparent) transparent;
+  }
+
+  .monitor-panel-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .monitor-panel-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .monitor-panel-scrollbar::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--border) 80%, transparent);
+    border-radius: 3px;
+    transition: background 0.2s ease-in-out;
+  }
+
+  .monitor-panel-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--muted-foreground) 50%, transparent);
+  }
+
+  /* 隐藏滚动条样式别名 */
+  .scrollbar-hide {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* Internet Explorer 10+ */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none; /* WebKit */
+  }
+
+  /* ===== 图片防闪烁优化 ===== */
+
+  /* 所有图片使用固定尺寸避免布局偏移 */
+  img {
+    /* 防止图片加载时的布局偏移 */
+    content-visibility: auto;
+    /* 图片加载期间保持占位 */
+    background: transparent;
+    /* 平滑过渡 */
+    transition: opacity 0.2s ease-in-out;
+  }
+
+  /* Avatar 图片优化 */
+  [data-slot="avatar-image"] {
+    /* 使用 GPU 加速 */
+    transform: translateZ(0);
+    will-change: opacity;
+    /* 防止闪烁 */
+    backface-visibility: hidden;
+    /* 图片加载时的优先级 */
+    z-index: 2;
+    position: relative;
+  }
+
+  /* Avatar Fallback 延迟显示优化 */
+  [data-slot="avatar-fallback"] {
+    /* 初始时隐藏,避免闪烁 */
+    opacity: 0;
+    /* 延迟300ms后淡入 */
+    transition: opacity 0.3s ease-in-out 0.3s;
+  }
+
+  /* 仅当图片加载失败时才显示 Fallback */
+  [data-slot="avatar"][data-state="error"] [data-slot="avatar-fallback"],
+  [data-slot="avatar"]:not([data-state="loaded"]) [data-slot="avatar-fallback"] {
+    animation: delayed-fade-in 0.3s ease-in-out 0.3s forwards;
+  }
+
+  @keyframes delayed-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Indeterminate 进度条动画 */
+  @keyframes indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(400%);
+    }
+  }
+
+  .animate-indeterminate {
+    animation: indeterminate 1.5s ease-in-out infinite;
+  }
+
+  /* Logo 和 Icon 优化 */
+  img[src*="logo.svg"],
+  img[src*="icon.svg"] {
+    display: block;
+    transform: translateZ(0);
+  }
+
+  /* 连接加载动画 - 从左边滑入 */
+  @keyframes slide-in-from-left {
+    from {
+      transform: translateX(-150vw);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  .animate-slide-in-from-left {
+    animation: slide-in-from-left 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  }
+
+  /* 连接成功动画 - 从中间滑出到右边 */
+  @keyframes slide-out-to-right {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(150vw);
+      opacity: 0;
+    }
+  }
+
+  .animate-slide-out-to-right {
+    animation: slide-out-to-right 0.8s cubic-bezier(0.36, 0, 0.66, -0.56) forwards;
+  }
+
+  /* 进度条动画 */
+  @keyframes progress {
+    from {
+      width: 0%;
+    }
+    to {
+      width: 100%;
+    }
+  }
+
+  /* 侧边栏折叠展开动画 - 向下展开 */
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+      opacity: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+      opacity: 1;
+    }
+  }
+
+  /* 侧边栏折叠收起动画 - 向上收起 */
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+      opacity: 1;
+    }
+    to {
+      height: 0;
+      opacity: 0;
+    }
+  }
+
+  .animate-collapsible-down {
+    animation: collapsible-down var(--motion-duration-fast) var(--motion-ease-enter);
+  }
+
+  .animate-collapsible-up {
+    animation: collapsible-up var(--motion-duration-fast) var(--motion-ease-exit);
+  }
+
+  /* Skeleton 呼吸动画 - 比 animate-pulse 更柔和自然 */
+  @keyframes skeleton-breathe {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+
+  .animate-skeleton {
+    animation: skeleton-breathe 2s ease-in-out infinite;
+  }
+}

@@ -7,11 +7,11 @@ import type {
   TaskRun,
   TaskRunListParams,
   TaskRunStatus,
-} from "@/components/task-center/task-center-contracts"
+} from "@easyssh/app/components/task-center/task-center-contracts"
 import {
   DesktopTaskListInput,
   DesktopTaskService,
-} from "../../bindings/github.com/easyssh/easyssh-desktop"
+} from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 
 const desktopTaskChangedEvent = "desktop:task-center-changed"
 

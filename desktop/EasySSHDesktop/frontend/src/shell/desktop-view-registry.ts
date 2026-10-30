@@ -1,6 +1,7 @@
 import type { ComponentType } from "react"
-import { preloadNamespaces } from "@/i18n"
-import { createPreloadableComponent } from "@/lib/preloadable-component"
+import type { WORKBENCH_VIEW } from "@easyssh/app/desktop"
+import { preloadNamespaces } from "@easyssh/app/i18n"
+import { createPreloadableComponent } from "@easyssh/app/lib/preloadable-component"
 
 function view<Props extends object>(
   titleKey: string,
@@ -25,7 +26,7 @@ export const desktopViews = {
 }
 
 export type DesktopContentView = keyof typeof desktopViews
-export type DesktopView = "terminal" | DesktopContentView
+export type DesktopView = typeof WORKBENCH_VIEW | DesktopContentView
 
 export function preloadDesktopView(view: DesktopContentView) {
   // A failed speculative load is shown by the content boundary on navigation.
