@@ -62,21 +62,22 @@ jobs:
       - name: 🔧 设置 pnpm
         uses: pnpm/action-setup@v5
         with:
-          package_json_file: web/package.json
+          package_json_file: package.json
 
       - name: 🔧 设置 Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
-      - name: 🔧 安装 Web 依赖
-        working-directory: web
+      - name: 🔧 安装前端工作区依赖
         run: pnpm install --frozen-lockfile
 
-      - name: 🧪 运行 Web 测试
-        working-directory: web
+      - name: 🧱 检查前端导入边界
+        run: pnpm check:boundaries
+
+      - name: 🧪 运行前端测试
         run: pnpm test
 
       - name: 🔧 设置 Go

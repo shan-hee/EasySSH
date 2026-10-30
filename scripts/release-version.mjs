@@ -5,10 +5,11 @@ import { execFileSync } from "node:child_process"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
 const desktop = "desktop/EasySSHDesktop"
-const migrationRoot = "shared/dbmigration"
-const tracks = ["server/sqlite", "server/postgres", "server/mysql", "desktop/sqlite"]
-const latestFile = `${migrationRoot}/migrate.go`
-const latestPattern = /^const Latest int64 = (\d+)$/m
+const schemas = [
+  { name: "server", root: "server/internal/storage/schema", tracks: ["sqlite", "postgres", "mysql"] },
+  { name: "desktop", root: `${desktop}/internal/storage/schema`, tracks: ["sqlite"] },
+]
+const latestPattern = /^const Version int64 = (\d+)$/m
 const normalize = text => text.replace(/\r\n/g, "\n")
 const read = name => fs.readFileSync(path.join(root, name), "utf8")
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trimEnd()
@@ -34,12 +35,14 @@ function releaseTags() {
     .sort((a, b) => compare(b.slice(1), a.slice(1)))
 }
 
-function checkMigrations(version, tags, prepare, includeCurrent) {
+function checkMigrations(schema, version, tags, prepare, includeCurrent) {
+  const migrationRoot = schema.root
+  const latestFile = `${migrationRoot}/schema.go`
   const source = read(latestFile)
   const declared = Number(source.match(latestPattern)?.[1])
-  if (!Number.isSafeInteger(declared) || declared < 1) fail("无法读取 dbmigration.Latest")
+  if (!Number.isSafeInteger(declared) || declared < 1) fail(`无法读取 ${schema.name} schema.Version`)
   let expected
-  for (const track of tracks) {
+  for (const track of schema.tracks) {
     const directory = `${migrationRoot}/${track}`
     const names = fs.readdirSync(path.join(root, directory)).filter(name => name.endsWith(".sql"))
     if (names.length !== 1 || !/^\d{5,}_initial\.sql$/.test(names[0])) fail(`${track} 只允许一个新库初始化基线，不能重复或保留升级迁移`)
@@ -53,8 +56,8 @@ function checkMigrations(version, tags, prepare, includeCurrent) {
     expected = number
   }
   const latest = expected
-  if (declared > latest) fail(`dbmigration.Latest=${declared}，不能降低数据库基线版本`)
-  if (!prepare && declared !== latest) fail(`dbmigration.Latest=${declared} 与初始化基线 ${latest} 不一致`)
+  if (declared > latest) fail(`${schema.name} schema.Version=${declared}，不能降低数据库基线版本`)
+  if (!prepare && declared !== latest) fail(`${schema.name} schema.Version=${declared} 与初始化基线 ${latest} 不一致`)
   const baseline = tags.find(tag => compare(tag.slice(1), version) < 0 || (includeCurrent && tag.slice(1) === version))
   if (baseline) {
     const files = git("ls-tree", "-r", "--name-only", baseline, "--", migrationRoot).split("\n").filter(name => name.endsWith(".sql"))
@@ -64,11 +67,11 @@ function checkMigrations(version, tags, prepare, includeCurrent) {
       if (number !== latest) continue
       if (!fs.existsSync(path.join(root, name))) fail(`禁止重命名 ${baseline} 同版本初始化基线：${name}`)
       const published = execFileSync("git", ["show", `${baseline}:${name}`], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 })
-      if (normalize(read(name)) !== normalize(published)) fail(`禁止改写 ${baseline} 同版本初始化基线：${name}；请提升全部平台基线编号并使用空库`)
+      if (normalize(read(name)) !== normalize(published)) fail(`禁止改写 ${baseline} 同版本初始化基线：${name}；请提升该宿主的所有数据库基线编号并使用空库`)
     }
   }
-  console.log(`数据库：四套新库基线一致，版本 ${latest}；不支持旧库升级`)
-  return { latest, source }
+  console.log(`${schema.name} 数据库：各方言新库基线一致，版本 ${latest}；不支持旧库升级`)
+  return { latestFile, latest, source }
 }
 
 // Validate every version source before making any writes. Replacing these fields
@@ -95,7 +98,7 @@ function versionFiles(current, target) {
     if (json.packages?.[""]) json.packages[""].version = target
     files.set(name, `${JSON.stringify(json, null, 2)}\n`)
   }
-  update(`${desktop}/desktopversion.go`, /^const desktopBundledVersion = "([^"]+)"/gm, current, target)
+  update(`${desktop}/internal/app/desktopversion.go`, /^const desktopBundledVersion = "([^"]+)"/gm, current, target)
   update(`${desktop}/build/config.yml`, /^  version: "([^"]+)"/gm, current, target)
   update(`${desktop}/build/windows/info.json`, /"(?:file_version|ProductVersion)"\s*:\s*"([^"]+)"/g, current, target, 2)
   for (const name of ["app_manifest.xml", "template.xml"]) update(`${desktop}/build/windows/msix/${name}`, /\bVersion="([^"]+)"/g, `${current}.0`, `${target}.0`)
@@ -150,12 +153,14 @@ try {
     if (!git("branch", "--show-current")) fail("请先切换到发布分支，不要在 detached HEAD 上更新版本")
   } else if (current !== target) fail(`VERSION=${current} 与目标 ${target} 不一致`)
   if (mode === "--release" && tags.some(tag => compare(tag.slice(1), target) > 0)) fail("目标版本低于当前分支已有发布版本，拒绝倒退发布")
-  const { latest, source } = checkMigrations(target, tags, mode === "--prepare", mode === "--check")
+  const migrations = schemas.map(schema => checkMigrations(schema, target, tags, mode === "--prepare", mode === "--check"))
   const files = versionFiles(current, target)
   if (mode === "--prepare") {
-    files.set(latestFile, source.replace(latestPattern, `const Latest int64 = ${latest}`))
+    for (const { latestFile, source, latest } of migrations) {
+      files.set(latestFile, source.replace(latestPattern, `const Version int64 = ${latest}`))
+    }
     writeFiles(files)
-  } else console.log(`应用版本一致：${current}；数据库迁移版本：${latest}`)
+  } else console.log(`应用版本一致：${current}；数据库基线：${migrations.map(({ latestFile, latest }) => `${latestFile}=${latest}`).join(", ")}`)
 } catch (error) {
   console.error(`版本检查失败：${error.message}`)
   process.exitCode = 1

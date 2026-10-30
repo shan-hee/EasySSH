@@ -8,7 +8,7 @@
 # Stage 1: 在构建机原生架构上打包前端，静态产物由各目标架构共用
 FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend-builder
 
-WORKDIR /app/web
+WORKDIR /app
 
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH
@@ -16,24 +16,41 @@ ENV PNPM_HOME=/pnpm \
 # 使用固定 pnpm 版本，保证构建一致性
 RUN corepack enable && corepack prepare pnpm@11.1.3 --activate
 
-# 先复制完整依赖配置（包含 overrides 和工作区包清单），再利用缓存安装
-COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./
-COPY web/packages/ssh-workspace/package.json ./packages/ssh-workspace/package.json
+# 先复制根工作区配置、锁文件和各工作区包清单，再只安装 Web 及其工作区依赖
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/package.json ./web/package.json
+COPY packages/app/package.json ./packages/app/package.json
+COPY packages/sync-document/package.json ./packages/sync-document/package.json
+COPY tooling/frontend/package.json ./tooling/frontend/package.json
+COPY desktop/EasySSHDesktop/frontend/package.json ./desktop/EasySSHDesktop/frontend/package.json
+COPY server/sync-runtime/package.json ./server/sync-runtime/package.json
 RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store
+    pnpm install --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store --filter "easyssh-web..."
 
 # 复制源码并执行 Vite 静态构建
-COPY VERSION /app/VERSION
-COPY web/ ./
-COPY shared/syncjs/ /app/shared/syncjs/
-RUN pnpm run build
+COPY VERSION ./VERSION
+COPY tooling/frontend/ ./tooling/frontend/
+COPY packages/app/ ./packages/app/
+COPY packages/sync-document/ ./packages/sync-document/
+COPY web/ ./web/
+RUN pnpm --filter easyssh-web run build
 
 # Automerge runs as a private stdio worker managed by the Go service.
+# pnpm deploy 按根锁文件生成自包含目录，同步文档包随依赖一起复制。
 FROM node:24-alpine AS sync-runtime-builder
-WORKDIR /app/server/sync-runtime
-COPY server/sync-runtime/package.json server/sync-runtime/package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
-COPY server/sync-runtime/engine.mjs ./
+WORKDIR /app
+ENV PNPM_HOME=/pnpm \
+    PATH=/pnpm:$PATH
+RUN corepack enable && corepack prepare pnpm@11.1.3 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY web/package.json ./web/package.json
+COPY packages/app/package.json ./packages/app/package.json
+COPY tooling/frontend/package.json ./tooling/frontend/package.json
+COPY desktop/EasySSHDesktop/frontend/package.json ./desktop/EasySSHDesktop/frontend/package.json
+COPY packages/sync-document/ ./packages/sync-document/
+COPY server/sync-runtime/package.json server/sync-runtime/engine.mjs ./server/sync-runtime/
+RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
+    pnpm --filter easyssh-sync-runtime deploy --prod --legacy --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store /out/sync-runtime
 
 # Stage 2: 在构建机原生架构上交叉编译 Go，避免通过 QEMU 执行编译器
 FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS backend-builder
@@ -90,8 +107,7 @@ ENV TZ=Asia/Shanghai \
     DB_DSN=/app/data/easyssh.db
 
 # 复制后端二进制与前端静态资源
-COPY --from=sync-runtime-builder --chown=appuser:appuser /app/server/sync-runtime ./server/sync-runtime
-COPY --chown=appuser:appuser shared/syncjs/ ./shared/syncjs/
+COPY --from=sync-runtime-builder --chown=appuser:appuser /out/sync-runtime ./server/sync-runtime
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./
 COPY --from=frontend-builder --chown=appuser:appuser /app/web/dist ./static
 COPY --from=frontend-builder --chown=appuser:appuser /app/VERSION ./VERSION

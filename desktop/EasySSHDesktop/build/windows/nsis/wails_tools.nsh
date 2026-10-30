@@ -252,10 +252,18 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
 
 !macro wails.associateCustomProtocols
     ; Create custom protocols associations
+    WriteRegStr SHELL_CONTEXT "Software\Classes\easyssh" "" "EasySSH workspace authorization handoff"
+    WriteRegStr SHELL_CONTEXT "Software\Classes\easyssh" "URL Protocol" ""
+    WriteRegStr SHELL_CONTEXT "Software\Classes\easyssh\DefaultIcon" "" '"$INSTDIR\${PRODUCT_EXECUTABLE}",0'
+    WriteRegStr SHELL_CONTEXT "Software\Classes\easyssh\shell\open\command" "" '"$INSTDIR\${PRODUCT_EXECUTABLE}" "%1"'
 
 !macroend
 
 !macro wails.unassociateCustomProtocols
-    ; Delete app custom protocol associations
+    ; Delete only this installation's association.
+    ReadRegStr $0 SHELL_CONTEXT "Software\Classes\easyssh\shell\open\command" ""
+    ${If} $0 == '"$INSTDIR\${PRODUCT_EXECUTABLE}" "%1"'
+        DeleteRegKey SHELL_CONTEXT "Software\Classes\easyssh"
+    ${EndIf}
 
 !macroend

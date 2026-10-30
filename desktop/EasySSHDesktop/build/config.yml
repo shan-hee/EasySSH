@@ -74,6 +74,10 @@ fileAssociations:
 #    role: Editor
 #    mimeType: image/jpeg  # (optional)
 
+protocols:
+  - scheme: easyssh
+    description: EasySSH workspace authorization handoff
+
 # Other data
 other:
   - name: EasySSH

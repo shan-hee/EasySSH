@@ -11,6 +11,7 @@ build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 third_party/wails-v3-runtime/**/.gitignore
 third_party/wails-v3-runtime/**/.nojekyll
 third_party/wails-v3-runtime/**/*_test.go
+!third_party/wails-v3-runtime/pkg/application/runtime_policy_test.go
 third_party/wails-v3-runtime/**/*.test.js
 third_party/wails-v3-runtime/**/README.md
 third_party/wails-v3-runtime/**/Taskfile.yaml

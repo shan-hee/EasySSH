@@ -8,4 +8,5 @@ Terminal=false
 Type=Application
 Icon=EasySSH
 Categories=Utility;
+MimeType=x-scheme-handler/easyssh;
 StartupWMClass=EasySSH

@@ -181,17 +181,12 @@ echo -e "${GREEN}✅ 已更新 .env。${NC}"
 
 # 2) 前端开发后端地址
 echo -e "${BLUE}🔧 前端开发后端地址: ${VITE_BACKEND_URL}${NC}"
-# 检查前端依赖
-if [ ! -d "web/node_modules" ]; then
-    echo -e "${YELLOW}📦 安装前端依赖...${NC}"
-    cd web
-    pnpm install
-    cd ..
+# 检查前端与同步进程依赖（Web、桌面前端、共享包与 Automerge 同步进程共用仓库根 pnpm 工作区）
+if [ ! -d "web/node_modules" ] || [ ! -d "server/sync-runtime/node_modules" ]; then
+    echo -e "${YELLOW}📦 安装工作区依赖...${NC}"
+    pnpm install --frozen-lockfile
     echo ""
 fi
-
-# Install the pinned Automerge worker without running lifecycle scripts.
-npm ci --prefix server/sync-runtime --ignore-scripts --no-audit --no-fund
 
 # 启动后端
 echo -e "${GREEN}🔧 启动 Go 后端服务 (热重载模式)...${NC}"

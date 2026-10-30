@@ -25,7 +25,7 @@ node scripts/release-version.mjs --prepare "$VERSION"
 RELEASE_PATHS=(VERSION README.md web/package.json
   desktop/EasySSHDesktop/build
   desktop/EasySSHDesktop/frontend/package.json
-  desktop/EasySSHDesktop/desktopversion.go
+  desktop/EasySSHDesktop/internal/app/desktopversion.go
   shared/dbmigration/migrate.go)
 for file in web/package-lock.json desktop/EasySSHDesktop/frontend/package-lock.json; do
   if [ -f "$file" ]; then RELEASE_PATHS+=("$file"); fi
@@ -48,7 +48,7 @@ if ! git diff --cached --quiet; then
   exit 1
 fi
 # Require a clean remainder before staging so failed preflight does not change the index.
-REMAINDER=$(git status --porcelain -- .   ':(exclude)VERSION' ':(exclude)README.md' ':(exclude)web/package.json'   ':(exclude)web/package-lock.json' ':(exclude)desktop/EasySSHDesktop/build'   ':(exclude)desktop/EasySSHDesktop/frontend/package.json'   ':(exclude)desktop/EasySSHDesktop/frontend/package-lock.json'   ':(exclude)desktop/EasySSHDesktop/desktopversion.go'   ':(exclude)shared/dbmigration/migrate.go')
+REMAINDER=$(git status --porcelain -- .   ':(exclude)VERSION' ':(exclude)README.md' ':(exclude)web/package.json'   ':(exclude)web/package-lock.json' ':(exclude)desktop/EasySSHDesktop/build'   ':(exclude)desktop/EasySSHDesktop/frontend/package.json'   ':(exclude)desktop/EasySSHDesktop/frontend/package-lock.json'   ':(exclude)desktop/EasySSHDesktop/internal/app/desktopversion.go'   ':(exclude)shared/dbmigration/migrate.go')
 if [ -n "$REMAINDER" ]; then
   echo "版本更新期间出现其他代码改动；请先检查并提交，未创建标签。"
   printf '%s\n' "$REMAINDER"

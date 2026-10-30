@@ -47,20 +47,18 @@ jobs:
           go-version-file: desktop/EasySSHDesktop/go.mod
           cache-dependency-path: desktop/EasySSHDesktop/go.sum
 
-      # 桌面端前端与共享 web workspace 统一使用 pnpm
+      # 桌面端前端与共享应用包位于仓库根 pnpm 工作区
       - name: 🔧 设置 pnpm
         uses: pnpm/action-setup@v5
         with:
-          package_json_file: web/package.json
+          package_json_file: package.json
 
       - name: 🔧 设置 Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: |
-            web/pnpm-lock.yaml
-            desktop/EasySSHDesktop/frontend/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: 🔧 安装 wails3 CLI (与 go.mod 版本一致)
         run: |

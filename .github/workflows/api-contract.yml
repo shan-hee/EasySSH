@@ -1,0 +1,46 @@
+name: API contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openapi-check:
+    name: OpenAPI route consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check runtime routes against the sole contract
+        run: node scripts/check-openapi-routes.mjs
+
+  generated-contract-check:
+    name: OpenAPI generated Go and TS consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            shared/go.sum
+      - uses: pnpm/action-setup@v5
+        with:
+          package_json_file: package.json
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install pinned contract generator dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Compare checked-in Go and TS with the sole contract
+        run: bash scripts/check-openapi-generated.sh
