@@ -85,6 +85,12 @@
     },
     "activity": {
       "read": "查看活动与任务"
+    },
+    "vnc": {
+      "connect": "连接 VNC 远程桌面"
+    },
+    "rdp": {
+      "connect": "连接 RDP 远程桌面"
     }
   },
   "approvedScripts": "授权脚本",
@@ -162,5 +168,7 @@
   "resourceUnavailable": "服务器已删除或不可用，请移除此项。",
   "backToShares": "返回分享列表",
   "interactiveRequired": "请确认服务器“{name}”的 SSH 交互认证设置。",
-  "loadingResources": "正在加载服务器…"
+  "loadingResources": "正在加载服务器…",
+  "vnc": "VNC 远程桌面",
+  "rdp": "RDP 远程桌面"
 }

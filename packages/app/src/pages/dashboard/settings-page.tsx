@@ -1,12 +1,12 @@
 import { Suspense } from "react"
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
+import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Archive, Bot, Cable, Clock3, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Workflow } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { cn } from "@/lib/utils"
 import { SettingsLoading } from "@/components/settings/settings-loading"
-import { settingsSections, type SettingsSectionId } from "@/lib/settings-section-registry"
+import { getMovedSettingsPath, settingsSections, type SettingsSectionId } from "@/lib/settings-section-registry"
 import { ResourceBoundary } from "@/components/resource-boundary"
 import { useIntentPreload } from "@/hooks/use-intent-preload"
 
@@ -73,9 +73,15 @@ function NavigationButton({ item, active, onClick }: { item: SettingsItem; activ
 function SettingsContent() {
   const { t } = useTranslation("settingsMain")
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, hash } = useLocation()
   const [searchParams] = useSearchParams()
   const requestedSection = searchParams.get("section") || "basic"
+  const movedPath = getMovedSettingsPath(requestedSection)
+  if (movedPath) {
+    const next = new URLSearchParams(searchParams)
+    next.delete("section")
+    return <Navigate to={{ pathname: movedPath, search: next.toString(), hash }} replace />
+  }
   const activeSection = items.some((item) => item.id === requestedSection) ? requestedSection : "basic"
   const activeItem = items.find((item) => item.id === activeSection) ?? items[0]
   const activeResource = settingsSections[activeItem.id]

@@ -28,6 +28,8 @@ type TicketType string
 const (
 	TicketTypeTransferArtifact       TicketType = "transfer_artifact"
 	TicketTypeWSTerminal             TicketType = "ws_terminal"
+	TicketTypeWSVNC                  TicketType = "ws_vnc"
+	TicketTypeWSRDP                  TicketType = "ws_rdp"
 	TicketTypeWSMonitor              TicketType = "ws_monitor"
 	TicketTypeWSSFTPAuth             TicketType = "ws_sftp_auth"
 	TicketTypeInstanceBackupDownload TicketType = "instance_backup_download"
@@ -35,7 +37,7 @@ const (
 
 func (t TicketType) IsValid() bool {
 	switch t {
-	case TicketTypeTransferArtifact, TicketTypeWSTerminal, TicketTypeWSMonitor, TicketTypeWSSFTPAuth,
+	case TicketTypeWSRDP, TicketTypeWSVNC, TicketTypeTransferArtifact, TicketTypeWSTerminal, TicketTypeWSMonitor, TicketTypeWSSFTPAuth,
 		TicketTypeInstanceBackupDownload:
 		return true
 	default:
@@ -231,6 +233,10 @@ func ticketHash(value string) string {
 func ticketRequirements(ctx context.Context, scope access.Scope, kind TicketType, ref string) ([]access.Requirement, error) {
 	req := access.Requirement{ServerID: ref}
 	switch kind {
+	case TicketTypeWSRDP:
+		req.Action = protocol.RDPConnect
+	case TicketTypeWSVNC:
+		req.Action = protocol.VNCConnect
 	case TicketTypeWSTerminal:
 		req.Action = protocol.TerminalConnect
 	case TicketTypeWSMonitor:
@@ -257,7 +263,7 @@ func ticketRequirements(ctx context.Context, scope access.Scope, kind TicketType
 
 func ticketUsesConnection(kind TicketType) bool {
 	switch kind {
-	case TicketTypeWSTerminal, TicketTypeWSMonitor, TicketTypeWSSFTPAuth:
+	case TicketTypeWSRDP, TicketTypeWSVNC, TicketTypeWSTerminal, TicketTypeWSMonitor, TicketTypeWSSFTPAuth:
 		return true
 	default:
 		return false

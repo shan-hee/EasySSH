@@ -21,8 +21,14 @@ type writeFileArguments struct {
 }
 
 func (s *ToolExecutorService) readFileSnapshot(ctx context.Context, serverID, filePath string) (string, bool, error) {
-	if err := access.Current(ctx).Check(ctx, access.Requirement{Action: protocol.AIUse, ServerID: serverID}); err != nil {
-		return "", false, err
+	return s.readFileSnapshotFor(ctx, serverID, filePath, true)
+}
+
+func (s *ToolExecutorService) readFileSnapshotFor(ctx context.Context, serverID, filePath string, requireAI bool) (string, bool, error) {
+	if requireAI {
+		if err := access.Current(ctx).Check(ctx, access.Requirement{Action: protocol.AIUse, ServerID: serverID}); err != nil {
+			return "", false, err
+		}
 	}
 	id, err := uuid.Parse(serverID)
 	if err != nil {
@@ -65,6 +71,10 @@ func readPreviewFile(client *sftp.Client, filePath string) (string, bool, error)
 }
 
 func (s *ToolExecutorService) prepareWriteFile(ctx context.Context, raw json.RawMessage) (*aiworkspace.FileArtifact, error) {
+	return s.prepareWriteFileFor(ctx, raw, true)
+}
+
+func (s *ToolExecutorService) prepareWriteFileFor(ctx context.Context, raw json.RawMessage, requireAI bool) (*aiworkspace.FileArtifact, error) {
 	var args writeFileArguments
 	if err := json.Unmarshal(raw, &args); err != nil {
 		return nil, err
@@ -72,7 +82,7 @@ func (s *ToolExecutorService) prepareWriteFile(ctx context.Context, raw json.Raw
 	if args.Content == nil || args.ServerID == "" || args.Path == "" {
 		return nil, errors.New("server_id, path and string content are required")
 	}
-	before, existed, err := s.readFileSnapshot(ctx, args.ServerID, args.Path)
+	before, existed, err := s.readFileSnapshotFor(ctx, args.ServerID, args.Path, requireAI)
 	if err != nil {
 		return nil, err
 	}

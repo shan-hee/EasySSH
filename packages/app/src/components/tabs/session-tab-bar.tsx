@@ -5,7 +5,7 @@ import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { TerminalSession } from "@/components/terminal/types"
-import { ChevronDown, Plus, Settings, X, FolderOpen, Terminal as TerminalIcon } from "lucide-react"
+import { ChevronDown, Plus, Settings, X, FolderOpen, Monitor, Terminal as TerminalIcon } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -65,6 +65,8 @@ interface SessionTabBarProps {
   activeId: string
   onChangeActive: (id: string) => void
   onNewSession: () => void
+  onNewVncSession?: () => void
+  onNewRdpSession?: () => void
   onNewSftpSession?: () => void
   onCloseSession: (id: string) => void
   onOpenSftpSession?: (sessionId: string) => void
@@ -107,7 +109,7 @@ export type SessionTabDragEvent = {
 
 // 标签色彩算法暂不需要，后续如需按分组着色可恢复
 
-const CONNECTION_PROTOCOLS = ["SFTP", "VNC", "RDP", "SPICE"] as const
+const CONNECTION_PROTOCOLS = ["SFTP", "noVNC", "RDP"] as const
 type ConnectionProtocol = typeof CONNECTION_PROTOCOLS[number]
 
 const TAB_DETACH_THRESHOLD_Y = 44
@@ -220,7 +222,7 @@ function SortableTab({
       style={style}
       {...attributes}
       {...listeners}
-      title={s.type === "sftp" ? `${s.serverName} · SFTP · ${s.currentPath ?? "/"}` : `${s.serverName} · SSH`}
+      title={s.type === "sftp" ? `${s.serverName} · SFTP · ${s.currentPath ?? "/"}` : `${s.serverName} · ${s.type === "vnc" ? "noVNC" : s.type === "rdp" ? "RDP" : "SSH"}`}
       data-session-tab-id={s.id}
       role="button"
       onClick={() => onChangeActive(s.id)}
@@ -240,7 +242,7 @@ function SortableTab({
       {/* 状态指示点 */}
       <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", statusColor)} />
 
-      {s.type === "sftp" ? <FolderOpen className="h-3 w-3 shrink-0" aria-label="SFTP" /> : s.type === "terminal" ? <TerminalIcon className="h-3 w-3 shrink-0" aria-label="SSH" /> : null}
+      {s.type === "sftp" ? <FolderOpen className="h-3 w-3 shrink-0" aria-label="SFTP" /> : (s.type === "vnc" || s.type === "rdp") ? <Monitor className="h-3 w-3 shrink-0" aria-label={s.type === "vnc" ? "noVNC" : "RDP"} /> : s.type === "terminal" ? <TerminalIcon className="h-3 w-3 shrink-0" aria-label="SSH" /> : null}
       <span className={cn(
         "max-w-32 truncate text-xs text-inherit transition-colors",
         active ? "font-semibold" : "font-medium"
@@ -295,7 +297,7 @@ function StaticTab(props: SortableTabProps) {
 
   return (
     <div
-      title={s.type === "sftp" ? `${s.serverName} · SFTP · ${s.currentPath ?? "/"}` : `${s.serverName} · SSH`}
+      title={s.type === "sftp" ? `${s.serverName} · SFTP · ${s.currentPath ?? "/"}` : `${s.serverName} · ${s.type === "vnc" ? "noVNC" : s.type === "rdp" ? "RDP" : "SSH"}`}
       data-session-tab-id={s.id}
       role="button"
       onClick={() => onChangeActive(s.id)}
@@ -314,7 +316,7 @@ function StaticTab(props: SortableTabProps) {
     >
       <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", statusColor)} />
 
-      {s.type === "sftp" ? <FolderOpen className="h-3 w-3 shrink-0" aria-label="SFTP" /> : s.type === "terminal" ? <TerminalIcon className="h-3 w-3 shrink-0" aria-label="SSH" /> : null}
+      {s.type === "sftp" ? <FolderOpen className="h-3 w-3 shrink-0" aria-label="SFTP" /> : (s.type === "vnc" || s.type === "rdp") ? <Monitor className="h-3 w-3 shrink-0" aria-label={s.type === "vnc" ? "noVNC" : "RDP"} /> : s.type === "terminal" ? <TerminalIcon className="h-3 w-3 shrink-0" aria-label="SSH" /> : null}
       <span className={cn(
         "max-w-32 truncate text-xs text-inherit transition-colors",
         active ? "font-semibold" : "font-medium"
@@ -346,6 +348,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
     activeId,
     onChangeActive,
     onNewSession,
+    onNewVncSession,
+  onNewRdpSession,
     onNewSftpSession,
     onCloseSession,
     onDuplicateSession,
@@ -603,16 +607,16 @@ export function SessionTabBar(props: SessionTabBarProps) {
       >
         <Plus className="h-4 w-4" />
       </Button>
-      {onNewSftpSession && (
+      {(onNewSftpSession || onNewVncSession) && (
         <>
           <Button
             variant="ghost"
             size="sm"
             className="h-8 w-16 rounded-lg px-2 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
-            disabled={connectionProtocol !== "SFTP"}
-            onClick={connectionProtocol === "SFTP" ? onNewSftpSession : undefined}
-            aria-label={connectionProtocol === "SFTP" ? tTerminal("sftpPickerActionLabel") : tTerminal("connectionProtocolPending", { protocol: connectionProtocol })}
-            title={connectionProtocol === "SFTP" ? tTerminal("sftpPickerActionLabel") : tTerminal("connectionProtocolPending", { protocol: connectionProtocol })}
+            disabled={connectionProtocol === "SFTP" ? !onNewSftpSession : connectionProtocol === "noVNC" ? !onNewVncSession : !onNewRdpSession}
+            onClick={connectionProtocol === "SFTP" ? onNewSftpSession : connectionProtocol === "noVNC" ? onNewVncSession : onNewRdpSession}
+            aria-label={connectionProtocol === "SFTP" ? tTerminal("sftpPickerActionLabel") : connectionProtocol === "noVNC" && onNewVncSession ? tTerminal("vncTitle") : connectionProtocol === "RDP" && onNewRdpSession ? tTerminal("rdpTitle") : tTerminal("connectionProtocolPending", { protocol: connectionProtocol })}
+            title={connectionProtocol === "SFTP" ? tTerminal("sftpPickerActionLabel") : connectionProtocol === "noVNC" && onNewVncSession ? tTerminal("vncTitle") : connectionProtocol === "RDP" && onNewRdpSession ? tTerminal("rdpTitle") : tTerminal("connectionProtocolPending", { protocol: connectionProtocol })}
           >
             {connectionProtocol}
           </Button>

@@ -104,11 +104,17 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
     },
   },
   {
+    url: "/dashboard/mcp",
+    namespaces: ["automation", "sharing"],
+    path: "mcp",
+    load: () => import("@easyssh/app/pages/dashboard/mcp-page"),
+  },
+  {
     url: "/dashboard/settings",
     namespaces: ["settingsMain"],
     path: "settings",
     load: () => import("@easyssh/app/pages/dashboard/settings-page"),
-    preloadContent: (url) => getSettingsSection(url).preload(),
+    preloadContent: (url) => getSettingsSection(url)?.preload() ?? Promise.resolve(),
     loadData: (queryClient, url) => {
       const section = getSearchParams(url).get("section") || "basic"
       return section === "basic"

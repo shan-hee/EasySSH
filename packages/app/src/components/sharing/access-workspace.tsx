@@ -1,3 +1,5 @@
+import { RDPSession } from "@/components/rdp/rdp-session"
+import { VNCSession } from "@/components/vnc/vnc-session"
 import { ActivityOverview } from "@/components/activity/activity-overview"
 import { ApprovedScripts } from "./approved-scripts"
 import { WorkspaceRelay } from "./workspace-relay"
@@ -25,12 +27,14 @@ import type { TerminalSession } from "@/components/terminal/types"
 import { apiFetch } from "@/lib/api-client"
 import type { components } from "@/generated/openapi"
 
-type Mode = "terminal" | "files" | "monitor" | "docker"
+type Mode = "terminal" | "files" | "monitor" | "docker" | "vnc" | "rdp"
 const modeAction = {
   terminal: "terminal.connect",
   files: "files.list",
   monitor: "monitor.read",
   docker: "docker.read",
+  vnc: "vnc.connect",
+  rdp: "rdp.connect",
 } as const
 type OpenTab = { id: string; resourceId: string; server: Server; mode: Mode }
 
@@ -546,6 +550,8 @@ function AccessResourcePanel({
       capabilities={capabilities}
       layout="embedded"
     >
+      {tab.mode === "rdp" && <RDPSession serverId={tab.server.id} isActive={active} onPhase={() => undefined} />}
+      {tab.mode === "vnc" && <VNCSession serverId={tab.server.id} isActive={active} onPhase={() => undefined} />}
       {tab.mode === "terminal" && (
         <TabTerminalContent
           session={session}

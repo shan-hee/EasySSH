@@ -109,7 +109,7 @@ func (r *OperationRecord) BeforeCreate(tx *gorm.DB) error {
 	if r.Type == TypeTransfer && r.Status == StatusSuccess {
 		r.BytesCompleted = r.BytesProcessed
 	}
-	if r.Actor.GrantID != "" {
+	if r.Actor.GrantID != "" && r.Source != "automation" {
 		r.Source = "share"
 	} else if r.Source != "automation" {
 		r.Source = "manual"

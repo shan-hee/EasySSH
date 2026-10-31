@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import {
   Bot,
+  Plug,
   ListChecks,
   FileText,
   Monitor,
@@ -31,6 +32,7 @@ export interface NavigationItem {
 
 export interface NavigationGroups {
   workbench: NavigationItem[]
+  automation: NavigationItem[]
   systemOrg: NavigationItem[]
 }
 
@@ -77,6 +79,16 @@ const workbench: NavigationItemDefinition[] = [
   },
 ]
 
+const automation: NavigationItemDefinition[] = [
+  {
+    titleKey: "mcp",
+    url: "/dashboard/mcp",
+    icon: Plug,
+    profiles: ["web"],
+    requiredCapabilities: ["automation"],
+  },
+]
+
 const systemOrg: NavigationItemDefinition[] = [
   {
     titleKey: "logs",
@@ -103,6 +115,7 @@ export function buildNavigationGroups({
 }): NavigationGroups {
   return {
     workbench: translateNavigationItems(workbench, runtime, t),
+    automation: translateNavigationItems(automation, runtime, t),
     systemOrg: translateNavigationItems(systemOrg, runtime, t),
   }
 }

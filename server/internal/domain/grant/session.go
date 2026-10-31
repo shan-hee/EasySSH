@@ -54,7 +54,7 @@ func (s *Service) Exchange(ctx context.Context, req ExchangeRequest) (*ExchangeR
 			return ErrInvalidLink
 		}
 		now := time.Now().UTC()
-		if !matches(req.Secret, g.SecretHash) || activeGrant(g, now) != nil {
+		if g.Purpose == "automation" || !matches(req.Secret, g.SecretHash) || activeGrant(g, now) != nil {
 			return ErrInvalidLink
 		}
 		resources, err := s.resourceViews(ctx, tx, g.ID)

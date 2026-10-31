@@ -98,7 +98,7 @@ function SessionDockviewTab({ session, onDetach, canAcceptCrossSessionFileDrop, 
   })
   return <div ref={fileDropRef} data-dockview-session-id={session.id}
     className={cn("flex h-full min-w-0 cursor-grab items-center gap-2 px-2 text-xs active:cursor-grabbing", isCrossSessionFileDragOver && "bg-primary/10 ring-1 ring-inset ring-primary/60")}
-    title={`${session.serverName} · ${session.type === "sftp" ? "SFTP" : "SSH"} · ${session.username}@${session.host}`}>
+    title={`${session.serverName} · ${session.type === "sftp" ? "SFTP" : session.type === "vnc" ? "noVNC" : session.type === "rdp" ? "RDP" : "SSH"} · ${session.username}@${session.host}`}>
     <span className={cn("size-1.5 shrink-0 rounded-full", session.status === "connected" ? "bg-green-500" : session.status === "reconnecting" ? "bg-yellow-500" : "bg-red-500")} />
     <Icon className="size-3 shrink-0" />
     <span className="max-w-40 truncate">{session.serverName}</span>

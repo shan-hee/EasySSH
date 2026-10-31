@@ -1,4 +1,4 @@
-import { Suspense, type ReactNode } from "react"
+import { useState, lazy, Suspense, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { PageLoading } from "@/components/page-loading"
 import { toast } from "@/components/ui/sonner"
@@ -13,12 +13,17 @@ import type { TerminalConnectionPhase, TerminalSession } from "@/components/term
 import { PreloadedTerminalSftpTabContent as TerminalSftpTabContent } from "@/lib/terminal-preload"
 import type { WorkbenchSessions } from "./use-workbench-sessions"
 
+const RDPLauncher = lazy(() => import("@/components/rdp/rdp-launcher").then(m => ({ default: m.RDPLauncher })))
+const VNCLauncher = lazy(() => import("@/components/vnc/vnc-launcher").then(m => ({ default: m.VNCLauncher })))
+
 type TerminalPresentationProps = Pick<
   TerminalComponentProps,
   "aiAssistantAdapters" | "hidePageHeader" | "unframed" | "settingsDialogOpen" | "onSettingsDialogOpenChange" | "tabBarEndContent"
 >
 
 export interface WorkbenchProps extends TerminalPresentationProps {
+  enableVnc?: boolean
+  enableRdp?: boolean
   workbench: WorkbenchSessions
   serverApi: ServerConnectionConfigsApi
   /** 服务器列表可以读取时为 true，例如 Web 认证就绪后。 */
@@ -44,9 +49,13 @@ export function Workbench({
   serverApi,
   serversReady,
   terminalTransportReady = true,
+  enableVnc = false,
+  enableRdp = false,
   ...presentation
 }: WorkbenchProps): ReactNode {
   const { t } = useTranslation("terminal")
+  const [rdpOpen, setRdpOpen] = useState(false)
+  const [vncOpen, setVncOpen] = useState(false)
   const {
     sessions,
     sftpTabs,
@@ -91,6 +100,8 @@ export function Workbench({
 
   return (
     <>
+      {enableRdp && rdpOpen && <Suspense fallback={null}><RDPLauncher open={rdpOpen} onOpenChange={setRdpOpen} serverApi={serverApi} onConnect={workbench.createRdpTab} /></Suspense>}
+      {enableVnc && vncOpen && <Suspense fallback={null}><VNCLauncher open={vncOpen} onOpenChange={setVncOpen} serverApi={serverApi} onConnect={workbench.createVncTab} /></Suspense>}
       <SftpServerPickerDialog
         open={canUseSftp && workbench.sftpPickerOpen}
         ready={serversReady}
@@ -104,6 +115,8 @@ export function Workbench({
         {...presentation}
         sessions={terminalTransportReady ? sessions : deferConnections(sessions)}
         extraSessions={sftpTabSessions}
+        onNewRdpSession={enableRdp && serversReady ? () => setRdpOpen(true) : undefined}
+        onNewVncSession={enableVnc && serversReady ? () => setVncOpen(true) : undefined}
         onNewSftpSession={canUseSftp ? workbench.openSftpPicker : undefined}
         renderExtraSessionContent={renderSftpTabContent}
         onOpenSftpSession={async (session, path) => {

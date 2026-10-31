@@ -162,7 +162,7 @@ function TerminalPageContent() {
       layout="web"
     >
       <div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
-        <Workbench
+        <Workbench enableVnc enableRdp
           workbench={workbench}
           serverApi={defaultServerConnectionConfigsApi}
           serversReady={ready}

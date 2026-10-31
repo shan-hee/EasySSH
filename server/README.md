@@ -1,35 +1,14 @@
 # EasySSH 后端服务
 
-![Status](https://img.shields.io/badge/status-completed-success)
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Go](https://img.shields.io/badge/go-1.21+-00ADD8?logo=go)
+EasySSH 后端采用 Go，提供 SSH/SFTP、服务器管理、任务执行、监控和审计。Web 工作台支持 noVNC 和可选 guacd 网关的 RDP，外部 Agent 可通过 MCP 或 REST 使用受限访问令牌。
 
-EasySSH 后端服务采用 Go 语言开发，提供完整的 SSH 服务器管理、终端连接、文件传输、系统监控和审计日志功能。
-
----
-
-## 📊 开发进度
-
-✅ **后端核心功能已 100% 完成**
-
-| 模块 | 状态 | API 数量 |
-|------|------|---------|
-| 用户认证 | ✅ 已完成 | 5 个 |
-| 服务器管理 | ✅ 已完成 | 7 个 |
-| SSH 终端 | ✅ 已完成 | 4 个 |
-| SFTP 文件 | ✅ 已完成 | 12 个 |
-| 系统监控 | ✅ 已完成 | 6 个 |
-| 审计日志 | ✅ 已完成 | 5 个 |
-
-**总计**: 39+ REST API 端点
-
----
+访问令牌、MCP 客户端配置、VNC 要求以及生产数据库升级/回退流程见 [MCP、访问令牌与远程桌面](../docs/automation-vnc.md)。API 契约以 [OpenAPI](../contracts/http/openapi.yaml) 为准。
 
 ## 🚀 快速开始
 
 ### 1. 环境要求
 
-- Go 1.25+
+- Go 1.26.10+（以 `go.mod` 为准）
 - 默认 SQLite，无需单独数据库服务
 - 可选 PostgreSQL 12+ 或 MySQL 8+
 
@@ -100,7 +79,7 @@ server/
 ├── internal/
 │   ├── api/                     # API 层
 │   │   ├── middleware/          # 中间件
-│   │   │   ├── auth.go          # OAuth 访问令牌认证
+│   │   │   ├── auth.go          # Owner/访客身份认证
 │   │   │   ├── audit.go         # 审计日志
 │   │   │   ├── cors.go          # CORS
 │   │   │   ├── logger.go        # 日志
@@ -140,12 +119,17 @@ server/
 
 ## 🎯 API 端点
 
-### 认证 & 授权 (5 个)
-- `POST /api/v1/oauth/authorize` - 使用邮箱密码 + PKCE 发起授权请求（支持 2FA）
-- `POST /api/v1/oauth/token` - 使用授权码/refresh_token 换取 access_token
-- `POST /api/v1/auth/register` - 用户注册
-- `POST /api/v1/oauth/logout` - 推荐登出端点（完整撤销当前会话）
-- `GET /api/v1/users/me` - 获取当前用户信息
+### 认证与授权
+- `POST /api/v1/owner/initialize` - 初始化所有者
+- `POST /api/v1/owner/login` - 所有者登录
+- `POST /api/v1/owner/logout` - 撤销当前登录会话
+- `GET /api/v1/owner/profile` - 当前所有者资料
+- `/api/v1/grants` - 所有者管理资源授权
+- `GET/POST /api/v1/access-tokens`、`DELETE /api/v1/access-tokens/:id` - 令牌列表、签发与撤销
+- `POST /api/v1/mcp` - 使用自动化 Bearer 令牌调用 MCP Streamable HTTP
+- `POST /api/v1/automation/tools/:name` - 调用与 MCP 相同的业务工具
+- `GET/PUT /api/v1/vnc/:server_id/config` - VNC 配置；修改仅限所有者
+- `GET /api/v1/vnc/:server_id/ws` - 绑定逻辑连接的一次性票据认证，代理 VNC 数据
 
 ### 服务器管理 (7 个)
 - `GET /api/v1/servers` - 服务器列表
@@ -203,7 +187,8 @@ server/
 - **数据库**: SQLite（默认）、PostgreSQL、MySQL
 
 ### 认证与安全
-- **OAuth/OIDC Provider**: Ory Fosite v0.49.0
+- **身份与授权**: Owner 会话、Grant 资源授权及独立自动化令牌
+- **MCP**: 官方 Go SDK，Streamable HTTP
 - **密码加密**: bcrypt (golang.org/x/crypto)
 - **凭证加密**: AES-256-GCM
 
@@ -230,14 +215,11 @@ server/
 - ✅ **传输**: 支持 HTTPS（生产环境）
 
 ### 认证授权
-- ✅ **OAuth 2.0 + PKCE 登录**：通过 `/api/v1/oauth/authorize` + `/api/v1/oauth/token` 的 Authorization Code + PKCE 流程完成邮箱密码登录（支持 2FA）
-- ✅ **访问令牌 (Access Token)**：由 Fosite 签发，仅通过 `Authorization: Bearer <token>` 传递，由前端内存存储和自动刷新管理
-- ✅ **刷新令牌 (Refresh Token)**：由 Fosite 签发，内置 Web Client 将其存放于 HttpOnly Cookie（`Path=/api/v1/oauth`）
-- ✅ **OIDC**：提供 Discovery、JWKS 与 RSA 3072 签名的 ID Token，支持 Authorization Code + PKCE S256
-- ✅ **会话管理**：每次登录创建独立 `user_sessions` 记录，并通过 Fosite Request ID 关联数据库中的授权记录，实现持久化撤销
-- ✅ **Casbin RBAC**：权限代码为只读契约，支持自定义角色、角色继承和数据库持久化策略
-- ✅ **资源级授权**：可向指定用户或角色授予单个服务器的查看、连接、终端、SFTP 或 Docker 权限
-- ✅ **数据层隔离**：Repository 继续校验资源所有者，作为 Casbin 策略之外的纵深安全边界
+- **所有者会话**：管理配置、授权和凭据；浏览器使用会话 Cookie 与 CSRF 防护。
+- **访客授权**：按服务器、操作和脚本范围检查 Grant，支持过期、撤销与目标变更确认。
+- **自动化令牌**：绑定 Grant，仅保存哈希，原文签发时返回一次；通过 `Authorization: Bearer ess_api_...` 使用，不具有所有者管理权限。
+- **运行时权限**：REST、MCP 与连接复用服务端 Scope 和工作租约；撤销可中断关联工作。
+- **WebSocket**：短期一次性票据绑定身份、服务器及逻辑连接；VNC 使用独立的 `vnc.connect` 权限。
 
 ### 审计追踪
 - ✅ 记录所有关键操作（登录、SSH 连接、文件操作等）
@@ -306,9 +288,9 @@ golangci-lint run
 | `ENCRYPTION_KEY` | 可选显式部署根密钥（32 字节，Base64）；多实例必须共享 | 自动生成到数据目录 | 否 |
 | `DB_DRIVER` | 数据库驱动 | sqlite | 否 |
 | `DB_DSN` | 数据库连接串 | ./data/easyssh.db | 否 |
-EasySSH 只保留启动自举配置。Cookie、CORS、CSRF、CSP、可信代理、SFTP 连接池、后台任务最大并发、Access Token/Refresh Token 生命周期以及对外 OAuth/OIDC Provider 地址与开关都在“系统设置”维护。后台任务队列按需创建执行协程，空闲时不保留 Worker；最大并发默认 2，保存后立即生效。对外 Provider 默认关闭，EasySSH 自身登录始终使用固定内部 issuer/redirect，不依赖部署域名。服务器与登录位置统一通过 HTTPS 调用 `ipwho.is`，无需 API Key 或本地位置库；成功结果缓存 24 小时，单次查询（含 DNS）最多等待 3 秒。免费接口按出口 IP 每天限额 1,000 次，收到 429 后按 `Retry-After` 暂停请求（未提供有效值时暂停 24 小时）；位置查询失败不阻止保存或登录。
+EasySSH 只保留启动自举配置。Cookie、CORS、CSRF、CSP、可信代理、SFTP 连接池、后台任务最大并发、登录会话与安全策略都在“系统设置”维护。后台任务队列按需创建执行协程，空闲时不保留 Worker；最大并发默认 2，保存后立即生效。服务器与登录位置统一通过 HTTPS 调用 `ipwho.is`，无需 API Key 或本地位置库；成功结果缓存 24 小时，单次查询（含 DNS）最多等待 3 秒。免费接口按出口 IP 每天限额 1,000 次，收到 429 后按 `Retry-After` 暂停请求（未提供有效值时暂停 24 小时）；位置查询失败不阻止保存或登录。
 
-未设置 `ENCRYPTION_KEY` 时，服务首次启动会生成权限为 `0600` 的 `easyssh-root.key`。服务通过 HKDF-SHA256 派生 OAuth、CSRF 和 2FA 备份码子密钥，不再需要额外全局密钥。同一数据库由一个 EasySSH 进程独占；备份维护前需停止正常进程。首次填写或修改对外 Provider 地址后需重启，关闭/开启开关本身即时生效。
+未设置 `ENCRYPTION_KEY` 时，服务首次启动会生成权限为 `0600` 的 `easyssh-root.key`。同一数据库由一个 EasySSH 进程独占；备份维护前需停止正常进程。
 
 ### 生成加密密钥
 
@@ -379,7 +361,7 @@ healthcheck:
   interval: 30s
   timeout: 10s
   retries: 3
-  start_period: 40s
+  start_period: 32m
 ```
 
 ---
@@ -414,4 +396,4 @@ Limits: 12 MiB document exchange request bodies; 16 MiB object request bodies wi
 
 ## 备份、数据迁移与数据库升级
 
-日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../docs/backup-and-migrations.md)。
+日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理。服务端启动默认创建加密升级恢复点并自动迁移受支持的旧库，成功后才开放业务；可通过 `EASYSSH_AUTO_MIGRATE=off` 关闭，迁移总超时默认 `EASYSSH_MIGRATION_TIMEOUT=30m`。不会自动降级或覆盖数据库。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../docs/backup-and-migrations.md)。

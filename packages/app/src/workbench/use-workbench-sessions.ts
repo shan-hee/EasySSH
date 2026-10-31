@@ -212,6 +212,26 @@ export function useWorkbenchSessions({
     return sessionId
   }, [onConnectionStarted, rejectWhenFull, setActiveSessionId, setSessions, sftpTabs.length, updateSessionActivity])
 
+  const createVncTab = useCallback((server: Server): boolean => {
+    if (rejectWhenFull(totalTabCount)) return false
+    const now = Date.now()
+    const session = { ...createTerminalSessionFromServer(`vnc-${crypto.randomUUID()}`, server, now), type: "vnc" as const }
+    setSessions(current => [...current, session])
+    setActiveSftpTabId(null)
+    setActiveSessionId(session.id)
+    return true
+  }, [rejectWhenFull, totalTabCount, setSessions, setActiveSessionId])
+
+  const createRdpTab = useCallback((server: Server): boolean => {
+    if (rejectWhenFull(totalTabCount)) return false
+    const now = Date.now()
+    const session = { ...createTerminalSessionFromServer(`rdp-${crypto.randomUUID()}`, server, now), type: "rdp" as const }
+    setSessions(current => [...current, session])
+    setActiveSftpTabId(null)
+    setActiveSessionId(session.id)
+    return true
+  }, [rejectWhenFull, totalTabCount, setSessions, setActiveSessionId])
+
   const closeSession = useCallback((sessionId: string) => {
     const currentIndex = sessions.findIndex((session) => session.id === sessionId)
     if (activeSessionId === sessionId && currentIndex !== -1) {
@@ -242,11 +262,11 @@ export function useWorkbenchSessions({
     const now = Date.now()
     const duplicate: TerminalSession = {
       ...source,
-      id: `session-${now}`,
+      id: `session-${crypto.randomUUID()}`,
       lastActivity: now,
       pinned: false,
-      connectionPhase: source.type === "terminal" ? "idle" : source.connectionPhase,
-      status: source.type === "terminal" ? "reconnecting" : source.status,
+      connectionPhase: source.type === "terminal" || (source.type === "vnc" || source.type === "rdp") ? "idle" : source.connectionPhase,
+      status: source.type === "terminal" || (source.type === "vnc" || source.type === "rdp") ? "reconnecting" : source.status,
     }
     setSessions((current) => [...current, duplicate])
     setActiveSessionId(duplicate.id)
@@ -346,6 +366,8 @@ export function useWorkbenchSessions({
     getCombinedSessions,
     openSftpPicker,
     createSftpTab,
+    createVncTab,
+    createRdpTab,
     closeSftpTab,
     reorderSftpTabs,
     renameSftpTab,

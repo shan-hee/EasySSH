@@ -20,7 +20,7 @@ func (a Actor) Valid() bool {
 
 func (a Action) Shareable() bool {
 	switch a {
-	case TerminalConnect, FilesList, FilesRead, FilesDownload, FilesUpload,
+	case TerminalConnect, VNCConnect, RDPConnect, FilesList, FilesRead, FilesDownload, FilesUpload,
 		FilesWrite, FilesDelete, MonitorRead, DockerRead, DockerManage, ScriptsExecute, AIUse:
 		return true
 	default:

@@ -72,6 +72,7 @@ export const createAppRouter = () => {
           ...dashboardRoutes,
           { path: "sync-authorize", loader: dashboardLoader, lazy: lazyPage(() => import("@easyssh/app/pages/dashboard/sync-authorize-page"), ["settingsManagementBackup"]), ErrorBoundary: RouteErrorBoundary },
           { path: "sftp", element: <Navigate to="/dashboard/terminal?sftpPicker=1" replace /> },
+          { path: "access-tokens", element: <Navigate to="/dashboard/mcp" replace /> },
           { path: "error", lazy: async () => {
             const [{ default: DashboardError }] = await Promise.all([import("@easyssh/app/pages/dashboard/dashboard-error"), preloadNamespaces(["errors"])])
             return { Component: () => <DashboardError error={new Error("Dashboard error")} reset={() => window.location.reload()} /> }

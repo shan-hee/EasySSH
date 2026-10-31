@@ -28,7 +28,9 @@ type ServerConfig struct {
 	Port          int
 	Env           string // development, production
 	EncryptionKey string // 加密密钥（Base64 编码的 32 字节 AES 密钥）
-	WebDevPort    int    // 前端开发端口（从 WEB_PORT 读取）
+	GuacdAddress  string
+	GuacdTLS      bool
+	WebDevPort    int // 前端开发端口（从 WEB_PORT 读取）
 }
 
 // DatabaseConfig 数据库配置
@@ -43,6 +45,8 @@ type DatabaseConfig struct {
 }
 
 type environmentConfig struct {
+	GuacdAddress   string `env:"GUACD_ADDRESS"`
+	GuacdTLS       bool   `env:"GUACD_TLS" envDefault:"false"`
 	Environment    string `env:"ENV" envDefault:"development"`
 	EncryptionKey  string `env:"ENCRYPTION_KEY"`
 	WebDevPort     int    `env:"WEB_PORT" envDefault:"3000"`
@@ -73,6 +77,8 @@ func Load() (*Config, error) {
 			Env:           values.Environment,
 			EncryptionKey: encryptionKey,
 			WebDevPort:    values.WebDevPort,
+			GuacdAddress:  values.GuacdAddress,
+			GuacdTLS:      values.GuacdTLS,
 		},
 		Database: DatabaseConfig{
 			Driver:          values.DatabaseDriver,

@@ -109,7 +109,8 @@
     "./lib/api/task-center": "./src/lib/api/task-center.ts",
     "./lib/session/workspace": "./src/lib/session/workspace.ts",
     "./lib/websocket-terminal": "./src/lib/websocket-terminal.ts",
-    "./lib/workspace-task-navigation": "./src/lib/workspace-task-navigation.ts"
+    "./lib/workspace-task-navigation": "./src/lib/workspace-task-navigation.ts",
+    "./pages/dashboard/mcp-page": "./src/pages/dashboard/mcp-page.tsx"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
@@ -140,6 +141,7 @@
     "@icons-pack/react-simple-icons": "^13.15.1",
     "@lexical/react": "^0.52.0",
     "@monaco-editor/react": "^4.7.0",
+    "@novnc/novnc": "1.7.0",
     "@radix-ui/react-alert-dialog": "^1.1.23",
     "@radix-ui/react-avatar": "^1.2.6",
     "@radix-ui/react-checkbox": "^1.3.11",
@@ -182,6 +184,7 @@
     "dockview": "catalog:",
     "echarts": "^6.1.0",
     "embla-carousel-react": "^8.6.0",
+    "guacamole-common-js": "1.5.0",
     "i18next": "catalog:",
     "input-otp": "^1.5.0",
     "katex": "^0.18.4",
@@ -210,7 +213,9 @@
   "devDependencies": {
     "@easyssh/frontend-tooling": "workspace:*",
     "@types/culori": "^4.0.1",
+    "@types/guacamole-common-js": "1.5.5",
     "@types/node": "catalog:",
+    "@types/novnc__novnc": "^1.6.0",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "eslint": "catalog:",

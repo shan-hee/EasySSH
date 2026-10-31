@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -39,6 +40,30 @@ type Request struct {
 }
 
 type Client struct{ address, token string }
+
+// MigrationTimeout bounds startup maintenance separately from ordinary startup.
+func MigrationTimeout() (time.Duration, error) {
+	value := strings.TrimSpace(os.Getenv("EASYSSH_MIGRATION_TIMEOUT"))
+	if value == "" {
+		return 30 * time.Minute, nil
+	}
+	duration, err := time.ParseDuration(value)
+	if err != nil || duration < time.Minute || duration > 24*time.Hour {
+		return 0, errors.New("EASYSSH_MIGRATION_TIMEOUT must be between 1m and 24h")
+	}
+	return duration, nil
+}
+
+// Migration sends a heartbeat over the authenticated, private launcher channel.
+// Empty phase finishes maintenance and restores the ordinary startup deadline.
+func (c *Client) Migration(ctx context.Context, phase string) error {
+	if c == nil {
+		return nil
+	}
+	return c.call(ctx, "/migration", struct {
+		Phase string `json:"phase"`
+	}{phase}, nil)
+}
 
 func FromEnvironment() *Client {
 	address, token := os.Getenv(addressEnv), os.Getenv(tokenEnv)

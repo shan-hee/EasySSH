@@ -27,6 +27,7 @@ const routeTitles = [
   { path: "/dashboard/operation-logs", navKey: "operationLogs", namespace: "operationLogs", key: "pageTitle" },
   { path: "/dashboard/scripts", navKey: "scripts", namespace: "scripts", key: "pageTitle" },
   { path: "/dashboard/tasks", navKey: "tasks", namespace: "taskCenter", key: "title" },
+  { path: "/dashboard/mcp", navKey: "mcp", namespace: "automation", key: "mcpTitle" },
   { path: "/dashboard/settings", navKey: "systemSettings", namespace: "settingsMain", key: "pageTitle" },
   { path: "/dashboard/error", navKey: "console", namespace: "errors", key: "defaultTitle" },
   { path: "/dashboard", navKey: "console", namespace: "dashboard", key: "title", exact: true },

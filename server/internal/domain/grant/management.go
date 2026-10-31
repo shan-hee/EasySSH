@@ -22,10 +22,10 @@ func (s *Service) List(ctx context.Context, scope access.Scope, limit, offset in
 	}
 	var count int64
 	var grants []Grant
-	if err := s.db.WithContext(ctx).Model(&Grant{}).Count(&count).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&Grant{}).Where("purpose <> ?", "automation").Count(&count).Error; err != nil {
 		return nil, 0, err
 	}
-	err := s.db.WithContext(ctx).Order("created_at DESC, id DESC").Limit(limit).Offset(offset).Find(&grants).Error
+	err := s.db.WithContext(ctx).Where("purpose <> ?", "automation").Order("created_at DESC, id DESC").Limit(limit).Offset(offset).Find(&grants).Error
 	if err != nil {
 		return nil, 0, err
 	}
@@ -78,14 +78,14 @@ func (s *Service) Update(ctx context.Context, scope access.Scope, id uuid.UUID, 
 		return err
 	}
 	now := time.Now().UTC()
-	if err := normalizeRequest(&req, now); err != nil {
-		return err
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var g Grant
 		if err := tx.Where("id = ? AND version = ?", id, version).First(&g).Error; err != nil {
+			return err
+		}
+		if err := normalizeRequestFor(&req, now, g.Purpose == "automation"); err != nil {
 			return err
 		}
 		if g.RevokedAt != nil {
@@ -190,6 +190,9 @@ func (s *Service) RotateSecret(ctx context.Context, scope access.Scope, id uuid.
 			return err
 		}
 		now := time.Now().UTC()
+		if g.Purpose == "automation" {
+			return access.ErrForbidden
+		}
 		if err := activeGrant(g, now); err != nil {
 			return err
 		}
@@ -279,7 +282,7 @@ func (s *Service) ConfirmResource(ctx context.Context, scope access.Scope, grant
 		if current != revision {
 			return access.ErrResourceChanged
 		}
-		if err := s.catalog.Ready(ctx, tx, serverID, r.AllowInteractive); err != nil {
+		if err := s.resourceReady(ctx, tx, serverID, r.Actions, r.AllowInteractive); err != nil {
 			return err
 		}
 		if r.ApprovedConnectionRevision == revision {

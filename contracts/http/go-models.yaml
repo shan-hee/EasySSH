@@ -1,5 +1,4 @@
 package: protocol
-output: shared/protocol/generated.go
 generate:
   models: true
 output-options:

@@ -23,7 +23,15 @@ export const settingsSections = {
 }
 
 export type SettingsSectionId = keyof typeof settingsSections
+
+// Preserve existing production bookmarks while the features live in main navigation.
+export function getMovedSettingsPath(section: string | null) {
+  if (section === "mcp" || section === "access-tokens") return "/dashboard/mcp"
+  return null
+}
+
 export function getSettingsSection(url: string) {
   const requested = new URLSearchParams(url.split("?", 2)[1]).get("section") || "basic"
+  if (getMovedSettingsPath(requested)) return null
   return Object.hasOwn(settingsSections, requested) ? settingsSections[requested as SettingsSectionId] : settingsSections.basic
 }

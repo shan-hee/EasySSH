@@ -85,6 +85,12 @@
     },
     "activity": {
       "read": "Activity and tasks"
+    },
+    "vnc": {
+      "connect": "Connect VNC desktop"
+    },
+    "rdp": {
+      "connect": "Connect to RDP desktop"
     }
   },
   "approvedScripts": "Approved scripts",
@@ -162,5 +168,7 @@
   "resourceUnavailable": "This server was deleted or is unavailable. Remove it from the share.",
   "backToShares": "Back to shares",
   "interactiveRequired": "Confirm SSH interactive authentication for “{name}”.",
-  "loadingResources": "Loading servers…"
+  "loadingResources": "Loading servers…",
+  "vnc": "VNC desktop",
+  "rdp": "RDP desktop"
 }

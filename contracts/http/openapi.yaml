@@ -57,6 +57,10 @@ tags:
   description: 工作区任务与通知实时事件
 components:
   securitySchemes:
+    automationToken:
+      type: http
+      scheme: bearer
+      description: Revocable ess_api_ credential bound to an explicit resource grant.
     ownerCookie:
       type: apiKey
       in: cookie
@@ -154,6 +158,51 @@ components:
     NoContent:
       description: 操作成功，无响应体
   schemas:
+    AutomationToken:
+      type: object
+      required: [id, name, grant_id, grant_name, created_at, expires_at, active]
+      properties:
+        active: {type: boolean}
+        id: {type: string, format: uuid}
+        name: {type: string}
+        grant_id: {type: string, format: uuid}
+        grant_name: {type: string}
+        created_at: {type: string, format: date-time}
+        last_used_at: {type: string, format: date-time, nullable: true}
+        expires_at: {type: string, format: date-time}
+        revoked_at: {type: string, format: date-time, nullable: true}
+    CreateAutomationToken:
+      type: object
+      required: [name, expires_at]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 100}
+        grant_id: {type: string, format: uuid}
+        authorization:
+          $ref: "#/components/schemas/CreateGrantInput"
+        expires_at: {type: string, format: date-time}
+    AutomationTokenCreated:
+      type: object
+      required: [token, metadata]
+      properties:
+        token: {type: string, description: Only returned once; never logged or stored in plaintext.}
+        metadata: {$ref: '#/components/schemas/AutomationToken'}
+    RDPConfig:
+      type: object
+      required: [server_id, enabled, port, security, ignore_certificate]
+      properties:
+        server_id: {type: string, format: uuid}
+        enabled: {type: boolean}
+        port: {type: integer, minimum: 1, maximum: 65535}
+        security: {type: string, enum: [nla, tls]}
+        ignore_certificate: {type: boolean, description: Explicitly trust an unverified RDP server certificate.}
+    VNCConfig:
+      type: object
+      required: [server_id, enabled, port, tls]
+      properties:
+        server_id: {type: string, format: uuid}
+        enabled: {type: boolean}
+        port: {type: integer, minimum: 1, maximum: 65535}
+        tls: {type: boolean, description: TLS from EasySSH to the saved server host with certificate validation.}
     PublicBranding:
       type: object
       description: 未登录页面可读取的实例展示信息；不包含存储路径、队列、传输或安全设置。
@@ -216,6 +265,8 @@ components:
       - sync.write
       - activity.read
       - terminal.connect
+      - vnc.connect
+      - rdp.connect
       - files.list
       - files.read
       - files.download
@@ -238,6 +289,8 @@ components:
       - SyncWrite
       - ActivityRead
       - TerminalConnect
+      - VNCConnect
+      - RDPConnect
       - FilesList
       - FilesRead
       - FilesDownload
@@ -273,11 +326,15 @@ components:
       - files
       - monitor
       - docker
+      - vnc
+      - rdp
       x-enum-varnames:
       - TerminalConnection
       - FilesConnection
       - MonitorConnection
       - DockerConnection
+      - VNCConnection
+      - RDPConnection
     ConnectionInfo:
       type: object
       required:
@@ -911,6 +968,8 @@ components:
           - files
           - monitor
           - docker
+          - vnc
+          - rdp
           x-go-type: string
           x-go-type-skip-optional-pointer: true
         expires_at:
@@ -6783,7 +6842,7 @@ components:
       properties:
         type:
           type: string
-          description: ws_terminal、ws_monitor、ws_sftp_auth、transfer_artifact
+          description: ws_terminal、ws_monitor、ws_sftp_auth、ws_vnc、ws_rdp、transfer_artifact
             或 instance_backup_download
           x-oapi-codegen-extra-tags:
             binding: required
@@ -15258,3 +15317,258 @@ paths:
           $ref: '#/components/responses/Error'
         '404':
           $ref: '#/components/responses/Error'
+
+  /access-tokens:
+    get:
+      operationId: listAutomationTokens
+      summary: List automation credentials
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AutomationToken'
+        default:
+          description: Request failed
+    post:
+      operationId: createAutomationToken
+      summary: Issue a token bound to an existing grant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAutomationToken'
+      responses:
+        '201':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationTokenCreated'
+        default:
+          description: Request failed
+  /access-tokens/{id}:
+    delete:
+      operationId: revokeAutomationToken
+      summary: Revoke a credential and its running work
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Request failed
+  /automation/tools/{name}:
+    post:
+      security:
+      - automationToken: []
+      operationId: callAutomationTool
+      summary: Execute an authorized resource tool
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          description: Request failed
+  /mcp:
+    post:
+      security:
+      - automationToken: []
+      operationId: postMCP
+      summary: Stateless MCP Streamable HTTP; Bearer automation token required
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          description: Request failed
+    get:
+      security:
+      - automationToken: []
+      operationId: getMCP
+      summary: Stateless MCP Streamable HTTP; Bearer automation token required
+      responses:
+        '405':
+          description: Success
+        default:
+          description: Request failed
+    delete:
+      security:
+      - automationToken: []
+      operationId: deleteMCP
+      summary: Stateless MCP Streamable HTTP; Bearer automation token required
+      responses:
+        '405':
+          description: Success
+        default:
+          description: Request failed
+  /vnc/{server_id}/config:
+    get:
+      operationId: getVNCConfig
+      summary: Read VNC connection configuration
+      parameters:
+      - name: server_id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VNCConfig'
+        default:
+          description: Request failed
+    put:
+      operationId: saveVNCConfig
+      summary: Save VNC configuration; owner only
+      parameters:
+      - name: server_id
+        in: path
+        required: true
+        schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VNCConfig'
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Request failed
+  /vnc/{server_id}/ws:
+    get:
+      operationId: connectVNC
+      summary: Open VNC binary WebSocket using a one-time ticket bound to a logical connection
+      parameters:
+      - name: server_id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '101':
+          description: Success
+        default:
+          description: Request failed
+
+  /rdp/{server_id}/config:
+    get:
+      operationId: getRDPConfig
+      summary: Read RDP connection configuration
+      parameters:
+      - name: server_id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RDPConfig'
+        default:
+          description: Request failed
+    put:
+      operationId: saveRDPConfig
+      summary: Save RDP configuration; owner only
+      parameters:
+      - name: server_id
+        in: path
+        required: true
+        schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RDPConfig'
+      responses:
+        '204':
+          description: Success
+        default:
+          description: Request failed
+  /rdp/{server_id}/ws:
+    get:
+      operationId: connectRDP
+      summary: Open RDP Guacamole WebSocket using a one-time ticket bound to a logical connection
+      parameters:
+      - name: server_id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '101':
+          description: Success
+        default:
+          description: Request failed
+
+  /rdp/status:
+    get:
+      operationId: getRDPGatewayStatus
+      summary: Whether the optional guacd gateway is configured
+      responses:
+        '200':
+          description: Gateway configuration status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [configured]
+                properties:
+                  configured: {type: boolean}
+        default:
+          description: Request failed
+  /automation/tools:
+    get:
+      operationId: listAutomationTools
+      summary: List actual automation tool names and input schemas
+      responses:
+        '200':
+          description: Tool catalog
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+        default:
+          description: Request failed

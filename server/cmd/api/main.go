@@ -27,6 +27,7 @@ import (
 	"github.com/easyssh/server/internal/domain/aiconfig"
 	"github.com/easyssh/server/internal/domain/auditlog"
 	"github.com/easyssh/server/internal/domain/auth"
+	"github.com/easyssh/server/internal/domain/automation"
 	"github.com/easyssh/server/internal/domain/batchtask"
 	"github.com/easyssh/server/internal/domain/completion"
 	"github.com/easyssh/server/internal/domain/content"
@@ -41,6 +42,7 @@ import (
 	"github.com/easyssh/server/internal/domain/notification"
 	"github.com/easyssh/server/internal/domain/notificationconfig"
 	"github.com/easyssh/server/internal/domain/operationrecord"
+	"github.com/easyssh/server/internal/domain/rdp"
 	"github.com/easyssh/server/internal/domain/realtime"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/script"
@@ -55,11 +57,11 @@ import (
 	"github.com/easyssh/server/internal/domain/taskexecutor"
 	"github.com/easyssh/server/internal/domain/taskscheduler"
 	"github.com/easyssh/server/internal/domain/transferjob"
+	"github.com/easyssh/server/internal/domain/vnc"
 	"github.com/easyssh/server/internal/infra/config"
 	"github.com/easyssh/server/internal/infra/db"
 	"github.com/easyssh/server/internal/pkg/geoip"
 	"github.com/easyssh/server/internal/platform"
-	"github.com/easyssh/server/internal/storage/schema"
 	"github.com/easyssh/shared/instanceactivation"
 	"github.com/easyssh/shared/instancebackup"
 	"github.com/easyssh/shared/secretcrypto"
@@ -132,7 +134,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer releaseDatabase()
-	if err := schema.Start(context.Background(), sqlDB, cfg.Database.Driver); err != nil {
+	if err := startDatabase(cfg, database, launcher, migrationOptions{}); err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 
@@ -472,6 +474,22 @@ func main() {
 	aiRuntimeConfigHandler := rest.NewAIRuntimeConfigHandler(aichat.NewConfigResolver(aiConfigService))
 	// AI 工具执行器和会话运行时
 	aiToolExecutor := aichat.NewToolExecutorService(serverService, sftpHandler.GetPool(), encryptor, sshHostKeyService.GetHostKeyPolicy())
+	automationService, err := automation.NewService(aiToolExecutor, batchTaskService, taskCenterService, scriptService, operationRecordService)
+	if err != nil {
+		log.Fatalf("Initialize automation tools: %v", err)
+	}
+	automationHandler := rest.NewAutomationHandler(automationService, securityService, cfg.Server.WebDevPort)
+	rdpGateway, err := rdp.NewGateway(cfg.Server.GuacdAddress, cfg.Server.GuacdTLS)
+	if err != nil {
+		log.Fatal(err)
+	}
+	rdpService := rdp.NewService(database, serverService, accessRuntime)
+	rdpHandler := rest.NewRDPHandler(rdpService, rdpGateway.Configured())
+	rdpWSHandler := ws.NewRDPHandler(rdpService, rdpGateway, securityService, cfg.Server.WebDevPort, operationRecordService)
+	vncService := vnc.NewService(database, serverService, accessRuntime)
+	vncHandler := rest.NewVNCHandler(vncService)
+	vncWSHandler := ws.NewVNCHandler(vncService, securityService, cfg.Server.WebDevPort, operationRecordService)
+
 	aiRuntimeManager := aichat.NewRuntimeManager(aiConfigService, aiToolExecutor)
 	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	recoveryErr := runtime.RecoverInterrupted(recoveryCtx, database, contentService)
@@ -623,6 +641,26 @@ func main() {
 		// Resource execution routes are enabled per capability when their
 		// complete service and running-work checks have been connected.
 		executionAuth := middleware.ExecutionAuth(authService, ticketService, securityService, accessHandler.Authenticate())
+		tokenRoutes := v1.Group("/access-tokens", middleware.AuthMiddleware(authService, ticketService, securityService))
+		tokenRoutes.GET("", middleware.OwnerRoute(protocol.GrantsManage, ""), accessHandler.ListTokens)
+		tokenRoutes.POST("", middleware.OwnerRoute(protocol.GrantsManage, ""), accessHandler.CreateToken)
+		tokenRoutes.DELETE("/:id", middleware.OwnerRoute(protocol.GrantsManage, ""), accessHandler.RevokeToken)
+		automationRoutes := v1.Group("/automation", executionAuth, middleware.APIRateLimitMiddleware(securityService))
+		automationRoutes.GET("/tools", middleware.AccessRoute(protocol.WorkspaceRead, ""), automationHandler.Catalog)
+		automationRoutes.POST("/tools/:name", middleware.AccessRoute(protocol.WorkspaceRead, ""), automationHandler.Call)
+		v1.POST("/mcp", middleware.AccessRoute(protocol.WorkspaceRead, ""), accessHandler.Authenticate(), middleware.APIRateLimitMiddleware(securityService), automationHandler.MCP)
+		v1.GET("/mcp", middleware.AccessRoute(protocol.WorkspaceRead, ""), accessHandler.Authenticate(), automationHandler.MCP)
+		v1.DELETE("/mcp", middleware.AccessRoute(protocol.WorkspaceRead, ""), accessHandler.Authenticate(), automationHandler.MCP)
+		v1.GET("/rdp/status", middleware.AccessRoute(protocol.WorkspaceRead, ""), executionAuth, rdpHandler.Status)
+		rdpRoutes := v1.Group("/rdp/:server_id", executionAuth)
+		rdpRoutes.GET("/config", middleware.AccessRoute(protocol.WorkspaceRead, ""), rdpHandler.Get)
+		rdpRoutes.PUT("/config", middleware.OwnerRoute(protocol.ResourcesManage, ""), rdpHandler.Save)
+		rdpRoutes.GET("/ws", middleware.AccessRoute(protocol.RDPConnect, "server_id"), middleware.ConnectionContext(accessRuntime, "server_id"), rdpWSHandler.Connect)
+		vncRoutes := v1.Group("/vnc/:server_id", executionAuth)
+		vncRoutes.GET("/config", middleware.AccessRoute(protocol.WorkspaceRead, ""), vncHandler.Get)
+		vncRoutes.PUT("/config", middleware.OwnerRoute(protocol.ResourcesManage, ""), vncHandler.Save)
+		vncRoutes.GET("/ws", middleware.AccessRoute(protocol.VNCConnect, "server_id"), middleware.ConnectionContext(accessRuntime, "server_id"), vncWSHandler.Connect)
+
 		accessRoutes.POST("/tickets", middleware.AccessRoute(protocol.WorkspaceRead, ""), executionAuth, ticketHandler.CreateTicket)
 		connectionRoutes := v1.Group("/connections", executionAuth)
 		connectionRoutes.POST("", middleware.AccessRoute(protocol.WorkspaceRead, ""), connectionHandler.Create)

@@ -11,6 +11,13 @@ services:
       DB_DSN: ${DB_DSN:-/app/data/easyssh.db}
       EASYSSH_INSTANCE_STATE_DIR: /app/instance-state
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      EASYSSH_AUTO_MIGRATE: ${EASYSSH_AUTO_MIGRATE:-on}
+      EASYSSH_MIGRATION_TIMEOUT: ${EASYSSH_MIGRATION_TIMEOUT:-30m}
+      # 启用 RDP 时，同时取消以下环境变量、depends_on 和 guacd 服务的注释。
+      # GUACD_ADDRESS: guacd:4822
+      # GUACD_TLS: "false"
+    # depends_on:
+    #   - guacd
     volumes:
       - ./data:/app/data
       - ./backups:/app/backups
@@ -22,7 +29,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      # 升级完成才就绪；加长迁移超时时，应同步调整此启动宽限。
+      start_period: ${EASYSSH_HEALTH_START_PERIOD:-32m}
+
+  # 可选 RDP 网关；guacd 无应用层认证，不将 4822 端口发布到宿主机。
+  # guacd:
+  #   image: guacamole/guacd:1.6.0
+  #   restart: unless-stopped
+  #   networks:
+  #     - easyssh-network
 
 networks:
   easyssh-network:

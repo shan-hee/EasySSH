@@ -17,6 +17,12 @@ export const queryKeys = {
   scheduledTasks: {
     administration: ["scheduled-tasks", "administration"] as const,
   },
+  automation: {
+    tokens: ["automation", "tokens"] as const,
+    tokenSources: ["automation", "token-sources"] as const,
+    tools: ["automation", "tools"] as const,
+    grant: (id: string) => ["automation", "grant", id] as const,
+  },
   taskCenter: {
     root: ["task-center"] as const,
     runs: (params: unknown) => ["task-center", "runs", params] as const,

@@ -16,7 +16,7 @@ func OptionalIPWhitelistMiddleware(securityService security.Service) gin.Handler
 
 		ownerEndpoint := strings.HasPrefix(c.Request.URL.Path, "/api/v1/owner/")
 		_, cookieErr := c.Cookie(OwnerCookieName)
-		visitor := c.GetHeader("X-EasySSH-Access-Session") != "" || strings.HasPrefix(c.GetHeader("Authorization"), "Access ") || strings.HasPrefix(c.Request.URL.Path, "/api/v1/access/")
+		visitor := c.GetHeader("X-EasySSH-Access-Session") != "" || (strings.HasPrefix(c.GetHeader("Authorization"), "Access ") || strings.HasPrefix(c.GetHeader("Authorization"), "Bearer ess_api_")) || strings.HasPrefix(c.Request.URL.Path, "/api/v1/access/")
 		if !ownerEndpoint && (cookieErr != nil || visitor) {
 			c.Next()
 			return

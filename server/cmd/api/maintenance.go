@@ -52,23 +52,30 @@ func sqliteDatabasePath(dsn string) string {
 
 func runMaintenance(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: easyssh-api maintenance backup|inspect|restore|owner-recover [options]")
+		return errors.New("usage: easyssh-api maintenance backup|inspect|restore|owner-recover|schema-upgrade|schema-rollback|migration-extract [options]")
 	}
 	if args[0] == "owner-recover" {
 		return recoverOwnerFromHost(args[1:])
+	}
+	if args[0] == "migration-extract" {
+		return extractMigrationRecovery(args[1:])
 	}
 	flags := flag.NewFlagSet("maintenance "+args[0], flag.ContinueOnError)
 	file := flags.String("file", "", "encrypted .easyssh.age file")
 	passwordFile := flags.String("password-file", "", "file containing the backup password")
 	into := flags.String("into", "", "new data directory for restoration (must not exist)")
 	targetEnv := flags.String("target-dsn-env", "EASYSSH_RESTORE_DSN", "environment variable containing an empty PostgreSQL/MySQL target database DSN")
+	resumeMigration := flags.Bool("resume", false, "schema-upgrade only: resume interrupted MySQL after manually restoring a clean recorded source schema")
 	if err := flags.Parse(args[1:]); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected maintenance arguments")
 	}
-	if args[0] != "backup" && args[0] != "restore" && args[0] != "inspect" {
+	if *resumeMigration && args[0] != "schema-upgrade" {
+		return errors.New("--resume applies only to schema-upgrade")
+	}
+	if args[0] != "backup" && args[0] != "restore" && args[0] != "inspect" && args[0] != "schema-upgrade" && args[0] != "schema-rollback" {
 		return errors.New("unknown maintenance action")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Hour)
@@ -124,6 +131,12 @@ func runMaintenance(args []string) error {
 		return err
 	}
 	defer release()
+	if args[0] == "schema-upgrade" {
+		return startDatabase(cfg, database, nil, migrationOptions{Manual: true, ResumeInterruptedMySQL: *resumeMigration})
+	}
+	if args[0] == "schema-rollback" {
+		return schema.Migrate(ctx, sqlDB, cfg.Database.Driver, true)
+	}
 	password, err := instancebackup.PasswordFile(*passwordFile)
 	if err != nil {
 		return err
@@ -397,7 +410,7 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 	if err := instancebackup.CheckApplicationVersion(manifest.AppVersion, readAppVersion()); err != nil {
 		return err
 	}
-	if manifest.SchemaVersion != schema.Version {
+	if manifest.SchemaVersion < 5 || manifest.SchemaVersion > schema.Version {
 		return errors.New("unsupported database migration version")
 	}
 	destination, err := filepath.Abs(into)
@@ -458,8 +471,13 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 	if err != nil {
 		return err
 	}
-	if version != manifest.SchemaVersion || version != schema.Version {
+	if version != manifest.SchemaVersion {
 		return errors.New("manifest and database schema versions differ")
+	}
+	if version >= 5 && version < schema.Version {
+		if err := schema.Migrate(ctx, sqlDB, cfg.Driver, false); err != nil {
+			return err
+		}
 	}
 	encryptor, err := crypto.NewEncryptor(strings.TrimSpace(string(rootKey)))
 	if err != nil {
@@ -474,7 +492,7 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 		return tx.Error
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"auth_tickets", "access_handoffs", "access_sessions", "access_containers", "owner_sessions", "totp_replays", "known_login_devices", "sync_authorizations", "owner_devices"} {
+	for _, table := range []string{"auth_tickets", "access_handoffs", "automation_tokens", "access_sessions", "access_containers", "owner_sessions", "totp_replays", "known_login_devices", "sync_authorizations", "owner_devices"} {
 		if err = tx.Exec("DELETE FROM " + table).Error; err != nil {
 			return err
 		}

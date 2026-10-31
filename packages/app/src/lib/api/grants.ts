@@ -41,3 +41,16 @@ export const grantsApi = {
       method: "DELETE",
     }),
 }
+
+// Present the actual targets covered by the revision, including remote desktop ports.
+export async function reviewGrantTarget(resource: AccessResource) {
+  const server = await apiFetch<{ host: string; port: number; username: string; connection_revision: number }>(`/servers/${resource.id}`)
+  if (!Number.isInteger(server.connection_revision)) throw new Error("Server revision is unavailable")
+  const lines = [`SSH: ${server.username}@${server.host}:${server.port}`]
+  for (const protocol of ["vnc", "rdp"] as const) {
+    if (!resource.actions.includes(`${protocol}.connect`)) continue
+    const config = await apiFetch<{ port: number; enabled: boolean; tls?: boolean; security?: string; ignore_certificate?: boolean }>(`/${protocol}/${resource.id}/config`)
+    lines.push(`${protocol.toUpperCase()}: ${server.host}:${config.port} · ${config.enabled ? "enabled" : "disabled"} · ${protocol === "rdp" ? `${config.security?.toUpperCase()} · certificate verification: ${!config.ignore_certificate}` : `TLS: ${!!config.tls}`}`)
+  }
+  return { revision: server.connection_revision, summary: lines.join("\n") }
+}

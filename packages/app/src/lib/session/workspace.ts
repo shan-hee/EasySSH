@@ -48,7 +48,7 @@ export interface WorkspaceTerminalSession extends OptionalServerConnectionInfo {
   group?: string
   tags?: string[]
   pinned?: boolean
-  type?: "config" | "terminal" | "sftp"
+  type?: "config" | "terminal" | "sftp" | "vnc" | "rdp"
 }
 export interface SftpWorkspaceSession extends ServerConnectionInfo {
   id: string

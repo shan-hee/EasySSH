@@ -117,7 +117,7 @@ USER appuser
 EXPOSE 8520
 
 # 健康检查：命中后端健康接口
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=32m --retries=3 \
   CMD busybox wget -q -O /dev/null http://127.0.0.1:8520/api/v1/health || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--"]

@@ -12,5 +12,7 @@
   "toggleSidebar": "切换侧边栏",
   "workbench": "工作台",
   "systemOrg": "系统",
-  "backToMainMenu": "返回主菜单"
+  "backToMainMenu": "返回主菜单",
+  "automation": "开放与自动化",
+  "mcp": "MCP 接入"
 }

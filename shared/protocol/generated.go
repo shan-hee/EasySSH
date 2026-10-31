@@ -16,6 +16,7 @@ import (
 const (
 	AccessCookieScopes    accessCookieContextKey    = "accessCookie.Scopes"
 	AccessSessionScopes   accessSessionContextKey   = "accessSession.Scopes"
+	AutomationTokenScopes automationTokenContextKey = "automationToken.Scopes"
 	NativeAccessScopes    nativeAccessContextKey    = "nativeAccess.Scopes"
 	OwnerCookieScopes     ownerCookieContextKey     = "ownerCookie.Scopes"
 	SingleUseTicketScopes singleUseTicketContextKey = "singleUseTicket.Scopes"
@@ -363,11 +364,13 @@ const (
 	GrantsManage    Action = "grants.manage"
 	MonitorRead     Action = "monitor.read"
 	OwnerManage     Action = "owner.manage"
+	RDPConnect      Action = "rdp.connect"
 	ResourcesManage Action = "resources.manage"
 	ScriptsExecute  Action = "scripts.execute"
 	SyncRead        Action = "sync.read"
 	SyncWrite       Action = "sync.write"
 	TerminalConnect Action = "terminal.connect"
+	VNCConnect      Action = "vnc.connect"
 	WorkspaceRead   Action = "workspace.read"
 )
 
@@ -404,6 +407,8 @@ func (e Action) Valid() bool {
 		return true
 	case OwnerManage:
 		return true
+	case RDPConnect:
+		return true
 	case ResourcesManage:
 		return true
 	case ScriptsExecute:
@@ -413,6 +418,8 @@ func (e Action) Valid() bool {
 	case SyncWrite:
 		return true
 	case TerminalConnect:
+		return true
+	case VNCConnect:
 		return true
 	case WorkspaceRead:
 		return true
@@ -573,7 +580,9 @@ const (
 	DockerConnection   ConnectionMode = "docker"
 	FilesConnection    ConnectionMode = "files"
 	MonitorConnection  ConnectionMode = "monitor"
+	RDPConnection      ConnectionMode = "rdp"
 	TerminalConnection ConnectionMode = "terminal"
+	VNCConnection      ConnectionMode = "vnc"
 )
 
 // Valid indicates whether the value is a known member of the ConnectionMode enum.
@@ -585,7 +594,11 @@ func (e ConnectionMode) Valid() bool {
 		return true
 	case MonitorConnection:
 		return true
+	case RDPConnection:
+		return true
 	case TerminalConnection:
+		return true
+	case VNCConnection:
 		return true
 	default:
 		return false
@@ -799,6 +812,24 @@ func (e Kind) Valid() bool {
 	case Owner:
 		return true
 	case Visitor:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RDPConfigSecurity.
+const (
+	Nla RDPConfigSecurity = "nla"
+	TLS RDPConfigSecurity = "tls"
+)
+
+// Valid indicates whether the value is a known member of the RDPConfigSecurity enum.
+func (e RDPConfigSecurity) Valid() bool {
+	switch e {
+	case Nla:
+		return true
+	case TLS:
 		return true
 	default:
 		return false
@@ -2268,7 +2299,7 @@ type AccessTicketInput struct {
 	ServerID     string `json:"server_id,omitempty"`
 	TaskID       string `json:"task_id,omitempty"`
 
-	// Type ws_terminal、ws_monitor、ws_sftp_auth、transfer_artifact 或 instance_backup_download
+	// Type ws_terminal、ws_monitor、ws_sftp_auth、ws_vnc、ws_rdp、transfer_artifact 或 instance_backup_download
 	Type string `binding:"required" json:"type"`
 }
 
@@ -2664,6 +2695,27 @@ type AuditLogSummary struct {
 	Username  string              `json:"username"`
 }
 
+// AutomationToken defines model for AutomationToken.
+type AutomationToken struct {
+	Active     bool               `json:"active"`
+	CreatedAt  time.Time          `json:"created_at"`
+	ExpiresAt  time.Time          `json:"expires_at"`
+	GrantID    openapi_types.UUID `json:"grant_id"`
+	GrantName  string             `json:"grant_name"`
+	ID         openapi_types.UUID `json:"id"`
+	LastUsedAt *time.Time         `json:"last_used_at,omitempty"`
+	Name       string             `json:"name"`
+	RevokedAt  *time.Time         `json:"revoked_at,omitempty"`
+}
+
+// AutomationTokenCreated defines model for AutomationTokenCreated.
+type AutomationTokenCreated struct {
+	Metadata AutomationToken `json:"metadata"`
+
+	// Token Only returned once; never logged or stored in plaintext.
+	Token string `json:"token"`
+}
+
 // AvailableScript defines model for AvailableScript.
 type AvailableScript struct {
 	Description string                        `json:"description"`
@@ -2862,6 +2914,15 @@ type CreateAISessionResponse struct {
 	// Session 会话概况；消息和工具正文从已提交历史分页读取。
 	Session   *AISessionOverview `json:"session"`
 	SessionID string             `json:"session_id"`
+}
+
+// CreateAutomationToken defines model for CreateAutomationToken.
+type CreateAutomationToken struct {
+	// Authorization 未指定有效期且 long_lived=false 时默认 24 小时。long_lived=true 与 expires_at 互斥。连接和会话数量为 0 或省略时分别默认为 4、3。default_content 默认为 terminal。
+	Authorization *CreateGrantInput   `json:"authorization,omitempty"`
+	ExpiresAt     time.Time           `json:"expires_at"`
+	GrantID       *openapi_types.UUID `json:"grant_id,omitempty"`
+	Name          string              `json:"name"`
 }
 
 // CreateBatchTaskRequest command 必须提供 content；script 必须提供 script_id，可携带 script_version 和 parameters。省略 execution_mode 时使用 parallel。
@@ -3804,6 +3865,20 @@ type PublicBranding struct {
 	SystemLogo      string `json:"system_logo"`
 	SystemName      string `json:"system_name"`
 }
+
+// RDPConfig defines model for RDPConfig.
+type RDPConfig struct {
+	Enabled bool `json:"enabled"`
+
+	// IgnoreCertificate Explicitly trust an unverified RDP server certificate.
+	IgnoreCertificate bool               `json:"ignore_certificate"`
+	Port              int                `json:"port"`
+	Security          RDPConfigSecurity  `json:"security"`
+	ServerID          openapi_types.UUID `json:"server_id"`
+}
+
+// RDPConfigSecurity defines model for RDPConfig.Security.
+type RDPConfigSecurity string
 
 // RemoteTransferRelayInput 桌面分享窗口提交来源实例内的中转；连接必须属于当前窗口，服务器 ID 由原生后端解析，不接受来源地址或凭据。
 type RemoteTransferRelayInput struct {
@@ -5031,6 +5106,16 @@ type UpdateScheduledTaskRequest struct {
 	Timezone       string            `json:"timezone,omitempty"`
 }
 
+// VNCConfig defines model for VNCConfig.
+type VNCConfig struct {
+	Enabled  bool               `json:"enabled"`
+	Port     int                `json:"port"`
+	ServerID openapi_types.UUID `json:"server_id"`
+
+	// TLS TLS from EasySSH to the saved server host with certificate validation.
+	TLS bool `json:"tls"`
+}
+
 // WeComConfigResponse defines model for WeComConfigResponse.
 type WeComConfigResponse struct {
 	Config WeComConfigView `json:"config"`
@@ -5146,6 +5231,9 @@ type accessCookieContextKey string
 // accessSessionContextKey is the context key for accessSession security scheme
 type accessSessionContextKey string
 
+// automationTokenContextKey is the context key for automationToken security scheme
+type automationTokenContextKey string
+
 // nativeAccessContextKey is the context key for nativeAccess security scheme
 type nativeAccessContextKey string
 
@@ -5211,6 +5299,9 @@ type GetAIHistoryParams struct {
 
 // GetAIHistoryParamsKind defines parameters for GetAIHistory.
 type GetAIHistoryParamsKind string
+
+// CallAutomationToolJSONBody defines parameters for CallAutomationTool.
+type CallAutomationToolJSONBody map[string]interface{}
 
 // UploadInstanceBackupMultipartBody defines parameters for UploadInstanceBackup.
 type UploadInstanceBackupMultipartBody struct {
@@ -5442,6 +5533,9 @@ type GetLogsStatisticsParams struct {
 	StartDate *string `form:"start_date,omitempty" json:"start_date,omitempty"`
 	EndDate   *string `form:"end_date,omitempty" json:"end_date,omitempty"`
 }
+
+// PostMCPJSONBody defines parameters for PostMCP.
+type PostMCPJSONBody map[string]interface{}
 
 // GetMonitorServerServerIDParams defines parameters for GetMonitorServerServerID.
 type GetMonitorServerServerIDParams struct {
@@ -5799,6 +5893,9 @@ type GetUpdatesCheckParams struct {
 // GetUpdatesCheckParamsTarget defines parameters for GetUpdatesCheck.
 type GetUpdatesCheckParamsTarget string
 
+// CreateAutomationTokenJSONRequestBody defines body for CreateAutomationToken for application/json ContentType.
+type CreateAutomationTokenJSONRequestBody = CreateAutomationToken
+
 // ExchangeAccessJSONRequestBody defines body for ExchangeAccess for application/json ContentType.
 type ExchangeAccessJSONRequestBody = AccessExchangeInput
 
@@ -5825,6 +5922,9 @@ type PostAISessionsSessionIDChatJSONRequestBody = AISDKChatRequest
 
 // PatchAISessionsSessionIDMessagesMessageIDJSONRequestBody defines body for PatchAISessionsSessionIDMessagesMessageID for application/json ContentType.
 type PatchAISessionsSessionIDMessagesMessageIDJSONRequestBody = UpdateAIMessageRequest
+
+// CallAutomationToolJSONRequestBody defines body for CallAutomationTool for application/json ContentType.
+type CallAutomationToolJSONRequestBody CallAutomationToolJSONBody
 
 // PostAvatarGenerateJSONRequestBody defines body for PostAvatarGenerate for application/json ContentType.
 type PostAvatarGenerateJSONRequestBody = AvatarGenerateRequest
@@ -5865,6 +5965,9 @@ type UpdateGrantJSONRequestBody = UpdateGrantInput
 // ConfirmGrantResourceJSONRequestBody defines body for ConfirmGrantResource for application/json ContentType.
 type ConfirmGrantResourceJSONRequestBody = ConfirmGrantResourceInput
 
+// PostMCPJSONRequestBody defines body for PostMCP for application/json ContentType.
+type PostMCPJSONRequestBody PostMCPJSONBody
+
 // PostMonitoringDatasourceTestJSONRequestBody defines body for PostMonitoringDatasourceTest for application/json ContentType.
 type PostMonitoringDatasourceTestJSONRequestBody = MonitoringDataSourceTest
 
@@ -5900,6 +6003,9 @@ type ChangeOwnerPasswordJSONRequestBody = OwnerPasswordInput
 
 // UpdateOwnerProfileJSONRequestBody defines body for UpdateOwnerProfile for application/json ContentType.
 type UpdateOwnerProfileJSONRequestBody = OwnerProfileInput
+
+// SaveRDPConfigJSONRequestBody defines body for SaveRDPConfig for application/json ContentType.
+type SaveRDPConfigJSONRequestBody = RDPConfig
 
 // PostScheduledTasksJSONRequestBody defines body for PostScheduledTasks for application/json ContentType.
 type PostScheduledTasksJSONRequestBody = CreateScheduledTaskRequest
@@ -6068,6 +6174,9 @@ type PostTransferJobsSftpRelayJSONRequestBody = TransferRelayInput
 
 // PostTransferJobsSftpUploadJSONRequestBody defines body for PostTransferJobsSftpUpload for application/json ContentType.
 type PostTransferJobsSftpUploadJSONRequestBody = TransferUploadInput
+
+// SaveVNCConfigJSONRequestBody defines body for SaveVNCConfig for application/json ContentType.
+type SaveVNCConfigJSONRequestBody = VNCConfig
 
 // Getter for additional properties for AIUIAbortChunk. Returns the specified
 // element and whether it was found

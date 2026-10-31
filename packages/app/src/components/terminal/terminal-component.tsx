@@ -1,3 +1,5 @@
+import { RDPSession } from "@/components/rdp/rdp-session"
+import { VNCSession } from "@/components/vnc/vnc-session"
 import { resolveTerminalInactiveMinutes } from "./terminal-settings"
 import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
@@ -179,6 +181,8 @@ const disabledFileTransferApi: FileTransferSftpApi = {
 export interface TerminalComponentProps {
   sessions: TerminalSession[]
   extraSessions?: TerminalSession[]
+  onNewVncSession?: () => void
+  onNewRdpSession?: () => void
   onNewSftpSession?: () => void
   renderExtraSessionContent?: (session: TerminalSession, options?: TerminalExtraSessionRenderOptions) => ReactNode
   onOpenSftpSession?: (session: TerminalSession, path?: string) => void
@@ -215,6 +219,8 @@ export interface TerminalComponentProps {
 export function TerminalComponent({
   sessions,
   extraSessions = [],
+  onNewVncSession,
+  onNewRdpSession,
   onNewSftpSession,
   renderExtraSessionContent,
   onOpenSftpSession,
@@ -363,7 +369,7 @@ export function TerminalComponent({
   const extraSessionIdsKey = extraSessions.map(session => session.id).join("\0")
   const extraSessionIdSet = useMemo(() => new Set(extraSessionIdsKey.split("\0").filter(Boolean)), [extraSessionIdsKey])
   const terminalSessions = useMemo(
-    () => sessions.filter((session) => session.type === "terminal"),
+    () => sessions.filter((session) => session.type === "terminal" || session.type === "vnc" || session.type === "rdp"),
     [sessions]
   )
   const workspaceExtraSessions = useMemo(
@@ -1120,6 +1126,12 @@ export function TerminalComponent({
     isVisible: boolean,
     surface: "normal" | "transparent" = "normal"
   ) => {
+    if (session.type === "rdp" && session.serverId) {
+      return <RDPSession serverId={session.serverId} isActive={isVisible && activeSession === session.id} onPhase={phase => onConnectionPhaseChange?.(session.id, phase)} />
+    }
+    if (session.type === "vnc" && session.serverId) {
+      return <VNCSession serverId={session.serverId} isActive={isVisible && activeSession === session.id} onPhase={phase => onConnectionPhaseChange?.(session.id, phase)} />
+    }
     const sessionIsLoading = isVisible && shouldShowConnectionLoader(session)
 
     return (
@@ -1215,7 +1227,7 @@ export function TerminalComponent({
     const isVisible = inSplit ? isMultiSessionGrid && visibleSessionIdSet.has(sessionId) : activeSession === sessionId
 
     return (
-      <SessionWorkspaceToolbarContext value={inSplit ? { host: getToolbarHost(session.id), kind: isSftpSession ? "sftp" : "terminal" } : null}>
+      <SessionWorkspaceToolbarContext value={inSplit ? { host: getToolbarHost(session.id), kind: isSftpSession ? "sftp" : session.type === "vnc" ? "vnc" : session.type === "rdp" ? "rdp" : "terminal" } : null}>
       <SessionSplitPane
         key={session.id}
         sessionId={session.id}
@@ -1297,6 +1309,8 @@ export function TerminalComponent({
             activeId={combinedActiveTabId}
             onChangeActive={handleChangeCombinedActiveSession}
             onNewSession={handleNewSessionClick}
+            onNewRdpSession={onNewRdpSession}
+            onNewVncSession={onNewVncSession}
             onNewSftpSession={onNewSftpSession}
             onCloseSession={handleCloseSession}
             onDuplicateSession={onDuplicateSession}

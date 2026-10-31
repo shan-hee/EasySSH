@@ -20,6 +20,8 @@ type Resource = GrantInput["resources"][number]
 const pageSize = 8
 const actions: Action[] = [
   "terminal.connect",
+  "vnc.connect",
+  "rdp.connect",
   "files.list",
   "files.read",
   "files.download",
@@ -38,6 +40,8 @@ const defaultActions = {
   files: "files.list",
   monitor: "monitor.read",
   docker: "docker.read",
+  vnc: "vnc.connect",
+  rdp: "rdp.connect",
 } as const
 
 /** Keep resource selection bounded; only the active resource mounts its permission form. */

@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import {
   grantsApi,
+  reviewGrantTarget,
   type Grant,
   type GrantDetail,
   type GrantInput,
@@ -28,7 +29,6 @@ import { serversApi } from "@/lib/api/servers"
 import type { Server } from "@/lib/server-types"
 import { scriptsApi } from "@/lib/api/scripts"
 import type { Script } from "@/lib/script-types"
-import { apiFetch } from "@/lib/api-client"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -396,18 +396,11 @@ function GrantManagerContent({
                       disabled={busy || !!detail.grant.revoked_at}
                       onClick={() =>
                         void run(async () => {
-                          const current = await apiFetch<{
-                            connection_revision: number
-                            host: string
-                            port: number
-                            username: string
-                          }>(`/servers/${r.id}`)
-                          if (!Number.isInteger(current.connection_revision))
-                            throw new Error(t("revisionUnavailable"))
+                          const current = await reviewGrantTarget(r)
                           if (
                             !window.confirm(
                               t("confirmResource", {
-                                identity: `${current.username}@${current.host}:${current.port}`,
+                                identity: current.summary,
                               }),
                             )
                           )
@@ -415,7 +408,7 @@ function GrantManagerContent({
                           await grantsApi.confirm(
                             detail.grant.id,
                             r.id,
-                            current.connection_revision,
+                            current.revision,
                           )
                           setDetail(await grantsApi.detail(detail.grant.id))
                         })
@@ -527,6 +520,8 @@ function GrantManagerContent({
                             files: "files.list",
                             monitor: "monitor.read",
                             docker: "docker.read",
+  vnc: "vnc.connect",
+                          rdp: "rdp.connect",
                           } as const
                         )[form.default_content ?? "terminal"],
                       ),
@@ -581,7 +576,7 @@ function GrantManagerContent({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {["terminal", "files", "monitor", "docker"].map((v) => (
+                    {["terminal", "files", "monitor", "docker", "vnc", "rdp"].map((v) => (
                       <SelectItem key={v} value={v}>
                         {t(v)}
                       </SelectItem>

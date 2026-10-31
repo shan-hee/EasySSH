@@ -153,3 +153,23 @@ docker exec -it easyssh sh
 ## 许可证
 
 Apache License 2.0
+
+## 可选 RDP 网关
+
+可选 guacd 网关已放在 `docker-compose.yml` 中，默认注释关闭。需要 RDP 时，同时取消 `GUACD_ADDRESS`、`GUACD_TLS`、`depends_on` 及整个 `guacd` 服务块的注释，在 `docker` 目录执行：
+
+```sh
+docker compose up -d
+```
+
+开发配置 `docker-compose.dev.yml` 也包含相同的注释块，按需取消注释后使用 `docker compose -f docker-compose.dev.yml up -d`。无需额外的 RDP 覆盖文件。
+
+启用后 EasySSH 使用 `GUACD_ADDRESS=guacd:4822`，并启动固定版本 `guacamole/guacd:1.6.0`。4822 不发布到宿主机；guacd 不提供应用层认证，应仅由受信应用访问。基础 Compose 及 noVNC 无需网关。RDP 主机需从 guacd 容器网络可达，使用前先完成 schema 7 升级。连接参数、证书要求及回退见 [远程桌面说明](../docs/automation-vnc.md)。
+
+## 启动自动迁移
+
+更新并启动容器即可自动升级受支持的数据库版本，无需每次执行维护命令。应用先取得实例锁、预检并创建加密恢复点，逐版迁移和校验成功后才开放服务。`./data`、`./backups` 与 `instance-state` 卷必须持续保留，不要通过删除卷解决升级失败。
+
+Compose 默认传入 `EASYSSH_AUTO_MIGRATE=on` 和 `EASYSSH_MIGRATION_TIMEOUT=30m`，健康检查启动宽限为 `EASYSSH_HEALTH_START_PERIOD=32m`；迁移超时调大时需同步增加宽限。系统提前就绪即会报告 healthy，不固定等待宽限结束。迁移中断不会自动恢复旧库或自动降级；MySQL 状态不确定时停止重试。恢复点位于备份目录的 `migrations/`，以原实例根密钥加密，需要独立保管该密钥。
+
+配置、应急开关、中断处理和 `maintenance migration-extract` 命令见[自动迁移与恢复](../docs/backup-and-migrations.md#服务端启动自动迁移)。

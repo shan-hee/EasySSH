@@ -12,5 +12,7 @@
   "toggleSidebar": "Toggle sidebar",
   "workbench": "Workbench",
   "systemOrg": "System",
-  "backToMainMenu": "Back to main menu"
+  "backToMainMenu": "Back to main menu",
+  "automation": "Access & automation",
+  "mcp": "MCP integration"
 }

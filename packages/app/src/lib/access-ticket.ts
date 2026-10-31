@@ -4,6 +4,7 @@ import { connectionsApi } from "@/lib/api/connections"
 import type { SshWorkspaceAuthTicketProvider } from "@/lib/session/workspace"
 
 export type AccessTicketType =
+  | "ws_vnc" | "ws_rdp"
   | "ws_terminal"
   | "ws_monitor"
   | "ws_sftp_auth"

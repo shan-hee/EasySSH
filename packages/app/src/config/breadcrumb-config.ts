@@ -53,6 +53,9 @@ export const breadcrumbRouteConfig: Record<string, BreadcrumbConfig> = {
     // 仅显示系统名称 + 当前页面标题
     showTitle: true,
   },
+  '/dashboard/mcp': {
+    showTitle: true,
+  },
   // ===================
   // 监控告警
   // ===================

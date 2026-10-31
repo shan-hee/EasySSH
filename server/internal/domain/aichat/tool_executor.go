@@ -48,6 +48,19 @@ func NewToolExecutorService(
 
 // ExecuteTool 执行工具调用
 func (s *ToolExecutorService) ExecuteTool(ctx context.Context, toolCall *ToolCall, permissionMode PermissionMode) (*ToolResult, error) {
+	return s.executeAuthorizedTool(ctx, toolCall, permissionMode, true)
+}
+
+// ExecuteOperation exposes the same resource operations to machine clients.
+// Authority still comes from Scope; callers cannot choose an AI permission mode.
+func (s *ToolExecutorService) ExecuteOperation(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
+	if toolCall.Name == "execute_command" {
+		return nil, access.ErrForbidden
+	} // durable task queue only
+	return s.executeAuthorizedTool(ctx, toolCall, PermissionModePrivileged, false)
+}
+
+func (s *ToolExecutorService) executeAuthorizedTool(ctx context.Context, toolCall *ToolCall, permissionMode PermissionMode, requireAI bool) (*ToolResult, error) {
 	scope := access.Current(ctx)
 	requirements := []access.Requirement{{Action: protocol.WorkspaceRead}}
 	if toolCall.Name != "list_servers" {
@@ -65,7 +78,10 @@ func (s *ToolExecutorService) ExecuteTool(ctx context.Context, toolCall *ToolCal
 		if !ok {
 			return nil, access.ErrForbidden
 		}
-		requirements = []access.Requirement{{Action: protocol.AIUse, ServerID: target.ServerID}, {Action: action, ServerID: target.ServerID}}
+		requirements = []access.Requirement{{Action: action, ServerID: target.ServerID}}
+		if requireAI {
+			requirements = append(requirements, access.Requirement{Action: protocol.AIUse, ServerID: target.ServerID})
+		}
 	}
 	lease, err := scope.OpenWork(ctx, access.Task, requirements...)
 	if err != nil {
@@ -87,7 +103,7 @@ func (s *ToolExecutorService) ExecuteTool(ctx context.Context, toolCall *ToolCal
 
 	switch toolCall.Name {
 	case "list_servers":
-		return s.executeListServers(ctx, toolCall)
+		return s.listServers(ctx, toolCall, requireAI)
 	case "get_server_info":
 		return s.executeGetServerInfo(ctx, toolCall)
 	case "execute_command":
@@ -97,6 +113,13 @@ func (s *ToolExecutorService) ExecuteTool(ctx context.Context, toolCall *ToolCal
 	case "read_file":
 		return s.executeReadFile(ctx, toolCall)
 	case "write_file":
+		if !requireAI {
+			prepared, err := s.prepareWriteFileFor(ctx, toolCall.Arguments, false)
+			if err != nil {
+				return nil, err
+			}
+			ctx = aiworkspace.WithFile(ctx, prepared)
+		}
 		return s.executeWriteFile(ctx, toolCall)
 	case "create_directory":
 		return s.executeCreateDirectory(ctx, toolCall)
@@ -113,6 +136,10 @@ func (s *ToolExecutorService) ExecuteTool(ctx context.Context, toolCall *ToolCal
 
 // executeListServers 列出服务器
 func (s *ToolExecutorService) executeListServers(ctx context.Context, toolCall *ToolCall) (*ToolResult, error) {
+	return s.listServers(ctx, toolCall, true)
+}
+
+func (s *ToolExecutorService) listServers(ctx context.Context, toolCall *ToolCall, requireAI bool) (*ToolResult, error) {
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	servers, _, err := s.serverService.List(ctx, access.Current(ctx), 100, 0)
@@ -139,7 +166,7 @@ func (s *ToolExecutorService) executeListServers(ctx context.Context, toolCall *
 
 	serverList := make([]serverInfo, 0, len(servers))
 	for _, srv := range servers {
-		if access.Current(ctx).Check(ctx, access.Requirement{Action: protocol.AIUse, ServerID: srv.ID.String()}) != nil {
+		if requireAI && access.Current(ctx).Check(ctx, access.Requirement{Action: protocol.AIUse, ServerID: srv.ID.String()}) != nil {
 			continue
 		}
 		name := srv.Host

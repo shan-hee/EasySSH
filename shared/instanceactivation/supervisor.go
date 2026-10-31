@@ -66,18 +66,21 @@ type selection struct {
 }
 
 type supervisor struct {
-	options   Options
-	mu        sync.Mutex
-	state     selection
-	stateFile string
-	token     string
-	stop      bool
-	ready     bool
-	serving   bool
-	permit    chan struct{}
-	commit    chan struct{}
-	requests  chan struct{}
-	launches  *launchInbox
+	options           Options
+	mu                sync.Mutex
+	state             selection
+	stateFile         string
+	token             string
+	stop              bool
+	ready             bool
+	serving           bool
+	permit            chan struct{}
+	commit            chan struct{}
+	requests          chan struct{}
+	launches          *launchInbox
+	migrationStarted  time.Time
+	migrationBeat     time.Time
+	migrationFinished time.Time
 }
 
 func randomID() string {
@@ -247,6 +250,42 @@ func (s *supervisor) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 	}
 	switch r.URL.Path {
+	case "/migration":
+		if s.ready || s.stop {
+			fail(errors.New("startup maintenance is unavailable"))
+			return
+		}
+		var input struct {
+			Phase string `json:"phase"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&input); err != nil {
+			fail(errors.New("invalid migration heartbeat"))
+			return
+		}
+		switch input.Phase {
+		case "checking", "backup", "migrating", "validating", "":
+		default:
+			fail(errors.New("unknown migration phase"))
+			return
+		}
+		if !s.migrationFinished.IsZero() {
+			fail(errors.New("startup maintenance already finished"))
+			return
+		}
+		now := time.Now()
+		if input.Phase == "" {
+			if s.migrationStarted.IsZero() {
+				fail(errors.New("startup maintenance has not started"))
+				return
+			}
+			s.migrationFinished = now
+		} else {
+			if s.migrationStarted.IsZero() {
+				s.migrationStarted = now
+			}
+			s.migrationBeat = now
+		}
+		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	case "/launches":
 		if s.launches == nil || !s.serving || s.stop {
 			fail(errors.New("launch inbox unavailable"))
@@ -330,6 +369,7 @@ func (s *supervisor) launch(address string, target Target) (*childProcess, error
 	s.mu.Lock()
 	s.token, s.stop, s.ready = randomID(), false, false
 	s.serving = false
+	s.migrationStarted, s.migrationBeat, s.migrationFinished = time.Time{}, time.Time{}, time.Time{}
 	s.permit = make(chan struct{})
 	s.commit = make(chan struct{})
 	token := s.token
@@ -380,16 +420,17 @@ func (s *supervisor) stopChild(child *childProcess) bool {
 }
 
 func (s *supervisor) awaitReady(ctx context.Context, child *childProcess, serving bool) error {
-	timer := time.NewTimer(90 * time.Second)
-	defer timer.Stop()
+	started := time.Now()
+	migrationTimeout, err := MigrationTimeout()
+	if err != nil {
+		return err
+	}
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-timer.C:
-			return errors.New("instance startup timed out")
 		case err := <-child.done:
 			child.done <- err // retain completion for stopChild
 			if err != nil {
@@ -399,12 +440,26 @@ func (s *supervisor) awaitReady(ctx context.Context, child *childProcess, servin
 		case <-ticker.C:
 			s.mu.Lock()
 			ready := s.ready
+			migrationStarted, beat, finished := s.migrationStarted, s.migrationBeat, s.migrationFinished
 			if serving {
 				ready = s.serving
 			}
 			s.mu.Unlock()
 			if ready {
 				return nil
+			}
+			if !serving && !migrationStarted.IsZero() && finished.IsZero() {
+				if time.Since(migrationStarted) > migrationTimeout || time.Since(beat) > 45*time.Second {
+					return errors.New("instance migration deadline or heartbeat timed out; recovery point retained")
+				}
+				continue
+			}
+			deadlineStart := started
+			if !serving && finished.After(started) {
+				deadlineStart = finished
+			}
+			if time.Since(deadlineStart) > 90*time.Second {
+				return errors.New("instance startup timed out")
 			}
 		}
 	}

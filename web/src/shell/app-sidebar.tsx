@@ -78,6 +78,9 @@ export const AppSidebar = React.memo(function AppSidebar({
             {navigationGroups.workbench.length > 0 && (
               <NavMain label={tNav("workbench")} items={navigationGroups.workbench} />
             )}
+            {navigationGroups.automation.length > 0 && (
+              <NavMain label={tNav("automation")} items={navigationGroups.automation} />
+            )}
             {navigationGroups.systemOrg.length > 0 && (
               <NavMain label={tNav("systemOrg")} items={navigationGroups.systemOrg} />
             )}

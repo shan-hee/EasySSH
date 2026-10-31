@@ -13,6 +13,10 @@ const ConnectionIdleTimeout = 90 * time.Second
 
 func connectionAction(m protocol.ConnectionMode) protocol.Action {
 	switch m {
+	case protocol.RDPConnection:
+		return protocol.RDPConnect
+	case protocol.VNCConnection:
+		return protocol.VNCConnect
 	case protocol.TerminalConnection:
 		return protocol.TerminalConnect
 	case protocol.FilesConnection:
@@ -158,10 +162,16 @@ func OpenStream(ctx context.Context, req Requirement) (*StreamLease, error) {
 	if c == nil || req.ServerID != c.info.ServerID {
 		return nil, ErrForbidden
 	}
-	if req.Action != protocol.MonitorRead && req.Action != protocol.TerminalConnect {
+	if req.Action != protocol.MonitorRead && req.Action != protocol.TerminalConnect && req.Action != protocol.VNCConnect && req.Action != protocol.RDPConnect {
 		return nil, ErrForbidden
 	}
 	if req.Action == protocol.TerminalConnect && c.info.Mode != protocol.TerminalConnection {
+		return nil, ErrForbidden
+	}
+	if req.Action == protocol.VNCConnect && c.info.Mode != protocol.VNCConnection {
+		return nil, ErrForbidden
+	}
+	if req.Action == protocol.RDPConnect && c.info.Mode != protocol.RDPConnection {
 		return nil, ErrForbidden
 	}
 	primary := req.Action == connectionAction(c.info.Mode) && c.info.Mode != protocol.FilesConnection

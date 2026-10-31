@@ -10,6 +10,7 @@ import (
 const ProtocolVersion = int(protocol.AccessVersion)
 
 type Grant struct {
+	Purpose         string     `gorm:"size:16;not null;default:share" json:"purpose"`
 	ID              uuid.UUID  `gorm:"type:char(36);primaryKey" json:"id"`
 	PublicID        string     `gorm:"size:64;not null;uniqueIndex" json:"public_id"`
 	SecretHash      string     `gorm:"size:64;not null" json:"-"`

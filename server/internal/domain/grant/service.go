@@ -87,14 +87,21 @@ func publicOrigin(raw string) (string, error) {
 }
 
 func normalizeRequest(req *protocol.CreateGrantInput, now time.Time) error {
+	return normalizeRequestFor(req, now, false)
+}
+
+func normalizeRequestFor(req *protocol.CreateGrantInput, now time.Time, automation bool) error {
 	req.Name = strings.TrimSpace(req.Name)
 	if req.Name == "" || len(req.Name) > 100 || len(req.Resources) == 0 || len(req.Resources) > 100 {
 		return invalidRequest("a grant needs a name and 1 to 100 explicit resources")
 	}
+	if automation {
+		req.DefaultContent = "terminal"
+	}
 	if req.DefaultContent == "" {
 		req.DefaultContent = "terminal"
 	}
-	if _, ok := defaultActions[req.DefaultContent]; !ok {
+	if _, ok := defaultActions[req.DefaultContent]; !ok && !automation {
 		return invalidRequest("unsupported default content")
 	}
 	if req.LongLived && req.ExpiresAt != nil {
@@ -134,7 +141,7 @@ func normalizeRequest(req *protocol.CreateGrantInput, now time.Time) error {
 			}
 			actions[action] = true
 		}
-		if !actions[defaultActions[req.DefaultContent]] {
+		if !automation && !actions[defaultActions[req.DefaultContent]] {
 			return invalidRequest("default content must be permitted on each resource")
 		}
 		if actions[protocol.AIUse] && req.AIRequestLimit == nil {
@@ -149,7 +156,7 @@ func normalizeRequest(req *protocol.CreateGrantInput, now time.Time) error {
 
 var defaultActions = map[string]protocol.Action{
 	"terminal": protocol.TerminalConnect, "files": protocol.FilesList,
-	"monitor": protocol.MonitorRead, "docker": protocol.DockerRead,
+	"monitor": protocol.MonitorRead, "docker": protocol.DockerRead, "vnc": protocol.VNCConnect, "rdp": protocol.RDPConnect,
 }
 
 func (s *Service) Create(ctx context.Context, scope access.Scope, req protocol.CreateGrantInput) (*protocol.GrantCreated, error) {
@@ -203,9 +210,10 @@ func (s *Service) writeResources(ctx context.Context, tx *gorm.DB, grantID uuid.
 		// Capture the approved revision before validating its dependencies. If
 		// another transaction changes the target during preparation, the stored
 		// revision cannot accidentally approve that new target.
-		if err := s.catalog.Ready(ctx, tx, input.ServerID, input.AllowInteractive); err != nil {
-			return fmt.Errorf("%w: %s: %v", ErrPreparation, input.ServerID, err)
+		if err := s.resourceReady(ctx, tx, input.ServerID, input.Actions, input.AllowInteractive); err != nil {
+			return err
 		}
+
 		if previous, ok := approved[input.ServerID]; ok {
 			// Editing permissions must not silently reconfirm a changed target.
 			revision = previous
@@ -257,7 +265,14 @@ func (s *Service) sessionState(ctx context.Context, db *gorm.DB, id string) (Ses
 	var session Session
 	var g Grant
 	if err := db.WithContext(ctx).Where("id = ?", id).First(&session).Error; err != nil {
-		return session, g, access.ErrUnauthenticated
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return session, g, access.ErrUnauthenticated
+		}
+		var token AutomationToken
+		if err := db.WithContext(ctx).Where("session_id = ?", id).First(&token).Error; err != nil {
+			return session, g, access.ErrUnauthenticated
+		}
+		session = token.executionSession()
 	}
 	now := time.Now().UTC()
 	if session.RevokedAt != nil {
@@ -266,7 +281,7 @@ func (s *Service) sessionState(ctx context.Context, db *gorm.DB, id string) (Ses
 	if !now.Before(session.ExpiresAt) {
 		return session, g, access.ErrExpired
 	}
-	if !session.LastSeenAt.Add(idleLifetime).After(now) && !s.runtime.Busy(session.ID.String()) {
+	if session.ClientKind != "automation" && !session.LastSeenAt.Add(idleLifetime).After(now) && !s.runtime.Busy(session.ID.String()) {
 		return session, g, access.ErrExpired
 	}
 	if err := db.WithContext(ctx).Where("id = ?", session.GrantID).First(&g).Error; err != nil {
@@ -387,4 +402,33 @@ func (s *Service) ScriptParameters(ctx context.Context, scope access.Scope, req 
 		return nil, access.ErrForbidden
 	}
 	return rule.Parameters, nil
+}
+
+func (s *Service) resourceReady(ctx context.Context, tx *gorm.DB, serverID uuid.UUID, actions []protocol.Action, allowInteractive bool) error {
+	needsSSH := false
+	for _, action := range actions {
+		if action != protocol.VNCConnect && action != protocol.RDPConnect {
+			needsSSH = true
+		}
+	}
+	if needsSSH {
+		if err := s.catalog.Ready(ctx, tx, serverID, allowInteractive); err != nil {
+			return fmt.Errorf("%w: %s: %v", ErrPreparation, serverID, err)
+		}
+	}
+	for _, desktop := range []struct {
+		action protocol.Action
+		table  string
+	}{{protocol.VNCConnect, "server_vnc_configs"}, {protocol.RDPConnect, "server_rdp_configs"}} {
+		if slices.Contains(actions, desktop.action) {
+			var count int64
+			if err := tx.Table(desktop.table).Where("server_id = ? AND enabled = ?", serverID, true).Count(&count).Error; err != nil {
+				return err
+			}
+			if count != 1 {
+				return fmt.Errorf("%w: remote desktop is not configured", ErrPreparation)
+			}
+		}
+	}
+	return nil
 }

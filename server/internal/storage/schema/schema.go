@@ -9,12 +9,13 @@ import (
 	"io/fs"
 
 	"github.com/easyssh/shared/dbmigration"
+	"github.com/pressly/goose/v3"
 )
 
 //go:embed */*.sql
 var scripts embed.FS
 
-const Version int64 = 5
+const Version int64 = 7
 
 func Definition(driver string) (dbmigration.Definition, error) {
 	switch driver {
@@ -34,6 +35,13 @@ func Start(ctx context.Context, db *sql.DB, driver string) error {
 	if err != nil {
 		return err
 	}
+	version, err := dbmigration.Version(ctx, db, driver)
+	if err != nil {
+		return err
+	}
+	if version >= 5 && version < Version {
+		return fmt.Errorf("database schema %d requires an explicit upgrade: stop the server, back up with the matching executable, then run maintenance schema-upgrade", version)
+	}
 	return dbmigration.Start(ctx, db, driver, definition)
 }
 
@@ -43,4 +51,38 @@ func Initialize(ctx context.Context, db *sql.DB, driver string) error {
 		return err
 	}
 	return dbmigration.Initialize(ctx, db, driver, definition)
+}
+
+// Migrate runs only under the host's instance/database locks. Startup and CLI
+// callers must create a recovery point before invoking an in-place upgrade.
+// Goose wraps SQLite/PostgreSQL SQL in a transaction, including version tracking.
+func Migrate(ctx context.Context, db *sql.DB, driver string, rollback bool) error {
+	current, err := dbmigration.Version(ctx, db, driver)
+	if err != nil {
+		return err
+	}
+	if !rollback && current == Version || rollback && current == 5 {
+		return nil
+	}
+	if current < 5 || current > Version {
+		return fmt.Errorf("unsupported source schema %d", current)
+	}
+	definition, err := Definition(driver)
+	if err != nil {
+		return err
+	}
+	dialect := goose.Dialect(driver)
+	if driver == "sqlite" {
+		dialect = goose.DialectSQLite3
+	}
+	provider, err := goose.NewProvider(dialect, db, definition.Files, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		return err
+	}
+	if rollback {
+		_, err = provider.DownTo(ctx, current-1)
+	} else {
+		_, err = provider.UpTo(ctx, Version)
+	}
+	return err
 }

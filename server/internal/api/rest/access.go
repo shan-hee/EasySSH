@@ -157,6 +157,20 @@ func (h *AccessHandler) Exchange(c *gin.Context) {
 func (h *AccessHandler) Authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		noStoreAccess(c)
+		if strings.HasPrefix(c.GetHeader("Authorization"), "Bearer ") {
+			if c.GetHeader("X-EasySSH-Access-Session") != "" {
+				accessError(c, access.ErrForbidden)
+				return
+			}
+			scope, err := h.service.AuthenticateToken(c.Request.Context(), strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer "))
+			if err != nil {
+				accessError(c, err)
+				return
+			}
+			c.Request = c.Request.WithContext(access.WithScope(c.Request.Context(), scope))
+			c.Next()
+			return
+		}
 		token, err := nativeAccessToken(c)
 		if err != nil {
 			accessError(c, err)
