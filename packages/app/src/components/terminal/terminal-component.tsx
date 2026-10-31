@@ -4,7 +4,7 @@ import { resolveTerminalInactiveMinutes } from "./terminal-settings"
 import { SessionWorkspaceToolbarContext } from "@/components/tabs/session-workspace-toolbar"
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { ConnectionLoader } from "./connection-loader"
+import { ConnectionParticles } from "./connection-particles"
 import {
   SessionTabBar,
   type CrossSessionFileDragData,
@@ -1136,10 +1136,11 @@ export function TerminalComponent({
 
     return (
       <Suspense key={`terminal-content-${session.id}`} fallback={chrome !== "toolbar" ? (
-        <ConnectionLoader
-          transparentBackground={hasWorkspaceBackground}
+        <ConnectionParticles
+          phase="connecting"
+          stage="preparing"
+          background={terminalTheme.background}
           serverName={session.username && session.host ? `${session.username}@${session.host}` : session.serverName}
-          message={tTerminal("connectionLoaderPreparing")}
         />
       ) : null}>
         <TabTerminalContent
@@ -1167,8 +1168,7 @@ export function TerminalComponent({
     )
   }, [
     activeSession,
-    hasWorkspaceBackground,
-    tTerminal,
+    terminalTheme.background,
     clearCrossSessionCompletedTransfers,
     crossSessionTransferTasks,
     handleInternalBackAvailabilityChange,

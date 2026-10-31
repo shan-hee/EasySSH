@@ -15,7 +15,11 @@ import { PageLoading } from '@/components/page-loading'
 import { loadAiAssistantPanel, PreloadedAiAssistantPanel as AiAssistantPanel } from '@/lib/ai-assistant-preload'
 import { NetworkLatencyPopover } from './network-latency-popover'
 import { WebTerminal } from './web-terminal'
-import { ConnectionLoader } from './connection-loader'
+import {
+  ConnectionParticles,
+  type ConnectionParticlesPhase,
+  type ConnectionParticlesStage,
+} from './connection-particles'
 import { FileManagerPanel } from './file-manager-panel'
 import type { AIAssistantWorkspaceAdapters } from '@/components/ai-agent/ai-assistant-workspace-view'
 import { DockerPopover } from './docker'
@@ -55,42 +59,45 @@ const DESKTOP_TERMINAL_LAYOUT_QUERY = '(min-width: 768px)'
 const DEFAULT_TERMINAL_SFTP_INITIAL_PATH = '/root'
 const BACKGROUND_WEBGL_HIBERNATE_DELAY_MS = 5_000
 
-type ConnectionLoaderMessageKey =
-  | "connectionLoaderConnecting"
-  | "connectionLoaderPreparing"
-  | "connectionLoaderTransport"
-  | "connectionLoaderSsh"
-  | "connectionLoaderAuthenticating"
-  | "connectionLoaderReconnecting"
-
 type InternalBackHandler = {
   handle: () => boolean | Promise<boolean>
 }
 
-const getConnectionLoaderMessageKey = (
+const CONNECTION_PARTICLES_STAGES: Record<TerminalConnectionPhase, ConnectionParticlesStage> = {
+  idle: "preparing",
+  ticket: "preparing",
+  ws_connecting: "transport",
+  ssh_connecting: "session",
+  authenticating: "auth",
+  reconnecting: "reconnecting",
+  ready: "connected",
+  failed: "failed",
+  closed: "failed",
+}
+
+// 连接动画下方展示的目标：用户名@地址，非默认端口时附带端口。
+const formatConnectionTarget = (session: TerminalSession) => {
+  if (!session.host) {
+    return undefined
+  }
+
+  const hasCustomPort = !!session.port && session.port !== 22
+  const host = hasCustomPort && session.host.includes(":") ? `[${session.host}]` : session.host
+  return `${session.username ? `${session.username}@` : ""}${host}${hasCustomPort ? `:${session.port}` : ""}`
+}
+
+const getConnectionExitPhase = (
   phase: TerminalConnectionPhase
-): ConnectionLoaderMessageKey => {
-  if (phase === "idle" || phase === "ticket") {
-    return "connectionLoaderPreparing"
+): ConnectionParticlesPhase | null => {
+  if (phase === "ready") {
+    return "success"
   }
 
-  if (phase === "ws_connecting") {
-    return "connectionLoaderTransport"
+  if (phase === "failed" || phase === "closed") {
+    return "failed"
   }
 
-  if (phase === "ssh_connecting") {
-    return "connectionLoaderSsh"
-  }
-
-  if (phase === "authenticating") {
-    return "connectionLoaderAuthenticating"
-  }
-
-  if (phase === "reconnecting") {
-    return "connectionLoaderReconnecting"
-  }
-
-  return "connectionLoaderConnecting"
+  return null
 }
 
 interface TabTerminalContentProps {
@@ -144,6 +151,21 @@ function TabTerminalContentComponent({
   const [hasOpenedFileManager, setHasOpenedFileManager] = useState(false)
   const [hasOpenedAi, setHasOpenedAi] = useState(false)
   const [hasOpenedMonitor, setHasOpenedMonitor] = useState(false)
+  // 加载结束后连接动画继续播完成功/失败退场再卸载；重新进入加载时换 key 重置图标和动画状态。
+  const [connectionRun, setConnectionRun] = useState(0)
+  const [connectionExit, setConnectionExit] = useState<ConnectionParticlesPhase | null>(null)
+  const [wasConnectionLoading, setWasConnectionLoading] = useState(effectiveIsLoading)
+  if (wasConnectionLoading !== effectiveIsLoading) {
+    setWasConnectionLoading(effectiveIsLoading)
+    if (effectiveIsLoading) {
+      setConnectionRun((run) => run + 1)
+      setConnectionExit(null)
+    } else {
+      setConnectionExit(getConnectionExitPhase(session.connectionPhase))
+    }
+  }
+  const connectionParticlesPhase = effectiveIsLoading ? "connecting" : connectionExit
+  const handleConnectionParticlesFinished = React.useCallback(() => setConnectionExit(null), [])
   const [sftpSessionInitialPath, setSftpSessionInitialPath] = useState(initialSftpPath)
   const terminalInputApiRef = React.useRef<TerminalInputApi | null>(null)
   const [hasTerminalInputApi, setHasTerminalInputApi] = useState(false)
@@ -585,13 +607,16 @@ function TabTerminalContentComponent({
           />
         )}
 
-        {/* 业务阶段结束就直接卸载，避免首次挂载时退出动画滞留；终端始终独立挂载。 */}
-        {shouldRenderBody && effectiveIsLoading && isTerminalSession && (
+        {/* 只有本次挂载期间经历过加载才播退场，首次挂载即已就绪的页签不会出现；终端始终独立挂载。 */}
+        {shouldRenderBody && connectionParticlesPhase && isTerminalSession && (
           <div className="pointer-events-none absolute inset-0 z-[60]">
-            <ConnectionLoader
-              transparentBackground={hasWorkspaceBackground}
-              serverName={connectionLoaderServerName}
-              message={tTerminal(getConnectionLoaderMessageKey(session.connectionPhase))}
+            <ConnectionParticles
+              key={connectionRun}
+              phase={connectionParticlesPhase}
+              background={terminalSurfaceBackground}
+              serverName={formatConnectionTarget(session) ?? connectionLoaderServerName}
+              stage={CONNECTION_PARTICLES_STAGES[session.connectionPhase]}
+              onFinished={handleConnectionParticlesFinished}
             />
           </div>
         )}

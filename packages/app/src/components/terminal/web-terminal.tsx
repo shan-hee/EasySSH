@@ -2,7 +2,6 @@ import { TerminalSearch, TerminalPasteConfirmation } from "./terminal-input-over
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { ConnectionLoader } from "./connection-loader"
 import { TerminalAuthChallengeDialog } from "./terminal-auth-challenge-dialog"
 import { TerminalHostKeyDialog } from "./terminal-host-key-dialog"
 import { CompletionPopup } from "./completion-popup"
@@ -367,17 +366,12 @@ export function WebTerminal({
   })
 
   if (!isClient) {
+    // 初始化期间的连接提示由外层统一显示，避免与粒子动画重叠。
     return (
       <div
-        className="h-full w-full flex items-center justify-center"
+        className="h-full w-full"
         style={{ backgroundColor: terminalRendererTheme.background }}
-      >
-        <ConnectionLoader
-          transparentBackground={allowTerminalTransparency}
-          serverName={serverName}
-          message={tTerminal("connectionLoaderInitializing")}
-        />
-      </div>
+      />
     )
   }
 
