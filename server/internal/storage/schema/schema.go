@@ -15,7 +15,7 @@ import (
 //go:embed */*.sql
 var scripts embed.FS
 
-const Version int64 = 9
+const Version int64 = 10
 
 func Definition(driver string) (dbmigration.Definition, error) {
 	switch driver {

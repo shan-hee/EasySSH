@@ -1,16 +1,17 @@
 {
   "title": "Chat connections",
-  "description": "Use the EasySSH Agent from Telegram private chats with your existing AI settings. Conversations appear in the AI assistant.",
-  "create": "Add Telegram",
+  "create": "Add connection",
   "edit": "Edit connection",
   "webOnly": "Manage chat connections on the web server.",
-  "loading": "Loading…",
   "loadFailed": "Unable to load. Please retry.",
   "retry": "Retry",
-  "empty": "Bring your Agent to Telegram",
-  "emptyHelp": "Create a dedicated bot, choose its allowed servers, and bind your Telegram account with a single-use link.",
+  "empty": "Bring the Agent to your chat app",
+  "emptyHelp": "Create a Telegram bot or a Feishu app, choose the servers it may access, then bind your account with a one-time code.",
   "serverCount": "{count} authorized servers",
-  "setupHelp": "Receive private messages through Telegram Bot API long polling. No public callback URL is needed. The server must be able to reach Telegram.",
+  "setupHelp": {
+    "telegram": "Receives private messages through Telegram Bot API long polling; no public callback URL is needed. The server must reach Telegram.",
+    "feishu": "Receives private messages through a Feishu long connection; no public callback URL is needed. The server must reach open.feishu.cn."
+  },
   "name": "Connection name",
   "namePlaceholder": "For example: Personal operations assistant",
   "keepToken": "Leave blank to keep the current token",
@@ -29,7 +30,7 @@
   "deleteConfirm": "Deleting this connection stops its tasks and removes bindings and delivery records. Agent conversation history is retained.",
   "bindings": "Account bindings",
   "generateCode": "Create binding link",
-  "bindingHelp": "Links expire in 10 minutes and can only be used once. Creating a new link invalidates the previous one. Anyone holding this link can obtain the configured server permissions. Use it only in your own private bot chat.",
+  "bindingHelp": "The binding code is valid for 10 minutes and works once; generating a new one invalidates the old. Whoever holds the code gets this connection's server access, so only use it in your own private chat with the bot.",
   "codeExpired": "This binding code has expired. Create a new one.",
   "codeExpires": "Expires at {time}. Invalidated after use.",
   "copyCode": "Copy binding command",
@@ -53,5 +54,27 @@
   "modeHelp": {
     "readonly": "Read server information, monitoring data and files. Shell commands and write operations are disabled.",
     "balanced": "Queries are allowed. Commands and file changes use the existing Agent approval flow."
-  }
+  },
+  "connection": "Chat connection",
+  "manage": "Manage connection",
+  "noSessions": "No sessions yet. After binding an account, message the bot in the chat app to start.",
+  "selectSession": "Select a session to see the bot's conversation in the chat app.",
+  "unnamed": "Unnamed account",
+  "transcriptHint": "Rebuilt from what the bot sent; instant acknowledgements are omitted",
+  "sessionStatus": {
+    "running": "Running…",
+    "waiting_confirmation": "Awaiting approval"
+  },
+  "resizeSidebar": "Resize session list",
+  "back": "Back to sessions",
+  "platform": "Chat platform",
+  "providers": {
+    "telegram": "Telegram",
+    "feishu": "Feishu"
+  },
+  "keepSecret": "Leave empty to keep the current App Secret",
+  "feishuHelp": "Create a custom app on the Feishu Open Platform with the bot capability. Under events and callbacks choose long connection, subscribe to message receive (im.message.receive_v1) and card action (card.action.trigger), publish a version, then enter the App ID and App Secret. Credentials are stored encrypted and never returned to the browser.",
+  "feishuConsole": "Feishu Open Platform",
+  "feishuBindHint": "Open the bot's private chat and send the command above to bind.",
+  "openFeishu": "Open the Feishu bot"
 }

@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -25,6 +27,11 @@ import (
 
 var ErrInvalid = errors.New("invalid chat connection")
 
+const (
+	ProviderTelegram = "telegram"
+	ProviderFeishu   = "feishu"
+)
+
 func invalid(message string) error { return fmt.Errorf("%w: %s", ErrInvalid, message) }
 
 type Service struct {
@@ -33,14 +40,16 @@ type Service struct {
 	agent         *runtime.Manager
 	accessRuntime *access.Runtime
 	http          *http.Client
-	mu            sync.Mutex // Serializes dispatch, projection and management changes, never Telegram I/O.
+	mu            sync.Mutex // Serializes dispatch, projection and management changes, never platform I/O.
 	replies       chan delivery
 	cancel        context.CancelFunc
 	wg            sync.WaitGroup
+	feishuMu      sync.Mutex
+	feishuTokens  map[string]feishuAccessToken
 }
 
 func NewService(db *gorm.DB, encryptor *crypto.Encryptor, agent *runtime.Manager, accessRuntime *access.Runtime) *Service {
-	return &Service{db: db, encryptor: encryptor, agent: agent, accessRuntime: accessRuntime, replies: make(chan delivery, 256),
+	return &Service{db: db, encryptor: encryptor, agent: agent, accessRuntime: accessRuntime, replies: make(chan delivery, 256), feishuTokens: make(map[string]feishuAccessToken),
 		http: &http.Client{Timeout: 35 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 
@@ -151,23 +160,27 @@ func (s *Service) Save(ctx context.Context, id string, input ConnectionInput) (C
 		if err != nil {
 			return ConnectionView{}, err
 		}
-		if input.Token == "" {
-			input.Token, err = s.token(existing)
-			if err != nil {
-				return ConnectionView{}, err
-			}
+	}
+	input.Provider = strings.TrimSpace(input.Provider)
+	if input.Provider == "" {
+		input.Provider = existing.Provider
+		if input.Provider == "" {
+			input.Provider = ProviderTelegram
 		}
 	}
-	bot, err := s.inspectBot(ctx, input.Token)
+	if input.Provider != ProviderTelegram && input.Provider != ProviderFeishu {
+		return ConnectionView{}, invalid("仅支持 Telegram 或飞书接入")
+	}
+	if id != "" && input.Provider != existing.Provider {
+		return ConnectionView{}, invalid("更换聊天平台请新建连接")
+	}
+	bot, err := s.verify(ctx, &input, existing)
 	if err != nil {
 		return ConnectionView{}, err
 	}
-	if id != "" && bot.ID != existing.BotID {
-		return ConnectionView{}, invalid("更换机器人请新建连接；此处仅支持同一机器人的 Token 更新")
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.db.WithContext(ctx).Model(&Connection{}).Where("bot_id = ? AND id <> ?", bot.ID, id).Count(&count).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&Connection{}).Where("bot_id = ? AND id <> ?", bot.id, id).Count(&count).Error; err != nil {
 		return ConnectionView{}, err
 	}
 	if count > 0 {
@@ -186,9 +199,10 @@ func (s *Service) Save(ctx context.Context, id string, input ConnectionInput) (C
 		c.Revision = 1
 	}
 	c.Name, c.ServerIDsJSON, c.PermissionMode, c.Enabled = input.Name, string(encoded), input.PermissionMode, input.Enabled
-	c.BotID, c.BotUsername, c.UpdatedAt = bot.ID, bot.Username, time.Now().UTC()
+	c.Provider, c.AppID = input.Provider, input.AppID
+	c.BotID, c.BotUsername, c.UpdatedAt = bot.id, bot.name, time.Now().UTC()
 	c.LastError = ""
-	c.TokenCipher, err = s.encryptor.EncryptSecret(input.Token, crypto.SecretAAD("chat_connections", c.ID, "token_cipher"))
+	c.TokenCipher, err = s.encryptor.EncryptSecret(bot.secret, crypto.SecretAAD("chat_connections", c.ID, "token_cipher"))
 	if err != nil {
 		return ConnectionView{}, err
 	}
@@ -212,6 +226,58 @@ func (s *Service) Save(ctx context.Context, id string, input ConnectionInput) (C
 		return ConnectionView{}, err
 	}
 	return view(c)
+}
+
+// botIdentity is what a platform credential resolves to.
+type botIdentity struct {
+	id     int64
+	name   string
+	secret string
+}
+
+// verify checks the credential with the platform. On update an empty credential
+// keeps the stored one, and the bot or application itself cannot change.
+func (s *Service) verify(ctx context.Context, input *ConnectionInput, existing Connection) (botIdentity, error) {
+	secret := input.Token
+	if input.Provider == ProviderFeishu {
+		secret = strings.TrimSpace(input.AppSecret)
+	}
+	if existing.ID != "" && secret == "" {
+		stored, err := s.token(existing)
+		if err != nil {
+			return botIdentity{}, err
+		}
+		secret = stored
+	}
+	if input.Provider == ProviderFeishu {
+		input.AppID = strings.TrimSpace(input.AppID)
+		if existing.ID != "" && input.AppID == "" {
+			input.AppID = existing.AppID
+		}
+		if existing.ID != "" && input.AppID != existing.AppID {
+			return botIdentity{}, invalid("更换飞书应用请新建连接")
+		}
+		name, err := s.inspectFeishuBot(ctx, input.AppID, secret)
+		// bot_id stays a unique NOT NULL column from schema 8. Feishu's identity is
+		// the unique (provider, app_id); a negative hash never collides with Telegram.
+		digest := sha256.Sum256([]byte("feishu:" + input.AppID))
+		return botIdentity{id: -int64(binary.BigEndian.Uint64(digest[:8])>>1) - 1, name: name, secret: secret}, err
+	}
+	if input.AppID != "" || input.AppSecret != "" {
+		return botIdentity{}, invalid("Telegram 连接不接受飞书应用凭据")
+	}
+	bot, err := s.inspectBot(ctx, secret)
+	if err == nil && existing.ID != "" && bot.ID != existing.BotID {
+		return botIdentity{}, invalid("更换机器人请新建连接；此处仅支持同一机器人的 Token 更新")
+	}
+	return botIdentity{id: bot.ID, name: bot.Username, secret: secret}, err
+}
+
+func platformName(c Connection) string {
+	if c.Provider == ProviderFeishu {
+		return "飞书"
+	}
+	return "Telegram"
 }
 
 func (s *Service) SetEnabled(ctx context.Context, id string, enabled bool) error {
@@ -310,7 +376,11 @@ func (s *Service) CreateBindCode(ctx context.Context, id string) (BindCode, erro
 	code := base64.RawURLEncoding.EncodeToString(secret)
 	expires := time.Now().UTC().Add(10 * time.Minute)
 	err = s.db.WithContext(ctx).Model(&c).Updates(map[string]any{"bind_code_hash": hash(code), "bind_expires_at": expires}).Error
-	return BindCode{Code: code, URL: "https://t.me/" + c.BotUsername + "?start=bind_" + code, ExpiresAt: expires}, err
+	link := "https://t.me/" + c.BotUsername + "?start=bind_" + code
+	if c.Provider == ProviderFeishu {
+		link = "https://applink.feishu.cn/client/bot/open?appId=" + url.QueryEscape(c.AppID)
+	}
+	return BindCode{Code: code, URL: link, Command: "/bind " + code, ExpiresAt: expires}, err
 }
 
 func hash(value string) string {

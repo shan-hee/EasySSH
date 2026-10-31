@@ -35,5 +35,16 @@
   "githubTooltip": "Open project on GitHub",
   "themeToggleLabel": "Theme",
   "themeToggleTooltip": "Toggle light/dark theme",
-  "accountSettings": "Account settings"
+  "accountSettings": "Account settings",
+  "serverPicker": {
+    "search": "Search servers, groups or tags",
+    "noMatch": "No matching servers.",
+    "groups": "Groups (current members only)",
+    "servers": "Servers",
+    "groupCount": "{count} servers",
+    "selectedCount": "{count} selected",
+    "selected": "Selected servers",
+    "remove": "Remove {name}",
+    "tooMany": "Select at most {count} servers. This selection was not applied."
+  }
 }

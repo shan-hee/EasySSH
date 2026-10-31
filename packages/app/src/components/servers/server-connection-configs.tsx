@@ -28,8 +28,7 @@ import {
  Trash2,
  LayoutGrid,
  List,
- Loader2,
-} from "lucide-react"
+ } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
 import {
@@ -55,6 +54,7 @@ import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
 import { useServerConnectionList } from "@/hooks/use-server-connection-list"
 import { preloadTerminalConnection } from "@/lib/terminal-preload"
+import { Spinner } from "@/components/ui/spinner"
 
 /** 通过实例 HTTP API 访问服务器配置；桌面等宿主可传入自己的实现。 */
 export const defaultServerConnectionConfigsApi: ServerConnectionConfigsApi = { ...serversApi, sshKeys: sshKeyApi, groups: serverGroupsApi, sharing: true }
@@ -895,7 +895,7 @@ export function ServerConnectionConfigs({
  )}
  {hasMore && !error && (
  <div ref={loadMoreRef} className="flex min-h-12 items-center justify-center text-sm text-muted-foreground">
- {loadingMore && <span role="status" className="flex items-center gap-2"><Loader2 aria-hidden="true" className="size-4 animate-spin" />{t("loadingList")}</span>}
+ {loadingMore && <Spinner aria-label={t("loadingList")} />}
  </div>
  )}
  </div>

@@ -5,6 +5,7 @@ import type { FitAddon } from "@xterm/addon-fit"
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
 import { cn } from "@/lib/utils"
 import { resolveTerminalBoldFontWeight, type TerminalSettings } from "./terminal-settings"
+import { Spinner } from "@/components/ui/spinner"
 import {
   formatTerminalFontFamily,
   resolveTerminalRendererTheme,
@@ -171,7 +172,7 @@ export function TerminalSettingsPreview({ settings }: { settings: TerminalSettin
             className="absolute inset-0 flex items-center justify-center text-sm"
             style={{ color: terminalTheme.foreground }}
           >
-            {t(loadFailed ? "previewLoadFailed" : "previewLoading")}
+            {loadFailed ? t("previewLoadFailed") : <Spinner aria-label={t("previewLoading")} className="size-6" />}
           </p>
         )}
       </div>

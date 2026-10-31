@@ -161,6 +161,7 @@ components:
     ChatConnection:
       type: object
       required:
+      - provider
       - id
       - name
       - bot_username
@@ -173,6 +174,14 @@ components:
       - created_at
       - updated_at
       properties:
+        provider:
+          type: string
+          enum: [telegram, feishu]
+          x-enum-varnames: [ChatProviderTelegram, ChatProviderFeishu]
+          description: Chat platform. Existing connections use telegram.
+        app_id:
+          type: string
+          description: Feishu internal application ID; omitted for Telegram.
         id:
           type: string
         name:
@@ -218,6 +227,20 @@ components:
       - permission_mode
       - enabled
       properties:
+        provider:
+          type: string
+          enum: [telegram, feishu]
+          x-enum-varnames: [ChatInputProviderTelegram, ChatInputProviderFeishu]
+          description: Defaults to telegram on creation; omitted on update preserves the platform. Cannot change an existing connection's platform.
+        app_id:
+          type: string
+          maxLength: 100
+          description: Required for a new Feishu connection. Empty preserves the existing application on update; switching applications requires a new connection.
+        app_secret:
+          type: string
+          maxLength: 1024
+          writeOnly: true
+          description: Required for a new Feishu connection; empty preserves the encrypted secret on update. Never returned by the API.
         name:
           type: string
           minLength: 1
@@ -225,7 +248,7 @@ components:
         token:
           type: string
           writeOnly: true
-          description: Required on creation; empty preserves the existing token on update.
+          description: Required when creating a Telegram connection; empty preserves the existing token on update. Not used for Feishu.
         server_ids:
           type: array
           minItems: 1
@@ -252,6 +275,9 @@ components:
       - revoked_at
       - created_at
       properties:
+        external_user_id:
+          type: string
+          description: Feishu open_id. The legacy user_id is retained and is "0" for Feishu bindings.
         id:
           type: string
         connection_id:
@@ -288,11 +314,51 @@ components:
       - url
       - expires_at
       properties:
+        command:
+          type: string
+          description: Send this /bind command in the bot private chat. Required for Feishu; Telegram also supports the returned deep link.
         code:
           type: string
         url:
           type: string
         expires_at:
+          type: string
+          format: date-time
+    ChatSession:
+      type: object
+      required: [id, binding_id, display_name, status, preview, updated_at]
+      properties:
+        id:
+          type: string
+        binding_id:
+          type: string
+        display_name:
+          type: string
+        status:
+          type: string
+        preview:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    ChatTranscriptMessage:
+      type: object
+      description: One bot message as the chat app shows it, rebuilt with the bot's own formatting.
+      required: [id, from, text, buttons, created_at]
+      properties:
+        id:
+          type: string
+        from:
+          type: string
+          enum: [user, bot]
+          x-enum-varnames: [ChatMessageFromUser, ChatMessageFromBot]
+        text:
+          type: string
+        buttons:
+          type: array
+          items:
+            type: string
+        created_at:
           type: string
           format: date-time
     ChatConnectionEnabled:
@@ -8901,6 +8967,61 @@ paths:
         schema:
           type: string
       - name: binding_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /chat-connections/{id}/sessions:
+    get:
+      operationId: listChatSessions
+      summary: List Agent sessions started from this connection
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatSession'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /chat-connections/{id}/sessions/{session_id}:
+    get:
+      operationId: getChatTranscript
+      summary: Rebuild the Telegram transcript of a chat session
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatTranscriptMessage'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: session_id
         in: path
         required: true
         schema:

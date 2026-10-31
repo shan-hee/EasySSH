@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { FileCode2, Loader2, Play, RefreshCw, Search, TextCursorInput, X } from "lucide-react"
+import { FileCode2, Play, RefreshCw, Search, TextCursorInput, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { scriptsApi } from "@/lib/api/scripts"
 import { queryKeys } from "@/lib/query-keys"
 import type { Script } from "@/lib/script-types"
 import { cn } from "@/lib/utils"
+import { PageLoading } from "@/components/page-loading"
 
 interface ScriptLibraryPopoverProps {
   canExecute: boolean
@@ -144,10 +145,7 @@ export function ScriptLibraryPopover({
           />
         </div>
         {scriptsQuery.isPending ? (
-          <div role="status" className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            {t("common:loading")}
-          </div>
+          <PageLoading className="min-h-0 py-8" />
         ) : scriptsQuery.isError ? (
           <div role="alert" className="space-y-3 p-6 text-center text-sm">
             <p className="text-destructive">{t("scriptLibraryLoadFailed")}</p>

@@ -87,7 +87,6 @@
   "detailUserAgent": "用户代理",
   "emptyMessage": "暂无活动日志",
   "activityEmpty": "暂无活动",
-  "loading": "加载中",
   "refresh": "刷新",
   "toastLoadFailed": "无法加载活动日志",
   "detailLoadFailed": "无法加载日志详情",

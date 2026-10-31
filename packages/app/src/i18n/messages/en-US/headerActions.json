@@ -2,7 +2,6 @@
   "githubTooltip": "Open project on GitHub",
   "notificationsTooltip": "Notifications",
   "notificationsTitle": "Notification center",
-  "notificationsLoading": "Loading notifications...",
   "notificationsEmpty": "No notifications",
   "notificationsMarkAllRead": "Mark all as read",
   "notificationsDelete": "Delete notification",

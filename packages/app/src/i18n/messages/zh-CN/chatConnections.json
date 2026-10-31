@@ -1,16 +1,17 @@
 {
   "title": "聊天接入",
-  "description": "在 Telegram 私聊中使用 EasySSH Agent，模型沿用现有 AI 设置；对话记录在 AI 助手中查看。",
-  "create": "添加 Telegram",
+  "create": "添加接入",
   "edit": "编辑连接",
   "webOnly": "请在 Web 服务端管理聊天接入。",
-  "loading": "加载中…",
   "loadFailed": "加载失败，请重试。",
   "retry": "重试",
-  "empty": "把 Agent 带到 Telegram",
-  "emptyHelp": "创建一个专用机器人，选择允许访问的服务器，再通过一次性链接绑定你的 Telegram 账号。",
+  "empty": "把 Agent 带到聊天工具",
+  "emptyHelp": "创建 Telegram 机器人或飞书应用，选择允许访问的服务器，再用一次性绑定码绑定你的账号。",
   "serverCount": "已授权 {count} 台服务器",
-  "setupHelp": "使用 Telegram Bot API 长轮询接收私聊消息，无需公网回调地址。服务端需要能访问 Telegram。",
+  "setupHelp": {
+    "telegram": "使用 Telegram Bot API 长轮询接收私聊消息，无需公网回调地址。服务端需要能访问 Telegram。",
+    "feishu": "通过飞书长连接接收单聊消息，无需公网回调地址。服务端需要能访问 open.feishu.cn。"
+  },
   "name": "连接名称",
   "namePlaceholder": "例如：个人运维助手",
   "keepToken": "留空保留现有 Token",
@@ -29,7 +30,7 @@
   "deleteConfirm": "删除连接将停止其任务，删除绑定和投递记录。Agent 历史会话仍会保留。",
   "bindings": "账号绑定",
   "generateCode": "生成绑定链接",
-  "bindingHelp": "绑定链接 10 分钟内有效且只能使用一次；新链接会使旧链接失效。持有链接的人可以获得此连接的服务器权限，请仅在自己的机器人私聊中使用。",
+  "bindingHelp": "绑定码 10 分钟内有效且只能使用一次；重新生成会使旧绑定码失效。持有绑定码的人可以获得此连接的服务器权限，请仅在自己的机器人私聊中使用。",
   "codeExpired": "绑定码已过期，请重新生成。",
   "codeExpires": "有效至 {time}，使用后自动失效。",
   "copyCode": "复制绑定命令",
@@ -53,5 +54,27 @@
   "modeHelp": {
     "readonly": "允许查看服务器信息、监控和文件。禁止 Shell 命令与写入操作。",
     "balanced": "允许查询；命令执行和文件变更使用现有 Agent 审批流程。"
-  }
+  },
+  "connection": "聊天连接",
+  "manage": "管理连接",
+  "noSessions": "还没有会话。绑定账号后，在聊天工具中给机器人发消息即可开始。",
+  "selectSession": "选择左侧会话，查看机器人在聊天工具中的对话。",
+  "unnamed": "未命名账号",
+  "transcriptHint": "按机器人实际发出的内容还原，不含“已收到”等即时回执",
+  "sessionStatus": {
+    "running": "运行中…",
+    "waiting_confirmation": "等待审批"
+  },
+  "resizeSidebar": "调整会话列表宽度",
+  "back": "返回会话列表",
+  "platform": "聊天平台",
+  "providers": {
+    "telegram": "Telegram",
+    "feishu": "飞书"
+  },
+  "keepSecret": "留空保留现有 App Secret",
+  "feishuHelp": "在飞书开放平台创建企业自建应用并开启机器人能力；事件与回调选择“使用长连接接收”，订阅接收消息（im.message.receive_v1）和卡片回传交互（card.action.trigger），发布应用版本后填写 App ID 与 App Secret。凭据加密保存，不会返回浏览器。",
+  "feishuConsole": "飞书开放平台",
+  "feishuBindHint": "打开机器人单聊，发送上面的命令完成绑定。",
+  "openFeishu": "打开飞书机器人"
 }

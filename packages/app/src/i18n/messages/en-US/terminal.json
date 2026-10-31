@@ -199,7 +199,6 @@
   "dockerErrorDetails": "Show error details",
   "dockerLogsTitle": "Container Logs - {name}",
   "dockerLogsEditorDescription": "View container logs in the file editor in read-only mode.",
-  "dockerLogsLoading": "Loading logs...",
   "dockerLogsClose": "Close logs",
   "dockerLogsTailLines": "Log line count",
   "dockerLogsRefresh": "Refresh logs",

@@ -13,6 +13,7 @@ import { TokenTable } from "@/components/automation/token-table"
 import { automationApi, type AccessToken } from "@/lib/api/automation"
 import { queryKeys } from "@/lib/query-keys"
 import { useRuntime } from "@/shell/runtime"
+import { PageLoading } from "@/components/page-loading"
 
 // Tokens are the credential and MCP is where they are used, so both live on one page.
 export default function MCPPage() {
@@ -42,7 +43,7 @@ export default function MCPPage() {
           <h2 className="text-sm font-semibold">{t("tokensTitle")}</h2>
           <Button size="sm" onClick={() => setCreating(true)}><Plus className="size-4" />{t("createToken")}</Button>
         </div>
-        {tokens.isPending && <p className="text-sm text-muted-foreground">{t("loading")}</p>}
+        {tokens.isPending && <PageLoading className="min-h-0 py-10" />}
         {tokens.isError && <div role="alert" className="flex items-center gap-3 text-sm text-destructive">
           {t("loadFailed")}
           <Button variant="outline" size="sm" onClick={() => void tokens.refetch()}>{t("retry")}</Button>

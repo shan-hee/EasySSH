@@ -35,5 +35,16 @@
   "githubTooltip": "在 GitHub 上打开项目",
   "themeToggleLabel": "主题切换",
   "themeToggleTooltip": "切换浅色/深色主题",
-  "accountSettings": "账户设置"
+  "accountSettings": "账户设置",
+  "serverPicker": {
+    "search": "搜索服务器、分组或标签",
+    "noMatch": "没有匹配的服务器。",
+    "groups": "分组（仅包含当前成员）",
+    "servers": "服务器",
+    "groupCount": "{count} 台",
+    "selectedCount": "已选 {count} 台",
+    "selected": "已选服务器",
+    "remove": "移除 {name}",
+    "tooMany": "最多选择 {count} 台服务器，本次选择未应用。"
+  }
 }

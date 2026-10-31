@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import { formatBytesString } from "@/lib/format-utils"
 import { useSessionDraftState } from "@/hooks/use-agent-composer-draft"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
+import { PageLoading } from "@/components/page-loading"
 
 const Editor = lazy(() => import("@/components/sftp/local-monaco-editor"))
 const DiffEditor = lazy(() => import("@/components/sftp/local-monaco-editor").then((module) => ({ default: module.DiffEditor })))
@@ -290,7 +291,7 @@ function FilePreview({ task }: { task: TaskView }) {
       <Button size="icon" variant="ghost" className="size-7" disabled={saving} aria-label={t("workspaceDownload")} title={t("workspaceDownload")} onClick={() => void download()}>{saving ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}</Button>
     </div>
     <div className="min-h-0 flex-1 overflow-hidden">
-      <Suspense fallback={<div className="p-4 text-xs text-muted-foreground">{t("loading")}</div>}>
+      <Suspense fallback={<PageLoading className="h-full min-h-0" />}>
         {tab === "diff" && file.before !== undefined ? <DiffEditor original={file.before} modified={file.content} language={language} theme={resolvedTheme === "dark" ? "vs-dark" : "light"} options={{ ...options, renderSideBySide: true, useInlineViewWhenSpaceIsLimited: true, originalEditable: false }} />
           : image ? <div className="flex h-full items-center justify-center overflow-auto p-4"><img src={`data:${file.media_type};base64,${file.content}`} alt={file.name} className="max-h-full max-w-full object-contain" /></div>
           : tab === "preview" && html ? <iframe title={file.name} sandbox="" referrerPolicy="no-referrer" srcDoc={`<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'">${file.content}`} className="h-full w-full border-0 bg-white" />

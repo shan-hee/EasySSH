@@ -22,6 +22,8 @@ export const queryKeys = {
     list: ["chat-connections", "list"] as const,
     detail: (id: string) => ["chat-connections", "detail", id] as const,
     servers: ["chat-connections", "servers"] as const,
+    sessions: (id: string) => ["chat-connections", "sessions", id] as const,
+    transcript: (id: string, sessionId: string) => ["chat-connections", "transcript", id, sessionId] as const,
   },
   automation: {
     tokens: ["automation", "tokens"] as const,

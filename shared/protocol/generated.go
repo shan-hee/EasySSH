@@ -593,6 +593,24 @@ func (e ChatConnectionPermissionMode) Valid() bool {
 	}
 }
 
+// Defines values for ChatConnectionProvider.
+const (
+	ChatProviderFeishu   ChatConnectionProvider = "feishu"
+	ChatProviderTelegram ChatConnectionProvider = "telegram"
+)
+
+// Valid indicates whether the value is a known member of the ChatConnectionProvider enum.
+func (e ChatConnectionProvider) Valid() bool {
+	switch e {
+	case ChatProviderFeishu:
+		return true
+	case ChatProviderTelegram:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ChatConnectionStatus.
 const (
 	ChatConnectionStatusConnected  ChatConnectionStatus = "connected"
@@ -629,6 +647,42 @@ func (e ChatConnectionInputPermissionMode) Valid() bool {
 	case ChatInputBalanced:
 		return true
 	case ChatInputReadonly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatConnectionInputProvider.
+const (
+	ChatInputProviderFeishu   ChatConnectionInputProvider = "feishu"
+	ChatInputProviderTelegram ChatConnectionInputProvider = "telegram"
+)
+
+// Valid indicates whether the value is a known member of the ChatConnectionInputProvider enum.
+func (e ChatConnectionInputProvider) Valid() bool {
+	switch e {
+	case ChatInputProviderFeishu:
+		return true
+	case ChatInputProviderTelegram:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatTranscriptMessageFrom.
+const (
+	ChatMessageFromBot  ChatTranscriptMessageFrom = "bot"
+	ChatMessageFromUser ChatTranscriptMessageFrom = "user"
+)
+
+// Valid indicates whether the value is a known member of the ChatTranscriptMessageFrom enum.
+func (e ChatTranscriptMessageFrom) Valid() bool {
+	switch e {
+	case ChatMessageFromBot:
+		return true
+	case ChatMessageFromUser:
 		return true
 	default:
 		return false
@@ -2905,24 +2959,32 @@ type CSRFToken struct {
 
 // ChatBindCode defines model for ChatBindCode.
 type ChatBindCode struct {
-	Code      string    `json:"code"`
+	Code string `json:"code"`
+
+	// Command Send this /bind command in the bot private chat. Required for Feishu; Telegram also supports the returned deep link.
+	Command   *string   `json:"command,omitempty"`
 	ExpiresAt time.Time `json:"expires_at"`
 	URL       string    `json:"url"`
 }
 
 // ChatBinding defines model for ChatBinding.
 type ChatBinding struct {
-	ConnectionID     string     `json:"connection_id"`
-	CreatedAt        time.Time  `json:"created_at"`
-	CurrentSessionID string     `json:"current_session_id"`
-	DisplayName      string     `json:"display_name"`
-	ID               string     `json:"id"`
-	RevokedAt        *time.Time `json:"revoked_at"`
-	UserID           string     `json:"user_id"`
+	ConnectionID     string    `json:"connection_id"`
+	CreatedAt        time.Time `json:"created_at"`
+	CurrentSessionID string    `json:"current_session_id"`
+	DisplayName      string    `json:"display_name"`
+
+	// ExternalUserID Feishu open_id. The legacy user_id is retained and is "0" for Feishu bindings.
+	ExternalUserID *string    `json:"external_user_id,omitempty"`
+	ID             string     `json:"id"`
+	RevokedAt      *time.Time `json:"revoked_at"`
+	UserID         string     `json:"user_id"`
 }
 
 // ChatConnection defines model for ChatConnection.
 type ChatConnection struct {
+	// AppID Feishu internal application ID; omitted for Telegram.
+	AppID          *string                      `json:"app_id,omitempty"`
 	BotUsername    string                       `json:"bot_username"`
 	CreatedAt      time.Time                    `json:"created_at"`
 	Enabled        bool                         `json:"enabled"`
@@ -2931,13 +2993,19 @@ type ChatConnection struct {
 	LastPollAt     *time.Time                   `json:"last_poll_at"`
 	Name           string                       `json:"name"`
 	PermissionMode ChatConnectionPermissionMode `json:"permission_mode"`
-	ServerIds      []string                     `json:"server_ids"`
-	Status         ChatConnectionStatus         `json:"status"`
-	UpdatedAt      time.Time                    `json:"updated_at"`
+
+	// Provider Chat platform. Existing connections use telegram.
+	Provider  ChatConnectionProvider `json:"provider"`
+	ServerIds []string               `json:"server_ids"`
+	Status    ChatConnectionStatus   `json:"status"`
+	UpdatedAt time.Time              `json:"updated_at"`
 }
 
 // ChatConnectionPermissionMode defines model for ChatConnection.PermissionMode.
 type ChatConnectionPermissionMode string
+
+// ChatConnectionProvider Chat platform. Existing connections use telegram.
+type ChatConnectionProvider string
 
 // ChatConnectionStatus defines model for ChatConnection.Status.
 type ChatConnectionStatus string
@@ -2955,17 +3023,50 @@ type ChatConnectionEnabled struct {
 
 // ChatConnectionInput defines model for ChatConnectionInput.
 type ChatConnectionInput struct {
+	// AppID Required for a new Feishu connection. Empty preserves the existing application on update; switching applications requires a new connection.
+	AppID *string `json:"app_id,omitempty"`
+
+	// AppSecret Required for a new Feishu connection; empty preserves the encrypted secret on update. Never returned by the API.
+	AppSecret      *string                           `json:"app_secret,omitempty"`
 	Enabled        bool                              `json:"enabled"`
 	Name           string                            `json:"name"`
 	PermissionMode ChatConnectionInputPermissionMode `json:"permission_mode"`
-	ServerIds      []string                          `json:"server_ids"`
 
-	// Token Required on creation; empty preserves the existing token on update.
+	// Provider Defaults to telegram on creation; omitted on update preserves the platform. Cannot change an existing connection's platform.
+	Provider  *ChatConnectionInputProvider `json:"provider,omitempty"`
+	ServerIds []string                     `json:"server_ids"`
+
+	// Token Required when creating a Telegram connection; empty preserves the existing token on update. Not used for Feishu.
 	Token *string `json:"token,omitempty"`
 }
 
 // ChatConnectionInputPermissionMode defines model for ChatConnectionInput.PermissionMode.
 type ChatConnectionInputPermissionMode string
+
+// ChatConnectionInputProvider Defaults to telegram on creation; omitted on update preserves the platform. Cannot change an existing connection's platform.
+type ChatConnectionInputProvider string
+
+// ChatSession defines model for ChatSession.
+type ChatSession struct {
+	BindingID   string    `json:"binding_id"`
+	DisplayName string    `json:"display_name"`
+	ID          string    `json:"id"`
+	Preview     string    `json:"preview"`
+	Status      string    `json:"status"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// ChatTranscriptMessage One bot message as the chat app shows it, rebuilt with the bot's own formatting.
+type ChatTranscriptMessage struct {
+	Buttons   []string                  `json:"buttons"`
+	CreatedAt time.Time                 `json:"created_at"`
+	From      ChatTranscriptMessageFrom `json:"from"`
+	ID        string                    `json:"id"`
+	Text      string                    `json:"text"`
+}
+
+// ChatTranscriptMessageFrom defines model for ChatTranscriptMessage.From.
+type ChatTranscriptMessageFrom string
 
 // ChmodResponse defines model for ChmodResponse.
 type ChmodResponse struct {

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react"
-import { Loader2, MessageSquare } from "lucide-react"
+import { MessageSquare } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { CommandDialog, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { toast } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
 import { listAISessions, type SessionListItem } from "@/lib/api/ai-agent"
+import { PageLoading } from "@/components/page-loading"
 
 const PAGE_SIZE = 30
 
@@ -78,7 +79,7 @@ export function AISessionSearch({ open, onOpenChange, onSelect, listSessions = l
             </div>
           </CommandItem>
         ))}
-        {loading && <div role="status" className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />{t("loading")}</div>}
+        {loading && <PageLoading className="min-h-0 py-4" />}
         {failed && <div role="alert" className="p-4 text-center text-sm"><p>{t("sessionListLoadFailed")}</p><Button variant="ghost" size="sm" onClick={() => setRetry((n) => n + 1)}>{tCommon("retry")}</Button></div>}
         {!loading && !failed && items.length === 0 && <p role="status" className="p-6 text-center text-sm text-muted-foreground">{t(query.trim() ? "sessionSearchEmpty" : "sessionListEmpty")}</p>}
         {!loading && !failed && items.length < total && <CommandItem value="load-more" onSelect={() => setPage((n) => n + 1)} className="justify-center">{t("loadMoreSessions")}</CommandItem>}

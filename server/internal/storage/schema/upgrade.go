@@ -61,7 +61,7 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 	for _, name := range tables {
 		present[name] = true
 	}
-	for name, introduced := range map[string]int64{"automation_tokens": 6, "server_vnc_configs": 6, "server_rdp_configs": 7, "chat_connections": 8, "chat_bindings": 8, "chat_approvals": 8} {
+	for name, introduced := range map[string]int64{"automation_tokens": 6, "server_vnc_configs": 6, "server_rdp_configs": 7, "chat_connections": 8, "chat_bindings": 8, "chat_approvals": 8, "chat_received_events": 10} {
 		if present[name] != (version >= introduced) {
 			return fmt.Errorf("schema %d disagrees with table %s; inspect interrupted DDL before retrying", version, name)
 		}
@@ -74,6 +74,33 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 	for _, name := range []string{"chat_approvals_v8", "chat_approvals_v9"} {
 		if present[name] {
 			return fmt.Errorf("unfinished chat migration table %s; restore the migration recovery point", name)
+		}
+	}
+	// An interrupted MySQL upgrade may have added columns but not yet created
+	// chat_received_events. Refuse to resume those untracked partial changes.
+	if version >= 8 {
+		for table, columns := range map[string][]string{
+			"chat_connections": {"provider", "app_id"},
+			"chat_bindings":    {"external_user_id", "external_chat_id"},
+		} {
+			for _, column := range columns {
+				var count int
+				var err error
+				switch driver {
+				case "sqlite":
+					err = db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info(?) WHERE name = ?", table, column).Scan(&count)
+				case "postgres":
+					err = db.QueryRowContext(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 AND column_name=$2", table, column).Scan(&count)
+				case "mysql":
+					err = db.QueryRowContext(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name=? AND column_name=?", table, column).Scan(&count)
+				}
+				if err != nil {
+					return err
+				}
+				if (count == 1) != (version >= 10) {
+					return fmt.Errorf("schema %d disagrees with %s.%s; inspect interrupted DDL before retrying", version, table, column)
+				}
+			}
 		}
 	}
 	// Validate the columns introduced by completed versions, not just table names.
@@ -93,6 +120,9 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 		{8, 9, "SELECT id,connection_id,binding_id,chat_id,text,buttons,status,attempts,next_attempt_at,last_error,created_at FROM chat_outbox WHERE 1=0"},
 		{9, 0, "SELECT revision FROM chat_connections WHERE 1=0"},
 		{9, 0, "SELECT message_count,watching FROM chat_bindings WHERE 1=0"},
+		{10, 0, "SELECT provider,app_id FROM chat_connections WHERE 1=0"},
+		{10, 0, "SELECT external_user_id,external_chat_id FROM chat_bindings WHERE 1=0"},
+		{10, 0, "SELECT id,connection_id,created_at FROM chat_received_events WHERE 1=0"},
 	} {
 		if version < check.introduced || check.removed != 0 && version >= check.removed {
 			continue

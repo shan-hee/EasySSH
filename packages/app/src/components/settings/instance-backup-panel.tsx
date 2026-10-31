@@ -13,6 +13,7 @@ import { authenticatedFetch, getApiUrl } from "@/lib/api-client"
 import { createAccessTicket } from "@/lib/access-ticket"
 import { startBrowserDownload } from "@/lib/browser-download"
 import type { components } from "@/generated/openapi"
+import { PageLoading } from "@/components/page-loading"
 
 export type InstanceBackupRecord = components["schemas"]["InstanceBackupRecord"]
 type InstanceBackupList = components["schemas"]["InstanceBackupList"]
@@ -174,7 +175,7 @@ export function InstanceBackupPanel({ adapter, showHeader = true }: { adapter: I
                 </div></td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">{!loaded ? t("instanceLoading") : query ? t("instanceNoMatch") : t("instanceEmpty")}</td></tr>}
+            {!rows.length && <tr><td colSpan={5} className="p-8 text-center text-muted-foreground">{!loaded ? <PageLoading className="min-h-0" /> : query ? t("instanceNoMatch") : t("instanceEmpty")}</td></tr>}
           </tbody>
         </table>
       </div>

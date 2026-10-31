@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/domain/aichat/runtime"
+	"github.com/easyssh/shared/aichatui"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -121,25 +122,29 @@ func (s *Service) projectBinding(ctx context.Context, c Connection, b Binding) (
 		return nil, err
 	}
 	var calls []outgoing
+	requestID := ""
 	send := func(text string, keyboard *telegramKeyboard) {
-		calls = append(calls, reply(b.ChatID, text, keyboard)...)
+		replies := reply(b.chatAddress(), text, keyboard)
+		if len(replies) > 0 {
+			replies[0].resultRequestID = requestID
+		}
+		calls = append(calls, replies...)
 	}
 	// Messages past the stored count belong to the run that just settled.
 	fresh := map[string]bool{}
 	texts := 0
-	for _, message := range view.Messages[min(b.MessageCount, len(view.Messages)):] {
+	for i, message := range view.Messages {
+		if message.Role == "user" {
+			requestID = message.ID
+		}
+		if i < b.MessageCount {
+			continue
+		}
 		fresh[message.ID] = true
 		if message.Role != "assistant" || strings.TrimSpace(message.Content) == "" {
 			continue
 		}
-		body := message.Content
-		if message.StoppedAt != nil {
-			body = "本轮已停止，以下是停止前已生成的内容：\n\n" + body
-		}
-		if len([]rune(body)) > 24000 {
-			body = truncate(body, 24000) + "\n内容较长，请在 EasySSH 网页查看完整回复。\n会话 ID：" + view.ID
-		}
-		send(body, nil)
+		send(assistantText(view.ID, message), nil)
 		texts++
 	}
 	var approvals []Approval
@@ -177,7 +182,7 @@ func (s *Service) projectBinding(ctx context.Context, c Connection, b Binding) (
 	if !watching {
 		for _, task := range view.Tasks {
 			if task.Status == runtime.TaskStatusUnknown && fresh[task.AssistantMessageID] {
-				send("操作结果未知，请先在网页核实远端实际状态，不要直接重复执行。\n操作："+task.ToolName+"\n会话 ID："+view.ID, nil)
+				send(unknownText(view.ID, task), nil)
 			}
 		}
 		if texts == 0 {
@@ -196,6 +201,23 @@ func (s *Service) projectBinding(ctx context.Context, c Connection, b Binding) (
 		return nil, err
 	}
 	return calls, nil
+}
+
+// The text builders below define what each chat platform receives; the transcript
+// reuses them so both always show the same content.
+func assistantText(sessionID string, message aichatui.MessageView) string {
+	body := message.Content
+	if message.StoppedAt != nil {
+		body = "本轮已停止，以下是停止前已生成的内容：\n\n" + body
+	}
+	if len([]rune(body)) > 24000 {
+		body = truncate(body, 24000) + "\n内容较长，请在 EasySSH 网页查看完整回复。\n会话 ID：" + sessionID
+	}
+	return body
+}
+
+func unknownText(sessionID string, task runtime.TaskView) string {
+	return "操作结果未知，请先在网页核实远端实际状态，不要直接重复执行。\n操作：" + task.ToolName + "\n会话 ID：" + sessionID
 }
 
 func approvalText(sessionID string, task runtime.TaskView, approvalID string) (string, *telegramKeyboard) {

@@ -22,6 +22,7 @@ import { RefreshCw, Loader2 } from 'lucide-react'
 import type { DockerApiClient } from '@/lib/api/docker'
 import { useTranslation } from "react-i18next"
 import { FileEditor } from '@/components/sftp/file-editor'
+import { PageLoading } from '@/components/page-loading'
 
 interface ContainerLogsProps {
   open: boolean
@@ -78,7 +79,7 @@ export function ContainerLogs({
     }
   }, [open, containerId, fetchLogs])
 
-  const displayContent = logs || (loading ? t('dockerLogsLoading') : t('dockerNoLogs'))
+  const displayContent = logs || (loading ? '' : t('dockerNoLogs'))
   const fileName = `${containerName}-logs.log`
 
   return (
@@ -139,6 +140,7 @@ export function ContainerLogs({
             </>
           }
         />
+        {loading && !logs && <PageLoading className="pointer-events-none absolute inset-0 z-10 min-h-0 bg-background/60" />}
       </DialogContent>
     </Dialog>
   )

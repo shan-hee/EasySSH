@@ -976,6 +976,8 @@ func main() {
 			chatConnections.PATCH("/:id/enabled", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.SetEnabled)
 			chatConnections.POST("/:id/bind-code", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.BindCode)
 			chatConnections.DELETE("/:id/bindings/:binding_id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Revoke)
+			chatConnections.GET("/:id/sessions", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Sessions)
+			chatConnections.GET("/:id/sessions/:session_id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Transcript)
 		}
 
 		// AI聊天路由（需要认证）

@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/inbox-notifications"
 import { subscribeRealtimeEvents } from "@/lib/api/realtime-events"
 import { queryKeys } from "@/lib/query-keys"
+import { PageLoading } from "@/components/page-loading"
 
 const severityIcons = {
   info: Info,
@@ -148,7 +149,7 @@ export function NotificationCenter() {
         </div>
         <ScrollArea className="h-[min(520px,65vh)]">
           {loading && items.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-muted-foreground">{t("notificationsLoading")}</div>
+            <PageLoading className="min-h-0 py-10" />
           ) : items.length === 0 ? (
             <div className="px-4 py-12 text-center text-sm text-muted-foreground">{t("notificationsEmpty")}</div>
           ) : (

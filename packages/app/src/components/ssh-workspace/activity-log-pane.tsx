@@ -7,6 +7,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import type { SshWorkspaceActivityLogAdapter, WorkspaceActivityLogItem } from "@/lib/session/workspace"
 import { useTranslation } from "react-i18next"
+import { PageLoading } from "@/components/page-loading"
 
 type ActivityLogStatus = WorkspaceActivityLogItem["status"]
 
@@ -129,10 +130,7 @@ function ActivityLogPaneContent({ compact, adapter }: {
         </div>
         <div className="max-h-80 overflow-y-auto p-2">
           {loading && items.length === 0 ? (
-            <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {t("loading")}
-            </div>
+            <PageLoading className="h-24 min-h-0" />
           ) : items.length === 0 ? (
             <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
               {t("activityEmpty")}

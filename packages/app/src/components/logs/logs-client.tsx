@@ -61,6 +61,7 @@ import {
 } from "./log-server-filters"
 import { queryKeys } from "@/lib/query-keys"
 import { auditLogsQueryOptions } from "@/lib/dashboard-query-options"
+import { PageLoading } from "@/components/page-loading"
 
 interface LogsPageData {
   logs: AuditLogSummary[]
@@ -750,10 +751,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
                   </Button>
                 </div>
                 {detailQuery.isPending && !detailQuery.data ? (
-                  <div className="flex min-h-24 items-center justify-center rounded-md bg-background/70 text-sm text-muted-foreground">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("loading")}
-                  </div>
+                  <PageLoading className="min-h-24 flex-none rounded-md bg-background/70" />
                 ) : (
                   <pre className="min-h-24 max-h-[42vh] overflow-auto whitespace-pre-wrap break-words rounded-md bg-background/70 p-3 font-mono text-xs text-muted-foreground">
                     {detailPreviewValue || auditLogSummaryPreview(selectedSummary)}

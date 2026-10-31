@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { SettingsPanel, SettingsPanelToggle } from "@/components/assistant-ui/elements/settings-panel"
 import { toast } from "@/components/ui/sonner"
+import { PageLoading } from "@/components/page-loading"
 import {
   aiConfigApi,
   type AIConfig,
@@ -213,10 +214,7 @@ export function AIAssistantConfigPopover({
         </div>
 
         {loading || !config ? (
-          <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            <span>{t("aiConfigLoading")}</span>
-          </div>
+          <PageLoading className="min-h-0 py-12" />
         ) : (
           <SettingsPanel className="max-h-[70vh] overflow-y-auto rounded-none border-0 scrollbar-custom">
             <div className="border-b border-border/60 pb-4">

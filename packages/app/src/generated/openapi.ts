@@ -92,6 +92,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat-connections/{id}/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agent sessions started from this connection */
+        get: operations["listChatSessions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat-connections/{id}/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Rebuild the Telegram transcript of a chat session */
+        get: operations["getChatTranscript"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/public/branding": {
         parameters: {
             query?: never;
@@ -3557,6 +3591,13 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ChatConnection: {
+            /**
+             * @description Chat platform. Existing connections use telegram.
+             * @enum {string}
+             */
+            provider: "telegram" | "feishu";
+            /** @description Feishu internal application ID; omitted for Telegram. */
+            app_id?: string;
             id: string;
             name: string;
             bot_username: string;
@@ -3575,8 +3616,17 @@ export interface components {
             updated_at: string;
         };
         ChatConnectionInput: {
+            /**
+             * @description Defaults to telegram on creation; omitted on update preserves the platform. Cannot change an existing connection's platform.
+             * @enum {string}
+             */
+            provider?: "telegram" | "feishu";
+            /** @description Required for a new Feishu connection. Empty preserves the existing application on update; switching applications requires a new connection. */
+            app_id?: string;
+            /** @description Required for a new Feishu connection; empty preserves the encrypted secret on update. Never returned by the API. */
+            app_secret?: string;
             name: string;
-            /** @description Required on creation; empty preserves the existing token on update. */
+            /** @description Required when creating a Telegram connection; empty preserves the existing token on update. Not used for Feishu. */
             token?: string;
             server_ids: string[];
             /** @enum {string} */
@@ -3584,6 +3634,8 @@ export interface components {
             enabled: boolean;
         };
         ChatBinding: {
+            /** @description Feishu open_id. The legacy user_id is retained and is "0" for Feishu bindings. */
+            external_user_id?: string;
             id: string;
             connection_id: string;
             user_id: string;
@@ -3599,10 +3651,31 @@ export interface components {
             bindings: components["schemas"]["ChatBinding"][];
         };
         ChatBindCode: {
+            /** @description Send this /bind command in the bot private chat. Required for Feishu; Telegram also supports the returned deep link. */
+            command?: string;
             code: string;
             url: string;
             /** Format: date-time */
             expires_at: string;
+        };
+        ChatSession: {
+            id: string;
+            binding_id: string;
+            display_name: string;
+            status: string;
+            preview: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        /** @description One bot message as the chat app shows it, rebuilt with the bot's own formatting. */
+        ChatTranscriptMessage: {
+            id: string;
+            /** @enum {string} */
+            from: "user" | "bot";
+            text: string;
+            buttons: string[];
+            /** Format: date-time */
+            created_at: string;
         };
         ChatConnectionEnabled: {
             enabled: boolean;
@@ -7310,6 +7383,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listChatSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSession"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getChatTranscript: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTranscriptMessage"][];
+                };
             };
             default: components["responses"]["Error"];
         };

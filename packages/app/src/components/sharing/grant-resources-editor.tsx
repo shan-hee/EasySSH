@@ -15,6 +15,8 @@ import type { GrantInput, Action } from "@/lib/api/grants"
 import type { Server } from "@/lib/server-types"
 import type { Script } from "@/lib/script-types"
 import { ScriptParameterRules } from "./script-parameter-rules"
+import { PageLoading } from "@/components/page-loading"
+import { Spinner } from "@/components/ui/spinner"
 
 type Resource = GrantInput["resources"][number]
 const pageSize = 8
@@ -168,9 +170,7 @@ export function GrantResourcesEditor({
                 </div>
               ))}
             {!candidates.length && (
-              <p className="py-4 text-center text-xs text-muted-foreground">
-                {loading ? t("loadingResources") : t("noMatchingResources")}
-              </p>
+              loading ? <PageLoading className="min-h-0 py-4" /> : <p className="py-4 text-center text-xs text-muted-foreground">{t("noMatchingResources")}</p>
             )}
           </div>
           {candidates.length > pageSize && (
@@ -245,9 +245,7 @@ export function GrantResourcesEditor({
                     {activeServer.port}
                   </p>
                 ) : (
-                  <p className="text-xs text-destructive">
-                    {loading ? t("loadingResources") : t("resourceUnavailable")}
-                  </p>
+                  loading ? <Spinner aria-label={t("loadingResources")} className="size-3 text-muted-foreground" /> : <p className="text-xs text-destructive">{t("resourceUnavailable")}</p>
                 )}
               </div>
               <Button

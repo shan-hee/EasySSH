@@ -88,10 +88,11 @@ func (s *Service) telegram(ctx context.Context, token, method string, input, out
 	}
 	defer response.Body.Close()
 	var envelope struct {
-		OK         bool            `json:"ok"`
-		Result     json.RawMessage `json:"result"`
-		ErrorCode  int             `json:"error_code"`
-		Parameters struct {
+		OK          bool            `json:"ok"`
+		Result      json.RawMessage `json:"result"`
+		ErrorCode   int             `json:"error_code"`
+		Description string          `json:"description"`
+		Parameters  struct {
 			RetryAfter int `json:"retry_after"`
 		} `json:"parameters"`
 	}
@@ -99,6 +100,10 @@ func (s *Service) telegram(ctx context.Context, token, method string, input, out
 		return errors.New("Telegram 返回了无法解析的响应")
 	}
 	if !envelope.OK {
+		// An edit may have succeeded before a transport failure triggered a retry.
+		if method == "editMessageText" && envelope.ErrorCode == 400 && strings.HasPrefix(envelope.Description, "Bad Request: message is not modified") {
+			return nil
+		}
 		code := envelope.ErrorCode
 		if code == 0 {
 			code = response.StatusCode
@@ -134,11 +139,14 @@ func (s *Service) inspectBot(ctx context.Context, token string) (telegramUser, e
 	return bot, nil
 }
 
-// outgoing is a Telegram call prepared while holding s.mu and sent after it is
-// released, so slow Telegram requests never block dispatch or management.
+// outgoing is a chat operation prepared under s.mu and delivered after release.
+// Feishu translates these operations into card creation/updates at delivery.
 type outgoing struct {
-	method  string
-	payload map[string]any
+	method          string
+	payload         map[string]any
+	statusSessionID string
+	statusRequestID string
+	resultRequestID string
 }
 
 type delivery struct {
@@ -147,7 +155,7 @@ type delivery struct {
 }
 
 // reply splits text into chunks Telegram accepts; buttons stay on the last chunk.
-func reply(chatID int64, text string, keyboard *telegramKeyboard) []outgoing {
+func reply(chatID any, text string, keyboard *telegramKeyboard) []outgoing {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
@@ -176,34 +184,96 @@ func (s *Service) enqueue(c Connection, calls []outgoing) {
 	}
 }
 
-// Replies are best-effort and kept in memory only. A restart or a long Telegram
+// Replies are best-effort and kept in memory only. A restart or a long provider
 // outage drops them; the web UI stays the source of truth for Agent results.
 // A single sender keeps replies in the order they were produced.
 func (s *Service) sendReplies(ctx context.Context) {
+	type address struct {
+		connectionID string
+		chatID       any
+	}
+	type statusMessages struct {
+		sessionID  string
+		messageIDs map[string]any
+	}
+	// Only this goroutine owns message IDs. Queue order ensures each status is
+	// sent before its result; request IDs distinguish consecutive questions.
+	statuses := make(map[address]statusMessages)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case d := <-s.replies:
-			token, err := s.token(d.connection)
+			var token string
+			var err error
+			if d.connection.Provider == ProviderFeishu {
+				token, err = s.feishuToken(ctx, d.connection)
+			} else {
+				token, err = s.token(d.connection)
+			}
 			if err != nil {
 				log.Printf("chat connection %s token unavailable: %v", d.connection.ID, err)
 				continue
 			}
 			for _, call := range d.calls {
-				s.call(ctx, token, call)
+				chatID := call.payload["chat_id"]
+				key := address{connectionID: d.connection.ID, chatID: chatID}
+				if call.statusRequestID != "" {
+					pending := statuses[key]
+					if pending.sessionID != call.statusSessionID {
+						pending = statusMessages{sessionID: call.statusSessionID, messageIDs: make(map[string]any)}
+					}
+					if messageID, err := s.deliverCall(ctx, d.connection, token, call); err == nil && messageID != nil {
+						pending.messageIDs[call.statusRequestID] = messageID
+					}
+					statuses[key] = pending
+					continue
+				}
+				pending := statuses[key]
+				if messageID, ok := pending.messageIDs[call.resultRequestID]; ok {
+					delete(pending.messageIDs, call.resultRequestID)
+					if len(pending.messageIDs) == 0 {
+						delete(statuses, key)
+					}
+					call.method = "editMessageText"
+					call.payload["message_id"] = messageID
+				}
+				_, err := s.deliverCall(ctx, d.connection, token, call)
+				var apiErr *telegramError
+				if call.method == "editMessageText" && errors.As(err, &apiErr) && apiErr.Code == 400 {
+					// A deleted or otherwise uneditable status must not hide the result.
+					call.method = "sendMessage"
+					delete(call.payload, "message_id")
+					s.deliverCall(ctx, d.connection, token, call)
+				}
 			}
 		}
 	}
 }
 
-func (s *Service) call(ctx context.Context, token string, call outgoing) {
+func (s *Service) deliverCall(ctx context.Context, c Connection, token string, call outgoing) (any, error) {
+	if c.Provider == ProviderFeishu {
+		return s.sendFeishu(ctx, c, token, call)
+	}
+	var message telegramMessage
+	var output any
+	if call.method == "sendMessage" {
+		output = &message
+	}
+	err := s.call(ctx, token, call, output)
+	if message.MessageID == 0 {
+		return nil, err
+	}
+	return message.MessageID, err
+}
+
+func (s *Service) call(ctx context.Context, token string, call outgoing, output any) error {
 	for attempt := 1; ; attempt++ {
 		callCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		err := s.telegram(callCtx, token, call.method, call.payload, nil)
+		err := s.telegram(callCtx, token, call.method, call.payload, output)
 		cancel()
 		if err == nil || ctx.Err() != nil {
-			return
+			return err
 		}
 		var apiErr *telegramError
 		retryable := !errors.As(err, &apiErr) || apiErr.Code == 429 || apiErr.Code >= 500
@@ -215,7 +285,7 @@ func (s *Service) call(ctx context.Context, token string, call outgoing) {
 			// sendMessage has no idempotency key; an ambiguous failure may still have
 			// been delivered, but it can never re-dispatch an Agent operation.
 			log.Printf("chat %s failed: %v", call.method, err)
-			return
+			return err
 		}
 	}
 }

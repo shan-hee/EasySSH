@@ -56,6 +56,7 @@ import {
 import { operationRecordsQueryOptions } from "@/lib/dashboard-query-options"
 import { queryKeys } from "@/lib/query-keys"
 import { operationRecordDetailPreview } from "@/pages/dashboard/operation-record-utils"
+import { PageLoading } from "@/components/page-loading"
 
 type SortOrder = "asc" | "desc"
 
@@ -694,9 +695,7 @@ function OperationLogsContent() {
               </div>
             </div>
           ) : detailQuery.isPending ? (
-            <div className="flex min-h-56 items-center justify-center text-sm text-muted-foreground">
-              {t("loading")}
-            </div>
+            <PageLoading className="min-h-56" />
           ) : (
             <div className="py-10 text-center text-sm text-muted-foreground">{t("empty")}</div>
           )}

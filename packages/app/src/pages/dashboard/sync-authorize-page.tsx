@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { SyncScopeOptions, scopeLabels } from "@/components/settings/sync-scopes"
 import { emptySyncScopes, type SyncScopes } from "@/lib/sync/types"
 import { syncRequest } from "@/lib/sync/web-adapter"
+import { PageLoading } from "@/components/page-loading"
 
 type AuthorizationInfo = { name: string; status: "pending" | "approved" | "denied" }
 
@@ -145,9 +146,7 @@ function AuthorizationRequest({ code }: { code: string }) {
           </div>
         </div>
       ) : !info ? (
-        <div role="status" className="flex items-center gap-3 rounded-xl border bg-card/40 p-6 text-sm text-muted-foreground">
-          <Loader2 className="size-5 animate-spin" />{t("syncAuthorizeLoading")}
-        </div>
+        <PageLoading className="min-h-0 rounded-xl border bg-card/40 py-8" />
       ) : info.status !== "pending" ? (
         <div role="status" className="space-y-4 rounded-xl border bg-card/40 p-6">
           <div className="flex items-start gap-3">

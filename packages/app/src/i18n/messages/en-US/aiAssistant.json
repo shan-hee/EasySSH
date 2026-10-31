@@ -194,7 +194,6 @@
   "configureAI": "Configure AI",
   "aiConfigPanelTitle": "AI configuration",
   "aiConfigEnabled": "Enable AI service",
-  "aiConfigLoading": "Loading configuration...",
   "aiConfigSaveButton": "Save configuration",
   "aiConfigLoadFailed": "Failed to load AI configuration.",
   "aiConfigSaveSuccess": "AI configuration saved successfully.",

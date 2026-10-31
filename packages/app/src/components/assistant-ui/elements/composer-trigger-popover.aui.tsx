@@ -11,6 +11,7 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon, CornerDownLeftIcon, SparklesIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
+import { PageLoading } from "@/components/page-loading"
 
 type IconComponent = FC<{ className?: string }>
 
@@ -181,9 +182,7 @@ const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, l
               )
             })}
             {items.length === 0 && (
-              <div role="status" className="px-3 py-5 text-center text-sm text-muted-foreground">
-                {isLoading ? loadingLabel : emptyLabel}
-              </div>
+              isLoading ? <PageLoading className="min-h-0 py-5" label={loadingLabel} /> : <div role="status" className="px-3 py-5 text-center text-sm text-muted-foreground">{emptyLabel}</div>
             )}
           </div>
           {navigationHint && items.length > 0 && (

@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { emptySyncScopes, type SyncScopes, type SyncAdapter, type SyncStatus, type SyncLogin, type SyncCandidate } from "@/lib/sync/types"
+import { PageLoading } from "@/components/page-loading"
 
 export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desktopMode: boolean }) {
   const { t } = useTranslation("settingsManagementBackup")
@@ -178,7 +179,7 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
             {!status.enabled && <p className="text-xs leading-5 text-muted-foreground">{t("syncPausedSettingsHint")}</p>}
           </>
         )}
-        {!status && !error && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" />{t("syncLoading")}</p>}
+        {!status && !error && <PageLoading className="min-h-0 py-6" />}
         {error && (
           <div role="alert" className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
             <p className="font-medium text-destructive">{t(actionError && !failedSync ? "syncActionFailed" : loadError ? "syncLoadFailed" : "syncExchangeFailed")}</p>

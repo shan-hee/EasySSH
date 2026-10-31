@@ -199,7 +199,6 @@
   "dockerErrorDetails": "查看错误详情",
   "dockerLogsTitle": "容器日志 - {name}",
   "dockerLogsEditorDescription": "使用文件编辑器只读查看容器日志。",
-  "dockerLogsLoading": "正在加载日志...",
   "dockerLogsClose": "关闭日志",
   "dockerLogsTailLines": "日志行数",
   "dockerLogsRefresh": "刷新日志",

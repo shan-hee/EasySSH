@@ -1,6 +1,6 @@
 import { useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { Cpu, Network, Settings2, RefreshCw, Search, Loader2, Play, Square, RotateCw, X } from "lucide-react"
+import { Cpu, Network, Settings2, RefreshCw, Search, Play, Square, RotateCw, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,6 +14,7 @@ import type { SystemInfoKind } from "@/lib/system-info"
 import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/sonner"
 import { quoteShellArgument } from "@/lib/shell-quote"
+import { PageLoading } from "@/components/page-loading"
 
 const definitions = {
   processes: { icon: Cpu, columns: ["pid", "user", "cpu", "memory", "state", "command"] },
@@ -158,7 +159,7 @@ export function SystemToolsPopover({ kind, serverId, sessionLabel, canExecute, o
             <Input ref={searchRef} className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("systemSearch")} aria-label={t("systemSearch")} />
           </div>
           {!canExecute ? <p className="p-6 text-sm text-muted-foreground">{t("systemDisconnected")}</p>
-            : query.isPending ? <div className="flex justify-center gap-2 p-8 text-sm" role="status"><Loader2 className="size-4 animate-spin" />{t("common:loading")}</div>
+            : query.isPending ? <PageLoading className="min-h-0 py-8" />
             : query.isError ? <div className="space-y-2 p-4 text-sm" role="alert"><p className="text-destructive">{t("systemLoadFailed")}</p><p className="text-muted-foreground">{t(`systemRequirement_${kind}`)}</p><pre className="whitespace-pre-wrap break-all text-xs">{String(query.error.message)}</pre></div>
             : <div className="min-h-0 max-h-[420px] overflow-auto border-t">
               <table className="w-full text-left text-xs">

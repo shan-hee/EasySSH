@@ -87,7 +87,6 @@
   "detailUserAgent": "User agent",
   "emptyMessage": "No activity logs",
   "activityEmpty": "No activity",
-  "loading": "Loading",
   "refresh": "Refresh",
   "toastLoadFailed": "Failed to load activity logs",
   "detailLoadFailed": "Failed to load log details",

@@ -1,13 +1,13 @@
 import type { TFunction } from "i18next"
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { Loader2 } from "lucide-react"
 import { ThreadList } from "@/components/assistant-ui/elements/thread-list"
 import { ErrorState } from "@/components/assistant-ui/elements/error-state"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import type { AISessionHistoryState } from "@/hooks/use-ai-session-history"
+import { Spinner } from "@/components/ui/spinner"
 
 export function AISessionHistoryList({
   activeSessionId,
@@ -110,10 +110,7 @@ export function AISessionHistoryList({
       {history.hasMore && (
         <div ref={loadMoreRef} className="flex min-h-10 items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
           {history.loadingMore && (
-            <span role="status" className="flex items-center gap-2">
-              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-              {t("loading")}
-            </span>
+            <Spinner aria-label={t("loading")} className="text-muted-foreground" />
           )}
         </div>
       )}

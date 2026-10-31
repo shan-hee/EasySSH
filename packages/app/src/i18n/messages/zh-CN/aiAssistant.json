@@ -194,7 +194,6 @@
   "configureAI": "配置AI",
   "aiConfigPanelTitle": "AI 配置",
   "aiConfigEnabled": "启用 AI 服务",
-  "aiConfigLoading": "加载配置中...",
   "aiConfigSaveButton": "保存配置",
   "aiConfigLoadFailed": "加载 AI 配置失败。",
   "aiConfigSaveSuccess": "AI 配置已保存。",

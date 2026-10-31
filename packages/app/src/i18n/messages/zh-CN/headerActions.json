@@ -2,7 +2,6 @@
   "githubTooltip": "在 GitHub 上打开项目",
   "notificationsTooltip": "通知",
   "notificationsTitle": "通知中心",
-  "notificationsLoading": "正在加载通知...",
   "notificationsEmpty": "暂无通知",
   "notificationsMarkAllRead": "全部标为已读",
   "notificationsDelete": "删除通知",

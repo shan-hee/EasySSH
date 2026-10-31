@@ -11,6 +11,7 @@ import type { AccessToken } from "@/lib/api/automation"
 import { grantsApi, reviewGrantTarget, type AccessResource } from "@/lib/api/grants"
 import { getErrorMessage } from "@/lib/error-utils"
 import { queryKeys } from "@/lib/query-keys"
+import { PageLoading } from "@/components/page-loading"
 
 export function TokenPermissionsDialog({ token, onClose }: { token: AccessToken | null; onClose: () => void }) {
   return <Dialog open={!!token} onOpenChange={open => { if (!open) onClose() }}>
@@ -50,7 +51,7 @@ function TokenPermissions({ token }: { token: AccessToken }) {
       <DialogDescription>{t("permissionsHelp")}</DialogDescription>
     </DialogHeader>
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-      {detail.isPending && <p className="text-sm text-muted-foreground">{t("loading")}</p>}
+      {detail.isPending && <PageLoading className="min-h-0 py-10" />}
       {detail.isError && <p role="alert" className="text-sm text-destructive">{t("loadFailed")}</p>}
       {grant?.resources.map(resource => {
         const scripts = grant.scripts.filter(script => script.server_id === resource.id).length

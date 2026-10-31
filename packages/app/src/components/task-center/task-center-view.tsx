@@ -49,6 +49,7 @@ import {
   taskCenterStatisticsQueryOptions,
 } from "@/lib/dashboard-query-options"
 import { patchTaskRunDetail, patchTaskRunList, taskRealtimePatchFromEvent } from "@/components/task-center/task-center-realtime"
+import { PageLoading } from "@/components/page-loading"
 
 const emptyStatistics: TaskStatistics = { total: 0, queued: 0, running: 0, canceling: 0, succeeded: 0, failed: 0, partial_success: 0, canceled: 0, timeout: 0, unknown: 0 }
 
@@ -513,7 +514,7 @@ export function TaskCenterView({
         <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-5xl">
           <DialogHeader>
             <DialogTitle>{selected?.run.title || t("viewDetails")}</DialogTitle>
-            <DialogDescription>{selected?.run.resource || selected?.run.task_type || t("loading")}</DialogDescription>
+            <DialogDescription className={selected ? undefined : "sr-only"}>{selected?.run.resource || selected?.run.task_type || t("loading")}</DialogDescription>
           </DialogHeader>
           {detailQuery.isError ? <div role="alert" className="space-y-3 p-4 text-sm"><p>{getErrorMessage(detailQuery.error, t("loadFailed"))}</p><Button variant="outline" onClick={() => void detailQuery.refetch()}>{t("refresh")}</Button></div> : selected ? (
             <TaskDetails
@@ -535,10 +536,7 @@ export function TaskCenterView({
               locale={i18n.language}
             />
           ) : (
-            <div className="flex min-h-56 items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-2 size-4 animate-spin" />
-              {t("loading")}
-            </div>
+            <PageLoading className="min-h-56" />
           )}
         </DialogContent>
       </Dialog>

@@ -26,13 +26,15 @@ func (h *ChatConnectionHandler) respond(c *gin.Context, value any, err error) {
 	case errors.Is(err, access.ErrForbidden), errors.Is(err, access.ErrUnauthenticated), errors.Is(err, access.ErrRevoked):
 		RespondError(c, http.StatusForbidden, "forbidden", "无权管理聊天接入")
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		RespondError(c, http.StatusNotFound, "not_found", "聊天连接或绑定不存在")
+		RespondError(c, http.StatusNotFound, "not_found", "聊天连接、绑定或会话不存在")
 	case errors.Is(err, chatbridge.ErrInvalid):
 		RespondError(c, http.StatusBadRequest, "validation_error", strings.TrimPrefix(err.Error(), chatbridge.ErrInvalid.Error()+": "))
 	default:
-		// Telegram transport errors are deliberately sanitized by the client.
+		// Platform transport errors are deliberately sanitized by the clients.
 		if strings.HasPrefix(err.Error(), "Telegram") || strings.HasPrefix(err.Error(), "无法连接 Telegram") {
 			RespondError(c, http.StatusBadGateway, "telegram_error", err.Error())
+		} else if strings.HasPrefix(err.Error(), "飞书") {
+			RespondError(c, http.StatusBadGateway, "feishu_error", err.Error())
 		} else {
 			RespondError(c, http.StatusInternalServerError, "chat_connection_error", "聊天接入操作失败，请检查服务状态")
 		}
@@ -76,4 +78,12 @@ func (h *ChatConnectionHandler) BindCode(c *gin.Context) {
 }
 func (h *ChatConnectionHandler) Revoke(c *gin.Context) {
 	h.respond(c, nil, h.service.Revoke(c.Request.Context(), c.Param("id"), c.Param("binding_id")))
+}
+func (h *ChatConnectionHandler) Sessions(c *gin.Context) {
+	value, err := h.service.Sessions(c.Request.Context(), c.Param("id"))
+	h.respond(c, value, err)
+}
+func (h *ChatConnectionHandler) Transcript(c *gin.Context) {
+	value, err := h.service.Transcript(c.Request.Context(), c.Param("id"), c.Param("session_id"))
+	h.respond(c, value, err)
 }

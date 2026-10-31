@@ -34,6 +34,38 @@ const servers = requireOpenAPIData(result.data, result.response)
 
 路径、HTTP 方法、查询参数、路径参数、请求体和响应体均从 `paths` 类型推导。Blob、SSE、WebSocket 和 multipart 文件请求仍使用 `authenticatedFetch`，但继续复用同一鉴权与刷新实现。
 
+## 飞书聊天接入（后端）
+
+飞书复用 `/chat-connections` 的管理、启停、绑定、会话和审批接口，使用企业自建应用及官方 SDK 长连接，无需公网 Webhook。创建连接的请求体示例：
+
+```json
+{
+  "provider": "feishu",
+  "name": "运维助手",
+  "app_id": "cli_your_application_id",
+  "app_secret": "your_application_secret",
+  "server_ids": ["实际服务器 UUID"],
+  "permission_mode": "balanced",
+  "enabled": true
+}
+```
+
+以上请求发送到 `POST /api/v1/chat-connections`，使用现有 Owner 登录和 CSRF 机制。`app_secret` 仅写入，按连接 ID 加密保存；更新时留空保留原密钥。创建时省略 `provider` 仍使用 Telegram，更新时省略则保留原平台。已有连接不能切换平台或飞书 App ID，应新建连接。Telegram 的 `token`、返回字段和绑定链接继续有效。
+
+飞书开放平台的配置步骤：
+
+1. 创建企业自建应用，启用机器人能力，并确保使用者处于应用可用范围。
+2. 申请接收机器人单聊消息权限 `im:message.p2p_msg:readonly` 和发送机器人消息权限 `im:message:send_as_bot`，按开放平台要求发布应用版本。
+3. 在“事件与回调”中选择长连接，订阅 `im.message.receive_v1`。需要审批按钮时，同时配置卡片回调 `card.action.trigger` 的长连接接收。后端启用连接后会建立连接；若控制台要求先检测连接，可先保存并启用后端配置，再完成订阅。
+4. 调用 `POST /api/v1/chat-connections/{id}/bind-code`，打开返回的 `url` 进入机器人私聊，发送返回的 `command`（`/bind <code>`）。飞书打开机器人链接不会自动携带绑定码；绑定码有效期为 10 分钟且只能使用一次。
+5. 私聊发送文字。支持 `/help`、`/new`、`/status`、`/stop`，不接收群聊指令。`readonly` 限制只读，`balanced` 的执行操作需通过卡片审批，审批有效期为 10 分钟。
+
+飞书身份保存在 `external_user_id`（用户 open_id）中；原有 `user_id` 字段保留，飞书绑定的该值为 `"0"`。显示名称暂使用 open_id，无需申请额外的通讯录读取权限。`last_poll_at` 在飞书连接上表示最近的在线心跳。
+
+回复使用飞书消息卡片，第一段结果替换本次提问的“已收到，正在处理。”，长回复继续分段发送。临时提示消息 ID 与发送队列仍保存在内存中，进程重启后新产生的结果会另发消息。长连接重连及事件重发通过数据库去重；事件在调用 Agent 前记录，崩溃可能丢失尚未处理的消息，但不会重放已记录的事件。飞书出站消息重试复用发送 UUID，降低网络重试造成的重复消息。
+
+生产升级与回滚见 [备份与迁移](backup-and-migrations.md)。本次仅提供后端接口，现有前端未增加飞书配置入口。
+
 ## 认证与授权
 
 实例使用单一 Owner。初始化、登录、登出、双因素认证、资料及会话管理位于 `/owner`；不提供用户注册、角色管理、OAuth/OIDC Provider 或多用户管理接口。

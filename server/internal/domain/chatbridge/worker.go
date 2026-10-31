@@ -35,8 +35,8 @@ type poller struct {
 	done     chan struct{}
 }
 
-// run keeps one long-polling goroutine per enabled connection and projects
-// Agent results of watched sessions back to Telegram once per second.
+// run keeps one receiver per enabled connection and projects Agent results
+// back to the corresponding chat platform once per second.
 func (s *Service) run(ctx context.Context) {
 	pollers := map[string]poller{}
 	defer func() {
@@ -47,11 +47,17 @@ func (s *Service) run(ctx context.Context) {
 	}()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	pruned := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+		// Event claims only need to outlive Feishu's redelivery window.
+		if time.Since(pruned) > time.Hour {
+			s.db.WithContext(ctx).Where("created_at < ?", time.Now().UTC().Add(-7*24*time.Hour)).Delete(&ReceivedEvent{})
+			pruned = time.Now()
 		}
 		var connections []Connection
 		if err := s.db.WithContext(ctx).Where("enabled = ?", true).Find(&connections).Error; err != nil {
@@ -83,7 +89,14 @@ func (s *Service) run(ctx context.Context) {
 			pollCtx, cancel := context.WithCancel(ctx)
 			p := poller{revision: c.Revision, token: c.TokenCipher, cancel: cancel, done: make(chan struct{})}
 			pollers[id] = p
-			go func(c Connection) { defer close(p.done); s.poll(pollCtx, c) }(c)
+			go func(c Connection) {
+				defer close(p.done)
+				if c.Provider == ProviderFeishu {
+					s.listenFeishu(pollCtx, c)
+				} else {
+					s.poll(pollCtx, c)
+				}
+			}(c)
 		}
 		if err := s.project(ctx); err != nil && ctx.Err() == nil {
 			log.Printf("chat result projection failed: %v", err)
@@ -148,8 +161,8 @@ func (s *Service) receive(ctx context.Context, c *Connection, credential string,
 	s.mu.Lock()
 	var calls []outgoing
 	defer func() {
-		s.mu.Unlock()
 		s.enqueue(*c, calls)
+		s.mu.Unlock()
 	}()
 	var current Connection
 	err := s.db.WithContext(ctx).Where("id = ? AND enabled = ? AND token_cipher = ? AND revision = ?", c.ID, true, credential, revision).First(&current).Error
@@ -195,32 +208,68 @@ func (s *Service) dispatch(ctx context.Context, c Connection, update telegramUpd
 	if m == nil {
 		return nil, nil
 	}
-	text := strings.TrimSpace(m.Text)
-	if update.Callback == nil && (strings.HasPrefix(text, "/start bind_") || strings.HasPrefix(text, "/bind ")) {
+	message := incomingMessage{userID: user.ID, chatID: m.Chat.ID, displayName: user.FirstName, text: m.Text, requestID: fmt.Sprint(update.UpdateID)}
+	if update.Callback != nil {
+		message.callbackID, message.callbackData = update.Callback.ID, update.Callback.Data
+	}
+	return s.dispatchMessage(ctx, c, message)
+}
+
+type incomingMessage struct {
+	userID, chatID                 int64
+	externalUserID, externalChatID string
+	displayName, text, requestID   string
+	callbackID, callbackData       string
+}
+
+func (m incomingMessage) chatAddress() any {
+	if m.externalChatID != "" {
+		return m.externalChatID
+	}
+	return m.chatID
+}
+
+func bindingQuery(db *gorm.DB, c Connection, m incomingMessage) *gorm.DB {
+	query := db.Where("connection_id = ? AND revoked_at IS NULL", c.ID)
+	if c.Provider == ProviderFeishu {
+		return query.Where("external_user_id = ?", m.externalUserID)
+	}
+	return query.Where("user_id = ?", m.userID)
+}
+
+func (s *Service) dispatchMessage(ctx context.Context, c Connection, m incomingMessage) ([]outgoing, error) {
+	text := strings.TrimSpace(m.text)
+	if m.callbackID == "" && (strings.HasPrefix(text, "/start bind_") || strings.HasPrefix(text, "/bind ")) {
 		code := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(text, "/start bind_"), "/bind "))
-		answer, err := s.bind(ctx, c, user, m.Chat.ID, code)
-		return reply(m.Chat.ID, answer, nil), err
+		answer, err := s.bind(ctx, c, m, code)
+		return reply(m.chatAddress(), answer, nil), err
 	}
 	var b Binding
-	err := s.db.WithContext(ctx).Where("connection_id = ? AND user_id = ? AND revoked_at IS NULL", c.ID, user.ID).First(&b).Error
+	err := bindingQuery(s.db.WithContext(ctx), c, m).First(&b).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return reply(m.Chat.ID, "请先在 EasySSH 的「聊天接入」页面生成绑定链接，并在此私聊中完成绑定。", nil), nil
+		return reply(m.chatAddress(), "请先在 EasySSH 生成绑定码，并在机器人私聊中发送 /bind <绑定码> 完成绑定。", nil), nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if b.chatAddress() != m.chatAddress() {
+		return nil, nil
 	}
 	boundCtx, err := s.bindingContext(ctx, c, b)
 	if err != nil {
 		return nil, nil
 	}
-	if update.Callback != nil {
+	if m.callbackID != "" {
 		answer := "已处理，请等待结果。"
-		if err := s.confirm(boundCtx, b, update.Callback.Data); err != nil {
+		if err := s.confirm(boundCtx, b, m.callbackData); err != nil {
 			answer = userError(err)
 		}
 		// Callback acknowledgements are ephemeral; failures never replay approvals.
-		ack := outgoing{method: "answerCallbackQuery", payload: map[string]any{"callback_query_id": update.Callback.ID, "text": answer}}
-		return append([]outgoing{ack}, reply(b.ChatID, answer, nil)...), nil
+		if c.Provider == ProviderFeishu {
+			return reply(b.chatAddress(), answer, nil), nil
+		}
+		ack := outgoing{method: "answerCallbackQuery", payload: map[string]any{"callback_query_id": m.callbackID, "text": answer}}
+		return append([]outgoing{ack}, reply(b.chatAddress(), answer, nil)...), nil
 	}
 	answer := ""
 	switch text {
@@ -255,43 +304,43 @@ func (s *Service) dispatch(ctx context.Context, c Connection, update telegramUpd
 			answer = "会话状态：" + statusLabel(view.Status) + "\n会话 ID：" + view.ID
 		}
 	default:
-		answer, err = s.ask(ctx, boundCtx, c, &b, text, update.UpdateID)
-		if err != nil {
-			return nil, err
-		}
+		return s.ask(ctx, boundCtx, c, &b, text, m.requestID)
 	}
-	return reply(b.ChatID, answer, nil), nil
+	return reply(b.chatAddress(), answer, nil), nil
 }
 
-func (s *Service) ask(ctx, boundCtx context.Context, c Connection, b *Binding, text string, updateID int64) (string, error) {
+func (s *Service) ask(ctx, boundCtx context.Context, c Connection, b *Binding, text, requestID string) ([]outgoing, error) {
 	switch {
 	case text == "":
-		return "当前仅支持文字消息，请用文字描述问题。", nil
+		return reply(b.chatAddress(), "当前仅支持文字消息，请用文字描述问题。", nil), nil
 	case len([]rune(text)) > 8000:
-		return "消息过长，请拆分为较短的问题。", nil
+		return reply(b.chatAddress(), "消息过长，请拆分为较短的问题。", nil), nil
 	case strings.HasPrefix(text, "/"):
-		return "未知命令，请用 /help 查看支持的命令。", nil
+		return reply(b.chatAddress(), "未知命令，请用 /help 查看支持的命令。", nil), nil
 	}
 	if b.CurrentSessionID == "" {
 		if err := s.newConversation(boundCtx, c, b); err != nil {
-			return userError(err), nil
+			return reply(b.chatAddress(), userError(err), nil), nil
 		}
 	}
-	// Persist projection intent before dispatch so results reach Telegram even
+	// Persist projection intent before dispatch so results reach the chat even
 	// if the service restarts while the Agent is running.
 	if err := s.db.WithContext(ctx).Model(&Binding{}).Where("id = ?", b.ID).Update("watching", true).Error; err != nil {
-		return "", err
+		return nil, err
 	}
-	// A stable message ID lets the runtime reject a duplicate of the same update.
-	messageID := stableID(fmt.Sprintf("%s:%d", c.ID, updateID))
-	err := s.agent.SendUserMessageWithOptions(boundCtx, b.CurrentSessionID, runtime.SendUserMessageInput{Content: text, Context: "消息来源：已绑定的 Telegram 私聊。", MessageID: messageID, PermissionMode: c.PermissionMode})
+	// Stable per incoming message; the offset or event claim prevents replay.
+	messageID := stableID(c.ID + ":" + requestID)
+	err := s.agent.SendUserMessageWithOptions(boundCtx, b.CurrentSessionID, runtime.SendUserMessageInput{Content: text, Context: "消息来源：已绑定的 " + platformName(c) + " 私聊。", MessageID: messageID, PermissionMode: c.PermissionMode})
 	if err != nil {
-		return userError(err), nil
+		return reply(b.chatAddress(), userError(err), nil), nil
 	}
-	return "已收到，正在处理。", nil
+	calls := reply(b.chatAddress(), "已收到，正在处理。", nil)
+	calls[0].statusSessionID = b.CurrentSessionID
+	calls[0].statusRequestID = messageID
+	return calls, nil
 }
 
-func (s *Service) bind(ctx context.Context, c Connection, user telegramUser, chatID int64, code string) (string, error) {
+func (s *Service) bind(ctx context.Context, c Connection, m incomingMessage, code string) (string, error) {
 	answer := ""
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&Connection{}).Where("id = ? AND enabled = ? AND bind_code_hash = ? AND bind_expires_at > ?", c.ID, true, hash(code), time.Now().UTC()).Updates(map[string]any{"bind_code_hash": "", "bind_expires_at": nil})
@@ -303,7 +352,7 @@ func (s *Service) bind(ctx context.Context, c Connection, user telegramUser, cha
 			return nil
 		}
 		var existing Binding
-		err := tx.Where("connection_id = ? AND user_id = ? AND revoked_at IS NULL", c.ID, user.ID).First(&existing).Error
+		err := bindingQuery(tx, c, m).First(&existing).Error
 		if err == nil {
 			answer = "此账号已绑定，可以直接发送问题。"
 			return nil
@@ -311,7 +360,7 @@ func (s *Service) bind(ctx context.Context, c Connection, user telegramUser, cha
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
-		b := Binding{ID: uuid.NewString(), ConnectionID: c.ID, UserID: user.ID, ChatID: chatID, DisplayName: truncate(user.FirstName, 100), CreatedAt: time.Now().UTC()}
+		b := Binding{ID: uuid.NewString(), ConnectionID: c.ID, UserID: m.userID, ChatID: m.chatID, ExternalUserID: m.externalUserID, ExternalChatID: m.externalChatID, DisplayName: truncate(m.displayName, 100), CreatedAt: time.Now().UTC()}
 		if err := tx.Create(&b).Error; err != nil {
 			return err
 		}
@@ -326,7 +375,7 @@ func (s *Service) newConversation(ctx context.Context, c Connection, b *Binding)
 	if err != nil {
 		return err
 	}
-	_ = s.agent.RenameSession(ctx, view.ID, "Telegram · "+c.Name)
+	_ = s.agent.RenameSession(ctx, view.ID, platformName(c)+" · "+c.Name)
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if b.CurrentSessionID != "" {
 			if err := tx.Model(&Approval{}).Where("session_id = ? AND used_at IS NULL", b.CurrentSessionID).Update("used_at", time.Now().UTC()).Error; err != nil {
