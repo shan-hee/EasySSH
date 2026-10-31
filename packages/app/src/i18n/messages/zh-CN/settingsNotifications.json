@@ -1,5 +1,4 @@
 {
-  "intro": "启用的渠道会在任务完成时收到通知；是否向外部渠道发送，由账户设置中的通知偏好决定。",
   "testing": "测试中…",
   "chatbot": {
     "url": "Webhook 地址"
@@ -44,5 +43,7 @@
     "description": "群聊 → 添加群机器人，复制 Webhook 地址。",
     "test": "发送测试消息",
     "testSuccess": "测试消息已发送，请在企业微信群中查看。"
-  }
+  },
+  "savedPlaceholder": "已保存，留空保持不变",
+  "clearSaved": "清除已保存的密钥"
 }

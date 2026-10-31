@@ -17,6 +17,12 @@ export const queryKeys = {
   scheduledTasks: {
     administration: ["scheduled-tasks", "administration"] as const,
   },
+  chatConnections: {
+    root: ["chat-connections"] as const,
+    list: ["chat-connections", "list"] as const,
+    detail: (id: string) => ["chat-connections", "detail", id] as const,
+    servers: ["chat-connections", "servers"] as const,
+  },
   automation: {
     tokens: ["automation", "tokens"] as const,
     tokenSources: ["automation", "token-sources"] as const,

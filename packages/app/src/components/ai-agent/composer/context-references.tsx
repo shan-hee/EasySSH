@@ -32,11 +32,10 @@ export function ComposerContextReferences({
   const { t } = useTranslation("aiAssistant")
   const [previewId, setPreviewId] = useState<string | null>(null)
   const preview = references.find((reference) => reference.id === previewId)
-  if (references.length === 0) return null
 
   return (
     <>
-      <div className="mb-2 flex flex-wrap gap-1.5 px-1">
+      <div className="mb-2 flex flex-wrap gap-1.5 px-1 empty:hidden">
         {references.map((reference) => (
           <span
             key={reference.id}
@@ -63,17 +62,15 @@ export function ComposerContextReferences({
       </div>
 
       <Dialog open={Boolean(preview)} onOpenChange={(open) => !open && setPreviewId(null)}>
-        {preview && (
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>{preview.label}</DialogTitle>
-              <DialogDescription>{t("contextPreviewDescription", { count: preview.content.length })}</DialogDescription>
-            </DialogHeader>
-            <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-muted/35 p-3 font-mono text-xs leading-5">
-              {preview.content}
-            </pre>
-          </DialogContent>
-        )}
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{preview?.label}</DialogTitle>
+            <DialogDescription>{t("contextPreviewDescription", { count: preview?.content.length ?? 0 })}</DialogDescription>
+          </DialogHeader>
+          <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/60 bg-muted/35 p-3 font-mono text-xs leading-5">
+            {preview?.content}
+          </pre>
+        </DialogContent>
       </Dialog>
     </>
   )

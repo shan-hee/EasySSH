@@ -1,5 +1,5 @@
 
-import { createPortal } from "react-dom"
+import { AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogDescription, AlertDialogCancel } from "@/components/ui/alert-dialog"
 import { Loader2, ShieldAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { TerminalHostKeyPrompt } from "@/lib/websocket-terminal"
@@ -28,31 +28,31 @@ export function TerminalHostKeyDialog({
   onCancel,
   onTrust,
 }: TerminalHostKeyDialogProps) {
-  if (!prompt || typeof document === "undefined") {
-    return null
-  }
-
-  return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl rounded-lg border border-border bg-popover p-5 text-popover-foreground shadow-2xl">
+  return (
+    <AlertDialog open={!!prompt} onOpenChange={open => { if (!open && !isTrusting) onCancel() }}>
+      <AlertDialogContent
+        overlayClassName="z-[100] bg-black/60 backdrop-blur-sm"
+        containerClassName="z-[100]"
+        className="max-h-[calc(100dvh-2rem)] gap-0 overflow-y-auto bg-popover p-5 text-popover-foreground shadow-2xl sm:max-w-xl"
+      >
         <div className="flex items-start gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300">
             <ShieldAlert className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-foreground">
+            <AlertDialogTitle className="text-base font-semibold text-foreground">
               {labels.title}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
+            </AlertDialogTitle>
+            <AlertDialogDescription className="mt-1 text-sm text-muted-foreground">
               {labels.description}
-            </p>
+            </AlertDialogDescription>
           </div>
         </div>
 
         <div className="mt-4 space-y-3 text-sm">
           <div className="rounded-md border border-border bg-muted/60 p-3">
             <div className="mb-3 font-medium text-foreground">
-              {prompt.host}:{prompt.port}
+              {prompt?.host}:{prompt?.port}
             </div>
             <div className="grid gap-3">
               <div>
@@ -60,10 +60,10 @@ export function TerminalHostKeyDialog({
                   {labels.expected}
                 </div>
                 <div className="break-all rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground">
-                  {prompt.expected_key}
+                  {prompt?.expected_key}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {prompt.expected_key_type}
+                  {prompt?.expected_key_type}
                 </div>
               </div>
               <div>
@@ -71,10 +71,10 @@ export function TerminalHostKeyDialog({
                   {labels.received}
                 </div>
                 <div className="break-all rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground">
-                  {prompt.received_key}
+                  {prompt?.received_key}
                 </div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  {prompt.received_key_type}
+                  {prompt?.received_key_type}
                 </div>
               </div>
             </div>
@@ -86,14 +86,11 @@ export function TerminalHostKeyDialog({
         </div>
 
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={isTrusting}
-          >
-            {labels.cancel}
-          </Button>
+          <AlertDialogCancel asChild>
+            <Button type="button" variant="outline" disabled={isTrusting}>
+              {labels.cancel}
+            </Button>
+          </AlertDialogCancel>
           <Button
             type="button"
             onClick={onTrust}
@@ -109,8 +106,7 @@ export function TerminalHostKeyDialog({
             )}
           </Button>
         </div>
-      </div>
-    </div>,
-    document.body,
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

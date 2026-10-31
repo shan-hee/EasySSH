@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/easyssh/shared/dbmigration"
 	crypto "github.com/easyssh/shared/secretcrypto"
 	"gorm.io/gorm"
 )
@@ -30,6 +31,22 @@ func VerifyStoredCredentials(ctx context.Context, db *gorm.DB, encryptor *crypto
 		// MFA and sync objects also cover retained inactive records.
 		{"owners", []string{"id", "two_factor_secret", "pending_two_factor_secret"}, false},
 		{"sync_vault_objects", []string{"owner_id", "id", "ciphertext"}, false},
+	}
+	// Migration preflight also verifies the source schema before version 8 exists.
+	raw, err := db.DB()
+	if err != nil {
+		return err
+	}
+	version, err := dbmigration.Version(ctx, raw, db.Dialector.Name())
+	if err != nil {
+		return err
+	}
+	if version >= 8 {
+		checks = append(checks, struct {
+			table      string
+			columns    []string
+			activeOnly bool
+		}{"chat_connections", []string{"id", "token_cipher"}, false})
 	}
 	for _, check := range checks {
 		query := db.WithContext(ctx).Table(check.table).Select(check.columns)
@@ -77,6 +94,8 @@ func verifyInstanceCredentialRow(table string, row map[string]string, encryptor 
 		return nil
 	}
 	switch table {
+	case "chat_connections":
+		return verify("token_cipher", crypto.SecretAAD(table, row["id"], "token_cipher"))
 	case "ai_config":
 		return verify("api_key", crypto.SecretAAD(table, "1", "api_key"))
 	case "owners":

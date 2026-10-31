@@ -1,6 +1,4 @@
 {
-  "sectionTitle": "IP access control",
-  "sectionDescription": "Configure allowed or blocked IP address ranges",
   "labelAllowlist": "IP allowlist (allowed)",
   "placeholderAllowlist": "Enter allowed IP addresses, one per line, CIDR supported\nExample: 192.168.1.0/24",
   "helperAllowlist": "Leave empty to allow all IPs. Supports single IP or CIDR format, one per line.",

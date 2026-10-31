@@ -174,7 +174,9 @@ func startDatabase(cfg *config.Config, database *gorm.DB, launcher *instanceacti
 	}
 	pending := state.Format != 0 && state.Phase != "complete"
 	if !pending && version == schema.Version {
-		return nil
+		// A version marker alone cannot detect an edited, already-applied migration.
+		// Refuse mismatched structures before any background worker starts.
+		return schema.CheckUpgradeSource(ctx, db, cfg.Database.Driver, version)
 	}
 	if mode == "off" && !options.Manual {
 		return fmt.Errorf("schema %d requires migration or pending migration validation; EASYSSH_AUTO_MIGRATE=off prevents startup (use maintenance schema-upgrade)", version)
@@ -252,7 +254,7 @@ func startDatabase(cfg *config.Config, database *gorm.DB, launcher *instanceacti
 	if err != nil {
 		return err
 	}
-	// These credential columns exist in all supported source schemas (5+).
+	// Verify credentials present at the recorded source schema before upgrading.
 	if err = rest.VerifyStoredCredentials(ctx, database, encryptor); err != nil {
 		return err
 	}

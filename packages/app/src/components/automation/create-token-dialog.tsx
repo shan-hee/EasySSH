@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { CopyButton, MCPConnection } from "./mcp-connection"
 import { TokenAuthorizationEditor } from "./token-authorization-editor"
 import { automationApi } from "@/lib/api/automation"
@@ -24,7 +24,7 @@ import { newTokenAuthorization, tokenAuthorizationIssue, tokenResources } from "
 
 const expiryDays = [7, 30, 90, 180, 365]
 
-// Only the creation form needs the full catalog, so it loads when the sheet opens.
+// Only the creation form needs the full catalog, so it loads when the dialog opens.
 async function loadAllScripts() {
   const scripts: Script[] = []
   for (let page = 1; ; page++) {
@@ -49,19 +49,14 @@ async function loadTokenSources() {
   return { servers, scripts, grants }
 }
 
-export function CreateTokenSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function CreateTokenDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [secret, setSecret] = useState("")
-  const change = (next: boolean) => {
-    if (!next) setSecret("")
-    onOpenChange(next)
-  }
-  // The secret is shown once; outside clicks must not discard it by accident.
-  const keepSecret = (event: Event) => { if (secret) event.preventDefault() }
-  return <Sheet open={open} onOpenChange={change}>
-    <SheetContent className="w-full gap-0 sm:max-w-xl" onInteractOutside={keepSecret} onEscapeKeyDown={keepSecret}>
-      {secret ? <TokenCreated token={secret} onDone={() => change(false)} /> : <CreateTokenForm onCreated={setSecret} />}
-    </SheetContent>
-  </Sheet>
+  // Dialog blocks outside clicks and Escape so the one-time secret is not lost.
+  return <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent onExitComplete={() => setSecret("")} className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      {secret ? <TokenCreated token={secret} onDone={() => onOpenChange(false)} /> : <CreateTokenForm onCreated={setSecret} />}
+    </DialogContent>
+  </Dialog>
 }
 
 function CreateTokenForm({ onCreated }: { onCreated: (token: string) => void }) {
@@ -106,10 +101,10 @@ function CreateTokenForm({ onCreated }: { onCreated: (token: string) => void }) 
   }
 
   return <form onSubmit={event => void submit(event)} className="flex min-h-0 flex-1 flex-col">
-    <SheetHeader className="border-b pr-10">
-      <SheetTitle>{t("createTitle")}</SheetTitle>
-      <SheetDescription>{t("createDescription")}</SheetDescription>
-    </SheetHeader>
+    <DialogHeader className="shrink-0 border-b p-6 pr-12">
+      <DialogTitle>{t("createTitle")}</DialogTitle>
+      <DialogDescription>{t("createDescription")}</DialogDescription>
+    </DialogHeader>
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
       {sources.isError && <div role="alert" className="flex items-center justify-between gap-2 rounded-lg border border-destructive/40 p-3 text-sm text-destructive">
         {t("loadFailed")}
@@ -162,7 +157,7 @@ function CreateTokenForm({ onCreated }: { onCreated: (token: string) => void }) 
         </CollapsibleContent>
       </Collapsible>
     </div>
-    <SheetFooter className="flex-row items-center justify-between gap-3 border-t">
+    <DialogFooter className="shrink-0 flex-row items-center justify-between gap-3 border-t p-4 sm:justify-between">
       <p className="min-w-0 truncate text-xs text-muted-foreground">
         {nameTooLong ? t("authorization.nameTooLong")
           : issue ? t(`authorization.issues.${issue}`)
@@ -170,17 +165,17 @@ function CreateTokenForm({ onCreated }: { onCreated: (token: string) => void }) 
               : t("authorization.summary", { count: draft.serverIds.length, purpose, days })}
       </p>
       <Button type="submit" disabled={!canCreate}>{busy ? t("creating") : t("create")}</Button>
-    </SheetFooter>
+    </DialogFooter>
   </form>
 }
 
 function TokenCreated({ token, onDone }: { token: string; onDone: () => void }) {
   const { t } = useTranslation("automation")
   return <>
-    <SheetHeader className="border-b pr-10">
-      <SheetTitle>{t("createdTitle")}</SheetTitle>
-      <SheetDescription className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400"><TriangleAlert className="size-4 shrink-0" />{t("createdDescription")}</SheetDescription>
-    </SheetHeader>
+    <DialogHeader className="shrink-0 border-b p-6 pr-12">
+      <DialogTitle>{t("createdTitle")}</DialogTitle>
+      <DialogDescription className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400"><TriangleAlert className="size-4 shrink-0" />{t("createdDescription")}</DialogDescription>
+    </DialogHeader>
     <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
       <div className="flex items-center gap-2 rounded-md border bg-muted/40 py-1 pl-3 pr-1">
         <code className="min-w-0 flex-1 break-all text-sm">{token}</code>
@@ -191,8 +186,8 @@ function TokenCreated({ token, onDone }: { token: string; onDone: () => void }) 
         <MCPConnection token={token} />
       </section>
     </div>
-    <SheetFooter className="border-t">
+    <DialogFooter className="shrink-0 border-t p-4">
       <Button type="button" onClick={onDone}>{t("done")}</Button>
-    </SheetFooter>
+    </DialogFooter>
   </>
 }

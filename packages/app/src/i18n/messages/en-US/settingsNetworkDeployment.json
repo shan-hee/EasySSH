@@ -22,5 +22,7 @@
   "browserPolicyTitle": "Browser content security policy",
   "browserPolicyDescription": "Restrict allowed sources for scripts, styles, images, connections, and frames.",
   "cspDescription": "Leave empty for EasySSH's built-in policy. A custom value applies to subsequent requests immediately.",
-  "cspPlaceholder": "Leave empty to use the built-in Content-Security-Policy"
+  "cspPlaceholder": "Leave empty to use the built-in Content-Security-Policy",
+  "addOrigin": "Add origin",
+  "removeOrigin": "Remove {origin}"
 }

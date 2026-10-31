@@ -575,6 +575,66 @@ func (e BatchTaskType) Valid() bool {
 	}
 }
 
+// Defines values for ChatConnectionPermissionMode.
+const (
+	ChatPermissionBalanced ChatConnectionPermissionMode = "balanced"
+	ChatPermissionReadonly ChatConnectionPermissionMode = "readonly"
+)
+
+// Valid indicates whether the value is a known member of the ChatConnectionPermissionMode enum.
+func (e ChatConnectionPermissionMode) Valid() bool {
+	switch e {
+	case ChatPermissionBalanced:
+		return true
+	case ChatPermissionReadonly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatConnectionStatus.
+const (
+	ChatConnectionStatusConnected  ChatConnectionStatus = "connected"
+	ChatConnectionStatusConnecting ChatConnectionStatus = "connecting"
+	ChatConnectionStatusDisabled   ChatConnectionStatus = "disabled"
+	ChatConnectionStatusError      ChatConnectionStatus = "error"
+)
+
+// Valid indicates whether the value is a known member of the ChatConnectionStatus enum.
+func (e ChatConnectionStatus) Valid() bool {
+	switch e {
+	case ChatConnectionStatusConnected:
+		return true
+	case ChatConnectionStatusConnecting:
+		return true
+	case ChatConnectionStatusDisabled:
+		return true
+	case ChatConnectionStatusError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ChatConnectionInputPermissionMode.
+const (
+	ChatInputBalanced ChatConnectionInputPermissionMode = "balanced"
+	ChatInputReadonly ChatConnectionInputPermissionMode = "readonly"
+)
+
+// Valid indicates whether the value is a known member of the ChatConnectionInputPermissionMode enum.
+func (e ChatConnectionInputPermissionMode) Valid() bool {
+	switch e {
+	case ChatInputBalanced:
+		return true
+	case ChatInputReadonly:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConnectionMode.
 const (
 	DockerConnection   ConnectionMode = "docker"
@@ -2842,6 +2902,70 @@ type CORSConfigUpdate struct {
 type CSRFToken struct {
 	CSRFToken string `json:"csrf_token"`
 }
+
+// ChatBindCode defines model for ChatBindCode.
+type ChatBindCode struct {
+	Code      string    `json:"code"`
+	ExpiresAt time.Time `json:"expires_at"`
+	URL       string    `json:"url"`
+}
+
+// ChatBinding defines model for ChatBinding.
+type ChatBinding struct {
+	ConnectionID     string     `json:"connection_id"`
+	CreatedAt        time.Time  `json:"created_at"`
+	CurrentSessionID string     `json:"current_session_id"`
+	DisplayName      string     `json:"display_name"`
+	ID               string     `json:"id"`
+	RevokedAt        *time.Time `json:"revoked_at"`
+	UserID           string     `json:"user_id"`
+}
+
+// ChatConnection defines model for ChatConnection.
+type ChatConnection struct {
+	BotUsername    string                       `json:"bot_username"`
+	CreatedAt      time.Time                    `json:"created_at"`
+	Enabled        bool                         `json:"enabled"`
+	ID             string                       `json:"id"`
+	LastError      string                       `json:"last_error"`
+	LastPollAt     *time.Time                   `json:"last_poll_at"`
+	Name           string                       `json:"name"`
+	PermissionMode ChatConnectionPermissionMode `json:"permission_mode"`
+	ServerIds      []string                     `json:"server_ids"`
+	Status         ChatConnectionStatus         `json:"status"`
+	UpdatedAt      time.Time                    `json:"updated_at"`
+}
+
+// ChatConnectionPermissionMode defines model for ChatConnection.PermissionMode.
+type ChatConnectionPermissionMode string
+
+// ChatConnectionStatus defines model for ChatConnection.Status.
+type ChatConnectionStatus string
+
+// ChatConnectionDetail defines model for ChatConnectionDetail.
+type ChatConnectionDetail struct {
+	Bindings   []ChatBinding  `json:"bindings"`
+	Connection ChatConnection `json:"connection"`
+}
+
+// ChatConnectionEnabled defines model for ChatConnectionEnabled.
+type ChatConnectionEnabled struct {
+	Enabled bool `json:"enabled"`
+}
+
+// ChatConnectionInput defines model for ChatConnectionInput.
+type ChatConnectionInput struct {
+	Enabled        bool                              `json:"enabled"`
+	Name           string                            `json:"name"`
+	PermissionMode ChatConnectionInputPermissionMode `json:"permission_mode"`
+	ServerIds      []string                          `json:"server_ids"`
+
+	// Token Required on creation; empty preserves the existing token on update.
+	Token *string `json:"token,omitempty"`
+}
+
+// ChatConnectionInputPermissionMode defines model for ChatConnectionInput.PermissionMode.
+type ChatConnectionInputPermissionMode string
 
 // ChmodResponse defines model for ChmodResponse.
 type ChmodResponse struct {
@@ -5952,6 +6076,15 @@ type PostBatchTasksJSONRequestBody = CreateBatchTaskRequest
 
 // PutBatchTasksIDJSONRequestBody defines body for PutBatchTasksID for application/json ContentType.
 type PutBatchTasksIDJSONRequestBody = UpdateBatchTaskRequest
+
+// CreateChatConnectionJSONRequestBody defines body for CreateChatConnection for application/json ContentType.
+type CreateChatConnectionJSONRequestBody = ChatConnectionInput
+
+// UpdateChatConnectionJSONRequestBody defines body for UpdateChatConnection for application/json ContentType.
+type UpdateChatConnectionJSONRequestBody = ChatConnectionInput
+
+// SetChatConnectionEnabledJSONRequestBody defines body for SetChatConnectionEnabled for application/json ContentType.
+type SetChatConnectionEnabledJSONRequestBody = ChatConnectionEnabled
 
 // CreateConnectionJSONRequestBody defines body for CreateConnection for application/json ContentType.
 type CreateConnectionJSONRequestBody = CreateConnectionInput

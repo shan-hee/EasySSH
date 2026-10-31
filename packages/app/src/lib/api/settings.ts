@@ -2,68 +2,16 @@ import { apiFetch } from "@/lib/api-client"
 import type { components } from "@/generated/openapi"
 
 /**
- * SMTP 配置
- */
-export interface SMTPConfig {
-  enabled: boolean
-  host: string
-  port: number
-  username: string
-  password: string
-  from_email: string
-  from_name: string
-  use_tls: boolean
-}
-
-/**
- * Webhook 配置
+ * 通知渠道：读取只返回密钥与地址是否已保存（has_*），
+ * 写入时省略字段保持原值，显式空字符串清空。
  */
 export type WebhookMethod = "POST" | "GET"
-
-export interface WebhookConfig {
-  enabled: boolean
-  url: string
-  secret: string
-  method: WebhookMethod
-}
-
-/**
- * 钉钉配置
- */
-export interface DingTalkConfig {
-  enabled: boolean
-  webhook_url: string
-  secret: string
-}
-
-/**
- * 企业微信配置
- */
-export interface WeComConfig {
-  enabled: boolean
-  webhook_url: string
-}
-
-/**
- * 统一的通知配置（包含所有通知方式）
- */
-export interface NotificationConfig {
-  // SMTP 邮件通知
-  smtp: SMTPConfig
-  // Webhook 通知
-  webhook: WebhookConfig
-  // 钉钉通知
-  dingtalk: DingTalkConfig
-  // 企业微信通知
-  wecom: WeComConfig
-}
-
-/**
- * 获取通知配置响应
- */
-export interface GetNotificationConfigResponse {
-  config: NotificationConfig
-}
+export type NotificationConfigView = components["schemas"]["NotificationConfigView"]
+export type NotificationConfigUpdate = components["schemas"]["NotificationConfigUpdate"]
+export type SMTPConfigUpdate = components["schemas"]["SMTPConfigUpdate"]
+export type WebhookConfigUpdate = components["schemas"]["WebhookConfigUpdate"]
+export type DingTalkConfigUpdate = components["schemas"]["DingTalkConfigUpdate"]
+export type WeComConfigUpdate = components["schemas"]["WeComConfigUpdate"]
 
 /**
  * 系统通用配置：契约中的基础、文件传输与计划任务设置，
@@ -164,67 +112,19 @@ export const settingsApi = {
   /**
    * 获取所有通知配置（统一接口）
    */
-  async getNotificationConfig(): Promise<NotificationConfig> {
-    const response = await apiFetch<GetNotificationConfigResponse>("/settings/notifications", {
+  async getNotificationConfig(): Promise<NotificationConfigView> {
+    const response = await apiFetch<components["schemas"]["NotificationConfigResponse"]>("/settings/notifications", {
       method: "GET",
       retry: false, // 禁用重试，减少错误日志
     })
-    return {
-      ...response.config,
-      webhook: {
-        ...response.config.webhook,
-        method: response.config.webhook.method === "GET" ? "GET" : "POST",
-      },
-    }
+    return response.config
   },
 
   /**
    * 保存所有通知配置（统一接口）
    */
-  async saveNotificationConfig(config: NotificationConfig): Promise<void> {
+  async saveNotificationConfig(config: NotificationConfigUpdate): Promise<void> {
     return apiFetch<void>("/settings/notifications", {
-      method: "POST",
-      body: config,
-    })
-  },
-
-  // === 通知配置分组 API ===
-
-  /**
-   * 保存 SMTP 配置
-   */
-  async saveSMTPConfigOnly(config: SMTPConfig): Promise<void> {
-    return apiFetch<void>("/settings/smtp", {
-      method: "POST",
-      body: config,
-    })
-  },
-
-  /**
-   * 保存 Webhook 配置
-   */
-  async saveWebhookConfigOnly(config: WebhookConfig): Promise<void> {
-    return apiFetch<void>("/settings/webhook", {
-      method: "POST",
-      body: config,
-    })
-  },
-
-  /**
-   * 保存钉钉配置
-   */
-  async saveDingTalkConfigOnly(config: DingTalkConfig): Promise<void> {
-    return apiFetch<void>("/settings/dingtalk", {
-      method: "POST",
-      body: config,
-    })
-  },
-
-  /**
-   * 保存企业微信配置
-   */
-  async saveWeComConfigOnly(config: WeComConfig): Promise<void> {
-    return apiFetch<void>("/settings/wecom", {
       method: "POST",
       body: config,
     })
@@ -235,7 +135,7 @@ export const settingsApi = {
   /**
    * 测试 SMTP 连接
    */
-  async testSMTPConnection(config: SMTPConfig): Promise<void> {
+  async testSMTPConnection(config: SMTPConfigUpdate): Promise<void> {
     return apiFetch<void>("/settings/smtp/test", {
       method: "POST",
       body: config,
@@ -245,7 +145,7 @@ export const settingsApi = {
   /**
    * 测试 Webhook 连接
    */
-  async testWebhookConnection(config: WebhookConfig): Promise<void> {
+  async testWebhookConnection(config: WebhookConfigUpdate): Promise<void> {
     return apiFetch<void>("/settings/webhook/test", {
       method: "POST",
       body: config,
@@ -255,7 +155,7 @@ export const settingsApi = {
   /**
    * 测试钉钉连接
    */
-  async testDingTalkConnection(config: DingTalkConfig): Promise<void> {
+  async testDingTalkConnection(config: DingTalkConfigUpdate): Promise<void> {
     return apiFetch<void>("/settings/dingtalk/test", {
       method: "POST",
       body: config,
@@ -265,7 +165,7 @@ export const settingsApi = {
   /**
    * 测试企业微信连接
    */
-  async testWeComConnection(config: WeComConfig): Promise<void> {
+  async testWeComConnection(config: WeComConfigUpdate): Promise<void> {
     return apiFetch<void>("/settings/wecom/test", {
       method: "POST",
       body: config,

@@ -1,6 +1,4 @@
 {
-  "sectionTitle": "AI service",
-  "sectionDescription": "Configure the model service used by the AI assistant",
   "fieldEnabledLabel": "Enable AI service",
   "fieldEnabledDesc": "When enabled, the AI assistant uses the provider and models below",
   "fieldProviderLabel": "Provider type",
@@ -11,7 +9,7 @@
   "fieldApiEndpointLabel": "API endpoint",
   "fieldApiEndpointDesc": "Use the provider base URL (e.g. OpenAI: https://api.openai.com/v1, Gemini: https://generativelanguage.googleapis.com/v1beta/openai)",
   "fieldApiKeyLabel": "API Key",
-  "fieldApiKeyDesc": "API key for the AI service",
+  "fieldApiKeyDesc": "API key for the AI service, stored encrypted in this instance.",
   "fieldApiKeyDescConfigured": "API key is configured, leave empty to keep existing key",
   "fieldApiKeyPlaceholder": "Enter API key",
   "fieldModelsLabel": "Available models",
@@ -26,6 +24,5 @@
   "probeModelsSuccess": "Probe succeeded, found {count} models",
   "probeModelsFailed": "Failed to probe available models",
   "noDetectedModels": "No models detected, please input manually",
-  "alertDescription": "The API key is stored encrypted on this instance. Make sure it has enough quota and permissions.",
   "fieldProviderPlaceholder": "Choose provider"
 }

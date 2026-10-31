@@ -1,9 +1,7 @@
 
 import { useTranslation } from "react-i18next"
-import { SettingsFormActions } from "@/components/settings/settings-form-actions"
-import { SettingsSection } from "@/components/settings/settings-section"
+import type { FieldValues, Path, UseFormReturn } from "react-hook-form"
 import { FormInput, FormSelect } from "@/components/settings/form-field"
-import { Settings } from "lucide-react"
 import { useSettingsForm } from "@/hooks/settings/use-settings-form"
 import { basicInfoSchema } from "@/schemas/settings/system-config.schema"
 import { settingsApi } from "@/lib/api/settings"
@@ -39,7 +37,7 @@ export function BasicTab() {
     { label: "DD-MM-YYYY", value: "DD-MM-YYYY" },
   ]
 
-  const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+  const { form, isLoading } = useSettingsForm({
     cacheKey: "system-basic",
     schema: basicInfoSchema,
     loadFn: loadSystemBasicSettings,
@@ -77,120 +75,35 @@ export function BasicTab() {
   }
 
   return (
-    <div className="flex flex-col">
-      <div className="p-4">
-        <div className="space-y-4">
-          <SettingsSection
-            title={t("sectionTitle")}
-            description={t("sectionDescription")}
-            icon={<Settings className="h-5 w-5" />}
-            actions={<SettingsFormActions visible={isDirty} isSaving={isSaving} onReset={reset} onSave={handleSave} />}
-          >
-            <FormInput
-              form={form}
-              name="system_name"
-              label={t("fieldSystemName")}
-              description={t("fieldSystemNameDesc")}
-              required
-              placeholder="EasySSH"
-            />
-
-            <FormInput
-              form={form}
-              name="public_url"
-              label={t("fieldPublicUrl")}
-              description={t("fieldPublicUrlDesc")}
-              type="url"
-              placeholder="https://ssh.example.com"
-            />
-
-            <FormInput
-              form={form}
-              name="system_logo"
-              label={t("fieldSystemLogo")}
-              description={t("fieldSystemLogoDesc")}
-              type="url"
-              placeholder="https://example.com/logo.svg"
-            />
-
-            {logoUrl && (
-              <div className="rounded-lg border p-4">
-                <p className="text-sm font-medium mb-2">{t("logoPreviewTitle")}</p>
-                {/* 这里需要预览任意用户输入的外部图片 URL。 */}
-                <img
-                  src={logoUrl}
-                  alt={t("logoPreviewTitle")}
-                  className="h-16 w-auto object-contain"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none"
-                  }}
-                />
-              </div>
-            )}
-
-            <FormInput
-              form={form}
-              name="system_favicon"
-              label={t("fieldFavicon")}
-              description={t("fieldFaviconDesc")}
-              type="url"
-              placeholder="https://example.com/favicon.ico"
-            />
-
-            {faviconUrl && (
-              <div className="rounded-lg border p-4">
-                <p className="text-sm font-medium mb-2">{t("faviconPreviewTitle")}</p>
-                {/* 这里需要预览任意用户输入的外部图片 URL。 */}
-                <img
-                  src={faviconUrl}
-                  alt={t("faviconPreviewTitle")}
-                  className="h-8 w-auto object-contain"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none"
-                  }}
-                />
-              </div>
-            )}
-
-            <FormSelect
-              form={form}
-              name="default_language"
-              label={t("fieldDefaultLanguage")}
-              description={t("fieldDefaultLanguageDesc")}
-              required
-              options={languageOptions}
-              placeholder={t("fieldDefaultLanguage")}
-            />
-
-            <FormSelect
-              form={form}
-              name="default_timezone"
-              label={t("fieldDefaultTimezone")}
-              description={t("fieldDefaultTimezoneDesc")}
-              required
-              options={timezoneOptions}
-              placeholder={t("fieldDefaultTimezone")}
-            />
-
-            <FormSelect
-              form={form}
-              name="date_format"
-              label={t("fieldDateFormat")}
-              description={t("fieldDateFormatDesc")}
-              required
-              options={dateFormatOptions}
-              placeholder={t("fieldDateFormat")}
-            />
-
-            {selectedFormat && (
-              <div className="rounded-lg border p-4 bg-muted/50">
-                <p className="text-sm font-medium mb-1">{t("dateFormatPreviewTitle")}</p>
-                <p className="text-lg font-mono">{formatPreview(selectedFormat)}</p>
-              </div>
-            )}
-          </SettingsSection>
-        </div>
+    <div className="space-y-6 p-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <FormInput form={form} name="system_name" label={t("fieldSystemName")} description={t("fieldSystemNameDesc")} required placeholder="EasySSH" />
+        <FormInput form={form} name="public_url" label={t("fieldPublicUrl")} description={t("fieldPublicUrlDesc")} type="url" placeholder="https://ssh.example.com" />
+        <ImageUrlField form={form} name="system_logo" label={t("fieldSystemLogo")} placeholder="https://example.com/logo.svg" url={logoUrl} previewClassName="h-10" />
+        <ImageUrlField form={form} name="system_favicon" label={t("fieldFavicon")} placeholder="https://example.com/favicon.ico" url={faviconUrl} previewClassName="h-6" />
       </div>
+      <div className="grid gap-4 border-t pt-6 lg:grid-cols-3">
+        <FormSelect form={form} name="default_language" label={t("fieldDefaultLanguage")} description={t("fieldDefaultLanguageDesc")} required options={languageOptions} />
+        <FormSelect form={form} name="default_timezone" label={t("fieldDefaultTimezone")} description={t("fieldDefaultTimezoneDesc")} required options={timezoneOptions} />
+        <FormSelect form={form} name="date_format" label={t("fieldDateFormat")} description={selectedFormat ? t("dateFormatPreview", { value: formatPreview(selectedFormat) }) : undefined} required options={dateFormatOptions} />
+      </div>
+    </div>
+  )
+}
+
+// Previews any user-provided image URL next to its field; broken images hide themselves.
+function ImageUrlField<T extends FieldValues>({ form, name, label, placeholder, url, previewClassName }: {
+  form: UseFormReturn<T>
+  name: Path<T>
+  label: string
+  placeholder: string
+  url?: string
+  previewClassName: string
+}) {
+  return (
+    <div className="flex items-end gap-3">
+      <FormInput form={form} name={name} label={label} type="url" placeholder={placeholder} className="min-w-0 flex-1" />
+      {url && <img key={url} src={url} alt="" className={`mb-1.5 w-auto shrink-0 object-contain ${previewClassName}`} onError={(event) => { event.currentTarget.style.display = "none" }} />}
     </div>
   )
 }

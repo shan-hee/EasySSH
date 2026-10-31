@@ -5,10 +5,10 @@ import { ChevronRight, KeyRound, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
-import { CreateTokenSheet } from "@/components/automation/create-token-sheet"
+import { CreateTokenDialog } from "@/components/automation/create-token-dialog"
 import { MCPConnection } from "@/components/automation/mcp-connection"
 import { MCPToolCatalog } from "@/components/automation/mcp-tool-catalog"
-import { TokenPermissionsSheet } from "@/components/automation/token-permissions-sheet"
+import { TokenPermissionsDialog } from "@/components/automation/token-permissions-dialog"
 import { TokenTable } from "@/components/automation/token-table"
 import { automationApi, type AccessToken } from "@/lib/api/automation"
 import { queryKeys } from "@/lib/query-keys"
@@ -75,7 +75,7 @@ export default function MCPPage() {
         </div>
       </section>
     </DashboardPageContent>
-    <CreateTokenSheet open={creating} onOpenChange={setCreating} />
-    <TokenPermissionsSheet token={viewing} onClose={() => setViewing(null)} />
+    <CreateTokenDialog open={creating} onOpenChange={setCreating} />
+    <TokenPermissionsDialog token={viewing} onClose={() => setViewing(null)} />
   </>
 }

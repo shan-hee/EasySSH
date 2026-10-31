@@ -23,7 +23,8 @@ const proxyModes = [
   { value: "manual", icon: SlidersHorizontal, title: "proxyManualLabel", description: "proxyManualDescription" },
 ] as const
 
-export function DesktopProxyDialog({ onOpenChange, platform }: {
+export function DesktopProxyDialog({ open, onOpenChange, platform }: {
+  open: boolean
   onOpenChange: (open: boolean) => void
   platform?: string
 }) {
@@ -36,6 +37,10 @@ export function DesktopProxyDialog({ onOpenChange, platform }: {
   const [error, setError] = useState("")
 
   useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    setLoadFailed(false)
+    setError("")
     let active = true
     void loadDesktopProxyConfig().then((next) => {
       if (active) setConfig(next)
@@ -45,7 +50,7 @@ export function DesktopProxyDialog({ onOpenChange, platform }: {
       if (active) setLoading(false)
     })
     return () => { active = false }
-  }, [])
+  }, [open])
 
   const invalidURL = config.mode === "manual" && !isValidDesktopProxyURL(config.url)
   const invalidCredentials = !isValidDesktopProxyCredentials(config)
@@ -66,8 +71,8 @@ export function DesktopProxyDialog({ onOpenChange, platform }: {
   }
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!saving) onOpenChange(open) }}>
-      <DialogContent showCloseButton={!saving} dismissOnEscape={!saving} className="max-h-[calc(100dvh-32px)] overflow-y-auto sm:max-w-[520px] [--wails-draggable:no-drag]">
+    <Dialog open={open} onOpenChange={(open) => { if (!saving) onOpenChange(open) }}>
+      <DialogContent onExitComplete={() => { setConfig(defaultDesktopProxyConfig); setLoading(true) }} showCloseButton={!saving} dismissOnEscape={!saving} className="max-h-[calc(100dvh-32px)] overflow-y-auto sm:max-w-[520px] [--wails-draggable:no-drag]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe className="size-5 text-muted-foreground" />

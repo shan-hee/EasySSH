@@ -21,6 +21,7 @@ interface PageHeaderTargets {
 const PageHeaderContext = React.createContext<PageHeaderTargets | null>(null)
 
 const routeTitles = [
+  { path: "/dashboard/chat-connections", navKey: "chatConnections", namespace: "chatConnections", key: "title" },
   { path: "/dashboard/ai-assistant", navKey: "aiAssistant", namespace: "nav", key: "aiAssistant" },
   { path: "/dashboard/terminal", navKey: "terminal", namespace: "nav", key: "terminal" },
   { path: "/dashboard/logs", navKey: "logs", namespace: "logsAudit", key: "logsPageTitle" },

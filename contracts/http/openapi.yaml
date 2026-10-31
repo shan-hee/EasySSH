@@ -158,6 +158,150 @@ components:
     NoContent:
       description: 操作成功，无响应体
   schemas:
+    ChatConnection:
+      type: object
+      required:
+      - id
+      - name
+      - bot_username
+      - server_ids
+      - permission_mode
+      - enabled
+      - status
+      - last_poll_at
+      - last_error
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        bot_username:
+          type: string
+        server_ids:
+          type: array
+          items:
+            type: string
+        permission_mode:
+          type: string
+          enum:
+          - readonly
+          - balanced
+          x-enum-varnames: [ChatPermissionReadonly, ChatPermissionBalanced]
+        enabled:
+          type: boolean
+        status:
+          type: string
+          enum:
+          - disabled
+          - connecting
+          - connected
+          - error
+        last_poll_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    ChatConnectionInput:
+      type: object
+      required:
+      - name
+      - server_ids
+      - permission_mode
+      - enabled
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        token:
+          type: string
+          writeOnly: true
+          description: Required on creation; empty preserves the existing token on update.
+        server_ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items:
+            type: string
+        permission_mode:
+          type: string
+          enum:
+          - readonly
+          - balanced
+          x-enum-varnames: [ChatInputReadonly, ChatInputBalanced]
+        enabled:
+          type: boolean
+    ChatBinding:
+      type: object
+      required:
+      - id
+      - connection_id
+      - user_id
+      - display_name
+      - current_session_id
+      - revoked_at
+      - created_at
+      properties:
+        id:
+          type: string
+        connection_id:
+          type: string
+        user_id:
+          type: string
+        display_name:
+          type: string
+        current_session_id:
+          type: string
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    ChatConnectionDetail:
+      type: object
+      required:
+      - connection
+      - bindings
+      properties:
+        connection:
+          $ref: '#/components/schemas/ChatConnection'
+        bindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatBinding'
+    ChatBindCode:
+      type: object
+      required:
+      - code
+      - url
+      - expires_at
+      properties:
+        code:
+          type: string
+        url:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    ChatConnectionEnabled:
+      type: object
+      required:
+      - enabled
+      properties:
+        enabled:
+          type: boolean
     AutomationToken:
       type: object
       required: [id, name, grant_id, grant_name, created_at, expires_at, active]
@@ -8579,6 +8723,188 @@ components:
           type: string
           description: 指定字节区间的标准 base64 编码
 paths:
+  /chat-connections:
+    get:
+      operationId: listChatConnections
+      summary: List owner chat connections
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatConnection'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createChatConnection
+      summary: Create a private Telegram Agent connection
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatConnection'
+        default:
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatConnectionInput'
+  /chat-connections/{id}:
+    get:
+      operationId: getChatConnection
+      summary: Get bindings and the latest 100 chat conversations
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatConnectionDetail'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    put:
+      operationId: updateChatConnection
+      summary: Update configuration and stop existing work
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatConnection'
+        default:
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatConnectionInput'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: deleteChatConnection
+      summary: Stop and delete a chat connection
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /chat-connections/{id}/enabled:
+    patch:
+      operationId: setChatConnectionEnabled
+      summary: Enable or disable a chat connection
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+        default:
+          $ref: '#/components/responses/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatConnectionEnabled'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /chat-connections/{id}/bind-code:
+    post:
+      operationId: createChatBindCode
+      summary: Issue a single-use binding code valid for ten minutes
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatBindCode'
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+  /chat-connections/{id}/bindings/{binding_id}:
+    delete:
+      operationId: revokeChatBinding
+      summary: Revoke binding and cancel its running work
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: binding_id
+        in: path
+        required: true
+        schema:
+          type: string
   /public/branding:
     get:
       operationId: getPublicBranding

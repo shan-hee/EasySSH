@@ -29,6 +29,7 @@ import (
 	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/automation"
 	"github.com/easyssh/server/internal/domain/batchtask"
+	"github.com/easyssh/server/internal/domain/chatbridge"
 	"github.com/easyssh/server/internal/domain/completion"
 	"github.com/easyssh/server/internal/domain/content"
 	"github.com/easyssh/server/internal/domain/dashboard"
@@ -499,6 +500,8 @@ func main() {
 	}
 	aiRuntimeManager.SetSessionStore(runtime.NewGormSessionStore(database, contentService))
 	aiSessionHandler := rest.NewAISessionHandler(aiRuntimeManager)
+	chatConnectionService := chatbridge.NewService(database, encryptor, aiRuntimeManager, accessRuntime)
+	chatConnectionHandler := rest.NewChatConnectionHandler(chatConnectionService)
 	// Docker 处理器（复用监控连接池）
 	dockerService := docker.NewService(monitorConnectionPool, taskCenterService, taskCenterRepo)
 	dockerHandler := rest.NewDockerHandler(dockerService)
@@ -962,6 +965,19 @@ func main() {
 			contentRoutes.GET("/:id/bytes", middleware.AccessRoute(protocol.WorkspaceRead, ""), contentHandler.Read)
 		}
 
+		// Chat connection management is owner-only; Telegram never receives an HTTP login scope.
+		chatConnections := v1.Group("/chat-connections", middleware.AuthMiddleware(authService, ticketService, securityService), middleware.APIRateLimitMiddleware(securityService))
+		{
+			chatConnections.GET("", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.List)
+			chatConnections.POST("", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Save)
+			chatConnections.GET("/:id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Detail)
+			chatConnections.PUT("/:id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Save)
+			chatConnections.DELETE("/:id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Delete)
+			chatConnections.PATCH("/:id/enabled", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.SetEnabled)
+			chatConnections.POST("/:id/bind-code", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.BindCode)
+			chatConnections.DELETE("/:id/bindings/:binding_id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Revoke)
+		}
+
 		// AI聊天路由（需要认证）
 		aiChatRoutes := v1.Group("/ai")
 		aiChatRoutes.Use(executionAuth)
@@ -1167,6 +1183,7 @@ func main() {
 	// Do not dispatch restored work or accept requests before the durable commit.
 	close(instanceStarted)
 	inboxNotificationService.Start(context.Background())
+	chatConnectionService.Start(context.Background())
 	taskCenterService.StartRetention(context.Background())
 	transferJobService.StartMaintenance(context.Background())
 	httpReady.Store(true)
@@ -1185,6 +1202,7 @@ func main() {
 	log.Println("🛑 Shutting down server...")
 	httpReady.Store(false)
 	instanceHistory.Cancel()
+	chatConnectionService.Stop()
 
 	aiStopContext, cancelAIStop := context.WithTimeout(context.Background(), 30*time.Second)
 	if err := aiRuntimeManager.Stop(aiStopContext); err != nil {

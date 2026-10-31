@@ -32,7 +32,7 @@ export interface InstanceBackupAdapter {
 
 const activeStatuses = new Set(["creating", "uploading", "checking", "restoring"])
 
-export function InstanceBackupPanel({ adapter }: { adapter: InstanceBackupAdapter }) {
+export function InstanceBackupPanel({ adapter, showHeader = true }: { adapter: InstanceBackupAdapter; showHeader?: boolean }) {
   const { t } = useTranslation("settingsManagementBackup")
   const navigate = useNavigate()
   const { confirm, confirmDialog } = useConfirmDialog()
@@ -137,7 +137,7 @@ export function InstanceBackupPanel({ adapter }: { adapter: InstanceBackupAdapte
   }
 
   return (
-    <SettingsSection title={t("nativeTitle")} description={t("instanceDescription")} icon={<ArchiveRestore className="size-5" />}>
+    <SettingsSection title={showHeader ? t("nativeTitle") : ""} description={showHeader ? t("instanceDescription") : undefined} icon={showHeader ? <ArchiveRestore className="size-5" /> : undefined}>
       <div className="flex flex-wrap items-center gap-2">
         <Button onClick={() => open("create")} disabled={disabled}><Plus className="mr-2 size-4" />{t("instanceCreate")}</Button>
         <Button variant="outline" disabled={disabled} onClick={() => adapter.nativeFilePicker ? void upload() : input.current?.click()}><Upload className="mr-2 size-4" />{t("instanceUpload")}</Button>

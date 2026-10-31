@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { useActionLabel } from "./token-permission-fields"
 import type { AccessToken } from "@/lib/api/automation"
@@ -12,12 +12,12 @@ import { grantsApi, reviewGrantTarget, type AccessResource } from "@/lib/api/gra
 import { getErrorMessage } from "@/lib/error-utils"
 import { queryKeys } from "@/lib/query-keys"
 
-export function TokenPermissionsSheet({ token, onClose }: { token: AccessToken | null; onClose: () => void }) {
-  return <Sheet open={!!token} onOpenChange={open => { if (!open) onClose() }}>
-    <SheetContent className="w-full gap-0 sm:max-w-lg">
+export function TokenPermissionsDialog({ token, onClose }: { token: AccessToken | null; onClose: () => void }) {
+  return <Dialog open={!!token} onOpenChange={open => { if (!open) onClose() }}>
+    <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
       {token && <TokenPermissions token={token} />}
-    </SheetContent>
-  </Sheet>
+    </DialogContent>
+  </Dialog>
 }
 
 function TokenPermissions({ token }: { token: AccessToken }) {
@@ -45,10 +45,10 @@ function TokenPermissions({ token }: { token: AccessToken }) {
   }
 
   return <>
-    <SheetHeader className="border-b pr-10">
-      <SheetTitle className="truncate">{token.name}</SheetTitle>
-      <SheetDescription>{t("permissionsHelp")}</SheetDescription>
-    </SheetHeader>
+    <DialogHeader className="shrink-0 border-b p-6 pr-12">
+      <DialogTitle className="truncate">{token.name}</DialogTitle>
+      <DialogDescription>{t("permissionsHelp")}</DialogDescription>
+    </DialogHeader>
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
       {detail.isPending && <p className="text-sm text-muted-foreground">{t("loading")}</p>}
       {detail.isError && <p role="alert" className="text-sm text-destructive">{t("loadFailed")}</p>}

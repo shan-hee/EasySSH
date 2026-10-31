@@ -1,4 +1,3 @@
-
 import * as React from "react"
 import type { TFunction } from "i18next"
 import type { FieldValues, Path, PathValue, UseFormReturn } from "react-hook-form"
@@ -20,7 +19,7 @@ interface BaseFormFieldProps<TFieldValues extends FieldValues> {
   form: UseFormReturn<TFieldValues>
   name: Path<TFieldValues>
   label: string
-  description?: string
+  description?: React.ReactNode
   required?: boolean
   disabled?: boolean
   className?: string
@@ -44,9 +43,7 @@ interface FormTextareaProps<TFieldValues extends FieldValues> extends BaseFormFi
   rows?: number
 }
 
-type TranslationFn = TFunction
-
-function getTranslatedErrorMessage(t: TranslationFn, error: unknown): string | undefined {
+function getTranslatedErrorMessage(t: TFunction, error: unknown): string | undefined {
   if (!error || typeof error !== "object") {
     return undefined
   }
@@ -61,6 +58,35 @@ function getTranslatedErrorMessage(t: TranslationFn, error: unknown): string | u
     : rawMessage
 }
 
+function useFieldError<TFieldValues extends FieldValues>(form: UseFormReturn<TFieldValues>, name: Path<TFieldValues>) {
+  const { t } = useTranslation("settingsValidation")
+  return getTranslatedErrorMessage(t, form.formState.errors[name])
+}
+
+/** Label above the control; help text and errors below it keep rows aligned in grids. */
+function Field({ id, label, required, description, error, className, children }: {
+  id: string
+  label: string
+  required?: boolean
+  description?: React.ReactNode
+  error?: string
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      {label && <Label htmlFor={id}>
+        {label}
+        {required && <span className="ml-1 text-destructive">*</span>}
+      </Label>}
+      {children}
+      {error
+        ? <p className="text-xs text-destructive">{error}</p>
+        : description && <p className="text-xs text-muted-foreground">{description}</p>}
+    </div>
+  )
+}
+
 /**
  * 表单输入字段
  */
@@ -70,6 +96,7 @@ export function FormInput<TFieldValues extends FieldValues>({
   label,
   description,
   required,
+  disabled,
   type = "text",
   placeholder,
   min,
@@ -77,19 +104,9 @@ export function FormInput<TFieldValues extends FieldValues>({
   step,
   className,
 }: FormInputProps<TFieldValues>) {
-  const { t } = useTranslation("settingsValidation")
-  const error = form.formState.errors[name]
-  const message = getTranslatedErrorMessage(t, error)
-
+  const error = useFieldError(form, name)
   return (
-    <div className={cn("space-y-2", className)}>
-      <Label htmlFor={name}>
-        {label}
-        {required && <span className="text-destructive ml-1">*</span>}
-      </Label>
-      {description && (
-        <p className="text-sm text-muted-foreground">{description}</p>
-      )}
+    <Field id={name} label={label} required={required} description={description} error={error} className={className}>
       <Input
         id={name}
         type={type}
@@ -97,17 +114,13 @@ export function FormInput<TFieldValues extends FieldValues>({
         min={min}
         max={max}
         step={step}
-        {...form.register(name, {
-          valueAsNumber: type === "number",
-        })}
-        className={error ? "border-destructive" : ""}
+        disabled={disabled}
+        // Stops browsers from filling saved sign-in passwords into service credentials.
+        autoComplete={type === "password" ? "new-password" : undefined}
+        aria-invalid={!!error}
+        {...form.register(name, { valueAsNumber: type === "number" })}
       />
-      {message && (
-        <p className="text-sm text-destructive">
-          {message}
-        </p>
-      )}
-    </div>
+    </Field>
   )
 }
 
@@ -125,18 +138,14 @@ export function FormSwitch<TFieldValues extends FieldValues>({
   const value = form.watch(name)
 
   return (
-    <div className={cn("flex flex-row items-center justify-between rounded-lg border p-4", className)}>
+    <div className={cn("flex items-center justify-between gap-4 rounded-lg border px-4 py-3", className)}>
       <div className="space-y-0.5">
-        <Label htmlFor={name} className="text-base">
-          {label}
-        </Label>
-        {description && (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        )}
+        <Label htmlFor={name}>{label}</Label>
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
       <Switch
         id={name}
-        checked={value}
+        checked={!!value}
         disabled={disabled}
         onCheckedChange={(checked) => form.setValue(
           name,
@@ -157,33 +166,26 @@ export function FormSelect<TFieldValues extends FieldValues>({
   label,
   description,
   required,
+  disabled,
   placeholder,
   options,
   className,
 }: FormSelectProps<TFieldValues>) {
-  const { t } = useTranslation("settingsValidation")
-  const error = form.formState.errors[name]
-  const message = getTranslatedErrorMessage(t, error)
+  const error = useFieldError(form, name)
   const value = form.watch(name)
 
   return (
-    <div className={cn("space-y-2", className)}>
-      <Label htmlFor={name}>
-        {label}
-        {required && <span className="text-destructive ml-1">*</span>}
-      </Label>
-      {description && (
-        <p className="text-sm text-muted-foreground">{description}</p>
-      )}
+    <Field id={name} label={label} required={required} description={description} error={error} className={className}>
       <Select
         value={value}
+        disabled={disabled}
         onValueChange={(val) => form.setValue(
           name,
           val as PathValue<TFieldValues, Path<TFieldValues>>,
           { shouldDirty: true, shouldValidate: true },
         )}
       >
-        <SelectTrigger id={name} className={error ? "border-destructive" : ""}>
+        <SelectTrigger id={name} className="w-full" aria-invalid={!!error}>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
@@ -194,12 +196,7 @@ export function FormSelect<TFieldValues extends FieldValues>({
           ))}
         </SelectContent>
       </Select>
-      {message && (
-        <p className="text-sm text-destructive">
-          {message}
-        </p>
-      )}
-    </div>
+    </Field>
   )
 }
 
@@ -212,35 +209,22 @@ export function FormTextarea<TFieldValues extends FieldValues>({
   label,
   description,
   required,
+  disabled,
   placeholder,
   rows = 3,
   className,
 }: FormTextareaProps<TFieldValues>) {
-  const { t } = useTranslation("settingsValidation")
-  const error = form.formState.errors[name]
-  const message = getTranslatedErrorMessage(t, error)
-
+  const error = useFieldError(form, name)
   return (
-    <div className={cn("space-y-2", className)}>
-      <Label htmlFor={name}>
-        {label}
-        {required && <span className="text-destructive ml-1">*</span>}
-      </Label>
-      {description && (
-        <p className="text-sm text-muted-foreground">{description}</p>
-      )}
+    <Field id={name} label={label} required={required} description={description} error={error} className={className}>
       <Textarea
         id={name}
         placeholder={placeholder}
         rows={rows}
+        disabled={disabled}
+        aria-invalid={!!error}
         {...form.register(name)}
-        className={error ? "border-destructive" : ""}
       />
-      {message && (
-        <p className="text-sm text-destructive">
-          {message}
-        </p>
-      )}
-    </div>
+    </Field>
   )
 }

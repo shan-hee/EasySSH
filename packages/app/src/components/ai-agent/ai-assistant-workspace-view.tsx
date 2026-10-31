@@ -68,6 +68,7 @@ export interface AIAssistantWorkspaceAdapters {
 }
 
 export interface AIAssistantWorkspaceViewProps {
+  requestedSessionId?: string
   canConfigure?: boolean
   active?: boolean
   hidePageHeader?: boolean
@@ -76,12 +77,14 @@ export interface AIAssistantWorkspaceViewProps {
 }
 
 export function AIAssistantWorkspaceView({
+  requestedSessionId,
   active = true,
   canConfigure = true,
   hidePageHeader = false,
   onReturnToTerminal,
   adapters,
 }: AIAssistantWorkspaceViewProps) {
+  const restoredRequest = useRef<string | null>(null)
   const { t } = useTranslation("aiAssistant")
   const sidebar = useAISidebarHost()
   const { ready } = useAuthReady()
@@ -212,12 +215,18 @@ export function AIAssistantWorkspaceView({
   }, [loadServers])
 
   useEffect(() => {
-    if (!active || !ready || isLoading || !isConfigured || session || agentSession.transport !== "idle") {
+    if (!active || !requestedSessionId) restoredRequest.current = null
+    if (!active || !ready || isLoading || agentSession.transport !== "idle") return
+    if (requestedSessionId) {
+      if (restoredRequest.current !== requestedSessionId) {
+        restoredRequest.current = requestedSessionId
+        void restoreSession(requestedSessionId)
+      }
       return
     }
-
+    if (!isConfigured || session) return
     void restoreLatestSession()
-  }, [active, agentSession.transport, isConfigured, isLoading, ready, restoreLatestSession, session])
+  }, [active, agentSession.transport, isConfigured, isLoading, ready, requestedSessionId, restoreLatestSession, restoreSession, session])
 
   const permissionOptions = useMemo(
     () =>

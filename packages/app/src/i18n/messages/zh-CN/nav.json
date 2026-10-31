@@ -14,5 +14,6 @@
   "systemOrg": "系统",
   "backToMainMenu": "返回主菜单",
   "automation": "开放与自动化",
-  "mcp": "MCP 接入"
+  "mcp": "MCP 接入",
+  "chatConnections": "聊天接入"
 }

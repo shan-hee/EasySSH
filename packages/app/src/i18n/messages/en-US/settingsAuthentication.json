@@ -15,7 +15,7 @@
   "rememberLogin": "Allow Remember me",
   "rememberLoginDescription": "Let users choose \"Remember me\" to stay signed in after closing the browser. This does not extend the idle timeout.",
   "loginProtectionTitle": "Login protection",
-  "loginProtectionDescription": "Manage login, API, and 2FA limits plus breached-password checks.",
+  "loginProtectionDescription": "Rate limits for sign-in, 2FA and API requests.",
   "loginLimit": "Login limit (requests/minute/IP)",
   "apiLimit": "API limit (requests/minute/user)",
   "twoFALimit": "2FA limit (requests/minute/IP)",

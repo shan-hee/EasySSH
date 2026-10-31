@@ -13,9 +13,19 @@
   "itemAccessControl": "Access control",
   "itemAuthentication": "Authentication",
   "itemWorkspace": "Terminal workspace",
-  "itemScheduledTasks": "Scheduled tasks",
+  "itemScheduledTasks": "Task queue",
   "itemNetworkDeployment": "Web & deployment",
   "itemAIConfig": "AI config",
   "itemNotificationConfig": "Notification config",
-  "itemBackup": "Backup & restore"
+  "itemBackup": "Backup & restore",
+  "itemBasicDescription": "System name, public URL, brand icons and default locale formats.",
+  "itemAuthenticationDescription": "Owner sign-in session lifetime and sign-in rate limits.",
+  "itemAccessControlDescription": "Allow or deny access by IP address for all users.",
+  "itemWorkspaceDescription": "Terminal tab limits and hibernation in the browser. Sign-in sessions are unaffected.",
+  "itemScheduledTasksDescription": "Background job queue status and concurrency capacity.",
+  "itemNetworkDeploymentDescription": "Reverse proxy, cookie, cross-origin and content security policies.",
+  "itemFileTransferDescription": "Session transfers, background staging and the SSH/SFTP connection pool.",
+  "itemAIConfigDescription": "Model service and API key used by the AI assistant.",
+  "itemNotificationConfigDescription": "External channels that deliver task notifications; sending follows each account's notification preferences.",
+  "itemBackupDescription": "Full instance backup, verification and restore. Use device sync for personal data across devices."
 }

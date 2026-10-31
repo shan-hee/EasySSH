@@ -19,6 +19,7 @@ interface ConfirmDialogProps {
   cancelText?: string
   variant?: "default" | "destructive"
   onConfirm: () => void
+  onExitComplete?: () => void
 }
 
 export function ConfirmDialog({
@@ -30,6 +31,7 @@ export function ConfirmDialog({
   cancelText,
   variant = "default",
   onConfirm,
+  onExitComplete,
 }: ConfirmDialogProps) {
   const { t: tCommon } = useTranslation("common")
 
@@ -43,7 +45,7 @@ export function ConfirmDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent onExitComplete={onExitComplete}>
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{description}</AlertDialogDescription>

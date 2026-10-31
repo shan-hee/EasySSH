@@ -13,9 +13,19 @@
   "itemAccessControl": "访问控制",
   "itemAuthentication": "身份认证",
   "itemWorkspace": "终端工作区",
-  "itemScheduledTasks": "定时任务",
+  "itemScheduledTasks": "任务队列",
   "itemNetworkDeployment": "Web 与部署",
   "itemAIConfig": "AI 配置",
   "itemNotificationConfig": "通知配置",
-  "itemBackup": "备份与恢复"
+  "itemBackup": "备份与恢复",
+  "itemBasicDescription": "系统名称、访问地址、品牌图标与默认区域格式。",
+  "itemAuthenticationDescription": "所有者登录会话的有效期与登录限流。",
+  "itemAccessControlDescription": "按 IP 允许或拒绝访问，对所有用户生效。",
+  "itemWorkspaceDescription": "浏览器中终端标签页的数量与休眠行为，不影响登录会话。",
+  "itemScheduledTasksDescription": "后台任务队列的运行状态与并发容量。",
+  "itemNetworkDeploymentDescription": "反向代理、Cookie、跨域与内容安全策略。",
+  "itemFileTransferDescription": "会话传输、后台暂存与 SSH/SFTP 连接池。",
+  "itemAIConfigDescription": "AI 助手使用的模型服务与 API 密钥。",
+  "itemNotificationConfigDescription": "任务完成时投递通知的外部渠道；是否发送由账户通知偏好决定。",
+  "itemBackupDescription": "实例完整备份、校验与恢复；跨端个人数据请使用设备同步。"
 }

@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   useForm,
@@ -14,6 +14,7 @@ import { toast } from "sonner"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { useTranslation } from "react-i18next"
 import { queryKeys } from "@/lib/query-keys"
+import { useSettingsActionsRegister } from "@/components/settings/settings-actions"
 
 interface UseSettingsFormOptions<T extends FieldValues> {
   cacheKey: string
@@ -104,13 +105,12 @@ export function useSettingsForm<T extends FieldValues>({
     onError?.(error)
   }, [onError, settingsQuery.error, t])
 
-  // 保存配置
-  const handleSave = async () => {
-    // 先进行表单验证
+  // 保存配置；成功提示由调用方决定，便于多个表单合并为一次提示
+  const save = async () => {
     const isValid = await form.trigger()
     if (!isValid) {
       toast.error(t("toastFormInvalid"))
-      return
+      return false
     }
 
     const data = form.getValues()
@@ -122,8 +122,8 @@ export function useSettingsForm<T extends FieldValues>({
       if (refreshed.data) {
         form.reset(refreshed.data)
       }
-      toast.success(t("toastSaveSuccess"))
       onSuccess?.()
+      return true
     } catch (error) {
       const err = error as Error
       toast.error(
@@ -132,19 +132,37 @@ export function useSettingsForm<T extends FieldValues>({
         })
       )
       onError?.(err)
+      return false
     } finally {
       setIsSaving(false)
     }
   }
 
+  const handleSave = async () => {
+    if (await save()) toast.success(t("toastSaveSuccess"))
+  }
+
+  const reset = () => form.reset(
+    (settingsQuery.data ?? defaultValues) as DefaultValues<T> | T | undefined,
+  )
+
+  // Inside the settings page every form reports to the shared header actions.
+  const register = useSettingsActionsRegister()
+  const id = useId()
+  const isDirty = form.formState.isDirty
+  const latest = useRef({ save, reset })
+  latest.current = { save, reset }
+  useEffect(() => {
+    register?.(id, { dirty: isDirty, saving: isSaving, save: () => latest.current.save(), reset: () => latest.current.reset() })
+  }, [register, id, isDirty, isSaving])
+  useEffect(() => () => register?.(id, null), [register, id])
+
   return {
     form,
     isLoading: !isFormInitialized && !settingsQuery.error,
     isSaving,
-    isDirty: form.formState.isDirty,
+    isDirty,
     handleSave,
-    reset: () => form.reset(
-      (settingsQuery.data ?? defaultValues) as DefaultValues<T> | T | undefined,
-    ),
+    reset,
   }
 }

@@ -22,5 +22,7 @@
   "browserPolicyTitle": "浏览器内容安全策略",
   "browserPolicyDescription": "限制脚本、样式、图片、连接和 iframe 的加载来源。",
   "cspDescription": "留空使用 EasySSH 内置策略；自定义后立即应用到后续请求。",
-  "cspPlaceholder": "留空使用内置 Content-Security-Policy"
+  "cspPlaceholder": "留空使用内置 Content-Security-Policy",
+  "addOrigin": "添加来源",
+  "removeOrigin": "移除 {origin}"
 }

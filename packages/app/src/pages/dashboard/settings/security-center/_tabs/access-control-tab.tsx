@@ -1,20 +1,14 @@
 
 import { useTranslation } from "react-i18next"
-import { SettingsFormActions } from "@/components/settings/settings-form-actions"
-import { SettingsSection } from "@/components/settings/settings-section"
-import { Shield } from "lucide-react"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { InfoIcon } from "lucide-react"
+import { FormTextarea } from "@/components/settings/form-field"
 import { useSettingsForm } from "@/hooks/settings/use-settings-form"
 import { networkSecuritySchema } from "@/schemas/settings/security.schema"
 import { settingsApi } from "@/lib/api/settings"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { SettingsLoading } from "@/components/settings/settings-loading"
 
 export function AccessControlTab() {
   const { t } = useTranslation("settingsSecurityAccess")
-  const { form, isLoading, isSaving, isDirty, handleSave, reset } = useSettingsForm({
+  const { form, isLoading } = useSettingsForm({
     cacheKey: "access-control",
     schema: networkSecuritySchema,
     loadFn: async () => {
@@ -37,56 +31,12 @@ export function AccessControlTab() {
   }
 
   return (
-    <div className="flex flex-col">
-      <div className="p-4">
-        <div className="space-y-4">
-          {/* IP白名单/黑名单配置 */}
-          <SettingsSection
-            title={t("sectionTitle")}
-            description={t("sectionDescription")}
-            icon={<Shield className="h-5 w-5" />}
-            actions={<SettingsFormActions visible={isDirty} isSaving={isSaving} onReset={reset} onSave={handleSave} />}
-          >
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="allowlist_ips">{t("labelAllowlist")}</Label>
-                <Textarea
-                  id="allowlist_ips"
-                  placeholder={t("placeholderAllowlist")}
-                  value={form.watch("allowlist_ips") || ""}
-                  onChange={(e) => form.setValue("allowlist_ips", e.target.value, { shouldDirty: true })}
-                  rows={4}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("helperAllowlist")}
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="blocklist_ips">{t("labelBlocklist")}</Label>
-                <Textarea
-                  id="blocklist_ips"
-                  placeholder={t("placeholderBlocklist")}
-                  value={form.watch("blocklist_ips") || ""}
-                  onChange={(e) => form.setValue("blocklist_ips", e.target.value, { shouldDirty: true })}
-                  rows={4}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("helperBlocklist")}
-                </p>
-              </div>
-            </div>
-
-            <Alert>
-              <InfoIcon className="h-4 w-4" />
-              <AlertDescription>
-                {t("alertContent")}
-              </AlertDescription>
-            </Alert>
-          </SettingsSection>
-        </div>
+    <div className="space-y-4 p-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <FormTextarea form={form} name="allowlist_ips" label={t("labelAllowlist")} description={t("helperAllowlist")} placeholder={t("placeholderAllowlist")} rows={6} />
+        <FormTextarea form={form} name="blocklist_ips" label={t("labelBlocklist")} description={t("helperBlocklist")} placeholder={t("placeholderBlocklist")} rows={6} />
       </div>
-
+      <p className="text-xs text-muted-foreground">{t("alertContent")}</p>
     </div>
   )
 }

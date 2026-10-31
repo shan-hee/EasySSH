@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react"
 import {
   Bot,
   Plug,
+  MessageCircle,
   ListChecks,
   FileText,
   Monitor,
@@ -80,6 +81,13 @@ const workbench: NavigationItemDefinition[] = [
 ]
 
 const automation: NavigationItemDefinition[] = [
+  {
+    titleKey: "chatConnections",
+    url: "/dashboard/chat-connections",
+    icon: MessageCircle,
+    profiles: ["web"],
+    requiredCapabilities: ["settings", "ai"],
+  },
   {
     titleKey: "mcp",
     url: "/dashboard/mcp",

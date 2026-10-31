@@ -1,6 +1,4 @@
 {
-  "sectionTitle": "AI 服务",
-  "sectionDescription": "配置 AI 助手使用的模型服务",
   "fieldEnabledLabel": "启用 AI 服务",
   "fieldEnabledDesc": "开启后 AI 助手使用以下服务商与模型",
   "fieldProviderLabel": "服务商类型",
@@ -11,7 +9,7 @@
   "fieldApiEndpointLabel": "API 端点",
   "fieldApiEndpointDesc": "填写服务商 API 根地址（如 OpenAI 的 https://api.openai.com/v1、Gemini 的 https://generativelanguage.googleapis.com/v1beta/openai）",
   "fieldApiKeyLabel": "API 密钥",
-  "fieldApiKeyDesc": "AI 服务的 API 密钥",
+  "fieldApiKeyDesc": "AI 服务的 API 密钥，加密保存在实例中。",
   "fieldApiKeyDescConfigured": "已配置 API 密钥，留空保留原有密钥",
   "fieldApiKeyPlaceholder": "输入 API 密钥",
   "fieldModelsLabel": "可用模型",
@@ -26,6 +24,5 @@
   "probeModelsSuccess": "探测成功，获取到 {count} 个模型",
   "probeModelsFailed": "探测可用模型失败",
   "noDetectedModels": "未探测到可用模型，请手动输入",
-  "alertDescription": "API 密钥加密保存在实例中，请确保其有足够的配额和权限。",
   "fieldProviderPlaceholder": "选择提供商"
 }

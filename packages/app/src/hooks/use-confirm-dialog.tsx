@@ -45,7 +45,7 @@ export function useConfirmDialog(): {
 
     resolverRef.current?.(false)
     resolverRef.current = null
-    setDialogState(null)
+    setDialogState(current => current ? { ...current, open: false } : current)
   }, [])
 
   useEffect(() => () => {
@@ -63,6 +63,7 @@ export function useConfirmDialog(): {
       cancelText={dialogState.cancelText}
       variant={dialogState.variant}
       onConfirm={handleConfirm}
+      onExitComplete={() => setDialogState(current => current?.open ? current : null)}
     />
   ) : null
 

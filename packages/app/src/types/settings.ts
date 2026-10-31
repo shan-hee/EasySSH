@@ -3,9 +3,6 @@ export type {
   IPWhitelistConfig,
   CORSConfig,
   // 通知配置相关类型
-  SMTPConfig,
-  WebhookConfig,
-  DingTalkConfig,
-  WeComConfig,
-  NotificationConfig,
+  NotificationConfigView,
+  NotificationConfigUpdate,
 } from "@/lib/api/settings"

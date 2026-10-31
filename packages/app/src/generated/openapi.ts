@@ -4,6 +4,94 @@
  */
 
 export interface paths {
+    "/chat-connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List owner chat connections */
+        get: operations["listChatConnections"];
+        put?: never;
+        /** Create a private Telegram Agent connection */
+        post: operations["createChatConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat-connections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get bindings and the latest 100 chat conversations */
+        get: operations["getChatConnection"];
+        /** Update configuration and stop existing work */
+        put: operations["updateChatConnection"];
+        post?: never;
+        /** Stop and delete a chat connection */
+        delete: operations["deleteChatConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat-connections/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Enable or disable a chat connection */
+        patch: operations["setChatConnectionEnabled"];
+        trace?: never;
+    };
+    "/chat-connections/{id}/bind-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Issue a single-use binding code valid for ten minutes */
+        post: operations["createChatBindCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat-connections/{id}/bindings/{binding_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke binding and cancel its running work */
+        delete: operations["revokeChatBinding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/public/branding": {
         parameters: {
             query?: never;
@@ -3468,6 +3556,57 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ChatConnection: {
+            id: string;
+            name: string;
+            bot_username: string;
+            server_ids: string[];
+            /** @enum {string} */
+            permission_mode: "readonly" | "balanced";
+            enabled: boolean;
+            /** @enum {string} */
+            status: "disabled" | "connecting" | "connected" | "error";
+            /** Format: date-time */
+            last_poll_at: string | null;
+            last_error: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        ChatConnectionInput: {
+            name: string;
+            /** @description Required on creation; empty preserves the existing token on update. */
+            token?: string;
+            server_ids: string[];
+            /** @enum {string} */
+            permission_mode: "readonly" | "balanced";
+            enabled: boolean;
+        };
+        ChatBinding: {
+            id: string;
+            connection_id: string;
+            user_id: string;
+            display_name: string;
+            current_session_id: string;
+            /** Format: date-time */
+            revoked_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        ChatConnectionDetail: {
+            connection: components["schemas"]["ChatConnection"];
+            bindings: components["schemas"]["ChatBinding"][];
+        };
+        ChatBindCode: {
+            code: string;
+            url: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        ChatConnectionEnabled: {
+            enabled: boolean;
+        };
         AutomationToken: {
             active: boolean;
             /** Format: uuid */
@@ -6988,6 +7127,193 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    listChatConnections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConnection"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createChatConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatConnectionInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getChatConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConnectionDetail"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateChatConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatConnectionInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConnection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteChatConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setChatConnectionEnabled: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatConnectionEnabled"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createChatBindCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatBindCode"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeChatBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                binding_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     getPublicBranding: {
         parameters: {
             query?: never;

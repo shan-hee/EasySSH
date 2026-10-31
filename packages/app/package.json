@@ -110,6 +110,7 @@
     "./lib/session/workspace": "./src/lib/session/workspace.ts",
     "./lib/websocket-terminal": "./src/lib/websocket-terminal.ts",
     "./lib/workspace-task-navigation": "./src/lib/workspace-task-navigation.ts",
+    "./pages/dashboard/chat-connections-page": "./src/pages/dashboard/chat-connections-page.tsx",
     "./pages/dashboard/mcp-page": "./src/pages/dashboard/mcp-page.tsx"
   },
   "scripts": {

@@ -9,6 +9,7 @@ export interface RoutePolicy {
 }
 
 export const routePolicies: RoutePolicy[] = [
+  { pattern: /^\/dashboard\/chat-connections(?:\/|$)/, requiredCapabilities: ["settings", "ai"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/?$/, requiredCapabilities: ["servers"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/logs(?:\/|$)/, requiredCapabilities: ["audit"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },
   { pattern: /^\/dashboard\/settings(?:\/|$)/, requiredCapabilities: ["settings"], profiles: ["web"], fallbackPath: "/dashboard/terminal" },

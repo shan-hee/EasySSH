@@ -1,6 +1,4 @@
 {
-  "title": "Terminal workspace",
-  "description": "Manage browser terminal-tab behavior without changing login sessions or OAuth tokens.",
   "maxTabs": "Maximum tabs",
   "maxTabsDescription": "Maximum terminal tabs a user can keep open at once.",
   "inactiveMinutes": "Inactive disconnect reminder (minutes)",

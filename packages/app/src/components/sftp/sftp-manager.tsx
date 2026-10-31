@@ -1,4 +1,3 @@
-import { Content as AlertDialogContent } from "@radix-ui/react-alert-dialog"
 import { Button } from "@/components/ui/button"
 import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 
@@ -8,7 +7,7 @@ import { SftpSessionProvider } from "@/contexts/sftp-session-context"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { ChmodDialog } from "@/components/sftp/chmod-dialog"
-import { AlertDialog, AlertDialogPortal, AlertDialogOverlay, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog"
 import type { SftpDirectorySource } from "@/lib/session/sftp-directory-source"
 import { SftpFileTreePane } from "./sftp-file-tree-pane"
 import { useSftpTreeLayout } from "./use-sftp-tree-layout"
@@ -586,9 +585,7 @@ export function SftpManager(props: SftpManagerProps) {
       )}
 
       <AlertDialog open={!!pendingLeave} onOpenChange={(open) => { if (!open) void resolveLeave("cancel") }}>
-        <AlertDialogPortal>
-        <AlertDialogOverlay className="z-[10001]" />
-        <AlertDialogContent className="fixed left-1/2 top-1/2 z-[10002] grid w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-lg">
+        <AlertDialogContent overlayClassName="z-[10001]" containerClassName="z-[10002]">
           <AlertDialogHeader>
             <AlertDialogTitle>{tSftp("unsavedTitle")}</AlertDialogTitle>
             <AlertDialogDescription>{tSftp("unsavedDescription", { name: editorState.fileName })}</AlertDialogDescription>
@@ -600,7 +597,6 @@ export function SftpManager(props: SftpManagerProps) {
             <Button disabled={isSavingEditor} onClick={() => void resolveLeave("save")}>{tSftp(isSavingEditor ? "editorActionSaveSaving" : "unsavedSave")}</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
-        </AlertDialogPortal>
       </AlertDialog>
 
       {/* 权限修改对话框 */}

@@ -61,21 +61,40 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 	for _, name := range tables {
 		present[name] = true
 	}
-	for name, introduced := range map[string]int64{"automation_tokens": 6, "server_vnc_configs": 6, "server_rdp_configs": 7} {
+	for name, introduced := range map[string]int64{"automation_tokens": 6, "server_vnc_configs": 6, "server_rdp_configs": 7, "chat_connections": 8, "chat_bindings": 8, "chat_approvals": 8} {
 		if present[name] != (version >= introduced) {
 			return fmt.Errorf("schema %d disagrees with table %s; inspect interrupted DDL before retrying", version, name)
+		}
+	}
+	for _, name := range []string{"chat_conversations", "chat_inbox", "chat_outbox"} {
+		if present[name] != (version == 8) {
+			return fmt.Errorf("schema %d disagrees with table %s; inspect interrupted DDL before retrying", version, name)
+		}
+	}
+	for _, name := range []string{"chat_approvals_v8", "chat_approvals_v9"} {
+		if present[name] {
+			return fmt.Errorf("unfinished chat migration table %s; restore the migration recovery point", name)
 		}
 	}
 	// Validate the columns introduced by completed versions, not just table names.
 	for _, check := range []struct {
 		introduced int64
+		removed    int64
 		query      string
 	}{
-		{6, "SELECT session_id,name,grant_id,grant_version,token_hash,created_at,last_seen_at,expires_at,revoked_at FROM automation_tokens WHERE 1=0"},
-		{6, "SELECT server_id,enabled,port,tls FROM server_vnc_configs WHERE 1=0"},
-		{7, "SELECT server_id,enabled,port,security,ignore_certificate FROM server_rdp_configs WHERE 1=0"},
+		{6, 0, "SELECT session_id,name,grant_id,grant_version,token_hash,created_at,last_seen_at,expires_at,revoked_at FROM automation_tokens WHERE 1=0"},
+		{6, 0, "SELECT server_id,enabled,port,tls FROM server_vnc_configs WHERE 1=0"},
+		{7, 0, "SELECT server_id,enabled,port,security,ignore_certificate FROM server_rdp_configs WHERE 1=0"},
+		{8, 0, "SELECT id,owner_id,name,token_cipher,bot_id,bot_username,server_ids_json,permission_mode,enabled,next_update_id,bind_code_hash,bind_expires_at,last_poll_at,last_error,created_at,updated_at FROM chat_connections WHERE 1=0"},
+		{8, 0, "SELECT id,connection_id,user_id,chat_id,display_name,current_session_id,revoked_at,created_at FROM chat_bindings WHERE 1=0"},
+		{8, 0, "SELECT id,binding_id,session_id,task_id,digest,expires_at,used_at FROM chat_approvals WHERE 1=0"},
+		{8, 9, "SELECT id,binding_id,watching,status,message_count,created_at,updated_at FROM chat_conversations WHERE 1=0"},
+		{8, 9, "SELECT id,connection_id,update_id,payload,status,created_at FROM chat_inbox WHERE 1=0"},
+		{8, 9, "SELECT id,connection_id,binding_id,chat_id,text,buttons,status,attempts,next_attempt_at,last_error,created_at FROM chat_outbox WHERE 1=0"},
+		{9, 0, "SELECT revision FROM chat_connections WHERE 1=0"},
+		{9, 0, "SELECT message_count,watching FROM chat_bindings WHERE 1=0"},
 	} {
-		if version < check.introduced {
+		if version < check.introduced || check.removed != 0 && version >= check.removed {
 			continue
 		}
 		rows, err := db.QueryContext(ctx, check.query)

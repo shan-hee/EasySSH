@@ -1,3 +1,4 @@
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { RDPSession } from "@/components/rdp/rdp-session"
 import { VNCSession } from "@/components/vnc/vnc-session"
 import { ActivityOverview } from "@/components/activity/activity-overview"
@@ -63,6 +64,7 @@ export function AccessWorkspace({
   onLeave?: () => Promise<void>
 }) {
   const { t } = useTranslation("sharing")
+  const { confirm, confirmDialog } = useConfirmDialog()
   const [tabs, setTabs] = useState<OpenTab[]>([])
   const [aiVisited, setAIVisited] = useState(false)
   const initialOpened = useRef(false)
@@ -329,18 +331,14 @@ export function AccessWorkspace({
               size="sm"
               disabled={!handoff.confirmation || !!handoff.approved_at}
               onClick={() => {
-                if (
-                  window.confirm(
-                    t("approveHandoff", { code: handoff.confirmation }),
-                  )
-                )
-                  void attempt(async () => {
-                    await apiFetch(`/access/handoffs/${handoff.id}/approve`, {
-                      method: "POST",
-                      body: { confirmation: handoff.confirmation },
-                    })
-                    setHandoff(await apiFetch(`/access/handoffs/${handoff.id}`))
+                void attempt(async () => {
+                  if (!await confirm({ description: t("approveHandoff", { code: handoff.confirmation }) })) return
+                  await apiFetch(`/access/handoffs/${handoff.id}/approve`, {
+                    method: "POST",
+                    body: { confirmation: handoff.confirmation },
                   })
+                  setHandoff(await apiFetch(`/access/handoffs/${handoff.id}`))
+                })
               }}
             >
               {t("confirm")}
@@ -488,6 +486,7 @@ export function AccessWorkspace({
           </div>
         )}
       </main>
+      {confirmDialog}
     </SidebarProvider>
   )
 }

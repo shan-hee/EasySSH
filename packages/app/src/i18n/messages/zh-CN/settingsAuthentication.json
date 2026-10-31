@@ -15,7 +15,7 @@
   "rememberLogin": "允许记住登录状态",
   "rememberLoginDescription": "允许登录时勾选“记住登录状态”，关闭浏览器后仍保留登录；不会延长空闲超时。",
   "loginProtectionTitle": "登录防护",
-  "loginProtectionDescription": "管理登录、API 与 2FA 限流，以及泄露密码检测。",
+  "loginProtectionDescription": "登录、2FA 与 API 请求的限流阈值。",
   "loginLimit": "登录限流（次/分钟/IP）",
   "apiLimit": "API 限流（次/分钟/用户）",
   "twoFALimit": "2FA 限流（次/分钟/IP）",

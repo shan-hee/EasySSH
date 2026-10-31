@@ -16,100 +16,50 @@ export const aiConfigSchema = z.object({
 export type AIConfigFormValues = z.infer<typeof aiConfigSchema>
 
 // SMTP配置 Schema
-export const smtpConfigSchema = z
+const optionalUrl = (message: string) => z.string().url(message).or(z.literal(""))
+
+// 通知配置：密码、密钥与 Webhook 地址只写，has_* 表示已保存，留空保持不变
+export const notificationConfigSchema = z
   .object({
-    enabled: z.boolean().default(false),
-    host: z.string().optional(),
-    port: z.number().optional(),
-    username: z.string().optional(),
-    password: z.string().optional(),
-    from_email: z.string().optional(),
-    from_name: z.string().optional(),
-    use_tls: z.boolean().default(true),
+    enabled: z.boolean(),
+    host: z.string(),
+    port: z.number(),
+    username: z.string(),
+    password: z.string(),
+    has_password: z.boolean(),
+    from_email: z.string(),
+    from_name: z.string(),
+    use_tls: z.boolean(),
+    webhook_enabled: z.boolean(),
+    webhook_url: optionalUrl("settingsValidation.webhookUrlInvalid"),
+    has_webhook_url: z.boolean(),
+    webhook_method: z.enum(["POST", "GET"]),
+    webhook_secret: z.string(),
+    has_webhook_secret: z.boolean(),
+    dingtalk_enabled: z.boolean(),
+    dingtalk_webhook_url: optionalUrl("settingsValidation.dingtalkWebhookUrlInvalid"),
+    has_dingtalk_webhook_url: z.boolean(),
+    dingtalk_secret: z.string(),
+    has_dingtalk_secret: z.boolean(),
+    wecom_enabled: z.boolean(),
+    wecom_webhook_url: optionalUrl("settingsValidation.wecomWebhookUrlInvalid"),
+    has_wecom_webhook_url: z.boolean(),
   })
   .superRefine((data, ctx) => {
-    // 如果启用了邮件通知，则所有字段都必填
-    if (data.enabled) {
-      if (!data.host || data.host.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "settingsValidation.smtpHostRequired",
-          path: ["host"],
-        })
-      }
-      if (!data.port || data.port < 1 || data.port > 65535) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "settingsValidation.smtpPortMin",
-          path: ["port"],
-        })
-      }
-      if (!data.username || data.username.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "settingsValidation.smtpUsernameRequired",
-          path: ["username"],
-        })
-      }
-      if (!data.password || data.password.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "settingsValidation.smtpPasswordRequired",
-          path: ["password"],
-        })
-      }
-      if (!data.from_email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.from_email)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "settingsValidation.smtpFromEmailInvalid",
-          path: ["from_email"],
-        })
-      }
-      if (!data.from_name || data.from_name.length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "settingsValidation.smtpFromNameRequired",
-          path: ["from_name"],
-        })
-      }
+    const require = (missing: boolean, path: string, message: string) => {
+      if (missing) ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: [path] })
     }
+    if (data.enabled) {
+      require(!data.host, "host", "settingsValidation.smtpHostRequired")
+      require(!data.port || data.port < 1 || data.port > 65535, "port", "settingsValidation.smtpPortMin")
+      require(!data.username, "username", "settingsValidation.smtpUsernameRequired")
+      require(!data.password && !data.has_password, "password", "settingsValidation.smtpPasswordRequired")
+      require(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.from_email), "from_email", "settingsValidation.smtpFromEmailInvalid")
+      require(!data.from_name, "from_name", "settingsValidation.smtpFromNameRequired")
+    }
+    require(data.webhook_enabled && !data.webhook_url && !data.has_webhook_url, "webhook_url", "settingsValidation.webhookUrlInvalid")
+    require(data.dingtalk_enabled && !data.dingtalk_webhook_url && !data.has_dingtalk_webhook_url, "dingtalk_webhook_url", "settingsValidation.dingtalkWebhookUrlInvalid")
+    require(data.wecom_enabled && !data.wecom_webhook_url && !data.has_wecom_webhook_url, "wecom_webhook_url", "settingsValidation.wecomWebhookUrlInvalid")
   })
 
-// 钉钉配置 Schema
-export const dingTalkConfigSchema = z.object({
-  dingtalk_enabled: z.boolean(),
-  dingtalk_webhook_url: z
-    .string()
-    .url("settingsValidation.dingtalkWebhookUrlInvalid")
-    .or(z.literal("")),
-  dingtalk_secret: z.string().optional(),
-})
-
-// 企业微信配置 Schema
-export const weComConfigSchema = z.object({
-  wecom_enabled: z.boolean(),
-  wecom_webhook_url: z
-    .string()
-    .url("settingsValidation.wecomWebhookUrlInvalid")
-    .or(z.literal("")),
-})
-
-// Webhook配置 Schema
-export const webhookConfigSchema = z.object({
-  webhook_enabled: z.boolean(),
-  webhook_url: z.string().url("settingsValidation.webhookUrlInvalid").or(z.literal("")),
-  webhook_method: z.enum(["POST", "GET"]),
-  webhook_secret: z.string().optional(),
-})
-
-// 通知配置 Schema（仅包含通知相关的配置）
-export const notificationConfigSchema = smtpConfigSchema
-  .safeExtend(dingTalkConfigSchema.shape)
-  .safeExtend(weComConfigSchema.shape)
-  .safeExtend(webhookConfigSchema.shape)
-
-// 导出类型
-export type SMTPConfigFormData = z.infer<typeof smtpConfigSchema>
-export type DingTalkConfigFormData = z.infer<typeof dingTalkConfigSchema>
-export type WeComConfigFormData = z.infer<typeof weComConfigSchema>
-export type WebhookConfigFormData = z.infer<typeof webhookConfigSchema>
+export type NotificationConfigFormData = z.infer<typeof notificationConfigSchema>

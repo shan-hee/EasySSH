@@ -1437,15 +1437,13 @@ export function TerminalComponent({
       </div>
 
       {/* 设置对话框 */}
-      {isSettingsOpen && (
-        <TerminalSettingsDialog
-          open={isSettingsOpen}
-          onOpenChange={setIsSettingsOpen}
-          settings={settings}
-          inactiveReminderLimit={inactiveReminderLimit}
-          onSettingsChange={handleSettingsChange}
-        />
-      )}
+      <TerminalSettingsDialog
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        settings={settings}
+        inactiveReminderLimit={inactiveReminderLimit}
+        onSettingsChange={handleSettingsChange}
+      />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 {
-  "runtimeTitle": "后台任务运行状态",
+  "runtimeTitle": "运行状态",
   "runtimeDescription": "队列采用按需调度；空闲时不保留执行 Worker，新任务到达后立即按可用容量启动。",
   "dispatchMode": "调度模式",
   "dispatchModeOnDemand": "按需创建",

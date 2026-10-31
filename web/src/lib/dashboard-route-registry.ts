@@ -104,6 +104,12 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
     },
   },
   {
+    url: "/dashboard/chat-connections",
+    namespaces: ["chatConnections", "automation"],
+    path: "chat-connections",
+    load: () => import("@easyssh/app/pages/dashboard/chat-connections-page"),
+  },
+  {
     url: "/dashboard/mcp",
     namespaces: ["automation", "sharing"],
     path: "mcp",

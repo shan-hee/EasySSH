@@ -1,5 +1,5 @@
 {
-  "runtimeTitle": "Background task runtime",
+  "runtimeTitle": "Runtime status",
   "runtimeDescription": "The queue dispatches on demand. No execution workers remain idle, and new jobs start immediately when capacity is available.",
   "dispatchMode": "Dispatch mode",
   "dispatchModeOnDemand": "On demand",

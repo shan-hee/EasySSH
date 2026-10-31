@@ -2,8 +2,8 @@
 
 import { useTranslation } from "react-i18next"
 
-import { memo, useState, useEffect, useCallback, useRef, type PropsWithChildren } from "react"
-import { createPortal } from "react-dom"
+import { memo, useState, useEffect, useRef, type PropsWithChildren } from "react"
+import { Dialog, DialogClose, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { cva, type VariantProps } from "class-variance-authority"
 import {
   CopyIcon,
@@ -211,105 +211,52 @@ type ImageZoomProps = PropsWithChildren<{
 function ImageZoom({ src, alt = "Image preview", children }: ImageZoomProps) {
   const { t } = useTranslation("aiAssistant")
   const [isOpen, setIsOpen] = useState(false)
-  const triggerRef = useRef<HTMLDivElement>(null)
-  const closeRef = useRef<HTMLButtonElement>(null)
-  const overlayRef = useRef<HTMLDivElement>(null)
-
-  const handleOpen = useCallback(() => setIsOpen(true), [])
-  const handleClose = useCallback(() => {
-    setIsOpen(false)
-    triggerRef.current?.focus()
-  }, [])
-
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        handleClose()
-        return
-      }
-      if (e.key !== "Tab") return
-      const focusables = overlayRef.current?.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      )
-      const first = focusables?.[0]
-      const last = focusables?.[focusables.length - 1]
-      if (!first || !last) return
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown)
-    return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, handleClose])
-
-  useEffect(() => {
-    if (!isOpen) return
-    const originalOverflow = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => {
-      document.body.style.overflow = originalOverflow
-    }
-  }, [isOpen])
-
-  useEffect(() => {
-    if (isOpen) closeRef.current?.focus()
-  }, [isOpen])
 
   return (
-    <>
-      <div
-        ref={triggerRef}
-        onClick={handleOpen}
-        onKeyDown={(e) => e.key === "Enter" && handleOpen()}
-        role="button"
-        tabIndex={0}
-        className="aui-image-zoom-trigger cursor-zoom-in"
-        aria-label={t("auiZoomImage")}
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <div
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault()
+              setIsOpen(true)
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          className="aui-image-zoom-trigger cursor-zoom-in"
+          aria-label={t("auiZoomImage")}
+        >
+          {children}
+        </div>
+      </DialogTrigger>
+      <DialogContent
+        dismissOnEscape
+        showCloseButton={false}
+        aria-describedby={undefined}
+        overlayClassName="aui-image-zoom-overlay bg-background/80"
+        containerClassName="p-0"
+        className="flex h-dvh w-screen max-w-none items-center justify-center rounded-none border-0 bg-transparent p-0 shadow-none sm:max-w-none"
+        onClick={() => setIsOpen(false)}
       >
-        {children}
-      </div>
-      {isOpen &&
-        createPortal(
-          <div
-            ref={overlayRef}
-            data-slot="image-zoom-overlay"
-            role="dialog"
-            aria-modal="true"
-            className="aui-image-zoom-overlay fade-in animate-in fixed inset-0 z-50 flex items-center justify-center bg-background/80 duration-200"
-            onClick={handleClose}
-            aria-label={t("auiZoomedImage")}
+        <DialogTitle className="sr-only">{t("auiZoomedImage")}</DialogTitle>
+        <img
+          data-slot="image-zoom-content"
+          src={src}
+          alt={alt}
+          className="aui-image-zoom-content max-h-[90vh] max-w-[90vw] cursor-zoom-out object-contain"
+        />
+        <DialogClose asChild>
+          <button
+            type="button"
+            aria-label={t("closeImagePreview")}
+            className="text-muted-foreground hover:text-foreground bg-background/80 absolute end-4 top-4 cursor-pointer rounded-md p-2"
           >
-            <img
-              data-slot="image-zoom-content"
-              src={src}
-              alt={alt}
-              className="aui-image-zoom-content fade-in zoom-in-95 animate-in max-h-[90vh] max-w-[90vw] cursor-zoom-out object-contain duration-200"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleClose()
-              }}
-            />
-            <button
-              ref={closeRef}
-              type="button"
-              aria-label={t("closeImagePreview")}
-              onClick={(e) => {
-                e.stopPropagation()
-                handleClose()
-              }}
-              className="text-muted-foreground hover:text-foreground bg-background/80 absolute end-4 top-4 cursor-pointer rounded-md p-2"
-            >
-              <XIcon className="size-5" />
-            </button>
-          </div>,
-          document.body
-        )}
-    </>
+            <XIcon className="size-5" />
+          </button>
+        </DialogClose>
+      </DialogContent>
+    </Dialog>
   )
 }
 

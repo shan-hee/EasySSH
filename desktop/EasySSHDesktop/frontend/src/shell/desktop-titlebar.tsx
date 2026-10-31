@@ -266,7 +266,7 @@ function DesktopSettingsMenu({
         onOpenChange={setAboutOpen}
         runtime={runtime}
       />
-      {proxyOpen && <DesktopProxyDialog onOpenChange={setProxyOpen} platform={runtime?.platform} />}
+      <DesktopProxyDialog open={proxyOpen} onOpenChange={setProxyOpen} platform={runtime?.platform} />
     </>
   )
 }

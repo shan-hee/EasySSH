@@ -1,3 +1,4 @@
+import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { GrantResourcesEditor } from "./grant-resources-editor"
 import { useEffect, useId, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -118,6 +119,7 @@ function GrantManagerContent({
   reviewServer?: string
 }) {
   const { t } = useTranslation("sharing")
+  const { confirm, confirmDialog } = useConfirmDialog()
   const formId = useId()
   const [items, setItems] = useState<Grant[]>([])
   const [offset, setOffset] = useState(0)
@@ -397,14 +399,7 @@ function GrantManagerContent({
                       onClick={() =>
                         void run(async () => {
                           const current = await reviewGrantTarget(r)
-                          if (
-                            !window.confirm(
-                              t("confirmResource", {
-                                identity: current.summary,
-                              }),
-                            )
-                          )
-                            return
+                          if (!await confirm({ description: t("confirmResource", { identity: current.summary }) })) return
                           await grantsApi.confirm(
                             detail.grant.id,
                             r.id,
@@ -429,13 +424,13 @@ function GrantManagerContent({
                   variant="outline"
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm(t("rotateConfirm")))
-                      void run(async () => {
-                        const r = await grantsApi.rotate(detail.grant.id)
-                        setLink(r.link)
-                        setDetail(await grantsApi.detail(r.grant.id))
-                        await refresh()
-                      })
+                    void run(async () => {
+                      if (!await confirm({ description: t("rotateConfirm"), variant: "destructive" })) return
+                      const r = await grantsApi.rotate(detail.grant.id)
+                      setLink(r.link)
+                      setDetail(await grantsApi.detail(r.grant.id))
+                      await refresh()
+                    })
                   }}
                 >
                   {t("rotate")}
@@ -444,13 +439,13 @@ function GrantManagerContent({
                   variant="destructive"
                   disabled={busy}
                   onClick={() => {
-                    if (window.confirm(t("revokeConfirm")))
-                      void run(async () => {
-                        await grantsApi.revoke(detail.grant.id)
-                        setDetail(await grantsApi.detail(detail.grant.id))
-                        setLink("")
-                        await refresh()
-                      })
+                    void run(async () => {
+                      if (!await confirm({ description: t("revokeConfirm"), variant: "destructive" })) return
+                      await grantsApi.revoke(detail.grant.id)
+                      setDetail(await grantsApi.detail(detail.grant.id))
+                      setLink("")
+                      await refresh()
+                    })
                   }}
                 >
                   {t("revoke")}
@@ -534,7 +529,7 @@ function GrantManagerContent({
                 )
                   throw new Error(t("aiQuotaRequired"))
                 if (detail) {
-                  if (!window.confirm(t("editConfirm"))) return
+                  if (!await confirm({ description: t("editConfirm") })) return
                   await grantsApi.update(
                     detail.grant.id,
                     detail.grant.version,
@@ -699,6 +694,7 @@ function GrantManagerContent({
           </div>
         </div>
       )}
+      {confirmDialog}
     </div>
   )
 }

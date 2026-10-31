@@ -1,6 +1,4 @@
 {
-  "sectionTitle": "IP 访问控制",
-  "sectionDescription": "配置允许或禁止访问的 IP 地址范围",
   "labelAllowlist": "IP 白名单（允许访问）",
   "placeholderAllowlist": "输入允许访问的 IP 地址，每行一个，支持 CIDR 格式\n例如：192.168.1.0/24",
   "helperAllowlist": "留空表示允许所有 IP 访问。支持单个 IP 或 CIDR 格式，每行一个。",

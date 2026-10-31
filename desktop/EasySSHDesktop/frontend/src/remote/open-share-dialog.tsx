@@ -1,3 +1,4 @@
+import { useConfirmDialog } from "@easyssh/app/hooks/use-confirm-dialog"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link2 } from "lucide-react"
@@ -18,6 +19,7 @@ import type {
 
 export function OpenShareDialog() {
   const { t } = useTranslation("sharing")
+  const { confirm, confirmDialog } = useConfirmDialog()
   const [open, setOpen] = useState(false)
   const [link, setLink] = useState("")
   const [recent, setRecent] = useState<DesktopRemoteWorkspace[]>([])
@@ -211,10 +213,10 @@ export function OpenShareDialog() {
                 variant="ghost"
                 disabled={busy}
                 onClick={() => {
-                  if (window.confirm(t("forgetConfirm")))
-                    void act(async () => {
-                      await Remote.Forget(item.id)
-                    })
+                  void act(async () => {
+                    if (!await confirm({ description: t("forgetConfirm"), variant: "destructive" })) return
+                    await Remote.Forget(item.id)
+                  })
                 }}
               >
                 {t("forget")}
@@ -223,6 +225,7 @@ export function OpenShareDialog() {
           ))}
         </DialogContent>
       </Dialog>
+      {confirmDialog}
     </>
   )
 }

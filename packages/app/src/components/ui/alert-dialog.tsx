@@ -1,15 +1,24 @@
-
 import * as React from "react"
+import { AnimatePresence, motion } from "motion/react"
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog"
 
+import { ModalOpenContext, useModalMotion, useModalOpenState } from "./modal-motion"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 import { useDialogSizeAnimation } from "@/hooks/use-dialog-size-animation"
 
 function AlertDialog({
+  open,
+  defaultOpen,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+  const state = useModalOpenState({ open, defaultOpen, onOpenChange })
+  return (
+    <ModalOpenContext.Provider value={state.open}>
+      <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} {...state} />
+    </ModalOpenContext.Provider>
+  )
 }
 
 function AlertDialogTrigger({
@@ -32,39 +41,59 @@ function AlertDialogOverlay({
   className,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
+  const animation = useModalMotion("overlay")
   return (
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
       className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
+        "fixed inset-0 z-50 bg-black/50",
         className
       )}
       {...props}
-    />
+      asChild
+    >
+      <motion.div {...animation} />
+    </AlertDialogPrimitive.Overlay>
   )
 }
 
 function AlertDialogContent({
   ref,
+  children,
+  overlayClassName,
+  containerClassName,
   className,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Content>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
+  overlayClassName?: string
+  containerClassName?: string
+}) {
   const contentRef = useDialogSizeAnimation(ref)
+  const open = React.useContext(ModalOpenContext)
+  const animation = useModalMotion()
   return (
-    <AlertDialogPortal>
-      <AlertDialogOverlay />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-        <AlertDialogPrimitive.Content
-          ref={contentRef}
-          data-slot="alert-dialog-content"
-          className={cn(
-            "dialog-scrollbar-root bg-background data-[state=open]:animate-overlay-content-in data-[state=closed]:animate-overlay-content-out pointer-events-auto relative grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border p-6 shadow-lg sm:max-w-lg",
-            className
-          )}
-          {...props}
-        />
-      </div>
-    </AlertDialogPortal>
+    <AnimatePresence>
+      {open && (
+        <AlertDialogPortal forceMount>
+          <AlertDialogOverlay forceMount className={overlayClassName} />
+          <div className={cn("fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none", containerClassName)}>
+            <AlertDialogPrimitive.Content
+              forceMount
+              asChild
+              ref={contentRef}
+              data-slot="alert-dialog-content"
+              className={cn(
+                "dialog-scrollbar-root bg-background pointer-events-auto data-[state=closed]:pointer-events-none relative grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border p-6 shadow-lg sm:max-w-lg",
+                className
+              )}
+              {...props}
+            >
+              <motion.div {...animation}>{children}</motion.div>
+            </AlertDialogPrimitive.Content>
+          </div>
+        </AlertDialogPortal>
+      )}
+    </AnimatePresence>
   )
 }
 

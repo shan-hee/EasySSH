@@ -1,5 +1,4 @@
 {
-  "intro": "Enabled channels receive notifications when tasks finish. Whether external channels are used is controlled by the notification preferences in account settings.",
   "testing": "Testing…",
   "chatbot": {
     "url": "Webhook URL"
@@ -44,5 +43,7 @@
     "description": "Group chat → Add group bot, then copy the webhook URL.",
     "test": "Send test message",
     "testSuccess": "Test message sent. Check the WeCom group."
-  }
+  },
+  "savedPlaceholder": "Saved — leave empty to keep",
+  "clearSaved": "Clear saved secret"
 }

@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { cn } from "@/lib/utils"
 import { SettingsLoading } from "@/components/settings/settings-loading"
+import { SettingsActionsProvider, SettingsHeaderActions } from "@/components/settings/settings-actions"
 import { getMovedSettingsPath, settingsSections, type SettingsSectionId } from "@/lib/settings-section-registry"
 import { ResourceBoundary } from "@/components/resource-boundary"
 import { useIntentPreload } from "@/hooks/use-intent-preload"
@@ -121,14 +122,21 @@ function SettingsContent() {
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col rounded-lg border bg-card scrollbar-custom lg:h-full lg:overflow-y-auto">
-          <div className="shrink-0 border-b px-4 py-3">
-            <h1 className="flex items-center gap-2 text-base font-semibold"><ActiveIcon className="h-4 w-4" />{t(activeItem.nameKey)}</h1>
-          </div>
-          <ResourceBoundary key={activeSection} onRetry={activeResource.reset}>
-            <Suspense fallback={<SettingsLoading />}>
-              <ActiveComponent />
-            </Suspense>
-          </ResourceBoundary>
+          <SettingsActionsProvider>
+            {/* Sticky so save/reset stay reachable while scrolling long sections. */}
+            <div className="sticky top-0 z-10 flex shrink-0 flex-wrap items-center gap-3 rounded-t-lg border-b bg-card px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <h1 className="flex items-center gap-2 text-base font-semibold"><ActiveIcon className="h-4 w-4" />{t(activeItem.nameKey)}</h1>
+                <p className="mt-0.5 text-xs text-muted-foreground">{t(`${activeItem.nameKey}Description`)}</p>
+              </div>
+              <SettingsHeaderActions />
+            </div>
+            <ResourceBoundary key={activeSection} onRetry={activeResource.reset}>
+              <Suspense fallback={<SettingsLoading />}>
+                <ActiveComponent />
+              </Suspense>
+            </ResourceBoundary>
+          </SettingsActionsProvider>
         </main>
       </DashboardPageContent>
     </>
