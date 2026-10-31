@@ -1,0 +1,48 @@
+{
+  "intro": "启用的渠道会在任务完成时收到通知；是否向外部渠道发送，由账户设置中的通知偏好决定。",
+  "testing": "测试中…",
+  "chatbot": {
+    "url": "Webhook 地址"
+  },
+  "email": {
+    "title": "邮件（SMTP）",
+    "description": "通知发送到账户绑定的邮箱。",
+    "host": "SMTP 服务器",
+    "port": "端口",
+    "username": "用户名",
+    "password": "密码 / 授权码",
+    "fromEmail": "发件人邮箱",
+    "fromName": "发件人名称",
+    "useTls": "使用 TLS/SSL 加密",
+    "test": "测试连接",
+    "testSuccess": "SMTP 连接与认证成功。"
+  },
+  "webhook": {
+    "title": "Webhook",
+    "description": "以 JSON 推送到自定义 HTTP 地址。",
+    "url": "请求地址",
+    "method": "请求方法",
+    "secret": "签名密钥（可选）",
+    "secretPlaceholder": "留空则不签名",
+    "test": "发送测试请求",
+    "testSuccess": "测试请求已发送，请检查接收端。",
+    "formatTitle": "请求格式",
+    "formatBody": "POST 时以如下 JSON 作为请求体；GET 时将同样的 JSON 放在 data 查询参数中。",
+    "formatEvents": "事件类型：task.succeeded、task.failed、task.partial_success、task.unknown；测试请求为 test。",
+    "formatSignature": "配置密钥后，请求头 X-EasySSH-Signature 为 sha256= 加上 HMAC-SHA256(密钥, 原始请求体) 的十六进制值；GET 请求对 data 参数值签名。请直接对收到的原始字节验签，不要重新序列化 JSON。",
+    "formatDelivery": "请求超时 10 秒，非 2xx 响应会自动重试，请按 data.event_id 去重。"
+  },
+  "dingtalk": {
+    "title": "钉钉",
+    "description": "群设置 → 智能群助手 → 添加机器人 → 自定义，复制 Webhook 地址。",
+    "secret": "加签密钥（可选）",
+    "test": "发送测试消息",
+    "testSuccess": "测试消息已发送，请在钉钉群中查看。"
+  },
+  "wecom": {
+    "title": "企业微信",
+    "description": "群聊 → 添加群机器人，复制 Webhook 地址。",
+    "test": "发送测试消息",
+    "testSuccess": "测试消息已发送，请在企业微信群中查看。"
+  }
+}

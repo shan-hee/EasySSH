@@ -18,7 +18,7 @@ export const settingsSections = {
   network: section(() => import("@/pages/dashboard/settings/security-center/_tabs/network-security-tab").then(m => ({ default: m.NetworkSecurityTab })), ["settingsNetworkDeployment"]),
   "file-transfer": section(() => import("@/pages/dashboard/settings/system-config/_tabs/file-transfer-tab").then(m => ({ default: m.FileTransferTab })), ["settingsSystemFileTransfer"]),
   "ai-config": section(() => import("@/pages/dashboard/settings/integrations/_tabs/ai-config-wrapper").then(m => ({ default: m.AIConfigWrapper })), ["settingsIntegrationsAI"]),
-  "notification-config": section(() => import("@/pages/dashboard/settings/integrations/_tabs/notification-config-wrapper").then(m => ({ default: m.NotificationConfigWrapper })), ["settingsIntegrationsEmail", "settingsIntegrationsWebhook", "settingsIntegrationsDingTalk", "settingsIntegrationsWeCom"]),
+  "notification-config": section(() => import("@/pages/dashboard/settings/integrations/_tabs/notification-config-wrapper").then(m => ({ default: m.NotificationConfigWrapper })), ["settingsNotifications"]),
   backup: section(() => import("@/components/settings/backup-restore-tab").then(m => ({ default: m.BackupRestoreTab })), ["settingsManagementBackup"]),
 }
 

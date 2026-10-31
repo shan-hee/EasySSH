@@ -1,0 +1,48 @@
+{
+  "intro": "Enabled channels receive notifications when tasks finish. Whether external channels are used is controlled by the notification preferences in account settings.",
+  "testing": "Testing…",
+  "chatbot": {
+    "url": "Webhook URL"
+  },
+  "email": {
+    "title": "Email (SMTP)",
+    "description": "Notifications are sent to the account email address.",
+    "host": "SMTP server",
+    "port": "Port",
+    "username": "Username",
+    "password": "Password / app password",
+    "fromEmail": "Sender email",
+    "fromName": "Sender name",
+    "useTls": "Use TLS/SSL encryption",
+    "test": "Test connection",
+    "testSuccess": "SMTP connection and authentication succeeded."
+  },
+  "webhook": {
+    "title": "Webhook",
+    "description": "Push JSON to a custom HTTP endpoint.",
+    "url": "Endpoint URL",
+    "method": "Method",
+    "secret": "Signing secret (optional)",
+    "secretPlaceholder": "Leave empty to skip signing",
+    "test": "Send test request",
+    "testSuccess": "Test request sent. Check your endpoint.",
+    "formatTitle": "Request format",
+    "formatBody": "POST sends the JSON below as the body; GET sends the same JSON in the data query parameter.",
+    "formatEvents": "Events: task.succeeded, task.failed, task.partial_success, task.unknown; test requests use test.",
+    "formatSignature": "With a secret, the X-EasySSH-Signature header is sha256= followed by the hex HMAC-SHA256(secret, raw body); GET requests sign the data parameter value. Verify the raw bytes received instead of re-serializing JSON.",
+    "formatDelivery": "Requests time out after 10 seconds and non-2xx responses are retried. Deduplicate by data.event_id."
+  },
+  "dingtalk": {
+    "title": "DingTalk",
+    "description": "Group settings → Bot → Add bot → Custom, then copy the webhook URL.",
+    "secret": "Signing secret (optional)",
+    "test": "Send test message",
+    "testSuccess": "Test message sent. Check the DingTalk group."
+  },
+  "wecom": {
+    "title": "WeCom",
+    "description": "Group chat → Add group bot, then copy the webhook URL.",
+    "test": "Send test message",
+    "testSuccess": "Test message sent. Check the WeCom group."
+  }
+}

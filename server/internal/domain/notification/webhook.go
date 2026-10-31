@@ -54,56 +54,42 @@ type WebhookPayload struct {
 	Event     string                 `json:"event"`
 	Timestamp int64                  `json:"timestamp"`
 	Data      map[string]interface{} `json:"data"`
-	Signature string                 `json:"signature,omitempty"`
 }
+
+// WebhookSignatureHeader carries "sha256=" plus the hex HMAC-SHA256 of the
+// exact payload bytes: the POST body, or the GET "data" query value. Receivers
+// verify against the raw bytes instead of re-serializing JSON.
+const WebhookSignatureHeader = "X-EasySSH-Signature"
 
 // SendNotification 发送通知
 func (s *webhookService) SendNotification(ctx context.Context, event string, data map[string]interface{}) error {
 	timestamp := time.Now().Unix()
-
-	payload := WebhookPayload{
-		Event:     event,
-		Timestamp: timestamp,
-		Data:      data,
-	}
-
-	// 生成签名（如果配置了 secret）
-	if s.config.Secret != "" {
-		signature, err := s.generateSignature(payload)
-		if err != nil {
-			return fmt.Errorf("failed to generate signature: %w", err)
-		}
-		payload.Signature = signature
-	}
-
-	// 序列化 payload
-	jsonData, err := json.Marshal(payload)
+	body, err := json.Marshal(WebhookPayload{Event: event, Timestamp: timestamp, Data: data})
 	if err != nil {
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
-	// 根据方法发送请求
 	var req *http.Request
 	if s.config.Method == "POST" {
-		req, err = http.NewRequestWithContext(ctx, "POST", s.config.URL, bytes.NewBuffer(jsonData))
+		req, err = http.NewRequestWithContext(ctx, "POST", s.config.URL, bytes.NewReader(body))
 		if err != nil {
 			return fmt.Errorf("failed to create notification request")
 		}
 		req.Header.Set("Content-Type", "application/json")
 	} else {
-		// GET 方法：将数据作为查询参数
+		// GET 方法：将完整负载作为 data 查询参数
 		req, err = http.NewRequestWithContext(ctx, "GET", s.config.URL, nil)
 		if err != nil {
 			return fmt.Errorf("failed to create notification request")
 		}
 		q := req.URL.Query()
-		q.Add("event", event)
-		q.Add("timestamp", fmt.Sprintf("%d", timestamp))
-		q.Add("data", string(jsonData))
-		if payload.Signature != "" {
-			q.Add("signature", payload.Signature)
-		}
+		q.Set("event", event)
+		q.Set("timestamp", fmt.Sprintf("%d", timestamp))
+		q.Set("data", string(body))
 		req.URL.RawQuery = q.Encode()
+	}
+	if s.config.Secret != "" {
+		req.Header.Set(WebhookSignatureHeader, signWebhookPayload(s.config.Secret, body))
 	}
 
 	// 发送请求（带重试）
@@ -151,26 +137,10 @@ func (s *webhookService) sendWithRetry(req *http.Request, maxRetries int) error 
 	return fmt.Errorf("webhook failed after %d attempts: %w", maxRetries, lastErr)
 }
 
-// generateSignature 生成 HMAC-SHA256 签名
-func (s *webhookService) generateSignature(payload WebhookPayload) (string, error) {
-	// 序列化 payload（不包含 signature 字段）
-	data := map[string]interface{}{
-		"event":     payload.Event,
-		"timestamp": payload.Timestamp,
-		"data":      payload.Data,
-	}
-
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return "", err
-	}
-
-	// 计算 HMAC-SHA256
-	h := hmac.New(sha256.New, []byte(s.config.Secret))
-	h.Write(jsonData)
-	signature := hex.EncodeToString(h.Sum(nil))
-
-	return signature, nil
+func signWebhookPayload(secret string, payload []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(payload)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 // TestConnection 测试 Webhook 连接
