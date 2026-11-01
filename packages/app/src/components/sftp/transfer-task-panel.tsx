@@ -184,6 +184,7 @@ export function TransferTaskPanel({
   const pendingBackgroundCount = backgroundTransferJobs.filter((job) => activeBackgroundStatuses.has(job.status)).length
   const pendingCount = pendingSessionCount + pendingBackgroundCount
   const totalCount = effectiveTransferTasks.length + backgroundTransferJobs.length
+  const showSectionTitles = effectiveTransferTasks.length > 0 && backgroundTransferJobs.length > 0
   const hasCompletedTasks = effectiveTransferTasks.some((task) => task.status === "completed" || task.status === "failed" || task.status === "cancelled")
 
   return (
@@ -229,9 +230,11 @@ export function TransferTaskPanel({
           <div className="max-h-[400px] overflow-y-auto">
             {effectiveTransferTasks.length > 0 && (
               <div>
-                <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                  {tSftp("transferPanelSessionSection")}
-                </div>
+                {showSectionTitles && (
+                  <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                    {tSftp("transferPanelSessionSection")}
+                  </div>
+                )}
                 {effectiveTransferTasks.map((task) => (
                   <UploadProgressItem
                     key={task.id}
@@ -243,9 +246,11 @@ export function TransferTaskPanel({
             )}
             {backgroundTransferJobs.length > 0 && (
               <div>
-                <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                  {tSftp("transferPanelBackgroundSection")}
-                </div>
+                {showSectionTitles && (
+                  <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                    {tSftp("transferPanelBackgroundSection")}
+                  </div>
+                )}
                 {backgroundTransferJobs.map((job) => (
                   <BackgroundTransferItem
                     key={job.id}

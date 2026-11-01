@@ -1,8 +1,8 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Plus, Search, Trash2 } from "lucide-react"
+import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { ServerScopePicker } from "@/components/servers/server-scope-picker"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
@@ -15,11 +15,9 @@ import type { GrantInput, Action } from "@/lib/api/grants"
 import type { Server } from "@/lib/server-types"
 import type { Script } from "@/lib/script-types"
 import { ScriptParameterRules } from "./script-parameter-rules"
-import { PageLoading } from "@/components/page-loading"
 import { Spinner } from "@/components/ui/spinner"
 
 type Resource = GrantInput["resources"][number]
-const pageSize = 8
 const actions: Action[] = [
   "terminal.connect",
   "vnc.connect",
@@ -65,23 +63,19 @@ export function GrantResourcesEditor({
   onChange: (resources: Resource[]) => void
 }) {
   const { t } = useTranslation("sharing")
-  const [adding, setAdding] = useState(value.length === 0)
-  const [search, setSearch] = useState("")
-  const [page, setPage] = useState(0)
   const [selected, setSelected] = useState(value[0]?.server_id ?? "")
   const active = value.find((r) => r.server_id === selected) ?? value[0]
   const activeServer = servers.find((s) => s.id === active?.server_id)
-  const candidates = servers.filter(
-    (s) =>
-      !value.some((r) => r.server_id === s.id) &&
-      [s.name, s.host, s.username, s.group].some((text) =>
-        text?.toLowerCase().includes(search.trim().toLowerCase()),
-      ),
-  )
-  const currentPage = Math.min(
-    page,
-    Math.max(0, Math.ceil(candidates.length / pageSize) - 1),
-  )
+  const changeSelection = (serverIds: string[]) => {
+    const existing = new Map(value.map((resource) => [resource.server_id, resource]))
+    const added = serverIds.find((id) => !existing.has(id))
+    onChange(serverIds.map((serverId) => existing.get(serverId) ?? {
+      server_id: serverId,
+      actions: [defaultActions[defaultContent ?? "terminal"]],
+      allow_interactive: false,
+    }))
+    setSelected(added ?? (serverIds.includes(selected) ? selected : serverIds[0] ?? ""))
+  }
   const patch = (changes: Partial<Resource>) => {
     if (active)
       onChange(
@@ -97,109 +91,13 @@ export function GrantResourcesEditor({
   return (
     <fieldset disabled={disabled} className="min-w-0 space-y-3">
       <legend className="sr-only">{t("resources")}</legend>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">
-          {t("selectedResourceCount", { count: value.length })}
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          aria-expanded={adding}
-          onClick={() => setAdding((open) => !open)}
-        >
-          <Plus className="size-4" />
-          {adding ? t("finishSelection") : t("addResources")}
-        </Button>
-      </div>
-      {adding && (
-        <div className="space-y-2 rounded-lg border p-3">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              className="pl-9"
-              aria-label={t("searchResources")}
-              placeholder={t("searchResources")}
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value)
-                setPage(0)
-              }}
-            />
-          </div>
-          <div
-            className="max-h-52 space-y-1 overflow-y-auto"
-            aria-label={t("availableResources")}
-          >
-            {candidates
-              .slice(currentPage * pageSize, (currentPage + 1) * pageSize)
-              .map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm">{s.name || s.host}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {s.username}@{s.host}:{s.port}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={t("addNamedResource", {
-                      name: s.name || s.host,
-                    })}
-                    onClick={() => {
-                      onChange([
-                        ...value,
-                        {
-                          server_id: s.id,
-                          actions: [
-                            defaultActions[defaultContent ?? "terminal"],
-                          ],
-                          allow_interactive: false,
-                        },
-                      ])
-                      setSelected(s.id)
-                    }}
-                  >
-                    {t("addResource")}
-                  </Button>
-                </div>
-              ))}
-            {!candidates.length && (
-              loading ? <PageLoading className="min-h-0 py-4" /> : <p className="py-4 text-center text-xs text-muted-foreground">{t("noMatchingResources")}</p>
-            )}
-          </div>
-          {candidates.length > pageSize && (
-            <div className="flex items-center justify-end gap-2">
-              <span className="text-xs text-muted-foreground">
-                {currentPage + 1} / {Math.ceil(candidates.length / pageSize)}
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={currentPage === 0}
-                onClick={() => setPage(currentPage - 1)}
-              >
-                {t("previous")}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={(currentPage + 1) * pageSize >= candidates.length}
-                onClick={() => setPage(currentPage + 1)}
-              >
-                {t("next")}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+      <ServerScopePicker
+        servers={servers}
+        value={value.map((resource) => resource.server_id)}
+        loading={loading}
+        disabled={disabled}
+        onChange={changeSelection}
+      />
       {!active ? (
         <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
           {t("selectResourceToConfigure")}
@@ -256,8 +154,8 @@ export function GrantResourcesEditor({
                   name: name(active.server_id),
                 })}
                 onClick={() =>
-                  onChange(
-                    value.filter((r) => r.server_id !== active.server_id),
+                  changeSelection(
+                    value.filter((r) => r.server_id !== active.server_id).map((r) => r.server_id),
                   )
                 }
               >
