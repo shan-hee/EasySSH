@@ -18,7 +18,6 @@ import (
 	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/domain/completion"
 	"github.com/easyssh/server/internal/domain/operationrecord"
-	"github.com/easyssh/server/internal/domain/security"
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/domain/sshhostkey"
@@ -30,21 +29,6 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// getUpgrader 创建 WebSocket upgrader，集成 CORS 配置
-func (h *TerminalHandler) getUpgrader() websocket.Upgrader {
-	return websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			allowed := middleware.IsAllowedOrigin(r, h.securityService, h.webDevPort)
-			if !allowed {
-				log.Printf("WebSocket connection rejected: origin %s not allowed (host=%s)", r.Header.Get("Origin"), r.Host)
-			}
-			return allowed
-		},
-	}
-}
-
 // TerminalHandler WebSocket 终端处理器
 type TerminalHandler struct {
 	serverService     server.Service
@@ -53,14 +37,12 @@ type TerminalHandler struct {
 	encryptor         *crypto.Encryptor
 	operationRecords  operationrecord.Service
 	hostKeyService    *sshhostkey.Service // SSH主机密钥验证服务
-	securityService   security.Service    // 安全配置服务（用于 CORS）
-	webDevPort        int                 // 前端开发端口，用于默认同源白名单
 	completionService completion.Service  // 补全服务
 	credentialStore   *sshDomain.RuntimeCredentialStore
 }
 
 // NewTerminalHandler 创建终端处理器
-func NewTerminalHandler(serverService server.Service, serverRepo server.Repository, sessionManager *sshDomain.SessionManager, encryptor *crypto.Encryptor, operationRecords operationrecord.Service, hostKeyService *sshhostkey.Service, securityService security.Service, webDevPort int, completionService completion.Service, credentialStore *sshDomain.RuntimeCredentialStore) *TerminalHandler {
+func NewTerminalHandler(serverService server.Service, serverRepo server.Repository, sessionManager *sshDomain.SessionManager, encryptor *crypto.Encryptor, operationRecords operationrecord.Service, hostKeyService *sshhostkey.Service, completionService completion.Service, credentialStore *sshDomain.RuntimeCredentialStore) *TerminalHandler {
 	return &TerminalHandler{
 		serverService:     serverService,
 		serverRepo:        serverRepo,
@@ -68,8 +50,6 @@ func NewTerminalHandler(serverService server.Service, serverRepo server.Reposito
 		encryptor:         encryptor,
 		operationRecords:  operationRecords,
 		hostKeyService:    hostKeyService,
-		securityService:   securityService,
-		webDevPort:        webDevPort,
 		completionService: completionService,
 		credentialStore:   credentialStore,
 	}
@@ -648,7 +628,7 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	clientPort := 0 // WebSocket无法获取客户端端口，使用0
 
 	// 升级到 WebSocket
-	upgrader := h.getUpgrader()
+	upgrader := ticketUpgrader(c)
 	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("Failed to upgrade to WebSocket: %v", err)

@@ -64,7 +64,6 @@ export interface WebSecurityConfig {
 	cookie_secure_mode: "auto" | "always" | "never"
 	cookie_domain: string
 	cookie_same_site: "lax" | "strict" | "none"
-	csrf_trusted_origins: string
 	content_security_policy: string
 }
 

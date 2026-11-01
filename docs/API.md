@@ -34,6 +34,14 @@ const servers = requireOpenAPIData(result.data, result.response)
 
 路径、HTTP 方法、查询参数、路径参数、请求体和响应体均从 `paths` 类型推导。Blob、SSE、WebSocket 和 multipart 文件请求仍使用 `authenticatedFetch`，但继续复用同一鉴权与刷新实现。
 
+## 浏览器会话与反向代理
+
+所有者管理写请求使用 HttpOnly / SameSite=Strict 会话 Cookie，并强制验证 `X-CSRF-Token`；不再额外比对 Origin 与后端连接协议。`POST /owner/login` 和 `POST /owner/initialize` 仅接受 `application/json`（可带 charset 参数），缺失、格式错误或其他 Content-Type 返回 415 `unsupported_media_type`，阻止跨站简单表单请求；跨来源 JSON 请求仍须通过 CORS 预检。
+
+WebSocket 入口必须消费绑定端点、资源与访问主体的一次性 ticket；创建 ticket 的写请求仍需通过会话/访问凭据及相应 CSRF 校验。握手不再依赖反代后的协议来判断 Origin。
+
+`WebSecurityConfig` 和更新接口已移除 `csrf_trusted_origins`，额外 HTTP CORS 来源仍通过独立 CORS 设置维护。
+
 ## 飞书聊天接入（后端）
 
 飞书复用 `/chat-connections` 的管理、启停、绑定、会话和审批接口，使用企业自建应用及官方 SDK 长连接，无需公网 Webhook。创建连接的请求体示例：

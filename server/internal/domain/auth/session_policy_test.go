@@ -56,8 +56,10 @@ func TestOwnerHTTPRenewalUpdatesLeaseAndRejectsInvalidCSRF(t *testing.T) {
 	}
 	defer lease.Close(nil)
 	oldDeadline := access.Current(lease.Context()).ExpiresAt()
-	if _, _, err := s.Authenticate(ctx, token, "wrong", true); !errors.Is(err, access.ErrForbidden) {
-		t.Fatalf("invalid CSRF accepted: %v", err)
+	for _, invalid := range []string{"", "wrong"} {
+		if _, _, err := s.Authenticate(ctx, token, invalid, true); !errors.Is(err, access.ErrForbidden) {
+			t.Fatalf("missing or invalid CSRF accepted: %v", err)
+		}
 	}
 	var unchanged Session
 	if err := s.db.First(&unchanged, "id=?", row.ID).Error; err != nil || !unchanged.ExpiresAt.Equal(row.ExpiresAt) {

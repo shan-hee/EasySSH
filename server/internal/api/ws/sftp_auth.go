@@ -13,8 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/easyssh/server/internal/api/middleware"
-	"github.com/easyssh/server/internal/domain/security"
 	"github.com/easyssh/server/internal/domain/server"
 	sftpDomain "github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
@@ -29,11 +27,9 @@ const sftpAuthInitTimeout = 5 * time.Minute
 
 // SFTPAuthHandler handles interactive SFTP pre-authentication over WebSocket.
 type SFTPAuthHandler struct {
-	pool            *sftpDomain.Pool
-	serverService   server.Service
-	securityService security.Service
-	hostKeyService  *sshhostkey.Service
-	webDevPort      int
+	pool           *sftpDomain.Pool
+	serverService  server.Service
+	hostKeyService *sshhostkey.Service
 }
 
 type sftpAuthRequest struct {
@@ -45,30 +41,11 @@ type sftpAuthRequest struct {
 }
 
 // NewSFTPAuthHandler creates an interactive SFTP authentication handler.
-func NewSFTPAuthHandler(pool *sftpDomain.Pool, serverService server.Service, securityService security.Service, hostKeyService *sshhostkey.Service, webDevPort int) *SFTPAuthHandler {
-	if webDevPort <= 0 {
-		webDevPort = 3000
-	}
+func NewSFTPAuthHandler(pool *sftpDomain.Pool, serverService server.Service, hostKeyService *sshhostkey.Service) *SFTPAuthHandler {
 	return &SFTPAuthHandler{
-		pool:            pool,
-		serverService:   serverService,
-		securityService: securityService,
-		hostKeyService:  hostKeyService,
-		webDevPort:      webDevPort,
-	}
-}
-
-func (h *SFTPAuthHandler) getUpgrader() websocket.Upgrader {
-	return websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			allowed := middleware.IsAllowedOrigin(r, h.securityService, h.webDevPort)
-			if !allowed {
-				log.Printf("[SFTPAuthWS] connection rejected: origin %s not allowed (host=%s)", r.Header.Get("Origin"), r.Host)
-			}
-			return allowed
-		},
+		pool:           pool,
+		serverService:  serverService,
+		hostKeyService: hostKeyService,
 	}
 }
 
@@ -81,7 +58,7 @@ func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
 		return
 	}
 
-	upgrader := h.getUpgrader()
+	upgrader := ticketUpgrader(c)
 	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("[SFTPAuthWS] upgrade failed: %v", err)

@@ -62,7 +62,7 @@ DB_DRIVER=mysql
 DB_DSN="mysql://easyssh:your_secure_password@mysql.example.com:3306/easyssh_db?charset=utf8mb4&parseTime=true"
 ```
 
-正式镜像和默认 Compose 已使用 production 模式。Cookie 默认使用 `auto` 模式，根据当前 HTTP/HTTPS 请求自动选择 Secure 标志；可信代理、CORS、CSRF、CSP 和 SFTP 池参数都从系统设置维护。
+正式镜像和默认 Compose 已使用 production 模式。Cookie 的 Secure 标志根据 TLS 连接或可信代理的 HTTPS 协议头判断；可信代理、CORS、CSP 和 SFTP 池参数从系统设置维护。
 
 ## 常用命令
 
@@ -168,7 +168,7 @@ docker compose up -d
 
 ## 启动自动迁移
 
-当前开发重置仅保留 schema 1 初始化，需要使用新数据库及数据目录。新基线发布后的增量更新，启动容器即可自动升级受支持的数据库版本，无需每次执行维护命令。应用先取得实例锁、预检并创建加密恢复点，逐版迁移和校验成功后才开放服务。`./data`、`./backups` 与 `instance-state` 卷必须持续保留，不要通过删除卷解决升级失败。
+已有 schema 实例升级镜像并启动容器时自动迁移。应用先取得实例锁、预检并创建加密恢复点，逐版迁移和校验成功后才开放服务。`./data`、`./backups` 与 `instance-state` 卷必须持续保留，不要通过删除卷解决升级失败。
 
 Compose 默认传入 `EASYSSH_AUTO_MIGRATE=on` 和 `EASYSSH_MIGRATION_TIMEOUT=30m`，健康检查启动宽限为 `EASYSSH_HEALTH_START_PERIOD=32m`；迁移超时调大时需同步增加宽限。系统提前就绪即会报告 healthy，不固定等待宽限结束。迁移中断不会自动恢复旧库或自动降级；MySQL 状态不确定时停止重试。恢复点位于备份目录的 `migrations/`，以原实例根密钥加密，需要独立保管该密钥。
 

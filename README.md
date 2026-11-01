@@ -240,7 +240,7 @@ ENCRYPTION_KEY=$(openssl rand -base64 32)
 其余参数在 Web 管理界面维护：
 
 - **身份认证**：注册、默认角色、Google 登录、登录会话、限流、泄露密码检查、对外 OAuth/OIDC Provider 地址与开关。
-- **Web 与部署**：Cookie 自动 HTTP/HTTPS 策略、CORS、CSRF、CSP、可信代理。
+- **Web 与部署**：Cookie 自动 HTTP/HTTPS 策略、CORS、CSP、可信代理。
 - **文件传输**：上传与暂存策略、SSH/SFTP 连接池参数。
 - **服务集成与数据保护**：通知、AI、备份与恢复。
 

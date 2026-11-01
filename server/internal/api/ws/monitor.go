@@ -11,9 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/domain/monitor"
-	"github.com/easyssh/server/internal/domain/security"
 	"github.com/easyssh/server/internal/domain/server"
 	pb "github.com/easyssh/server/internal/proto"
 	"github.com/gin-gonic/gin"
@@ -90,34 +88,15 @@ func (s *wsSubscriber) persistOSIfEmpty(metrics *pb.SystemMetrics) {
 type MonitorHandler struct {
 	connectionPool   *monitor.ConnectionPool
 	serverRepo       server.Repository
-	securityService  security.Service                // 安全配置服务（用于 CORS）
-	webDevPort       int                             // 前端开发端口，用于默认同源白名单
 	collectorManager *monitor.SharedCollectorManager // 共享采集器管理器
 }
 
 // NewMonitorHandler 创建监控处理器
-func NewMonitorHandler(connectionPool *monitor.ConnectionPool, serverRepo server.Repository, securityService security.Service, webDevPort int) *MonitorHandler {
+func NewMonitorHandler(connectionPool *monitor.ConnectionPool, serverRepo server.Repository) *MonitorHandler {
 	return &MonitorHandler{
 		connectionPool:   connectionPool,
 		serverRepo:       serverRepo,
-		securityService:  securityService,
-		webDevPort:       webDevPort,
 		collectorManager: monitor.NewSharedCollectorManager(),
-	}
-}
-
-// getUpgrader 创建 WebSocket upgrader，集成 CORS 配置
-func (h *MonitorHandler) getUpgrader() websocket.Upgrader {
-	return websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			allowed := middleware.IsAllowedOrigin(r, h.securityService, h.webDevPort)
-			if !allowed {
-				log.Printf("[Monitor] WebSocket connection rejected: origin %s not allowed (host=%s)", r.Header.Get("Origin"), r.Host)
-			}
-			return allowed
-		},
 	}
 }
 
@@ -163,7 +142,7 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 	log.Printf("[Monitor] 使用采集间隔: %v", interval)
 
 	// 立即升级到 WebSocket
-	upgrader := h.getUpgrader()
+	upgrader := ticketUpgrader(c)
 	wsConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("[Monitor] Failed to upgrade to WebSocket: %v", err)

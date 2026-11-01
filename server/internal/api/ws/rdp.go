@@ -5,14 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net/http"
 	"time"
 
 	"github.com/easyssh/server/internal/access"
-	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/rdp"
-	"github.com/easyssh/server/internal/domain/security"
 	"github.com/easyssh/shared/protocol"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -20,15 +17,13 @@ import (
 )
 
 type RDPHandler struct {
-	service  *rdp.Service
-	gateway  *rdp.Gateway
-	security security.Service
-	devPort  int
-	records  operationrecord.Service
+	service *rdp.Service
+	gateway *rdp.Gateway
+	records operationrecord.Service
 }
 
-func NewRDPHandler(service *rdp.Service, gateway *rdp.Gateway, security security.Service, devPort int, records operationrecord.Service) *RDPHandler {
-	return &RDPHandler{service: service, gateway: gateway, security: security, devPort: devPort, records: records}
+func NewRDPHandler(service *rdp.Service, gateway *rdp.Gateway, records operationrecord.Service) *RDPHandler {
+	return &RDPHandler{service: service, gateway: gateway, records: records}
 }
 func (h *RDPHandler) Connect(c *gin.Context) {
 	if !h.gateway.Configured() {
@@ -52,7 +47,7 @@ func (h *RDPHandler) Connect(c *gin.Context) {
 		c.AbortWithStatusJSON(409, gin.H{"error": "rdp_unavailable"})
 		return
 	}
-	upgrader := websocket.Upgrader{Subprotocols: []string{"easyssh-rdp-v1"}, CheckOrigin: func(r *http.Request) bool { return middleware.IsAllowedOrigin(r, h.security, h.devPort) }}
+	upgrader := ticketUpgrader(c, "easyssh-rdp-v1")
 	socket, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return

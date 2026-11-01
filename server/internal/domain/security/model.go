@@ -31,7 +31,6 @@ type SecurityConfig struct {
 	CookieSecureMode      string `gorm:"size:16;not null;default:'auto'" json:"cookie_secure_mode"`
 	CookieDomain          string `gorm:"size:255" json:"cookie_domain"`
 	CookieSameSite        string `gorm:"size:16;not null;default:'lax'" json:"cookie_same_site"`
-	CSRFTrustedOrigins    string `gorm:"type:text" json:"csrf_trusted_origins"`
 	ContentSecurityPolicy string `gorm:"type:text" json:"content_security_policy"`
 
 	// 速率限制
@@ -80,13 +79,6 @@ func (c *SecurityConfig) TrustedProxyList() []string {
 		return []string{"127.0.0.1", "::1"}
 	}
 	return nonEmptyLines(c.TrustedProxies)
-}
-
-func (c *SecurityConfig) CSRFTrustedOriginList() []string {
-	if c == nil {
-		return nil
-	}
-	return nonEmptyLines(c.CSRFTrustedOrigins)
 }
 
 func (c *SecurityConfig) EffectiveContentSecurityPolicy() string {

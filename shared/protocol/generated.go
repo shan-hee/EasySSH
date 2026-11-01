@@ -5366,7 +5366,6 @@ type WebSecurityConfig struct {
 	CookieDomain          string `json:"cookie_domain"`
 	CookieSameSite        string `json:"cookie_same_site"`
 	CookieSecureMode      string `json:"cookie_secure_mode"`
-	CSRFTrustedOrigins    string `json:"csrf_trusted_origins"`
 	TrustedProxies        string `json:"trusted_proxies"`
 }
 
@@ -5381,7 +5380,6 @@ type WebSecurityConfigUpdate struct {
 	CookieDomain          *string `json:"cookie_domain,omitempty"`
 	CookieSameSite        *string `json:"cookie_same_site,omitempty"`
 	CookieSecureMode      *string `json:"cookie_secure_mode,omitempty"`
-	CSRFTrustedOrigins    *string `json:"csrf_trusted_origins,omitempty"`
 	TrustedProxies        *string `json:"trusted_proxies,omitempty"`
 }
 

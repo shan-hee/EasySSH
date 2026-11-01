@@ -15,7 +15,7 @@ import (
 //go:embed */*.sql
 var scripts embed.FS
 
-const Version int64 = 1
+const Version int64 = 2
 
 const BaselineVersion int64 = 1
 

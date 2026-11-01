@@ -14,6 +14,17 @@ import (
 const OwnerCookieName = "easyssh_owner"
 const ticketContextKey = "auth_ticket"
 
+// HasAuthenticatedTicket reports proof installed only after ticket consumption.
+// WebSocket upgrades use this instead of deriving an Origin from proxy transport.
+func HasAuthenticatedTicket(c *gin.Context) bool {
+	raw, ok := c.Get(ticketContextKey)
+	if !ok {
+		return false
+	}
+	ticket, ok := raw.(*auth.Ticket)
+	return ok && ticket != nil && ticket.UsedAt != nil
+}
+
 func ticketExpectationForRequest(c *gin.Context) (auth.TicketExpectation, bool) {
 	switch c.FullPath() {
 	case "/api/v1/transfer-jobs/:id/artifact":

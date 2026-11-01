@@ -48,7 +48,7 @@
 
 ## 服务端启动自动迁移
 
-服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前仅有 schema 1 初始化基线；今后增加 `00002` 等迁移后，沿用此流程从新基线逐版升级。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
+服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前服务端 schema 为 2；从 schema 1 升级时执行 `00002_remove_csrf_trusted_origins.sql`，删除废弃的 `security_config.csrf_trusted_origins` 列和旧来源列表。回滚只恢复可空字段，不恢复旧值；需要旧值时使用升级前恢复点。SQLite/PostgreSQL 在事务内迁移；MySQL DDL 隐式提交，中断时按下文恢复流程处理。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
 
 | 数据库状态 | 行为 |
 | --- | --- |
@@ -274,8 +274,8 @@ Windows 使用实际的 `.exe` 路径；macOS 使用应用包内的可执行文�
 | --- | --- | --- |
 | 目录 | `server/internal/storage/schema/{sqlite,postgres,mysql}/` | `desktop/EasySSHDesktop/internal/storage/schema/sqlite/` |
 | 初始化文件 | 每种数据库一个 `00001_initial.sql` | `00001_initial.sql` |
-| 当前版本 | `schema.Version = 1` | `schema.Version = 1` |
-| 后续编号 | `00002`、`00003`，连续递增 | 独立从 `00002` 连续递增 |
+| 当前版本 | `schema.Version = 2` | `schema.Version = 1` |
+| 后续编号 | 从 `00003` 连续递增 | 独立从 `00002` 连续递增 |
 
 文件名固定为 `五位编号_lower_snake_case.sql`，例如 `00002_add_server_notes.sql`。名称以小写字母开头，后续单词使用小写字母或数字，单个下划线分隔。服务端同一变更必须提供三种数据库的同编号、同文件名脚本；不能只修改 SQLite。桌面端按自己的结构变更独立创建，不要求和服务端编号相同。
 
@@ -307,7 +307,7 @@ EasySSHDesktop maintenance schema-upgrade --file /backup/before-upgrade.age --pa
 EasySSHDesktop maintenance schema-rollback --file /backup/before-rollback.age --password-file /secure/backup-password
 ```
 
-当前只有基线，没有增量升级可执行。后续新增迁移时 `schema-rollback` 每次仅退一版；回退后使用匹配程序，避免新程序自动再次升级。
+当前服务端有 schema 1 → 2 增量迁移；`schema-rollback` 每次仅退一版，不能回退到初始化基线之前。schema 2 的 Down 只恢复空的 CSRF Origin 字段；恢复旧值需使用升级前备份。回退后使用匹配程序，避免新程序自动再次升级。
 
 ## 统一发布版本入口
 

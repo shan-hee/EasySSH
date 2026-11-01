@@ -1,15 +1,13 @@
 package middleware
 
 import (
-	"fmt"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"strings"
 
 	"github.com/easyssh/server/internal/domain/security"
-	"github.com/easyssh/server/internal/infra/config"
 	"github.com/gin-gonic/gin"
 )
 
@@ -60,41 +58,14 @@ func RequestUsesHTTPS(c *gin.Context, service security.Service) bool {
 	proto := strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Proto"), ",")[0])
 	return strings.EqualFold(proto, "https")
 }
-func OwnerBrowserOrigin(cfg *config.Config, service security.Service) gin.HandlerFunc {
+
+// RequireJSONBody prevents unauthenticated browser writes from using a simple
+// cross-origin form request. Cross-origin JSON requests must pass CORS preflight.
+func RequireJSONBody() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		method := c.Request.Method
-		if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
-			c.Next()
-			return
-		}
-		_, cookieErr := c.Cookie(OwnerCookieName)
-		ownerEndpoint := strings.HasPrefix(c.Request.URL.Path, "/api/v1/owner/")
-		visitor := c.GetHeader("X-EasySSH-Access-Session") != "" || strings.HasPrefix(c.GetHeader("Authorization"), "Access ")
-		if !ownerEndpoint && (cookieErr != nil || visitor) {
-			c.Next()
-			return
-		}
-		origin := c.GetHeader("Origin")
-		parsed, err := url.Parse(origin)
-		if err != nil || parsed.User != nil || parsed.Host == "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Path != "" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "invalid_origin"})
-			return
-		}
-		scheme := "http"
-		if RequestUsesHTTPS(c, service) {
-			scheme = "https"
-		}
-		allowed := origin == scheme+"://"+c.Request.Host
-		if policy := requestSecurityConfig(c, service); policy != nil {
-			for _, value := range policy.CSRFTrustedOriginList() {
-				allowed = allowed || origin == strings.TrimRight(value, "/")
-			}
-		}
-		if cfg.Server.Env != "production" {
-			allowed = allowed || origin == fmt.Sprintf("http://localhost:%d", cfg.Server.WebDevPort) || origin == fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.WebDevPort)
-		}
-		if !allowed {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "invalid_origin"})
+		mediaType, _, err := mime.ParseMediaType(c.GetHeader("Content-Type"))
+		if err != nil || mediaType != "application/json" {
+			c.AbortWithStatusJSON(http.StatusUnsupportedMediaType, gin.H{"error": "unsupported_media_type", "message": "Content-Type must be application/json"})
 			return
 		}
 		c.Next()

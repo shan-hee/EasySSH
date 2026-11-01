@@ -420,7 +420,7 @@ func main() {
 		}
 		return taskExecutor.CancelTask(ctx, id)
 	}))
-	sftpAuthWSHandler := ws.NewSFTPAuthHandler(sftpHandler.GetPool(), serverService, securityService, sshHostKeyService, cfg.Server.WebDevPort)
+	sftpAuthWSHandler := ws.NewSFTPAuthHandler(sftpHandler.GetPool(), serverService, sshHostKeyService)
 
 	transferJobRepo := transferjob.NewRepository(database, realtimeHub, contentService)
 	transferJobService := transferjob.NewService(
@@ -451,8 +451,8 @@ func main() {
 	jobQueue.Register("batch.execute", batchTaskService.HandleQueueJob)
 	jobQueue.Register("transfer.execute", transferJobService.HandleQueueJob)
 
-	terminalHandler := ws.NewTerminalHandler(serverService, serverRepo, sessionManager, encryptor, operationRecordService, sshHostKeyService, securityService, cfg.Server.WebDevPort, completionService, runtimeCredentialStore)
-	monitorHandler := ws.NewMonitorHandler(monitorConnectionPool, serverRepo, securityService, cfg.Server.WebDevPort)
+	terminalHandler := ws.NewTerminalHandler(serverService, serverRepo, sessionManager, encryptor, operationRecordService, sshHostKeyService, completionService, runtimeCredentialStore)
+	monitorHandler := ws.NewMonitorHandler(monitorConnectionPool, serverRepo)
 	auditLogHandler := rest.NewAuditLogHandler(auditLogService)
 	dashboardHandler := rest.NewDashboardHandler(dashboardService)
 	monitoringHandler := rest.NewMonitoringHandler(monitoringService, authService)
@@ -486,10 +486,10 @@ func main() {
 	}
 	rdpService := rdp.NewService(database, serverService, accessRuntime)
 	rdpHandler := rest.NewRDPHandler(rdpService, rdpGateway.Configured())
-	rdpWSHandler := ws.NewRDPHandler(rdpService, rdpGateway, securityService, cfg.Server.WebDevPort, operationRecordService)
+	rdpWSHandler := ws.NewRDPHandler(rdpService, rdpGateway, operationRecordService)
 	vncService := vnc.NewService(database, serverService, accessRuntime)
 	vncHandler := rest.NewVNCHandler(vncService)
-	vncWSHandler := ws.NewVNCHandler(vncService, securityService, cfg.Server.WebDevPort, operationRecordService)
+	vncWSHandler := ws.NewVNCHandler(vncService, operationRecordService)
 
 	aiRuntimeManager := aichat.NewRuntimeManager(aiConfigService, aiToolExecutor)
 	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -554,7 +554,6 @@ func main() {
 	r.Use(middleware.SecurityConfigCache(securityService))            // 请求级安全配置快照
 	r.Use(middleware.SecurityHeaders(cfg.Server.Env != "production")) // 安全响应头
 	r.Use(middleware.CORS(cfg, securityService))                      // 跨域（支持动态配置）
-	r.Use(middleware.OwnerBrowserOrigin(cfg, securityService))        // Cookie 凭证端点 CSRF 防护
 	r.Use(middleware.OptionalIPWhitelistMiddleware(securityService))  // IP 访问控制验证（可选）
 
 	// API v1 路由组
@@ -597,8 +596,8 @@ func main() {
 		ownerRoutes := v1.Group("/owner")
 		{
 			ownerRoutes.GET("/status", middleware.PublicRoute(), ownerHandler.Status)
-			ownerRoutes.POST("/initialize", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), ownerHandler.Initialize)
-			ownerRoutes.POST("/login", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), ownerHandler.Login)
+			ownerRoutes.POST("/initialize", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), middleware.RequireJSONBody(), ownerHandler.Initialize)
+			ownerRoutes.POST("/login", middleware.PublicRoute(), middleware.LoginRateLimitMiddleware(securityService), middleware.RequireJSONBody(), ownerHandler.Login)
 			ownerRoutes.GET("/csrf", middleware.PublicRoute(), ownerHandler.CSRF)
 			ownerPrivate := ownerRoutes.Group("")
 			ownerPrivate.Use(middleware.AuthMiddleware(authService, ticketService, securityService))

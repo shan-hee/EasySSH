@@ -48,14 +48,13 @@ func UpgradeDigest(driver string, from int64) (string, error) {
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
-// CheckUpgradeSource verifies the baseline columns before starting services or
-// migrating. Future migrations must add checks for their versioned changes.
+// CheckUpgradeSource verifies versioned columns before startup, migration, or
+// backup/restore. A version marker must agree with the actual structure.
 func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version int64) error {
 	if version < BaselineVersion || version > Version {
 		return fmt.Errorf("unsupported source schema %d", version)
 	}
-	// These columns belong to the immutable baseline. Add version-specific
-	// checks here when introducing a future migration.
+	// These columns are unchanged from the immutable baseline.
 	for _, query := range []string{
 		"SELECT session_id,name,grant_id,grant_version,token_hash,created_at,last_seen_at,expires_at,revoked_at FROM automation_tokens WHERE 1=0",
 		"SELECT server_id,enabled,port,tls FROM server_vnc_configs WHERE 1=0",
@@ -78,7 +77,28 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 			return err
 		}
 	}
-	var err error
+	rows, err := db.QueryContext(ctx, "SELECT * FROM security_config WHERE 1=0")
+	if err != nil {
+		return err
+	}
+	columns, columnErr := rows.Columns()
+	closeErr := rows.Close()
+	if columnErr != nil {
+		return columnErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	hasCSRFOrigins := false
+	for _, column := range columns {
+		if strings.EqualFold(column, "csrf_trusted_origins") {
+			hasCSRFOrigins = true
+			break
+		}
+	}
+	if hasCSRFOrigins != (version == BaselineVersion) {
+		return fmt.Errorf("schema %d disagrees with security_config.csrf_trusted_origins; inspect interrupted DDL before retrying", version)
+	}
 	var count int
 	switch driver {
 	case "sqlite":

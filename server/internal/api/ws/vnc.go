@@ -5,14 +5,11 @@ import (
 	"crypto/tls"
 	"io"
 	"net"
-	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/easyssh/server/internal/access"
-	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/domain/operationrecord"
-	"github.com/easyssh/server/internal/domain/security"
 	"github.com/easyssh/server/internal/domain/vnc"
 	"github.com/easyssh/shared/protocol"
 	"github.com/gin-gonic/gin"
@@ -21,14 +18,12 @@ import (
 )
 
 type VNCHandler struct {
-	service  *vnc.Service
-	security security.Service
-	devPort  int
-	records  operationrecord.Service
+	service *vnc.Service
+	records operationrecord.Service
 }
 
-func NewVNCHandler(service *vnc.Service, security security.Service, devPort int, records operationrecord.Service) *VNCHandler {
-	return &VNCHandler{service: service, security: security, devPort: devPort, records: records}
+func NewVNCHandler(service *vnc.Service, records operationrecord.Service) *VNCHandler {
+	return &VNCHandler{service: service, records: records}
 }
 
 func (h *VNCHandler) Connect(c *gin.Context) {
@@ -66,7 +61,7 @@ func (h *VNCHandler) Connect(c *gin.Context) {
 	defer remote.Close()
 	stopRemote := context.AfterFunc(ctx, func() { _ = remote.Close() })
 	defer stopRemote()
-	upgrader := websocket.Upgrader{Subprotocols: []string{"binary"}, CheckOrigin: func(r *http.Request) bool { return middleware.IsAllowedOrigin(r, h.security, h.devPort) }}
+	upgrader := ticketUpgrader(c, "binary")
 	// Persist attribution before allowing any remote input.
 	now := time.Now().UTC()
 	recordID := uuid.New()

@@ -151,7 +151,6 @@ func (r *repository) SaveWebSecurity(ctx context.Context, config *SecurityConfig
 		"cookie_secure_mode":      config.CookieSecureMode,
 		"cookie_domain":           config.CookieDomain,
 		"cookie_same_site":        config.CookieSameSite,
-		"csrf_trusted_origins":    config.CSRFTrustedOrigins,
 		"content_security_policy": config.ContentSecurityPolicy,
 	})
 }

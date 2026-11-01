@@ -36,7 +36,6 @@ export function NetworkSecurityTab() {
         cookie_secure_mode: data.cookie_secure_mode,
         cookie_domain: data.cookie_domain,
         cookie_same_site: data.cookie_same_site,
-        csrf_trusted_origins: data.csrf_trusted_origins,
         content_security_policy: data.content_security_policy,
       })
       await settingsApi.saveCORSConfig({ allowed_origins: data.allowed_origins })
@@ -98,21 +97,18 @@ export function NetworkSecurityTab() {
       <div className="border-t" />
 
       <SettingsSection title={t("originTitle")} description={t("originDescription")}>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="cors-origin">{t("corsOrigins")}</Label>
-            <div className="flex gap-2">
-              <Input id="cors-origin" value={originInput} onChange={(event) => setOriginInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addOrigin() } }} placeholder="https://admin.example.com" />
-              <Button type="button" variant="outline" size="icon" aria-label={t("addOrigin")} onClick={addOrigin}><Plus className="size-4" /></Button>
-            </div>
-            {allowedOrigins.length > 0 && <div className="flex flex-wrap gap-1.5 pt-1">
-              {allowedOrigins.map((origin) => (
-                <Badge key={origin} variant="secondary" className="gap-1 pr-1 font-normal">{origin}<button type="button" className="rounded-sm opacity-60 hover:opacity-100" aria-label={t("removeOrigin", { origin })} onClick={() => removeOrigin(origin)}><X className="size-3" /></button></Badge>
-              ))}
-            </div>}
-            <p className="text-xs text-muted-foreground">{t("corsOriginsDescription")}</p>
+        <div className="space-y-1.5">
+          <Label htmlFor="cors-origin">{t("corsOrigins")}</Label>
+          <div className="flex gap-2">
+            <Input id="cors-origin" value={originInput} onChange={(event) => setOriginInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addOrigin() } }} placeholder="https://admin.example.com" />
+            <Button type="button" variant="outline" size="icon" aria-label={t("addOrigin")} onClick={addOrigin}><Plus className="size-4" /></Button>
           </div>
-          <FormTextarea form={form} name="csrf_trusted_origins" label={t("csrfOrigins")} description={t("csrfOriginsDescription")} rows={4} placeholder="https://admin.example.com" />
+          {allowedOrigins.length > 0 && <div className="flex flex-wrap gap-1.5 pt-1">
+            {allowedOrigins.map((origin) => (
+              <Badge key={origin} variant="secondary" className="gap-1 pr-1 font-normal">{origin}<button type="button" className="rounded-sm opacity-60 hover:opacity-100" aria-label={t("removeOrigin", { origin })} onClick={() => removeOrigin(origin)}><X className="size-3" /></button></Badge>
+            ))}
+          </div>}
+          <p className="text-xs text-muted-foreground">{t("corsOriginsDescription")}</p>
         </div>
       </SettingsSection>
 

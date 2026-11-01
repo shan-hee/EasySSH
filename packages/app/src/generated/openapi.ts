@@ -2732,6 +2732,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description 仅接受 application/json（可带 charset 参数）；其他或缺失 Content-Type 返回 415。 */
         post: operations["initializeOwner"];
         delete?: never;
         options?: never;
@@ -2748,6 +2749,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description 仅接受 application/json（可带 charset 参数）；其他或缺失 Content-Type 返回 415。 */
         post: operations["loginOwner"];
         delete?: never;
         options?: never;
@@ -4417,7 +4419,6 @@ export interface components {
             cookie_domain: string;
             /** @enum {string} */
             cookie_same_site: "lax" | "strict" | "none";
-            csrf_trusted_origins: string;
             content_security_policy: string;
         };
         /** @description 省略字段保持当前配置；显式 false、0 和空字符串按该组配置校验处理。 */
@@ -4428,7 +4429,6 @@ export interface components {
             cookie_domain?: string;
             /** @enum {string} */
             cookie_same_site?: "lax" | "strict" | "none";
-            csrf_trusted_origins?: string;
             content_security_policy?: string;
         };
         WebSecurityConfigResponse: {

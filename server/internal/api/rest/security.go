@@ -118,7 +118,7 @@ func (h *SecurityHandler) GetWebSecurityConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, protocol.WebSecurityConfigResponse{Config: protocol.WebSecurityConfig{
 		TrustedProxies: config.TrustedProxies, CookieSecureMode: config.CookieSecureMode,
 		CookieDomain: config.CookieDomain, CookieSameSite: config.CookieSameSite,
-		CSRFTrustedOrigins: config.CSRFTrustedOrigins, ContentSecurityPolicy: config.ContentSecurityPolicy,
+		ContentSecurityPolicy: config.ContentSecurityPolicy,
 	}})
 }
 
@@ -142,9 +142,6 @@ func (h *SecurityHandler) SaveWebSecurityConfig(c *gin.Context) {
 	}
 	if request.CookieSameSite != nil {
 		config.CookieSameSite = *request.CookieSameSite
-	}
-	if request.CSRFTrustedOrigins != nil {
-		config.CSRFTrustedOrigins = *request.CSRFTrustedOrigins
 	}
 	if request.ContentSecurityPolicy != nil {
 		config.ContentSecurityPolicy = *request.ContentSecurityPolicy

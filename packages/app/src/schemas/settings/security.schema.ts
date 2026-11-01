@@ -28,7 +28,6 @@ export const webSecuritySchema = z.object({
   cookie_secure_mode: z.enum(["auto", "always", "never"]),
   cookie_domain: z.string(),
   cookie_same_site: z.enum(["lax", "strict", "none"]),
-  csrf_trusted_origins: z.string(),
   content_security_policy: z.string(),
 })
 

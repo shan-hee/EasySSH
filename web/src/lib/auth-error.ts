@@ -6,7 +6,6 @@ const AUTH_ERROR_KEYS = {
   login_temporarily_locked: "errorLoginTemporarilyLocked",
   already_initialized: "errorAlreadyInitialized",
   invalid_request: "errorInvalidRequest",
-  invalid_origin: "errorInvalidOrigin",
   internal_error: "errorServiceUnavailable",
 } as const satisfies Record<string, string>
 

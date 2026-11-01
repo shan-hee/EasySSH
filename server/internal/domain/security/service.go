@@ -322,11 +322,6 @@ func (s *service) validateWebSecurity(config *SecurityConfig) error {
 			return fmt.Errorf("invalid trusted proxy %q: %w", proxy, err)
 		}
 	}
-	for _, origin := range config.CSRFTrustedOriginList() {
-		if err := validateHTTPOrigin(origin); err != nil {
-			return fmt.Errorf("invalid CSRF trusted origin %q: %w", origin, err)
-		}
-	}
 	return nil
 }
 

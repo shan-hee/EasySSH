@@ -2221,7 +2221,7 @@ components:
           $ref: '#/components/schemas/LoginSecurityConfig'
     WebSecurityConfig:
       type: object
-      required: [trusted_proxies, cookie_secure_mode, cookie_domain, cookie_same_site, csrf_trusted_origins, content_security_policy]
+      required: [trusted_proxies, cookie_secure_mode, cookie_domain, cookie_same_site, content_security_policy]
       properties:
         trusted_proxies:
           type: string
@@ -2239,9 +2239,6 @@ components:
           x-go-name: CookieSameSite
           enum: [lax, strict, none]
           x-go-type: string
-        csrf_trusted_origins:
-          type: string
-          x-go-name: CSRFTrustedOrigins
         content_security_policy:
           type: string
           x-go-name: ContentSecurityPolicy
@@ -2265,9 +2262,6 @@ components:
           x-go-name: CookieSameSite
           enum: [lax, strict, none]
           x-go-type: string
-        csrf_trusted_origins:
-          type: string
-          x-go-name: CSRFTrustedOrigins
         content_security_policy:
           type: string
           x-go-name: ContentSecurityPolicy
@@ -14190,6 +14184,7 @@ paths:
       tags:
       - owner
       operationId: initializeOwner
+      description: 仅接受 application/json（可带 charset 参数）；其他或缺失 Content-Type 返回 415。
       security: []
       responses:
         '200':
@@ -14215,6 +14210,7 @@ paths:
       tags:
       - owner
       operationId: loginOwner
+      description: 仅接受 application/json（可带 charset 参数）；其他或缺失 Content-Type 返回 415。
       security: []
       responses:
         '200':
