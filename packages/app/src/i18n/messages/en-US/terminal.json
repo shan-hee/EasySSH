@@ -117,6 +117,7 @@
   "terminalErrorServerNotFound": "Server not found or access denied.",
   "terminalErrorWebSocket": "Connection channel error. Check the network and try again.",
   "terminalErrorHostUnreachable": "Unable to reach the server. Check the network, host, or port.",
+  "terminalErrorForwardingDenied": "The jump host denied TCP forwarding. Check AllowTcpForwarding, DisableForwarding, PermitOpen, and forwarding restrictions on the login public key.",
   "terminalErrorHostKeyChanged": "The SSH host key changed. Confirm it before reconnecting.",
   "terminalErrorHostKeyRevoked": "SSH host key trust has been revoked.",
   "terminalErrorPrivateKeyPassphraseRequired": "This private key requires a passphrase.",

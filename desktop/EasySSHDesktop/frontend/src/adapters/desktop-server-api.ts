@@ -87,6 +87,7 @@ export function mapDesktopServer(server: DesktopServer): Server {
     has_private_key: Boolean(server.has_private_key),
     group: server.group || undefined,
     group_id: server.group_id || undefined,
+    jump_server_id: server.jump_server_id || undefined,
     tags: server.tags ?? [],
     status: server.status === "online" ? "online" : "offline",
     last_connected: server.last_connected ? String(server.last_connected) : undefined,

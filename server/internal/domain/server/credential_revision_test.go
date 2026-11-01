@@ -83,7 +83,7 @@ func TestPasswordRotationCannotBeOverwrittenByStaleServerEdit(t *testing.T) {
 		t.Fatal(err)
 	}
 	stale.Name = "stale-edit"
-	if err = repo.Update(ctx, stale); !errors.Is(err, access.ErrResourceChanged) {
+	if err = repo.Update(ctx, stale); !errors.Is(err, ErrServerUpdateConflict) {
 		t.Fatal("stale save overwrote password rotation", err)
 	}
 	saved, err := repo.FindByID(ctx, row.ID)

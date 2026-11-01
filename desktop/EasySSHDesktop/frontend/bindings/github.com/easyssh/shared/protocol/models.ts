@@ -3747,6 +3747,11 @@ export class Server {
     "has_private_key"?: boolean | null;
     "host": string;
     "id": types$0.UUID;
+
+    /**
+     * JumpServerID 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
+     */
+    "jump_server_id"?: string | null;
     "last_connected"?: time$0.Time | null;
     "name": string;
     "os"?: string;
@@ -3836,6 +3841,11 @@ export class ServerCreate {
     "description"?: string;
     "group_id"?: string;
     "host": string;
+
+    /**
+     * JumpServerID 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
+     */
+    "jump_server_id"?: string;
     "name"?: string;
     "password"?: string;
     "port"?: number;
@@ -4144,6 +4154,11 @@ export class ServerUpdate {
     "description"?: string | null;
     "group_id"?: string | null;
     "host"?: string | null;
+
+    /**
+     * JumpServerID 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
+     */
+    "jump_server_id"?: string | null;
     "name"?: string | null;
     "password"?: string | null;
     "port"?: number | null;

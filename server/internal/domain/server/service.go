@@ -120,6 +120,11 @@ func (s *serverService) Create(ctx context.Context, scope access.Scope, req *pro
 		server.GroupID = &id
 	}
 
+	server.JumpServerID, err = parseJumpID(req.JumpServerID)
+	if err != nil {
+		return nil, err
+	}
+
 	// 加密密码
 	if req.Password != "" {
 		encrypted, err := s.encryptor.EncryptWithAAD(req.Password, server.CredentialAAD("password"))
@@ -141,7 +146,7 @@ func (s *serverService) Create(ctx context.Context, scope access.Scope, req *pro
 		return nil, err
 	}
 
-	server.executionScope = scope
+	s.bindJumpServers(server, scope)
 	return server, nil
 }
 
@@ -153,7 +158,7 @@ func (s *serverService) GetByID(ctx context.Context, scope access.Scope, serverI
 	if err != nil {
 		return nil, err
 	}
-	row.executionScope = scope
+	s.bindJumpServers(row, scope)
 	return row, nil
 }
 
@@ -184,6 +189,7 @@ func (s *serverService) Update(ctx context.Context, scope access.Scope, serverID
 	hostChanged := req.Host != nil && *req.Host != server.Host
 	endpointConfigChanged :=
 		hostChanged ||
+			(req.JumpServerID != nil && *req.JumpServerID != jumpID(server.JumpServerID)) ||
 			(req.Port != nil && *req.Port != server.Port) ||
 			(req.Username != nil && *req.Username != server.Username)
 	authConfigChanged :=
@@ -209,6 +215,12 @@ func (s *serverService) Update(ctx context.Context, scope access.Scope, serverID
 			return nil, fmt.Errorf("%w: unsupported auth method", ErrInvalidServer)
 		}
 		server.Auth.AuthMethod = AuthMethod(*req.AuthMethod)
+	}
+	if req.JumpServerID != nil {
+		server.JumpServerID, err = parseJumpID(*req.JumpServerID)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if req.GroupID != nil {
 		server.GroupID = nil
@@ -275,7 +287,7 @@ func (s *serverService) Update(ctx context.Context, scope access.Scope, serverID
 		return nil, err
 	}
 
-	server.executionScope = scope
+	s.bindJumpServers(server, scope)
 	return server, nil
 }
 
@@ -420,7 +432,7 @@ func (s *serverService) query(ctx context.Context, scope access.Scope, filter Qu
 		return nil, 0, err
 	}
 	for _, row := range rows {
-		row.executionScope = scope
+		s.bindJumpServers(row, scope)
 	}
 	return rows, total, nil
 }

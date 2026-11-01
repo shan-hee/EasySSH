@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/shared/sshutil"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
@@ -155,8 +156,21 @@ func bumpEndpoint(tx *gorm.DB, host string, port int, affected *[]uuid.UUID) err
 	if err := tx.Table("servers").Where("host = ? AND port = ? AND deleted_at IS NULL", host, port).Pluck("id", affected).Error; err != nil {
 		return err
 	}
-	return tx.Table("servers").Where("host = ? AND port = ? AND deleted_at IS NULL", host, port).
-		Updates(map[string]any{"connection_revision": gorm.Expr("connection_revision + 1"), "updated_at": time.Now().UTC()}).Error
+	if err := tx.Table("servers").Where("host = ? AND port = ? AND deleted_at IS NULL", host, port).
+		Updates(map[string]any{"connection_revision": gorm.Expr("connection_revision + 1"), "updated_at": time.Now().UTC()}).Error; err != nil {
+		return err
+	}
+	endpoints := append([]uuid.UUID(nil), (*affected)...)
+	for _, id := range endpoints {
+		dependents, err := server.InvalidateJumpDependents(tx, id)
+		if err != nil {
+			return err
+		}
+		for _, dependent := range dependents {
+			*affected = append(*affected, uuid.MustParse(dependent))
+		}
+	}
+	return nil
 }
 
 func (s *Service) invalidate(ids []uuid.UUID) {

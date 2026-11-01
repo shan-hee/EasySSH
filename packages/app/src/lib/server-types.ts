@@ -25,6 +25,8 @@ export interface Server {
   /** 分组名称，仅用于展示；修改分组使用 group_id。 */
   group?: string
   group_id?: string
+  /** 跳板机服务器 ID；空字符串表示直连，更新时省略保持原值。 */
+  jump_server_id?: string
   tags?: string[]
   status: ServerStatus
   last_connected?: string
@@ -51,6 +53,8 @@ export interface CreateServerRequest {
   ssh_key_id?: string
   /** 空字符串表示移出分组。 */
   group_id?: string
+  /** 跳板机服务器 ID；空字符串表示直连，更新时省略保持原值。 */
+  jump_server_id?: string
   tags?: string[]
   description?: string
 }
@@ -66,6 +70,8 @@ export interface UpdateServerRequest {
   private_key_passphrase?: string
   ssh_key_id?: string
   group_id?: string
+  /** 跳板机服务器 ID；空字符串表示直连，更新时省略保持原值。 */
+  jump_server_id?: string
   tags?: string[]
   description?: string
   verified_connection_credential?: boolean

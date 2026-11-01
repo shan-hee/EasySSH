@@ -4196,6 +4196,10 @@ components:
           format: uuid
           x-go-name: SSHKeyID
           description: 所有者的保存密钥引用；未关联时省略。
+        jump_server_id:
+          type: string
+          x-go-name: JumpServerID
+          description: 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
         group_id:
           type: string
           description: 所属分组 UUID；未分组为空字符串。
@@ -5424,6 +5428,11 @@ components:
           type: string
           format: password
           x-go-type-skip-optional-pointer: true
+        jump_server_id:
+          type: string
+          x-go-name: JumpServerID
+          description: 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
+          x-go-type-skip-optional-pointer: true
         group_id:
           type: string
           x-go-type-skip-optional-pointer: true
@@ -5468,6 +5477,10 @@ components:
           type: string
           format: password
           x-go-type-skip-optional-pointer: true
+        jump_server_id:
+          type: string
+          x-go-name: JumpServerID
+          description: 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
         group_id:
           type: string
         tags:

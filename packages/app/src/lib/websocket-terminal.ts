@@ -757,6 +757,7 @@ export class TerminalWebSocket {
           errorCode === "private_key_invalid" ||
           errorCode === "private_key_decrypt_failed" ||
           errorCode === "password_decrypt_failed" ||
+          errorCode === "ssh_forwarding_denied" ||
           errorCode === "connection_refused" ||
           errorCode === "no_route_to_host" ||
           errorCode === "network_unreachable" ||

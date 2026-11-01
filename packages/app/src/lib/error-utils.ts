@@ -44,6 +44,7 @@ const ERROR_MESSAGE_MAP: Record<string, string> = {
   "Email service is not configured. Please configure SMTP settings in: Settings > Integrations > Email Notifications": "邮件服务未配置，请在设置中配置SMTP",
 
   // 通用错误
+  "Server configuration changed; reload before saving": "服务器配置已发生变化，请重新打开编辑窗口后保存",
   "Failed to register user": "注册失败",
   "Failed to generate verification code": "生成验证码失败",
   "Failed to send verification code email": "发送验证码邮件失败",

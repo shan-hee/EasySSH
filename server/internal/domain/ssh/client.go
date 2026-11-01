@@ -26,6 +26,7 @@ type Client struct {
 	conn      *ssh.Client
 	serverID  string
 	config    *ssh.ClientConfig
+	jumps     []sshutil.Hop
 	connected bool
 	createdAt time.Time
 }
@@ -243,59 +244,43 @@ func NewClient(ctx context.Context, srv *server.Server, encryptor *crypto.Encryp
 		createdAt: time.Now(),
 	}
 
+	jumps, err := srv.JumpServers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, jump := range jumps {
+		// Only the target may use the caller's temporary credentials. Each jump uses
+		// its own saved identity and the same host-key / interactive approval policy.
+		endpoint := *jump
+		endpoint.JumpServerID = nil
+		hop, err := NewClient(ctx, &endpoint, encryptor, hostKeyCallback, WithKeyboardInteractive(options.keyboardInteractive))
+		if err != nil {
+			return nil, fmt.Errorf("jump server %s: %w", jump.Host, err)
+		}
+		client.jumps = append(client.jumps, sshutil.Hop{Address: net.JoinHostPort(jump.Host, fmt.Sprint(jump.Port)), Config: hop.config})
+	}
 	return client, nil
 }
 
 // Connect 连接到服务器
 func (c *Client) Connect(host string, port int) error {
-	addr := net.JoinHostPort(host, fmt.Sprint(port))
-	conn, err := ssh.Dial("tcp", addr, c.config)
-	if err != nil {
-		return fmt.Errorf("failed to connect: %w", err)
-	}
-
-	return c.attach(conn)
+	return c.ConnectContext(context.Background(), host, port)
 }
 
-// ConnectContext 使用上下文连接到服务器（支持超时/取消）
+// ConnectContext bounds establishment of the entire route by the caller's deadline.
 func (c *Client) ConnectContext(ctx context.Context, host string, port int) error {
-	// 如果上层没有设置 deadline，则使用客户端配置里的默认超时兜底
-	ctxToUse := ctx
-	if _, ok := ctx.Deadline(); !ok && c.config != nil && c.config.Timeout > 0 {
+	if _, ok := ctx.Deadline(); !ok && c.config.Timeout > 0 {
 		var cancel context.CancelFunc
-		ctxToUse, cancel = context.WithTimeout(ctx, c.config.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, c.config.Timeout)
 		defer cancel()
 	}
-
-	addr := net.JoinHostPort(host, fmt.Sprint(port))
-	dialer := &net.Dialer{}
-	netConn, err := dialer.DialContext(ctxToUse, "tcp", addr)
+	route := append([]sshutil.Hop(nil), c.jumps...)
+	route = append(route, sshutil.Hop{Address: net.JoinHostPort(host, fmt.Sprint(port)), Config: c.config})
+	conn, err := sshutil.DialRoute(ctx, route)
 	if err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
-
-	// 让 SSH 握手也受同一 deadline 控制
-	if deadline, ok := ctxToUse.Deadline(); ok {
-		_ = netConn.SetDeadline(deadline)
-	}
-
-	stopCancel := context.AfterFunc(ctxToUse, func() { _ = netConn.Close() })
-	defer stopCancel()
-	sshConn, chans, reqs, err := ssh.NewClientConn(netConn, addr, c.config)
-	if err != nil {
-		_ = netConn.Close()
-		return fmt.Errorf("failed to establish ssh connection: %w", err)
-	}
-
-	if !stopCancel() || ctxToUse.Err() != nil {
-		_ = netConn.Close()
-		return ctxToUse.Err()
-	}
-
-	// 清掉握手 deadline，避免影响后续读写
-	_ = netConn.SetDeadline(time.Time{})
-
-	return c.attach(ssh.NewClient(sshConn, chans, reqs))
+	return c.attach(conn)
 }
 
 // NewSession 创建新会话

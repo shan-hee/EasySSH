@@ -138,6 +138,11 @@ func trustDesktopHostKey(host string, port int, key ssh.PublicKey) error {
 	if err != nil {
 		return err
 	}
+	for _, resource := range resources {
+		if err := invalidateDesktopJumpDependents(tx, resource.ServerID); err != nil {
+			return err
+		}
+	}
 	endpoint := fmt.Sprintf("%s:%d", host, port)
 	eventResource := uuid.NewSHA1(uuid.NameSpaceDNS, []byte(endpoint+":"+key.Type())).String()
 	if err = recordDesktopConfiguration(tx, "host_key_confirmed", "host_key", eventResource, endpoint, "manual", []string{"public_key", "trust_status"}, resources); err != nil {

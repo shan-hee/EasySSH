@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 故障恢复、升级前恢复点 | 系统设置 → 备份与恢复 → 完整备份；应急时使用 `maintenance backup` / `restore` | 原生数据库快照、数据目录、文件传输存储和根密钥 |
 | Web 与桌面、多台桌面之间共享个人数据 | Web 账户设置 → 数据与同步；桌面顶部云图标旁的下拉菜单 → 同步设置 | 绑定远端账户，同步本人服务器配置、脚本，以及单独授权并开启的凭据、个人 AI 配置和 AI 历史 |
-| 服务端 schema 5/6/7/8/9 → 10 | 新程序启动时自动创建恢复点并迁移；`maintenance schema-upgrade` 为离线入口 | 升级成功并完成校验后才启动业务，详见下文 |
+| 服务端 schema 5/6/7/8/9/10 → 11 | 新程序启动时自动创建恢复点并迁移；`maintenance schema-upgrade` 为离线入口 | 升级成功并完成校验后才启动业务，详见下文 |
 | 单版本回退 | 停机后 `maintenance schema-rollback` | 仅人工执行，不会自动降级 |
 | 全新数据库 | 普通启动 | 按当前初始化基线创建空库 |
 
@@ -63,9 +63,31 @@ SQLite/PostgreSQL 的结构与数据变更连同 Goose 版本记录在同一事�
 
 `schema-rollback` 从 10 回退到 9 时会删除飞书连接及其绑定、审批、事件去重记录，再移除新增表、索引和字段；Telegram 数据、Agent 会话历史和执行记录保留。若需要保留飞书配置和绑定，应恢复完整快照而不是依赖 Down 恢复这些数据。备份校验同时验证 Telegram Token 与飞书 App Secret；恢复后的连接继续默认停用，需重新启用并绑定。
 
+## SSH 跳板机（服务端 schema 11、桌面 schema 6）
+
+先添加并保存跳板机的登录凭据，再在目标服务器的「高级 → 跳板机」选择该服务器。目标地址由最后一跳访问和解析，跳板机的 SSH 服务需要允许 TCP 转发（`AllowTcpForwarding`，以及适用时的 `PermitOpen`）。终端、SFTP、监控、远程命令和 Docker 都使用相同的 SSH 路径。支持最多 16 跳，禁止自引用、循环引用和不存在的跳板机；被引用的跳板机需要先解除关联才能删除。
+
+每一跳使用自己的已保存密码或密钥；目标服务器连接时填写的临时凭据不会发送给跳板机。交互式终端及 SFTP 认证窗口可以处理跳板机的交互认证；后台监控和命令执行需要无需交互的已保存凭据。每一跳分别校验主机密钥。分享访问同时要求对沿途跳板机具有访问授权，不会借目标服务器的授权访问未授权资源。
+
+生产迁移仅给服务器表新增可空的 `jump_server_id`、索引及限制删除的外键，保留原有字段和数据。旧记录默认直连；旧 API 请求省略此字段时，更新保持原值；显式传空字符串解除关联。服务端脚本是 `server/internal/storage/schema/{sqlite,postgres,mysql}/00011_jump_servers.sql`，桌面脚本是 `desktop/EasySSHDesktop/internal/storage/schema/sqlite/00006_jump_servers.sql`。每份都提供完整 Up / Down，已发布的初始化脚本不变。
+
+服务端沿用停机后的 `maintenance schema-upgrade` / `schema-rollback` 和自动恢复点流程。SQLite/PostgreSQL 的 DDL 与 Goose 版本记录在同一事务中提交，异常回滚。MySQL 每个方向使用一条 ALTER TABLE；MySQL 8/InnoDB 的单条 DDL 原子性不能替代事务回滚，DDL 会隐式提交，DDL 与版本记录之间中断时必须检查并恢复维护入口生成的备份，禁止只改版本号后继续。
+
+桌面端已有 schema 5 数据库需要显式升级，普通启动会提示维护命令。先退出桌面程序，再用新版本可执行文件运行，备份文件必须位于数据目录之外，密码文件须预先准备且仅本人可读：
+
+```bash
+EasySSHDesktop maintenance schema-upgrade --file /backup/desktop-before-jump.age --password-file /secure/backup-password
+# 仅在需要退回 schema 5 时运行，使用另一份备份文件：
+EasySSHDesktop maintenance schema-rollback --file /backup/desktop-before-rollback.age --password-file /secure/backup-password
+```
+
+桌面两个方向都会先创建加密完整备份，然后由 Goose 在事务中处理结构与版本记录。新程序仍能读取 schema 5 的完整备份，并只在隔离的恢复副本中迁移到 schema 6。回退后使用匹配数据库版本的程序；Down 会移除跳板关联，恢复关联需要完整备份。涉及内网目标的连接在移除跳板配置后会变为直连，上线或回退前应确认这一行为。
+
+配置同步把跳板关系放在同一个连接配置内，凭据绑定也包含这条关系，避免同步后悄悄变成直连。桌面端须将目标与其全部跳板机加入同一同步空间；未加入的依赖会明确报错。无跳板的旧同步数据格式保持不变。旧版同步端不认识跳板字段，会拒绝这类配置；启用跳板机同步前须升级两端，不能让旧端丢弃该字段。修改跳板地址、身份、凭据或主机信任时，其依赖目标的连接版本会失效，后续文件和监控请求重新建连。
+
 ## 服务端启动自动迁移
 
-服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前支持 schema 5/6/7/8/9 → 10，不使用 GORM AutoMigrate，不自动下载新程序，也不改变桌面端的数据库版本体系。
+服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前支持 schema 5/6/7/8/9/10 → 11，不使用 GORM AutoMigrate，不自动下载新程序，也不改变桌面端的数据库版本体系。
 
 | 数据库状态 | 行为 |
 | --- | --- |

@@ -78,22 +78,27 @@ func desktopSyncSnapshot(db desktopSyncQuery, spaceID string) (syncdata.Snapshot
 	snapshot := syncdata.Snapshot{}
 	order := []string{}
 	ids := map[string]string{}
-	rows, err := db.Query(`SELECT s.id,m.remote_id,s.name,s.host,s.port,s.username,s.auth_method,COALESCE(gm.remote_id,''),COALESCE(s.group_id,''),s.tags_json,s.description,COALESCE(k.id,''),COALESCE(k.name,''),COALESCE(k.public_key,''),COALESCE(k.fingerprint,''),COALESCE(k.algorithm,''),COALESCE(k.key_size,0) FROM desktop_server_details s LEFT JOIN desktop_ssh_keys k ON k.id=s.ssh_key_id LEFT JOIN desktop_sync_records gm ON gm.kind='group' AND gm.local_id=s.group_id AND gm.space_id=? JOIN desktop_sync_records m ON m.kind='server' AND m.local_id=s.id WHERE m.space_id=? ORDER BY s.sort_order ASC,s.created_at ASC,s.id ASC`, spaceID, spaceID)
+	rows, err := db.Query(`SELECT s.id,m.remote_id,s.name,s.host,s.port,s.username,s.auth_method,COALESCE(gm.remote_id,''),COALESCE(s.group_id,''),s.tags_json,s.description,COALESCE(k.id,''),COALESCE(k.name,''),COALESCE(k.public_key,''),COALESCE(k.fingerprint,''),COALESCE(k.algorithm,''),COALESCE(k.key_size,0),COALESCE(s.jump_server_id,''),COALESCE(jm.remote_id,'') FROM desktop_server_details s LEFT JOIN desktop_ssh_keys k ON k.id=s.ssh_key_id LEFT JOIN desktop_sync_records jm ON jm.kind='server' AND jm.local_id=s.jump_server_id AND jm.space_id=? LEFT JOIN desktop_sync_records gm ON gm.kind='group' AND gm.local_id=s.group_id AND gm.space_id=? JOIN desktop_sync_records m ON m.kind='server' AND m.local_id=s.id WHERE m.space_id=? ORDER BY s.sort_order ASC,s.created_at ASC,s.id ASC`, spaceID, spaceID, spaceID)
 	if err != nil {
 		return nil, nil, err
 	}
 	for rows.Next() {
 		var id, remoteID, name, host, username, method, groupID, localGroupID, tags, description string
 		var port int
+		var localJumpID, jumpID string
 		var keyRef syncdata.KeyReference
-		if err = rows.Scan(&id, &remoteID, &name, &host, &port, &username, &method, &groupID, &localGroupID, &tags, &description, &keyRef.ID, &keyRef.Name, &keyRef.PublicKey, &keyRef.Fingerprint, &keyRef.Algorithm, &keyRef.KeySize); err != nil {
+		if err = rows.Scan(&id, &remoteID, &name, &host, &port, &username, &method, &groupID, &localGroupID, &tags, &description, &keyRef.ID, &keyRef.Name, &keyRef.PublicKey, &keyRef.Fingerprint, &keyRef.Algorithm, &keyRef.KeySize, &localJumpID, &jumpID); err != nil {
 			rows.Close()
 			return nil, nil, err
 		}
 		order = append(order, remoteID)
 		key := "server/" + remoteID
 		ids[key] = id
-		connection := syncdata.Connection{Host: host, Port: port, Username: username, AuthMethod: method}
+		connection := syncdata.Connection{Host: host, Port: port, Username: username, AuthMethod: method, JumpServerID: jumpID}
+		if localJumpID != "" && jumpID == "" {
+			rows.Close()
+			return nil, nil, errors.New("enroll the jump host in the same sync space before syncing this server")
+		}
 		if keyRef.ID != "" {
 			connection.Key = &keyRef
 		}
@@ -506,6 +511,29 @@ func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapsho
 	if err := applyDesktopSyncGroups(tx, spaceID, before, after, ids); err != nil {
 		return err
 	}
+	for key, old := range before {
+		if !strings.HasPrefix(key, "server/") {
+			continue
+		}
+		oldConn, err := syncdata.ParseConnection(old["connection"])
+		if err != nil {
+			return err
+		}
+		next := after[key]
+		var nextJump string
+		if next != nil {
+			c, err := syncdata.ParseConnection(next["connection"])
+			if err != nil {
+				return err
+			}
+			nextJump = c.JumpServerID
+		}
+		if oldConn.JumpServerID != "" && (next == nil || oldConn.JumpServerID != nextJump) {
+			if _, err := tx.Exec("UPDATE desktop_servers SET jump_server_id=NULL WHERE id=?", ids[key]); err != nil {
+				return err
+			}
+		}
+	}
 	for key := range before {
 		if key == syncdata.ServerOrderKey || strings.HasPrefix(key, "group/") {
 			continue
@@ -630,6 +658,36 @@ func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapsho
 			if err := recordDesktopConfiguration(tx, action, parts[0], id, r["name"], "automation", fields, nil); err != nil {
 				return err
 			}
+		}
+	}
+	// Resolve remote jump IDs only after every local server mapping is known.
+	for key, record := range after {
+		if !strings.HasPrefix(key, "server/") {
+			continue
+		}
+		conn, err := syncdata.ParseConnection(record["connection"])
+		if err != nil {
+			return err
+		}
+		var jumpID any
+		if conn.JumpServerID != "" {
+			localID := ids["server/"+conn.JumpServerID]
+			if localID == "" {
+				return errors.New("missing local jump server mapping")
+			}
+			jumpID = localID
+		}
+		if _, err := tx.Exec("UPDATE desktop_servers SET jump_server_id=? WHERE id=?", jumpID, ids[key]); err != nil {
+			return err
+		}
+	}
+	for key, old := range before {
+		next := after[key]
+		if !strings.HasPrefix(key, "server/") || next == nil || syncdata.SameConnection(old["connection"], next["connection"]) {
+			continue
+		}
+		if err := invalidateDesktopJumpDependents(tx, ids[key]); err != nil {
+			return err
 		}
 	}
 	order, err := syncdata.OrderedServers(after)
@@ -875,7 +933,7 @@ func (s *DesktopSyncService) Enroll(spaceID string, keys []string) error {
 		if owner != "" {
 			newID := uuid.NewString()
 			if kind == "server" {
-				_, err = tx.Exec(`INSERT INTO desktop_servers(id,user_id,name,host,port,username,group_id,description,created_at,updated_at) SELECT ?,user_id,name,host,port,username,group_id,description,?,? FROM desktop_servers WHERE id=?`, newID, now, now, id)
+				_, err = tx.Exec(`INSERT INTO desktop_servers(id,user_id,name,host,port,username,group_id,description,created_at,updated_at,jump_server_id) SELECT ?,user_id,name,host,port,username,group_id,description,?,?,jump_server_id FROM desktop_servers WHERE id=?`, newID, now, now, id)
 				if err == nil {
 					_, err = tx.Exec(`INSERT INTO desktop_server_auth(server_id,auth_method) SELECT ?,auth_method FROM desktop_server_auth WHERE server_id=?`, newID, id)
 				}

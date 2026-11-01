@@ -1,3 +1,4 @@
+import { JumpServerSelector, type JumpServerApi } from "@/components/servers/jump-server-selector"
 
 import { useEffect, useState } from "react"
 import {
@@ -38,10 +39,12 @@ import {
 interface AddServerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit?: (data: ServerFormData) => void
+  onSubmit?: (data: ServerFormData) => void | boolean | Promise<void | boolean>
   initialData?: Partial<ServerFormData>
   title?: string
   description?: string
+  serverApi: JumpServerApi
+  serverId?: string
   keyApi: SSHKeyApi
   availableGroups?: string[]
   availableTags?: string[]
@@ -95,6 +98,8 @@ export function AddServerDialog({
   title,
   description,
   keyApi,
+  serverApi,
+  serverId,
   availableGroups = [],
   availableTags = [],
 }: AddServerDialogProps) {
@@ -102,6 +107,7 @@ export function AddServerDialog({
   const [formData, setFormData] = useState<ServerFormData>(() => getInitialFormData(initialData))
 
   const [keyImportPending, setKeyImportPending] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
   const [newTag, setNewTag] = useState("")
   const { t: tServers } = useTranslation("servers")
 
@@ -141,7 +147,8 @@ export function AddServerDialog({
     }))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (submitting) return
     // 验证必填字段
     if (!formData.host.trim()) {
       toast.error(tServers("quickFormHostRequired"))
@@ -164,7 +171,12 @@ export function AddServerDialog({
       jumpServer: formData.jumpServer === "none" ? "" : formData.jumpServer,
     }
     if (keyImportPending) return
-    onSubmit?.(normalized)
+    setSubmitting(true)
+    try {
+      if (await onSubmit?.(normalized) === false) return
+    } finally {
+      setSubmitting(false)
+    }
     resetForm()
     onOpenChange(false)
   }
@@ -210,7 +222,7 @@ export function AddServerDialog({
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={(event) => {
             event.preventDefault()
-            handleSave()
+            void handleSave()
           }}
         >
           <Tabs defaultValue="server" className="w-full flex-1 flex flex-col overflow-hidden px-6 pt-4">
@@ -402,22 +414,12 @@ export function AddServerDialog({
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="jumpServer">{tServers("quickFormJumpServerLabel")}</Label>
-                <Select
+              <JumpServerSelector
+                  api={serverApi}
                   value={formData.jumpServer}
-                  onValueChange={(value) => handleInputChange("jumpServer", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={tServers("quickFormJumpServerPlaceholder")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{tServers("quickFormJumpServerNone")}</SelectItem>
-                    <SelectItem value="jump-01">跳板机01 (192.168.1.10)</SelectItem>
-                    <SelectItem value="jump-02">跳板机02 (192.168.1.11)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                  onChange={(value) => handleInputChange("jumpServer", value)}
+                  serverId={serverId}
+                />
               </div>
             </TabsContent>
 
@@ -458,7 +460,7 @@ export function AddServerDialog({
             <Button type="button" variant="outline" onClick={handleCancel}>
               {tServers("quickFormCancelButton")}
             </Button>
-            <Button type="submit" disabled={keyImportPending}>
+            <Button type="submit" disabled={keyImportPending || submitting}>
               {tServers("quickFormSaveButton")}
             </Button>
           </div>

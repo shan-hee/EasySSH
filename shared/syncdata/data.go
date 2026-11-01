@@ -10,6 +10,7 @@ import (
 	"github.com/easyssh/shared/scriptutil"
 	"github.com/easyssh/shared/servergroup"
 	"github.com/easyssh/shared/servertag"
+	"github.com/easyssh/shared/sshutil"
 	"io"
 	"slices"
 	"strings"
@@ -33,11 +34,12 @@ func (k KeyReference) Material() *KeyMaterial {
 }
 
 type Connection struct {
-	Key        *KeyReference `json:"key,omitempty"`
-	Host       string        `json:"host"`
-	Port       int           `json:"port"`
-	Username   string        `json:"username"`
-	AuthMethod string        `json:"auth_method"`
+	JumpServerID string        `json:"jump_server_id,omitempty"`
+	Key          *KeyReference `json:"key,omitempty"`
+	Host         string        `json:"host"`
+	Port         int           `json:"port"`
+	Username     string        `json:"username"`
+	AuthMethod   string        `json:"auth_method"`
 }
 
 func JSON(value any) string { b, _ := json.Marshal(value); return string(b) }
@@ -68,6 +70,9 @@ func ParseConnection(value string) (Connection, error) {
 		if err := ValidateKey(c.Key.Material()); err != nil {
 			return c, err
 		}
+	}
+	if c.JumpServerID != "" && !servergroup.ValidID(c.JumpServerID) {
+		return c, fmt.Errorf("invalid jump server ID")
 	}
 	if strings.TrimSpace(c.Host) == "" || len(c.Host) > 255 || strings.TrimSpace(c.Username) == "" || len(c.Username) > 50 || c.Port < 1 || c.Port > 65535 {
 		return c, fmt.Errorf("invalid SSH connection")
@@ -162,12 +167,20 @@ func Validate(snapshot Snapshot) error {
 			}
 		}
 	}
+	jumpLinks := map[string]string{}
 	for key, record := range snapshot {
+		if strings.HasPrefix(key, "server/") {
+			conn, err := ParseConnection(record["connection"])
+			if err != nil {
+				return err
+			}
+			jumpLinks[strings.TrimPrefix(key, "server/")] = conn.JumpServerID
+		}
 		if strings.HasPrefix(key, "server/") && record["group_id"] != "" && snapshot["group/"+record["group_id"]] == nil {
 			return fmt.Errorf("server references a missing group")
 		}
 	}
-	return nil
+	return sshutil.ValidateJumpServers(jumpLinks)
 }
 
 func ValidUUID(id string) bool {
@@ -189,7 +202,7 @@ func SameConnection(a, b string) bool {
 	if err != nil {
 		return false
 	}
-	if left.Host != right.Host || left.Port != right.Port || left.Username != right.Username || left.AuthMethod != right.AuthMethod {
+	if left.JumpServerID != right.JumpServerID || left.Host != right.Host || left.Port != right.Port || left.Username != right.Username || left.AuthMethod != right.AuthMethod {
 		return false
 	}
 	if left.Key == nil || right.Key == nil {

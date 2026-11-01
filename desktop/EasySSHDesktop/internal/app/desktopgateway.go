@@ -674,9 +674,7 @@ func (g *DesktopGateway) connectDesktopSSH(
 	if err := configureDesktopHostKeyAlgorithms(config, server.Host, server.Port); err != nil {
 		return nil, err
 	}
-	address := net.JoinHostPort(server.Host, strconv.Itoa(server.Port))
-
-	return sshutil.DialContext(ctx, address, config)
+	return dialDesktopSSH(ctx, server, config, keyboardInteractive)
 }
 
 func (g *DesktopGateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
@@ -973,14 +971,14 @@ func (g *DesktopGateway) connectDesktopSFTPAuthSSH(
 	if g.sftpService == nil {
 		return nil, nil, 0, errors.New("file service is unavailable")
 	}
-	client, closeClient, err := g.sftpService.dialFileSSH(ctx, server, config, desktopGatewayTerminalInitTimeout)
+	client, closeClient, err := g.sftpService.dialFileSSH(ctx, server, config, desktopGatewayTerminalInitTimeout, keyboardInteractive)
 	if err != nil {
 		return nil, nil, 0, err
 	}
 	// Host confirmation may advance revision during authentication. Recheck the
 	// actual key and connection definition before caching that confirmed version.
 	current, err := g.serverService.getByIDRaw(server.ID)
-	if err != nil || current.Host != server.Host || current.Port != server.Port || current.Username != server.Username || current.AuthMethod != server.AuthMethod || current.Password != server.Password || current.PrivateKey != server.PrivateKey || current.SavedPrivateKeyPassphrase != server.SavedPrivateKeyPassphrase {
+	if err != nil || !desktopSameJumpRoute(current, server) || current.Host != server.Host || current.Port != server.Port || current.Username != server.Username || current.AuthMethod != server.AuthMethod || current.Password != server.Password || current.PrivateKey != server.PrivateKey || current.SavedPrivateKeyPassphrase != server.SavedPrivateKeyPassphrase {
 		closeClient()
 		return nil, nil, 0, errors.New("server connection configuration changed; reconnect")
 	}
@@ -1640,6 +1638,8 @@ func classifyDesktopGatewayTerminalError(err error) (string, string) {
 	lower := strings.ToLower(message)
 	var hostKeyErr *DesktopHostKeyVerificationError
 	switch {
+	case errors.Is(err, sshutil.ErrForwardingDenied):
+		return "ssh_forwarding_denied", message
 	case errors.As(err, &hostKeyErr):
 		return "host_key_changed", message
 	case errors.Is(err, errDesktopHostKeyRevoked):

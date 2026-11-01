@@ -486,6 +486,23 @@ export function ServerConnectionConfigs({
  [deleteTargetId, servers]
  )
 
+ const editInitialData = useMemo(() => (editingServer ? {
+ name: editingServer.name,
+ host: editingServer.host,
+ port: editingServer.port?.toString() || "22",
+ username: editingServer.username,
+	 authMethod: normalizeSSHAuthMethod(editingServer.auth_method),
+ password: "",
+ sshKeyId: editingServer.ssh_key_id ?? "",
+ rememberPassword: Boolean(editingServer.has_password),
+ tags: editingServer.tags || [],
+ description: editingServer.description || "",
+ group: editingServer.group || "",
+ jumpServer: editingServer.jump_server_id || "",
+ autoConnect: false,
+ keepAlive: true,
+ } : undefined), [editingServer])
+
  const duplicateInitialData = useMemo<Partial<ServerFormData> | undefined>(() => {
  if (!duplicatingServer) return undefined
 
@@ -501,7 +518,7 @@ export function ServerConnectionConfigs({
  tags: duplicatingServer.tags || [],
  description: duplicatingServer.description || "",
  group: duplicatingServer.group || "",
- jumpServer: "",
+ jumpServer: duplicatingServer.jump_server_id || "",
  autoConnect: false,
  keepAlive: true,
  }
@@ -643,7 +660,7 @@ export function ServerConnectionConfigs({
  }
 
  const handleAddServer = async (data: ServerFormData) => {
- if (saving) return
+ if (saving) return false
  setSaving(true)
  history.cancelPendingPage()
  try {
@@ -656,6 +673,7 @@ export function ServerConnectionConfigs({
  username: data.username,
 	 auth_method: data.authMethod,
  group_id: await resolveGroupId(data.group),
+ jump_server_id: data.jumpServer,
  tags: data.tags,
  description: data.description,
  ...(requiresPrivateKey(data.authMethod) && data.sshKeyId ? { ssh_key_id: data.sshKeyId } : {}),
@@ -676,13 +694,14 @@ export function ServerConnectionConfigs({
  } catch (error: unknown) {
  console.error("Failed to add server:", error)
  toast.error(getErrorMessage(error, t("toastCreateFailed")))
+ return false
  } finally {
  setSaving(false)
  }
  }
 
  const handleEditServer = async (data: ServerFormData) => {
- if (saving) return
+ if (saving) return false
  setSaving(true)
  history.cancelPendingPage()
  try {
@@ -690,7 +709,7 @@ export function ServerConnectionConfigs({
 
  if (!editingServer) {
  toast.error(t("toastEditNotFound"))
- return
+ return false
  }
 
  const updateData: UpdateServerRequest = {
@@ -700,6 +719,7 @@ export function ServerConnectionConfigs({
  username: data.username,
 	 auth_method: data.authMethod,
  group_id: await resolveGroupId(data.group),
+ jump_server_id: data.jumpServer,
  tags: data.tags,
  description: data.description,
  }
@@ -720,7 +740,7 @@ export function ServerConnectionConfigs({
 	 }
 
  const updatedServer = await serverApi.update(editingServer.id, updateData)
- if (serverApi.sharing && (editingServer.host !== updatedServer.host || editingServer.port !== updatedServer.port || editingServer.username !== updatedServer.username || editingServer.auth_method !== updatedServer.auth_method || updateData.password !== undefined || updateData.ssh_key_id !== undefined && updateData.ssh_key_id !== editingServer.ssh_key_id)) {
+ if (serverApi.sharing && (editingServer.jump_server_id !== updatedServer.jump_server_id || editingServer.host !== updatedServer.host || editingServer.port !== updatedServer.port || editingServer.username !== updatedServer.username || editingServer.auth_method !== updatedServer.auth_method || updateData.password !== undefined || updateData.ssh_key_id !== undefined && updateData.ssh_key_id !== editingServer.ssh_key_id)) {
    const serverId = editingServer.id
    toast(tSharing("reviewAfterEdit"), { action: { label: tSharing("reviewGrants"), onClick: () => window.dispatchEvent(new CustomEvent("easyssh:review-sharing", { detail: { serverId } })) } })
  }
@@ -738,6 +758,7 @@ export function ServerConnectionConfigs({
  } catch (error: unknown) {
  console.error("Failed to update server:", error)
  toast.error(getErrorMessage(error, t("toastUpdateFailed")))
+ return false
  } finally {
  setSaving(false)
  }
@@ -947,6 +968,7 @@ export function ServerConnectionConfigs({
 
  {/* 添加服务器弹窗 */}
  <AddServerDialog
+ serverApi={serverApi}
  keyApi={serverApi.sshKeys}
  open={isAddDialogOpen}
  onOpenChange={handleAddDialogOpenChange}
@@ -960,28 +982,15 @@ export function ServerConnectionConfigs({
 
  {/* 编辑服务器弹窗 */}
  <EditServerDialog
+ serverApi={serverApi}
+ serverId={editingServer?.id}
  keyApi={serverApi.sshKeys}
  open={isEditDialogOpen}
  onOpenChange={setIsEditDialogOpen}
  onSubmit={handleEditServer}
  availableGroups={availableGroups}
  availableTags={availableTags}
- initialData={editingServer ? {
- name: editingServer.name,
- host: editingServer.host,
- port: editingServer.port?.toString() || "22",
- username: editingServer.username,
-	 authMethod: normalizeSSHAuthMethod(editingServer.auth_method),
- password: "",
- sshKeyId: editingServer.ssh_key_id ?? "",
- rememberPassword: Boolean(editingServer.has_password),
- tags: editingServer.tags || [],
- description: editingServer.description || "",
- group: editingServer.group || "",
- jumpServer: "",
- autoConnect: false,
- keepAlive: true,
- } : undefined}
+ initialData={editInitialData}
  />
 
  <ConfirmDialog

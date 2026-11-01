@@ -171,6 +171,11 @@ func (s *Service) applyVault(tx *gorm.DB, owner uuid.UUID, kind, id string, p sy
 				return err
 			}
 		}
+		if len(fields) > 0 {
+			if _, err := server.InvalidateJumpDependents(tx, row.ID); err != nil {
+				return err
+			}
+		}
 		row.Auth.SSHKeyID = keyID
 		if err := row.SaveAuth(tx); err != nil {
 			return err

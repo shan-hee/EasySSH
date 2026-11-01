@@ -3,14 +3,11 @@ package app
 import (
 	"context"
 	"errors"
-	"net"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/easyssh/shared/sftputil"
-	"github.com/easyssh/shared/sshutil"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -18,7 +15,7 @@ import (
 // channel, refreshing a directory or reusing authentication creates no event.
 // The service operation registration includes dialing, heartbeat and final
 // persistence, so shutdown cannot return while an observation is still running.
-func dialDesktopObservedSSH(parent context.Context, operations *desktopOperationRegistry, activity *ActivityLogService, server DesktopServer, config *ssh.ClientConfig, timeout time.Duration, action, source string) (*ssh.Client, func(), error) {
+func dialDesktopObservedSSH(parent context.Context, operations *desktopOperationRegistry, activity *ActivityLogService, server DesktopServer, config *ssh.ClientConfig, timeout time.Duration, action, source string, keyboard ...ssh.KeyboardInteractiveChallenge) (*ssh.Client, func(), error) {
 	if activity == nil {
 		return nil, nil, errors.New("connection activity service is unavailable")
 	}
@@ -39,7 +36,7 @@ func dialDesktopObservedSSH(parent context.Context, operations *desktopOperation
 		release()
 		return nil, nil, err
 	}
-	client, err := sshutil.DialContext(opening, net.JoinHostPort(server.Host, strconv.Itoa(server.Port)), config)
+	client, err := dialDesktopSSH(opening, server, config, keyboard...)
 	if err != nil {
 		status, code := DesktopActivityLogStatus("failure"), "connection_failed"
 		if errors.Is(opening.Err(), context.DeadlineExceeded) || errors.Is(parent.Err(), context.DeadlineExceeded) {

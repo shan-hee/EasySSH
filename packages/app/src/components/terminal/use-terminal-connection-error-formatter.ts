@@ -11,6 +11,14 @@ export function formatTerminalConnectionError(
   const rawMessage = (error.rawMessage || error.message || "").toLowerCase()
 
   if (
+    error.code === "ssh_forwarding_denied" ||
+    rawMessage.includes("ssh jump host denied tcp forwarding") ||
+    (rawMessage.includes("ssh hop ") && rawMessage.includes("administratively prohibited"))
+  ) {
+    return tTerminal("terminalErrorForwardingDenied")
+  }
+
+  if (
     error.code === "initialization_timeout" ||
     error.code === "connection_timeout" ||
     rawMessage.includes("timeout")

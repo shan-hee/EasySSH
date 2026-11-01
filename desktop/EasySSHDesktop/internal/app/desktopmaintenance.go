@@ -24,7 +24,7 @@ import (
 
 func runDesktopMaintenance(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: EasySSHDesktop maintenance backup|inspect|restore [options]")
+		return errors.New("usage: EasySSHDesktop maintenance backup|inspect|restore|schema-upgrade|schema-rollback [options]")
 	}
 	flags := flag.NewFlagSet("maintenance "+args[0], flag.ContinueOnError)
 	file := flags.String("file", "", "encrypted instance archive")
@@ -62,7 +62,7 @@ func runDesktopMaintenance(args []string) error {
 		defer lock.Close()
 		return restoreDesktopInstance(ctx, stage, *into, manifest)
 	}
-	if args[0] != "backup" {
+	if args[0] != "backup" && args[0] != "schema-upgrade" && args[0] != "schema-rollback" {
 		return errors.New("unknown maintenance action")
 	}
 	root := desktopDataDir()
@@ -98,6 +98,13 @@ func runDesktopMaintenance(args []string) error {
 		return err
 	}
 	fmt.Fprintln(os.Stdout, "Desktop instance backup created:", output)
+	if args[0] == "schema-upgrade" || args[0] == "schema-rollback" {
+		database.SetMaxOpenConns(1)
+		if err := schema.Migrate(ctx, database, args[0] == "schema-rollback"); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stdout, "Desktop schema migration complete")
+	}
 	return nil
 }
 
@@ -107,7 +114,7 @@ func createDesktopInstanceArchive(ctx context.Context, database *sql.DB, output,
 	if err != nil {
 		return err
 	}
-	if version != schema.Version {
+	if version != 5 && version != schema.Version {
 		return errors.New("database migration version mismatch")
 	}
 	if err = instancebackup.CheckSQLite(ctx, database); err != nil {
@@ -143,7 +150,7 @@ func createDesktopInstanceArchive(ctx context.Context, database *sql.DB, output,
 	if err != nil {
 		return err
 	}
-	if version == schema.Version {
+	if version >= 5 && version <= schema.Version {
 		if err = verifyDesktopSnapshotCredentials(ctx, database, key); err != nil {
 			return err
 		}
@@ -168,7 +175,7 @@ func restoreDesktopInstance(ctx context.Context, stage, into string, manifest in
 	if err := instancebackup.CheckApplicationVersion(manifest.AppVersion, desktopBundledVersion); err != nil {
 		return err
 	}
-	if manifest.SchemaVersion != schema.Version {
+	if manifest.SchemaVersion != 5 && manifest.SchemaVersion != schema.Version {
 		return errors.New("unsupported database migration version")
 	}
 	if into == "" {
@@ -206,8 +213,14 @@ func restoreDesktopInstance(ctx context.Context, stage, into string, manifest in
 	if err != nil {
 		return err
 	}
-	if version != manifest.SchemaVersion || version != schema.Version {
+	if version != manifest.SchemaVersion {
 		return errors.New("manifest schema version does not match database")
+	}
+	if version == 5 {
+		database.SetMaxOpenConns(1)
+		if err = schema.Migrate(ctx, database, false); err != nil {
+			return err
+		}
 	}
 	if err = verifyDesktopSnapshotCredentials(ctx, database, key); err != nil {
 		return err

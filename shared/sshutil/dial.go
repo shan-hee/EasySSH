@@ -16,6 +16,10 @@ func DialContext(ctx context.Context, address string, config *ssh.ClientConfig) 
 	if err != nil {
 		return nil, err
 	}
+	return handshakeContext(ctx, conn, address, config)
+}
+
+func handshakeContext(ctx context.Context, conn net.Conn, address string, config *ssh.ClientConfig) (*ssh.Client, error) {
 	closed := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		defer close(closed)

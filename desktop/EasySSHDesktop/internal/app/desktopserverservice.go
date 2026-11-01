@@ -51,6 +51,8 @@ const (
 
 type DesktopServer struct {
 	connectionRevision        int64
+	jumpServers               []DesktopServer
+	JumpServerID              string `json:"jump_server_id"`
 	sortOrder                 int
 	ID                        string                  `json:"id"`
 	UserID                    string                  `json:"user_id"`
@@ -241,7 +243,7 @@ func (s *DesktopServerService) List(params protocol.ServerListRequest) (protocol
 	queryArgs := append(append([]any{}, args...), params.Limit, offset)
 	querySQL := fmt.Sprintf(`
 		SELECT id, user_id, name, host, port, username, auth_method, password, ssh_key_id,
-			COALESCE(group_id,''), server_group, tags_json, last_connected, description, os, created_at, updated_at, connection_revision, sort_order
+			COALESCE(group_id,''), server_group, tags_json, last_connected, description, os, created_at, updated_at, connection_revision, sort_order, COALESCE(jump_server_id,'')
 		FROM desktop_server_details AS s
 		WHERE %s
 		ORDER BY sort_order ASC, created_at ASC, id ASC
@@ -338,7 +340,7 @@ func (s *DesktopServerService) GetById(id string) (protocol.Server, error) {
 
 	row := database.QueryRow(`
 		SELECT id, user_id, name, host, port, username, auth_method, password, ssh_key_id,
-			COALESCE(group_id,''), server_group, tags_json, last_connected, description, os, created_at, updated_at, connection_revision, sort_order
+			COALESCE(group_id,''), server_group, tags_json, last_connected, description, os, created_at, updated_at, connection_revision, sort_order, COALESCE(jump_server_id,'')
 		FROM desktop_server_details
 		WHERE id = ?`, id)
 
@@ -373,6 +375,9 @@ func (s *DesktopServerService) Create(input protocol.ServerCreate) (protocol.Ser
 		return protocol.Server{}, err
 	}
 	defer tx.Rollback()
+	if err := validateDesktopJumpServer(tx, server.ID, server.JumpServerID); err != nil {
+		return protocol.Server{}, err
+	}
 	if err := resolveDesktopServerGroup(tx, &server); err != nil {
 		return protocol.Server{}, err
 	}
@@ -390,7 +395,7 @@ func (s *DesktopServerService) Create(input protocol.ServerCreate) (protocol.Ser
 	}
 
 	server.sortOrder = sortOrder
-	_, err = tx.Exec(`INSERT INTO desktop_servers(id,user_id,name,host,port,username,group_id,last_connected,description,os,sort_order,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, server.ID, server.UserID, server.Name, server.Host, server.Port, server.Username, desktopGroupID(server.GroupID), server.LastConnected, server.Description, server.OS, sortOrder, server.CreatedAt, server.UpdatedAt)
+	_, err = tx.Exec(`INSERT INTO desktop_servers(id,user_id,name,host,port,username,group_id,last_connected,description,os,sort_order,created_at,updated_at,jump_server_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, server.ID, server.UserID, server.Name, server.Host, server.Port, server.Username, desktopGroupID(server.GroupID), server.LastConnected, server.Description, server.OS, sortOrder, server.CreatedAt, server.UpdatedAt, desktopGroupID(server.JumpServerID))
 	if err != nil {
 		return protocol.Server{}, err
 	}
@@ -426,7 +431,7 @@ func (s *DesktopServerService) Update(id string, input protocol.ServerUpdate) (p
 		return protocol.Server{}, err
 	}
 	defer tx.Rollback()
-	current, err := scanDesktopServer(tx.QueryRow(`SELECT id,user_id,name,host,port,username,auth_method,password,ssh_key_id,COALESCE(group_id,''),server_group,tags_json,last_connected,description,os,created_at,updated_at,connection_revision,sort_order FROM desktop_server_details WHERE id=?`, id))
+	current, err := scanDesktopServer(tx.QueryRow(`SELECT id,user_id,name,host,port,username,auth_method,password,ssh_key_id,COALESCE(group_id,''),server_group,tags_json,last_connected,description,os,created_at,updated_at,connection_revision,sort_order,COALESCE(jump_server_id,'') FROM desktop_server_details WHERE id=?`, id))
 	if err != nil {
 		return protocol.Server{}, err
 	}
@@ -446,6 +451,9 @@ func (s *DesktopServerService) Update(id string, input protocol.ServerUpdate) (p
 		server.Password = current.Password
 	}
 	server.SSHKeyID = current.SSHKeyID
+	if err := validateDesktopJumpServer(tx, id, server.JumpServerID); err != nil {
+		return protocol.Server{}, err
+	}
 	if err := enrollDesktopServerGroup(tx, id, &server); err != nil {
 		return protocol.Server{}, err
 	}
@@ -463,7 +471,7 @@ func (s *DesktopServerService) Update(id string, input protocol.ServerUpdate) (p
 		}
 		return desktopPublicServer(current, s.activity.onlineServers()[current.ID])
 	}
-	connectionChanged := server.Host != current.Host || server.Port != current.Port || server.Username != current.Username || server.AuthMethod != current.AuthMethod || !desktopSameSSHKey(current.SSHKeyID, server.SSHKeyID)
+	connectionChanged := server.JumpServerID != current.JumpServerID || server.Host != current.Host || server.Port != current.Port || server.Username != current.Username || server.AuthMethod != current.AuthMethod || !desktopSameSSHKey(current.SSHKeyID, server.SSHKeyID)
 	if connectionChanged {
 		server.OS = ""
 	}
@@ -478,7 +486,7 @@ func (s *DesktopServerService) Update(id string, input protocol.ServerUpdate) (p
 	if connectionChanged {
 		delta = 1
 	}
-	result, err := tx.Exec(`UPDATE desktop_servers SET name=?,host=?,port=?,username=?,group_id=?,description=?,os=?,updated_at=?,connection_revision=connection_revision+? WHERE id=? AND updated_at=?`, server.Name, server.Host, server.Port, server.Username, desktopGroupID(server.GroupID), server.Description, server.OS, now, delta, id, current.UpdatedAt)
+	result, err := tx.Exec(`UPDATE desktop_servers SET name=?,host=?,port=?,username=?,group_id=?,jump_server_id=?,description=?,os=?,updated_at=?,connection_revision=connection_revision+? WHERE id=? AND updated_at=?`, server.Name, server.Host, server.Port, server.Username, desktopGroupID(server.GroupID), desktopGroupID(server.JumpServerID), server.Description, server.OS, now, delta, id, current.UpdatedAt)
 	if err != nil {
 		return protocol.Server{}, err
 	}
@@ -493,6 +501,11 @@ func (s *DesktopServerService) Update(id string, input protocol.ServerUpdate) (p
 			return protocol.Server{}, err
 		}
 		if err = recordDesktopConfiguration(tx, "server_updated", "server", id, serverDisplayName(server), "manual", fields, nil); err != nil {
+			return protocol.Server{}, err
+		}
+	}
+	if connectionChanged || passwordChanged {
+		if err := invalidateDesktopJumpDependents(tx, id); err != nil {
 			return protocol.Server{}, err
 		}
 	}
@@ -893,7 +906,7 @@ func (s *DesktopServerService) getByIDStored(id string) (DesktopServer, error) {
 
 	row := database.QueryRow(`
 		SELECT id, user_id, name, host, port, username, auth_method, password, ssh_key_id,
-			COALESCE(group_id,''), server_group, tags_json, last_connected, description, os, created_at, updated_at, connection_revision, sort_order
+			COALESCE(group_id,''), server_group, tags_json, last_connected, description, os, created_at, updated_at, connection_revision, sort_order, COALESCE(jump_server_id,'')
 		FROM desktop_server_details
 		WHERE id = ?`, id)
 
@@ -901,6 +914,17 @@ func (s *DesktopServerService) getByIDStored(id string) (DesktopServer, error) {
 }
 
 func (s *DesktopServerService) getByIDRaw(id string) (DesktopServer, error) {
+	server, err := s.getByIDRawDirect(id)
+	if err != nil {
+		return DesktopServer{}, err
+	}
+	if err := s.loadDesktopJumpServers(&server); err != nil {
+		return DesktopServer{}, err
+	}
+	return server, nil
+}
+
+func (s *DesktopServerService) getByIDRawDirect(id string) (DesktopServer, error) {
 	server, err := s.getByIDStored(id)
 	if err != nil {
 		return DesktopServer{}, err
@@ -986,6 +1010,9 @@ func normalizeDesktopServerInput(input protocol.ServerCreate) (DesktopServer, er
 		len(input.Password) > 4096 || len(input.PrivateKey) > 1<<20 || len(input.PrivateKeyPassphrase) > 4096 {
 		return DesktopServer{}, errors.New("invalid server fields")
 	}
+	if input.JumpServerID != "" && !servergroup.ValidID(input.JumpServerID) {
+		return DesktopServer{}, errors.New("invalid jump server ID")
+	}
 	if input.GroupID != "" && !servergroup.ValidID(input.GroupID) {
 		return DesktopServer{}, servergroup.ErrInvalid
 	}
@@ -995,16 +1022,17 @@ func normalizeDesktopServerInput(input protocol.ServerCreate) (DesktopServer, er
 	}
 
 	return DesktopServer{
-		Name:        strings.TrimSpace(input.Name),
-		Host:        host,
-		Port:        port,
-		Username:    username,
-		AuthMethod:  authMethod,
-		Password:    input.Password,
-		PrivateKey:  input.PrivateKey,
-		GroupID:     input.GroupID,
-		Tags:        tags,
-		Description: strings.TrimSpace(input.Description),
+		Name:         strings.TrimSpace(input.Name),
+		Host:         host,
+		Port:         port,
+		Username:     username,
+		AuthMethod:   authMethod,
+		Password:     input.Password,
+		PrivateKey:   input.PrivateKey,
+		GroupID:      input.GroupID,
+		JumpServerID: input.JumpServerID,
+		Tags:         tags,
+		Description:  strings.TrimSpace(input.Description),
 	}, nil
 }
 
@@ -1226,6 +1254,7 @@ func scanDesktopServer(scanner desktopServerScanner) (DesktopServer, error) {
 		&server.UpdatedAt,
 		&server.connectionRevision,
 		&server.sortOrder,
+		&server.JumpServerID,
 	)
 	if err != nil {
 		return DesktopServer{}, err
@@ -1262,7 +1291,8 @@ func desktopPublicServer(server DesktopServer, connected bool) (protocol.Server,
 		ID: id, Name: server.Name, Host: server.Host, Port: server.Port, Username: server.Username,
 		OS: server.OS, Connected: &connected, AuthMethod: &auth, ConnectionRevision: &server.connectionRevision,
 		HasPassword: &hasPassword, HasPrivateKey: &hasPrivateKey, GroupID: &server.GroupID,
-		Group: &server.Group, Tags: &tags, Description: &server.Description, SortOrder: &server.sortOrder,
+		JumpServerID: &server.JumpServerID,
+		Group:        &server.Group, Tags: &tags, Description: &server.Description, SortOrder: &server.sortOrder,
 	}
 	if server.SSHKeyID != nil {
 		keyID, err := uuid.Parse(*server.SSHKeyID)
@@ -1294,7 +1324,7 @@ func desktopPublicServer(server DesktopServer, connected bool) (protocol.Server,
 func mergeDesktopServerUpdate(current DesktopServer, input protocol.ServerUpdate) (DesktopServer, error) {
 	merged := protocol.ServerCreate{
 		Name: current.Name, Host: current.Host, Port: current.Port, Username: current.Username,
-		AuthMethod: protocol.ServerAuthMethod(current.AuthMethod), GroupID: current.GroupID,
+		AuthMethod: protocol.ServerAuthMethod(current.AuthMethod), GroupID: current.GroupID, JumpServerID: current.JumpServerID,
 		Tags: current.Tags, Description: current.Description, PrivateKeyPassphrase: input.PrivateKeyPassphrase,
 	}
 	if input.Name != nil {
@@ -1314,6 +1344,9 @@ func mergeDesktopServerUpdate(current DesktopServer, input protocol.ServerUpdate
 	}
 	if input.AuthMethod != nil {
 		merged.AuthMethod = *input.AuthMethod
+	}
+	if input.JumpServerID != nil {
+		merged.JumpServerID = *input.JumpServerID
 	}
 	if input.GroupID != nil {
 		merged.GroupID = *input.GroupID

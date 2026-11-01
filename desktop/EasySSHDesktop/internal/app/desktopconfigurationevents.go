@@ -58,7 +58,7 @@ func desktopServerChangedFields(before, after DesktopServer, passwordChanged boo
 	}{
 		{"name", before.Name != after.Name}, {"host", before.Host != after.Host}, {"port", before.Port != after.Port},
 		{"username", before.Username != after.Username}, {"auth_method", before.AuthMethod != after.AuthMethod},
-		{"group_id", before.GroupID != after.GroupID}, {"tags", !slices.Equal(before.Tags, after.Tags)}, {"description", before.Description != after.Description},
+		{"jump_server_id", before.JumpServerID != after.JumpServerID}, {"group_id", before.GroupID != after.GroupID}, {"tags", !slices.Equal(before.Tags, after.Tags)}, {"description", before.Description != after.Description},
 		{"password", passwordChanged}, {"ssh_key_id", !desktopSameSSHKey(before.SSHKeyID, after.SSHKeyID)},
 	} {
 		if f.changed {

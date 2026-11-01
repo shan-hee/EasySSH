@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"github.com/easyssh/shared/protocol"
 	crypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/easyssh/shared/sshutil"
@@ -51,6 +52,8 @@ const (
 // Server 服务器模型
 type Server struct {
 	executionScope     access.Scope
+	jumpServerLoader   func(context.Context) ([]*Server, error)
+	JumpServerID       *uuid.UUID   `gorm:"type:char(36);index" json:"jump_server_id,omitempty"`
 	Auth               ServerAuth   `gorm:"foreignKey:ServerID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
 	ConnectionRevision int64        `gorm:"not null;default:1" json:"connection_revision"`
 	ID                 uuid.UUID    `gorm:"type:char(36);primary_key" json:"id"`
@@ -201,6 +204,8 @@ func (s *Server) ToPublic() protocol.Server {
 	if tags == nil {
 		tags = []string{}
 	}
+	jumpServerID := jumpID(s.JumpServerID)
+	result.JumpServerID = &jumpServerID
 	result.ConnectionRevision, result.AuthMethod = &s.ConnectionRevision, &auth
 	result.HasPassword, result.HasPrivateKey = &hasPassword, &hasPrivateKey
 	result.SSHKeyID, result.GroupID, result.Group, result.Tags = s.Auth.SSHKeyID, &groupID, &s.Group, &tags

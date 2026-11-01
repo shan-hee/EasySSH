@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -205,7 +203,7 @@ func (s *DesktopTerminalService) runSession(input DesktopTerminalStartInput, ent
 		result = err
 		return
 	}
-	client, err := sshutil.DialContext(initCtx, net.JoinHostPort(server.Host, strconv.Itoa(server.Port)), config)
+	client, err := dialDesktopSSH(initCtx, server, config)
 	if err != nil {
 		result = err
 		return

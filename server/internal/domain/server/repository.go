@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	ErrInvalidServer       = errors.New("invalid server configuration")
-	ErrServerNotFound      = errors.New("server not found")
-	ErrServerAlreadyExists = errors.New("server already exists")
-	ErrUnauthorized        = errors.New("unauthorized to access this server")
+	ErrInvalidServer        = errors.New("invalid server configuration")
+	ErrServerNotFound       = errors.New("server not found")
+	ErrServerAlreadyExists  = errors.New("server already exists")
+	ErrServerUpdateConflict = errors.New("server configuration changed; reload before saving")
+	ErrUnauthorized         = errors.New("unauthorized to access this server")
 )
 
 // Repository 服务器数据访问接口
@@ -57,6 +58,9 @@ func (r *gormRepository) Create(ctx context.Context, server *Server) error {
 			Select("COALESCE(MAX(sort_order), -1) + 1").Scan(&server.SortOrder).Error; err != nil {
 			return err
 		}
+		if err := validateJumpServer(tx, server); err != nil {
+			return err
+		}
 		if err := resolveServerGroup(tx, server); err != nil {
 			return err
 		}
@@ -83,8 +87,12 @@ func (r *gormRepository) FindByID(ctx context.Context, id uuid.UUID) (*Server, e
 
 func (r *gormRepository) Update(ctx context.Context, server *Server) error {
 	changed := false
+	var dependents []string
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var current Server
+		if err := validateJumpServer(tx, server); err != nil {
+			return err
+		}
 		if err := resolveServerGroup(tx, server); err != nil {
 			return err
 		}
@@ -92,21 +100,24 @@ func (r *gormRepository) Update(ctx context.Context, server *Server) error {
 			return err
 		}
 		if server.ConnectionRevision != current.ConnectionRevision || !server.UpdatedAt.Equal(current.UpdatedAt) {
-			return access.ErrResourceChanged
+			return ErrServerUpdateConflict
 		}
 		sameKey := current.Auth.SSHKeyID == nil && server.Auth.SSHKeyID == nil ||
 			current.Auth.SSHKeyID != nil && server.Auth.SSHKeyID != nil && *current.Auth.SSHKeyID == *server.Auth.SSHKeyID
-		changed = current.Host != server.Host || current.Port != server.Port || current.Username != server.Username || current.Auth.AuthMethod != server.Auth.AuthMethod || !sameKey
+		changed = current.Host != server.Host || current.Port != server.Port || current.Username != server.Username || current.Auth.AuthMethod != server.Auth.AuthMethod || !sameKey || jumpID(current.JumpServerID) != jumpID(server.JumpServerID)
 		if changed {
 			server.ConnectionRevision++
 		}
-		result := tx.Model(&Server{}).Where("id = ? AND connection_revision = ? AND updated_at = ?", server.ID, current.ConnectionRevision, current.UpdatedAt).
+		// Compare timestamps as instants above, not as SQL text: SQLite can store
+		// RFC3339 and driver-formatted timestamps for the same instant. The row
+		// lock (or SQLite transaction snapshot) protects this read/update pair.
+		result := tx.Model(&Server{}).Where("id = ? AND connection_revision = ?", server.ID, current.ConnectionRevision).
 			Select("*").Omit("ID", "CreatedAt", "Auth", "GroupRecord", "TagRecords").Updates(server)
 		if result.Error != nil {
 			return result.Error
 		}
 		if result.RowsAffected != 1 {
-			return access.ErrResourceChanged
+			return ErrServerUpdateConflict
 		}
 		if err := server.SaveAuth(tx); err != nil {
 			return err
@@ -114,11 +125,23 @@ func (r *gormRepository) Update(ctx context.Context, server *Server) error {
 		if err := server.SaveTags(tx); err != nil {
 			return err
 		}
+		if changed || current.Auth.Password != server.Auth.Password {
+			var err error
+			dependents, err = InvalidateJumpDependents(tx, server.ID)
+			if err != nil {
+				return err
+			}
+		}
 		if fields := serverChangedFields(current, *server); len(fields) > 0 {
 			return recordServerConfiguration(tx, "server_update", *server, fields)
 		}
 		return nil
 	})
+	if err == nil {
+		for _, id := range dependents {
+			r.runtime.InvalidateVisitors(id, access.ErrResourceChanged)
+		}
+	}
 	if err == nil && changed {
 		r.runtime.InvalidateVisitors(server.ID.String(), access.ErrResourceChanged)
 	}

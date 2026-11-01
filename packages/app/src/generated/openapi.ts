@@ -5255,6 +5255,8 @@ export interface components {
              * @description 所有者的保存密钥引用；未关联时省略。
              */
             ssh_key_id?: string;
+            /** @description 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。 */
+            jump_server_id?: string;
             /** @description 所属分组 UUID；未分组为空字符串。 */
             group_id?: string;
             group?: string;
@@ -5852,6 +5854,8 @@ export interface components {
             ssh_key_id?: string;
             /** Format: password */
             private_key_passphrase?: string;
+            /** @description 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。 */
+            jump_server_id?: string;
             group_id?: string;
             tags?: string[];
             description?: string;
@@ -5870,6 +5874,8 @@ export interface components {
             ssh_key_id?: string;
             /** Format: password */
             private_key_passphrase?: string;
+            /** @description 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。 */
+            jump_server_id?: string;
             group_id?: string;
             tags?: string[];
             description?: string;

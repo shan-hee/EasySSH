@@ -251,6 +251,31 @@ func apply(tx *gorm.DB, encryptor *crypto.Encryptor, before, after syncdata.Snap
 		}
 	}
 
+	// The transaction temporarily disconnects only changed/deleted edges. This
+	// permits deleting a whole route or replacing it without depending on map order.
+	for key, old := range before {
+		if !strings.HasPrefix(key, "server/") {
+			continue
+		}
+		oldConn, err := syncdata.ParseConnection(old["connection"])
+		if err != nil {
+			return err
+		}
+		next := after[key]
+		var nextJump string
+		if next != nil {
+			c, err := syncdata.ParseConnection(next["connection"])
+			if err != nil {
+				return err
+			}
+			nextJump = c.JumpServerID
+		}
+		if oldConn.JumpServerID != "" && (next == nil || oldConn.JumpServerID != nextJump) {
+			if err := tx.Model(&servermodel.Server{}).Where("id=?", strings.TrimPrefix(key, "server/")).UpdateColumn("jump_server_id", nil).Error; err != nil {
+				return err
+			}
+		}
+	}
 	// Groups precede servers so deleted groups retain their member snapshots.
 	for _, key := range slices.Sorted(maps.Keys(before)) {
 		if key == syncdata.ServerOrderKey {
@@ -375,6 +400,33 @@ func apply(tx *gorm.DB, encryptor *crypto.Encryptor, before, after syncdata.Snap
 			}
 		}
 	}
+	// All referenced servers now exist, including newly synchronized jump hosts.
+	for key, record := range after {
+		if !strings.HasPrefix(key, "server/") {
+			continue
+		}
+		conn, err := syncdata.ParseConnection(record["connection"])
+		if err != nil {
+			return err
+		}
+		var jumpID *uuid.UUID
+		if conn.JumpServerID != "" {
+			id := uuid.MustParse(conn.JumpServerID)
+			jumpID = &id
+		}
+		if err := tx.Model(&servermodel.Server{}).Where("id=?", strings.TrimPrefix(key, "server/")).UpdateColumn("jump_server_id", jumpID).Error; err != nil {
+			return err
+		}
+	}
+	for key, old := range before {
+		next := after[key]
+		if !strings.HasPrefix(key, "server/") || next == nil || syncdata.SameConnection(old["connection"], next["connection"]) {
+			continue
+		}
+		if _, err := servermodel.InvalidateJumpDependents(tx, uuid.MustParse(strings.TrimPrefix(key, "server/"))); err != nil {
+			return err
+		}
+	}
 	order, err := syncdata.OrderedServers(after)
 	if err != nil {
 		return err
@@ -410,6 +462,9 @@ func (s *Service) SetEnabled(ctx context.Context, owner uuid.UUID, enabled bool)
 
 func connectionSnapshot(row servermodel.Server) syncdata.Connection {
 	c := syncdata.Connection{Host: row.Host, Port: row.Port, Username: row.Username, AuthMethod: string(row.Auth.AuthMethod)}
+	if row.JumpServerID != nil {
+		c.JumpServerID = row.JumpServerID.String()
+	}
 	if key := row.Auth.SSHKey; key != nil {
 		c.Key = &syncdata.KeyReference{ID: key.ID.String(), Name: key.Name, PublicKey: key.PublicKey, Fingerprint: key.Fingerprint, Algorithm: key.Algorithm, KeySize: key.KeySize}
 	}

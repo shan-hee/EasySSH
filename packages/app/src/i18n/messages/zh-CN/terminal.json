@@ -117,6 +117,7 @@
   "terminalErrorServerNotFound": "服务器不存在或无权访问",
   "terminalErrorWebSocket": "连接通道异常，请检查网络后重试",
   "terminalErrorHostUnreachable": "无法连接服务器，请检查网络、地址或端口",
+  "terminalErrorForwardingDenied": "跳板机拒绝 TCP 转发，请检查跳板机的 AllowTcpForwarding、DisableForwarding、PermitOpen 及登录公钥的转发限制",
   "terminalErrorHostKeyChanged": "服务器主机密钥已变更，请确认后再连接",
   "terminalErrorHostKeyRevoked": "服务器主机密钥信任已被撤销",
   "terminalErrorPrivateKeyPassphraseRequired": "该私钥需要口令",

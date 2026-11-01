@@ -34,7 +34,7 @@ func serverChangedFields(before, after Server) []string {
 	}{
 		{"name", before.Name != after.Name}, {"host", before.Host != after.Host}, {"port", before.Port != after.Port},
 		{"username", before.Username != after.Username}, {"auth_method", before.Auth.AuthMethod != after.Auth.AuthMethod},
-		{"group_id", !sameGroup}, {"tags", !slices.Equal(before.Tags, after.Tags)}, {"description", before.Description != after.Description},
+		{"jump_server_id", jumpID(before.JumpServerID) != jumpID(after.JumpServerID)}, {"group_id", !sameGroup}, {"tags", !slices.Equal(before.Tags, after.Tags)}, {"description", before.Description != after.Description},
 		{"password", before.Auth.Password != after.Auth.Password}, {"ssh_key_id", !sameKey},
 	} {
 		if field.changed {

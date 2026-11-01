@@ -38,7 +38,11 @@ func (s *DesktopSyncService) captureLocalVault(tx *sql.Tx, v DesktopVaultState) 
 		if err != nil {
 			return nil, err
 		}
-		p.Credential = &syncdata.Credential{Connection: syncdata.JSON(syncdata.Connection{Host: host, Port: port, Username: user, AuthMethod: method}), Password: password}
+		jumpID, err := desktopSyncJumpID(tx, v.LocalID, v.SpaceID)
+		if err != nil {
+			return nil, err
+		}
+		p.Credential = &syncdata.Credential{Connection: syncdata.JSON(syncdata.Connection{JumpServerID: jumpID, Host: host, Port: port, Username: user, AuthMethod: method}), Password: password}
 		if keyID.Valid {
 			var k syncdata.KeyMaterial
 			var enc, phrase string
@@ -55,7 +59,7 @@ func (s *DesktopSyncService) captureLocalVault(tx *sql.Tx, v DesktopVaultState) 
 				return nil, err
 			}
 			p.Credential.Key = &k
-			connection := syncdata.Connection{Host: host, Port: port, Username: user, AuthMethod: method, Key: &syncdata.KeyReference{ID: k.ID, Name: k.Name, PublicKey: k.PublicKey, Fingerprint: k.Fingerprint, Algorithm: k.Algorithm, KeySize: k.KeySize}}
+			connection := syncdata.Connection{JumpServerID: jumpID, Host: host, Port: port, Username: user, AuthMethod: method, Key: &syncdata.KeyReference{ID: k.ID, Name: k.Name, PublicKey: k.PublicKey, Fingerprint: k.Fingerprint, Algorithm: k.Algorithm, KeySize: k.KeySize}}
 			p.Credential.Connection = syncdata.JSON(connection)
 		}
 	case "ai_config":
@@ -134,9 +138,13 @@ func (s *DesktopSyncService) applyLocalVault(tx *sql.Tx, v DesktopVaultState, p 
 			return err
 		}
 		c := p.Credential
-		binding := syncdata.Connection{Host: host, Port: port, Username: user, AuthMethod: method}
+		jumpID, err := desktopSyncJumpID(tx, v.LocalID, v.SpaceID)
+		if err != nil {
+			return err
+		}
+		binding := syncdata.Connection{JumpServerID: jumpID, Host: host, Port: port, Username: user, AuthMethod: method}
 		var ref syncdata.KeyReference
-		err := tx.QueryRow(`SELECT k.id,k.name,k.public_key,k.fingerprint,k.algorithm,k.key_size FROM desktop_server_auth a JOIN desktop_ssh_keys k ON k.id=a.ssh_key_id WHERE a.server_id=?`, v.LocalID).Scan(&ref.ID, &ref.Name, &ref.PublicKey, &ref.Fingerprint, &ref.Algorithm, &ref.KeySize)
+		err = tx.QueryRow(`SELECT k.id,k.name,k.public_key,k.fingerprint,k.algorithm,k.key_size FROM desktop_server_auth a JOIN desktop_ssh_keys k ON k.id=a.ssh_key_id WHERE a.server_id=?`, v.LocalID).Scan(&ref.ID, &ref.Name, &ref.PublicKey, &ref.Fingerprint, &ref.Algorithm, &ref.KeySize)
 		if err != nil && err != sql.ErrNoRows {
 			return err
 		}
@@ -194,6 +202,9 @@ func (s *DesktopSyncService) applyLocalVault(tx *sql.Tx, v DesktopVaultState, p 
 			return err
 		}
 		_, err = tx.Exec(`UPDATE desktop_servers SET updated_at=?,connection_revision=connection_revision+? WHERE id=?`, now, delta, v.LocalID)
+		if err == nil && len(fields) > 0 {
+			err = invalidateDesktopJumpDependents(tx, v.LocalID)
+		}
 		if err != nil {
 			return err
 		}

@@ -23,6 +23,7 @@ import (
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/server/internal/domain/sshhostkey"
 	"github.com/easyssh/shared/secretcrypto"
+	"github.com/easyssh/shared/sshutil"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -276,6 +277,8 @@ func classifyTerminalInitError(err error) terminalErrorInfo {
 	}
 
 	switch {
+	case errors.Is(err, sshutil.ErrForwardingDenied):
+		info.Code = "ssh_forwarding_denied"
 	case strings.Contains(message, "authentication cancelled") ||
 		strings.Contains(message, "private key passphrase cancelled"):
 		info.Code = "auth_cancelled"

@@ -103,6 +103,22 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 			}
 		}
 	}
+	// Detect a committed MySQL ALTER whose version update was interrupted.
+	var jumpColumns int
+	switch driver {
+	case "sqlite":
+		err = db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('servers') WHERE name='jump_server_id'").Scan(&jumpColumns)
+	case "postgres":
+		err = db.QueryRowContext(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='servers' AND column_name='jump_server_id'").Scan(&jumpColumns)
+	case "mysql":
+		err = db.QueryRowContext(ctx, "SELECT count(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='servers' AND column_name='jump_server_id'").Scan(&jumpColumns)
+	}
+	if err != nil {
+		return err
+	}
+	if (jumpColumns == 1) != (version >= 11) {
+		return fmt.Errorf("schema %d disagrees with servers.jump_server_id; restore the migration recovery point", version)
+	}
 	// Validate the columns introduced by completed versions, not just table names.
 	for _, check := range []struct {
 		introduced int64
@@ -123,6 +139,7 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 		{10, 0, "SELECT provider,app_id FROM chat_connections WHERE 1=0"},
 		{10, 0, "SELECT external_user_id,external_chat_id FROM chat_bindings WHERE 1=0"},
 		{10, 0, "SELECT id,connection_id,created_at FROM chat_received_events WHERE 1=0"},
+		{11, 0, "SELECT jump_server_id FROM servers WHERE 1=0"},
 	} {
 		if version < check.introduced || check.removed != 0 && version >= check.removed {
 			continue

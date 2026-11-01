@@ -4498,12 +4498,15 @@ type Server struct {
 	HasPrivateKey *bool              `json:"has_private_key,omitempty"`
 	Host          string             `json:"host"`
 	ID            openapi_types.UUID `json:"id"`
-	LastConnected *time.Time         `json:"last_connected,omitempty"`
-	Name          string             `json:"name"`
-	OS            string             `json:"os,omitempty"`
-	Port          int                `json:"port"`
-	Region        string             `json:"region,omitempty"`
-	SortOrder     *int               `json:"sort_order,omitempty"`
+
+	// JumpServerID 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
+	JumpServerID  *string    `json:"jump_server_id,omitempty"`
+	LastConnected *time.Time `json:"last_connected,omitempty"`
+	Name          string     `json:"name"`
+	OS            string     `json:"os,omitempty"`
+	Port          int        `json:"port"`
+	Region        string     `json:"region,omitempty"`
+	SortOrder     *int       `json:"sort_order,omitempty"`
 
 	// SSHKeyID 所有者的保存密钥引用；未关联时省略。
 	SSHKeyID *openapi_types.UUID `json:"ssh_key_id,omitempty"`
@@ -4521,10 +4524,13 @@ type ServerAuthMethod string
 // ServerCreate 省略 port 或传 0 时使用 22。保存密钥引用与非空私钥导入互斥。
 type ServerCreate struct {
 	// AuthMethod 按指定顺序尝试密码、密钥和交互式认证因子。
-	AuthMethod           ServerAuthMethod    `json:"auth_method"`
-	Description          string              `json:"description,omitempty"`
-	GroupID              string              `json:"group_id,omitempty"`
-	Host                 string              `binding:"required" json:"host"`
+	AuthMethod  ServerAuthMethod `json:"auth_method"`
+	Description string           `json:"description,omitempty"`
+	GroupID     string           `json:"group_id,omitempty"`
+	Host        string           `binding:"required" json:"host"`
+
+	// JumpServerID 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
+	JumpServerID         string              `json:"jump_server_id,omitempty"`
 	Name                 string              `json:"name,omitempty"`
 	Password             string              `json:"password,omitempty"`
 	Port                 int                 `json:"port,omitempty"`
@@ -4604,10 +4610,13 @@ type ServerStatus string
 // ServerUpdate 省略字段保持原值。password/description/group_id 的空字符串分别清空；tags 空数组清空。ssh_key_id 传全零 UUID 解除引用，private_key 空字符串也可解除引用。
 type ServerUpdate struct {
 	// AuthMethod 按指定顺序尝试密码、密钥和交互式认证因子。
-	AuthMethod           *ServerAuthMethod   `json:"auth_method,omitempty"`
-	Description          *string             `json:"description,omitempty"`
-	GroupID              *string             `json:"group_id,omitempty"`
-	Host                 *string             `json:"host,omitempty"`
+	AuthMethod  *ServerAuthMethod `json:"auth_method,omitempty"`
+	Description *string           `json:"description,omitempty"`
+	GroupID     *string           `json:"group_id,omitempty"`
+	Host        *string           `json:"host,omitempty"`
+
+	// JumpServerID 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
+	JumpServerID         *string             `json:"jump_server_id,omitempty"`
 	Name                 *string             `json:"name,omitempty"`
 	Password             *string             `json:"password,omitempty"`
 	Port                 *int                `json:"port,omitempty"`

@@ -228,6 +228,8 @@ func getOwnerIDFromContext(c *gin.Context) (uuid.UUID, error) {
 
 func serverError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, server.ErrServerUpdateConflict):
+		RespondError(c, http.StatusConflict, "server_changed", "Server configuration changed; reload before saving")
 	case errors.Is(err, server.ErrInvalidServer):
 		RespondError(c, http.StatusBadRequest, "invalid_server", err.Error())
 	case errors.Is(err, server.ErrServerNotFound):
