@@ -34,7 +34,7 @@ func TestImportKeyReuseOwnershipAndDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { sqlDB.Close() })
-	if err := db.AutoMigrate(&serverdomain.Server{}, &security.SecurityConfig{}, &auth.Owner{}, &auth.Session{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
+	if err := db.AutoMigrate(&serverdomain.Server{}, &serverdomain.ServerAuth{}, &serverdomain.ServerTag{}, &serverdomain.ServerGroup{}, &sshkey.SSHKey{}, &security.SecurityConfig{}, &auth.Owner{}, &auth.Session{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
 		t.Fatal(err)
 	}
 	e, err := crypto.NewEncryptor(base64.StdEncoding.EncodeToString(make([]byte, 32)))

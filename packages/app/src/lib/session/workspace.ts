@@ -387,7 +387,10 @@ export interface WorkspaceDockerApi {
   checkImageUpdate: (serverId: string, containerId: string) => Promise<WorkspaceDockerImageUpdateCheckResponse>
 }
 
+export type RemoteDesktopSocketFactory = (connectionId: string, mode: "vnc" | "rdp") => WebSocket
+
 export interface SshWorkspaceApiClient {
+  remoteDesktopSocket?: RemoteDesktopSocketFactory
   systemInfo?: SystemInfoApi
   scripts?: {
     list: (params?: ListScriptsParams) => Promise<ListScriptsResponse>

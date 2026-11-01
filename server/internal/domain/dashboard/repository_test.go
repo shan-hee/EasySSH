@@ -23,7 +23,7 @@ func TestOverviewPresenceUsesEstablishedConnectionsNotLastOutcome(t *testing.T) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = raw.Close() })
-	if err := db.AutoMigrate(&serverdomain.Server{}, &operationrecord.OperationRecord{}); err != nil {
+	if err := db.AutoMigrate(&serverdomain.Server{}, &serverdomain.ServerAuth{}, &serverdomain.ServerTag{}, &serverdomain.ServerGroup{}, &operationrecord.OperationRecord{}); err != nil {
 		t.Fatal(err)
 	}
 	historical := serverdomain.Server{ID: uuid.New(), Host: "historical.invalid", Port: 22, Username: "owner", Status: serverdomain.StatusOnline, CountryCode: "US"}

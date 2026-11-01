@@ -549,8 +549,8 @@ function AccessResourcePanel({
       capabilities={capabilities}
       layout="embedded"
     >
-      {tab.mode === "rdp" && <RDPSession serverId={tab.server.id} isActive={active} onPhase={() => undefined} />}
-      {tab.mode === "vnc" && <VNCSession serverId={tab.server.id} isActive={active} onPhase={() => undefined} />}
+      {tab.mode === "rdp" && <RDPSession serverId={tab.server.id} isActive={active} onPhase={() => undefined} createSocket={adapters.apiClient?.remoteDesktopSocket} />}
+      {tab.mode === "vnc" && <VNCSession serverId={tab.server.id} isActive={active} onPhase={() => undefined} createSocket={adapters.apiClient?.remoteDesktopSocket} />}
       {tab.mode === "terminal" && (
         <TabTerminalContent
           session={session}

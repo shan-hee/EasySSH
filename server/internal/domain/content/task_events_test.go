@@ -67,7 +67,8 @@ func TestTaskEventBodyFollowsParentVisibilityAndReferenceLifetime(t *testing.T) 
 		t.Fatal("event body changed", err)
 	}
 	other := actor
-	other.ID, other.SessionID = uuid.NewString(), uuid.NewString()
+	other.ID = uuid.NewString()
+	other.SessionID = other.ID
 	if _, err := bodies.Reference(contentContext(t, other, authority), ref.ID); err == nil {
 		t.Fatal("other visitor read the event")
 	}

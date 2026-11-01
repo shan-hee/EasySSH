@@ -103,7 +103,7 @@ func TestSyncedOwnerRevisionReusesItsLargeBodyAcrossLoginSessions(t *testing.T) 
 	db, store := sessionItemsFixture(t)
 	now := time.Now().UTC()
 	snapshot := SessionSnapshot{ID: uuid.NewString(), Actor: testAIActor(uuid.New()), Status: SessionStatusIdle, CreatedAt: now, UpdatedAt: now,
-		MessageViews: []MessageView{{ID: "one", Role: "user", Content: strings.Repeat("history", 10000)}},
+		MessageViews: []MessageView{{ID: "one", Role: "user", ExternalContent: true, Content: strings.Repeat("history", 10000)}},
 	}
 	require.NoError(t, store.Save(context.Background(), snapshot))
 	snapshot.Actor.SessionID = "sync-import"

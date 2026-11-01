@@ -20,7 +20,7 @@ func TestConnectionDeletionRemovesOnlyItsCredentialHistory(t *testing.T) {
 	for _, mode := range []string{"manual", "sync"} {
 		t.Run(mode, func(t *testing.T) {
 			s := newSyncTestService(t)
-			if err := s.DB.AutoMigrate(&servermodel.Server{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
+			if err := s.DB.AutoMigrate(&servermodel.Server{}, &servermodel.ServerAuth{}, &servermodel.ServerTag{}, &servermodel.ServerGroup{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
 				t.Fatal(err)
 			}
 			owner, id, other := uuid.New(), uuid.New(), uuid.New()
@@ -66,7 +66,7 @@ func TestConnectionDeletionRemovesOnlyItsCredentialHistory(t *testing.T) {
 				err = servermodel.NewRepository(s.DB, runtime).Delete(access.WithScope(context.Background(), scope), id)
 			} else {
 				err = s.DB.WithContext(syncActivityContext(t, owner)).Transaction(func(tx *gorm.DB) error {
-					return apply(tx, s.Encryptor, syncdata.Snapshot{"server/" + id.String(): syncdata.Record{}}, syncdata.Snapshot{syncdata.ServerOrderKey: {"ids": "[]"}})
+					return apply(tx, s.Encryptor, syncdata.Snapshot{"server/" + id.String(): syncdata.Record{"connection": syncdata.JSON(syncdata.Connection{Host: "host.test", Port: 22, Username: "owner", AuthMethod: "password"})}}, syncdata.Snapshot{syncdata.ServerOrderKey: {"ids": "[]"}})
 				})
 			}
 			if err != nil {

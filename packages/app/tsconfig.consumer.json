@@ -1,5 +1,6 @@
 // 消费方编译本包源码时继承此配置；@/ 只表示 @easyssh/app 的 src，消费方自身代码不得使用。
 {
+  "files": ["./src/types/novnc.d.ts"],
   "compilerOptions": {
     "paths": {
       "@/*": [

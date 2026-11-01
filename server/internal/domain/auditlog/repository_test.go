@@ -118,7 +118,10 @@ func TestOverviewIncludesConfigurationWithoutCountingAuditReceipts(t *testing.T)
 		{ActionScheduledTaskTrigger, StatusSuccess},
 		{ActionAuditLogsCleanup, StatusSuccess},
 	} {
-		if err := repo.Create(ctx, &AuditLog{Actor: actor, Action: entry.action, Status: entry.status}); err != nil {
+		// Inputs may carry a local offset; UTC overview bounds must still include
+		// the same instant when SQLite compares stored timestamps.
+		created := time.Now().In(time.FixedZone("UTC+8", 8*60*60))
+		if err := repo.Create(ctx, &AuditLog{Actor: actor, Action: entry.action, Status: entry.status, CreatedAt: created}); err != nil {
 			t.Fatal(err)
 		}
 	}

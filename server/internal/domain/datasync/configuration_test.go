@@ -41,8 +41,8 @@ func TestInspectConfigurationWorksWithReadOnlyDatabase(t *testing.T) {
 			t.Fatalf("read-only inspection: count=%d conflicts=%v error=%v", count, result.Conflicts, err)
 		}
 	}
-	if _, count, err := s.InspectConfiguration(ctx, uuid.New()); err != nil || count != 0 {
-		t.Fatalf("uninitialized account inspection: count=%d error=%v", count, err)
+	if _, count, err := s.InspectConfiguration(ctx, uuid.New()); err != nil || count != 1 {
+		t.Fatalf("workspace inspection before owner sync initialization: count=%d error=%v", count, err)
 	}
 	var state State
 	if err := s.DB.First(&state, "owner_id=?", owner).Error; err != nil {

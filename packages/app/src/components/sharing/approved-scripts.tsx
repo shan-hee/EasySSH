@@ -28,7 +28,7 @@ export function ApprovedScripts({ serverId }: { serverId: string }) {
     queryFn: async () => {
       const items: Script[] = []
       let after = ""
-      do {
+      for (;;) {
         const page = await apiFetch<components["schemas"]["ScriptCatalogPage"]>(
           `/scripts/available?${new URLSearchParams({ server_id: serverId, after_id: after, limit: "100" })}`,
         )
@@ -37,7 +37,7 @@ export function ApprovedScripts({ serverId }: { serverId: string }) {
         if (!page.next_after_id || page.next_after_id === after)
           throw new Error("Invalid script cursor")
         after = page.next_after_id
-      } while (true)
+      }
       return items
     },
   })

@@ -32,7 +32,7 @@ type DesktopRemoteStreamInfo struct {
 
 type DesktopRemoteFrame struct {
 	Sequence uint64 `json:"sequence"`
-	Encoding string `json:"encoding"` // terminal.bytes, monitor.protobuf, event.json, or ai.sse
+	Encoding string `json:"encoding"` // terminal.bytes, monitor.protobuf, event.json, ai.sse, vnc.bytes, or rdp.json
 	Data     []byte `json:"data"`     // Wails JSON carries base64; never HTML or executable code
 }
 
@@ -141,7 +141,7 @@ func (stream *desktopRemoteStream) receive() {
 		stream.mu.Unlock()
 		stream.finish(reason)
 		// Closing a primary stream also ends the source logical connection.
-		if stream.info.Kind == "terminal" || (stream.info.Kind == "monitor" && stream.connection.Mode == protocol.MonitorConnection) {
+		if stream.info.Kind == "terminal" || stream.info.Kind == "vnc" || stream.info.Kind == "rdp" || (stream.info.Kind == "monitor" && stream.connection.Mode == protocol.MonitorConnection) {
 			stream.session.dropConnection(stream.connection.ID)
 		}
 	}()
@@ -153,7 +153,14 @@ func (stream *desktopRemoteStream) receive() {
 			return
 		}
 		encoding := "event.json"
-		if kind == websocket.MessageBinary {
+		if stream.info.Kind == "vnc" || stream.info.Kind == "rdp" {
+			var err error
+			encoding, err = remoteDesktopFrameEncoding(stream.info.Kind, kind, data)
+			if err != nil {
+				stream.finish(err.Error())
+				return
+			}
+		} else if kind == websocket.MessageBinary {
 			if stream.info.Kind == "terminal" {
 				encoding = "terminal.bytes"
 			} else if stream.info.Kind == "monitor" {
@@ -274,6 +281,7 @@ func (c *desktopRemoteClient) dialStream(ctx context.Context, connection protoco
 		ExpiresIn int    `json:"expires_in"`
 	}
 	var ticketType, path string
+	var subprotocols []string
 	query := url.Values{}
 	switch kind {
 	case "terminal":
@@ -285,6 +293,12 @@ func (c *desktopRemoteClient) dialStream(ctx context.Context, connection protoco
 		query.Set("interval", strconv.Itoa(interval))
 	case "sftp_auth":
 		ticketType, path = "ws_sftp_auth", "/api/v1/sftp/"+connection.ServerID+"/auth/ws"
+	case "vnc":
+		ticketType, path = "ws_vnc", "/api/v1/vnc/"+connection.ServerID+"/ws"
+		subprotocols = []string{"binary"}
+	case "rdp":
+		ticketType, path = "ws_rdp", "/api/v1/rdp/"+connection.ServerID+"/ws"
+		subprotocols = []string{"easyssh-rdp-v1"}
 	default:
 		return nil, remoteError("invalid_stream_kind")
 	}
@@ -307,7 +321,7 @@ func (c *desktopRemoteClient) dialStream(ctx context.Context, connection protoco
 	defer cancel()
 	// This private dial only carries a one-use ticket, not the access-session
 	// token, cookies, Origin, callbacks or a renderer-controlled endpoint.
-	conn, response, err := websocket.Dial(dialCtx, endpoint+path+"?"+query.Encode(), &websocket.DialOptions{HTTPClient: c.streamHTTP, CompressionMode: websocket.CompressionDisabled})
+	conn, response, err := websocket.Dial(dialCtx, endpoint+path+"?"+query.Encode(), &websocket.DialOptions{HTTPClient: c.streamHTTP, CompressionMode: websocket.CompressionDisabled, Subprotocols: subprotocols})
 	if err != nil {
 		if response != nil && response.StatusCode >= 300 && response.StatusCode < 400 {
 			return nil, remoteError("remote_redirect_rejected")
@@ -338,7 +352,9 @@ func (s *DesktopRemoteWorkspaceService) openStream(ctx context.Context, id, kind
 	if err != nil {
 		return DesktopRemoteStreamInfo{}, err
 	}
-	if kind == "terminal" && connection.Mode != protocol.TerminalConnection {
+	if (kind == "terminal" && connection.Mode != protocol.TerminalConnection) ||
+		(kind == "vnc" && connection.Mode != protocol.VNCConnection) ||
+		(kind == "rdp" && connection.Mode != protocol.RDPConnection) {
 		return DesktopRemoteStreamInfo{}, remoteError("invalid_connection_mode")
 	}
 	streamCtx, cancel := context.WithCancel(session.ctx)
@@ -378,6 +394,7 @@ func (s *DesktopRemoteWorkspaceService) openStream(ctx context.Context, id, kind
 		return DesktopRemoteStreamInfo{}, remoteError("stream_open_cancelled")
 	}
 	stream.socket = conn
+	stream.ready = kind == "vnc" || kind == "rdp"
 	stream.mu.Unlock()
 	if kind == "sftp_auth" {
 		// Start with no credential fields. Only source-held SSH credentials and

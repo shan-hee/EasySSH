@@ -1,8 +1,13 @@
 import type { AccessContext as NativeAccessContext } from "../../bindings/github.com/easyssh/shared/protocol/models"
-import type { AccessContext, Action } from "@easyssh/app/lib/api/grants"
+import type { components } from "@easyssh/app/generated/openapi"
+
+type AccessContext = components["schemas"]["AccessContext"]
+type Action = components["schemas"]["Action"]
 
 const resourceActions: Action[] = [
   "terminal.connect",
+  "vnc.connect",
+  "rdp.connect",
   "files.list",
   "files.read",
   "files.download",

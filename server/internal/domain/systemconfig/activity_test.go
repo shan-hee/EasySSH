@@ -48,7 +48,7 @@ func TestSettingsActivityAtomicityAndFieldScope(t *testing.T) {
 		}, func(config *SystemConfig) { config.JobQueueMaxConcurrency = 6 }},
 	} {
 		t.Run(item.name, func(t *testing.T) {
-			db, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
+			db, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{NowFunc: func() time.Time { return time.Now().UTC() }})
 			if err != nil {
 				t.Fatal(err)
 			}

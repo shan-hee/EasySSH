@@ -211,7 +211,7 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 						{
 							ID:        "call-1",
 							Name:      "execute_command",
-							Arguments: json.RawMessage(`{"server_id":"srv-1","command":"uptime"}`),
+							Arguments: json.RawMessage(`{"server_id":"11111111-1111-4111-8111-111111111111","command":"uptime"}`),
 						},
 					},
 				},
@@ -242,6 +242,13 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 		}),
 		time.Minute,
 	)
+
+	manager.SetServerReferenceResolver(func(_ context.Context, refs []aichatui.ServerReference) ([]aichatui.ServerReference, error) {
+		for i := range refs {
+			refs[i].Name = "Test server"
+		}
+		return refs, nil
+	})
 
 	handler := NewAISessionHandler(manager)
 	router := newTestAISessionRouter(t, ownerID, handler)
@@ -317,11 +324,14 @@ func TestAISessionHandlerCreateSendConfirmAndDelete(t *testing.T) {
 
 	calls := runner.snapshotCalls()
 	require.Len(t, calls, 2)
-	require.Len(t, calls[0].Messages, 2)
-	require.Contains(t, calls[0].Messages[0].Content, "请只返回摘要")
+	require.Len(t, calls[0].Messages, 3)
+	require.NotContains(t, calls[0].Messages[0].Content, "请只返回摘要")
+	require.Equal(t, "user", calls[0].Messages[2].Role)
+	require.Contains(t, calls[0].Messages[2].Content, "请只返回摘要")
 	require.Equal(t, "执行 uptime", calls[0].Messages[1].Content)
 	require.NotContains(t, calls[0].Messages[1].Content, "请只返回摘要")
-	require.Contains(t, calls[1].Messages[0].Content, "请只返回摘要")
+	require.NotContains(t, calls[1].Messages[0].Content, "请只返回摘要")
+	require.Contains(t, calls[1].Messages[len(calls[1].Messages)-1].Content, "请只返回摘要")
 	require.Equal(t, "执行 uptime", history.Messages[0].Content)
 
 	closeResp := performJSONRequest(t, router, http.MethodDelete, "/sessions/"+created.SessionID, nil)

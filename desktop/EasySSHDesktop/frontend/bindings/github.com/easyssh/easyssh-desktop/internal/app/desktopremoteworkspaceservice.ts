@@ -341,6 +341,16 @@ export function OpenRemoteAIChat(id: string, input: protocol$0.AISDKChatRequest)
     });
 }
 
+/**
+ * The caller supplies a window-owned logical connection, never an endpoint or
+ * ticket. Access credentials and ticket exchange stay in the native client.
+ */
+export function OpenRemoteDesktop(connectionID: string, mode: string): $CancellablePromise<$models.DesktopRemoteStreamInfo> {
+    return $Call.ByID(292693868, connectionID, mode).then(($result: any) => {
+        return $$createType35($result);
+    });
+}
+
 export function OpenShare(raw: string): $CancellablePromise<$models.DesktopRemoteWorkspace> {
     return $Call.ByID(1122479429, raw).then(($result: any) => {
         return $$createType10($result);
@@ -487,6 +497,14 @@ export function UpdateRemoteAIMessage(id: string, messageID: string, input: prot
     return $Call.ByID(1956384590, id, messageID, input).then(($result: any) => {
         return $$createType13($result);
     });
+}
+
+/**
+ * RFB bytes and RDP JSON (including transient login credentials) are forwarded
+ * only to this window's existing stream, without logging or persistence.
+ */
+export function WriteRemoteDesktop(id: string, data: string): $CancellablePromise<void> {
+    return $Call.ByID(3604715141, id, data);
 }
 
 export function WriteRemoteFile(connectionID: string, remotePath: string, content: string): $CancellablePromise<protocol$0.FileInfo> {

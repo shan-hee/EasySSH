@@ -8,8 +8,9 @@ import { connectionsApi } from "@/lib/api/connections"
 import { createAccessTicket } from "@/lib/access-ticket"
 import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 import type { TerminalConnectionPhase } from "@/components/terminal/types"
+import type { RemoteDesktopSocketFactory } from "@/lib/session/workspace"
 
-export function RDPSession({ serverId, isActive, onPhase }: { serverId: string; isActive: boolean; onPhase: (phase: TerminalConnectionPhase) => void }) {
+export function RDPSession({ serverId, isActive, onPhase, createSocket }: { serverId: string; isActive: boolean; onPhase: (phase: TerminalConnectionPhase) => void; createSocket?: RemoteDesktopSocketFactory }) {
   const { t } = useTranslation("terminal")
   const root = useRef<HTMLDivElement>(null)
   const surface = useRef<HTMLDivElement>(null)
@@ -54,9 +55,9 @@ export function RDPSession({ serverId, isActive, onPhase }: { serverId: string; 
       const connection = await connectionsApi.create(serverId, "rdp")
       connectionId = connection.id
       if (!current()) { release(); return }
-      const ticket = await createAccessTicket({ type: "ws_rdp", server_id: serverId, connection_id: connection.id })
+      const ticket = createSocket ? undefined : await createAccessTicket({ type: "ws_rdp", server_id: serverId, connection_id: connection.id })
       if (!current() || !surface.current) { release(); return }
-      const url = getWebSocketUrl(`/api/v1/rdp/${encodeURIComponent(serverId)}/ws?ticket=${encodeURIComponent(ticket)}`)
+      const url = createSocket ? "" : getWebSocketUrl(`/api/v1/rdp/${encodeURIComponent(serverId)}/ws?ticket=${encodeURIComponent(ticket!)}`)
       // Use a small authenticated transport. Each frame holds one instruction
       // array, avoiding the UTF-16/Unicode length mismatch of a string tunnel.
       class CredentialTunnel extends G.Tunnel {
@@ -65,7 +66,7 @@ export function RDPSession({ serverId, isActive, onPhase }: { serverId: string; 
         changeState = (state: import("guacamole-common-js").Tunnel.State) => { if (state !== this.state) { this.state = state; this.onstatechange?.(state) } }
         connect = () => {
           this.changeState(G.Tunnel.State.CONNECTING)
-          const ws = this.socket = new WebSocket(url, "easyssh-rdp-v1")
+          const ws = this.socket = createSocket ? createSocket(connection.id, "rdp") : new WebSocket(url, "easyssh-rdp-v1")
           ws.onopen = () => { if (!current() || disposed) { ws.close(); return }; ws.send(JSON.stringify(credentials)); credentials.password = ""; update("authenticating") }
           ws.onmessage = event => {
             if (!current() || disposed) return

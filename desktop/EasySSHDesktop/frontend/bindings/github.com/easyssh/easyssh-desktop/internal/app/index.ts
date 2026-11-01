@@ -54,7 +54,6 @@ export {
     DesktopAISessionStatus,
     DesktopAISessionView,
     DesktopAIToolApprovalInput,
-    DesktopAIToolView,
     DesktopAIUpdateMessageInput,
     DesktopActivityLogItem,
     DesktopActivityLogListParams,

@@ -17,7 +17,6 @@ export {
     AISessionOverview,
     AISessionScope,
     AISessionStatus,
-    AIToolView,
     AITransportType,
     AIUIMessage,
     AccessContext,

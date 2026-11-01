@@ -12,8 +12,9 @@ func auditLogToOperationRecord(log *AuditLog) *operationrecord.OperationRecord {
 		log.ID = uuid.New()
 	}
 	if log.CreatedAt.IsZero() {
-		log.CreatedAt = time.Now()
+		log.CreatedAt = time.Now().UTC()
 	}
+	log.CreatedAt = log.CreatedAt.UTC()
 	if log.Category == "" {
 		log.Category = CategoryOf(log.Action)
 	}

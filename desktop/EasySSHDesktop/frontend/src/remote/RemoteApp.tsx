@@ -23,6 +23,7 @@ import { RemoteWebSocket } from "./remote-socket"
 import { closeRemoteStreams } from "./remote-stream"
 import { remoteFileApi } from "./remote-file-api"
 import { useRemoteTransfers } from "./remote-transfers"
+import { createRemoteDesktopSocket } from "./remote-desktop-socket"
 
 installPlatformTransport(remoteTransport)
 export default function RemoteApp() {
@@ -106,6 +107,7 @@ function RemoteWorkspace({
     () =>
       createWorkspaceAdapters({
         apiClient: {
+          remoteDesktopSocket: createRemoteDesktopSocket,
           sftp: remoteFileApi,
           terminal: {
             WebSocketCtor: RemoteWebSocket,

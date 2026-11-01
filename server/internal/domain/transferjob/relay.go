@@ -278,9 +278,9 @@ func (w relayProgressWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// Reuse the relay's temporary-file commit. A partial copy never replaces a user
-// file. Standard SFTP rename refuses existing destinations; do not use the
-// overwrite-capable posix-rename extension for suffix-only conflict handling.
+// Commit complete files without replacing an existing destination. Prefer an
+// atomic hard link when the server supports it; plain SFTP v3 rename must also
+// refuse existing destinations (unlike the posix-rename extension).
 func copyRelayFile(ctx context.Context, source, target *sftp.Client, file relayFile, destination string, readReq, writeReq access.Requirement, progress func(int)) error {
 	for _, req := range []access.Requirement{readReq, writeReq} {
 		if err := access.Current(ctx).Check(ctx, req); err != nil {
@@ -304,12 +304,9 @@ func copyRelayFile(ctx context.Context, source, target *sftp.Client, file relayF
 	if err != nil {
 		return sftputil.MutationError(err)
 	}
-	committed := false
 	defer func() {
 		_ = output.Close()
-		if !committed {
-			_ = target.Remove(temporary)
-		}
+		_ = target.Remove(temporary)
 	}()
 	if err := target.Chmod(temporary, 0600); err != nil {
 		return err
@@ -339,9 +336,18 @@ func copyRelayFile(ctx context.Context, source, target *sftp.Client, file relayF
 	if err := access.Current(ctx).Check(ctx, writeReq); err != nil {
 		return err
 	}
+	if _, supported := target.HasExtension("hardlink@openssh.com"); supported {
+		return sftputil.MutationError(target.Link(temporary, destination))
+	}
+	// Catch a name occupied since enumeration, including on servers whose plain
+	// rename implementation incorrectly uses overwrite semantics.
+	if _, err := target.Lstat(destination); err == nil {
+		return os.ErrExist
+	} else if !os.IsNotExist(err) {
+		return err
+	}
 	if err := target.Rename(temporary, destination); err != nil {
 		return sftputil.MutationError(err)
 	}
-	committed = true
 	return nil
 }

@@ -50,7 +50,11 @@ const rules: Rule[] = [
   {
     name: "Base UI primitives must not depend on animation enhancement layers",
     roots: [`${APP_SOURCE}/components/ui`],
-    violates: ({ specifier }) => /^motion(?:\/react)?$/.test(specifier) || /^@\/components\/(?:motion|animate-ui)(?:\/|$)/.test(specifier),
+    // Modal primitives own the shared Radix/Motion lifecycle. Other primitives
+    // still cannot pull in Motion or application-level enhancement components.
+    violates: ({ file, specifier }) =>
+      (/^motion(?:\/react)?$/.test(specifier) && !/^packages\/app\/src\/components\/ui\/(?:dialog|alert-dialog|sheet|modal-motion)\.tsx$/.test(file))
+      || /^@\/components\/(?:motion|animate-ui)(?:\/|$)/.test(specifier),
   },
   {
     name: "Shared app must not import Wails, host applications or other packages by path",
@@ -81,9 +85,12 @@ const rules: Rule[] = [
     violates: () => true,
   },
   {
-    name: "Desktop must not import Web dashboard pages or Web API clients",
+    name: "Desktop must not import Web dashboard pages or owner API clients",
     roots: [DESKTOP_SOURCE],
-    violates: ({ specifier }) => /^@easyssh\/app\/(?:pages|lib\/api)(?:\/|$)/.test(specifier),
+    // The isolated remote window installs a native PlatformTransport. Only its
+    // file/connection protocol clients may use that explicit endpoint dispatcher.
+    violates: ({ file, specifier }) => /^@easyssh\/app\/(?:pages|lib\/api)(?:\/|$)/.test(specifier)
+      && !(isWithin(file, `${DESKTOP_SOURCE}/remote`) && /^@easyssh\/app\/lib\/api\/(?:connections|sftp)$/.test(specifier)),
   },
 ]
 

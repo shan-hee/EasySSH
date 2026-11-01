@@ -46,7 +46,7 @@ func TestDeviceScopesStayBoundToLiveOwnerDevice(t *testing.T) {
 	if err := s.Authorize(ctx, actor, access.Requirement{Action: protocol.SyncRead}); !errors.Is(err, access.ErrUnauthenticated) {
 		t.Fatal("revoked device still authenticated", err)
 	}
-	if err := s.DB.Model(&Device{}).Where("id=?", device.ID).Updates(map[string]any{"revoked": false, "expires_at": time.Now().Add(-time.Hour)}).Error; err != nil {
+	if err := s.DB.Model(&Device{}).Where("id=?", device.ID).Updates(map[string]any{"revoked": false, "expires_at": time.Now().UTC().Add(-time.Hour)}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.UpdateDeviceScopes(ctx, device.OwnerID, device.ID, device.Scopes); !errors.Is(err, gorm.ErrRecordNotFound) {

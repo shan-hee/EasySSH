@@ -49,7 +49,7 @@ func transferOutcomeDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&TransferJob{}, &jobqueue.Job{}, &taskcenter.NotificationDelivery{}, &taskcenter.TaskRun{}, &taskcenter.TaskEvent{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}, &serverdomain.Server{}, &scheduledtask.ScheduledTask{}); err != nil {
+	if err := db.AutoMigrate(&TransferJob{}, &jobqueue.Job{}, &taskcenter.NotificationDelivery{}, &taskcenter.TaskRun{}, &taskcenter.TaskEvent{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}, &serverdomain.Server{}, &serverdomain.ServerAuth{}, &serverdomain.ServerTag{}, &serverdomain.ServerGroup{}, &scheduledtask.ScheduledTask{}); err != nil {
 		t.Fatal(err)
 	}
 	sqlDB, err := db.DB()

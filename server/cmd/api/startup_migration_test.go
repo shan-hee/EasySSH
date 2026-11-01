@@ -45,7 +45,7 @@ func migrationFixture(t *testing.T) (*config.Config, *gorm.DB, *sql.DB) {
 	if err = schema.Initialize(ctx, db, "sqlite"); err != nil {
 		t.Fatal(err)
 	}
-	for range 2 {
+	for version := schema.Version; version > 5; version-- {
 		if err = schema.Migrate(ctx, db, "sqlite", true); err != nil {
 			t.Fatal(err)
 		}

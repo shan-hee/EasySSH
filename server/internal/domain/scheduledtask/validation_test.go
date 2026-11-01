@@ -36,7 +36,7 @@ func TestScheduledStageRejectsChangedDefinitionAndScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = raw.Close() })
-	if err := db.AutoMigrate(&ScheduledTask{}, &serverdomain.Server{}, &script.Script{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
+	if err := db.AutoMigrate(&ScheduledTask{}, &serverdomain.Server{}, &serverdomain.ServerAuth{}, &serverdomain.ServerTag{}, &serverdomain.ServerGroup{}, &script.Script{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
 		t.Fatal(err)
 	}
 	owner := uuid.New()

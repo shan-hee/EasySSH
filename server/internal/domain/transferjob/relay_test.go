@@ -105,6 +105,25 @@ func TestRelaySuffixAndCommitDoNotOverwrite(t *testing.T) {
 	if err != nil || string(body) != "original" {
 		t.Fatalf("original changed: %q %v", body, err)
 	}
+	// The destination can also become occupied while the temporary file is
+	// being written. Committing it must leave the concurrent writer's file intact.
+	raced := filepath.Join(root, "raced.txt")
+	err = copyRelayFile(ctx, client, client, file, raced, readReq, writeReq, func(int) {
+		if err := os.WriteFile(raced, []byte("concurrent"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err == nil {
+		t.Fatal("concurrently created destination replaced")
+	}
+	body, err = os.ReadFile(raced)
+	if err != nil || string(body) != "concurrent" {
+		t.Fatalf("concurrent file changed: %q %v", body, err)
+	}
+	leftovers, err := filepath.Glob(filepath.Join(root, ".easyssh-transfer-*"))
+	if err != nil || len(leftovers) != 0 {
+		t.Fatalf("temporary files retained: %v %v", leftovers, err)
+	}
 }
 
 func TestRelaySourceChangeAndCancellationDoNotCommit(t *testing.T) {

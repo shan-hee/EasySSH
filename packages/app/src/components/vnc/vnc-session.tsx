@@ -1,4 +1,3 @@
-/// <reference path="../../types/novnc.d.ts" />
 
 import { useEffect, useRef, useState } from "react"
 import type RFB from "@novnc/novnc"
@@ -10,8 +9,9 @@ import { connectionsApi } from "@/lib/api/connections"
 import { createAccessTicket } from "@/lib/access-ticket"
 import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 import type { TerminalConnectionPhase } from "@/components/terminal/types"
+import type { RemoteDesktopSocketFactory } from "@/lib/session/workspace"
 
-export function VNCSession({ serverId, isActive, onPhase }: { serverId: string; isActive: boolean; onPhase: (phase: TerminalConnectionPhase) => void }) {
+export function VNCSession({ serverId, isActive, onPhase, createSocket }: { serverId: string; isActive: boolean; onPhase: (phase: TerminalConnectionPhase) => void; createSocket?: RemoteDesktopSocketFactory }) {
   const { t } = useTranslation("terminal")
   const container = useRef<HTMLDivElement>(null)
   const root = useRef<HTMLDivElement>(null)
@@ -45,10 +45,12 @@ export function VNCSession({ serverId, isActive, onPhase }: { serverId: string; 
       const connection = await connectionsApi.create(serverId, "vnc")
       connectionId = connection.id
       if (disposed) { release(); return }
-      const ticket = await createAccessTicket({ type: "ws_vnc", server_id: serverId, connection_id: connection.id })
+      const ticket = createSocket ? undefined : await createAccessTicket({ type: "ws_vnc", server_id: serverId, connection_id: connection.id })
       if (disposed || !container.current) { release(); return }
       update("ws_connecting")
-      rfb = new RFBClient(container.current, getWebSocketUrl(`/api/v1/vnc/${encodeURIComponent(serverId)}/ws?ticket=${encodeURIComponent(ticket)}`))
+      rfb = new RFBClient(container.current, createSocket
+        ? createSocket(connection.id, "vnc")
+        : getWebSocketUrl(`/api/v1/vnc/${encodeURIComponent(serverId)}/ws?ticket=${encodeURIComponent(ticket!)}`))
       client.current = rfb
       rfb.scaleViewport = true
       rfb.resizeSession = false
@@ -65,7 +67,7 @@ export function VNCSession({ serverId, isActive, onPhase }: { serverId: string; 
     }
     void connect().catch(() => { release(); update("failed"); if (!disposed) setError(t("vncConnectionFailed")) })
     return () => { disposed = true; release(); rfb?.disconnect(); if (client.current === rfb) client.current = null }
-  }, [serverId, attempt, t])
+  }, [serverId, attempt, t, createSocket])
 
   useEffect(() => { if (client.current) client.current.viewOnly = !isActive }, [isActive, phase])
 

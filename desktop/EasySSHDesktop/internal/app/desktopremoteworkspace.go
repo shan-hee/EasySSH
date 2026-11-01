@@ -429,6 +429,7 @@ func desktopRemoteBindingAllowed(name string) bool {
 	t := reflect.TypeFor[DesktopRemoteWorkspaceService]()
 	prefix := t.PkgPath() + "." + t.Name() + "."
 	for _, method := range []string{"Context", "CreateConnection", "HeartbeatConnection", "CloseConnection",
+		"OpenRemoteDesktop", "WriteRemoteDesktop",
 		"RemoteAIConfig", "ListRemoteAISessions", "RemoteAIHistory", "GetRemoteAISession", "LatestRemoteAISession", "CreateRemoteAISession", "RenameRemoteAISession", "CancelRemoteAISession", "DeleteRemoteAISession", "UpdateRemoteAIMessage", "DeleteRemoteAIMessage", "GetRemoteAITaskFile", "OpenRemoteAIChat", "ResumeRemoteAIChat",
 		"RemoteActivityOverview", "GetRemoteActivity", "AvailableRemoteScripts", "ExecuteRemoteScript",
 		"ListRemoteTasks", "ListRemoteTaskEvents", "GetRemoteTask", "RemoteTaskStatistics", "CancelRemoteTask",

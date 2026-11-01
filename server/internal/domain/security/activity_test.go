@@ -57,7 +57,7 @@ func TestSettingsActivityAtomicityAndFieldScope(t *testing.T) {
 		}, func(config *SecurityConfig) { config.BlocklistIPs = "192.0.2.1" }},
 	} {
 		t.Run(item.name, func(t *testing.T) {
-			db, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
+			db, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{NowFunc: func() time.Time { return time.Now().UTC() }})
 			if err != nil {
 				t.Fatal(err)
 			}

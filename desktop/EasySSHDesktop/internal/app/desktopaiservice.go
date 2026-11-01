@@ -77,13 +77,6 @@ type DesktopAISessionScope struct {
 	Username          string `json:"username,omitempty"`
 }
 
-type DesktopAIToolView struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name,omitempty"`
-	Description string `json:"description"`
-	Dangerous   bool   `json:"dangerous"`
-}
-
 type DesktopAIImageAttachment struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -160,7 +153,6 @@ type DesktopAISessionView struct {
 	UpdatedAt        string                  `json:"updated_at"`
 	MessageCount     int                     `json:"message_count"`
 	TaskCount        int                     `json:"task_count"`
-	AvailableTools   []DesktopAIToolView     `json:"available_tools"`
 	DefaultTransport string                  `json:"default_transport"`
 }
 
@@ -2433,7 +2425,6 @@ func (record desktopAISessionRecord) toView() DesktopAISessionView {
 		UpdatedAt:        record.UpdatedAt,
 		MessageCount:     len(record.Messages),
 		TaskCount:        len(record.Tasks),
-		AvailableTools:   desktopAIToolViews(desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)),
 		DefaultTransport: "ai_sdk_ui",
 	}
 }
@@ -2611,19 +2602,6 @@ func desktopAIToolSpecByName(permission DesktopAIPermissionMode, scope *DesktopA
 		}
 	}
 	return desktopAIToolSpec{}, false
-}
-
-func desktopAIToolViews(tools []desktopAIToolSpec) []DesktopAIToolView {
-	result := make([]DesktopAIToolView, 0, len(tools))
-	for _, tool := range tools {
-		result = append(result, DesktopAIToolView{
-			Name:        tool.Name,
-			DisplayName: tool.DisplayName,
-			Description: tool.Description,
-			Dangerous:   tool.Dangerous,
-		})
-	}
-	return result
 }
 
 func desktopAIToolSupportsMode(tool desktopAIToolSpec, mode DesktopAIPermissionMode) bool {

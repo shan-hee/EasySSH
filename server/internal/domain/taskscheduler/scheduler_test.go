@@ -32,7 +32,7 @@ func TestSchedulerDispatchIsAtomicAndDeduplicatesRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&security.SecurityConfig{}, &auth.Owner{}, &auth.Session{}, &scheduledtask.ScheduledTask{}, &taskcenter.NotificationDelivery{}, &taskcenter.TaskRun{}, &taskcenter.TaskEvent{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}, &serverdomain.Server{}, &jobqueue.Job{}); err != nil {
+	if err := db.AutoMigrate(&security.SecurityConfig{}, &auth.Owner{}, &auth.Session{}, &scheduledtask.ScheduledTask{}, &taskcenter.NotificationDelivery{}, &taskcenter.TaskRun{}, &taskcenter.TaskEvent{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}, &serverdomain.Server{}, &serverdomain.ServerAuth{}, &serverdomain.ServerTag{}, &serverdomain.ServerGroup{}, &jobqueue.Job{}); err != nil {
 		t.Fatal(err)
 	}
 

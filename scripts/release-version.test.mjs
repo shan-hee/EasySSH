@@ -12,7 +12,9 @@ const next = current.replace(/\d+$/, patch => String(Number(patch) + 1))
 const schema = Number(fs.readFileSync(path.join(source, "server/internal/storage/schema/schema.go"), "utf8").match(/const Version int64 = (\d+)/)[1])
 const migrationName = (number, suffix) => `${String(number).padStart(5, "0")}_${suffix}.sql`
 const tracks = ["server/internal/storage/schema/sqlite", "server/internal/storage/schema/postgres", "server/internal/storage/schema/mysql", "desktop/EasySSHDesktop/internal/storage/schema/sqlite"]
-const migration = "-- +goose Up\nSELECT 1;\n"
+const migration = "-- +goose Up\nSELECT 1;\n-- +goose Down\nSELECT 1;\n"
+const baseline = "00005_initial.sql"
+const desktopSchema = Number(fs.readFileSync(path.join(source, "desktop/EasySSHDesktop/internal/storage/schema/schema.go"), "utf8").match(/const Version int64 = (\d+)/)[1])
 
 function fixture(t) {
   const prefix = path.join(os.tmpdir(), "easyssh-release-check-")
@@ -60,11 +62,11 @@ test("an application-only release updates all versions without changing the data
   assert.equal(f.run("--release", next).status, 0)
 })
 
-test("a complete new initialization baseline synchronizes host versions", t => {
+test("complete appended migrations synchronize each host version independently", t => {
   const f = fixture(t)
   for (const track of tracks) {
-    fs.unlinkSync(path.join(f.root, `${track}/${migrationName(schema, "initial")}`))
-    f.write(`${track}/${migrationName(schema + 1, "initial")}`, migration)
+    const currentSchema = track.startsWith("desktop/") ? desktopSchema : schema
+    f.write(`${track}/${migrationName(currentSchema + 1, "upgrade")}`, migration)
   }
   f.commit()
   const result = f.run("--prepare", next)
@@ -75,17 +77,16 @@ test("a complete new initialization baseline synchronizes host versions", t => {
 
 test("missing dialect migrations stop the release before any version writes", t => {
   const f = fixture(t)
-  fs.unlinkSync(path.join(f.root, `server/internal/storage/schema/sqlite/${migrationName(schema, "initial")}`))
-  f.write(`server/internal/storage/schema/sqlite/${migrationName(schema + 1, "initial")}`, migration)
+  f.write(`server/internal/storage/schema/sqlite/${migrationName(schema + 1, "upgrade")}`, migration)
   f.commit()
-  expectFailure(f.run("--prepare", next), /基线编号与其他数据库不一致/)
+  expectFailure(f.run("--prepare", next), /迁移编号与其他数据库不一致/)
   assert.equal(f.read("VERSION").trim(), current)
   assert.equal(f.git("status", "--porcelain").trim(), "")
 })
 
 test("published SQL cannot be rewritten even after committing the change", t => {
   const f = fixture(t)
-  const name = `server/internal/storage/schema/sqlite/${migrationName(schema, "initial")}`
+  const name = `server/internal/storage/schema/sqlite/${baseline}`
   f.write(name, f.read(name) + "\n-- rewritten after release\n")
   f.commit()
   expectFailure(f.run("--prepare", next), /禁止改写/)
@@ -96,10 +97,10 @@ test("migration gaps and duplicate numbers are rejected", t => {
   const f = fixture(t)
   f.write(`server/internal/storage/schema/sqlite/${migrationName(schema + 2, "gap")}`, migration)
   f.commit()
-  expectFailure(f.run("--prepare", next), /只允许一个新库初始化基线/)
-  fs.renameSync(path.join(f.root, `server/internal/storage/schema/sqlite/${migrationName(schema + 2, "gap")}`), path.join(f.root, "server/internal/storage/schema/sqlite/00001_duplicate.sql"))
+  expectFailure(f.run("--prepare", next), /迁移编号必须连续且不能重复/)
+  fs.renameSync(path.join(f.root, `server/internal/storage/schema/sqlite/${migrationName(schema + 2, "gap")}`), path.join(f.root, "server/internal/storage/schema/sqlite/00005_duplicate.sql"))
   f.commit()
-  expectFailure(f.run("--prepare", next), /只允许一个新库初始化基线/)
+  expectFailure(f.run("--prepare", next), /迁移编号必须连续且不能重复|必须保留一个初始化基线/)
 })
 
 test("dirty working trees, downgrade versions and existing tags are rejected", t => {
@@ -127,9 +128,29 @@ test("version field drift is detected before updating VERSION", t => {
 test("the release gate compares the new tag with its previous release", t => {
   const f = fixture(t)
   assert.equal(f.run("--prepare", next).status, 0)
-  const name = `server/internal/storage/schema/sqlite/${migrationName(schema, "initial")}`
+  const name = `server/internal/storage/schema/sqlite/${baseline}`
   f.write(name, f.read(name) + "\n-- illegal rewrite in newly tagged release\n")
   f.commit()
   f.git("tag", `v${next}`)
   expectFailure(f.run("--release", next), /禁止改写/)
+})
+
+test("published migrations cannot be removed when appending an upgrade", t => {
+  const f = fixture(t)
+  for (const track of tracks.slice(0, 3)) {
+    fs.unlinkSync(path.join(f.root, `${track}/${baseline}`))
+    // Replacing the entire baseline would strand deployed databases.
+    for (const name of fs.readdirSync(path.join(f.root, track))) fs.unlinkSync(path.join(f.root, track, name))
+    f.write(`${track}/${migrationName(schema + 1, "initial")}`, "-- +goose Up\nSELECT 1;\n")
+  }
+  f.commit()
+  expectFailure(f.run("--prepare", next), /禁止删除或重命名/)
+  assert.equal(f.read("VERSION").trim(), current)
+})
+
+test("upgrades require rollback SQL", t => {
+  const f = fixture(t)
+  for (const track of tracks.slice(0, 3)) f.write(`${track}/${migrationName(schema + 1, "upgrade")}`, "-- +goose Up\nSELECT 1;\n")
+  f.commit()
+  expectFailure(f.run("--prepare", next), /Down 回滚段/)
 })

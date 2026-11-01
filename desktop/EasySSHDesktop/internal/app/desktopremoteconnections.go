@@ -171,7 +171,7 @@ func (s *DesktopRemoteWorkspaceService) CreateConnection(ctx context.Context, se
 		return result, remoteError("invalid_server_id")
 	}
 	switch mode {
-	case protocol.TerminalConnection, protocol.FilesConnection, protocol.MonitorConnection, protocol.DockerConnection:
+	case protocol.TerminalConnection, protocol.FilesConnection, protocol.MonitorConnection, protocol.DockerConnection, protocol.VNCConnection, protocol.RDPConnection:
 	default:
 		return result, remoteError("invalid_connection_mode")
 	}

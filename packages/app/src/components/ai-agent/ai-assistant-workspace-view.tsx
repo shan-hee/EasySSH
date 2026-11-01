@@ -635,7 +635,7 @@ export function AIAssistantWorkspaceView({
                   onDeleteUserMessage={handleDeleteUserMessage}
                   assistantLoadingState={assistantLoadingState}
                   className="h-full w-full"
-                  contentClassName={cn(conversationColumnClass, "px-0 py-6 [&_[data-slot=aui_assistant-message-content]]:px-0")}
+                  contentClassName={cn(conversationColumnClass, String.raw`px-0 py-6 [&_[data-slot=aui\_assistant-message-content]]:px-0`)}
                   viewportClassName="[scrollbar-gutter:stable_both-edges]"
                 />
               )}

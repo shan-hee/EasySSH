@@ -44,33 +44,50 @@ function checkMigrations(schema, version, tags, prepare, includeCurrent) {
   let expected
   for (const track of schema.tracks) {
     const directory = `${migrationRoot}/${track}`
-    const names = fs.readdirSync(path.join(root, directory)).filter(name => name.endsWith(".sql"))
-    if (names.length !== 1 || !/^\d{5,}_initial\.sql$/.test(names[0])) fail(`${track} 只允许一个新库初始化基线，不能重复或保留升级迁移`)
-    const number = Number(names[0].split("_")[0])
-    if (!Number.isSafeInteger(number) || number < 1) fail(`${track} 基线编号无效`)
-    const text = normalize(read(`${directory}/${names[0]}`))
-    const up = [...text.matchAll(/^-- \+goose Up\s*$/gm)]
-    if (up.length !== 1 || /^-- \+goose Down\s*$/m.test(text)) fail(`${track} 新库基线必须只有一个 Goose Up 段，不提供原地降级`)
-    if (!text.slice(up[0].index + up[0][0].length).replace(/--[^\n]*/g, "").trim()) fail(`${track} 初始化 SQL 不能为空`)
-    if (expected !== undefined && number !== expected) fail(`${track} 的基线编号与其他数据库不一致`)
-    expected = number
+    const names = fs.readdirSync(path.join(root, directory)).filter(name => name.endsWith(".sql")).sort()
+    if (!names.length) fail(`${track} 缺少初始化基线`)
+    const numbers = []
+    for (const [index, name] of names.entries()) {
+      const match = /^(\d{5,})_([a-z0-9_]+)\.sql$/.exec(name)
+      if (!match) fail(`${track} 迁移文件名无效：${name}`)
+      const number = Number(match[1])
+      if (!Number.isSafeInteger(number) || number < 1) fail(`${track} 迁移编号无效`)
+      if ((index === 0) !== (match[2] === "initial")) fail(`${track} 必须保留一个初始化基线，其后只追加升级迁移`)
+      if (index > 0 && number !== numbers[index - 1] + 1) fail(`${track} 迁移编号必须连续且不能重复`)
+      numbers.push(number)
+      const text = normalize(read(`${directory}/${name}`))
+      const up = [...text.matchAll(/^-- \+goose Up\s*$/gm)]
+      const down = [...text.matchAll(/^-- \+goose Down\s*$/gm)]
+      if (up.length !== 1 || down.length !== (index === 0 ? 0 : 1) || (down.length && down[0].index < up[0].index)) fail(`${track}/${name} 必须包含一个 Up 段，升级迁移还必须提供 Down 回滚段`)
+      const hasSQL = section => section.replace(/--[^\n]*/g, "").trim().length > 0
+      if (!hasSQL(text.slice(up[0].index + up[0][0].length, down[0]?.index)) || (down.length && !hasSQL(text.slice(down[0].index + down[0][0].length)))) fail(`${track}/${name} 迁移 SQL 不能为空`)
+    }
+    if (expected && JSON.stringify(numbers) !== JSON.stringify(expected)) fail(`${track} 的迁移编号与其他数据库不一致`)
+    expected = numbers
   }
-  const latest = expected
-  if (declared > latest) fail(`${schema.name} schema.Version=${declared}，不能降低数据库基线版本`)
-  if (!prepare && declared !== latest) fail(`${schema.name} schema.Version=${declared} 与初始化基线 ${latest} 不一致`)
+  const latest = expected.at(-1)
+  if (declared > latest) fail(`${schema.name} schema.Version=${declared}，不能降低数据库版本`)
+  if (!prepare && declared !== latest) fail(`${schema.name} schema.Version=${declared} 与最新迁移 ${latest} 不一致`)
   const baseline = tags.find(tag => compare(tag.slice(1), version) < 0 || (includeCurrent && tag.slice(1) === version))
   if (baseline) {
     const files = git("ls-tree", "-r", "--name-only", baseline, "--", migrationRoot).split("\n").filter(name => name.endsWith(".sql"))
     for (const name of files) {
-      const number = Number(path.basename(name).split("_")[0])
-      if (number > latest) fail(`不能低于 ${baseline} 已发布的数据库版本`)
-      if (number !== latest) continue
-      if (!fs.existsSync(path.join(root, name))) fail(`禁止重命名 ${baseline} 同版本初始化基线：${name}`)
+      if (!fs.existsSync(path.join(root, name))) fail(`禁止删除或重命名 ${baseline} 已发布迁移：${name}`)
       const published = execFileSync("git", ["show", `${baseline}:${name}`], { cwd: root, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 })
-      if (normalize(read(name)) !== normalize(published)) fail(`禁止改写 ${baseline} 同版本初始化基线：${name}；请提升该宿主的所有数据库基线编号并使用空库`)
+      if (normalize(read(name)) !== normalize(published)) fail(`禁止改写 ${baseline} 已发布迁移：${name}；请追加新的升级迁移`)
+    }
+    // Do not insert migrations below a released version, even if the sequence
+    // would be contiguous: deployed databases would silently skip them.
+    for (const track of schema.tracks) {
+      const prefix = `${migrationRoot}/${track}/`
+      const released = files.filter(name => name.startsWith(prefix))
+      const ceiling = Math.max(0, ...released.map(name => Number(path.basename(name).split("_")[0])))
+      for (const name of fs.readdirSync(path.join(root, migrationRoot, track)).filter(name => name.endsWith(".sql"))) {
+        if (Number(name.split("_")[0]) <= ceiling && !released.includes(prefix + name)) fail(`禁止在 ${baseline} 已发布版本之前插入迁移：${prefix + name}`)
+      }
     }
   }
-  console.log(`${schema.name} 数据库：各方言新库基线一致，版本 ${latest}；不支持旧库升级`)
+  console.log(`${schema.name} 数据库：各方言迁移连续一致，版本 ${latest}；已发布 SQL 保持不变`)
   return { latestFile, latest, source }
 }
 
@@ -160,7 +177,7 @@ try {
       files.set(latestFile, source.replace(latestPattern, `const Version int64 = ${latest}`))
     }
     writeFiles(files)
-  } else console.log(`应用版本一致：${current}；数据库基线：${migrations.map(({ latestFile, latest }) => `${latestFile}=${latest}`).join(", ")}`)
+  } else console.log(`应用版本一致：${current}；数据库版本：${migrations.map(({ latestFile, latest }) => `${latestFile}=${latest}`).join(", ")}`)
 } catch (error) {
   console.error(`版本检查失败：${error.message}`)
   process.exitCode = 1

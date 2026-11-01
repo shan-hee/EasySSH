@@ -237,7 +237,7 @@ func TestVaultConcurrentConversationsCanBeForkedWithoutExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	tasks := snapshot.Tasks
-	if len(tasks) != 1 || tasks[0].View.Status != aichatui.TaskStatusCancelled || tasks[0].View.RequiresConfirmation {
+	if len(tasks) != 1 || tasks[0].View.Status != aichatui.TaskStatusUnknown || tasks[0].View.RequiresConfirmation {
 		t.Fatal("historical task remained executable")
 	}
 	if _, err := s.ForkVaultSession(ctx, uuid.New(), id, rightRef); err == nil {

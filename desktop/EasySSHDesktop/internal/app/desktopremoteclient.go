@@ -236,7 +236,7 @@ func validateRemoteContext(value protocol.AccessContext) error {
 		return remoteError("invalid_remote_response")
 	}
 	switch value.DefaultContent {
-	case "terminal", "files", "monitor", "docker":
+	case "terminal", "files", "monitor", "docker", "vnc", "rdp":
 	default:
 		return remoteError("invalid_remote_response")
 	}

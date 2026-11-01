@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/easyssh/shared/protocol"
@@ -26,7 +27,7 @@ func TestDeviceScopeRefreshNarrowsSelectionWithoutEnablingNewData(t *testing.T) 
 		_ = json.NewEncoder(w).Encode(identity)
 	}))
 	defer remote.Close()
-	if err := s.connect(remote.URL, "ess_sync_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123"); err != nil {
+	if err := s.connect(remote.URL, "ess_sync_"+strings.Repeat("a", 64)); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.SetScopes(syncdata.SyncScopes{Credentials: true}); err != nil {

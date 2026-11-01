@@ -58,7 +58,7 @@ func TestDesktopDeletionClearsCredentialVersionsAndKeepsSyncTombstoneMapping(t *
 				if err != nil {
 					t.Fatal(err)
 				}
-				err = applyDesktopSync(tx, space, syncdata.Snapshot{"server/" + id: syncdata.Record{}}, syncdata.Snapshot{}, map[string]string{"server/" + id: id})
+				err = applyDesktopSync(tx, space, syncdata.Snapshot{"server/" + id: syncdata.Record{"connection": `{"host":"host.test","port":22,"username":"owner","auth_method":"password"}`}}, syncdata.Snapshot{syncdata.ServerOrderKey: {"ids": "[]"}}, map[string]string{"server/" + id: id})
 				if err != nil {
 					_ = tx.Rollback()
 					t.Fatal(err)

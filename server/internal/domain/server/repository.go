@@ -111,7 +111,7 @@ func (r *gormRepository) Update(ctx context.Context, server *Server) error {
 		// Compare timestamps as instants above, not as SQL text: SQLite can store
 		// RFC3339 and driver-formatted timestamps for the same instant. The row
 		// lock (or SQLite transaction snapshot) protects this read/update pair.
-		result := tx.Model(&Server{}).Where("id = ? AND connection_revision = ?", server.ID, current.ConnectionRevision).
+		result := tx.Model(server).Where("id = ? AND connection_revision = ?", server.ID, current.ConnectionRevision).
 			Select("*").Omit("ID", "CreatedAt", "Auth", "GroupRecord", "TagRecords").Updates(server)
 		if result.Error != nil {
 			return result.Error

@@ -67,6 +67,12 @@ func TestRemoteContextCannotClaimOwnerAuthority(t *testing.T) {
 	if err := validateRemoteContext(value); err != nil {
 		t.Fatalf("visitor rejected: %v", err)
 	}
+	for _, mode := range []string{"vnc", "rdp"} {
+		value.DefaultContent = mode
+		if err := validateRemoteContext(value); err != nil {
+			t.Fatalf("remote desktop share rejected: %s %v", mode, err)
+		}
+	}
 	value.ProtocolVersion++
 	if err := validateRemoteContext(value); err == nil || err.Error() != "protocol_mismatch" {
 		t.Fatalf("unsupported protocol accepted: %v", err)
