@@ -3187,9 +3187,8 @@ type CreateScheduledTaskRequest struct {
 	Timezone       string            `json:"timezone,omitempty"`
 }
 
-// DashboardOverview 今日活动与资源概况在同一数据库读取快照内取得；分布忽略未识别国家和局域网。
+// DashboardOverview 今日执行数与资源概况在同一数据库读取快照内取得；分布忽略未识别国家和局域网。完整的今日活动见活动概览接口。
 type DashboardOverview struct {
-	Activity     ActivityOverview       `json:"activity"`
 	Distribution []DashboardRegionCount `json:"distribution"`
 	Stats        DashboardStats         `json:"stats"`
 }
@@ -3220,7 +3219,10 @@ type DashboardStats struct {
 
 	// ConnectedServers 当前仍存在已建立连接记录的未删除服务器去重数；不是历史连通率或主机健康探测。
 	ConnectedServers int64 `json:"connected_servers"`
-	TotalServers     int64 `json:"total_servers"`
+
+	// TodayExecutions 本地今日的执行类工作数，口径与活动概览的 volume.executions 一致。
+	TodayExecutions int64 `json:"today_executions"`
+	TotalServers    int64 `json:"total_servers"`
 }
 
 // DesktopAccessExchange 仅原生客户端持有 session_token，不得透传到渲染窗口。
@@ -5574,7 +5576,7 @@ type GetContentBytesParams struct {
 
 // GetDashboardOverviewParams defines parameters for GetDashboardOverview.
 type GetDashboardOverviewParams struct {
-	// Timezone IANA 时区，决定今日活动的本地日界。
+	// Timezone IANA 时区，决定今日执行数的本地日界。
 	Timezone *string `form:"timezone,omitempty" json:"timezone,omitempty"`
 }
 

@@ -116,11 +116,13 @@ func (r *repository) Overview(ctx context.Context, timezone string) (*Overview, 
 	var out Overview
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		// The activity request anchors the snapshot; resource counts use the same tx.
-		activity, err := operationrecord.NewRepository(tx, nil).Overview(ctx, operationrecord.OverviewRequest{Timezone: timezone, Range: "today"})
+		// Reusing the activity aggregation keeps today's count identical to the
+		// activity page; only one record is paged since none are returned.
+		activity, err := operationrecord.NewRepository(tx, nil).Overview(ctx, operationrecord.OverviewRequest{Timezone: timezone, Range: "today", PageSize: 1})
 		if err != nil {
 			return err
 		}
-		out.Activity = activity
+		out.Stats.TodayExecutions = activity.Volume.Executions
 		snapshot := &repository{db: tx}
 		out.Stats.TotalServers, out.Stats.ConnectedServers, err = snapshot.CountServers(ctx)
 		if err != nil {

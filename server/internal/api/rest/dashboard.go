@@ -30,6 +30,6 @@ func (h *DashboardHandler) GetOverview(c *gin.Context) {
 		return
 	}
 	RespondSuccess(c, protocol.DashboardOverview{
-		Activity: activityOverviewResponse(overview.Activity), Stats: overview.Stats, Distribution: overview.Distribution,
+		Stats: overview.Stats, Distribution: overview.Distribution,
 	})
 }

@@ -5958,6 +5958,11 @@ export interface components {
              * @description 已建立且仍在运行的连接记录数，同一服务器的多个连接分别计数。
              */
             active_sessions: number;
+            /**
+             * Format: int64
+             * @description 本地今日的执行类工作数，口径与活动概览的 volume.executions 一致。
+             */
+            today_executions: number;
         };
         DashboardRegionServer: {
             /** Format: uuid */
@@ -5975,9 +5980,8 @@ export interface components {
             count: number;
             servers: components["schemas"]["DashboardRegionServer"][];
         };
-        /** @description 今日活动与资源概况在同一数据库读取快照内取得；分布忽略未识别国家和局域网。 */
+        /** @description 今日执行数与资源概况在同一数据库读取快照内取得；分布忽略未识别国家和局域网。完整的今日活动见活动概览接口。 */
         DashboardOverview: {
-            activity: components["schemas"]["ActivityOverview"];
             stats: components["schemas"]["DashboardStats"];
             distribution: components["schemas"]["DashboardRegionCount"][];
         };
@@ -9795,7 +9799,7 @@ export interface operations {
     getDashboardOverview: {
         parameters: {
             query?: {
-                /** @description IANA 时区，决定今日活动的本地日界。 */
+                /** @description IANA 时区，决定今日执行数的本地日界。 */
                 timezone?: string;
             };
             header?: never;

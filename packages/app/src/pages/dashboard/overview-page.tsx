@@ -27,7 +27,8 @@ const DashboardGlobe = lazy(() => import("./components/dashboard-globe").then(
   (module) => ({ default: module.DashboardGlobe }),
 ))
 
-const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000
+// Matches the query's stale time so the "synced" badge never lags by minutes.
+const AUTO_REFRESH_INTERVAL = 60_000
 
 type GreetingKey =
   | "greetingMorning"
@@ -46,8 +47,13 @@ function useCurrentTime() {
   const [now, setNow] = useState(() => new Date())
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 30_000)
-    return () => window.clearInterval(timer)
+    // Tick on the minute boundary so the displayed time never trails the clock.
+    let timer = 0
+    const schedule = () => {
+      timer = window.setTimeout(() => { setNow(new Date()); schedule() }, 60_000 - (Date.now() % 60_000))
+    }
+    schedule()
+    return () => window.clearTimeout(timer)
   }, [])
 
   return now
@@ -132,7 +138,7 @@ export default function DashboardPage() {
                 <Clock3 className="size-3.5" />
                 <LocalTime now={now} />
               </span>
-              <span className="h-4 w-px bg-border" aria-hidden="true" />
+              <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
               <span
                 className={
                   dataUnavailable
@@ -246,7 +252,7 @@ export default function DashboardPage() {
                 </p>
                 <p className="mt-1 text-lg font-medium tabular-nums tracking-[-0.03em] text-foreground/78">
                   {overview ? (
-                    <CountingNumber number={overview.activity.volume.executions} />
+                    <CountingNumber number={overview.stats.today_executions} />
                   ) : "—"}
                 </p>
               </div>

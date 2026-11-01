@@ -11,7 +11,7 @@ export function localTimezone(): string {
 }
 
 /**
- * 获取仪表盘聚合概览：连接统计、区域分布与当天的活动汇总。
+ * 获取仪表盘聚合概览：连接统计、区域分布与今日执行数。
  */
 async function getOverview(timezone = localTimezone()): Promise<DashboardOverview> {
   return apiFetch<DashboardOverview>(`/dashboard/overview?timezone=${encodeURIComponent(timezone)}`)
