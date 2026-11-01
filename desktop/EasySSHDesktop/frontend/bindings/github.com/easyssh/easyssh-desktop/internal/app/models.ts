@@ -234,6 +234,7 @@ export class DesktopAISendMessageInput {
     "permission_mode"?: DesktopAIPermissionMode;
     "scope"?: DesktopAISessionScope | null;
     "attachments"?: DesktopAIImageAttachment[];
+    "message_id": string;
 
     /** Creates a new DesktopAISendMessageInput instance. */
     constructor($$source: Partial<DesktopAISendMessageInput> = {}) {
@@ -242,6 +243,9 @@ export class DesktopAISendMessageInput {
         }
         if (!("content" in $$source)) {
             this["content"] = "";
+        }
+        if (!("message_id" in $$source)) {
+            this["message_id"] = "";
         }
 
         Object.assign(this, $$source);

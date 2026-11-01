@@ -37,7 +37,7 @@ function InlineSessionSidebarWorkspace({ active = true, ...props }: AIAssistantW
       <div className="relative flex min-h-0 min-w-0 flex-1">
         {active && (
           <Sidebar collapsible="icon" className="absolute h-full">
-            <SidebarContent className="overflow-hidden">
+            <SidebarContent className="overflow-hidden [scrollbar-gutter:auto]">
               <AISidebarTarget />
             </SidebarContent>
             <SidebarRail />

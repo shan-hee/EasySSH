@@ -207,6 +207,7 @@ type DesktopAISendMessageInput struct {
 	PermissionMode   DesktopAIPermissionMode    `json:"permission_mode,omitempty"`
 	Scope            *DesktopAISessionScope     `json:"scope,omitempty"`
 	Attachments      []DesktopAIImageAttachment `json:"attachments,omitempty"`
+	MessageID        string                     `json:"message_id"`
 }
 
 type DesktopAIUpdateMessageInput struct {
@@ -611,6 +612,10 @@ func (s *DesktopAIService) CreateSession(input DesktopAICreateSessionInput) (Des
 }
 
 func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendMessageInput) (DesktopAICreateSessionResponse, error) {
+	messageID := strings.TrimSpace(input.MessageID)
+	if messageID == "" {
+		return DesktopAICreateSessionResponse{}, errors.New("AI message id is required")
+	}
 	desktopAISyncMu.RLock()
 	defer desktopAISyncMu.RUnlock()
 	sessionID := strings.TrimSpace(input.SessionID)
@@ -650,6 +655,11 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	if desktopAIHasPendingConfirmation(record.Tasks) {
 		return DesktopAICreateSessionResponse{}, errors.New("AI session has pending confirmations")
 	}
+	for _, message := range record.Messages {
+		if message.ID == messageID {
+			return DesktopAICreateSessionResponse{}, errors.New("AI message id already exists")
+		}
+	}
 
 	config, err := s.loadSessionConfig(record.ID)
 	if err != nil {
@@ -685,7 +695,8 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	record.Status = DesktopAISessionRunning
 	record.UpdatedAt = now
 	userMessage := DesktopAIMessageView{
-		ID: newDesktopAIID("msg"), Role: "user", Content: content, ServerReferences: refs,
+		// Keep the optimistic UI message identity when committed history replaces it.
+		ID: messageID, Role: "user", Content: content, ServerReferences: refs,
 		Attachments: append([]DesktopAIImageAttachment(nil), input.Attachments...), CreatedAt: now,
 	}
 	record.Messages = append(record.Messages, userMessage)
@@ -728,6 +739,9 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		assistantStartedAt := time.Now().UTC().Format(desktopAITimeLayout)
 		var assistantContentBuilder strings.Builder
 		var assistantReasoningBuilder strings.Builder
+		textStream := &desktopAITextStream{emit: func(delta protocol.AITextDelta) {
+			s.emitAISessionEvent(DesktopAISessionEvent{SessionID: sessionID, Type: "message.delta", Delta: &delta})
+		}}
 		turnResult, err := s.completeChat(requestContext, config, record, contextText, model, reasoningEffort, func(event aiprovider.Event) error {
 			kind, offset := "text", assistantContentBuilder.Len()
 			switch event.Type {
@@ -742,14 +756,15 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 
 			for remaining := event.Delta; remaining != ""; {
 				delta, tail := aiwire.NextTextChunk(remaining)
-				s.emitAISessionEvent(DesktopAISessionEvent{SessionID: sessionID, Type: "message.delta", Delta: &protocol.AITextDelta{
+				textStream.Push(protocol.AITextDelta{
 					MessageID: assistantMessageID, Kind: kind, Offset: offset, NextOffset: offset + len(delta), Text: delta, CreatedAt: parseDesktopAITime(assistantStartedAt),
-				}})
+				})
 				offset += len(delta)
 				remaining = tail
 			}
 			return nil
 		})
+		textStream.Close()
 		completedAt := time.Now().UTC().Format(desktopAITimeLayout)
 		if err != nil {
 			record.Messages = append(record.Messages, DesktopAIMessageView{

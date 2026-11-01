@@ -60,6 +60,7 @@ export interface AgentSessionAdapter {
   }) => Promise<CreateSessionResponse>
   sendMessage: (input: {
     session_id: string
+    message_id: string
     reasoning_effort?: Exclude<ReasoningEffort, "auto">
     content: string
     server_references: AgentServerReference[]
@@ -239,8 +240,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
   const chatErrorRef = useRef<Error | null>(null)
   const sessionRevisionRef = useRef(0)
   const snapshotRevisionRef = useRef(0)
-  // 桌面实时文本按消息与片段记录已收到的字节数，用于发现缺失的增量。
-  const streamedTextRef = useRef(new Map<string, number>())
+  // Wails 并发分发事件，按消息和片段的字节偏移暂存乱序增量。
+  const streamedTextRef = useRef(new Map<string, { offset: number; pending: Map<number, AITextDelta> }>())
   const recoveryRefreshRef = useRef<{ running: boolean; pending: boolean; lastAt: number }>({ running: false, pending: false, lastAt: 0 })
 
   useEffect(() => {
@@ -521,13 +522,25 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       if (event.delta) {
         const delta = event.delta
         const key = `${delta.message_id}:${delta.kind}`
-        if (delta.offset > (streamedTextRef.current.get(key) ?? 0)) {
-          // 缺失的增量无法补齐，改读已提交历史。
-          void refreshSessionSnapshot(activeSession.id)
-          return
+        let stream = streamedTextRef.current.get(key)
+        if (!stream) {
+          stream = { offset: 0, pending: new Map() }
+          streamedTextRef.current.set(key, stream)
         }
-        streamedTextRef.current.set(key, delta.next_offset)
-        setChatMessages((current) => applyTextDelta(current, delta) ?? current)
+        if (delta.offset < stream.offset) return
+        stream.pending.set(delta.offset, delta)
+        const ready: AITextDelta[] = []
+        for (;;) {
+          const next = stream.pending.get(stream.offset)
+          if (!next) break
+          stream.pending.delete(stream.offset)
+          stream.offset = next.next_offset
+          ready.push(next)
+        }
+        if (!ready.length) return
+        // 历史仅包含已提交内容，不能用它填补生成中的暂时缺口。
+        // 真正缺失的片段由发送结束后的完整快照收敛。
+        setChatMessages((current) => ready.reduce((messages, next) => applyTextDelta(messages, next) ?? messages, current))
         setTransport("ai_sdk_ui")
       }
 
@@ -723,6 +736,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       if (adapter) {
         const response = await adapter.sendMessage({
           session_id: activeSessionId,
+          message_id: outgoingMessageId,
           content: normalizedContent,
           server_references: serverReferences,
           context: contextText,

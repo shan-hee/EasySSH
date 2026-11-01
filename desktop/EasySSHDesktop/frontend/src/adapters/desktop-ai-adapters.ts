@@ -114,6 +114,7 @@ export function createDesktopAIAssistantAdapters(serverApi: ServerConnectionConf
         await DesktopAIService.SendMessage(new DesktopAISendMessageInput({
           reasoning_effort: input.reasoning_effort,
           session_id: input.session_id,
+          message_id: input.message_id,
           content: input.content,
           server_references: input.server_references?.map((ref) => new ServerReference(ref)),
           context: input.context,

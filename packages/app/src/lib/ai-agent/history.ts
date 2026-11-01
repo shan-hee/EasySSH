@@ -244,8 +244,16 @@ export function buildUIMessages(messages: MessageView[], tasks: TaskView[]): UIM
   return result
 }
 
+// Parts are immutable; cache byte offsets so appending a token does not encode the whole reply.
+const textByteLengths = new WeakMap<UIPart, number>()
+
 function textLength(part: UIPart | undefined) {
-  return part && "text" in part && typeof part.text === "string" ? new TextEncoder().encode(part.text).length : 0
+  if (!part || !("text" in part) || typeof part.text !== "string") return 0
+  const cached = textByteLengths.get(part)
+  if (cached !== undefined) return cached
+  const length = new TextEncoder().encode(part.text).length
+  textByteLengths.set(part, length)
+  return length
 }
 
 /** 按 UTF-8 字节偏移截取，与服务端偏移计算一致。 */
@@ -256,7 +264,7 @@ function sliceUtf8(text: string, bytes: number) {
 
 /**
  * 把桌面实时文本增量写入对应的助手消息。偏移与已收到内容不连续时返回 null，
- * 调用方应改为重新读取历史。
+ * 调用方保留当前正文，等待连续增量或生成结束后的历史快照。
  */
 export function applyTextDelta(messages: UIMessage[], delta: AITextDelta): UIMessage[] | null {
   const index = messages.findIndex((message) => message.id === delta.message_id)
@@ -266,10 +274,16 @@ export function applyTextDelta(messages: UIMessage[], delta: AITextDelta): UIMes
   const partIndex = current.parts.findIndex((part) => part.type === delta.kind)
   const previous = partIndex >= 0 ? current.parts[partIndex] : undefined
   const received = textLength(previous)
+  // A late event must neither truncate received text nor reopen committed text.
+  if (previous && "state" in previous && previous.state === "done") return messages
+  if (delta.next_offset <= received) return messages
   if (delta.offset > received) return null
 
-  const base = previous && "text" in previous ? sliceUtf8(previous.text, delta.offset) : ""
+  const base = previous && "text" in previous
+    ? delta.offset === received ? previous.text : sliceUtf8(previous.text, delta.offset)
+    : ""
   const next = { type: delta.kind, text: base + delta.text, state: "streaming" } as UIPart
+  textByteLengths.set(next, delta.next_offset)
   if (partIndex >= 0) {
     current.parts[partIndex] = next
   } else if (delta.kind === "reasoning") {
