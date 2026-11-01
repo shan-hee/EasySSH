@@ -29,18 +29,19 @@ func TestDesktopExternalContextIsDataAndSurvivesStorage(t *testing.T) {
 		t.Fatalf("restored context lost its provenance or changed the selected mode: %+v %v", restored, err)
 	}
 	spec := desktopAIToolSpec{ConfirmStrategy: desktopAIConfirmUser}
-	if !desktopAIRequiresConfirmation(restored.PermissionMode, spec, desktopAIHasExternalContent(restored)) {
-		t.Fatal("restored external content bypassed execution confirmation")
+	// Privileged mode never asks, even after external content.
+	if desktopAIRequiresConfirmation(restored.PermissionMode, spec) {
+		t.Fatal("privileged mode required confirmation")
 	}
-	if desktopAIRequiresConfirmation(DesktopAIPermissionPrivileged, spec, false) {
-		t.Fatal("direct owner instructions lost privileged behavior")
+	if !desktopAIRequiresConfirmation(DesktopAIPermissionBalanced, spec) {
+		t.Fatal("balanced mode skipped ordinary confirmation")
 	}
-	if desktopAIRequiresConfirmation(DesktopAIPermissionPrivileged, desktopAIToolSpec{}, true) {
+	if desktopAIRequiresConfirmation(DesktopAIPermissionBalanced, desktopAIToolSpec{}) {
 		t.Fatal("read-only tools unnecessarily required execution confirmation")
 	}
 	mkdir := desktopAIToolSpec{Name: "create_directory", ConfirmStrategy: desktopAIConfirmNone}
-	if !desktopAIRequiresConfirmation(DesktopAIPermissionPrivileged, mkdir, true) || desktopAIRequiresConfirmation(DesktopAIPermissionBalanced, mkdir, false) {
-		t.Fatal("external directory creation bypassed confirmation or changed ordinary behavior")
+	if desktopAIRequiresConfirmation(DesktopAIPermissionBalanced, mkdir) || desktopAIRequiresConfirmation(DesktopAIPermissionPrivileged, mkdir) {
+		t.Fatal("directory creation required confirmation despite its tool strategy")
 	}
 }
 

@@ -20,7 +20,6 @@ function createSession(overrides: Partial<SessionView> = {}): SessionView {
     messages: [],
     tasks: [],
     ui_messages: [],
-    available_tools: [],
     default_transport: "ai_sdk_ui",
     ...overrides,
   }

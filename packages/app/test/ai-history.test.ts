@@ -66,7 +66,7 @@ describe("AI history timeline", () => {
     const overview: SessionOverviewResponse = {
       session_id: "s",
       default_transport: "ai_sdk_ui",
-      session: { id: "s", model: "m", permission_mode: "balanced", status: "idle", created_at: "", updated_at: "", available_tools: [], default_transport: "ai_sdk_ui" },
+      session: { id: "s", model: "m", permission_mode: "balanced", status: "idle", created_at: "", updated_at: "", default_transport: "ai_sdk_ui" },
     }
 
     const response = await loadAISessionHistory(overview, reader)

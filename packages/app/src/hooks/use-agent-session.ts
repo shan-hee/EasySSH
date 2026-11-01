@@ -20,7 +20,6 @@ import {
   type PermissionMode,
   type SessionView,
   type TaskView,
-  type ToolView,
 } from "@/lib/api/ai-agent"
 import { getApiUrl } from "@/lib/api-client"
 import { useAgentFeedback } from "@/hooks/use-agent-feedback"
@@ -1073,10 +1072,6 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     () => [...(session?.tasks || [])].sort(compareTaskExecutionOrder),
     [session?.tasks]
   )
-  const availableTools = useMemo<ToolView[]>(
-    () => session?.available_tools ?? [],
-    [session?.available_tools]
-  )
   const canSend = Boolean(sessionId) && !needsRecovery && !reconnecting && session?.status === "idle" && (Boolean(adapter) || chat.status === "ready")
   const uiMessages = chat.messages
   const pendingApprovalCount = uiMessages.reduce((count, message) => count + message.parts.filter(
@@ -1107,7 +1102,6 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     pendingApprovalCount,
     runtime,
     respondToToolApproval,
-    availableTools,
     error,
     reconnecting,
     clearError,

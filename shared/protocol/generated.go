@@ -1712,7 +1712,7 @@ type AIMessageView struct {
 	Content     string               `json:"content"`
 	CreatedAt   time.Time            `json:"created_at"`
 
-	// ExternalContent 后端记录该消息包含外部上下文或受工具返回内容影响；历史恢复或同步后仍保留执行确认要求。此字段不是客户端授予自动执行权限的开关。
+	// ExternalContent 后端记录该消息包含外部上下文或受工具返回内容影响，历史恢复或同步后保留来源标记。此字段不参与执行确认判断，也不是客户端授予自动执行权限的开关。
 	ExternalContent  *bool                `json:"external_content,omitempty"`
 	ID               string               `json:"id"`
 	ProviderMetadata *AIProviderMetadata  `json:"provider_metadata,omitempty"`
@@ -1836,7 +1836,6 @@ type AISessionListItem struct {
 type AISessionOverview struct {
 	// Actor 执行归属信息，不构成授权凭据；本机所有者 ID 不要求 UUID。所有者后台自动任务的 session_id 为空，不创建登录会话；访客和设备必须关联真实会话。
 	Actor            Actor           `json:"actor"`
-	AvailableTools   []AIToolView    `json:"available_tools"`
 	CreatedAt        time.Time       `json:"created_at"`
 	DefaultTransport AITransportType `json:"default_transport"`
 	ID               string          `json:"id"`
@@ -1917,14 +1916,6 @@ type AITextDelta struct {
 	NextOffset int       `json:"next_offset"`
 	Offset     int       `json:"offset"`
 	Text       string    `json:"text"`
-}
-
-// AIToolView defines model for AIToolView.
-type AIToolView struct {
-	Dangerous   bool   `json:"dangerous"`
-	Description string `json:"description"`
-	DisplayName string `json:"display_name,omitempty"`
-	Name        string `json:"name"`
 }
 
 // AITransportType defines model for AITransportType.

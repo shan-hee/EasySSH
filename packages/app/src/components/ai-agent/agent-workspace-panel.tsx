@@ -1,109 +1,183 @@
-import { RelatedTask } from "./related-task"
 import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { Check, ChevronDown, Copy, Download, FileCode2, Loader2, Maximize2, PanelRight, Square, Terminal, X } from "lucide-react"
+import { Check, ChevronDown, CircleAlert, CircleCheck, CirclePause, CircleSlash, CircleX, Clock3, Copy, Download, FileCode2, PanelRight, Server, SquareTerminal, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Streamdown } from "streamdown"
 import { cjk } from "@streamdown/cjk"
 import { math } from "@streamdown/math"
 import { mermaid } from "@/components/assistant-ui/elements/lazy-mermaid"
+import { formatToolDuration } from "@/components/assistant-ui/elements/tool-fallback.aui"
+import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button"
 import { useTheme } from "@/components/theme-provider"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet"
+import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/sonner"
+import { PageLoading } from "@/components/page-loading"
 import { getAITaskFile } from "@/lib/api/ai-agent"
+import type { Server as ManagedServer } from "@/lib/api"
 import type { AgentFileArtifact, AgentSessionScope, MessageView, TaskView } from "@/lib/ai-agent-types"
+import { getServerDisplayName } from "@/lib/server-utils"
 import { cn } from "@/lib/utils"
 import { formatBytesString } from "@/lib/format-utils"
 import { useSessionDraftState } from "@/hooks/use-agent-composer-draft"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
-import { PageLoading } from "@/components/page-loading"
 
 const Editor = lazy(() => import("@/components/sftp/local-monaco-editor"))
 const DiffEditor = lazy(() => import("@/components/sftp/local-monaco-editor").then((module) => ({ default: module.DiffEditor })))
 const markdownPlugins = { cjk, math, mermaid }
-const isBusy = (task: TaskView) => ["queued", "running", "waiting_confirm"].includes(task.status)
-const taskFollowKey = (sessionId: string, task: TaskView) => `${sessionId}:${task.id}:${task.status}:${Boolean(task.file)}`
 
-type Selection = { open: boolean; taskId: string | null; follow: boolean; dismissed: boolean }
+export const isWorkspaceTask = (task: TaskView) => Boolean(task.file) || task.tool_name === "execute_command"
+export const isTaskBusy = (task: TaskView) => task.status === "queued" || task.status === "running" || task.status === "waiting_confirm"
+
 type Workspace = {
   sessionId: string | null
   tasks: TaskView[]
-  serverNames: Map<string, string>
-  selection: Selection
+  serverName: (serverId: string) => string
+  open: boolean
+  selectedId: string | null
   select: (taskId?: string) => void
+  toggle: () => void
   close: () => void
   active: boolean
   loadFile: typeof getAITaskFile
   saveFile?: (sessionId: string, taskId: string) => Promise<void>
-  approve: (id: string, approved: boolean) => Promise<void>
-  stop: () => void | Promise<void>
 }
 const Context = createContext<Workspace | null>(null)
 
-export function AgentWorkspaceProvider({ sessionId, tasks, messages, scope, active = true, loadFile = getAITaskFile, saveFile, approve, stop, children }: {
+/** 本会话的命令与文件记录。面板只在用户打开时显示，命令输出已在消息卡片中实时展示。 */
+export function AgentWorkspaceProvider({ sessionId, tasks, servers, messages, scope, active = true, loadFile = getAITaskFile, saveFile, children }: {
   sessionId: string | null
   tasks: TaskView[]
+  servers?: ManagedServer[]
   messages?: MessageView[]
   scope?: AgentSessionScope
   active?: boolean
   loadFile?: typeof getAITaskFile
   saveFile?: Workspace["saveFile"]
-  approve: Workspace["approve"]
-  stop: Workspace["stop"]
   children: ReactNode
 }) {
-  const items = useMemo(() => tasks.filter((task) => task.file || task.tool_name === "execute_command").sort((a, b) => a.created_at.localeCompare(b.created_at)), [tasks])
+  const items = useMemo(() => tasks.filter(isWorkspaceTask).sort((a, b) => a.created_at.localeCompare(b.created_at)), [tasks])
+  // 工具参数只有 server_id；名称来自已加载的服务器、会话范围和 @ 引用。
   const serverNames = useMemo(() => {
     const names = new Map<string, string>()
+    for (const server of servers ?? []) names.set(server.id, getServerDisplayName(server))
     if (scope?.server_id) names.set(scope.server_id, scope.server_name || scope.host || scope.server_id)
     for (const message of messages ?? []) {
       for (const reference of message.server_references ?? []) names.set(reference.server_id, reference.name || reference.host)
     }
     return names
-  }, [messages, scope])
-  const [selection, setSelection] = useSessionDraftState<Selection>(sessionId, { open: false, taskId: null, follow: true, dismissed: false })
-  const seen = useRef(new Set<string>())
-  const initialized = useRef(new Set<string>())
-  useEffect(() => {
-    if (!active || !sessionId) return
-    const firstVisit = !initialized.current.has(sessionId)
-    initialized.current.add(sessionId)
-    const unseen = items.filter((task) => !seen.current.has(taskFollowKey(sessionId, task)))
-    for (const task of items) seen.current.add(taskFollowKey(sessionId, task))
-    const latest = unseen.filter((task) => task.file?.kind !== "read" && (!firstVisit || isBusy(task))).at(-1)
-    if (!latest) return
-    setSelection((current) => current.dismissed || !current.follow ? current : { ...current, open: true, taskId: latest.id })
-  }, [active, items, sessionId, setSelection])
-  const select = useCallback((taskId?: string) => {
-    setSelection((current) => ({ ...current, open: true, dismissed: false, follow: !taskId, taskId: taskId ?? items.at(-1)?.id ?? null }))
-  }, [items, setSelection])
-  const close = useCallback(() => setSelection((current) => ({ ...current, open: false, dismissed: true })), [setSelection])
-  const value = useMemo(() => ({ sessionId, tasks: items, serverNames, selection, select, close, active, loadFile, saveFile, approve, stop }), [sessionId, items, serverNames, selection, select, close, active, loadFile, saveFile, approve, stop])
+  }, [messages, scope, servers])
+  const serverName = useCallback((id: string) => serverNames.get(id) ?? id.slice(0, 8), [serverNames])
+  const [selection, setSelection] = useSessionDraftState<{ open: boolean; taskId: string | null }>(sessionId, { open: false, taskId: null })
+  const select = useCallback((taskId?: string) => setSelection({ open: true, taskId: taskId ?? null }), [setSelection])
+  const toggle = useCallback(() => setSelection((current) => ({ ...current, open: !current.open })), [setSelection])
+  const close = useCallback(() => setSelection((current) => ({ ...current, open: false })), [setSelection])
+  const value = useMemo(() => ({ sessionId, tasks: items, serverName, open: selection.open, selectedId: selection.taskId, select, toggle, close, active, loadFile, saveFile }), [sessionId, items, serverName, selection, select, toggle, close, active, loadFile, saveFile])
   return <Context.Provider value={value}>{children}</Context.Provider>
 }
 
-export function AgentWorkspaceToolLink({ taskId, toolCallId }: { taskId: string; toolCallId?: string }) {
-  const workspace = useContext(Context)
-  const { t } = useTranslation("aiAssistant")
-  const task = workspace?.tasks.find((item) => item.id === taskId || item.tool_call_id === toolCallId)
-  if (!task || !workspace) return null
-  return <button type="button" onClick={() => workspace.select(task.id)} className="my-2 flex w-full items-center gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5 text-left text-sm hover:bg-accent">
-    {task.file ? <FileCode2 className="size-4 shrink-0 text-primary" /> : <Terminal className="size-4 shrink-0 text-primary" />}
-    <span className="min-w-0 flex-1"><span className="block truncate font-medium">{task.file?.name ?? String(task.arguments?.command ?? t("workspaceCommands"))}</span><span className="text-xs text-muted-foreground">{t(task.file?.kind === "modified" ? "workspaceOpenDiff" : task.file ? "workspaceOpenFile" : "workspaceLiveOutput")}</span></span>
-    <PanelRight className="size-4 shrink-0 text-muted-foreground" />
-  </button>
+export function taskServerId(task: TaskView) {
+  return task.file?.server_id ?? (typeof task.arguments?.server_id === "string" ? task.arguments.server_id : "")
 }
 
-export function AgentWorkspaceToolbar() {
+export function useAgentWorkspace() {
+  return useContext(Context)
+}
+
+/** execute_command 的结果为"标题:\n{JSON}"；未执行或取消时只有文本。 */
+export function commandResult(task: TaskView): { output: string; exitCode?: number; durationMs?: number; note: string } {
+  const result = task.result ?? ""
+  let data: Record<string, unknown> | null = null
+  try {
+    data = JSON.parse(result.slice(result.indexOf("{"))) as Record<string, unknown>
+  } catch { /* Textual status. */ }
+  const output = task.command_output || (typeof data?.output === "string" ? data.output : "")
+  const note = data ? (typeof data.error === "string" ? data.error : "") : task.status === "succeeded" ? "" : task.error || result
+  return {
+    output,
+    exitCode: typeof data?.exit_code === "number" ? data.exit_code : undefined,
+    durationMs: typeof data?.duration_ms === "number" ? data.duration_ms : undefined,
+    note,
+  }
+}
+
+const statusIcons = {
+  queued: Clock3,
+  waiting_confirm: CirclePause,
+  succeeded: CircleCheck,
+  failed: CircleX,
+  unknown: CircleAlert,
+  cancelled: CircleSlash,
+} as const
+
+export function TaskStatusBadge({ task, className }: { task: TaskView; className?: string }) {
+  const { t } = useTranslation("aiAssistant")
+  const exitCode = task.file ? undefined : commandResult(task).exitCode
+  const Icon = task.status === "running" ? Spinner : statusIcons[task.status]
+  const label = exitCode !== undefined && (task.status === "succeeded" || task.status === "failed")
+    ? t("workspaceExitCode", { code: exitCode })
+    : t(`workspaceStatus_${task.status}`)
+  return <span data-status={task.status} className={cn(
+    "inline-flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground",
+    task.status === "running" && "text-primary",
+    task.status === "succeeded" && "text-status-connected",
+    task.status === "failed" && "text-destructive",
+    (task.status === "waiting_confirm" || task.status === "unknown") && "text-amber-700 dark:text-amber-400",
+    className,
+  )}>
+    <Icon aria-hidden className="size-3.5" />{label}
+  </span>
+}
+
+export function CopyIconButton({ value, tooltip, className }: { value: string; tooltip: string; className?: string }) {
+  const { t } = useTranslation("aiAssistant")
+  const { isCopied, copyToClipboard } = useCopyToClipboard()
+  return <TooltipIconButton type="button" tooltip={isCopied ? t("copied") : tooltip} className={cn("size-7 shrink-0 text-muted-foreground", className)}
+    onClick={() => { void copyToClipboard(value).catch(() => toast.error(t("workspaceCopyFailed"))) }}>
+    {isCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+  </TooltipIconButton>
+}
+
+/** 命令输出：到底部时跟随新内容，向上滚动后停止跟随。 */
+export function CommandOutput({ task, className, viewportClassName }: { task: TaskView; className?: string; viewportClassName?: string }) {
+  const { t } = useTranslation("aiAssistant")
+  const viewport = useRef<HTMLDivElement>(null)
+  const [follow, setFollow] = useState(true)
+  const { output } = commandResult(task)
+  useEffect(() => { if (follow && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight }, [follow, output])
+  return <div className={cn("relative min-w-0", className)}>
+    <div ref={viewport} onScroll={(event) => { const element = event.currentTarget; setFollow(element.scrollHeight - element.scrollTop - element.clientHeight < 40) }}
+      className={cn("overflow-auto bg-muted/40 px-3 py-2.5 font-mono text-xs leading-5", viewportClassName)}>
+      {output
+        ? <pre className="whitespace-pre-wrap break-words">{output}</pre>
+        : <p className="text-muted-foreground">{t(task.status === "queued" ? "workspaceQueuedOutput" : task.status === "running" ? "workspaceWaitingOutput" : "workspaceNoOutput")}</p>}
+    </div>
+    {!follow && <Button type="button" variant="secondary" size="sm" className="absolute bottom-2 end-3 h-6 gap-1 px-2 text-xs" onClick={() => setFollow(true)}><ChevronDown className="size-3" />{t("workspaceFollowOutput")}</Button>}
+  </div>
+}
+
+export function AgentWorkspaceToggle() {
   const workspace = useContext(Context)
   const { t } = useTranslation("aiAssistant")
   if (!workspace || workspace.tasks.length === 0) return null
-  const running = workspace.tasks.filter(isBusy)
-  return <Button type="button" variant="ghost" size="sm" className="h-8 min-w-0 gap-2 text-xs text-muted-foreground" onClick={() => workspace.select()}>
-    {running.length ? <Loader2 className="size-3.5 animate-spin" /> : <PanelRight className="size-3.5" />}
+  const running = workspace.tasks.filter(isTaskBusy).length
+  return <Button type="button" variant="ghost" size="sm" aria-pressed={workspace.open} className={cn("h-8 min-w-0 gap-1.5 px-2.5 text-xs text-muted-foreground", workspace.open && "bg-accent text-foreground")} onClick={workspace.toggle}>
+    {running ? <Spinner className="size-3.5" /> : <PanelRight className="size-3.5" />}
     <span className="truncate">{t("workspaceTitle")}</span>
-    <span className="tabular-nums">{running.length ? t("workspaceActiveCount", { count: running.length }) : workspace.tasks.length}</span>
+    <span className="tabular-nums">{running ? t("workspaceActiveCount", { count: running }) : workspace.tasks.length}</span>
   </Button>
+}
+
+/** 消息中文件类工具的预览入口。 */
+export function AgentWorkspaceFileLink({ task }: { task: TaskView }) {
+  const workspace = useContext(Context)
+  const { t } = useTranslation("aiAssistant")
+  if (!workspace || !task.file) return null
+  return <button type="button" onClick={() => workspace.select(task.id)} className="flex w-full items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-2 text-left text-sm hover:bg-accent">
+    <FileCode2 className="size-4 shrink-0 text-primary" />
+    <span className="min-w-0 flex-1"><span className="block truncate font-medium" title={task.file.path}>{task.file.name}</span><span className="text-xs text-muted-foreground">{t(task.file.kind === "modified" ? "workspaceOpenDiff" : "workspaceOpenFile")}</span></span>
+    <PanelRight className="size-4 shrink-0 text-muted-foreground" />
+  </button>
 }
 
 export function AgentWorkspacePanel({ compact = false }: { compact?: boolean }) {
@@ -111,8 +185,7 @@ export function AgentWorkspacePanel({ compact = false }: { compact?: boolean }) 
   const { t } = useTranslation("aiAssistant")
   const anchor = useRef<HTMLDivElement>(null)
   const [narrow, setNarrow] = useState(compact)
-  const [expanded, setExpanded] = useState(false)
-  const [width, setWidth] = useState(45)
+  const [width, setWidth] = useState(42)
   useEffect(() => {
     const parent = anchor.current?.parentElement
     if (!parent) return
@@ -120,21 +193,21 @@ export function AgentWorkspacePanel({ compact = false }: { compact?: boolean }) 
     observer.observe(parent)
     return () => observer.disconnect()
   }, [compact])
-  const open = Boolean(workspace?.active && workspace.selection.open && workspace.tasks.length)
-  const overlay = narrow || expanded
+  const open = Boolean(workspace?.active && workspace.open && workspace.tasks.length)
+  const resize = (value: number) => setWidth(Math.max(30, Math.min(65, value)))
   return <>
     <div ref={anchor} className="hidden" />
-    {open && !overlay && <aside style={{ width: `${width}%` }} className="relative flex min-h-0 min-w-[320px] shrink-0 flex-col border-l bg-background" aria-label={t("workspaceTitle")}>
+    {open && !narrow && <aside style={{ width: `${width}%` }} className="@container relative flex min-h-0 min-w-[320px] shrink-0 flex-col border-l bg-background" aria-label={t("workspaceTitle")}>
       <div role="separator" aria-orientation="vertical" aria-label={t("workspaceResize")} aria-valuemin={30} aria-valuemax={65} aria-valuenow={Math.round(width)} tabIndex={0}
         className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none hover:bg-primary/15 focus-visible:bg-primary/15"
-        onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setWidth((value) => Math.max(30, Math.min(65, value + (event.key === "ArrowLeft" ? 2 : -2)))) } }}
+        onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); resize(width + (event.key === "ArrowLeft" ? 2 : -2)) } }}
         onPointerDown={(event) => event.currentTarget.setPointerCapture(event.pointerId)}
-        onPointerMove={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; const bounds = anchor.current?.parentElement?.getBoundingClientRect(); if (bounds) setWidth(Math.max(30, Math.min(65, (bounds.right - event.clientX) / bounds.width * 100))) }}
+        onPointerMove={(event) => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; const bounds = anchor.current?.parentElement?.getBoundingClientRect(); if (bounds) resize((bounds.right - event.clientX) / bounds.width * 100) }}
         onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }} />
-      <WorkspaceContent onExpand={() => setExpanded(true)} />
+      <WorkspaceContent />
     </aside>}
-    <Sheet open={open && overlay} onOpenChange={(value) => { if (!value) { workspace?.close(); setExpanded(false) } }}>
-      <SheetContent side="right" showCloseButton={false} className="flex w-full flex-col gap-0 p-0 sm:max-w-[min(90vw,1100px)]">
+    <Sheet open={open && narrow} onOpenChange={(value) => { if (!value) workspace?.close() }}>
+      <SheetContent side="right" showCloseButton={false} className="@container flex w-full flex-col gap-0 p-0 sm:max-w-[min(90vw,720px)]">
         <SheetTitle className="sr-only">{t("workspaceTitle")}</SheetTitle>
         <SheetDescription className="sr-only">{t("workspaceDescription")}</SheetDescription>
         <WorkspaceContent />
@@ -143,105 +216,89 @@ export function AgentWorkspacePanel({ compact = false }: { compact?: boolean }) 
   </>
 }
 
-function fileIdentity(task: TaskView) {
-  return task.file ? `${task.file.server_id ?? ""}:${task.file.path ?? task.file.name}` : task.id
-}
-
-function WorkspaceContent({ onExpand }: { onExpand?: () => void }) {
-  const workspace = useContext(Context)
-  const { t } = useTranslation("aiAssistant")
-  const versions = useMemo(() => {
-    const counts = new Map<string, number>()
-    const result = new Map<string, number>()
-    for (const task of workspace?.tasks ?? []) {
-      if (!task.file || task.file.kind === "read") continue
-      const identity = fileIdentity(task)
-      const version = (counts.get(identity) ?? 0) + 1
-      counts.set(identity, version)
-      result.set(task.id, version)
-    }
-    return result
-  }, [workspace?.tasks])
-  if (!workspace) return null
-  const { tasks, selection } = workspace
-  const selected = tasks.find((task) => task.id === selection.taskId) ?? tasks.at(-1)
-  return <div className="flex min-h-0 flex-1 flex-col">
-    <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-      <PanelRight className="size-4 text-muted-foreground" /><span className="flex-1 text-sm font-medium">{t("workspaceTitle")}</span>
-      {!selection.follow && <Button size="icon" variant="ghost" className="size-7" title={t("workspaceFollowTasks")} aria-label={t("workspaceFollowTasks")} onClick={() => workspace.select()}><ChevronDown className="size-3.5" /></Button>}
-      {onExpand && <Button size="icon" variant="ghost" className="size-7" title={t("workspaceExpand")} aria-label={t("workspaceExpand")} onClick={onExpand}><Maximize2 className="size-3.5" /></Button>}
-      <Button size="icon" variant="ghost" className="size-7" title={t("workspaceClose")} aria-label={t("workspaceClose")} onClick={workspace.close}><X className="size-4" /></Button>
-    </div>
-    <div className="max-h-44 shrink-0 overflow-y-auto border-b p-2">
-      {tasks.map((task) => <button key={task.id} type="button" onClick={() => workspace.select(task.id)} className={cn("flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs hover:bg-accent", selected?.id === task.id && "bg-accent")}>
-        {task.status === "running" ? <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" /> : task.file ? <FileCode2 className="size-3.5 shrink-0" /> : <Terminal className="size-3.5 shrink-0" />}
-        <span className="min-w-0 flex-1 truncate" title={task.file?.path ?? String(task.arguments?.command ?? "")}>{task.file?.name ?? String(task.arguments?.command ?? task.tool_name)}</span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">{task.file?.kind === "read" ? t("workspaceReadSnapshot") : versions.has(task.id) ? `v${versions.get(task.id)}` : ""}</span>
-        <span className={cn("shrink-0 text-[10px] text-muted-foreground", task.status === "failed" && "text-destructive")}>{t(`workspaceStatus_${task.status}`)}</span>
-      </button>)}
-    </div>
-    {selected && <TaskDetail key={`${workspace.sessionId}:${selected.id}`} task={selected} />}
-  </div>
-}
-
-function TaskDetail({ task }: { task: TaskView }) {
+function WorkspaceContent() {
   const workspace = useContext(Context)!
   const { t } = useTranslation("aiAssistant")
-  const [busy, setBusy] = useState(false)
-  const serverID = task.file?.server_id ?? String(task.arguments?.server_id ?? "")
-  const target = workspace.serverNames.get(serverID) || String(task.arguments?.server_name || serverID || t("workspaceSessionFile"))
-  const decide = async (approved: boolean) => {
-    setBusy(true)
-    try { await workspace.approve(task.id, approved) } catch (error) { toast.error(String(error)) } finally { setBusy(false) }
-  }
+  const { tasks } = workspace
+  const selected = tasks.find((task) => task.id === workspace.selectedId) ?? tasks.at(-1)
   return <div className="flex min-h-0 flex-1 flex-col">
-    <div className="shrink-0 space-y-1 border-b px-4 py-3">
-      <div className="truncate text-sm font-medium" title={task.file?.path}>{task.file?.path ?? task.file?.name ?? t("workspaceCommands")}</div>
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span title={serverID}>{target}</span><span>·</span><time>{new Date(task.created_at).toLocaleString()}</time>{task.file && <><span>·</span><span>{formatBytesString(task.file.size)}</span></>}</div>
-      {task.file?.kind === "modified" && <p className="text-xs text-muted-foreground">{t(task.status === "succeeded" ? "workspaceAppliedSnapshot" : "workspaceProposedSnapshot")}</p>}
-      <RelatedTask result={task.result} />
-      {task.error && <p role="alert" className="break-words text-xs text-destructive">{task.error}</p>}
+    <div className="flex h-12 shrink-0 items-center gap-2 border-b ps-4 pe-2">
+      <span className="text-sm font-medium">{t("workspaceTitle")}</span>
+      <span className="text-xs tabular-nums text-muted-foreground">{tasks.length}</span>
+      <TooltipIconButton type="button" className="ms-auto size-7" tooltip={t("workspaceClose")} onClick={workspace.close}><X className="size-4" /></TooltipIconButton>
     </div>
-    {task.file ? <FilePreview task={task} /> : <CommandPreview task={task} />}
-    {task.status === "waiting_confirm" && <div className="flex shrink-0 items-center justify-end gap-2 border-t p-3">
-      <span className="mr-auto text-xs text-muted-foreground">{t("workspaceApprovalHint")}</span>
-      <Button size="sm" variant="ghost" disabled={busy} onClick={() => void decide(false)}>{t("workspaceReject")}</Button>
-      <Button size="sm" disabled={busy} onClick={() => void decide(true)}>{busy && <Loader2 className="size-3.5 animate-spin" />}{t("workspaceApprove")}</Button>
-    </div>}
-    {task.status === "running" && <div className="flex shrink-0 justify-end border-t p-2"><Button size="sm" variant="ghost" onClick={() => { void Promise.resolve().then(workspace.stop).catch(() => toast.error(t("workspaceStopFailed"))) }}><Square className="size-3" />{t("workspaceStopRun")}</Button></div>}
+    <ul className="max-h-48 shrink-0 space-y-0.5 overflow-y-auto border-b p-2">
+      {tasks.map((task) => {
+        const server = workspace.serverName(taskServerId(task))
+        const durationMs = task.file ? undefined : commandResult(task).durationMs
+        return <li key={task.id}>
+          <button type="button" onClick={() => workspace.select(task.id)} className={cn("flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs hover:bg-accent", selected?.id === task.id && "bg-accent")}>
+            {task.file ? <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" /> : <SquareTerminal className="size-3.5 shrink-0 text-muted-foreground" />}
+            <span className={cn("min-w-0 flex-1 truncate", !task.file && "font-mono")} title={task.file?.path ?? String(task.arguments?.command ?? "")}>{task.file?.name ?? String(task.arguments?.command ?? task.tool_name)}</span>
+            {server && <span className="hidden max-w-28 shrink-0 truncate text-muted-foreground @min-[26rem]:inline">{server}</span>}
+            {durationMs !== undefined && <span className="shrink-0 tabular-nums text-muted-foreground">{formatToolDuration(durationMs)}</span>}
+            <TaskStatusBadge task={task} />
+          </button>
+        </li>
+      })}
+    </ul>
+    {selected && (selected.file
+      ? <FileDetail key={`${workspace.sessionId}:${selected.id}`} task={selected} />
+      : <CommandDetail key={`${workspace.sessionId}:${selected.id}`} task={selected} />)}
   </div>
 }
 
-function commandResult(task: TaskView): { output: string; exitCode?: number; duration?: number } {
-  const result = task.result ?? ""
-  try {
-    const data = JSON.parse(result.slice(result.indexOf("{"))) as Record<string, unknown>
-    if (typeof data.output === "string") return { output: data.output, exitCode: typeof data.exit_code === "number" ? data.exit_code : undefined, duration: typeof data.duration_ms === "number" ? data.duration_ms : undefined }
-  } catch { /* A cancelled command may only have a textual status. */ }
-  return { output: task.command_output || result }
+function CommandDetail({ task }: { task: TaskView }) {
+  const workspace = useContext(Context)!
+  const { t } = useTranslation("aiAssistant")
+  const command = String(task.arguments?.command ?? "")
+  const result = commandResult(task)
+  const server = workspace.serverName(taskServerId(task))
+  return <div className="flex min-h-0 flex-1 flex-col">
+    <div className="shrink-0 space-y-2 border-b px-4 py-3">
+      <div className="flex items-start gap-2">
+        <pre className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-xs leading-5"><span className="select-none text-muted-foreground">$ </span>{command}</pre>
+        <CopyIconButton value={command} tooltip={t("commandCopy")} className="-my-1" />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <TaskStatusBadge task={task} />
+        {server && <span className="inline-flex min-w-0 items-center gap-1"><Server className="size-3 shrink-0" /><span className="truncate">{server}</span></span>}
+        {result.durationMs !== undefined && <span className="tabular-nums">{formatToolDuration(result.durationMs)}</span>}
+        <time dateTime={task.created_at}>{new Date(task.created_at).toLocaleString()}</time>
+      </div>
+      {result.note && <p role="alert" className="break-words text-xs text-destructive">{result.note}</p>}
+    </div>
+    {task.status === "waiting_confirm"
+      ? <p className="p-4 text-xs text-muted-foreground">{t("workspaceWaitingApproval")}</p>
+      : <div className="flex min-h-0 flex-1 flex-col">
+        <CommandOutput task={task} className="flex min-h-0 flex-1 flex-col" viewportClassName="min-h-0 flex-1 bg-muted/25 px-4" />
+        {result.output && <div className="flex shrink-0 justify-end border-t px-2 py-1"><CopyIconButton value={result.output} tooltip={t("commandCopyOutput")} /></div>}
+      </div>}
+  </div>
 }
 
-function CommandPreview({ task }: { task: TaskView }) {
+function FileDetail({ task }: { task: TaskView }) {
+  const workspace = useContext(Context)!
   const { t } = useTranslation("aiAssistant")
-  const viewport = useRef<HTMLDivElement>(null)
-  const [follow, setFollow] = useState(true)
-  const result = commandResult(task)
-  useEffect(() => { if (follow && viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight }, [follow, result.output])
-  return <>
-    <div className="shrink-0 border-b bg-muted/30 px-4 py-3"><code className="whitespace-pre-wrap break-all text-xs">$ {String(task.arguments?.command ?? "")}</code></div>
-    <div ref={viewport} onScroll={(event) => { const element = event.currentTarget; setFollow(element.scrollHeight - element.scrollTop - element.clientHeight < 40) }} className="min-h-0 flex-1 overflow-auto bg-muted/15 p-4 font-mono text-xs leading-6">
-      <pre className="whitespace-pre-wrap break-words">{result.output || t(task.status === "waiting_confirm" ? "workspaceWaitingApproval" : task.status === "queued" ? "workspaceQueuedOutput" : task.status === "running" ? "workspaceWaitingOutput" : "workspaceNoOutput")}</pre>
+  const server = workspace.serverName(taskServerId(task))
+  return <div className="flex min-h-0 flex-1 flex-col">
+    <div className="shrink-0 space-y-1 border-b px-4 py-3">
+      <div className="truncate text-sm font-medium" title={task.file?.path}>{task.file?.path ?? task.file?.name}</div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <TaskStatusBadge task={task} />
+        <span className="inline-flex min-w-0 items-center gap-1"><Server className="size-3 shrink-0" /><span className="truncate">{server || t("workspaceSessionFile")}</span></span>
+        {task.file && <span>{formatBytesString(task.file.size)}</span>}
+      </div>
+      {task.file?.kind === "modified" && <p className="text-xs text-muted-foreground">{t(task.status === "succeeded" ? "workspaceAppliedSnapshot" : "workspaceProposedSnapshot")}</p>}
+      {task.error && <p role="alert" className="break-words text-xs text-destructive">{task.error}</p>}
     </div>
-    <div className="flex shrink-0 items-center gap-3 border-t px-3 py-2 text-xs text-muted-foreground">
-      {result.exitCode !== undefined && <span>{t("workspaceExitCode", { code: result.exitCode })}</span>}
-      {result.duration !== undefined && <span>{(result.duration / 1000).toFixed(1)} s</span>}
-      {!follow && <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs" onClick={() => setFollow(true)}><ChevronDown className="size-3" />{t("workspaceFollowOutput")}</Button>}
-    </div>
-  </>
+    <FilePreview task={task} />
+  </div>
 }
 
 function FilePreview({ task }: { task: TaskView }) {
   const workspace = useContext(Context)!
+  const { sessionId, loadFile } = workspace
   const { t } = useTranslation("aiAssistant")
   const { resolvedTheme } = useTheme()
   const [file, setFile] = useState<AgentFileArtifact | null>(null)
@@ -252,11 +309,11 @@ function FilePreview({ task }: { task: TaskView }) {
   const [saving, setSaving] = useState(false)
   useEffect(() => {
     let cancelled = false
-    if (!workspace.sessionId) return
+    if (!sessionId) return
     setFile(null); setError("")
-    workspace.loadFile(workspace.sessionId, task.id).then((value) => { if (!cancelled) { setFile(value); setTab(value.before !== undefined ? "diff" : "preview") } }).catch((reason) => { if (!cancelled) setError(String(reason)) })
+    loadFile(sessionId, task.id).then((value) => { if (!cancelled) { setFile(value); setTab(value.before !== undefined ? "diff" : "preview") } }).catch((reason) => { if (!cancelled) setError(String(reason)) })
     return () => { cancelled = true }
-  }, [workspace.loadFile, workspace.sessionId, task.id, retry])
+  }, [loadFile, sessionId, task.id, retry])
   const download = async () => {
     if (!file || !workspace.sessionId) return
     setSaving(true)
@@ -276,7 +333,7 @@ function FilePreview({ task }: { task: TaskView }) {
     try { await copyToClipboard(file.content) } catch { toast.error(t("workspaceCopyFailed")) }
   }
   if (error) return <div className="p-4 text-sm"><p role="alert" className="text-destructive">{error}</p><Button variant="ghost" onClick={() => setRetry((value) => value + 1)}>{t("workspaceRetry")}</Button></div>
-  if (!file) return <div className="flex flex-1 items-center justify-center"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
+  if (!file) return <PageLoading className="min-h-0" />
   const image = file.encoding === "base64"
   const ext = file.name.split(".").at(-1)?.toLowerCase() ?? ""
   const markdown = ["md", "mdx", "markdown"].includes(ext)
@@ -288,7 +345,7 @@ function FilePreview({ task }: { task: TaskView }) {
       {(!image ? ["preview", "source", ...(file.before !== undefined ? ["diff"] : [])] : ["preview"]).map((value) => <Button key={value} size="sm" variant={tab === value ? "secondary" : "ghost"} className="h-7 px-2 text-xs" onClick={() => setTab(value)}>{t(`workspaceTab_${value}`)}</Button>)}
       <span className="flex-1" />
       {!image && <Button size="icon" variant="ghost" className="size-7" aria-label={t("workspaceCopy")} title={t("workspaceCopy")} onClick={() => void copy()}>{copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}</Button>}
-      <Button size="icon" variant="ghost" className="size-7" disabled={saving} aria-label={t("workspaceDownload")} title={t("workspaceDownload")} onClick={() => void download()}>{saving ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}</Button>
+      <Button size="icon" variant="ghost" className="size-7" disabled={saving} aria-label={t("workspaceDownload")} title={t("workspaceDownload")} onClick={() => void download()}>{saving ? <Spinner className="size-3.5" /> : <Download className="size-3.5" />}</Button>
     </div>
     <div className="min-h-0 flex-1 overflow-hidden">
       <Suspense fallback={<PageLoading className="h-full min-h-0" />}>

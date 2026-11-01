@@ -18,9 +18,10 @@ import { Textarea } from "@/components/ui/textarea"
 
 import { TooltipIconButton } from "./tooltip-icon-button"
 import { ToolCall } from "./tool-call"
+import { useToolExpansion } from "./tool-timeline"
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard"
 
-const formatToolDuration = (ms: number) => {
+export const formatToolDuration = (ms: number) => {
   if (ms < 1000) return "<1s"
   const seconds = ms / 1000
   if (seconds < 10) return `${(Math.floor(seconds * 10) / 10).toFixed(1)}s`
@@ -96,6 +97,13 @@ function ToolFallbackArgs({
   )
 }
 
+// EasySSH 工具结果为"标题:\n{JSON}"，标题与卡片状态重复。
+const formatToolResult = (result: unknown) => {
+  if (typeof result !== "string") return JSON.stringify(result, null, 2)
+  const title = /^[^\n{[]{1,80}:\n(?=[[{])/.exec(result)
+  return title ? result.slice(title[0].length) : result
+}
+
 function ToolFallbackResult({
   result,
   className,
@@ -105,6 +113,7 @@ function ToolFallbackResult({
 }) {
   const { t } = useTranslation("aiAssistant")
   if (result === undefined) return null
+  const text = formatToolResult(result)
 
   return (
     <div
@@ -115,11 +124,9 @@ function ToolFallbackResult({
       <p className="aui-tool-fallback-result-header text-muted-foreground text-xs font-medium">
         {t("taskResult")}:
       </p>
-      <ToolOutputCopy
-        value={typeof result === "string" ? result : JSON.stringify(result, null, 2)}
-      />
+      <ToolOutputCopy value={text} />
       <pre className="aui-tool-fallback-result-content bg-muted/50 text-foreground/90 mt-1 max-h-96 overflow-auto rounded-md p-2.5 pe-9 text-xs whitespace-pre-wrap break-words">
-        {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+        {text}
       </pre>
     </div>
   )
@@ -188,7 +195,7 @@ const offersInterruptAction = (
   approval != null ||
   interrupt != null
 
-function ToolFallbackApproval({
+export function ToolFallbackApproval({
   className,
   addResult,
   resume,
@@ -470,12 +477,7 @@ const ToolFallbackImpl: FC<ToolFallbackProps> = ({
   const shouldRenderApproval =
     isRequiresAction && offersInterruptAction(status, approval, interrupt)
 
-  const [open, setOpen] = useState(isRequiresAction)
-  const [prevRequiresAction, setPrevRequiresAction] = useState(isRequiresAction)
-  if (isRequiresAction !== prevRequiresAction) {
-    setPrevRequiresAction(isRequiresAction)
-    if (isRequiresAction) setOpen(true)
-  }
+  const { open, onOpenChange } = useToolExpansion()
 
   const { t } = useTranslation("aiAssistant")
   const state = isCancelled
@@ -497,7 +499,7 @@ const ToolFallbackImpl: FC<ToolFallbackProps> = ({
       query={query}
       state={state}
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={onOpenChange}
       timing={<ToolFallbackDuration />}
     >
       <ToolFallbackError status={status} />

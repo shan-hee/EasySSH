@@ -63,8 +63,6 @@ const (
 	TransportAISDKUI = protocol.AISdkUI
 )
 
-type ToolView = protocol.AIToolView
-
 type MessageView = aichatui.MessageView
 
 type TaskView = aichatui.TaskView
@@ -115,7 +113,6 @@ type SessionView struct {
 	Messages         []aichatui.MessageView `json:"messages"`
 	Tasks            []aichatui.TaskView    `json:"tasks"`
 	UIMessages       []aichatui.UIMessage   `json:"ui_messages"`
-	AvailableTools   []ToolView             `json:"available_tools"`
 	DefaultTransport TransportType          `json:"default_transport"`
 }
 

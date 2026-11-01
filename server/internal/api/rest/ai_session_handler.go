@@ -758,7 +758,7 @@ func (s *aiSDKUIMessageStreamer) writeAssistantSnapshot(message runtime.UIMessag
 				return err
 			}
 		case isToolPartType(typeName):
-			if err := s.writeToolPart(message.ID, message.Metadata, part); err != nil {
+			if err := s.writeToolPart(message.ID, part); err != nil {
 				return err
 			}
 		}
@@ -822,21 +822,18 @@ func (s *aiSDKUIMessageStreamer) writeToolUIMessage(message runtime.UIMessage) e
 		if !isToolPartType(stringValue(part["type"])) {
 			continue
 		}
-		return s.writeToolPart(message.ID, message.Metadata, part)
+		return s.writeToolPart(message.ID, part)
 	}
 
 	return nil
 }
 
-func (s *aiSDKUIMessageStreamer) writeToolPart(messageID string, metadata map[string]interface{}, part map[string]interface{}) error {
+func (s *aiSDKUIMessageStreamer) writeToolPart(messageID string, part map[string]interface{}) error {
 	if err := s.ensureAssistantSource(messageID); err != nil {
 		return err
 	}
 
 	toolCallID := stringValue(part["toolCallId"])
-	if toolCallID == "" {
-		toolCallID = stringValue(metadata["taskId"])
-	}
 	if toolCallID == "" {
 		return nil
 	}
@@ -856,7 +853,7 @@ func (s *aiSDKUIMessageStreamer) writeToolPart(messageID string, metadata map[st
 			"toolName":   toolName,
 			"input":      defaultMap(part["input"]),
 			"dynamic":    stringValue(part["type"]) == "dynamic-tool",
-			"title":      coalesceString(stringValue(part["title"]), stringValue(metadata["displayName"]), toolName),
+			"title":      coalesceString(stringValue(part["title"]), toolName),
 		}
 		if providerMetadata, ok := mapValue(part["callProviderMetadata"]); ok {
 			chunk["providerMetadata"] = providerMetadata

@@ -1,8 +1,8 @@
-import { AgentWorkspaceProvider, AgentWorkspacePanel, AgentWorkspaceToolbar } from "./agent-workspace-panel"
+import { AgentWorkspaceProvider, AgentWorkspacePanel, AgentWorkspaceToggle, isWorkspaceTask } from "./agent-workspace-panel"
 import { AISessionSidebar } from "./ai-session-sidebar"
 import { AISidebarContent, useAISidebarHost } from "./ai-sidebar-host"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent } from "react"
 import { ArrowLeft, Loader2, Settings2, SquarePen, X } from "lucide-react"
 
 import { AgentThread } from "@/components/ai-agent/agent-thread"
@@ -24,12 +24,11 @@ import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-ic
 import { ErrorState } from "@/components/assistant-ui/elements/error-state"
 import { AgentComposer, AgentComposerInput, AgentComposerSubmit, AgentComposerToolbar, AgentComposerTools, AgentComposerAttachButton, AgentComposerDictation } from "@/components/ai-agent/agent-composer"
 import { AgentReasoningSelector } from "./agent-reasoning-selector"
+import { AgentPermissionSelector } from "./agent-permission-selector"
 import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
-import { modelSelectorTriggerVariants } from "@/components/assistant-ui/elements/model-selector"
 import { EmptyState, EmptyStateGreeting } from "@/components/assistant-ui/elements/empty-state"
 import { ServerReferencePicker } from "./server-reference-picker"
 import type { AgentServerReference } from "@/lib/ai-agent-types"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { AgentSessionAdapter } from "@/hooks/use-agent-session"
 import type { AIConfigAdapter } from "@/hooks/use-ai-config"
 import { useSetAgentComposerDraft, useSessionDraftState } from "@/hooks/use-agent-composer-draft"
@@ -38,7 +37,7 @@ import { useAuthReady } from "@/hooks/use-auth-ready"
 import { getDefaultAISessionTitle, useAISessionHistory } from "@/hooks/use-ai-session-history"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { serversApi, type Server as ManagedServer } from "@/lib/api"
-import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope, type PermissionMode } from "@/lib/api/ai-agent"
+import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope } from "@/lib/api/ai-agent"
 import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
 import type { ServerListResponse } from "@/lib/api/servers"
 import { mergeServerReferences, parseServerReferenceText } from "@/lib/ai-agent/server-mentions"
@@ -228,27 +227,6 @@ export function AIAssistantWorkspaceView({
     void restoreLatestSession()
   }, [active, agentSession.transport, isConfigured, isLoading, ready, requestedSessionId, restoreLatestSession, restoreSession, session])
 
-  const permissionOptions = useMemo(
-    () =>
-      [
-        {
-          value: "readonly" as const,
-          label: t("permissionModeReadonly"),
-          description: t("permissionModeReadonlyDesc"),
-        },
-        {
-          value: "balanced" as const,
-          label: t("permissionModeBalanced"),
-          description: t("permissionModeBalancedDesc"),
-        },
-        {
-          value: "privileged" as const,
-          label: t("permissionModePrivileged"),
-          description: t("permissionModePrivilegedDesc"),
-        },
-      ],
-    [t]
-  )
 
   const isConfigChecking = !ready || isLoading
   const showConfigAction = canConfigure && ready && !isLoading && !isConfigured
@@ -257,6 +235,7 @@ export function AIAssistantWorkspaceView({
   const attachmentDisabled = attachmentsLoading || attachments.length >= MAX_COMPOSER_ATTACHMENTS || serverReferenceDisabled
 
   const hasTimeline = uiMessages.length > 0
+  const hasWorkspaceTasks = agentSession.tasks.some(isWorkspaceTask)
   const createSessionDisabled = !ready || isLoading || !isConfigured || sessionCreating || attachmentsLoading
 
   const buildMessageContext = useCallback(
@@ -599,7 +578,7 @@ export function AIAssistantWorkspaceView({
   )
   return (
     <AssistantRuntimeProvider runtime={agentSession.runtime}>
-    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} messages={session?.messages} scope={session?.scope} active={active} loadFile={adapters?.aiSession?.getTaskFile} saveFile={adapters?.aiSession?.saveTaskFile} approve={async (id, approved) => { await agentSession.respondToToolApproval({ id, approved }) }} stop={cancelSession}>
+    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} servers={availableServers} messages={session?.messages} scope={session?.scope} active={active} loadFile={adapters?.aiSession?.getTaskFile} saveFile={adapters?.aiSession?.saveTaskFile}>
     {sidebar && active && <AISidebarContent>
       <AssistantRuntimeProvider runtime={agentSession.runtime}>
       <AISessionSidebar
@@ -613,11 +592,9 @@ export function AIAssistantWorkspaceView({
     </AISidebarContent>}
     <div className="@container flex min-h-0 flex-1 flex-col overflow-hidden">
       {confirmDialog}
-      {active && !hidePageHeader && <PageHeader title={sessionTitle} />}
+      {active && !hidePageHeader && <PageHeader title={sessionTitle}><AgentWorkspaceToggle /></PageHeader>}
 
-      <div className="flex shrink-0 justify-end px-3"><AgentWorkspaceToolbar /></div>
-
-      {(!sidebar || onReturnToTerminal) && <div className="shrink-0 px-4 pb-1 md:px-4">
+      {(!sidebar || onReturnToTerminal || (hidePageHeader && hasWorkspaceTasks)) && <div className="shrink-0 px-4 pb-1 md:px-4">
         <div className="flex h-9 items-center justify-between gap-2">
           {onReturnToTerminal ? (
             <Button
@@ -636,6 +613,7 @@ export function AIAssistantWorkspaceView({
             <div />
           )}
           <div className="flex items-center justify-end gap-1">
+            {hidePageHeader && <AgentWorkspaceToggle />}
             {!sidebar && sessionToolbar}
           </div>
         </div>
@@ -649,7 +627,6 @@ export function AIAssistantWorkspaceView({
                 <AgentThread
                   key={sessionId ?? "new"}
                   tText={t}
-                  scope={session?.scope}
                   referenceServers={availableServers}
                   referenceServersLoading={serversLoading}
                   onUpdateUserMessage={handleUpdateUserMessage}
@@ -712,33 +689,7 @@ export function AIAssistantWorkspaceView({
                     <AgentComposerTools className="min-w-0 flex-wrap">
                       <AgentComposerAttachButton onClick={() => fileInputRef.current?.click()} disabled={attachmentDisabled} aria-busy={attachmentsLoading} title={t("attachFile")} />
 
-                      <Select
-                        value={permissionMode}
-                        onValueChange={(value) => setPermissionMode(value as PermissionMode)}
-                        disabled={isConfigChecking}
-                      >
-                        <SelectTrigger
-                          size="sm"
-                          className={cn(modelSelectorTriggerVariants({ variant: "ghost", size: "sm" }), "rounded-full text-muted-foreground")}
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent
-                          align="start"
-                          sideOffset={6}
-                          className="terminal-ai-glass-popover w-auto rounded-xl data-[side=bottom]:translate-y-0 data-[side=left]:translate-x-0 data-[side=right]:translate-x-0 data-[side=top]:translate-y-0"
-                        >
-                          {permissionOptions.map((option) => (
-                            <SelectItem
-                              key={option.value}
-                              value={option.value}
-                              className="rounded-lg py-2 pl-3 pr-9 font-medium [&>span:first-child]:right-3"
-                            >
-                              {option.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <AgentPermissionSelector value={permissionMode} onValueChange={setPermissionMode} disabled={isConfigChecking} />
 
                       {showConfigAction && (
                         <Button

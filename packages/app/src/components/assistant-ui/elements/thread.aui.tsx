@@ -16,7 +16,7 @@ import {
   ReasoningTrigger
 } from "@/components/assistant-ui/elements/reasoning.aui"
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui"
-import { ToolTimeline } from "./tool-timeline"
+import { ToolTimeline, useToolExpansion } from "./tool-timeline"
 import { ThreadNavigator, type ThreadNavigationEntry } from "./thread-navigator"
 import { MessagePair } from "./message-pair"
 import { MessageTimestamp } from "./timeline"
@@ -380,24 +380,15 @@ const AssistantMessage: FC = () => {
 }
 
 function ThreadToolGroup({ group, children }: PropsWithChildren<{ group: ThreadGroupPart }>) {
-  const waiting = useAuiState((s) =>
-    group.indices.some((i) => {
-      const part = s.message.content[i]
-      return (
-        part?.type === "tool-call" &&
-        part.approval != null &&
-        part.approval.approved === undefined &&
-        !part.approval.resolution
-      )
-    })
-  )
-  const [open, setOpen] = useState(false)
+  const active = group.status.type === "running"
+  const { open, onOpenChange } = useToolExpansion()
   return (
     <ToolTimeline
       count={group.indices.length}
-      active={group.status.type === "running"}
-      open={waiting || open}
-      onOpenChange={setOpen}
+      active={active}
+      open={open}
+      onOpenChange={onOpenChange}
+      onChildExpand={() => onOpenChange(true)}
     >
       {children}
     </ToolTimeline>

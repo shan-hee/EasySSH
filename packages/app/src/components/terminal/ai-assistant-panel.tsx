@@ -1,4 +1,5 @@
-import { AgentWorkspaceProvider, AgentWorkspacePanel, AgentWorkspaceToolbar } from "@/components/ai-agent/agent-workspace-panel"
+import { AgentWorkspaceProvider, AgentWorkspacePanel, AgentWorkspaceToggle } from "@/components/ai-agent/agent-workspace-panel"
+import { AgentPermissionSelector } from "@/components/ai-agent/agent-permission-selector"
 import type { AgentServerReference } from "@/lib/ai-agent-types"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
 import { Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent } from "react"
@@ -6,7 +7,6 @@ import { Link } from "react-router-dom"
 import {
   Loader2,
   Settings2,
-  Shield,
   SquarePen,
   X,
 } from "lucide-react"
@@ -31,8 +31,6 @@ import { toast } from "@/components/ui/sonner"
 import { AgentComposer, AgentComposerInput, AgentComposerSubmit, AgentComposerToolbar, AgentComposerTools, AgentComposerAttachButton, AgentComposerDictation } from "@/components/ai-agent/agent-composer"
 import { AgentReasoningSelector } from "@/components/ai-agent/agent-reasoning-selector"
 import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
-import { modelSelectorTriggerVariants } from "@/components/assistant-ui/elements/model-selector"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSetAgentComposerDraft, useSessionDraftState } from "@/hooks/use-agent-composer-draft"
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAISessionHistory } from "@/hooks/use-ai-session-history"
@@ -41,7 +39,6 @@ import {
   listAISessions as listAISessionsAPI,
   renameAISession as renameAISessionAPI,
   type AgentSessionScope,
-  type PermissionMode,
 } from "@/lib/api/ai-agent"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { cn } from "@/lib/utils"
@@ -281,26 +278,6 @@ export function AiAssistantPanel({
     }
   }, [session, syncHistorySession, tAI])
 
-  const permissionOptions = useMemo(
-    () => [
-      {
-        value: "readonly" as const,
-        label: tAI("permissionModeReadonly"),
-        description: tAI("permissionModeReadonlyDesc"),
-      },
-      {
-        value: "balanced" as const,
-        label: tAI("permissionModeBalanced"),
-        description: tAI("permissionModeBalancedDesc"),
-      },
-      {
-        value: "privileged" as const,
-        label: tAI("permissionModePrivileged"),
-        description: tAI("permissionModePrivilegedDesc"),
-      },
-    ],
-    [tAI]
-  )
 
   const terminalContextText = useMemo(() => {
     const lines = [
@@ -730,7 +707,7 @@ export function AiAssistantPanel({
       </div>
 
       <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
-        <AgentWorkspaceToolbar />
+        <AgentWorkspaceToggle />
         <div className="hidden md:block"><PanelPositionControl position={position} onChange={onPositionChange} /></div>
         <AISessionHistoryPopover
           activeSessionId={sessionId}
@@ -770,7 +747,7 @@ export function AiAssistantPanel({
 
   return (
     <AssistantRuntimeProvider runtime={agentSession.runtime}>
-    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} messages={session?.messages} scope={session?.scope} active={isOpen} loadFile={adapters?.aiSession?.getTaskFile} saveFile={adapters?.aiSession?.saveTaskFile} approve={async (id, approved) => { await agentSession.respondToToolApproval({ id, approved }) }} stop={cancelSession}>
+    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} messages={session?.messages} scope={session?.scope} active={isOpen} loadFile={adapters?.aiSession?.getTaskFile} saveFile={adapters?.aiSession?.saveTaskFile}>
     <aside
       data-terminal-panel
       role="complementary"
@@ -816,7 +793,6 @@ export function AiAssistantPanel({
         {hasMountedThread ? <AgentThread
           key={sessionId ?? "new"}
           tText={tAI}
-          scope={session?.scope}
           onUpdateUserMessage={handleUpdateUserMessage}
           onRegenerateUserMessage={handleRegenerateUserMessage}
           onContinueStoppedRun={handleContinueStoppedRun}
@@ -897,37 +873,7 @@ export function AiAssistantPanel({
                   ])}
                 />
                 {isConfigured ? (
-                  <>
-
-                    <Select
-                      value={permissionMode}
-                      onValueChange={(value) => setPermissionMode(value as PermissionMode)}
-                    >
-                      <SelectTrigger
-                        size="sm"
-                        className={cn(modelSelectorTriggerVariants({ variant: "ghost", size: "sm" }), "max-w-[150px] rounded-full text-muted-foreground")}
-                        title={permissionOptions.find((option) => option.value === permissionMode)?.description}
-                      >
-                        <Shield className="size-3.5 shrink-0" />
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent
-                        align="start"
-                        sideOffset={6}
-                        className="terminal-ai-glass-popover w-auto rounded-xl data-[side=bottom]:translate-y-0 data-[side=left]:translate-x-0 data-[side=right]:translate-x-0 data-[side=top]:translate-y-0"
-                      >
-                        {permissionOptions.map((option) => (
-                          <SelectItem
-                            key={option.value}
-                            value={option.value}
-                            className="rounded-lg py-2 pl-3 pr-9 font-medium [&>span:first-child]:right-3"
-                          >
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </>
+                  <AgentPermissionSelector value={permissionMode} onValueChange={setPermissionMode} className="max-w-[150px]" />
                 ) : isConfigLoading ? (
                   <div className="flex h-8 items-center gap-1.5 px-2 text-xs text-muted-foreground">
                     <Loader2 className="size-3.5 animate-spin" />

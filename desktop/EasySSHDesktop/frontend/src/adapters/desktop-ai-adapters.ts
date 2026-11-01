@@ -18,7 +18,6 @@ import type {
   SessionOverview,
   SessionOverviewResponse,
   TaskView,
-  ToolView,
 } from "@easyssh/app/lib/ai-agent-types"
 import {
   loadAISessionHistory,
@@ -43,7 +42,6 @@ import {
   type DesktopAISessionListItem,
   type DesktopAISessionScope,
   type DesktopAISessionView,
-  type DesktopAIToolView,
 } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/models"
 
 const desktopAiConfigQueryKey = ["desktopAiConfig"]
@@ -294,7 +292,6 @@ function fromDesktopSession(session: DesktopAISessionView): SessionOverview {
     updated_at: session.updated_at,
     message_count: session.message_count,
     task_count: session.task_count,
-    available_tools: session.available_tools.map(fromDesktopTool),
     default_transport: fromDesktopTransport(session.default_transport),
   }
 }
@@ -341,16 +338,6 @@ function fromDesktopTask(task: DesktopAITaskPayload): TaskView {
     error: task.error,
     created_at: task.created_at,
     updated_at: task.updated_at,
-    custom_title: task.custom_title,
-  }
-}
-
-function fromDesktopTool(tool: DesktopAIToolView): ToolView {
-  return {
-    name: tool.name,
-    display_name: tool.display_name,
-    description: tool.description,
-    dangerous: tool.dangerous,
   }
 }
 

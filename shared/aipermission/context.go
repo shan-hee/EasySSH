@@ -1,9 +1,8 @@
 package aipermission
 
-// External content may have been written by another server user. Privileged
-// mode does not turn instructions inside that content into the owner's intent.
-func RequiresConfirmation(mode string, ordinaryConfirmation, externalExecution bool) bool {
-	return ordinaryConfirmation && NormalizeMode(mode) != ModePrivileged || externalExecution
+// Confirmation depends only on the permission mode and the tool's strategy.
+func RequiresConfirmation(mode string, ordinaryConfirmation bool) bool {
+	return NormalizeMode(mode) != ModePrivileged && ordinaryConfirmation
 }
 
 // The caller sends this as a separate user-data message, never system policy.

@@ -1657,7 +1657,7 @@ func (m *Manager) materializeTasks(ctx context.Context, s *session, assistantMes
 		now := time.Now()
 
 		m.mu.RLock()
-		requiresConfirmation := requiresUserConfirmation(s.permissionMode, spec, s.hasExternalContent())
+		requiresConfirmation := requiresUserConfirmation(s.permissionMode, spec)
 		m.mu.RUnlock()
 		view := TaskView{
 			ID:                   taskID,
@@ -2025,7 +2025,6 @@ func (m *Manager) snapshotSessionLocked(s *session) SessionView {
 		Messages:         messages,
 		Tasks:            tasks,
 		UIMessages:       aichatui.BuildMessages(s.messageViews, tasks),
-		AvailableTools:   buildToolViews(m.visibleToolsForSessionLocked(s)),
 		DefaultTransport: TransportAISDKUI,
 	}
 }
@@ -2543,29 +2542,13 @@ func (s *session) truncateProviderMessagesAfterVisibleMessage(visibleMessageCoun
 	s.messages = append([]provider.Message(nil), s.messages[:end]...)
 }
 
-func buildToolViews(specs []registry.ToolSpec) []ToolView {
-	views := make([]ToolView, 0, len(specs))
-	for _, spec := range specs {
-		views = append(views, ToolView{
-			Name:        spec.Name,
-			DisplayName: spec.DisplayName,
-			Description: spec.Description,
-			Dangerous:   spec.Dangerous,
-		})
-	}
-	sort.SliceStable(views, func(i, j int) bool {
-		return views[i].Name < views[j].Name
-	})
-	return views
-}
-
 func normalizePermissionMode(raw string) string {
 	return aipermission.NormalizeMode(raw)
 }
 
-func requiresUserConfirmation(permissionMode string, spec registry.ToolSpec, externalContent bool) bool {
+func requiresUserConfirmation(permissionMode string, spec registry.ToolSpec) bool {
 	ordinary := spec.ConfirmStrategy == registry.ConfirmUser
-	return aipermission.RequiresConfirmation(permissionMode, ordinary, externalContent && (ordinary || trackedExecutionTool(spec.Name)))
+	return aipermission.RequiresConfirmation(permissionMode, ordinary)
 }
 
 func buildToolSystemPrompt(permissionMode string, allowedTools []registry.ToolSpec, scope SessionScope) string {

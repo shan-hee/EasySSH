@@ -4,20 +4,18 @@ import { Thread, MessageEditComposer } from "@/components/assistant-ui/elements/
 import { ToolFallback } from "@/components/assistant-ui/elements/tool-fallback.aui"
 import { ThinkingIndicator } from "@/components/assistant-ui/elements/thinking-indicator"
 import { ErrorState } from "@/components/assistant-ui/elements/error-state"
-import { Timeline } from "@/components/assistant-ui/elements/timeline"
 import { ServerReferencePicker } from "./server-reference-picker"
-import { AgentWorkspaceToolLink } from "./agent-workspace-panel"
+import { AgentWorkspaceFileLink, useAgentWorkspace } from "./agent-workspace-panel"
+import { AgentCommandCard } from "./agent-command-card"
 import { AgentComposerInput } from "./agent-composer"
 import { parseServerReferenceText, readServerReferences, serializeServerReferenceText, splitServerReferenceText } from "@/lib/ai-agent/server-mentions"
 import type { Server as ManagedServer } from "@/lib/api"
 import type { AgentServerReference } from "@/lib/ai-agent-types"
-import type { AgentSessionScope } from "@/lib/api/ai-agent"
 import type { AssistantLoadingState, TimelineTranslate } from "@/lib/ai-agent/timeline-utils"
 
 type ThreadOptions = {
   tText: TimelineTranslate
   compact?: boolean
-  scope?: AgentSessionScope
   referenceServers?: ManagedServer[]
   referenceServersLoading?: boolean
   onUpdateUserMessage?: (id: string, text: string, references?: AgentServerReference[]) => boolean | Promise<boolean>
@@ -25,7 +23,7 @@ type ThreadOptions = {
   onDeleteUserMessage?: (id: string) => boolean | Promise<boolean>
   onContinueStoppedRun?: (id: string) => boolean | Promise<boolean>
 }
-const Context = createContext<Pick<ThreadOptions, "tText" | "scope" | "referenceServers" | "referenceServersLoading" | "onUpdateUserMessage"> | null>(null)
+const Context = createContext<Pick<ThreadOptions, "tText" | "referenceServers" | "referenceServersLoading" | "onUpdateUserMessage"> | null>(null)
 function useAgentThread() {
   const context = useContext(Context)
   if (!context) throw new Error("Agent tool must be rendered inside AgentThread")
@@ -40,70 +38,32 @@ function text(value: unknown) {
   return typeof value === "string" ? value : ""
 }
 
-// Only EasySSH execution context is host-specific. The official fallback owns
-// status, disclosure, parameters/results, duration and approval interactions.
+// 命令使用专用卡片；其他工具沿用官方 fallback，只补充文件入口和审批目标。
 function AgentTool(part: ToolCallMessagePartProps) {
-  const { tText, scope } = useAgentThread()
+  const { tText } = useAgentThread()
   const running = useAuiState((s) => s.thread.isRunning)
+  const workspace = useAgentWorkspace()
   const metadata = asRecord(part.providerMetadata?.easyssh)
-  const args = asRecord(part.args)
+  const taskId = text(metadata.taskId)
+  const task = workspace?.tasks.find((item) => item.id === taskId || item.tool_call_id === part.toolCallId)
+  if (part.toolName === "execute_command" && task) return <AgentCommandCard task={task} part={part} disabled={running} />
   const waiting =
     part.approval != null && part.approval.approved === undefined && !part.approval.resolution
-  const target =
-    text(args.server_name || args.server_id || args.host) || scope?.server_name || scope?.host
-  const cwd = text(args.cwd || args.working_directory)
+  const serverId = text(asRecord(part.args).server_id)
+  const target = serverId && (workspace?.serverName(serverId) ?? serverId)
   return (
     <ToolFallback
       {...part}
       toolName={text(metadata.displayName) || part.toolName}
       disabled={running}
     >
-      {waiting && (
+      {waiting && (target || metadata.dangerous === true) && (
         <div className="space-y-1 border-l-2 border-status-warning/40 pl-3 text-xs text-muted-foreground">
-          {text(metadata.summary) && <p>{text(metadata.summary)}</p>}
-          {target && (
-            <p>
-              {tText("approvalTarget")}: {target}
-            </p>
-          )}
-          {cwd && (
-            <p>
-              {tText("approvalWorkingDirectory")}: {cwd}
-            </p>
-          )}
-          <p>
-            {tText(
-              metadata.dangerous === true ? "approvalImpactDangerous" : "approvalImpactRoutine"
-            )}
-          </p>
+          {target && <p>{tText("approvalTarget")}: {target}</p>}
+          {metadata.dangerous === true && <p>{tText("approvalImpactDangerous")}</p>}
         </div>
       )}
-      <AgentWorkspaceToolLink taskId={text(metadata.taskId)} toolCallId={part.toolCallId} />
-      <Timeline
-        events={[
-          ...(text(metadata.createdAt)
-            ? [{ id: "created", time: text(metadata.createdAt), title: tText("auiToolCreated") }]
-            : []),
-          ...(text(metadata.updatedAt) && metadata.updatedAt !== metadata.createdAt
-            ? [
-                {
-                  id: "updated",
-                  time: text(metadata.updatedAt),
-                  title: tText(
-                    metadata.taskStatus === "succeeded"
-                      ? "auiToolCompleted"
-                      : metadata.taskStatus === "failed"
-                        ? "auiToolFailed"
-                        : metadata.taskStatus === "cancelled"
-                          ? "auiCancelledTool"
-                          : "auiToolUpdated"
-                  ),
-                  active: metadata.taskStatus === "running"
-                }
-              ]
-            : [])
-        ]}
-      />
+      {task && <AgentWorkspaceFileLink task={task} />}
     </ToolFallback>
   )
 }
@@ -159,7 +119,6 @@ const components = { ToolFallback: AgentTool, Data: AgentData, UserText: Referen
 
 export const AgentThread = memo(function AgentThread({
   tText,
-  scope,
   referenceServers,
   referenceServersLoading,
   onUpdateUserMessage,
@@ -172,7 +131,7 @@ export const AgentThread = memo(function AgentThread({
   contentClassName?: string
   viewportClassName?: string
 }) {
-  const context = useMemo(() => ({ tText, scope, referenceServers, referenceServersLoading, onUpdateUserMessage }), [tText, scope, referenceServers, referenceServersLoading, onUpdateUserMessage])
+  const context = useMemo(() => ({ tText, referenceServers, referenceServersLoading, onUpdateUserMessage }), [tText, referenceServers, referenceServersLoading, onUpdateUserMessage])
   const loadingText = assistantLoadingState
     ? tText(assistantLoadingState === "reconnecting" ? "auiReconnecting" : "auiThinking")
     : undefined

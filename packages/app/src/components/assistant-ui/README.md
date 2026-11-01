@@ -104,7 +104,7 @@ Markdown 使用官方 `@assistant-ui/react-streamdown` 的 `StreamdownTextPrimit
 
 | 组件 | 数据与行为 |
 | --- | --- |
-| Tool timeline | 真实连续工具调用分组，显示调用数量、执行状态和各工具目标，支持折叠；等待审批时自动展开。没有真实文件行数统计时不生成演示中的增删行数字。 |
+| Tool timeline | 真实连续工具调用分组，显示调用数量、执行状态和各工具目标，默认收起，由用户手动展开。没有真实文件行数统计时不生成演示中的增删行数字。 |
 | Tool call | 官方折叠布局显示真实请求、结果、错误与取消状态；保留复制、耗时和真实审批响应。 |
 | Timestamps | 官方源码对应 Timeline；工具的创建和最后更新时间直接来自 TaskView，消息时间来自持久化 createdAt 元数据，不使用 Runtime 恢复历史时新建的 Date 作为消息时间。 |
 | Stopped run | Web 与桌面保存 stopped_at 和部分回复，通过 data-stopped-run part 呈现。Continue 追加继续请求，保留已有回复及范围；Discard 删除本轮回复与工具记录、保留用户问题。旧轮次的停止操作禁用，避免误删后续对话。 |
@@ -138,3 +138,11 @@ Markdown 使用官方 `@assistant-ui/react-streamdown` 的 `StreamdownTextPrimit
 - 预览复用 Streamdown；源码与 Diff 延迟加载项目本地 Monaco Editor / DiffEditor，不依赖 CDN。HTML 仅静态预览，使用无脚本 sandbox iframe 和独立 CSP，禁止脚本、外部资源及表单提交。复制复用项目剪贴板工具；Web 使用 Blob 下载，桌面使用 Wails 原生保存对话框。
 - 任意 shell 命令修改文件无法自动获得可靠 Diff；需要对比的文本修改应通过 `write_file`。面板不从 Markdown 代码块或命令输出猜测文件变更，也不提供虚假的回滚或重跑。
 - OpenAPI 文件快照接口、任务元数据和生成的 Go / TypeScript 类型已同步；本轮未执行应用构建、自动测试或浏览器交互验收。
+
+## 2026-11-01 命令卡片与执行记录
+
+- `execute_command` 在消息中使用 `AgentCommandCard`：命令、目标服务器名称、审批、实时输出、退出码与耗时都在卡片内，数据读取会话任务，输出随增量更新。命令卡片、通用工具详情与所在工具组共用 `useToolExpansion`：全部默认收起，仅由用户手动切换，运行、成功、失败、结果未知或待审批等状态变化均不触发展开或收起。用户手动展开内部详情时，外层分组也保持展开；重新加载历史时默认收起。审批复用 ToolFallback 导出的 `ToolFallbackApproval`，耗时复用 `formatToolDuration`。
+- 侧边面板改为按需打开的“执行记录”，只展示本会话的命令与文件：列表、完整输出、文件预览与对比。不再自动弹出，不再提供跟随任务、展开抽屉、版本号、关联任务，以及与卡片、输入框重复的审批和停止按钮。
+- 删除工具卡片中的 Timeline（流式期间元数据不更新，只会停在初始状态），elements-timeline 仅保留 `MessageTimestamp`。工具结果去掉与状态重复的“标题:”前缀。
+- 任务的 `callProviderMetadata.easyssh` 只保留 `taskId`、`taskStatus`、`displayName`、`dangerous`，与共享包 `aichatui.TaskPart` 一致；会话概况不再返回 `available_tools`。
+- `@` 服务器选择：通用 TriggerPopover 增加 `renderItem`、按 `metadata.section` 显示分节标题、`TriggerHighlight` 命中高亮，加载改用行内 Spinner。服务器条目显示在线状态点、名称、`用户名@地址:端口`、分组和命中的标签，已引用的服务器带勾选标记。无查询时“最近使用”（本设备最近 @ 过的服务器）在前，其余按分组排列；有查询时按名称、地址、分组、标签的匹配程度排序，同等匹配下最近使用的优先。没有服务器和没有匹配分别提示。

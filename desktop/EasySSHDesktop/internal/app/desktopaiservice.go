@@ -1850,7 +1850,7 @@ func (s *DesktopAIService) materializeDesktopAITasks(ctx context.Context, record
 			Summary:              desktopAISummarizeTask(toolCall.Name, args),
 			Status:               DesktopAITaskQueued,
 			Dangerous:            spec.Dangerous,
-			RequiresConfirmation: desktopAIRequiresConfirmation(record.PermissionMode, spec, desktopAIHasExternalContent(record)),
+			RequiresConfirmation: desktopAIRequiresConfirmation(record.PermissionMode, spec),
 			Arguments:            args,
 			CreatedAt:            now,
 			UpdatedAt:            now,
@@ -2938,9 +2938,9 @@ func desktopAIValidateServerReference(record desktopAISessionRecord, spec deskto
 	return ""
 }
 
-func desktopAIRequiresConfirmation(permission DesktopAIPermissionMode, spec desktopAIToolSpec, externalContent bool) bool {
+func desktopAIRequiresConfirmation(permission DesktopAIPermissionMode, spec desktopAIToolSpec) bool {
 	ordinary := spec.ConfirmStrategy == desktopAIConfirmUser
-	return aipermission.RequiresConfirmation(string(permission), ordinary, externalContent && (ordinary || trackedDesktopAITool(spec.Name)))
+	return aipermission.RequiresConfirmation(string(permission), ordinary)
 }
 
 func desktopAIDecodeArguments(raw json.RawMessage) map[string]any {

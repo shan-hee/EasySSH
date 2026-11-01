@@ -18,7 +18,7 @@ func (m *Manager) GetOverview(ctx context.Context, id string) (*protocol.AISessi
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return &protocol.AISessionOverview{Actor: s.actor, Title: s.title, ID: s.id, Model: s.model, PermissionMode: s.permissionMode, Scope: s.scope, Status: s.status, CreatedAt: s.createdAt, UpdatedAt: s.updatedAt, MessageCount: len(s.messageViews), TaskCount: len(s.taskOrder), AvailableTools: buildToolViews(m.visibleToolsForSessionLocked(s)), DefaultTransport: TransportAISDKUI}, nil
+	return &protocol.AISessionOverview{Actor: s.actor, Title: s.title, ID: s.id, Model: s.model, PermissionMode: s.permissionMode, Scope: s.scope, Status: s.status, CreatedAt: s.createdAt, UpdatedAt: s.updatedAt, MessageCount: len(s.messageViews), TaskCount: len(s.taskOrder), DefaultTransport: TransportAISDKUI}, nil
 }
 func (m *Manager) History(ctx context.Context, id string, input protocol.AIHistoryInput) (protocol.AIHistoryPage, error) {
 	input, err := aiwire.NormalizeHistoryInput(input)

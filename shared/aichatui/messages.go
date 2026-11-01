@@ -299,20 +299,8 @@ func AssistantParts(message MessageView, streaming bool) []map[string]interface{
 
 func TaskMessage(task TaskView) UIMessage {
 	return UIMessage{
-		ID:   "task:" + task.ID,
-		Role: "assistant",
-		Metadata: map[string]interface{}{
-			"source":               "task",
-			"createdAt":            task.CreatedAt,
-			"updatedAt":            task.UpdatedAt,
-			"taskId":               task.ID,
-			"taskStatus":           task.Status,
-			"file":                 task.File,
-			"dangerous":            task.Dangerous,
-			"requiresConfirmation": task.RequiresConfirmation,
-			"displayName":          task.ToolDisplayName,
-			"summary":              task.Summary,
-		},
+		ID:    "task:" + task.ID,
+		Role:  "assistant",
 		Parts: []map[string]interface{}{TaskPart(task)},
 	}
 }
@@ -331,18 +319,13 @@ func TaskPart(task TaskView) map[string]interface{} {
 		"title":            firstNonEmpty(task.ToolDisplayName, task.ToolName),
 		"providerExecuted": false,
 		"input":            task.Arguments,
+		// 界面从会话任务读取实时状态；这里只保留关联任务和渲染工具所需的字段。
 		"callProviderMetadata": map[string]interface{}{
 			"easyssh": map[string]interface{}{
-				"createdAt":            task.CreatedAt,
-				"updatedAt":            task.UpdatedAt,
-				"taskId":               task.ID,
-				"assistantMessageId":   task.AssistantMessageID,
-				"taskStatus":           task.Status,
-				"file":                 task.File,
-				"dangerous":            task.Dangerous,
-				"requiresConfirmation": task.RequiresConfirmation,
-				"displayName":          task.ToolDisplayName,
-				"summary":              task.Summary,
+				"taskId":      task.ID,
+				"taskStatus":  task.Status,
+				"displayName": task.ToolDisplayName,
+				"dangerous":   task.Dangerous,
 			},
 		},
 	}

@@ -140,18 +140,13 @@ export function taskUIPart(task: TaskView): UIPart {
     title: nonEmpty(task.tool_display_name, task.tool_name),
     providerExecuted: false,
     input: task.arguments ?? {},
+    // 卡片从会话任务读取实时状态；这里只保留关联任务和渲染工具所需的字段。
     callProviderMetadata: {
       easyssh: {
-        createdAt: task.created_at,
-        updatedAt: task.updated_at,
         taskId: task.id,
-        assistantMessageId: task.assistant_message_id,
         taskStatus: task.status,
-        file: task.file,
-        dangerous: task.dangerous,
-        requiresConfirmation: task.requires_confirmation,
         displayName: task.tool_display_name,
-        summary: task.summary,
+        dangerous: task.dangerous,
       },
     },
   }

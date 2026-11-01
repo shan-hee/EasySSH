@@ -47,13 +47,6 @@ export interface AgentProviderMetadata {
   cost_estimate_kind?: string
 }
 
-export interface ToolView {
-  name: string
-  display_name?: string
-  description: string
-  dangerous: boolean
-}
-
 export interface AgentServerReference {
   server_id: string
   name: string
@@ -112,7 +105,6 @@ export interface TaskView {
   error?: string
   created_at: string
   updated_at: string
-  custom_title?: boolean
 }
 
 export interface SessionListItem {
@@ -151,7 +143,6 @@ export interface SessionOverview {
   status: AgentSessionStatus
   created_at: string
   updated_at: string
-  available_tools: ToolView[]
   default_transport: AgentTransportType
   message_count?: number
   task_count?: number

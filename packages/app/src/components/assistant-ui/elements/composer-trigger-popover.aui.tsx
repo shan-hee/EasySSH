@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useRef, type ComponentPropsWithoutRef, type FC } from "react"
+import { Fragment, memo, useRef, type ComponentPropsWithoutRef, type FC, type ReactNode } from "react"
 import {
   ComposerPrimitive,
   unstable_defaultDirectiveFormatter,
@@ -11,7 +11,7 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon, CornerDownLeftIcon, SparklesIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useSynchronousSelectedItemScroll } from "@/hooks/use-synchronous-selected-item-scroll"
-import { PageLoading } from "@/components/page-loading"
+import { Spinner } from "@/components/ui/spinner"
 
 type IconComponent = FC<{ className?: string }>
 
@@ -52,7 +52,24 @@ type ComposerTriggerPopoverBaseProps = Omit<
   loadingLabel?: string
   /** Heading and keyboard guidance for the item list. */
   label?: string
-  navigationHint?: string
+  navigationHint?: ReactNode
+  /**
+   * Replaces the default icon, label and description of an item. Items with
+   * `metadata.section` (string) get a heading whenever the section changes.
+   */
+  renderItem?: (item: Unstable_TriggerItem, query: string) => ReactNode
+}
+
+/** Marks the first case-insensitive occurrence of the query. */
+export function TriggerHighlight({ text, query }: { text: string; query: string }) {
+  const needle = query.trim().toLowerCase()
+  const index = needle ? text.toLowerCase().indexOf(needle) : -1
+  if (index < 0) return <>{text}</>
+  return <>
+    {text.slice(0, index)}
+    <mark className="rounded-[2px] bg-primary/15 text-current">{text.slice(index, index + needle.length)}</mark>
+    {text.slice(index + needle.length)}
+  </>
 }
 
 type ComposerTriggerPopoverProps = ComposerTriggerPopoverBaseProps &
@@ -129,11 +146,15 @@ type ItemsProps = {
   emptyLabel: string
   loadingLabel: string
   label?: string
-  navigationHint?: string
+  navigationHint?: ReactNode
+  renderItem?: ComposerTriggerPopoverBaseProps["renderItem"]
 }
 
-const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, loadingLabel, label, navigationHint }) => {
-  const { isLoading, highlightedItemId, open, activeCategoryId, isSearchMode } = unstable_useTriggerPopoverScopeContext()
+const sectionOf = (item: Unstable_TriggerItem | undefined) =>
+  typeof item?.metadata?.section === "string" ? item.metadata.section : ""
+
+const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, loadingLabel, label, navigationHint, renderItem }) => {
+  const { isLoading, highlightedItemId, open, activeCategoryId, isSearchMode, query } = unstable_useTriggerPopoverScopeContext()
   const listRef = useRef<HTMLDivElement>(null)
 
   useSynchronousSelectedItemScroll({
@@ -157,36 +178,45 @@ const Items: FC<ItemsProps> = ({ iconMap, fallbackIcon, backLabel, emptyLabel, l
             {backLabel}
           </ComposerPrimitive.Unstable_TriggerPopoverBack>
 
-          <div ref={listRef} className="scrollbar-custom max-h-[min(15rem,32dvh)] overflow-y-auto overscroll-contain scroll-auto [overflow-anchor:none] p-1">
+          <div ref={listRef} className="scrollbar-custom max-h-[min(18rem,36dvh)] overflow-y-auto overscroll-contain scroll-auto [overflow-anchor:none] p-1">
             {items.map((item, index) => {
               const iconKey = typeof item.metadata?.icon === "string" ? item.metadata.icon : undefined
               const Icon = resolveIcon(iconKey, iconMap, fallbackIcon)
+              const section = sectionOf(item)
               return (
-                <ComposerPrimitive.Unstable_TriggerPopoverItem
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  className="group/trigger-item data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-start outline-none"
-                >
-                  <Icon className="size-4 shrink-0 text-muted-foreground group-data-[highlighted]/trigger-item:text-accent-foreground" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium" title={item.label}>{item.label}</span>
-                    {item.description && (
-                      <span className="mt-0.5 block truncate text-xs leading-4 text-muted-foreground" title={item.description}>
-                        {item.description}
+                <Fragment key={item.id}>
+                  {section && section !== sectionOf(items[index - 1]) && (
+                    <div role="presentation" className="truncate px-2.5 pb-1 pt-2.5 text-xs font-medium text-muted-foreground first:pt-1.5">{section}</div>
+                  )}
+                  <ComposerPrimitive.Unstable_TriggerPopoverItem
+                    item={item}
+                    index={index}
+                    className="group/trigger-item data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-start outline-none"
+                  >
+                    {renderItem ? renderItem(item, query) : <>
+                      <Icon className="size-4 shrink-0 text-muted-foreground group-data-[highlighted]/trigger-item:text-accent-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium" title={item.label}><TriggerHighlight text={item.label} query={query} /></span>
+                        {item.description && (
+                          <span className="mt-0.5 block truncate text-xs leading-4 text-muted-foreground" title={item.description}>
+                            {item.description}
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                  <CornerDownLeftIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-data-[highlighted]/trigger-item:opacity-100" />
-                </ComposerPrimitive.Unstable_TriggerPopoverItem>
+                    </>}
+                    <CornerDownLeftIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground opacity-0 group-data-[highlighted]/trigger-item:opacity-100" />
+                  </ComposerPrimitive.Unstable_TriggerPopoverItem>
+                </Fragment>
               )
             })}
             {items.length === 0 && (
-              isLoading ? <PageLoading className="min-h-0 py-5" label={loadingLabel} /> : <div role="status" className="px-3 py-5 text-center text-sm text-muted-foreground">{emptyLabel}</div>
+              isLoading
+                ? <div role="status" className="flex items-center justify-center gap-2 px-3 py-5 text-sm text-muted-foreground"><Spinner />{loadingLabel}</div>
+                : <div role="status" className="px-3 py-5 text-center text-sm text-muted-foreground">{emptyLabel}</div>
             )}
           </div>
           {navigationHint && items.length > 0 && (
-            <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{navigationHint}</div>
+            <div className="border-t border-border px-3 py-1.5 text-xs text-muted-foreground">{navigationHint}</div>
           )}
         </div>
       )}
@@ -207,6 +237,7 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
   loadingLabel = "Loading…",
   label,
   navigationHint,
+  renderItem,
   className,
   directive,
   action,
@@ -250,6 +281,7 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
         loadingLabel={loadingLabel}
         label={label}
         navigationHint={navigationHint}
+        renderItem={renderItem}
       />
     </ComposerPrimitive.Unstable_TriggerPopover>
   )

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { describe, it } from "node:test"
-import { matchServerMentionTrigger, mergeServerReferences, readServerReferences } from "../src/lib/ai-agent/server-mentions"
+import { matchServerMentionTrigger, mergeServerReferences, rankServerMentionCandidates, readServerReferences } from "../src/lib/ai-agent/server-mentions"
+import type { Server } from "../src/lib/server-types"
 
 const server = (server_id: string, name = "prod") => ({ server_id, name, host: "host.example", port: 22, username: "root" })
 
@@ -72,5 +73,33 @@ describe("inline reference round trip", () => {
     const parsed = parseServerReferenceText(token, [])
     assert.equal(parsed.references[0]?.server_id, "deleted-id")
     assert.equal(parsed.content, "@missing")
+  })
+})
+
+describe("server mention candidates", () => {
+  const host = (id: string, name: string, group?: string, tags?: string[]): Server => ({
+    id, name, group, tags, host: `${id}.example`, port: 22, username: "root", auth_method: "password", status: "online", created_at: "", updated_at: "",
+  })
+  const servers = [host("a", "api-1", "prod"), host("b", "db-1", "prod", ["mysql"]), host("c", "dev-box"), host("d", "cache", "staging")]
+
+  it("lists recent mentions first, then groups with ungrouped last", () => {
+    const ranked = rankServerMentionCandidates(servers, "", ["d", "missing"])
+    assert.deepEqual(ranked.map(({ server, section }) => [server.id, section]), [
+      ["d", "recent"], ["a", "group:prod"], ["b", "group:prod"], ["c", "ungrouped"],
+    ])
+  })
+
+  it("has no sections without groups or recent mentions", () => {
+    const ranked = rankServerMentionCandidates([host("x", "one"), host("y", "two")], "", [])
+    assert.deepEqual(ranked.map(({ section }) => section), [undefined, undefined])
+  })
+
+  it("ranks name, address, group and tag matches and reports the matched tag", () => {
+    assert.deepEqual(rankServerMentionCandidates(servers, "prod", []).map(({ server }) => server.id), ["a", "b"])
+    // A name prefix outranks an address prefix even when the latter was mentioned recently.
+    assert.deepEqual(rankServerMentionCandidates(servers, "c", ["c"]).map(({ server }) => server.id), ["d", "c"])
+    assert.deepEqual(rankServerMentionCandidates(servers, "-1", ["b"]).map(({ server }) => server.id), ["b", "a"])
+    const tagged = rankServerMentionCandidates(servers, "MySQL", [])
+    assert.deepEqual(tagged, [{ server: servers[1], matchedTag: "mysql" }])
   })
 })

@@ -5294,12 +5294,6 @@ export interface components {
          * @enum {string}
          */
         AITaskStatus: "queued" | "waiting_confirm" | "running" | "succeeded" | "failed" | "unknown" | "cancelled";
-        AIToolView: {
-            name: string;
-            display_name?: string;
-            description: string;
-            dangerous: boolean;
-        };
         AIServerReference: {
             server_id: string;
             name: string;
@@ -5350,7 +5344,7 @@ export interface components {
             /** @enum {string} */
             role: "user" | "assistant" | "system" | "tool";
             content: string;
-            /** @description 后端记录该消息包含外部上下文或受工具返回内容影响；历史恢复或同步后仍保留执行确认要求。此字段不是客户端授予自动执行权限的开关。 */
+            /** @description 后端记录该消息包含外部上下文或受工具返回内容影响，历史恢复或同步后保留来源标记。此字段不参与执行确认判断，也不是客户端授予自动执行权限的开关。 */
             external_content?: boolean;
             reasoning?: string;
             server_references?: components["schemas"]["AIServerReference"][];
@@ -7054,7 +7048,6 @@ export interface components {
             created_at: string;
             /** Format: date-time */
             updated_at: string;
-            available_tools: components["schemas"]["AIToolView"][];
             default_transport: components["schemas"]["AITransportType"];
             actor: components["schemas"]["Actor"];
             message_count: number;

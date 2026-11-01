@@ -1,21 +1,36 @@
 "use client"
 
-import type { ComponentProps } from "react"
+import { createContext, useContext, useState, type ComponentProps } from "react"
 import { ChevronRightIcon, Loader2Icon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 
+const ToolTimelineExpansionContext = createContext<(() => void) | undefined>(undefined)
+
+// 默认收起，仅由用户切换；展开内部详情时让外层分组一起保持展开。
+export function useToolExpansion() {
+  const expandParent = useContext(ToolTimelineExpansionContext)
+  const [open, setOpen] = useState(false)
+  const onOpenChange = (next: boolean) => {
+    setOpen(next)
+    if (next) expandParent?.()
+  }
+  return { open, onOpenChange }
+}
+
 // Official elements-tool-timeline surface, composed with actual tool-call children.
 export function ToolTimeline({
   count,
   active,
+  onChildExpand,
   children,
   className,
   ...props
 }: ComponentProps<typeof Collapsible> & {
   count: number
   active: boolean
+  onChildExpand?: () => void
 }) {
   const { t } = useTranslation("aiAssistant")
   return (
@@ -31,7 +46,9 @@ export function ToolTimeline({
       </CollapsibleTrigger>
       <CollapsibleContent className="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
         <div className="ms-1.5 flex min-w-0 flex-col gap-2 border-s border-border ps-3 pt-2 pb-1">
-          {children}
+          <ToolTimelineExpansionContext.Provider value={onChildExpand}>
+            {children}
+          </ToolTimelineExpansionContext.Provider>
         </div>
       </CollapsibleContent>
     </Collapsible>

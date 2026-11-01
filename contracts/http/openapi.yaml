@@ -4265,22 +4265,6 @@ components:
       - unknown
       - cancelled
       example: waiting_confirm
-    AIToolView:
-      type: object
-      required:
-      - name
-      - description
-      - dangerous
-      properties:
-        name:
-          type: string
-        display_name:
-          type: string
-          x-go-type-skip-optional-pointer: true
-        description:
-          type: string
-        dangerous:
-          type: boolean
     AIServerReference:
       type: object
       required: [server_id, name, host, port, username, offset]
@@ -4384,7 +4368,7 @@ components:
           type: string
         external_content:
           type: boolean
-          description: 后端记录该消息包含外部上下文或受工具返回内容影响；历史恢复或同步后仍保留执行确认要求。此字段不是客户端授予自动执行权限的开关。
+          description: 后端记录该消息包含外部上下文或受工具返回内容影响，历史恢复或同步后保留来源标记。此字段不参与执行确认判断，也不是客户端授予自动执行权限的开关。
         reasoning:
           type: string
         server_references:
@@ -8514,7 +8498,6 @@ components:
       - status
       - created_at
       - updated_at
-      - available_tools
       - default_transport
       - actor
       - message_count
@@ -8546,10 +8529,6 @@ components:
         updated_at:
           type: string
           format: date-time
-        available_tools:
-          type: array
-          items:
-            $ref: '#/components/schemas/AIToolView'
         default_transport:
           $ref: '#/components/schemas/AITransportType'
         actor:

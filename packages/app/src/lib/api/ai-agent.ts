@@ -31,7 +31,6 @@ export type {
   SessionOverview,
   SessionView,
   TaskView,
-  ToolView,
 } from "@/lib/ai-agent-types"
 
 export async function listAISessions(input: {
