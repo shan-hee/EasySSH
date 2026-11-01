@@ -6,9 +6,44 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/easyssh/shared/dbmigration"
 	_ "github.com/glebarez/go-sqlite"
 	"github.com/pressly/goose/v3"
 )
+
+func TestVersionDoesNotHideHigherMigrationHistory(t *testing.T) {
+	for _, item := range []struct {
+		name string
+		rows [][2]int
+		want int64
+	}{
+		{"empty history", nil, 0},
+		{"current baseline", [][2]int{{0, 1}, {1, 1}}, 1},
+		{"late baseline after legacy versions", [][2]int{{0, 1}, {5, 1}, {6, 1}, {7, 1}, {8, 1}, {9, 1}, {10, 1}, {1, 1}}, 10},
+		{"out of order upgrade", [][2]int{{0, 1}, {1, 1}, {4, 1}, {2, 1}, {3, 1}}, 4},
+		{"rolled back version", [][2]int{{0, 1}, {1, 1}, {2, 1}, {2, 0}}, 1},
+	} {
+		t.Run(item.name, func(t *testing.T) {
+			db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "versions.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if _, err = db.Exec("CREATE TABLE goose_db_version (id INTEGER PRIMARY KEY, version_id INTEGER NOT NULL, is_applied INTEGER NOT NULL)"); err != nil {
+				t.Fatal(err)
+			}
+			for _, row := range item.rows {
+				if _, err = db.Exec("INSERT INTO goose_db_version (version_id,is_applied) VALUES (?,?)", row[0], row[1]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			version, err := dbmigration.Version(context.Background(), db, "sqlite")
+			if err != nil || version != item.want {
+				t.Fatalf("version = %d, want %d: %v", version, item.want, err)
+			}
+		})
+	}
+}
 
 func TestRemoveCSRFOriginsPreservesOtherSettings(t *testing.T) {
 	ctx := context.Background()

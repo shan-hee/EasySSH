@@ -34,6 +34,8 @@ func provider(db *sql.DB, driver string, schema Definition) (*goose.Provider, er
 }
 
 // Version is read-only; it never creates a version table in an existing database.
+// Return the highest applied version, as the Goose provider does, rather than
+// letting a later low-version row hide existing higher migrations.
 func Version(ctx context.Context, db *sql.DB, driver string) (int64, error) {
 	names, err := Tables(ctx, db, driver)
 	if err != nil {
@@ -57,6 +59,7 @@ func Version(ctx context.Context, db *sql.DB, driver string) (int64, error) {
 	}
 	defer rows.Close()
 	seen := map[int64]bool{}
+	var current int64
 	for rows.Next() {
 		var version int64
 		var applied bool
@@ -67,11 +70,11 @@ func Version(ctx context.Context, db *sql.DB, driver string) (int64, error) {
 			continue
 		}
 		seen[version] = true
-		if applied {
-			return version, nil
+		if applied && version > current {
+			current = version
 		}
 	}
-	return 0, rows.Err()
+	return current, rows.Err()
 }
 
 func Tables(ctx context.Context, db *sql.DB, driver string) ([]string, error) {
