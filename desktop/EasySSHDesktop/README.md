@@ -73,6 +73,6 @@ This development schema replaces the earlier token-pairing prototype and AI conf
 
 Each encoded sync document is limited to 8 MiB, with up to 10,000 active records and 20,000 records including deletion markers. This version does not compact history or synchronize sorting/preferences. Immutable payload history is retained without automatic garbage collection. This is selective data synchronization, not a database replica or a backup replacement.
 
-## 备份、数据迁移与数据库升级
+## Backups, data migration, and schema upgrades
 
-日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理，当前仅保留 schema 1 初始化，旧实例需重新安装；后续迁移从 00002 独立编号。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../../docs/backup-and-migrations.md)。
+Use device sync for day-to-day data sharing across devices and encrypted native database backups for full-instance recovery. Generic JSON import and export have been removed. Goose manages the database schema through numbered migrations. The current reset retains only the schema 1 initialization baseline; older installations require a fresh installation. Future desktop migrations are numbered independently, starting at `00002`. See [Backups, device sync, and schema upgrades](../../docs/backup-and-migrations.md) (in Chinese) for commands, data directories, and root-key recovery instructions.
