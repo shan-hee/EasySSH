@@ -43,5 +43,6 @@ export const queryKeys = {
     auditDetail: (id: string) => ["logs", "audit", "detail", id] as const,
     operations: (params: unknown) => ["logs", "operations", params] as const,
     operationDetail: (id: string) => ["logs", "operations", "detail", id] as const,
+    servers: ["logs", "servers"] as const,
   },
 } as const

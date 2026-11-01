@@ -51,8 +51,10 @@ export function DataTableToolbar<TData>({
   const isFiltered = table.getState().columnFilters.length > 0
 
   return (
-    <div className="flex flex-col gap-3 border-b bg-muted/30 p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+    // 按内容宽度自然换行：放不下时操作区整体落到下一行并保持右对齐，
+    // 不依赖视口断点，侧栏收起或桌面窗口缩放时布局保持一致。
+    <div className="flex flex-wrap items-center gap-3 border-b bg-muted/30 p-3 sm:p-4">
+      <div className="flex min-w-0 flex-auto flex-wrap items-center gap-2">
         {/* 搜索框 */}
         {searchKey && (
           <Input
@@ -97,7 +99,7 @@ export function DataTableToolbar<TData>({
       </div>
 
       {/* 右侧操作按钮 */}
-      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
         {/* 自定义内容插槽 */}
         {children}
 

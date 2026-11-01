@@ -12,8 +12,8 @@ const DesktopScriptsPage = BaseScriptsPage as ComponentType<ScriptsPageProps>
 const DesktopBackupRestoreTab = BaseBackupRestoreTab as ComponentType<BackupRestoreTabProps>
 
 export function LogsClient(props: LogsClientProps) {
-  if (!props.api) {
-    throw new Error("Desktop LogsClient requires a desktop logs api adapter")
+  if (!props.api || !props.servers) {
+    throw new Error("Desktop LogsClient requires desktop logs and servers adapters")
   }
 
   return createElement(BaseLogsClient, {

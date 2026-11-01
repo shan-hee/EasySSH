@@ -27,6 +27,15 @@ export interface AuditLogSummary {
   error_msg?: string
   duration?: number
   created_at: string
+  /** 以下字段仅桌面端活动记录提供，用于表格中的服务器、进度与文件统计。 */
+  server_name?: string
+  attempt?: number
+  progress?: number
+  total_count?: number
+  success_count?: number
+  failure_count?: number
+  bytes_total?: number
+  bytes_processed?: number
 }
 
 export interface AuditLog extends AuditLogSummary {

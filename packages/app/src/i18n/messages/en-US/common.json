@@ -21,8 +21,6 @@
   "tableFilterEmpty": "No results found",
   "tableRange": "Showing {from}–{to} of {total} items",
   "tableSelectedRows": "Selected {count} rows",
-  "tableBulkSelected": "Selected {count} items",
-  "tableBulkClearSelection": "Clear selection",
   "tablePerPage": "Per page",
   "tableItems": "items",
   "tablePrevPage": "Previous",

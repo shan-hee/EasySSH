@@ -13,7 +13,6 @@ import type {
   AuditLogCleanupResponse,
   AuditLogListParams,
   AuditLogListResponse,
-  AuditLogStatisticsResponse,
 } from "@easyssh/app/desktop"
 import {
   mapDesktopActivityLogItemToAuditLog,
@@ -103,6 +102,7 @@ async function fetchDesktopLogs(params?: AuditLogListParams) {
     page: 1,
     limit: 100,
     action: params?.action,
+    serverId: params?.server_id,
     status: normalizeDesktopActivityLogStatusFilter(params?.status),
     startDate: params?.start_date,
     endDate: params?.end_date,
@@ -155,26 +155,6 @@ export function createDesktopLogsApi() {
         item.detail = body.result_json || body.progress_json || body.description || ""
       }
       return mapDesktopActivityLogItemToAuditLog(item)
-    },
-
-    async getStatistics(params?: {
-      category?: "activity" | "audit"
-      start_date?: string
-      end_date?: string
-    }): Promise<AuditLogStatisticsResponse> {
-      const logs = filterLogs(await fetchDesktopLogs(params), {
-        category: params?.category,
-      })
-      const actionStats = logs.reduce<Record<string, number>>((acc, log) => {
-        acc[log.action] = (acc[log.action] || 0) + 1
-        return acc
-      }, {})
-      return {
-        total_logs: logs.length,
-        success_count: logs.filter((log) => log.status === "success").length,
-        failure_count: logs.filter((log) => log.status !== "success").length,
-        action_stats: actionStats,
-      }
     },
 
     async cleanup(retentionDays: number): Promise<AuditLogCleanupResponse> {

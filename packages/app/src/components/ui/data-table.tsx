@@ -44,13 +44,9 @@ interface DataTableProps<TData, TValue = unknown> {
   onPageSizeChange?: (pageSize: number) => void
   emptyMessage?: string
   className?: string
-  scrollContainerClassName?: string
-  tableClassName?: string
   enableRowSelection?: boolean
   toolbar?: (table: ReturnType<typeof useReactTable<TData>>) => React.ReactNode
   density?: TableDensity
-  onDensityChange?: (density: TableDensity) => void
-  batchActions?: (table: ReturnType<typeof useReactTable<TData>>) => React.ReactNode
   onRowClick?: (row: TData) => void
   getRowClassName?: (row: TData) => string | undefined
   getRowId?: (row: TData, index: number) => string
@@ -67,60 +63,6 @@ export function formatTimestamp(timestamp: string): { date: string; time: string
       second: "2-digit",
     }),
   }
-}
-
-export function formatDuration(seconds: number | undefined): string {
-  if (!seconds) return "-"
-  if (seconds < 60) return `${seconds}s`
-  const minutes = Math.floor(seconds / 60)
-  const remainingSeconds = seconds % 60
-  return `${minutes}m ${remainingSeconds}s`
-}
-
-export function getActionColor(action: string): string {
-  const colorMap: Record<string, string> = {
-    login: "bg-green-100 text-green-800 border-green-200",
-    logout: "bg-gray-100 text-gray-800 border-gray-200",
-    connect: "bg-blue-100 text-blue-800 border-blue-200",
-    disconnect: "bg-orange-100 text-orange-800 border-orange-200",
-    upload: "bg-purple-100 text-purple-800 border-purple-200",
-    download: "bg-indigo-100 text-indigo-800 border-indigo-200",
-    delete: "bg-red-100 text-red-800 border-red-200",
-    create: "bg-emerald-100 text-emerald-800 border-emerald-200",
-    update: "bg-amber-100 text-amber-800 border-amber-200",
-  }
-  return colorMap[action] || "bg-gray-100 text-gray-800 border-gray-200"
-}
-
-export function parseUserAgent(userAgent: string): string {
-  if (!userAgent) return "-"
-
-  // 简单的浏览器解析
-  if (userAgent.includes("Chrome")) {
-    if (userAgent.includes("Edg")) return "Edge"
-    return "Chrome"
-  }
-  if (userAgent.includes("Firefox")) return "Firefox"
-  if (userAgent.includes("Safari") && !userAgent.includes("Chrome")) return "Safari"
-  if (userAgent.includes("Opera") || userAgent.includes("OPR")) return "Opera"
-
-  return "Other"
-}
-
-export function isInternalIP(ip: string): boolean {
-  if (!ip) return false
-
-  // 内网IP段
-  const internalRanges = [
-    /^10\./,
-    /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
-    /^192\.168\./,
-    /^127\./,
-    /^localhost$/i,
-    /^::1$/,
-  ]
-
-  return internalRanges.some(range => range.test(ip))
 }
 
 // 获取密度对应的样式类名
@@ -156,12 +98,9 @@ export function DataTable<TData, TValue = unknown>({
   onPageSizeChange,
   emptyMessage,
   className,
-  scrollContainerClassName,
-  tableClassName,
   enableRowSelection = false,
   toolbar,
   density = "standard",
-  batchActions,
   onRowClick,
   getRowClassName,
   getRowId,
@@ -252,48 +191,25 @@ export function DataTable<TData, TValue = unknown>({
   const effectiveEmptyMessage = emptyMessage ?? tCommon("tableEmpty")
 
   return (
-    <div className={cn("flex h-full min-h-0 flex-col gap-4", className)}>
-      <div className="rounded-md border overflow-hidden flex min-h-0 flex-col">
-        {/* 工具栏区域 */}
+    // 作为纵向 flex 子项占满父容器剩余高度。只有行区域是弹性的：工具栏与分页始终完整显示，
+    // 高度不够时先压缩行区域（可到 0）并在其内部滚动。
+    <div className={cn("@container/data-table flex min-h-0 flex-1 flex-col gap-4", className)}>
+      <div className="rounded-md border overflow-hidden flex min-h-0 flex-1 flex-col">
         {toolbar && toolbar(table)}
-
-        {enableRowSelection && batchActions && table.getFilteredSelectedRowModel().rows.length > 0 && (
-          <div className="border-b bg-muted/50 px-4 py-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">
-                  {tCommon("tableBulkSelected", {
-                    count: table.getFilteredSelectedRowModel().rows.length,
-                  })}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => table.toggleAllPageRowsSelected(false)}
-                  className="h-7 text-xs"
-                >
-                  {tCommon("tableBulkClearSelection")}
-                </Button>
-              </div>
-              <div className="flex items-center gap-2">
-                {batchActions(table)}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* 可滚动内容区域（单表 + 吸顶表头，避免对不齐） */}
         <div
           ref={scrollContainerRef}
+          // basis-0 是确定的 0px（flex-1 是 0%，在自适应高度下会按整表内容计算），
+          // 外层容器据此只把工具栏和分页计入内容高度，行再多也不会把页面撑高。
           className={cn(
-            "flex-1 scrollbar-custom relative bg-table",
+            "grow basis-0 scrollbar-custom relative bg-table",
             loading ? "overflow-hidden" : "overflow-auto",
-            scrollContainerClassName
           )}
         >
           <Table
             fixedLayout
-            className={cn(loading ? "invisible" : "", tableClassName)}
+            className={cn(loading && "invisible")}
           >
             <colgroup>
               {table.getHeaderGroups()[0]?.headers.map((header) => (
@@ -390,8 +306,8 @@ export function DataTable<TData, TValue = unknown>({
         </div>
       </div>
 
-      {/* 分页控件 */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* 分页控件：按表格自身宽度折叠页码与跳转，而不是按视口 */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
           <div>
             {tCommon("tableRange", {
@@ -410,7 +326,7 @@ export function DataTable<TData, TValue = unknown>({
             </div>
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
           {/* 每页显示数量 */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground whitespace-nowrap">
@@ -444,7 +360,7 @@ export function DataTable<TData, TValue = unknown>({
             </Button>
 
             {/* 页码显示 */}
-            <div className="hidden items-center gap-1 sm:flex">
+            <div className="hidden items-center gap-1 @lg/data-table:flex">
               {totalPages > 0 && (
                 <>
                   {/* 第一页 */}
@@ -523,7 +439,7 @@ export function DataTable<TData, TValue = unknown>({
 
           {/* 页面跳转 */}
           {totalPages > 1 && (
-            <div className="hidden items-center gap-2 lg:flex">
+            <div className="hidden items-center gap-2 @3xl/data-table:flex">
               <span className="text-sm text-muted-foreground">
                 {tCommon("tableJumpTo")}
               </span>

@@ -5,6 +5,7 @@ import * as React from "react"
 import { LogsClient } from "@easyssh/app/desktop"
 import type { Locale } from "@easyssh/app/i18n"
 import { createDesktopLogsApi } from "../adapters/desktop-logs-api"
+import { createDesktopServerApi } from "../adapters/desktop-server-api"
 import { DesktopPageContent, DesktopWebViewShell } from "./desktop-view-shell"
 
 export function DesktopActivityLogsView({
@@ -13,13 +14,18 @@ export function DesktopActivityLogsView({
   locale: Locale
 }) {
   const logsApi = React.useMemo(() => createDesktopLogsApi(), [])
+  const serverApi = React.useMemo(() => createDesktopServerApi(), [])
 
   return (
     <DesktopWebViewShell locale={locale}>
       <div className="flex min-h-0 flex-1 flex-col">
         <DesktopPageContent className="pt-4">
-          <ActivityOverview load={overview} scope="desktop" />
-          <LogsClient api={logsApi} desktopMode />
+          <LogsClient
+            api={logsApi}
+            servers={serverApi}
+            desktopMode
+            overview={({ server }) => <ActivityOverview load={overview} scope="desktop" server={server} />}
+          />
         </DesktopPageContent>
       </div>
     </DesktopWebViewShell>

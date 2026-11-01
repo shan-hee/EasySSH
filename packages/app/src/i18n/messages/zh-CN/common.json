@@ -21,8 +21,6 @@
   "tableFilterEmpty": "未找到结果",
   "tableRange": "第 {from} - {to} 项，共 {total} 项",
   "tableSelectedRows": "已选择 {count} 行",
-  "tableBulkSelected": "已选择 {count} 项",
-  "tableBulkClearSelection": "取消选择",
   "tablePerPage": "每页",
   "tableItems": "条",
   "tablePrevPage": "上一页",

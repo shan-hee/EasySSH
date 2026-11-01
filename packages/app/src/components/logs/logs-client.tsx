@@ -3,16 +3,7 @@ import { ActivityLinks } from "@/components/activity/activity-links"
 import * as React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef, Row } from "@tanstack/react-table"
-import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  Download,
-  Loader2,
-  Search,
-  Trash2,
-  X,
-} from "lucide-react"
+import { Download, Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { CopyCheckIcon } from "@/components/animate-ui/icons/copy-check"
@@ -38,7 +29,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "@/components/ui/sonner"
+import { Spinner } from "@/components/ui/spinner"
 import { getErrorMessage } from "@/lib/error-utils"
+import { serversApi } from "@/lib/api/servers"
 import type {
   AuditLog,
   AuditLogCleanupResponse,
@@ -55,26 +48,39 @@ import {
 } from "./log-dashboard-widgets"
 import { auditLogDetailPreview } from "./audit-log-utils"
 import {
-  LogDateRangeFilterButton,
-  LogServerFilterButton,
+  LogFilterBar,
+  createLogFilters,
+  hasActiveLogFilters,
+  useLogServerOptions,
+  type LogFilterValues,
+  type LogServersApi,
   type ServerFilterOption,
 } from "./log-server-filters"
+import {
+  LogDetailItem,
+  LogFilesCell,
+  LogProgressCell,
+  LogSortHeader,
+  LogStatusCell,
+  LogTableSummary,
+  defaultLogSort,
+  downloadLogsJson,
+  formatLogDuration,
+  formatLogTime,
+  nextLogSort,
+  type LogSortState,
+} from "./log-table-parts"
 import { queryKeys } from "@/lib/query-keys"
 import { auditLogsQueryOptions } from "@/lib/dashboard-query-options"
 import { PageLoading } from "@/components/page-loading"
 
-interface LogsPageData {
-  logs: AuditLogSummary[]
-  totalPages: number
-  totalCount: number
-  currentPage: number
-  pageSize: number
-}
-
 interface LogsClientProps {
-  initialData?: LogsPageData
   defaultAction?: string
   desktopMode?: boolean
+  /** 渲染在说明行上方的统计概览，与表格共用同一内容画布与滚动容器；参数为表格当前生效的服务器筛选。 */
+  overview?: (context: { server: { id: string; name: string } | null }) => React.ReactNode
+  /** 服务器筛选的数据源，默认使用 Web 接口；桌面端传入本地适配器。 */
+  servers?: LogServersApi
   api: {
     list: (params?: AuditLogListParams) => Promise<{
       logs: AuditLogSummary[]
@@ -88,60 +94,17 @@ interface LogsClientProps {
   }
 }
 
-type SortOrder = "asc" | "desc"
+const defaultFilters = createLogFilters()
 
-interface LogFilters {
-  type: string[]
-  category: string[]
-  status: string[]
-  source: string
-  ip: string
-  keyword: string
-  start_date: string
-  end_date: string
-}
-
-interface LogSortState {
-  sort_by: string
-  sort_order: SortOrder
-}
-
-const defaultFilters: LogFilters = {
-  type: [],
-  category: [],
-  status: [],
-  source: "",
-  ip: "",
-  keyword: "",
-  start_date: "",
-  end_date: "",
-}
-
-const defaultSort: LogSortState = {
-  sort_by: "created_at",
-  sort_order: "desc",
-}
-
-function formatTime(value?: string) {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
-}
+// 单机桌面端没有多用户、来源与 IP；服务器、进度与文件统计目前只有桌面端活动记录提供。
+const webOnlyColumns = ["category", "username", "source", "ip"]
+const desktopOnlyColumns = ["server_name", "progress", "files"]
 
 function formatDate(value?: string) {
   if (!value) return "-"
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleDateString()
-}
-
-function formatDuration(milliseconds?: number) {
-  if (!milliseconds) return "-"
-  if (milliseconds < 1000) return `${milliseconds}ms`
-  const seconds = Math.round(milliseconds / 1000)
-  if (seconds < 60) return `${seconds}s`
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
 }
 
 function actionLabel(t: (key: string) => string, action: string) {
@@ -252,8 +215,9 @@ function auditLogSummaryPreview(log: AuditLogSummary | null) {
   return log.error_msg || log.resource || "-"
 }
 
-function filtersToParams(filters: LogFilters): Pick<AuditLogListParams, "type" | "category" | "status" | "source" | "ip" | "keyword" | "start_date" | "end_date"> {
+function filtersToParams(filters: LogFilterValues): Pick<AuditLogListParams, "type" | "category" | "status" | "server_id" | "source" | "ip" | "keyword" | "start_date" | "end_date"> {
   return {
+    server_id: filters.server_id || undefined,
     type: filters.type.length > 0 ? filters.type as AuditLogListParams["type"] : undefined,
     category: filters.category.length > 0 ? filters.category as AuditLogListParams["category"] : undefined,
     status: filters.status.length > 0 ? filters.status : undefined,
@@ -265,41 +229,28 @@ function filtersToParams(filters: LogFilters): Pick<AuditLogListParams, "type" |
   }
 }
 
-function hasActiveFilters(filters: LogFilters) {
-  return Object.entries(filters).some(([key, value]) => {
-    if (key === "type" || key === "category" || key === "status") {
-      return Array.isArray(value) && value.length > 0
-    }
-    return typeof value === "string" && value.trim() !== ""
-  })
-}
-
-function exportCurrentPageLogs(logs: AuditLogSummary[]) {
-  const blob = new Blob([JSON.stringify(logs, null, 2)], { type: "application/json;charset=utf-8" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = `logs-${Date.now()}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-export function LogsClient({ initialData, defaultAction, desktopMode = false, api }: LogsClientProps) {
+export function LogsClient({ defaultAction, desktopMode = false, overview, servers = serversApi, api }: LogsClientProps) {
   const { ready } = useAuthReady()
   const { t } = useTranslation("logsAudit")
   const queryClient = useQueryClient()
-  const [page, setPage] = React.useState(initialData?.currentPage || 1)
-  const [pageSize, setPageSize] = React.useState(initialData?.pageSize || 20)
+  const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(20)
   const [selectedLogId, setSelectedLogId] = React.useState<string | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
   const [cleanupOpen, setCleanupOpen] = React.useState(false)
   const [cleanupLoading, setCleanupLoading] = React.useState(false)
   const [retentionDays, setRetentionDays] = React.useState("90")
-  const [filters, setFilters] = React.useState<LogFilters>(defaultFilters)
-  const [appliedFilters, setAppliedFilters] = React.useState<LogFilters>(defaultFilters)
-  const [sort, setSort] = React.useState<LogSortState>(defaultSort)
+  const [filters, setFilters] = React.useState<LogFilterValues>(defaultFilters)
+  const [appliedFilters, setAppliedFilters] = React.useState<LogFilterValues>(defaultFilters)
+  const [sort, setSort] = React.useState<LogSortState>(defaultLogSort)
   const copyResetTimerRef = React.useRef<number | null>(null)
+  const serverOptions = useLogServerOptions(servers, ready)
+  const filteredServer = React.useMemo(() => {
+    const id = appliedFilters.server_id
+    if (!id) return null
+    return { id, name: serverOptions.find((option) => option.value === id)?.label ?? id }
+  }, [appliedFilters.server_id, serverOptions])
   const queryParams = React.useMemo<AuditLogListParams>(() => ({
     page,
     page_size: pageSize,
@@ -307,25 +258,9 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
     ...filtersToParams(appliedFilters),
     ...sort,
   }), [appliedFilters, defaultAction, page, pageSize, sort])
-  const canUseInitialData = Boolean(
-    initialData &&
-    page === initialData.currentPage &&
-    pageSize === initialData.pageSize &&
-    !defaultAction &&
-    !hasActiveFilters(appliedFilters) &&
-    sort.sort_by === defaultSort.sort_by &&
-    sort.sort_order === defaultSort.sort_order
-  )
   const logsQuery = useQuery({
     ...auditLogsQueryOptions(queryParams, api),
     enabled: ready,
-    initialData: canUseInitialData && initialData ? {
-      logs: initialData.logs,
-      total: initialData.totalCount,
-      page: initialData.currentPage,
-      page_size: initialData.pageSize,
-      total_pages: initialData.totalPages,
-    } : undefined,
     refetchInterval: (query) => (
       query.state.data?.logs.some((log) => log.status === "pending" || log.status === "running")
         ? 3_000
@@ -434,19 +369,15 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
   }
 
   const handleResetFilters = () => {
-    const nextFilters = { ...defaultFilters }
-    setFilters(nextFilters)
-    setAppliedFilters(nextFilters)
+    setFilters(defaultFilters)
+    setAppliedFilters(defaultFilters)
     setPage(1)
     setSelectedLogId(null)
     setIsDetailDialogOpen(false)
   }
 
   const handleSort = React.useCallback((field: string) => {
-    const nextSort: LogSortState = sort.sort_by === field
-      ? { sort_by: field, sort_order: sort.sort_order === "asc" ? "desc" : "asc" }
-      : { sort_by: field, sort_order: "desc" }
-    setSort(nextSort)
+    setSort(nextLogSort(sort, field))
     setPage(1)
     setSelectedLogId(null)
     setIsDetailDialogOpen(false)
@@ -459,23 +390,23 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
     {
       id: "created_at",
       accessorKey: "created_at",
-      size: 180,
-      minSize: 150,
+      size: 110,
+      minSize: 100,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnTime")} field="created_at" sort={sort} onSort={handleSort} />,
+      header: () => <LogSortHeader label={t("columnTime")} field="created_at" sort={sort} onSort={handleSort} />,
       cell: ({ row }: { row: Row<AuditLogSummary> }) => (
         <span className="whitespace-nowrap font-mono text-xs">
-          {formatTime(row.original.created_at)}
+          {formatLogTime(row.original.created_at)}
         </span>
       ),
     },
     {
       id: "type",
       accessorKey: "type",
-      size: 100,
+      size: 90,
       minSize: 80,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnType")} field="type" sort={sort} onSort={handleSort} />,
+      header: () => <LogSortHeader label={t("columnType")} field="type" sort={sort} onSort={handleSort} />,
       cell: ({ row }: { row: Row<AuditLogSummary> }) => (
         <InlineStatusBadge
           label={typeLabel(t, row.original.type)}
@@ -486,10 +417,10 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
     {
       id: "category",
       accessorKey: "category",
-      size: 110,
+      size: 100,
       minSize: 90,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnCategory")} field="category" sort={sort} onSort={handleSort} />,
+      header: () => <LogSortHeader label={t("columnCategory")} field="category" sort={sort} onSort={handleSort} />,
       cell: ({ row }: { row: Row<AuditLogSummary> }) => (
         <InlineStatusBadge
           label={categoryLabel(t, row.original.category)}
@@ -500,29 +431,29 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
     {
       id: "status",
       accessorKey: "status",
-      size: 120,
-      minSize: 100,
+      size: 130,
+      minSize: 110,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnStatus")} field="status" sort={sort} onSort={handleSort} />,
-      cell: ({ row }: { row: Row<AuditLogSummary> }) => (
-        <InlineStatusBadge
-          label={statusLabel(t, row.original.status)}
-          tone={statusTone(row.original.status)}
-        />
-      ),
-      filterFn: (row: Row<AuditLogSummary>, id: string, value: unknown) => {
-        const selected = (value as string[]) || []
-        if (selected.length === 0) return true
-        return selected.includes(row.getValue(id) as string)
+      header: () => <LogSortHeader label={t("columnStatus")} field="status" sort={sort} onSort={handleSort} />,
+      cell: ({ row }: { row: Row<AuditLogSummary> }) => {
+        const retries = Math.max(0, (row.original.attempt ?? 1) - 1)
+        return (
+          <LogStatusCell
+            label={statusLabel(t, row.original.status)}
+            tone={statusTone(row.original.status)}
+            retries={retries}
+            retryLabel={t("retryCount", { count: retries })}
+          />
+        )
       },
     },
     {
       id: "action",
       accessorKey: "action",
-      size: 140,
+      size: 130,
       minSize: 110,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnAction")} field="action" sort={sort} onSort={handleSort} />,
+      header: () => <LogSortHeader label={t("columnAction")} field="action" sort={sort} onSort={handleSort} />,
       cell: ({ row }: { row: Row<AuditLogSummary> }) => (
         <InlineStatusBadge
           label={actionLabel(t, row.original.action)}
@@ -533,19 +464,32 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
     {
       id: "username",
       accessorKey: "username",
+      size: 110,
+      minSize: 90,
+      meta: meta({ align: "left" }),
+      header: () => <LogSortHeader label={t("columnUser")} field="username" sort={sort} onSort={handleSort} />,
+      cell: ({ row }: { row: Row<AuditLogSummary> }) => row.original.username || "-",
+    },
+    {
+      id: "server_name",
+      accessorKey: "server_name",
       size: 120,
       minSize: 100,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnUser")} field="username" sort={sort} onSort={handleSort} />,
-      cell: ({ row }: { row: Row<AuditLogSummary> }) => row.original.username || "-",
+      header: t("columnServer"),
+      cell: ({ row }: { row: Row<AuditLogSummary> }) => (
+        <span className="block w-full truncate" title={row.original.server_name || undefined}>
+          {row.original.server_name || "-"}
+        </span>
+      ),
     },
     {
       id: "resource",
       accessorKey: "resource",
-      size: 180,
-      minSize: 150,
+      size: 150,
+      minSize: 120,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnResource")} field="resource" sort={sort} onSort={handleSort} />,
+      header: () => <LogSortHeader label={t("columnResource")} field="resource" sort={sort} onSort={handleSort} />,
       cell: ({ row }: { row: Row<AuditLogSummary> }) => (
         <span className="block w-full truncate" title={row.original.resource || undefined}>
           {row.original.resource || "-"}
@@ -555,10 +499,10 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
     {
       id: "source",
       accessorKey: "source",
-      size: 100,
+      size: 90,
       minSize: 80,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnSource")} field="source" sort={sort} onSort={handleSort} />,
+      header: () => <LogSortHeader label={t("columnSource")} field="source" sort={sort} onSort={handleSort} />,
       cell: ({ row }: { row: Row<AuditLogSummary> }) => (
         <span className="whitespace-nowrap text-xs text-muted-foreground">
           {row.original.source || "-"}
@@ -568,10 +512,10 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
     {
       id: "ip",
       accessorKey: "ip",
-      size: 130,
-      minSize: 110,
+      size: 120,
+      minSize: 100,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnIp")} field="ip" sort={sort} onSort={handleSort} />,
+      header: () => <LogSortHeader label={t("columnIp")} field="ip" sort={sort} onSort={handleSort} />,
       cell: ({ row }: { row: Row<AuditLogSummary> }) => (
         <span className="whitespace-nowrap font-mono text-xs">
           {row.original.ip || "-"}
@@ -579,23 +523,55 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
       ),
     },
     {
-      id: "duration",
-      accessorKey: "duration",
-      size: 100,
+      id: "progress",
+      accessorKey: "progress",
+      size: 150,
+      minSize: 130,
+      meta: meta({ align: "left" }),
+      header: t("columnProgress"),
+      cell: ({ row }: { row: Row<AuditLogSummary> }) => (
+        <LogProgressCell
+          progress={row.original.progress ?? 0}
+          bytesProcessed={row.original.bytes_processed}
+          bytesTotal={row.original.bytes_total}
+          failed={row.original.status === "failure"}
+        />
+      ),
+    },
+    {
+      id: "files",
+      accessorKey: "total_count",
+      size: 90,
       minSize: 80,
       meta: meta({ align: "left" }),
-      header: () => <SortableHeader label={t("columnDuration")} field="duration_ms" sort={sort} onSort={handleSort} />,
+      header: t("columnFiles"),
+      cell: ({ row }: { row: Row<AuditLogSummary> }) => (
+        <LogFilesCell
+          total={row.original.total_count}
+          success={row.original.success_count}
+          failed={row.original.failure_count}
+          failedLabel={t("filesFailed", { count: row.original.failure_count ?? 0 })}
+        />
+      ),
+    },
+    {
+      id: "duration",
+      accessorKey: "duration",
+      size: 90,
+      minSize: 80,
+      meta: meta({ align: "left" }),
+      header: () => <LogSortHeader label={t("columnDuration")} field="duration_ms" sort={sort} onSort={handleSort} />,
       cell: ({ row }: { row: Row<AuditLogSummary> }) => (
         <span className="whitespace-nowrap font-mono text-xs">
-          {formatDuration(row.original.duration)}
+          {formatLogDuration(row.original.duration)}
         </span>
       ),
     },
     {
       id: "details",
       accessorFn: (log: AuditLogSummary) => log.error_msg || log.resource || log.source || "",
-      size: 260,
-      minSize: 220,
+      size: 180,
+      minSize: 150,
       meta: meta({ align: "left" }),
       header: t("columnDetails"),
       cell: ({ row }: { row: Row<AuditLogSummary> }) => {
@@ -606,97 +582,104 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
           </span>
         )
       },
-      filterFn: (row: Row<AuditLogSummary>, _id: string, value: unknown) => {
-        const keyword = String(value || "").trim().toLowerCase()
-        if (!keyword) return true
-        const log = row.original
-        return [
-          log.username,
-          log.action,
-          log.resource,
-          log.ip,
-          log.error_msg,
-          log.source,
-        ].some((item) => item?.toLowerCase().includes(keyword))
-      },
     },
-  ].filter((column) => (
-    !desktopMode ||
-    !["category", "username", "source", "ip"].includes(column.id ?? "")
-  ))}, [desktopMode, handleSort, sort, t])
+  ].filter((column) => !(desktopMode ? webOnlyColumns : desktopOnlyColumns).includes(column.id ?? ""))
+  }, [desktopMode, handleSort, sort, t])
+
+  const filterOptions = React.useMemo(() => {
+    const typeOptions: ServerFilterOption[] = [
+      { label: t("typeConnection"), value: "connection" },
+      { label: t("typeTransfer"), value: "transfer" },
+      { label: t("typeExecution"), value: "execution" },
+      ...(desktopMode ? [] : [{ label: t("typeAudit"), value: "audit" }]),
+    ]
+    const categoryOptions: ServerFilterOption[] | undefined = desktopMode ? undefined : [
+      { label: t("categoryActivity"), value: "activity" },
+      { label: t("categoryAudit"), value: "audit" },
+    ]
+    const statusOptions: ServerFilterOption[] = [
+      { label: t("statusPending"), value: "pending" },
+      { label: t("statusRunning"), value: "running" },
+      { label: t("filterStatusSuccessLabel"), value: "success" },
+      { label: t("filterStatusFailureLabel"), value: "failure" },
+      { label: t("statusPartial"), value: "partial" },
+      { label: t("statusCanceled"), value: "canceled" },
+      { label: t("statusTimeout"), value: "timeout" },
+      { label: t("filterStatusWarningLabel"), value: "warning" },
+    ]
+    return { typeOptions, categoryOptions, statusOptions }
+  }, [desktopMode, t])
 
   return (
-    <DashboardPageContent className="gap-3 sm:gap-4">
-      <div className="flex flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-        <p>{desktopMode ? t("desktopActivityDashboardDescription") : t("activityDashboardDescription")}</p>
-        <span className="shrink-0 tabular-nums">
-          {t("lastUpdated", {
-            time: logsQuery.dataUpdatedAt
-              ? formatTime(new Date(logsQuery.dataUpdatedAt).toISOString())
-              : "-",
-          })}
-        </span>
-      </div>
+    // 内容画布填满可视高度，剩余高度交给表格行区域；固定部分本身放不下时才由外层页面滚动。
+    <DashboardPageContent className="min-h-auto gap-3 sm:gap-4">
+      {overview?.({ server: filteredServer })}
+      <LogTableSummary
+        description={desktopMode ? t("desktopActivityDashboardDescription") : t("activityDashboardDescription")}
+        updatedAt={t("lastUpdated", {
+          time: logsQuery.dataUpdatedAt
+            ? formatLogTime(new Date(logsQuery.dataUpdatedAt).toISOString())
+            : "-",
+        })}
+      />
 
-      <div className="min-h-[520px] flex-1">
-        <DataTable
-          data={logs}
-          columns={logColumns}
-          loading={initialLoading && logs.length === 0}
-          currentPage={page}
-          pageCount={totalPages}
-          pageSize={pageSize}
-          totalRows={totalRows}
-          onPageChange={handlePageChange}
-          onPageSizeChange={handlePageSizeChange}
-          emptyMessage={t("emptyMessage")}
-          className="min-h-[520px]"
-          scrollContainerClassName="min-h-[360px]"
-          density="compact"
-          onRowClick={(log) => {
-            setSelectedLogId(log.id)
-            setCopied(false)
-            setIsDetailDialogOpen(true)
-          }}
-          getRowClassName={(log) => (
-            selectedSummary?.id === log.id ? "bg-emerald-500/5 hover:bg-emerald-500/10" : undefined
-          )}
-          toolbar={(table) => (
-            <DataTableToolbar
-              table={table}
-              filterSlot={
-                <LogFilterControls
-                  filters={filters}
-                  onFiltersChange={setFilters}
-                  onApply={handleApplyFilters}
-                  onReset={handleResetFilters}
-                  hasActiveFilters={hasActiveFilters(filters) || hasActiveFilters(appliedFilters)}
-                  desktopMode={desktopMode}
-                  t={t}
-                />
-              }
-              showRefresh
-              onRefresh={handleRefresh}
-              isRefreshing={tableLoading}
+      <DataTable
+        data={logs}
+        columns={logColumns}
+        loading={initialLoading && logs.length === 0}
+        currentPage={page}
+        pageCount={totalPages}
+        pageSize={pageSize}
+        totalRows={totalRows}
+        onPageChange={handlePageChange}
+        onPageSizeChange={handlePageSizeChange}
+        emptyMessage={t("emptyMessage")}
+        density="compact"
+        onRowClick={(log) => {
+          setSelectedLogId(log.id)
+          setCopied(false)
+          setIsDetailDialogOpen(true)
+        }}
+        getRowClassName={(log) => (
+          selectedSummary?.id === log.id ? "bg-emerald-500/5 hover:bg-emerald-500/10" : undefined
+        )}
+        toolbar={(table) => (
+          <DataTableToolbar
+            table={table}
+            filterSlot={
+              <LogFilterBar
+                filters={filters}
+                onFiltersChange={setFilters}
+                onApply={handleApplyFilters}
+                onReset={handleResetFilters}
+                canReset={hasActiveLogFilters(filters) || hasActiveLogFilters(appliedFilters)}
+                {...filterOptions}
+                serverOptions={serverOptions}
+                showOriginFilters={!desktopMode}
+                t={t}
+              />
+            }
+            showRefresh
+            onRefresh={handleRefresh}
+            isRefreshing={tableLoading}
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-destructive hover:text-destructive"
+              disabled={cleanupLoading}
+              onClick={() => setCleanupOpen(true)}
             >
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-destructive hover:text-destructive"
-                disabled={cleanupLoading}
-                onClick={() => setCleanupOpen(true)}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {t("cleanupButton")}
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => exportCurrentPageLogs(table.getFilteredRowModel().rows.map((row) => row.original))} className="h-8">
-                <Download className="mr-2 h-4 w-4" />
-                {t("exportCurrentPage")}
-              </Button>
-            </DataTableToolbar>
-          )}
-        />
-      </div>
+              <Trash2 className="mr-2 h-4 w-4" />
+              {t("cleanupButton")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => downloadLogsJson(table.getFilteredRowModel().rows.map((row) => row.original), "logs")} className="h-8">
+              <Download className="mr-2 h-4 w-4" />
+              {t("exportCurrentPage")}
+            </Button>
+          </DataTableToolbar>
+        )}
+      />
 
       <Dialog open={isDetailDialogOpen} onOpenChange={(open) => {
         setIsDetailDialogOpen(open)
@@ -718,21 +701,21 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-1 py-2 scrollbar-custom">
               <ActivityLinks sourceTable={selectedLog.source_table} sourceId={selectedLog.source_id} resources={selectedLog.resources} />
               <div className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                <Detail label={t("columnTime")} value={`${formatDate(selectedLog.created_at)} ${formatTime(selectedLog.created_at)}`} />
-                <Detail label={t("columnType")} value={typeLabel(t, selectedLog.type)} />
-                <Detail label={t("columnResource")} value={selectedLog.resource || "-"} />
-                <Detail label={t("columnSource")} value={selectedLog.source || "-"} />
-                <Detail label={t("columnStatus")} value={statusLabel(t, selectedLog.status)} />
-                <Detail label={t("columnDuration")} value={formatDuration(selectedLog.duration)} />
-                <Detail label={t("columnAction")} value={actionLabel(t, selectedLog.action)} />
-                <Detail label={t("columnServer")} value={selectedLog.server_id || "-"} />
-                <Detail label={t("detailError")} value={selectedLog.error_msg || "-"} />
-                <Detail label={t("detailUserAgent")} value={detailQuery.data?.user_agent || "-"} />
+                <LogDetailItem label={t("columnTime")} value={`${formatDate(selectedLog.created_at)} ${formatLogTime(selectedLog.created_at)}`} />
+                <LogDetailItem label={t("columnType")} value={typeLabel(t, selectedLog.type)} />
+                <LogDetailItem label={t("columnResource")} value={selectedLog.resource || "-"} />
+                <LogDetailItem label={t("columnSource")} value={selectedLog.source || "-"} />
+                <LogDetailItem label={t("columnStatus")} value={statusLabel(t, selectedLog.status)} />
+                <LogDetailItem label={t("columnDuration")} value={formatLogDuration(selectedLog.duration)} />
+                <LogDetailItem label={t("columnAction")} value={actionLabel(t, selectedLog.action)} />
+                <LogDetailItem label={t("columnServer")} value={selectedLog.server_name || selectedLog.server_id || "-"} />
+                <LogDetailItem label={t("detailError")} value={selectedLog.error_msg || "-"} />
+                <LogDetailItem label={t("detailUserAgent")} value={detailQuery.data?.user_agent || "-"} />
                 {!desktopMode ? (
                   <>
-                    <Detail label={t("columnUser")} value={selectedLog.username || "-"} />
-                    <Detail label={t("columnIp")} value={selectedLog.ip || "-"} />
-                    <Detail label={t("columnCategory")} value={categoryLabel(t, selectedLog.category)} />
+                    <LogDetailItem label={t("columnUser")} value={selectedLog.username || "-"} />
+                    <LogDetailItem label={t("columnIp")} value={selectedLog.ip || "-"} />
+                    <LogDetailItem label={t("columnCategory")} value={categoryLabel(t, selectedLog.category)} />
                   </>
                 ) : null}
               </div>
@@ -799,7 +782,7 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
             >
               {cleanupLoading ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner className="mr-2" />
                   {t("cleanupRunning")}
                 </>
               ) : t("cleanupConfirm")}
@@ -808,178 +791,5 @@ export function LogsClient({ initialData, defaultAction, desktopMode = false, ap
         </AlertDialogContent>
       </AlertDialog>
     </DashboardPageContent>
-  )
-}
-
-function SortableHeader({
-  label,
-  field,
-  sort,
-  onSort,
-}: {
-  label: string
-  field: string
-  sort: LogSortState
-  onSort: (field: string) => void
-}) {
-  const active = sort.sort_by === field
-  const Icon = active ? (sort.sort_order === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown
-
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="sm"
-      className="h-7 -translate-x-2 px-2 text-xs font-medium"
-      onClick={() => onSort(field)}
-    >
-      <span>{label}</span>
-      <Icon className="ml-1.5 h-3.5 w-3.5" />
-    </Button>
-  )
-}
-
-function LogFilterControls({
-  filters,
-  onFiltersChange,
-  onApply,
-  onReset,
-  hasActiveFilters,
-  desktopMode,
-  t,
-}: {
-  filters: LogFilters
-  onFiltersChange: React.Dispatch<React.SetStateAction<LogFilters>>
-  onApply: () => void
-  onReset: () => void
-  hasActiveFilters: boolean
-  desktopMode?: boolean
-  t: (key: string, options?: Record<string, unknown>) => string
-}) {
-  const updateFilter = <K extends keyof LogFilters>(key: K, value: LogFilters[K]) => {
-    onFiltersChange((current) => ({ ...current, [key]: value }))
-  }
-
-  const handleKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (event) => {
-    if (event.key === "Enter") {
-      onApply()
-    }
-  }
-
-  const typeOptions = React.useMemo<ServerFilterOption[]>(() => {
-    const options: ServerFilterOption[] = [
-      { label: t("typeConnection"), value: "connection" },
-      { label: t("typeTransfer"), value: "transfer" },
-      { label: t("typeExecution"), value: "execution" },
-    ]
-    return desktopMode ? options : [...options, { label: t("typeAudit"), value: "audit" }]
-  }, [desktopMode, t])
-
-  const categoryOptions = React.useMemo<ServerFilterOption[]>(() => [
-    { label: t("categoryActivity"), value: "activity" },
-    { label: t("categoryAudit"), value: "audit" },
-  ], [t])
-
-  const statusOptions = React.useMemo<ServerFilterOption[]>(() => [
-    { label: t("statusPending"), value: "pending" },
-    { label: t("statusRunning"), value: "running" },
-    { label: t("filterStatusSuccessLabel"), value: "success" },
-    { label: t("filterStatusFailureLabel"), value: "failure" },
-    { label: t("statusPartial"), value: "partial" },
-    { label: t("statusCanceled"), value: "canceled" },
-    { label: t("statusTimeout"), value: "timeout" },
-    { label: t("filterStatusWarningLabel"), value: "warning" },
-  ], [t])
-
-  return (
-    <div className="flex w-full flex-wrap items-center gap-2">
-      <Input
-        value={filters.keyword}
-        placeholder={t("filterKeywordPlaceholder")}
-        onChange={(event) => updateFilter("keyword", event.target.value)}
-        onKeyDown={handleKeyDown}
-        className="h-8 w-full min-w-[180px] sm:w-[220px]"
-      />
-      <LogServerFilterButton
-        title={t("filterTypeTitle")}
-        values={filters.type}
-        options={typeOptions}
-        selectedLabel={(count) => t("filterSelectedCount", { count })}
-        clearLabel={t("clearServerFilters")}
-        emptyLabel={t("filterEmpty")}
-        onValuesChange={(values) => updateFilter("type", values)}
-      />
-      {!desktopMode ? (
-        <LogServerFilterButton
-          title={t("filterCategoryTitle")}
-          values={filters.category}
-          options={categoryOptions}
-          selectedLabel={(count) => t("filterSelectedCount", { count })}
-          clearLabel={t("clearServerFilters")}
-          emptyLabel={t("filterEmpty")}
-          onValuesChange={(values) => updateFilter("category", values)}
-        />
-      ) : null}
-      <LogServerFilterButton
-        title={t("filterStatusTitle")}
-        values={filters.status}
-        options={statusOptions}
-        selectedLabel={(count) => t("filterSelectedCount", { count })}
-        clearLabel={t("clearServerFilters")}
-        emptyLabel={t("filterEmpty")}
-        onValuesChange={(values) => updateFilter("status", values)}
-      />
-      {!desktopMode ? (
-        <>
-          <Input
-            value={filters.source}
-            placeholder={t("filterSourcePlaceholder")}
-            onChange={(event) => updateFilter("source", event.target.value)}
-            onKeyDown={handleKeyDown}
-            className="h-8 w-full min-w-[120px] sm:w-[150px]"
-          />
-          <Input
-            value={filters.ip}
-            placeholder={t("filterIpPlaceholder")}
-            onChange={(event) => updateFilter("ip", event.target.value)}
-            onKeyDown={handleKeyDown}
-            className="h-8 w-full min-w-[120px] sm:w-[150px]"
-          />
-        </>
-      ) : null}
-      <LogDateRangeFilterButton
-        title={t("filterDateRange")}
-        startValue={filters.start_date}
-        endValue={filters.end_date}
-        onRangeChange={(range) => {
-          onFiltersChange((current) => ({
-            ...current,
-            start_date: range.start,
-            end_date: range.end,
-          }))
-        }}
-        clearLabel={t("clearServerFilters")}
-        todayLabel={t("filterToday")}
-      />
-      <Button type="button" size="sm" className="h-8" onClick={onApply}>
-        <Search className="mr-2 h-4 w-4" />
-        {t("applyFilters")}
-      </Button>
-      {hasActiveFilters ? (
-        <Button type="button" variant="ghost" size="sm" className="h-8" onClick={onReset}>
-          <X className="mr-2 h-4 w-4" />
-          {t("clearServerFilters")}
-        </Button>
-      ) : null}
-    </div>
-  )
-}
-
-function Detail({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 break-words font-medium">{value}</div>
-    </div>
   )
 }

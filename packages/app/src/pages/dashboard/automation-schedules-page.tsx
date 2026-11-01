@@ -607,7 +607,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  {confirmDialog}
   {!embedded ? <PageHeader title={t("pageTitle")} /> : null}
 
- <DashboardPageContent className="gap-3 sm:gap-4">
+ <DashboardPageContent className={cn("min-h-auto gap-3 sm:gap-4", embedded && "px-0 pb-0")}>
    <div className="flex shrink-0 flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
      <p>集中查看定时任务、执行节奏和失败风险，便于快速判断调度状态。</p>
      <div className="flex items-center gap-2">
@@ -689,54 +689,50 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
      )}
    </Card>
 
-   <div className="min-h-[520px] flex-1">
-     <DataTable
-       data={tasks}
-       columns={columns}
-       loading={loading}
-       emptyMessage={t("emptyAll")}
-       enableRowSelection={true}
-       getRowId={(task) => task.id}
-       className="min-h-[520px]"
-       scrollContainerClassName="min-h-[360px]"
-       density="compact"
-       toolbar={(table) => (
-         <DataTableToolbar
-           table={table}
-           searchKey="task_name"
-           searchPlaceholder={t("searchPlaceholder")}
-           filters={[
-             {
-               column: "enabled",
-               title: t("statusFilterPlaceholder"),
-               options: [
-                 { label: t("statusFilterEnabled"), value: "enabled" },
-                 { label: t("statusFilterDisabled"), value: "disabled" },
-               ],
-             },
-             {
-               column: "task_type",
-               title: t("typeFilterPlaceholder"),
-               options: [
-                 { label: t("typeCommand"), value: "command" },
-                 { label: t("typeScript"), value: "script" },
-                 { label: "SFTP 上传", value: "sftp_upload" },
-                 { label: "SFTP 下载", value: "sftp_download" },
-               ],
-             },
-           ]}
-           onRefresh={handleRefresh}
-           showRefresh={true}
-           isRefreshing={refreshing}
-         >
-           <Button size="sm" onClick={() => setIsDialogOpen(true)}>
-             <Plus className="mr-2 h-4 w-4" />
-             {t("newTask")}
-           </Button>
-         </DataTableToolbar>
-       )}
-     />
-   </div>
+   <DataTable
+     data={tasks}
+     columns={columns}
+     loading={loading}
+     emptyMessage={t("emptyAll")}
+     enableRowSelection={true}
+     getRowId={(task) => task.id}
+     density="compact"
+     toolbar={(table) => (
+       <DataTableToolbar
+         table={table}
+         searchKey="task_name"
+         searchPlaceholder={t("searchPlaceholder")}
+         filters={[
+           {
+             column: "enabled",
+             title: t("statusFilterPlaceholder"),
+             options: [
+               { label: t("statusFilterEnabled"), value: "enabled" },
+               { label: t("statusFilterDisabled"), value: "disabled" },
+             ],
+           },
+           {
+             column: "task_type",
+             title: t("typeFilterPlaceholder"),
+             options: [
+               { label: t("typeCommand"), value: "command" },
+               { label: t("typeScript"), value: "script" },
+               { label: "SFTP 上传", value: "sftp_upload" },
+               { label: "SFTP 下载", value: "sftp_download" },
+             ],
+           },
+         ]}
+         onRefresh={handleRefresh}
+         showRefresh={true}
+         isRefreshing={refreshing}
+       >
+         <Button size="sm" onClick={() => setIsDialogOpen(true)}>
+           <Plus className="mr-2 h-4 w-4" />
+           {t("newTask")}
+         </Button>
+       </DataTableToolbar>
+     )}
+   />
  </DashboardPageContent>
 
  {/* 统一的任务对话框 */}

@@ -1,33 +1,25 @@
 import { useState } from "react"
-import { ArrowLeft } from "lucide-react"
+import { RefreshCw } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
+import { formatLogBytes } from "@/components/logs/log-table-parts"
 import { Button } from "@/components/ui/button"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { apiFetch } from "@/lib/api-client"
+import { cn } from "@/lib/utils"
 import type { components } from "@/generated/openapi"
 
 export type OverviewInput = components["schemas"]["ActivityOverviewInput"]
 export type OverviewData = Pick<
   components["schemas"]["ActivityOverview"],
-  | "coverage"
-  | "result_events"
-  | "servers"
-  | "timeline"
-  | "as_of"
-  | "timezone"
-  | "connection_duration_ms"
-  | "connection_duration_is_lower_bound"
-  | "carry_over"
+  "coverage" | "result_events"
 > & {
   volume: Pick<
     components["schemas"]["ActivityOverview"]["volume"],
     | "works"
-    | "executions"
-    | "transfers"
-    | "successful_files"
+    | "active"
     | "completed_bytes"
     | "servers"
-    | "configuration_changes"
     | "unresolved_failures"
   >
 }
@@ -41,18 +33,27 @@ export const fetchActivityOverview = (
         .map(([k, v]) => [k, String(v)]),
     )}`,
   )
+
+type StatKey = "works" | "completed" | "unresolved_failures" | "active" | "completed_bytes" | "servers"
+
+const STAT_KEYS: readonly StatKey[] = ["works", "completed", "unresolved_failures", "active", "completed_bytes", "servers"]
+
+function statValue(value: OverviewData, key: StatKey) {
+  return key === "completed" ? value.result_events.completed : value.volume[key]
+}
+
+/** 日志页顶部的统计概览：只展示汇总数字，明细由下方表格呈现；服务器范围跟随表格的服务器筛选。 */
 export function ActivityOverview({
   load = fetchActivityOverview,
   scope = "owner",
+  server = null,
 }: {
   load?: (input: OverviewInput) => Promise<OverviewData>
   scope?: string
+  server?: { id: string; name: string } | null
 }) {
   const { t } = useTranslation("activityOverview")
   const [range, setRange] = useState("today")
-  const [server, setServer] = useState<{ id: string; name: string } | null>(
-    null,
-  )
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const query = useQuery({
     queryKey: ["activityOverview", scope, range, timezone, server?.id ?? ""],
@@ -68,42 +69,40 @@ export function ActivityOverview({
   })
   const value = query.data
   const unavailable = new Set(value?.coverage.unavailable_metrics ?? [])
-  const metric = (key: keyof OverviewData["volume"]) =>
-    !value || unavailable.has(key)
-      ? "—"
-      : Number(value.volume[key]).toLocaleString()
+  const display = (key: StatKey) => {
+    if (!value || unavailable.has(key)) return "—"
+    const number = Number(statValue(value, key))
+    return key === "completed_bytes" ? formatLogBytes(number) : number.toLocaleString()
+  }
+
   return (
-    <section className="space-y-3 rounded-xl border bg-card p-4">
+    <section className="@container shrink-0 space-y-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h2 className="font-medium">{t("title")}</h2>
-          {server && (
-            <Button size="sm" variant="outline" onClick={() => setServer(null)}>
-              <ArrowLeft className="size-4" />
-              {t("backToAll")}
-            </Button>
-          )}
-          <span role="status" className="text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="shrink-0 font-medium">{t("title")}</h2>
+          <span role="status" className="truncate text-xs text-muted-foreground">
             {server ? t("filteredServer", { name: server.name }) : t("all")}
           </span>
         </div>
-        <div className="flex gap-2">
-          <select
-            aria-label={t("range")}
-            className="rounded border bg-background p-1 text-sm"
-            value={range}
-            onChange={(e) => setRange(e.target.value)}
-          >
-            <option value="today">{t("today")}</option>
-            <option value="seven_days">{t("week")}</option>
-          </select>
+        <div className="flex items-center gap-2">
+          <Select value={range} onValueChange={setRange}>
+            <SelectTrigger size="sm" aria-label={t("range")} className="min-w-28">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              <SelectItem value="today">{t("today")}</SelectItem>
+              <SelectItem value="seven_days">{t("week")}</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
-            size="sm"
+            size="icon-sm"
             variant="ghost"
+            aria-label={t("refresh")}
+            title={t("refresh")}
             disabled={query.isFetching}
             onClick={() => void query.refetch()}
           >
-            {t("refresh")}
+            <RefreshCw className={cn("size-4", query.isFetching && "animate-spin")} />
           </Button>
         </div>
       </div>
@@ -112,100 +111,27 @@ export function ActivityOverview({
           {query.error.message}
         </p>
       )}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {(
-          [
-            "works",
-            "executions",
-            "transfers",
-            "successful_files",
-            "completed_bytes",
-            "servers",
-            "configuration_changes",
-            "unresolved_failures",
-          ] as const
-        ).map((k) => (
-          <div key={k} className="rounded bg-muted/40 p-3">
-            <p className="text-xs text-muted-foreground">{t(k)}</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums">
-              {metric(k)}
-            </p>
-          </div>
-        ))}
-      </div>
-      {value && (
-        <>
-          <p className="text-xs text-muted-foreground">
-            {t("results", {
-              completed: value.result_events.completed,
-              failed: value.result_events.failed,
-              partial: value.result_events.partial,
-              canceled: value.result_events.canceled,
-              unknown: value.result_events.unknown,
-              carry: value.carry_over,
-            })}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t("duration", {
-              value: Math.round(value.connection_duration_ms / 60000),
-              bound: value.connection_duration_is_lower_bound
-                ? t("atLeast")
-                : "",
-            })}{" "}
-            · {timezone}
-          </p>
-          {(!value.coverage.known || !value.coverage.complete_window) && (
-            <p className="rounded border border-amber-500/40 p-2 text-xs">
-              {t("coverage", {
-                date: value.coverage.available_from
-                  ? new Date(value.coverage.available_from).toLocaleString()
-                  : t("unknown"),
-              })}
-            </p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {value.servers.map((s) => (
-              <Button
-                key={s.server_id}
-                variant={server?.id === s.server_id ? "secondary" : "ghost"}
-                size="sm"
-                aria-pressed={server?.id === s.server_id}
-                aria-label={
-                  server?.id === s.server_id
-                    ? t("backToAll")
-                    : t("viewServer", { name: s.name })
-                }
-                onClick={() =>
-                  setServer((current) =>
-                    current?.id === s.server_id
-                      ? null
-                      : { id: s.server_id, name: s.name || s.server_id },
-                  )
-                }
-              >
-                {s.name} · {s.works}
-              </Button>
-            ))}
-          </div>
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
-              {t("timeline")}
-            </summary>
-            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {value.timeline.map((b) => (
-                <div key={b.start} className="border-l-2 px-2 text-xs">
-                  <div>{b.label}</div>
-                  <div>
-                    {t("bucket", {
-                      started: b.started,
-                      completed: b.results.completed,
-                    })}
-                  </div>
-                </div>
-              ))}
+      <dl className="grid grid-cols-2 gap-3 @md:grid-cols-3 @4xl:grid-cols-6">
+        {STAT_KEYS.map((key) => {
+          const alert = key === "unresolved_failures" && Boolean(value && statValue(value, key) > 0)
+          return (
+            <div key={key} className="min-w-0 rounded-lg bg-muted/40 px-3 py-2.5">
+              <dt className="truncate text-xs text-muted-foreground">{t(key)}</dt>
+              <dd className={cn("mt-1 truncate text-xl font-semibold tabular-nums", alert && "text-rose-600 dark:text-rose-400")}>
+                {display(key)}
+              </dd>
             </div>
-          </details>
-        </>
+          )
+        })}
+      </dl>
+      {value && (!value.coverage.known || !value.coverage.complete_window) && (
+        <p className="text-xs text-amber-700 dark:text-amber-400">
+          {t("coverage", {
+            date: value.coverage.available_from
+              ? new Date(value.coverage.available_from).toLocaleString()
+              : t("unknown"),
+          })}
+        </p>
       )}
     </section>
   )

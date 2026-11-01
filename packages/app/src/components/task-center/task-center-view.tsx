@@ -407,7 +407,7 @@ export function TaskCenterView({
   return (
     <>
       {!hidePageHeader ? <PageHeader title={t("title")} /> : null}
-      <DashboardPageContent>
+      <DashboardPageContent className="min-h-auto">
         <Tabs defaultValue="runs" className="flex min-h-0 flex-1 flex-col">
           <div className="flex shrink-0 items-center border-b pb-3">
             <TabsList>
@@ -426,80 +426,77 @@ export function TaskCenterView({
               ))}
             </div>
 
-            <div className="mt-3 min-h-[520px] flex-1">
-              <DataTable
-                data={runs}
-                columns={runColumns}
-                loading={loading && runs.length === 0}
-                currentPage={page}
-                pageCount={totalPages}
-                pageSize={pageSize}
-                totalRows={totalRuns}
-                onPageChange={setPage}
-                onPageSizeChange={(value) => { setPage(1); setPageSize(value) }}
-                emptyMessage={t("empty")}
-                density="compact"
-                className="min-h-[520px]"
-                scrollContainerClassName="min-h-[260px]"
-                onRowClick={(run) => void openDetails(run)}
-                toolbar={(table) => (
-                  <DataTableToolbar
-                    table={table}
-                    showRefresh
-                    onRefresh={() => void refetchAll()}
-                    isRefreshing={refreshing}
-                    filterSlot={(
-                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                        <div className="flex flex-wrap gap-1">
-                          {[
-                            ["active", t("filterActive")], ["all", t("filterAll")], ["succeeded", t("filterSucceeded")], ["failed", t("filterFailed")],
-                            ["unknown", t("statusUnknown")], ["partial_success", t("filterPartial")], ["timeout", t("filterTimeout")], ["canceled", t("filterCanceled")],
-                          ].map(([value, label]) => (
-                            <Button key={value} variant={statusFilter === value ? "secondary" : "ghost"} size="sm" className="h-8" onClick={() => { setPage(1); setStatusFilter(value) }}>{label}</Button>
-                          ))}
-                        </div>
-                        <div className="relative min-w-[180px] flex-1 xl:max-w-[280px]">
-                          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input value={keyword} onChange={(event) => { setPage(1); setKeyword(event.target.value) }} placeholder={t("searchPlaceholder")} className="h-8 pl-8" />
-                        </div>
-                        <DataTableFacetedFilter
-                          title={t("typeFilterPlaceholder")}
-                          options={Object.entries(taskTypeLabelKeys).map(([value, key]) => ({ value, label: t(key) }))}
-                          values={taskTypeFilters}
-                          onValuesChange={(values) => { setPage(1); setTaskTypeFilters(values) }}
-                        />
-                        <DataTableFacetedFilter
-                          title={t("triggerFilterPlaceholder")}
-                          options={[
-                            { value: "manual", label: t("triggerManual") },
-                            { value: "scheduled", label: t("triggerScheduled") },
-                            { value: "system", label: t("triggerSystem") },
-                            { value: "api", label: t("triggerApi") },
-                          ]}
-                          values={triggerFilters}
-                          onValuesChange={(values) => { setPage(1); setTriggerFilters(values as TaskRun["trigger_type"][]) }}
-                        />
+            <DataTable
+              className="mt-3"
+              data={runs}
+              columns={runColumns}
+              loading={loading && runs.length === 0}
+              currentPage={page}
+              pageCount={totalPages}
+              pageSize={pageSize}
+              totalRows={totalRuns}
+              onPageChange={setPage}
+              onPageSizeChange={(value) => { setPage(1); setPageSize(value) }}
+              emptyMessage={t("empty")}
+              density="compact"
+              onRowClick={(run) => void openDetails(run)}
+              toolbar={(table) => (
+                <DataTableToolbar
+                  table={table}
+                  showRefresh
+                  onRefresh={() => void refetchAll()}
+                  isRefreshing={refreshing}
+                  filterSlot={(
+                    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          ["active", t("filterActive")], ["all", t("filterAll")], ["succeeded", t("filterSucceeded")], ["failed", t("filterFailed")],
+                          ["unknown", t("statusUnknown")], ["partial_success", t("filterPartial")], ["timeout", t("filterTimeout")], ["canceled", t("filterCanceled")],
+                        ].map(([value, label]) => (
+                          <Button key={value} variant={statusFilter === value ? "secondary" : "ghost"} size="sm" className="h-8" onClick={() => { setPage(1); setStatusFilter(value) }}>{label}</Button>
+                        ))}
                       </div>
-                    )}
+                      <div className="relative min-w-[180px] flex-1 xl:max-w-[280px]">
+                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input value={keyword} onChange={(event) => { setPage(1); setKeyword(event.target.value) }} placeholder={t("searchPlaceholder")} className="h-8 pl-8" />
+                      </div>
+                      <DataTableFacetedFilter
+                        title={t("typeFilterPlaceholder")}
+                        options={Object.entries(taskTypeLabelKeys).map(([value, key]) => ({ value, label: t(key) }))}
+                        values={taskTypeFilters}
+                        onValuesChange={(values) => { setPage(1); setTaskTypeFilters(values) }}
+                      />
+                      <DataTableFacetedFilter
+                        title={t("triggerFilterPlaceholder")}
+                        options={[
+                          { value: "manual", label: t("triggerManual") },
+                          { value: "scheduled", label: t("triggerScheduled") },
+                          { value: "system", label: t("triggerSystem") },
+                          { value: "api", label: t("triggerApi") },
+                        ]}
+                        values={triggerFilters}
+                        onValuesChange={(values) => { setPage(1); setTriggerFilters(values as TaskRun["trigger_type"][]) }}
+                      />
+                    </div>
+                  )}
+                >
+                  {canCleanup && <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-destructive hover:text-destructive"
+                    disabled={cleanupLoading}
+                    onClick={() => setCleanupOpen(true)}
                   >
-                    {canCleanup && <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-destructive hover:text-destructive"
-                      disabled={cleanupLoading}
-                      onClick={() => setCleanupOpen(true)}
-                    >
-                      <Trash2 className="size-4" />
-                      {t("cleanupButton")}
-                    </Button>}
-                  </DataTableToolbar>
-                )}
-              />
-            </div>
+                    <Trash2 className="size-4" />
+                    {t("cleanupButton")}
+                  </Button>}
+                </DataTableToolbar>
+              )}
+            />
           </TabsContent>
 
           {schedulesContent ? (
-            <TabsContent value="schedules" className="flex-1 pt-3">
+            <TabsContent value="schedules" className="flex-1 flex-col pt-3 data-[state=active]:flex">
               {schedulesContent}
             </TabsContent>
           ) : null}

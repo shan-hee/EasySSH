@@ -555,7 +555,7 @@ const totalExecutions = useMemo(() => (
    </div>
  ) : null}
 
- <DashboardPageContent className="gap-3 sm:gap-4">
+ <DashboardPageContent className="min-h-auto gap-3 sm:gap-4">
    <div className="grid shrink-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
      <DashboardMetricCard title={t("statsTotalScripts")} value={totalRows || scripts.length} icon={FileText} tone="emerald" spark={scriptSpark} loading={loading} />
      <DashboardMetricCard title={t("statsTags")} value={filterOptions.tags.length} icon={Tag} tone="blue" spark={tagCounts.slice(0, 12).map((item) => item.count)} loading={loading} />
@@ -565,66 +565,62 @@ const totalExecutions = useMemo(() => (
      <DashboardMetricCard title="累计执行" value={totalExecutions} icon={Play} tone="amber" spark={scriptSpark} loading={loading} />
    </div>
 
-   <section className="min-h-[520px] flex-1">
-     <DataTable
-       data={scripts}
-       columns={visibleColumns}
-       loading={loading}
-       currentPage={page}
-       pageCount={totalPages}
-       pageSize={pageSize}
-       totalRows={totalRows}
-       onPageChange={setPage}
-       onPageSizeChange={(newPageSize) => {
-         setPageSize(newPageSize)
-         setPage(1)
-       }}
-       emptyMessage={t("tableEmpty")}
-       enableRowSelection={true}
-       getRowId={(script) => script.id}
-       className="min-h-[520px]"
-       scrollContainerClassName="min-h-[360px]"
-       density="compact"
-       toolbar={(table) => (
-         <DataTableToolbar
-           table={table}
-           searchKey="name"
-           searchPlaceholder={t("tableSearchPlaceholder")}
-           filters={[
-             ...(!desktopMode ? [{ column: 'author', title: t("filterAuthorTitle"), options: filterOptions.authors }] : []),
-             { column: 'tags', title: t("filterTagsTitle"), options: filterOptions.tags },
-           ]}
-           onRefresh={handleRefresh}
-           showRefresh={true}
-           isRefreshing={refreshing}
-         >
-           <ColumnVisibility
-             columns={[
-               { id: 'name', label: t("cvName") },
-               { id: 'description', label: t("cvDescription") },
-               { id: 'content', label: t("cvContent") },
-               { id: 'tags', label: t("cvTags") },
-               ...(!desktopMode ? [{ id: 'author', label: t("cvAuthor") }] : []),
-               { id: 'updated_at', label: t("cvUpdatedAt") },
-               { id: 'executions', label: t("cvExecutions") },
-             ].map(column => ({
-               id: column.id,
-               label: column.label,
-               visible: columnVisibility[column.id] ?? true,
-               onToggle: () => setColumnVisibility(prev => ({
-                 ...prev,
-                 [column.id]: !prev[column.id]
-               }))
-             }))}
-           />
-           <Button size="sm" onClick={handleOpenDialog}>
-             <Plus className="mr-2 h-4 w-4" />
-             {t("btnNew")}
-           </Button>
-         </DataTableToolbar>
-       )}
-     />
-   </section>
+   <DataTable
+     data={scripts}
+     columns={visibleColumns}
+     loading={loading}
+     currentPage={page}
+     pageCount={totalPages}
+     pageSize={pageSize}
+     totalRows={totalRows}
+     onPageChange={setPage}
+     onPageSizeChange={(newPageSize) => {
+       setPageSize(newPageSize)
+       setPage(1)
+     }}
+     emptyMessage={t("tableEmpty")}
+     enableRowSelection={true}
+     getRowId={(script) => script.id}
+     density="compact"
+     toolbar={(table) => (
+       <DataTableToolbar
+         table={table}
+         searchKey="name"
+         searchPlaceholder={t("tableSearchPlaceholder")}
+         filters={[
+           ...(!desktopMode ? [{ column: 'author', title: t("filterAuthorTitle"), options: filterOptions.authors }] : []),
+           { column: 'tags', title: t("filterTagsTitle"), options: filterOptions.tags },
+         ]}
+         onRefresh={handleRefresh}
+         showRefresh={true}
+         isRefreshing={refreshing}
+       >
+         <ColumnVisibility
+           columns={[
+             { id: 'name', label: t("cvName") },
+             { id: 'description', label: t("cvDescription") },
+             { id: 'content', label: t("cvContent") },
+             { id: 'tags', label: t("cvTags") },
+             ...(!desktopMode ? [{ id: 'author', label: t("cvAuthor") }] : []),
+             { id: 'updated_at', label: t("cvUpdatedAt") },
+             { id: 'executions', label: t("cvExecutions") },
+           ].map(column => ({
+             id: column.id,
+             label: column.label,
+             visible: columnVisibility[column.id] ?? true,
+             onToggle: () => setColumnVisibility(prev => ({
+               ...prev,
+               [column.id]: !prev[column.id]
+             }))
+           }))}
+         />
+         <Button size="sm" onClick={handleOpenDialog}>
+           <Plus className="mr-2 h-4 w-4" />
+           {t("btnNew")}
+         </Button>
+       </DataTableToolbar>
+     )}
+   />
  </DashboardPageContent>
 
  {/* 编辑脚本弹窗 */}

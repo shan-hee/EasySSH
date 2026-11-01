@@ -45,6 +45,12 @@ export function desktopAuditLogTypeFromAction(action: string): AuditLog["type"] 
   return "execution"
 }
 
+function desktopActivityProgress(item: DesktopActivityLogItem) {
+  if (item.bytes_total > 0) return Math.min(100, Math.round((item.bytes_processed / item.bytes_total) * 100))
+  if (item.total_count > 0) return Math.min(100, Math.round(((item.success_count + item.failure_count) / item.total_count) * 100))
+  return 0
+}
+
 export function mapDesktopActivityLogItemToAuditLog(item: DesktopActivityLogItem): AuditLog {
   const action = item.action || ""
   return {
@@ -61,8 +67,17 @@ export function mapDesktopActivityLogItemToAuditLog(item: DesktopActivityLogItem
     ip: "",
     user_agent: "EasySSH",
     details: item.detail || "",
+    error_msg: item.error_message || undefined,
     duration: item.durationMs || 0,
     created_at: item.createdAt,
+    server_name: item.server_name || undefined,
+    attempt: item.attempt,
+    progress: desktopActivityProgress(item),
+    total_count: item.total_count,
+    success_count: item.success_count,
+    failure_count: item.failure_count,
+    bytes_total: item.bytes_total,
+    bytes_processed: item.bytes_processed,
   }
 }
 
