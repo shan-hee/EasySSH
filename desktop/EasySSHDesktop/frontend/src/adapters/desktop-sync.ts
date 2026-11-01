@@ -9,6 +9,7 @@ import type {
   SyncConflict,
 } from "@easyssh/app/lib/sync/types"
 import type { SyncSnapshot, SyncPeer } from "@easyssh/app/lib/sync/automerge"
+import type { components } from "@easyssh/app/generated/openapi"
 
 type LocalState = {
   scopes: SyncScopes
@@ -18,7 +19,7 @@ type LocalState = {
   account_name: string
   enabled: boolean
   document: string
-  remote_heads: string[]
+  remote_heads: string[] | null
   last_sync: string
   revision: number
   snapshot: SyncSnapshot
@@ -31,6 +32,16 @@ let lastError = ""
 let changingAccount = false
 let syncPending = false
 let syncTimer: number | undefined
+
+function parseSyncResponse(raw: string): SyncPeer {
+  const result = JSON.parse(raw) as components["schemas"]["SyncExchangeResult"]
+  const response = result?.response
+  // An exchange envelope is not a peer: treating it as one silently applies no changes.
+  if (!response || !Array.isArray(response.heads)) {
+    throw new Error("Invalid sync response: missing peer or heads")
+  }
+  return { ...response, heads: response.heads }
+}
 
 function syncErrorMessage(error: unknown): string {
   let message = error instanceof Error ? error.message : String(error)
@@ -104,13 +115,13 @@ async function synchronizeConfiguration() {
         snapshot: null,
       })
       if (!saved) continue
-      const response = JSON.parse(
+      const response = parseSyncResponse(
         await call<string>(
           "Exchange",
-          JSON.stringify(engine.outgoing(doc, state.remote_heads)),
+          JSON.stringify(engine.outgoing(doc, state.remote_heads ?? [])),
           state.revision + 1,
         ),
-      ) as SyncPeer
+      )
       doc = engine.receive(doc, response)
       const projected = engine.projectConfiguration(doc, state.snapshot)
       const applied = await call<boolean>("Save", {
@@ -135,7 +146,7 @@ type VaultEntry = { kind: string; id: string; name: string }
 type VaultState = VaultEntry & {
   space_id: string
   document: string
-  heads: string[]
+  heads: string[] | null
   snapshot: SyncSnapshot
   revision: number
   binding_revision: number
@@ -158,16 +169,16 @@ async function synchronizeVault(entry: VaultEntry) {
         }))
       )
         continue
-      const response = JSON.parse(
+      const response = parseSyncResponse(
         await call<string>(
           "ExchangeVault",
           entry.kind,
           entry.id,
-          JSON.stringify(engine.outgoing(doc, state.heads)),
+          JSON.stringify(engine.outgoing(doc, state.heads ?? [])),
           state.space_id,
           state.binding_revision,
         ),
-      ) as SyncPeer
+      )
       doc = engine.receive(doc, response)
       const projected = engine.projectDocument(doc)
       if (

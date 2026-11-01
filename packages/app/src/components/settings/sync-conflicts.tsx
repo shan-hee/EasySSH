@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Check, Circle, Loader2 } from "lucide-react"
 import { GrantManager } from "@/components/sharing/grant-manager"
 import type { SyncAffectedGrant } from "@/lib/sync/types"
 import { useTranslation } from "react-i18next"
@@ -6,6 +7,7 @@ import { toast } from "sonner"
 import { SettingsSection } from "./settings-section"
 import { Button } from "@/components/ui/button"
 import type { SyncAdapter, SyncStatus } from "@/lib/sync/types"
+import { cn } from "@/lib/utils"
 
 export function SyncConflicts({ status, adapter, busy, action }: {
   status: SyncStatus
@@ -13,7 +15,8 @@ export function SyncConflicts({ status, adapter, busy, action }: {
   busy: boolean
   action: (fn: () => Promise<void>) => Promise<boolean>
 }) {
-  const [affected,setAffected] = useState<SyncAffectedGrant[]>([])
+  const [affected, setAffected] = useState<SyncAffectedGrant[]>([])
+  const [selecting, setSelecting] = useState<{ key: string; field: string; value: string } | null>(null)
   const { t } = useTranslation("settingsManagementBackup")
   return (
     <div id="sync-conflicts" className="scroll-mt-4">
@@ -36,92 +39,115 @@ export function SyncConflicts({ status, adapter, busy, action }: {
                     ? t("syncVersionField")
                     : t("syncContentField")}
               </p>
-              {conflict.values.map((value, i) => (
-                <div key={i} className="space-y-2 rounded-lg bg-muted/40 p-3">
-                  {conflict.previews?.[value] ? (
-                    <div className="space-y-1 text-sm">
-                      <p className="text-xs text-muted-foreground">
-                        {t(
-                          conflict.previews[value].source === "desktop"
-                            ? "syncVersionDesktop"
-                            : "syncVersionServer",
-                        )}
-                        {conflict.previews[value].updated_at &&
-                          ` · ${new Date(conflict.previews[value].updated_at!).toLocaleString()}`}
-                      </p>
-                      {conflict.previews[value].deleted ? (
-                        <p>{t("syncVersionDeleted")}</p>
-                      ) : (
-                        <>
-                          {conflict.key.startsWith("vault/ai_session/") && (
-                            <p>
-                              {conflict.previews[value].title} ·{" "}
-                              {t("syncMessageCount", {
-                                count: conflict.previews[value].messages ?? 0,
-                              })}
-                              {conflict.previews[value].last_message_at &&
-                                ` · ${new Date(conflict.previews[value].last_message_at!).toLocaleString()}`}
-                            </p>
-                          )}
-                          {conflict.key.startsWith("vault/credential/") && (
-                            <p>
-                              {t(
-                                conflict.previews[value].has_password
-                                  ? "syncHasPassword"
-                                  : "syncNoPassword",
-                              )}{" "}
-                              · {conflict.previews[value].fingerprint || t("syncNoPrivateKey")}
-                            </p>
-                          )}
-                          {conflict.key.startsWith("vault/ai_config/") && (
-                            <p>
-                              {conflict.previews[value].provider} ·{" "}
-                              {t(
-                                conflict.previews[value].has_api_key
-                                  ? "syncHasAPIKey"
-                                  : "syncNoAPIKey",
-                              )}
-                            </p>
-                          )}
-                        </>
-                      )}
-                      <p className="break-all font-mono text-xs text-muted-foreground">{value}</p>
-                    </div>
-                  ) : (
-                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all text-xs">
-                      {value}
-                    </pre>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() =>
-                      void action(async () => { const result = await adapter.resolve(conflict.key, conflict.field, value); setAffected(result || []) })
-                    }
-                  >
-                    {t("syncUseVersion", { number: i + 1 })}
-                  </Button>
-                  {conflict.key.startsWith("vault/ai_session/") &&
-                    !conflict.previews?.[value]?.deleted &&
-                    adapter.forkSession && (
-                      <Button
-                        className="ml-2"
-                        size="sm"
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() =>
-                          void action(async () => {
-                            await adapter.forkSession!(conflict.key, value)
-                            toast.success(t("syncForkSaved"))
-                          })
-                        }
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {conflict.values.map((value, i) => {
+                  const selected = selecting?.key === conflict.key && selecting.field === conflict.field && selecting.value === value
+                  return (
+                    <div key={value} className={cn(
+                      "flex min-w-0 flex-col overflow-hidden rounded-lg border bg-muted/20 transition-colors",
+                      selected ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border",
+                    )}>
+                      <button
+                        type="button"
+                        className="group flex w-full min-w-0 flex-1 cursor-pointer flex-col gap-3 p-4 text-left outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
+                        disabled={busy || selecting !== null}
+                        aria-label={t("syncUseVersion", { number: i + 1 })}
+                        aria-busy={selected}
+                        onClick={() => void action(async () => {
+                          setSelecting({ key: conflict.key, field: conflict.field, value })
+                          try {
+                            const result = await adapter.resolve(conflict.key, conflict.field, value)
+                            setAffected(result || [])
+                          } finally {
+                            setSelecting(null)
+                          }
+                        })}
                       >
-                        {t("syncForkSession")}
-                      </Button>
-                    )}
-                </div>
-              ))}
+                        <span className="flex w-full items-center justify-between gap-3 text-sm font-medium">
+                          <span>{t("syncVersionNumber", { number: i + 1 })}</span>
+                          {selected ? <Check className="size-4 shrink-0 text-primary" aria-hidden="true" /> : <Circle className="size-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden="true" />}
+                        </span>
+                        {conflict.previews?.[value] ? (
+                          <span className="block w-full space-y-2 break-all text-sm">
+                            <span className="block text-xs text-muted-foreground">
+                              {t(
+                                conflict.previews[value].source === "desktop"
+                                  ? "syncVersionDesktop"
+                                  : "syncVersionServer",
+                              )}
+                              {conflict.previews[value].updated_at &&
+                                ` · ${new Date(conflict.previews[value].updated_at!).toLocaleString()}`}
+                            </span>
+                            {conflict.previews[value].deleted ? (
+                              <span className="block">{t("syncVersionDeleted")}</span>
+                            ) : (
+                              <>
+                                {conflict.key.startsWith("vault/ai_session/") && (
+                                  <span className="block">
+                                    {conflict.previews[value].title} ·{" "}
+                                    {t("syncMessageCount", {
+                                      count: conflict.previews[value].messages ?? 0,
+                                    })}
+                                    {conflict.previews[value].last_message_at &&
+                                      ` · ${new Date(conflict.previews[value].last_message_at!).toLocaleString()}`}
+                                  </span>
+                                )}
+                                {conflict.key.startsWith("vault/credential/") && (
+                                  <span className="block">
+                                    {t(
+                                      conflict.previews[value].has_password
+                                        ? "syncHasPassword"
+                                        : "syncNoPassword",
+                                    )}{" "}
+                                    · {conflict.previews[value].fingerprint || t("syncNoPrivateKey")}
+                                  </span>
+                                )}
+                                {conflict.key.startsWith("vault/ai_config/") && (
+                                  <span className="block">
+                                    {conflict.previews[value].provider} ·{" "}
+                                    {t(
+                                      conflict.previews[value].has_api_key
+                                        ? "syncHasAPIKey"
+                                        : "syncNoAPIKey",
+                                    )}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                            <span className="block font-mono text-xs text-muted-foreground">{value}</span>
+                          </span>
+                        ) : (
+                          <span className="block max-h-64 w-full overflow-auto whitespace-pre-wrap break-all font-mono text-xs">
+                            {value}
+                          </span>
+                        )}
+                        <span className="mt-auto flex items-center gap-2 pt-2 text-xs text-muted-foreground">
+                          {selected && <Loader2 className="size-3 animate-spin" aria-hidden="true" />}
+                          {t(selected ? "syncApplyingVersion" : "syncClickToUseVersion")}
+                        </span>
+                      </button>
+                      {conflict.key.startsWith("vault/ai_session/") &&
+                        !conflict.previews?.[value]?.deleted &&
+                        adapter.forkSession && (
+                          <Button
+                            className="mx-4 mb-4 self-start"
+                            size="sm"
+                            variant="outline"
+                            disabled={busy || selecting !== null}
+                            onClick={() =>
+                              void action(async () => {
+                                await adapter.forkSession!(conflict.key, value)
+                                toast.success(t("syncForkSaved"))
+                              })
+                            }
+                          >
+                            {t("syncForkSession")}
+                          </Button>
+                        )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           ))}
         </SettingsSection>

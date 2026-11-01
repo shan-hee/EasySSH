@@ -122,8 +122,9 @@ func (b *desktopNativeBoundary) assets(next http.Handler) http.Handler {
 			// service. Remote windows never receive its token or network access.
 			connect += " http://127.0.0.1:* ws://127.0.0.1:*"
 		}
+		// Automerge sync requires WASM compilation without enabling JavaScript eval.
 		w.Header().Set("Content-Security-Policy", strings.Join([]string{
-			"default-src 'none'", "script-src 'self' 'unsafe-inline'", "style-src 'self' 'unsafe-inline'",
+			"default-src 'none'", "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'", "style-src 'self' 'unsafe-inline'",
 			"img-src 'self' data: blob:", "font-src 'self' data:", "worker-src 'self' blob:",
 			"connect-src " + connect, "frame-src 'none'", "object-src 'none'", "base-uri 'none'",
 			"form-action 'none'", "frame-ancestors 'none'",
