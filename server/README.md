@@ -384,7 +384,11 @@ Apache License 2.0 - 详见 [LICENSE](../LICENSE)
 
 Web 的“账户设置 → 数据与同步”页面用于管理已授权的桌面设备和并发配置变更。同步开关按账户保存暂停状态，暂停后阻止后续设备同步请求；设备撤销、退出登录和已有数据仍可使用。系统备份与恢复保留在系统设置中。同步服务使用 Automerge 3.5.0，与 Web 和桌面端 JS/WASM 客户端共用文档处理逻辑（`packages/sync-document`）。Go 服务按需启动通过标准输入输出通信的私有 Node.js 工作进程，不额外开放公网端口，也不启用 CGO。
 
-Docker 镜像已包含运行时。从源码运行时，安装 Node.js 22+ 和 pnpm，然后在仓库根目录执行 `pnpm install --frozen-lockfile --filter "easyssh-sync-runtime..."`，或在 `server` 目录执行 `make sync-deps`。`scripts/dev.sh` 和 `make dev` 会安装工作进程的依赖。单独部署 Go 可执行文件时，使用 `pnpm --filter easyssh-sync-runtime deploy --prod --legacy <dir>` 创建包含完整依赖的工作进程目录，并将 `EASYSSH_SYNC_ENGINE` 指向 `<dir>/engine.mjs` 的绝对路径。
+Docker 镜像已包含运行时。从源码运行时，安装仓库要求的 Node.js 24+ 和 pnpm 11.1.3，然后在仓库根目录执行 `pnpm install --frozen-lockfile --ignore-scripts --filter "easyssh-sync-runtime..."`，或在 `server` 目录执行 `make sync-deps`。`scripts/dev.sh` 和 `make dev` 会安装工作进程的依赖。
+
+单独部署 Go 可执行文件时，在独立的源码暂存目录执行 `pnpm install --prod --frozen-lockfile --ignore-scripts --filter "easyssh-sync-runtime..."`，然后一并复制根目录的 `node_modules`、`packages/sync-document` 和 `server/sync-runtime`，保持三者的相对位置及符号链接。将 `EASYSSH_SYNC_ENGINE` 指向部署目录下 `server/sync-runtime/engine.mjs` 的绝对路径。不要在日常开发目录执行生产依赖安装，以免移除开发依赖。
+
+Docker 构建只向同步运行时阶段提供根工作区配置、锁文件和这两个包，不加载 Web、桌面或前端工具包；安装依赖后再复制源码，避免普通代码修改使依赖层失效。当前同步运行时仅依赖 JavaScript/WASM，因此在构建机原生架构上安装一次，由 amd64 和 arm64 镜像共用，避免在 QEMU 下重复解析依赖。后续如引入平台原生模块，必须重新处理目标架构依赖。
 
 基础同步范围包括所有者名下的服务器元数据和脚本。浏览器授权还可额外开放服务器凭据（密码和私钥）、个人 AI 配置与 API Key，以及会话历史；补充对象和文档接口会分别检查授权。系统共享 AI Key、账户与设备凭据、实时终端状态、执行授权和其他所有者的资源不纳入同步。设备令牌由桌面端 Go 代码生成，服务端仅保存其 SHA-256 哈希，有效期为 90 天；双向同步要求所有者当前具有 `server:manage` 权限。默认普通用户角色没有此资源权限，需要显式授予，但不需要系统备份权限。列出和撤销自己的设备只需账户身份认证。桌面本地令牌使用与 SSH 凭据相同、由操作系统凭据库支持的加密机制。
 

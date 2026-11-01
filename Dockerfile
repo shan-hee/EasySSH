@@ -36,21 +36,20 @@ COPY web/ ./web/
 RUN pnpm --filter easyssh-web run build
 
 # Automerge runs as a private stdio worker managed by the Go service.
-# pnpm deploy 按根锁文件生成自包含目录，同步文档包随依赖一起复制。
-FROM node:24-alpine AS sync-runtime-builder
+# 当前依赖仅包含 JavaScript/WASM，在构建机原生架构安装一次，供各目标架构共用。
+# 保留工作区相对路径及 pnpm 链接，不使用会重新解析整个工作区的 legacy deploy。
+FROM --platform=$BUILDPLATFORM node:24-alpine AS sync-runtime-builder
 WORKDIR /app
 ENV PNPM_HOME=/pnpm \
     PATH=/pnpm:$PATH
 RUN corepack enable && corepack prepare pnpm@11.1.3 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY web/package.json ./web/package.json
-COPY packages/app/package.json ./packages/app/package.json
-COPY tooling/frontend/package.json ./tooling/frontend/package.json
-COPY desktop/EasySSHDesktop/frontend/package.json ./desktop/EasySSHDesktop/frontend/package.json
-COPY packages/sync-document/ ./packages/sync-document/
-COPY server/sync-runtime/package.json server/sync-runtime/engine.mjs ./server/sync-runtime/
+COPY packages/sync-document/package.json ./packages/sync-document/package.json
+COPY server/sync-runtime/package.json ./server/sync-runtime/package.json
 RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
-    pnpm --filter easyssh-sync-runtime deploy --prod --legacy --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store /out/sync-runtime
+    pnpm install --prod --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store --filter "easyssh-sync-runtime..."
+COPY packages/sync-document/ ./packages/sync-document/
+COPY server/sync-runtime/engine.mjs ./server/sync-runtime/engine.mjs
 
 # Stage 2: 在构建机原生架构上交叉编译 Go，避免通过 QEMU 执行编译器
 FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS backend-builder
@@ -106,8 +105,12 @@ ENV TZ=Asia/Shanghai \
     DB_DRIVER=sqlite \
     DB_DSN=/app/data/easyssh.db
 
+# 保持三个目录的相对位置，确保 pnpm 的外部依赖和 workspace 链接在运行镜像中有效。
+COPY --from=sync-runtime-builder --chown=appuser:appuser /app/node_modules ./node_modules
+COPY --from=sync-runtime-builder --chown=appuser:appuser /app/packages/sync-document ./packages/sync-document
+COPY --from=sync-runtime-builder --chown=appuser:appuser /app/server/sync-runtime ./server/sync-runtime
+
 # 复制后端二进制与前端静态资源
-COPY --from=sync-runtime-builder --chown=appuser:appuser /out/sync-runtime ./server/sync-runtime
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./
 COPY --from=frontend-builder --chown=appuser:appuser /app/web/dist ./static
 COPY --from=frontend-builder --chown=appuser:appuser /app/VERSION ./VERSION
