@@ -42,17 +42,19 @@ function checkMigrations(schema, version, tags, prepare, includeCurrent) {
   const declared = Number(source.match(latestPattern)?.[1])
   if (!Number.isSafeInteger(declared) || declared < 1) fail(`无法读取 ${schema.name} schema.Version`)
   let expected
+  let expectedNames
   for (const track of schema.tracks) {
     const directory = `${migrationRoot}/${track}`
     const names = fs.readdirSync(path.join(root, directory)).filter(name => name.endsWith(".sql")).sort()
     if (!names.length) fail(`${track} 缺少初始化基线`)
     const numbers = []
     for (const [index, name] of names.entries()) {
-      const match = /^(\d{5,})_([a-z0-9_]+)\.sql$/.exec(name)
+      const match = /^(\d{5})_([a-z][a-z0-9]*(?:_[a-z0-9]+)*)\.sql$/.exec(name)
       if (!match) fail(`${track} 迁移文件名无效：${name}`)
       const number = Number(match[1])
       if (!Number.isSafeInteger(number) || number < 1) fail(`${track} 迁移编号无效`)
       if ((index === 0) !== (match[2] === "initial")) fail(`${track} 必须保留一个初始化基线，其后只追加升级迁移`)
+      if (index === 0 && name !== "00001_initial.sql") fail(`${track} 初始化基线必须为 00001_initial.sql`)
       if (index > 0 && number !== numbers[index - 1] + 1) fail(`${track} 迁移编号必须连续且不能重复`)
       numbers.push(number)
       const text = normalize(read(`${directory}/${name}`))
@@ -63,7 +65,9 @@ function checkMigrations(schema, version, tags, prepare, includeCurrent) {
       if (!hasSQL(text.slice(up[0].index + up[0][0].length, down[0]?.index)) || (down.length && !hasSQL(text.slice(down[0].index + down[0][0].length)))) fail(`${track}/${name} 迁移 SQL 不能为空`)
     }
     if (expected && JSON.stringify(numbers) !== JSON.stringify(expected)) fail(`${track} 的迁移编号与其他数据库不一致`)
+    if (expectedNames && JSON.stringify(names) !== JSON.stringify(expectedNames)) fail(`${track} 的迁移名称与其他数据库不一致`)
     expected = numbers
+    expectedNames = names
   }
   const latest = expected.at(-1)
   if (declared > latest) fail(`${schema.name} schema.Version=${declared}，不能降低数据库版本`)

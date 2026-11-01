@@ -1,4 +1,4 @@
--- Fresh installation baseline. Older schemas are not upgraded in place.
+-- Fresh installation baseline. Initialize an empty database; no legacy upgrade path.
 
 -- +goose Up
 
@@ -505,6 +505,7 @@ CREATE TABLE "server_groups" (
 CREATE INDEX "idx_server_groups_order" ON "server_groups" ("sort_order", "id");
 
 CREATE TABLE "servers" (
+  "jump_server_id" char(36) REFERENCES servers(id) ON DELETE RESTRICT,
   "connection_revision" bigint NOT NULL DEFAULT 1 CHECK ("connection_revision" > 0),
   "id" char(36) NOT NULL,
   "name" text,
@@ -930,6 +931,7 @@ CREATE INDEX "idx_owners_locked" ON "owners" ("locked_until");
 
 -- Personal workspace sharing. Secrets are verification digests only.
 CREATE TABLE "grants" (
+  "purpose" varchar(16) NOT NULL DEFAULT 'share',
   "id" char(36) NOT NULL PRIMARY KEY,
   "public_id" varchar(64) NOT NULL UNIQUE,
   "secret_hash" varchar(64) NOT NULL,
@@ -1065,3 +1067,103 @@ CREATE INDEX "idx_transfer_actor_time" ON "transfer_jobs" ("actor_kind", "actor_
 CREATE UNIQUE INDEX "idx_task_work_attempt" ON "task_runs" ("work_id", "attempt");
 
 CREATE INDEX "idx_batch_tasks_actor" ON "batch_tasks" ("actor_kind", "actor_id", "actor_session_id", "actor_grant_id");
+
+CREATE INDEX idx_servers_jump_server_id ON servers(jump_server_id);
+
+CREATE TABLE "automation_tokens" (
+  "session_id" char(36) PRIMARY KEY,
+  "name" varchar(100) NOT NULL,
+  "grant_id" char(36) NOT NULL,
+  "grant_version" bigint NOT NULL,
+  "token_hash" varchar(64) NOT NULL UNIQUE,
+  "created_at" datetime NOT NULL,
+  "last_seen_at" datetime NOT NULL,
+  "expires_at" datetime NOT NULL,
+  "revoked_at" datetime,
+  FOREIGN KEY ("grant_id") REFERENCES "grants" ("id") ON DELETE CASCADE
+);
+
+CREATE TABLE "server_vnc_configs" (
+  "server_id" char(36) PRIMARY KEY,
+  "enabled" boolean NOT NULL DEFAULT false,
+  "port" integer NOT NULL DEFAULT 5900 CHECK ("port" BETWEEN 1 AND 65535),
+  "tls" boolean NOT NULL DEFAULT false,
+  FOREIGN KEY ("server_id") REFERENCES "servers" ("id") ON DELETE CASCADE
+);
+
+CREATE TABLE server_rdp_configs (
+  server_id char(36) PRIMARY KEY,
+  enabled boolean NOT NULL DEFAULT false,
+  port integer NOT NULL DEFAULT 3389 CHECK (port BETWEEN 1 AND 65535),
+  security varchar(8) NOT NULL DEFAULT 'nla' CHECK (security IN ('nla', 'tls')),
+  ignore_certificate boolean NOT NULL DEFAULT false,
+  FOREIGN KEY (server_id) REFERENCES servers (id) ON DELETE CASCADE
+);
+
+CREATE TABLE chat_connections (
+  revision bigint NOT NULL DEFAULT 1,
+  provider varchar(16) NOT NULL DEFAULT 'telegram',
+  app_id varchar(100),
+  id char(36) PRIMARY KEY,
+  owner_id char(36) NOT NULL,
+  name varchar(100) NOT NULL,
+  token_cipher TEXT NOT NULL,
+  bot_id bigint NOT NULL UNIQUE,
+  bot_username varchar(100) NOT NULL,
+  server_ids_json TEXT NOT NULL,
+  permission_mode varchar(16) NOT NULL CHECK (permission_mode IN ('readonly', 'balanced')),
+  enabled boolean NOT NULL DEFAULT false,
+  next_update_id bigint NOT NULL DEFAULT 0,
+  bind_code_hash varchar(64) NOT NULL DEFAULT '',
+  bind_expires_at datetime,
+  last_poll_at datetime,
+  last_error TEXT NOT NULL,
+  created_at datetime NOT NULL,
+  updated_at datetime NOT NULL,
+  FOREIGN KEY (owner_id) REFERENCES owners (id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX idx_chat_connection_app ON chat_connections (provider, app_id);
+
+CREATE TABLE chat_bindings (
+  message_count integer NOT NULL DEFAULT 0,
+  watching boolean NOT NULL DEFAULT false,
+  external_user_id varchar(128) NOT NULL DEFAULT '',
+  external_chat_id varchar(128) NOT NULL DEFAULT '',
+  id char(36) PRIMARY KEY,
+  connection_id char(36) NOT NULL,
+  user_id bigint NOT NULL,
+  chat_id bigint NOT NULL,
+  display_name varchar(400) NOT NULL,
+  current_session_id varchar(36) NOT NULL DEFAULT '',
+  revoked_at datetime,
+  created_at datetime NOT NULL,
+  FOREIGN KEY (connection_id) REFERENCES chat_connections (id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_chat_binding_user ON chat_bindings (connection_id, user_id);
+
+CREATE INDEX idx_chat_binding_watch ON chat_bindings (watching);
+
+CREATE INDEX idx_chat_binding_external_user ON chat_bindings (connection_id, external_user_id);
+
+CREATE TABLE chat_approvals (
+  id char(32) PRIMARY KEY,
+  binding_id char(36) NOT NULL,
+  session_id char(36) NOT NULL,
+  task_id varchar(100) NOT NULL,
+  digest varchar(64) NOT NULL,
+  expires_at datetime NOT NULL,
+  used_at datetime,
+  UNIQUE (session_id, task_id),
+  FOREIGN KEY (binding_id) REFERENCES chat_bindings (id) ON DELETE CASCADE
+);
+
+CREATE TABLE chat_received_events (
+  id char(36) PRIMARY KEY,
+  connection_id char(36) NOT NULL,
+  created_at datetime NOT NULL,
+  FOREIGN KEY (connection_id) REFERENCES chat_connections (id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_chat_received_connection ON chat_received_events (connection_id);

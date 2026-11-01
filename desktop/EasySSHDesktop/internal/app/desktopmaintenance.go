@@ -114,7 +114,7 @@ func createDesktopInstanceArchive(ctx context.Context, database *sql.DB, output,
 	if err != nil {
 		return err
 	}
-	if version != 5 && version != schema.Version {
+	if version < schema.BaselineVersion || version > schema.Version {
 		return errors.New("database migration version mismatch")
 	}
 	if err = instancebackup.CheckSQLite(ctx, database); err != nil {
@@ -150,10 +150,8 @@ func createDesktopInstanceArchive(ctx context.Context, database *sql.DB, output,
 	if err != nil {
 		return err
 	}
-	if version >= 5 && version <= schema.Version {
-		if err = verifyDesktopSnapshotCredentials(ctx, database, key); err != nil {
-			return err
-		}
+	if err = verifyDesktopSnapshotCredentials(ctx, database, key); err != nil {
+		return err
 	}
 	if err = os.WriteFile(filepath.Join(stage, "root.key"), []byte(key), 0600); err != nil {
 		return err
@@ -175,7 +173,7 @@ func restoreDesktopInstance(ctx context.Context, stage, into string, manifest in
 	if err := instancebackup.CheckApplicationVersion(manifest.AppVersion, desktopBundledVersion); err != nil {
 		return err
 	}
-	if manifest.SchemaVersion != 5 && manifest.SchemaVersion != schema.Version {
+	if manifest.SchemaVersion < schema.BaselineVersion || manifest.SchemaVersion > schema.Version {
 		return errors.New("unsupported database migration version")
 	}
 	if into == "" {
@@ -216,7 +214,7 @@ func restoreDesktopInstance(ctx context.Context, stage, into string, manifest in
 	if version != manifest.SchemaVersion {
 		return errors.New("manifest schema version does not match database")
 	}
-	if version == 5 {
+	if version < schema.Version {
 		database.SetMaxOpenConns(1)
 		if err = schema.Migrate(ctx, database, false); err != nil {
 			return err

@@ -1,6 +1,6 @@
 # 实例备份、设备同步与数据库迁移
 
-日常跨端使用设备同步，整体恢复使用加密完整备份。完整备份采用 SQLite / PostgreSQL / MySQL 原生能力；Goose 负责数据库版本。通用 JSON 数据导出、预览和导入已移除，原有应用数据 JSON 文件不能在当前版本导入。代码不会自动删除或改造未纳入版本管理的历史数据库。
+日常跨端使用设备同步，整体恢复使用加密完整备份。完整备份采用 SQLite / PostgreSQL / MySQL 原生能力；Goose 负责数据库版本。通用 JSON 数据导出、预览和导入已移除，原有应用数据 JSON 文件不能在当前版本导入。当前开发基线已重新建立：服务端和桌面端各从 schema 1 开始，只接受新建空库，不提供此前版本的迁移或备份恢复兼容。重新安装时使用新的数据库和数据目录。
 
 ## 适用入口
 
@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 故障恢复、升级前恢复点 | 系统设置 → 备份与恢复 → 完整备份；应急时使用 `maintenance backup` / `restore` | 原生数据库快照、数据目录、文件传输存储和根密钥 |
 | Web 与桌面、多台桌面之间共享个人数据 | Web 账户设置 → 数据与同步；桌面顶部云图标旁的下拉菜单 → 同步设置 | 绑定远端账户，同步本人服务器配置、脚本，以及单独授权并开启的凭据、个人 AI 配置和 AI 历史 |
-| 服务端 schema 5/6/7/8/9/10 → 11 | 新程序启动时自动创建恢复点并迁移；`maintenance schema-upgrade` 为离线入口 | 升级成功并完成校验后才启动业务，详见下文 |
+| 基线发布后的服务端增量升级 | 新程序启动时自动创建恢复点并迁移；`maintenance schema-upgrade` 为离线入口 | 升级成功并完成校验后才启动业务，详见下文 |
 | 单版本回退 | 停机后 `maintenance schema-rollback` | 仅人工执行，不会自动降级 |
 | 全新数据库 | 普通启动 | 按当前初始化基线创建空库 |
 
@@ -16,78 +16,39 @@
 
 命令由已构建的程序提供，不依赖 HTTP 服务是否能够启动。
 
-## Telegram 聊天接入（服务端 schema 9）
+## Telegram 聊天接入
 
 导航中的「开放与自动化 → 聊天接入」独立管理 Telegram 机器人，模型配置沿用现有 AI 设置。创建连接时填写专用机器人的 Bot Token，选择服务器和权限模式；随后生成一次性绑定链接，在机器人私聊中绑定账号。链接有效期 10 分钟，重新生成会使旧链接失效。持有链接的账号会获得该连接配置的服务器权限。
 
-第一版支持私聊文字、连续会话、`/new`、`/stop`、`/status`、`/help` 及任务审批。只读模式禁止 Shell 命令和文件变更；需审批模式沿用 Agent 的工具执行和外部上下文审批规则。审批与绑定身份、任务、操作内容及文件快照哈希关联，10 分钟后过期。群聊和附件尚未接入；飞书后端支持从 schema 10 引入，见下文。网页的连接详情可打开每个绑定账号的当前 Agent 会话，历史会话在 AI 助手中查看。
+第一版支持私聊文字、连续会话、`/new`、`/stop`、`/status`、`/help` 及任务审批。只读模式禁止 Shell 命令和文件变更；需审批模式沿用 Agent 的工具执行和外部上下文审批规则。审批与绑定身份、任务、操作内容及文件快照哈希关联，10 分钟后过期。群聊和附件尚未接入；飞书后端也已纳入初始化基线，见下文。网页的连接详情可打开每个绑定账号的当前 Agent 会话，历史会话在 AI 助手中查看。
 
 服务端使用长轮询，不需要公网回调 URL，但必须能访问 `api.telegram.org`，可以使用服务进程的 `HTTPS_PROXY`。同一机器人只能由一个消费者接收消息；保存连接时会拒绝已配置 Webhook 的机器人。凭据按实例根密钥加密保存，不经管理接口返回。
 
 收到消息后先提交轮询位置再交给 Agent：服务中断最多丢失一条消息，但不会重放可能已经改动服务器的操作。回复只在内存中排队，发送失败会短暂重试；重启或 Telegram 长时间不可达时回复可能丢失，结果以网页中的会话为准。
 
-迁移文件位于 `server/internal/storage/schema/{sqlite,postgres,mysql}/`，均提供 `Up` / `Down` 两个方向。`00008_chat_connections.sql` 保留已安装的六表结构；`00009_chat_binding_projection.sql` 将其升级为当前三表结构：给连接新增 `revision`，给绑定新增 `message_count` / `watching`，从旧会话映射迁移当前会话的投递进度，移除审批对旧会话表的外键，然后删除已废弃的 `chat_conversations`、`chat_inbox`、`chat_outbox`。原有 Agent 历史、机器人配置、绑定和审批保留；旧队列不再重放。没有旧通知配置的兼容读取或迁移，旧通知功能保持独立。
-
-如果日志出现 `no such column: watching`，且数据库版本已是 8，原因是旧版本已安装，而新代码所需的字段没有对应的新迁移版本；修改已执行的 `00008` 文件不会使 Goose 再次执行。必须使用包含 schema 9 的程序走正式升级，不能只手动修改 Goose 版本号。启动时现在也会检查当前版本的表和字段，不会仅凭版本号启动业务。
-
-手动升级或回退前停止服务，并使用目标版本程序和实际实例配置：
-
-```bash
-./easyssh-api maintenance schema-upgrade
-# 仅在需要退回上一数据库版本时执行：
-./easyssh-api maintenance schema-rollback
-```
-
-SQLite/PostgreSQL 的每个方向连同 Goose 版本记录由迁移器包在事务内，失败自动回滚。若手工执行 SQL，只提取一个方向，在 `BEGIN` / `COMMIT` 内执行，任一语句失败则执行 `ROLLBACK`；不要整份执行同时含 `Up` 和 `Down` 的文件。优先使用维护命令，让结构和版本记录在同一事务中更新。
-
-MySQL DDL 隐式提交，不能用 `ROLLBACK` 撤销建表、删表或加列。schema 9 的数据迁移与回退数据重建使用带异常处理的事务，DDL 中断后必须从升级前恢复点恢复完整源结构，不可直接重跑。停机和自动加密恢复点仍由现有迁移流程负责。
-
-`schema-rollback` 每次只回退一个版本。9 → 8 会重建旧表结构、当前会话映射和审批引用，移除新增字段；不会还原已经删除的历史映射和收发队列，精确恢复需使用升级前恢复点。8 → 7 会删除全部聊天接入表。两个方向都不删除 Agent 历史或执行记录。回退后使用与数据库版本匹配的程序，避免新程序自动再次升级。
+聊天接入初始化直接创建 `chat_connections`、`chat_bindings`、`chat_approvals` 和 `chat_received_events`，包含当前投递状态、审批和飞书标识字段。已废弃的会话映射表及收发队列表不再创建。
 
 停用连接、变更配置或解除绑定会撤销旧执行上下文并请求停止相关任务。停止不能撤销已在远端完成的操作。完整备份恢复后，聊天连接默认停用，绑定和审批会被清除，必须重新启用并绑定；不会从旧备份恢复已有的聊天访问权限。
 
-## 飞书长连接（服务端 schema 10）
+## 飞书长连接
 
 飞书后端使用企业自建应用的长连接，接收私聊文字和审批卡片回调，不需要公网入站地址。需能访问 `open.feishu.cn` 及飞书返回的 WebSocket 服务地址。机器人权限、事件订阅和接口配置见 [API 文档](API.md#飞书聊天接入后端)。本次未增加前端配置页面。
 
-`00010_feishu_connections.sql` 为独立新增迁移，提供 SQLite、PostgreSQL、MySQL 三个版本的完整 Up / Down。生产环境采用第一阶段的增量扩展：
+初始化基线包含 `provider` / `app_id`、绑定的 `external_user_id` / `external_chat_id` 和事件去重表。Telegram Token 与飞书 App Secret 使用加密的 `token_cipher`；Telegram 使用数值机器人身份，飞书以 `(provider, app_id)` 唯一标识应用。重复事件不再次分发，记录保留 7 天，随连接删除而清理。完整备份恢复后的连接默认停用，需重新启用并绑定。
 
-- `chat_connections` 新增 `provider` 和可空的 `app_id`。飞书 App Secret 与 Telegram Bot Token 共用加密的 `token_cipher`。旧行默认使用 `telegram`，Telegram 的 Token、机器人身份、绑定和轮询位置保留。
-- `chat_bindings` 新增 `external_user_id` / `external_chat_id` 存储飞书字符串标识。旧数值 ID 字段保留，飞书绑定的旧字段填零。
-- 新增 `chat_received_events` 保存处理前的事件去重记录。重复事件不会再次分发到 Agent；记录保留 7 天，随连接删除而清理。
-- 保留旧 `bot_id` 的非空唯一约束。飞书在该旧字段使用由 App ID 派生的负数占位标识，实际身份由 `(provider, app_id)` 唯一索引约束；该占位值不发送给飞书，也不参与用户授权。Telegram 继续使用真实的正数机器人 ID。
-
-阶段一不删除或改写 Telegram 的原有字段，旧管理请求省略 `provider` 仍可使用。回退程序前必须先停机并执行 10 → 9 的回退，不能让旧程序直接处理包含飞书连接的新结构。未来清理旧身份字段需要独立迁移，本次不做。
-
-SQLite/PostgreSQL 的结构与数据变更连同 Goose 版本记录在同一事务中执行，错误自动回滚。MySQL Up 仅增加结构；Down 的飞书数据清理由存储过程中的 `START TRANSACTION`、异常 `ROLLBACK` 和 `COMMIT` 保护，DDL 仍会隐式提交，发生中断时需要使用维护流程创建的恢复点。
-
-`schema-rollback` 从 10 回退到 9 时会删除飞书连接及其绑定、审批、事件去重记录，再移除新增表、索引和字段；Telegram 数据、Agent 会话历史和执行记录保留。若需要保留飞书配置和绑定，应恢复完整快照而不是依赖 Down 恢复这些数据。备份校验同时验证 Telegram Token 与飞书 App Secret；恢复后的连接继续默认停用，需重新启用并绑定。
-
-## SSH 跳板机（服务端 schema 11、桌面 schema 6）
+## SSH 跳板机
 
 先添加并保存跳板机的登录凭据，再在目标服务器的「高级 → 跳板机」选择该服务器。目标地址由最后一跳访问和解析，跳板机的 SSH 服务需要允许 TCP 转发（`AllowTcpForwarding`，以及适用时的 `PermitOpen`）。终端、SFTP、监控、远程命令和 Docker 都使用相同的 SSH 路径。支持最多 16 跳，禁止自引用、循环引用和不存在的跳板机；被引用的跳板机需要先解除关联才能删除。
 
 每一跳使用自己的已保存密码或密钥；目标服务器连接时填写的临时凭据不会发送给跳板机。交互式终端及 SFTP 认证窗口可以处理跳板机的交互认证；后台监控和命令执行需要无需交互的已保存凭据。每一跳分别校验主机密钥。分享访问同时要求对沿途跳板机具有访问授权，不会借目标服务器的授权访问未授权资源。
 
-生产迁移仅给服务器表新增可空的 `jump_server_id`、索引及限制删除的外键，保留原有字段和数据。旧记录默认直连；旧 API 请求省略此字段时，更新保持原值；显式传空字符串解除关联。服务端脚本是 `server/internal/storage/schema/{sqlite,postgres,mysql}/00011_jump_servers.sql`，桌面脚本是 `desktop/EasySSHDesktop/internal/storage/schema/sqlite/00006_jump_servers.sql`。每份都提供完整 Up / Down，已发布的初始化脚本不变。
-
-服务端沿用停机后的 `maintenance schema-upgrade` / `schema-rollback` 和自动恢复点流程。SQLite/PostgreSQL 的 DDL 与 Goose 版本记录在同一事务中提交，异常回滚。MySQL 每个方向使用一条 ALTER TABLE；MySQL 8/InnoDB 的单条 DDL 原子性不能替代事务回滚，DDL 会隐式提交，DDL 与版本记录之间中断时必须检查并恢复维护入口生成的备份，禁止只改版本号后继续。
-
-桌面端已有 schema 5 数据库需要显式升级，普通启动会提示维护命令。先退出桌面程序，再用新版本可执行文件运行，备份文件必须位于数据目录之外，密码文件须预先准备且仅本人可读：
-
-```bash
-EasySSHDesktop maintenance schema-upgrade --file /backup/desktop-before-jump.age --password-file /secure/backup-password
-# 仅在需要退回 schema 5 时运行，使用另一份备份文件：
-EasySSHDesktop maintenance schema-rollback --file /backup/desktop-before-rollback.age --password-file /secure/backup-password
-```
-
-桌面两个方向都会先创建加密完整备份，然后由 Goose 在事务中处理结构与版本记录。新程序仍能读取 schema 5 的完整备份，并只在隔离的恢复副本中迁移到 schema 6。回退后使用匹配数据库版本的程序；Down 会移除跳板关联，恢复关联需要完整备份。涉及内网目标的连接在移除跳板配置后会变为直连，上线或回退前应确认这一行为。
+服务端和桌面端的 `00001_initial.sql` 已包含可空的 `jump_server_id`、索引和限制删除的自引用外键。无跳板机的连接使用 `NULL`，新建空库无需执行额外升级。此前的服务端 schema 5–11、桌面 schema 5–6 迁移链已经移除，旧实例需重新安装。
 
 配置同步把跳板关系放在同一个连接配置内，凭据绑定也包含这条关系，避免同步后悄悄变成直连。桌面端须将目标与其全部跳板机加入同一同步空间；未加入的依赖会明确报错。无跳板的旧同步数据格式保持不变。旧版同步端不认识跳板字段，会拒绝这类配置；启用跳板机同步前须升级两端，不能让旧端丢弃该字段。修改跳板地址、身份、凭据或主机信任时，其依赖目标的连接版本会失效，后续文件和监控请求重新建连。
 
 ## 服务端启动自动迁移
 
-服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前支持 schema 5/6/7/8/9/10 → 11，不使用 GORM AutoMigrate，不自动下载新程序，也不改变桌面端的数据库版本体系。
+服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前仅有 schema 1 初始化基线；今后增加 `00002` 等迁移后，沿用此流程从新基线逐版升级。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
 
 | 数据库状态 | 行为 |
 | --- | --- |
@@ -121,7 +82,7 @@ SQLite 历史外键异常不会被擅自修复或直接忽略。迁移记录保�
 
 每个数据库的数据目录保存 `.easyssh-migration-<数据库标识摘要>.json`，包含源/目标版本、脚本摘要、恢复点校验和、阶段和时间。完成后的报告另存于恢复点旁的 `.age.json`。状态写入通过临时文件、刷盘和原子替换完成。不得在未确认数据库状态时删除或手动改写这份记录，也不要修改已经发布的版本化 SQL。
 
-SQLite/PostgreSQL 每个迁移文件及其 Goose 版本记录处于同一事务。失败只回滚当前步骤：5 → 6 已完成、6 → 7 失败时会停在 6。重启确认脚本和结构一致、恢复点可用后从 6 继续，不重新备份。新增非事务迁移不能直接进入这条自动重试路径。
+SQLite/PostgreSQL 每个迁移文件及其 Goose 版本记录处于同一事务。失败只回滚当前步骤：例如未来 1 → 2 已完成、2 → 3 失败时会停在 2。重启确认脚本和结构一致、恢复点可用后从 2 继续，不重新备份。新增非事务迁移不能直接进入这条自动重试路径。
 
 MySQL DDL 隐式提交。持久化记录显示已开始迁移、但尚未达到目标版本时，自动重启会停止，不盲目重复 DDL。先核对 Goose 版本、SQL 和实际结构；恢复为与已记录版本完全一致的结构后，可以显式执行：
 
@@ -139,7 +100,7 @@ MySQL DDL 隐式提交。持久化记录显示已开始迁移、但尚未达到�
 
 ```sh
 ./easyssh-api maintenance migration-extract \
-  --file /backups/migrations/schema-6-to-7-ID-TIMESTAMP.age \
+  --file /backups/migrations/schema-1-to-2-ID-TIMESTAMP.age \
   --root-key-file /secure/original-instance-root.key \
   --into /srv/easyssh-upgrade-recovery
 ```
@@ -241,9 +202,9 @@ MySQL 原生连接支持 unix socket、TCP 和驱动的 `tls=true/false/skip-ver
 `restore` 要求 `--into` 不存在。流程如下：
 
 1. 在权限受限的临时目录解密并核对清单，拒绝重复路径、路径穿越、符号链接和多余内容。
-2. 检查应用版本及数据库版本。服务端支持当前 schema 7 与 schema 5/6 归档；桌面端仍使用自身数据库基线。
+2. 检查应用版本及数据库版本。仅支持本次新基线及其后续版本的归档；服务端和桌面端各自判断版本，旧迁移链归档不兼容。
 3. SQLite 恢复到临时数据库；PostgreSQL/MySQL 恢复到操作者提供的空数据库。
-4. 服务端恢复 schema 5/6 归档时，在新副本中升级到 schema 7；其他旧版本不在支持范围内。验证根密钥能够解密应用凭据，SQLite 另检查数据库与外键完整性。
+4. 后续出现增量迁移时，在隔离副本中升级受支持的备份到当前 schema。验证根密钥能够解密应用凭据，SQLite 另检查数据库与外键完整性。
 5. 清理登录会话、自动化令牌、设备授权和短期认证请求，并撤销恢复出的资源授权，防止旧快照复活已撤销授权；保留资源及同步文档。传输文件路径调整为恢复目录内的 `transfers`。
 6. 把恢复完成的文件发布到新目录，输出该目录。**不会自动替换原实例或启动服务。**
 
@@ -305,10 +266,56 @@ Windows 使用实际的 `.exe` 路径；macOS 使用应用包内的可执行文�
 完整备份用于同端整体恢复和迁机，包含对应实例持久化的 AI 历史；恢复后设备同步需要重新授权。Web 与桌面不能互相恢复完整归档。完全离线的跨端迁移、跨数据库类型迁移及通用 JSON 资源导入导出不属于当前产品能力。
 
 
+## 迁移工具和命名规范
+
+继续使用 `github.com/pressly/goose/v3`、嵌入式 SQL 和现有维护命令，不新增第二套迁移框架，不使用 GORM AutoMigrate。应用版本（例如 `2.0.0`）与数据库编号独立；只有数据库结构或持久化数据需要变化时才增加迁移。
+
+| 项目 | 服务端 | 桌面端 |
+| --- | --- | --- |
+| 目录 | `server/internal/storage/schema/{sqlite,postgres,mysql}/` | `desktop/EasySSHDesktop/internal/storage/schema/sqlite/` |
+| 初始化文件 | 每种数据库一个 `00001_initial.sql` | `00001_initial.sql` |
+| 当前版本 | `schema.Version = 1` | `schema.Version = 1` |
+| 后续编号 | `00002`、`00003`，连续递增 | 独立从 `00002` 连续递增 |
+
+文件名固定为 `五位编号_lower_snake_case.sql`，例如 `00002_add_server_notes.sql`。名称以小写字母开头，后续单词使用小写字母或数字，单个下划线分隔。服务端同一变更必须提供三种数据库的同编号、同文件名脚本；不能只修改 SQLite。桌面端按自己的结构变更独立创建，不要求和服务端编号相同。
+
+创建模板（仅写入源码文件，不连接数据库）：
+
+```bash
+node scripts/new-migration.mjs server add_server_notes
+node scripts/new-migration.mjs desktop add_server_notes
+# 等价入口：pnpm migration:new server add_server_notes
+```
+
+工具读取现有序列，拒绝缺号、重复描述和数据库间文件不一致，创建下一编号的全部脚本，并同步对应 `schema.go` 的 `Version`。模板的 `Up` / `Down` 尚无可执行 SQL，必须补全才可发布。`BaselineVersion` 固定为 1，不能随新迁移递增。
+
+初始化只提供 `-- +goose Up`，直接创建当前完整结构，不包含旧库升级过程，也不提供删除整个基线的 Down。运行时不会回退到基线之前。后续迁移必须提供非空的 `-- +goose Up` 和 `-- +goose Down`，并说明数据损失及恢复点需求。SQLite/PostgreSQL 由 Goose 将每个方向和版本记录放在同一事务，失败回滚；MySQL 显式使用 `NO TRANSACTION`，DDL 隐式提交，数据修改需使用事务及异常回滚处理，DDL 中断从恢复点恢复，不能声称完整事务回滚。
+
+**初始化基线发布后不可修改，所有已发布迁移禁止编辑、删除、重命名或重新编号。** 后续变更只能追加；还须同步更新 `CheckUpgradeSource` 的对应版本结构检查、备份/恢复校验和相关文档。不要通过修改 Goose 版本记录跳过迁移。发布工具会检查文件名、连续编号、三种数据库的一致性、Up/Down 内容以及历史发布脚本是否被改写。
+
+服务端普通启动自动升级；离线维护仍使用：
+
+```bash
+./easyssh-api maintenance schema-upgrade
+./easyssh-api maintenance schema-rollback
+```
+
+桌面端先退出应用，再显式运行维护命令，每次操作必须先创建加密完整备份：
+
+```bash
+EasySSHDesktop maintenance schema-upgrade --file /backup/before-upgrade.age --password-file /secure/backup-password
+EasySSHDesktop maintenance schema-rollback --file /backup/before-rollback.age --password-file /secure/backup-password
+```
+
+当前只有基线，没有增量升级可执行。后续新增迁移时 `schema-rollback` 每次仅退一版；回退后使用匹配程序，避免新程序自动再次升级。
+
 ## 统一发布版本入口
 
-继续使用 VS Code 的 Scripts: 版本号更新任务，或 bash scripts/bump-version.sh <x.y.z>。该入口不连接数据库、不执行 SQL、不安装依赖、不构建或运行测试。
-脚本仍核对 Web、桌面和打包资产与 VERSION 一致，保留提交、标签、推送的交互确认。发布流水线的 --release 检查使用同一规则。上述操作本轮没有执行。
+继续使用 VS Code 的 Scripts: 版本号更新任务，或 `bash scripts/bump-version.sh <x.y.z>`。该入口不连接数据库、不执行 SQL、不安装依赖、不构建或运行测试；推送版本标签会触发现有 GitHub Actions 测试、构建和发布流程。
+
+先提交业务代码与迁移，再更新应用版本。也可用 `node scripts/release-version.mjs --check` 只检查源码版本及迁移文件。应用版本更新会核对 Web、桌面和打包资产与 `VERSION` 一致；不含数据库变化的发布不增加 schema 编号。发布后由既有不可变迁移检查保护 SQL。
+
+本次重置保留 `v2.0.0` 发版提交之前的应用版本；历史发布和标签清理后，下一次显式发版可使用 `bash scripts/bump-version.sh 2.0.0`。不要重新推送旧分支上的历史 `v2.0.0` 发版提交作为新发布基线。
 
 
 ## 跨端备份适用范围

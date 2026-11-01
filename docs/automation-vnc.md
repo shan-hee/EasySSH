@@ -115,37 +115,14 @@ docker compose up -d
 
 当前提供画面、键鼠输入、按窗口缩放、全屏、Ctrl+Alt+Del、文本剪贴板与手动重连；初始桌面分辨率限制为 320×200 至 3840×2160，剪贴板限制为 64 Ki 字符。未启用音频、麦克风、磁盘映射、打印机、录屏或文件传输；文件操作继续使用现有 SFTP 功能。RDP 分享使用独立 `rdp.connect` 权限，接收者自行输入目标账号。
 
-## 生产升级：schema 5/6 → 7
+## 初始化与后续迁移
 
-schema 6 新增 `automation_tokens` 和 `server_vnc_configs`；schema 7 新增 `server_rdp_configs`，并为 `grants` 新增 `purpose` 字段，默认值为 `share`，保留所有旧字段和既有授权语义。新建机器授权复用既有 Grant 表，以 `purpose=automation` 区分用途；旧授权签发令牌的 API 仍兼容。普通启动默认先创建加密恢复点，再自动升级 schema 5/6。更早的数据库版本不在本次升级范围内。
+自动化令牌、VNC/RDP 配置和 `grants.purpose` 已直接纳入服务端 schema 1 初始化基线。新库一次创建完整结构；旧 schema 5–11 迁移文件已移除，当前开发重置不提供旧实例升级路径，请重新安装。
 
-1. 保留原实例根密钥、数据与备份目录、部署配置；停止旧 EasySSH 进程，并阻止外部工具写入同一数据库。
-2. 更新并启动新版本。服务会自动预检、创建升级恢复点、逐版迁移和校验，全部成功后开放 HTTP 和后台任务，不必每次手动执行 SQL。
-3. 日志会给出恢复点路径和升级结果。普通启动超时与迁移超时分开处理，默认迁移总上限 30 分钟。原 Cookie、访客访问及同步凭证的格式不变。
+初始化 SQL：[SQLite](../server/internal/storage/schema/sqlite/00001_initial.sql)、[PostgreSQL](../server/internal/storage/schema/postgres/00001_initial.sql)、[MySQL](../server/internal/storage/schema/mysql/00001_initial.sql)。
 
-完整行为、开关、历史外键异常处理及恢复命令见[服务端启动自动迁移](backup-and-migrations.md#服务端启动自动迁移)。离线 `maintenance schema-upgrade` 仍保留，并使用相同的升级恢复点流程；`EASYSSH_AUTO_MIGRATE=off` 仅关闭普通启动的自动升级。空库仍可正常初始化；从完整 schema 5/6 备份恢复到新副本时，在隔离副本中迁移到 schema 7，再清理访问凭证。
+后续数据库变更继续使用 Goose 连续编号迁移、升级前加密恢复点和现有维护命令。迁移命名、创建模板、事务边界及回退规范见[迁移工具和命名规范](backup-and-migrations.md#迁移工具和命名规范)。
 
-完整 SQL（各文件包含 Up 和 Down）：
+## 验证范围
 
-- schema 7：[SQLite](../server/internal/storage/schema/sqlite/00007_rdp.sql)、[PostgreSQL](../server/internal/storage/schema/postgres/00007_rdp.sql)、[MySQL](../server/internal/storage/schema/mysql/00007_rdp.sql)。
-- schema 6：[SQLite](../server/internal/storage/schema/sqlite/00006_automation_vnc.sql)、[PostgreSQL](../server/internal/storage/schema/postgres/00006_automation_vnc.sql)、[MySQL](../server/internal/storage/schema/mysql/00006_automation_vnc.sql)。
-
-SQLite/PostgreSQL 由 Goose 将每个迁移文件及其版本记录放在同一事务内执行，失败自动回滚。MySQL DDL 隐式提交，不能承诺整体事务回滚：Up 使用可重入建表，schema 7 通过临时存储过程检查并增加用途字段，自动迁移中断后须先检查结构，必要时恢复到干净的已记录版本，再显式 `maintenance schema-upgrade --resume`；Down 通过补偿 DDL 撤销新增表。Down 的授权数据变更在存储过程中开启事务，并用异常处理器执行 `ROLLBACK`/`RESIGNAL`，因此 MySQL 升级及回退账户还需创建/执行/删除临时存储过程的权限。
-
-不要把整个 SQL 文件当作普通 SQL 一次执行，因为其中包含 Up 与 Down；使用维护命令让 Goose 选择方向和管理版本记录。
-
-## 回退
-
-停止新服务后，使用新可执行文件执行：
-
-```sh
-./easyssh-api maintenance schema-rollback
-```
-
-每次命令只回退一个版本：7 → 6 删除 RDP 配置和新增的用途字段，并撤销 RDP 默认内容授权与新建的机器用途授权；已有分享授权所签发的令牌、VNC 配置及 SSH/SFTP 数据保留。需要回到 schema 5 时，再执行一次命令（6 → 5），删除 VNC 配置和自动化令牌，并撤销 VNC 默认内容授权。然后启动对应版本的旧程序。其他授权中的新增桌面动作在旧程序中不会被接受。回退前如需保留新功能数据，先使用新版本创建完整备份。MySQL 中断回退后可以重新执行；如升级/回退状态无法确认，使用升级前完整备份恢复副本。
-
-## 待执行的验收
-
-本次实现不自动构建或运行测试。自动迁移新增 SQLite 历史异常保留、恢复点复用/损坏拒绝、备份失败阻止 DDL、关闭开关及启动器心跳期限的回归用例，均尚未运行。已添加令牌隔离、哈希存储、权限限制、后台任务身份恢复、撤销、授权版本失效、内联授权原子性，以及网关协议边界的回归用例，实际运行需另行安排。
-
-发布前应在生产副本完成：三种数据库的 5 → 6 → 7 → 6 → 5 迁移、旧登录/分享/同步回归、真实 MCP 客户端初始化及工具调用、授权内外资源隔离、任务撤销，以及真实 VNC/RDP 服务的认证、键盘鼠标、剪贴板、断线和多页签连接。RDP 还应覆盖 guacd 未配置、不可达、NLA、域账号、证书校验及授权撤销。此文不代表这些运行验证已完成。
+源码整理不代表已完成运行验证。正式发布时需验证三种数据库空库初始化、MCP 授权隔离、任务撤销、真实 VNC/RDP 服务连接以及 guacd 不可达、NLA、域账号、证书校验和授权撤销等场景；出现新迁移后还需验证相应升级和回退路径。

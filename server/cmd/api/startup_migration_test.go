@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -45,145 +44,7 @@ func migrationFixture(t *testing.T) (*config.Config, *gorm.DB, *sql.DB) {
 	if err = schema.Initialize(ctx, db, "sqlite"); err != nil {
 		t.Fatal(err)
 	}
-	for version := schema.Version; version > 5; version-- {
-		if err = schema.Migrate(ctx, db, "sqlite", true); err != nil {
-			t.Fatal(err)
-		}
-	}
 	return cfg, database, db
-}
-
-func migrationRecord(t *testing.T, cfg *config.Config) (string, startupMigration) {
-	t.Helper()
-	files, err := filepath.Glob(filepath.Join(maintenanceDataDir(cfg), ".easyssh-migration-*.json"))
-	if err != nil || len(files) != 1 {
-		t.Fatalf("migration journal: %v %v", files, err)
-	}
-	data, err := os.ReadFile(files[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	var state startupMigration
-	if err = json.Unmarshal(data, &state); err != nil {
-		t.Fatal(err)
-	}
-	return files[0], state
-}
-
-func TestStartupMigrationPreservesHistoricalForeignKeysAndReusesRecovery(t *testing.T) {
-	cfg, database, db := migrationFixture(t)
-	ctx := context.Background()
-	conn, err := db.Conn(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, statement := range []string{
-		"PRAGMA foreign_keys=OFF",
-		"CREATE TABLE legacy_parents (id TEXT PRIMARY KEY)",
-		"CREATE TABLE legacy_children (id TEXT PRIMARY KEY, parent_id TEXT REFERENCES legacy_parents(id))",
-		"INSERT INTO legacy_children (rowid,id,parent_id) VALUES (8000,'kept','missing')",
-		"PRAGMA foreign_keys=ON",
-	} {
-		if _, err = conn.ExecContext(ctx, statement); err != nil {
-			conn.Close()
-			t.Fatal(err)
-		}
-	}
-	conn.Close()
-	if err = startDatabase(cfg, database, nil, migrationOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	version, err := dbmigration.Version(ctx, db, "sqlite")
-	if err != nil || version != schema.Version {
-		t.Fatalf("version=%d err=%v", version, err)
-	}
-	journal, state := migrationRecord(t, cfg)
-	if state.Phase != "complete" || len(state.ForeignKeys) != 1 || state.ArchiveHash == "" {
-		t.Fatalf("incomplete recovery record: %+v", state)
-	}
-	var value string
-	if err = db.QueryRow("SELECT parent_id FROM legacy_children WHERE id='kept'").Scan(&value); err != nil || value != "missing" {
-		t.Fatalf("historical row changed: %q %v", value, err)
-	}
-	password, err := migrationPassword(cfg.Server.EncryptionKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	stage := t.TempDir()
-	manifest, err := instancebackup.Unpack(ctx, state.Archive, stage, password)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if manifest.SchemaVersion != 5 || manifest.Profile != "server-migration" {
-		t.Fatalf("wrong recovery source: %+v", manifest)
-	}
-
-	// Simulate a process exit after all SQL committed but before validation was
-	// durably completed. Even a current-version DB must finish this validation.
-	state.Phase, state.CompletedAt = "validating", nil
-	if err = saveMigration(journal, &state); err != nil {
-		t.Fatal(err)
-	}
-	if err = startDatabase(cfg, database, nil, migrationOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	if err = startDatabase(cfg, database, nil, migrationOptions{}); err != nil {
-		t.Fatal(err)
-	}
-	archives, err := filepath.Glob(filepath.Join(os.Getenv("EASYSSH_BACKUP_DIR"), "migrations", "*.age"))
-	if err != nil || len(archives) != 1 {
-		t.Fatalf("repeated recovery archives: %v %v", archives, err)
-	}
-
-	// A damaged recovery point must not be ignored just because Goose is current.
-	state.Phase = "validating"
-	if err = saveMigration(journal, &state); err != nil {
-		t.Fatal(err)
-	}
-	file, err := os.OpenFile(state.Archive, os.O_APPEND|os.O_WRONLY, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = file.WriteString("corrupt")
-	file.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = startDatabase(cfg, database, nil, migrationOptions{}); err == nil {
-		t.Fatal("accepted damaged recovery point for unfinished migration")
-	}
-}
-
-func TestStartupMigrationDisabledDoesNotMutateOldSchema(t *testing.T) {
-	cfg, database, db := migrationFixture(t)
-	t.Setenv("EASYSSH_AUTO_MIGRATE", "off")
-	if err := startDatabase(cfg, database, nil, migrationOptions{}); err == nil {
-		t.Fatal("started against old schema with automatic migration disabled")
-	}
-	version, err := dbmigration.Version(context.Background(), db, "sqlite")
-	if err != nil || version != 5 {
-		t.Fatalf("unexpected schema mutation: %d %v", version, err)
-	}
-	files, err := filepath.Glob(filepath.Join(maintenanceDataDir(cfg), ".easyssh-migration-*.json"))
-	if err != nil || len(files) != 0 {
-		t.Fatalf("unexpected migration journal: %v %v", files, err)
-	}
-}
-
-func TestStartupMigrationBackupFailurePreventsDDL(t *testing.T) {
-	cfg, database, db := migrationFixture(t)
-	blocked := filepath.Join(t.TempDir(), "file-not-directory")
-	if err := os.WriteFile(blocked, []byte("occupied"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("EASYSSH_BACKUP_DIR", blocked)
-	if err := startDatabase(cfg, database, nil, migrationOptions{}); err == nil {
-		t.Fatal("upgraded without usable recovery storage")
-	}
-	version, err := dbmigration.Version(context.Background(), db, "sqlite")
-	if err != nil || version != 5 {
-		t.Fatalf("DDL ran without backup: %d %v", version, err)
-	}
 }
 
 func TestMigrationIntegrityComparesIdentitiesNotCounts(t *testing.T) {
@@ -202,7 +63,7 @@ func TestStartupMigrationRefusesEmptyReplacementWithExistingJournal(t *testing.T
 		t.Fatal(err)
 	}
 	journal := filepath.Join(maintenanceDataDir(cfg), ".easyssh-migration-"+identity[:24]+".json")
-	if err = saveMigration(journal, &startupMigration{Format: 1, Identity: identity, Driver: "sqlite", From: 5, To: schema.Version, Phase: "complete"}); err != nil {
+	if err = saveMigration(journal, &startupMigration{Format: 1, Identity: identity, Driver: "sqlite", From: schema.BaselineVersion, To: schema.Version, Phase: "complete"}); err != nil {
 		t.Fatal(err)
 	}
 	if err = db.Close(); err != nil {

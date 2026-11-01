@@ -115,7 +115,7 @@ tar -czf easyssh-data-$(date +%Y%m%d).tar.gz data
 docker compose start easyssh
 ```
 
-使用 PostgreSQL/MySQL 时，建议优先使用数据库自身的备份工具；EasySSH 统一备份 `3.0` 保留跨 SQLite、PostgreSQL、MySQL 的表级逻辑迁移与恢复能力。完整备份中的敏感数据使用标准 age 格式，可选择 Scrypt 口令或 X25519 Recipient 加密。
+完整实例备份使用 SQLite / PostgreSQL / MySQL 原生快照并以 age 加密，只支持同一数据库类型恢复。跨数据库类型转换需要单独制定迁移方案。
 
 ## 故障排查
 
@@ -164,11 +164,11 @@ docker compose up -d
 
 开发配置 `docker-compose.dev.yml` 也包含相同的注释块，按需取消注释后使用 `docker compose -f docker-compose.dev.yml up -d`。无需额外的 RDP 覆盖文件。
 
-启用后 EasySSH 使用 `GUACD_ADDRESS=guacd:4822`，并启动固定版本 `guacamole/guacd:1.6.0`。4822 不发布到宿主机；guacd 不提供应用层认证，应仅由受信应用访问。基础 Compose 及 noVNC 无需网关。RDP 主机需从 guacd 容器网络可达，使用前先完成 schema 7 升级。连接参数、证书要求及回退见 [远程桌面说明](../docs/automation-vnc.md)。
+启用后 EasySSH 使用 `GUACD_ADDRESS=guacd:4822`，并启动固定版本 `guacamole/guacd:1.6.0`。4822 不发布到宿主机；guacd 不提供应用层认证，应仅由受信应用访问。基础 Compose 及 noVNC 无需网关。RDP 主机需从 guacd 容器网络可达，所需数据库结构已纳入 schema 1 初始化基线。连接参数、证书要求及回退见 [远程桌面说明](../docs/automation-vnc.md)。
 
 ## 启动自动迁移
 
-更新并启动容器即可自动升级受支持的数据库版本，无需每次执行维护命令。应用先取得实例锁、预检并创建加密恢复点，逐版迁移和校验成功后才开放服务。`./data`、`./backups` 与 `instance-state` 卷必须持续保留，不要通过删除卷解决升级失败。
+当前开发重置仅保留 schema 1 初始化，需要使用新数据库及数据目录。新基线发布后的增量更新，启动容器即可自动升级受支持的数据库版本，无需每次执行维护命令。应用先取得实例锁、预检并创建加密恢复点，逐版迁移和校验成功后才开放服务。`./data`、`./backups` 与 `instance-state` 卷必须持续保留，不要通过删除卷解决升级失败。
 
 Compose 默认传入 `EASYSSH_AUTO_MIGRATE=on` 和 `EASYSSH_MIGRATION_TIMEOUT=30m`，健康检查启动宽限为 `EASYSSH_HEALTH_START_PERIOD=32m`；迁移超时调大时需同步增加宽限。系统提前就绪即会报告 healthy，不固定等待宽限结束。迁移中断不会自动恢复旧库或自动降级；MySQL 状态不确定时停止重试。恢复点位于备份目录的 `migrations/`，以原实例根密钥加密，需要独立保管该密钥。
 

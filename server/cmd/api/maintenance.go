@@ -410,7 +410,7 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 	if err := instancebackup.CheckApplicationVersion(manifest.AppVersion, readAppVersion()); err != nil {
 		return err
 	}
-	if manifest.SchemaVersion < 5 || manifest.SchemaVersion > schema.Version {
+	if manifest.SchemaVersion < schema.BaselineVersion || manifest.SchemaVersion > schema.Version {
 		return errors.New("unsupported database migration version")
 	}
 	destination, err := filepath.Abs(into)
@@ -474,7 +474,7 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 	if version != manifest.SchemaVersion {
 		return errors.New("manifest and database schema versions differ")
 	}
-	if version >= 5 && version < schema.Version {
+	if version >= schema.BaselineVersion && version < schema.Version {
 		if err := schema.Migrate(ctx, sqlDB, cfg.Driver, false); err != nil {
 			return err
 		}

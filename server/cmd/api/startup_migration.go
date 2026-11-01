@@ -146,7 +146,7 @@ func startDatabase(cfg *config.Config, database *gorm.DB, launcher *instanceacti
 	if version > schema.Version {
 		return fmt.Errorf("database schema %d is newer than this executable (%d); automatic downgrade is disabled", version, schema.Version)
 	}
-	if version != 0 && version < 5 {
+	if version != 0 && version < schema.BaselineVersion {
 		return fmt.Errorf("automatic upgrade does not support schema %d", version)
 	}
 	identity, err := migrationIdentity(cfg)
@@ -181,7 +181,7 @@ func startDatabase(cfg *config.Config, database *gorm.DB, launcher *instanceacti
 	if mode == "off" && !options.Manual {
 		return fmt.Errorf("schema %d requires migration or pending migration validation; EASYSSH_AUTO_MIGRATE=off prevents startup (use maintenance schema-upgrade)", version)
 	}
-	if pending && (state.To != schema.Version || state.From < 5 || state.From >= state.To || version < state.From || version > state.To) {
+	if pending && (state.To != schema.Version || state.From < schema.BaselineVersion || state.From >= state.To || version < state.From || version > state.To) {
 		return fmt.Errorf("unfinished migration in %s requires its matching executable or manual recovery", statePath)
 	}
 

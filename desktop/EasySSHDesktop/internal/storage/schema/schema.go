@@ -15,7 +15,9 @@ import (
 //go:embed */*.sql
 var scripts embed.FS
 
-const Version int64 = 6
+const Version int64 = 1
+
+const BaselineVersion int64 = 1
 
 func Definition(driver string) (dbmigration.Definition, error) {
 	switch driver {
@@ -39,8 +41,8 @@ func Start(ctx context.Context, db *sql.DB, driver string) error {
 	if err != nil {
 		return err
 	}
-	if version == 5 {
-		return fmt.Errorf("database schema 5 requires an explicit upgrade: stop EasySSHDesktop and run maintenance schema-upgrade --file <backup> --password-file <password>")
+	if version >= BaselineVersion && version < Version {
+		return fmt.Errorf("database schema %d requires an explicit upgrade: stop EasySSHDesktop and run maintenance schema-upgrade --file <backup> --password-file <password>", version)
 	}
 	return dbmigration.Start(ctx, db, driver, definition)
 }
@@ -60,11 +62,10 @@ func Migrate(ctx context.Context, db *sql.DB, rollback bool) error {
 	if err != nil {
 		return err
 	}
-	expected := int64(5)
-	if rollback {
-		expected = Version
+	if !rollback && version == Version || rollback && version == BaselineVersion {
+		return nil
 	}
-	if version != expected {
+	if version < BaselineVersion || version > Version {
 		return fmt.Errorf("unexpected source schema %d", version)
 	}
 	if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
@@ -79,7 +80,7 @@ func Migrate(ctx context.Context, db *sql.DB, rollback bool) error {
 		return err
 	}
 	if rollback {
-		_, err = provider.DownTo(ctx, 5)
+		_, err = provider.DownTo(ctx, version-1)
 	} else {
 		_, err = provider.UpTo(ctx, Version)
 	}

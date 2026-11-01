@@ -1,3 +1,4 @@
+-- Fresh installation baseline. Initialize an empty database; no legacy upgrade path.
 -- +goose Up
 
 CREATE TABLE desktop_network_proxy (
@@ -69,6 +70,7 @@ CREATE TABLE desktop_server_groups (
 CREATE INDEX idx_desktop_server_groups_order ON desktop_server_groups(sort_order,id);
 
 CREATE TABLE desktop_servers (
+ jump_server_id TEXT REFERENCES desktop_servers(id) ON DELETE RESTRICT,
             connection_revision INTEGER NOT NULL DEFAULT 1 CHECK(connection_revision > 0),
 			id TEXT PRIMARY KEY,
 			user_id TEXT NOT NULL DEFAULT 'local',
@@ -477,3 +479,5 @@ CREATE TABLE desktop_server_auth (
 );
 CREATE INDEX idx_desktop_server_auth_key ON desktop_server_auth(ssh_key_id);
 CREATE VIEW desktop_server_details AS SELECT s.*,(SELECT json_group_array(tag_name) FROM (SELECT tag_name FROM desktop_server_tags WHERE server_id=s.id ORDER BY tag_name)) AS tags_json,COALESCE(g.name,'') AS server_group,COALESCE(g.sort_order,0) AS group_sort_order,a.auth_method,a.password,a.ssh_key_id FROM desktop_servers s JOIN desktop_server_auth a ON a.server_id=s.id LEFT JOIN desktop_server_groups g ON g.id=s.group_id;
+
+CREATE INDEX idx_desktop_servers_jump_server_id ON desktop_servers(jump_server_id);

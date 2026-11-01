@@ -13,7 +13,7 @@ const schema = Number(fs.readFileSync(path.join(source, "server/internal/storage
 const migrationName = (number, suffix) => `${String(number).padStart(5, "0")}_${suffix}.sql`
 const tracks = ["server/internal/storage/schema/sqlite", "server/internal/storage/schema/postgres", "server/internal/storage/schema/mysql", "desktop/EasySSHDesktop/internal/storage/schema/sqlite"]
 const migration = "-- +goose Up\nSELECT 1;\n-- +goose Down\nSELECT 1;\n"
-const baseline = "00005_initial.sql"
+const baseline = "00001_initial.sql"
 const desktopSchema = Number(fs.readFileSync(path.join(source, "desktop/EasySSHDesktop/internal/storage/schema/schema.go"), "utf8").match(/const Version int64 = (\d+)/)[1])
 
 function fixture(t) {
@@ -98,7 +98,7 @@ test("migration gaps and duplicate numbers are rejected", t => {
   f.write(`server/internal/storage/schema/sqlite/${migrationName(schema + 2, "gap")}`, migration)
   f.commit()
   expectFailure(f.run("--prepare", next), /迁移编号必须连续且不能重复/)
-  fs.renameSync(path.join(f.root, `server/internal/storage/schema/sqlite/${migrationName(schema + 2, "gap")}`), path.join(f.root, "server/internal/storage/schema/sqlite/00005_duplicate.sql"))
+  fs.renameSync(path.join(f.root, `server/internal/storage/schema/sqlite/${migrationName(schema + 2, "gap")}`), path.join(f.root, "server/internal/storage/schema/sqlite/00001_duplicate.sql"))
   f.commit()
   expectFailure(f.run("--prepare", next), /迁移编号必须连续且不能重复|必须保留一个初始化基线/)
 })
@@ -144,7 +144,7 @@ test("published migrations cannot be removed when appending an upgrade", t => {
     f.write(`${track}/${migrationName(schema + 1, "initial")}`, "-- +goose Up\nSELECT 1;\n")
   }
   f.commit()
-  expectFailure(f.run("--prepare", next), /禁止删除或重命名/)
+  expectFailure(f.run("--prepare", next), /禁止删除或重命名|初始化基线必须为/)
   assert.equal(f.read("VERSION").trim(), current)
 })
 

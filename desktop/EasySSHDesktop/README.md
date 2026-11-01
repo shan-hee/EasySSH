@@ -75,4 +75,4 @@ Each encoded sync document is limited to 8 MiB, with up to 10,000 active records
 
 ## 备份、数据迁移与数据库升级
 
-日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../../docs/backup-and-migrations.md)。
+日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理，当前仅保留 schema 1 初始化，旧实例需重新安装；后续迁移从 00002 独立编号。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../../docs/backup-and-migrations.md)。

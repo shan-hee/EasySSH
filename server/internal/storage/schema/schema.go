@@ -15,7 +15,9 @@ import (
 //go:embed */*.sql
 var scripts embed.FS
 
-const Version int64 = 11
+const Version int64 = 1
+
+const BaselineVersion int64 = 1
 
 func Definition(driver string) (dbmigration.Definition, error) {
 	switch driver {
@@ -39,7 +41,7 @@ func Start(ctx context.Context, db *sql.DB, driver string) error {
 	if err != nil {
 		return err
 	}
-	if version >= 5 && version < Version {
+	if version >= BaselineVersion && version < Version {
 		return fmt.Errorf("database schema %d requires an explicit upgrade: stop the server, back up with the matching executable, then run maintenance schema-upgrade", version)
 	}
 	if err := dbmigration.Start(ctx, db, driver, definition); err != nil {
@@ -64,10 +66,10 @@ func Migrate(ctx context.Context, db *sql.DB, driver string, rollback bool) erro
 	if err != nil {
 		return err
 	}
-	if !rollback && current == Version || rollback && current == 5 {
+	if !rollback && current == Version || rollback && current == BaselineVersion {
 		return nil
 	}
-	if current < 5 || current > Version {
+	if current < BaselineVersion || current > Version {
 		return fmt.Errorf("unsupported source schema %d", current)
 	}
 	definition, err := Definition(driver)

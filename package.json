@@ -8,6 +8,7 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
+    "migration:new": "node scripts/new-migration.mjs",
     "dev:web": "pnpm --filter easyssh-web dev",
     "build:web": "pnpm --filter easyssh-web build",
     "typecheck": "pnpm -r --if-present typecheck",

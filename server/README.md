@@ -396,4 +396,4 @@ Limits: 12 MiB document exchange request bodies; 16 MiB object request bodies wi
 
 ## 备份、数据迁移与数据库升级
 
-日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理。服务端启动默认创建加密升级恢复点并自动迁移受支持的旧库，成功后才开放业务；可通过 `EASYSSH_AUTO_MIGRATE=off` 关闭，迁移总超时默认 `EASYSSH_MIGRATION_TIMEOUT=30m`。不会自动降级或覆盖数据库。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../docs/backup-and-migrations.md)。
+日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理，当前开发重置仅保留 schema 1 初始化；旧实例需重新安装，后续增量迁移从 00002 开始。服务端启动默认创建加密升级恢复点并自动迁移受支持的旧库，成功后才开放业务；可通过 `EASYSSH_AUTO_MIGRATE=off` 关闭，迁移总超时默认 `EASYSSH_MIGRATION_TIMEOUT=30m`。不会自动降级或覆盖数据库。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../docs/backup-and-migrations.md)。
