@@ -68,7 +68,7 @@ func TestTextFileSaveHasExecutionIntentAndDoesNotCreateTransfer(t *testing.T) {
 	tasks, _ := desktopTaskFixture(t)
 	files := NewDesktopSFTPService(nil, tasks, nil)
 	client := desktopAtomicSFTPFixture(t)
-	target := filepath.Join(t.TempDir(), "edited.txt")
+	target := desktopSFTPTestPath(filepath.Join(t.TempDir(), "edited.txt"))
 	const content = "edited file body"
 	ctx, id, cancel, err := files.beginFileMutation(context.Background(), desktopSFTPTaskWrite, "server", target, int64(len(content)))
 	if err != nil {

@@ -109,7 +109,7 @@ export function DesktopSyncAction({ onOpenSettings }: { onOpenSettings: () => vo
         <DropdownMenuContent align="end" className="w-64 [--wails-draggable:no-drag]">
           {status?.account_name && <div className="truncate px-2 py-1 text-xs text-muted-foreground" title={status.account_name}>{status.account_name}</div>}
           {status?.last_sync && <div className="px-2 py-1 text-xs text-muted-foreground">{t("syncLastTimeLabel", { time: new Date(status.last_sync).toLocaleString() })}</div>}
-          <DropdownMenuSeparator />
+          {(status?.account_name || status?.last_sync) && <DropdownMenuSeparator />}
           <DropdownMenuItem {...preloadHandlers} onSelect={onOpenSettings}>
             <Settings2 className="size-4" />{t("syncSettingsLabel")}
           </DropdownMenuItem>

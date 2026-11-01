@@ -103,15 +103,15 @@ func TestDesktopRelaySuffixAndCommitRejectConcurrentTarget(t *testing.T) {
 	if err := os.WriteFile(original, []byte("original"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	destination, err := desktopRelayDestination(context.Background(), client, root, "report.txt", 100)
-	if err != nil || destination != filepath.Join(root, "report (2).txt") {
+	destination, err := desktopRelayDestination(context.Background(), client, desktopSFTPTestPath(root), "report.txt", 100)
+	if err != nil || destination != desktopSFTPTestPath(filepath.Join(root, "report (2).txt")) {
 		t.Fatalf("suffix: %s %v", destination, err)
 	}
 	source := filepath.Join(t.TempDir(), "source")
 	if err := os.WriteFile(source, []byte("new"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	selection, err := normalizeDesktopTransferSelection([]string{source}, nil, false)
+	selection, err := normalizeDesktopTransferSelection([]string{desktopSFTPTestPath(source)}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestDesktopRelaySuffixAndCommitRejectConcurrentTarget(t *testing.T) {
 	if err != nil || stats.FilesCopied != 1 || stats.BytesCopied != 3 {
 		t.Fatalf("copy: %+v %v", stats, err)
 	}
-	if _, err := copyDesktopSFTPPlan(context.Background(), client, client, plan, original, nil, nil, nil); err == nil {
+	if _, err := copyDesktopSFTPPlan(context.Background(), client, client, plan, desktopSFTPTestPath(original), nil, nil, nil); err == nil {
 		t.Fatal("existing file replaced")
 	}
 	body, err := os.ReadFile(original)

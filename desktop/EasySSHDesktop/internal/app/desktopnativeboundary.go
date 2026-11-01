@@ -102,10 +102,10 @@ func (b *desktopNativeBoundary) allowMessage(id uint, message string, origin *ap
 	// Only shell chrome and runtime readiness use postMessage. Application
 	// events and host operations must pass the typed runtime dispatcher.
 	return message == "wails:runtime:ready" || message == "wails:drag" ||
-		message == "wails:resize:n" || message == "wails:resize:s" ||
-		message == "wails:resize:e" || message == "wails:resize:w" ||
-		message == "wails:resize:ne" || message == "wails:resize:nw" ||
-		message == "wails:resize:se" || message == "wails:resize:sw"
+		message == "wails:resize:n-resize" || message == "wails:resize:s-resize" ||
+		message == "wails:resize:e-resize" || message == "wails:resize:w-resize" ||
+		message == "wails:resize:ne-resize" || message == "wails:resize:nw-resize" ||
+		message == "wails:resize:se-resize" || message == "wails:resize:sw-resize"
 }
 
 func (b *desktopNativeBoundary) assets(next http.Handler) http.Handler {

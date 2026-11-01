@@ -24,11 +24,11 @@ func TestDesktopDeletePreservesConfirmedEffectsOnCancellation(t *testing.T) {
 	var effects DesktopSFTPDeleteEffects
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err = removeDesktopSFTPEntry(ctx, client, target, info, &effects); err != nil {
+	if err = removeDesktopSFTPEntry(ctx, client, desktopSFTPTestPath(target), info, &effects); err != nil {
 		t.Fatal(err)
 	}
 	cancel()
-	if err = removeDesktopSFTPEntry(ctx, client, target, info, &effects); !errors.Is(err, errDesktopSFTPTaskCancelled) {
+	if err = removeDesktopSFTPEntry(ctx, client, desktopSFTPTestPath(target), info, &effects); !errors.Is(err, errDesktopSFTPTaskCancelled) {
 		t.Fatalf("canceled delete continued: %v", err)
 	}
 	if effects.FilesRemoved != 1 || effects.BytesRemoved != 7 || effects.UncertainPath != "" {
@@ -42,7 +42,7 @@ func (h desktopDropDeleteResponse) Filecmd(request *sftp.Request) error {
 	if request.Method != "Remove" {
 		return errors.New("unexpected request")
 	}
-	if err := os.Remove(request.Filepath); err != nil {
+	if err := os.Remove(desktopSFTPTestLocalPath(request.Filepath)); err != nil {
 		return err
 	}
 	// The effect happened, but the client never receives SSH_FXP_STATUS.
@@ -72,10 +72,10 @@ func TestDesktopDeleteLostResponseIsUnknownEvenWhenCanceled(t *testing.T) {
 	}
 	var effects DesktopSFTPDeleteEffects
 	ctx, cancel := context.WithCancel(context.Background())
-	err = removeDesktopSFTPEntry(ctx, client, target, info, &effects)
+	err = removeDesktopSFTPEntry(ctx, client, desktopSFTPTestPath(target), info, &effects)
 	cancel()
 	err = desktopSFTPOperationError(ctx, err)
-	if !errors.Is(err, errDesktopSFTPDeleteUnknown) || errors.Is(err, errDesktopSFTPTaskCancelled) || effects.UncertainPath != target || effects.FilesRemoved != 0 {
+	if !errors.Is(err, errDesktopSFTPDeleteUnknown) || errors.Is(err, errDesktopSFTPTaskCancelled) || effects.UncertainPath != desktopSFTPTestPath(target) || effects.FilesRemoved != 0 {
 		t.Fatalf("ambiguous effect misreported: %+v %v", effects, err)
 	}
 	if _, err = os.Stat(target); !os.IsNotExist(err) {

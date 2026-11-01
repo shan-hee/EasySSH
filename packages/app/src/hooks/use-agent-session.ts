@@ -130,8 +130,8 @@ function compareTaskExecutionOrder(left: TaskView, right: TaskView) {
   return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
 }
 
-function getSessionChatApi(sessionId?: string | null) {
-  return getApiUrl(`/ai/sessions/${sessionId?.trim() || "__idle__"}/chat`)
+function getSessionChatApi(sessionId: string) {
+  return getApiUrl(`/ai/sessions/${sessionId}/chat`)
 }
 
 function getSessionScopeKey(scope?: AgentSessionScope) {
@@ -252,7 +252,8 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
   const chatTransport = useMemo(
     () => new DefaultChatTransport<UIMessage>({
-      api: getSessionChatApi(null),
+      // Resolve Web URLs only when sending/reconnecting. Desktop uses its
+      // session adapter and must not require a Web platform transport on render.
       fetch: fetchAIChatStream,
       prepareReconnectToStreamRequest: ({ id }) => ({ api: `${getSessionChatApi(id)}/stream` }),
       prepareSendMessagesRequest(options) {
@@ -261,6 +262,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         const targetSessionId = typeof targetSessionIdValue === "string"
           ? targetSessionIdValue.trim()
           : ""
+        if (!targetSessionId) throw new Error("AI chat request requires a session ID")
         const requestBody = { ...body }
         delete requestBody[TARGET_SESSION_ID_BODY_KEY]
         const latestMessage = options.messages.at(-1)
@@ -272,7 +274,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
           : []
 
         return {
-          api: targetSessionId ? getSessionChatApi(targetSessionId) : options.api,
+          api: getSessionChatApi(targetSessionId),
           headers: options.headers,
           credentials: options.credentials,
           body: {

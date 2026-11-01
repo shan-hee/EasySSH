@@ -25,7 +25,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"github.com/wailsapp/wails/v3/pkg/w32"
 	"github.com/wailsapp/wails/webview2/pkg/edge"
-	"github.com/wailsapp/wails/webview2/pkg/webview2"
 )
 
 var edgeMap = map[string]uintptr{
@@ -41,9 +40,9 @@ var edgeMap = map[string]uintptr{
 
 type windowsWebviewWindow struct {
 	isolatedDataPath         string
-	navigationPolicy         *webview2.ICoreWebView2NavigationStartingEventHandler
-	frameNavigationPolicy    *webview2.ICoreWebView2NavigationStartingEventHandler
-	popupPolicy              *webview2.ICoreWebView2NewWindowRequestedEventHandler
+	navigationPolicy         *nativeNavigationHandler
+	frameNavigationPolicy    *nativeNavigationHandler
+	popupPolicy              *nativeNavigationHandler
 	windowImpl               unsafe.Pointer
 	parent                   *WebviewWindow
 	hwnd                     w32.HWND
@@ -803,7 +802,7 @@ func (w *windowsWebviewWindow) setRelativePosition(x int, y int) {
 func (w *windowsWebviewWindow) destroy() {
 	if w.isolatedDataPath != "" {
 		if controller := w.chromium.GetController(); controller != nil {
-			if err := (*webview2.ICoreWebView2Controller)(unsafe.Pointer(controller)).Close(); err != nil {
+			if err := closeNativeWebViewController(controller); err != nil {
 				globalApplication.handleError(err)
 			}
 		}

@@ -143,7 +143,6 @@ tasks:
     summary: Runs the frontend in development mode
     deps:
       - task: install:frontend:deps
-      - task: install:web:deps
     dir: frontend
     cmds:
       - pnpm dev --port {{.VITE_PORT}} --strictPort

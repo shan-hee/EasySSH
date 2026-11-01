@@ -1293,12 +1293,12 @@ export function TerminalComponent({
               style={{ backgroundColor: terminalTheme.background }}
             >
               {settings.backgroundImage && (
-                <img
-                  key={settings.backgroundImage}
-                  src={settings.backgroundImage}
-                  alt=""
-                  className="h-full w-full object-cover"
-                  style={{ opacity: settings.backgroundImageOpacity / 100 }}
+                <div
+                  className="h-full w-full bg-cover bg-center bg-no-repeat"
+                  style={{
+                    backgroundImage: `url(${JSON.stringify(settings.backgroundImage)})`,
+                    opacity: settings.backgroundImageOpacity / 100,
+                  }}
                 />
               )}
             </div>

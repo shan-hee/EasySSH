@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"syscall"
 	"testing"
 
 	"github.com/easyssh/shared/protocol"
@@ -37,7 +39,7 @@ func TestDesktopDownloadSelectionSingleWalkSuffixAndExclusions(t *testing.T) {
 	}
 	client := desktopAtomicSFTPFixture(t)
 	tree := countedDesktopTree{client, make(map[string]int)}
-	selection, err := normalizeDesktopTransferSelection([]string{filepath.Join(root, "one/app"), filepath.Join(root, "two/app")}, []string{"*.log", "node_modules"}, true)
+	selection, err := normalizeDesktopTransferSelection([]string{desktopSFTPTestPath(filepath.Join(root, "one/app")), desktopSFTPTestPath(filepath.Join(root, "two/app"))}, []string{"*.log", "node_modules"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +55,7 @@ func TestDesktopDownloadSelectionSingleWalkSuffixAndExclusions(t *testing.T) {
 			t.Fatal("directory enumerated repeatedly")
 		}
 	}
-	if _, ok := tree.reads[filepath.Join(root, "one/app/node_modules")]; ok {
+	if _, ok := tree.reads[desktopSFTPTestPath(filepath.Join(root, "one/app/node_modules"))]; ok {
 		t.Fatal("excluded subtree enumerated")
 	}
 	var output bytes.Buffer
@@ -100,7 +102,7 @@ func TestDesktopDownloadSingleFileRawAndDirectoryZIP(t *testing.T) {
 	}
 	client := desktopAtomicSFTPFixture(t)
 	for _, remote := range []string{file, root} {
-		selection, err := normalizeDesktopTransferSelection([]string{remote}, nil, false)
+		selection, err := normalizeDesktopTransferSelection([]string{desktopSFTPTestPath(remote)}, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -137,7 +139,7 @@ func TestDesktopTransferLimitsAndSourceKinds(t *testing.T) {
 		t.Fatal(err)
 	}
 	client := desktopAtomicSFTPFixture(t)
-	selection, err := normalizeDesktopTransferSelection([]string{root}, nil, false)
+	selection, err := normalizeDesktopTransferSelection([]string{desktopSFTPTestPath(root)}, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,12 +148,17 @@ func TestDesktopTransferLimitsAndSourceKinds(t *testing.T) {
 			t.Fatal("enumeration limit bypassed")
 		}
 	}
-	if err := os.Symlink(file, filepath.Join(root, "link")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := planDesktopTransfer(context.Background(), client, selection, protocol.TransferLimits{MaxEntries: 100, MaxDepth: 8}); err == nil {
-		t.Fatal("symlink followed")
-	}
+	t.Run("reject_symlink", func(t *testing.T) {
+		if err := os.Symlink(file, filepath.Join(root, "link")); err != nil {
+			if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) { // ERROR_PRIVILEGE_NOT_HELD
+				t.Skipf("Windows symlink privilege unavailable: %v", err)
+			}
+			t.Fatal(err)
+		}
+		if _, err := planDesktopTransfer(context.Background(), client, selection, protocol.TransferLimits{MaxEntries: 100, MaxDepth: 8}); err == nil {
+			t.Fatal("symlink followed")
+		}
+	})
 	for _, paths := range [][]string{{"/"}, {"relative"}, {"/same", "/same"}} {
 		if _, err := normalizeDesktopTransferSelection(paths, nil, true); err == nil {
 			t.Fatal("invalid selection accepted")
@@ -166,7 +173,7 @@ func TestDesktopArchiveChangeAndCancellationKeepLocalDestination(t *testing.T) {
 		if err := os.WriteFile(source, []byte("payload"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		selection, err := normalizeDesktopTransferSelection([]string{source}, nil, true)
+		selection, err := normalizeDesktopTransferSelection([]string{desktopSFTPTestPath(source)}, nil, true)
 		if err != nil {
 			t.Fatal(err)
 		}

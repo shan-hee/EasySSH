@@ -1,5 +1,5 @@
 import { startDesktopSync } from "./adapters/desktop-sync"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
 import { RoutePending } from "@easyssh/app/components/route-pending"
 import { useTranslation } from "react-i18next"
 import {
@@ -51,18 +51,30 @@ const DesktopSSHKeysView = desktopViews["ssh-keys"].Component
 const DesktopTaskCenterView = desktopViews.tasks.Component
 
 function App() {
+  const [activeView, setActiveView] = useState<DesktopView>(WORKBENCH_VIEW)
+
+  return (
+    <DesktopProviders aiAssistantActive={activeView === "ai"}>
+      <DesktopContent activeView={activeView} setActiveView={setActiveView} />
+    </DesktopProviders>
+  )
+}
+
+function DesktopContent({ activeView, setActiveView }: {
+  activeView: DesktopView
+  setActiveView: Dispatch<SetStateAction<DesktopView>>
+}) {
   useEffect(() => startDesktopSync(), [])
   const [locale, setLocale] = useState<Locale>(() => getEffectiveLocale(null, DEFAULT_SYSTEM_CONFIG))
   const [runtime, setRuntime] = useState<DesktopRuntimeBindingInfo | null>(null)
   const [runtimeLoaded, setRuntimeLoaded] = useState(false)
   const [preferenceSnapshot, setPreferenceSnapshot] = useState<DesktopPreferenceSnapshot | null>(null)
-  const [activeView, setActiveView] = useState<DesktopView>(WORKBENCH_VIEW)
   const [requestedTaskRunID, setRequestedTaskRunID] = useState<string | null>(null)
   useEffect(() => {
     const open = (event: Event) => { const id = (event as CustomEvent<{ id: string }>).detail?.id; if (id) { setRequestedTaskRunID(id); setActiveView("tasks") } }
     window.addEventListener("easyssh:open-task", open)
     return () => window.removeEventListener("easyssh:open-task", open)
-  }, [])
+  }, [setActiveView])
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
   const { t: tCommon } = useTranslation("common")
   const { t: tTerminal } = useTranslation("terminal")
@@ -274,42 +286,42 @@ function App() {
   const handleToggleAiAssistant = useCallback(() => {
     preloadDesktopView("ai")
     setActiveView((current) => (current === "ai" ? WORKBENCH_VIEW : "ai"))
-  }, [])
+  }, [setActiveView])
 
   const handleOpenScripts = useCallback(() => {
     preloadDesktopView("scripts")
     setActiveView("scripts")
-  }, [])
+  }, [setActiveView])
 
   const handleOpenTasks = useCallback((taskID?: string) => {
     preloadDesktopView("tasks")
     setRequestedTaskRunID(taskID || null)
     setActiveView("tasks")
-  }, [])
+  }, [setActiveView])
 
   const handleOpenActivityLogs = useCallback(() => {
     preloadDesktopView("activity-logs")
     setActiveView("activity-logs")
-  }, [])
+  }, [setActiveView])
 
   const handleOpenBackupRestore = useCallback(() => {
     preloadDesktopView("backup-restore")
     setActiveView("backup-restore")
-  }, [])
+  }, [setActiveView])
 
   const handleOpenSync = useCallback(() => {
     preloadDesktopView("sync")
     setActiveView("sync")
-  }, [])
+  }, [setActiveView])
   const handleOpenSSHKeys = useCallback(() => {
     preloadDesktopView("ssh-keys")
     setActiveView("ssh-keys")
-  }, [])
+  }, [setActiveView])
 
   const handleReturnToWorkbench = useCallback(() => {
     setRequestedTaskRunID(null)
     setActiveView(WORKBENCH_VIEW)
-  }, [])
+  }, [setActiveView])
 
   const windowActions = (
     <DesktopWindowActions
@@ -329,7 +341,7 @@ function App() {
 
   if (preferenceSnapshot === null) {
     return (
-      <DesktopProviders>
+      <>
         <main className="flex h-full w-full min-h-0 min-w-0 isolate flex-col overflow-hidden bg-background text-foreground">
           <header className="flex h-10 shrink-0 items-stretch border-b border-border/60 bg-transparent [--wails-draggable:drag]">
             <div className="min-w-0 flex-1 [--wails-draggable:drag]" />
@@ -338,101 +350,99 @@ function App() {
           <RoutePending />
         </main>
         <DesktopUpdateFailureDialog />
-      </DesktopProviders>
+      </>
     )
   }
 
   return (
-    <DesktopProviders aiAssistantActive={activeView === "ai"}>
-      <SshWorkspace adapters={adapters} capabilities={capabilities} layout="desktop">
-        <WorkspaceShell
-          activeView={activeView}
-          viewHeader={activeView !== WORKBENCH_VIEW && (
-            <DesktopPageHeader view={activeView} onReturnToTerminal={handleReturnToWorkbench} actions={windowActions} />
-          )}
-          workbench={(
-            <Workbench
-              workbench={workbench}
-              serverApi={serverApi}
-              serversReady
-              terminalTransportReady={desktopTerminalTransportReady}
-              aiAssistantAdapters={aiAssistantAdapters}
-              hidePageHeader
-              unframed
-              settingsDialogOpen={terminalSettingsOpen}
-              onSettingsDialogOpenChange={setTerminalSettingsOpen}
-              tabBarEndContent={activeView === WORKBENCH_VIEW ? windowActions : undefined}
-            />
-          )}
-          views={[
-            {
-              id: "ai",
-              content: (
-                <DesktopViewBoundary view="ai">
-                  <DesktopAIAssistantView active={activeView === "ai"} adapters={aiAssistantAdapters} locale={locale} />
-                </DesktopViewBoundary>
-              ),
-            },
-            {
-              id: "scripts",
-              content: (
-                <DesktopViewBoundary view="scripts">
-                  <DesktopScriptsView adapters={scriptAdapters} locale={locale} />
-                </DesktopViewBoundary>
-              ),
-            },
-            {
-              id: "tasks",
-              content: (
-                <DesktopViewBoundary view="tasks">
-                  <DesktopTaskCenterView
-                    locale={locale}
-                    requestedRunID={requestedTaskRunID}
-                    onClearRequestedRun={() => setRequestedTaskRunID(null)}
-                  />
-                </DesktopViewBoundary>
-              ),
-            },
-            {
-              id: "activity-logs",
-              content: (
-                <DesktopViewBoundary view="activity-logs">
-                  <DesktopActivityLogsView locale={locale} />
-                </DesktopViewBoundary>
-              ),
-            },
-            {
-              id: "backup-restore",
-              content: (
-                <DesktopViewBoundary view="backup-restore">
-                  <DesktopBackupRestoreView locale={locale} />
-                </DesktopViewBoundary>
-              ),
-            },
-            {
-              id: "ssh-keys",
-              keepAlive: false,
-              className: "flex-col",
-              content: (
-                <DesktopViewBoundary view="ssh-keys">
-                  <DesktopSSHKeysView locale={locale} />
-                </DesktopViewBoundary>
-              ),
-            },
-            {
-              id: "sync",
-              keepAlive: false,
-              content: (
-                <DesktopViewBoundary view="sync">
-                  <DesktopSyncView locale={locale} />
-                </DesktopViewBoundary>
-              ),
-            },
-          ]}
-        />
-        <DesktopUpdateFailureDialog />
-      </SshWorkspace>
-    </DesktopProviders>
+    <SshWorkspace adapters={adapters} capabilities={capabilities} layout="desktop">
+      <WorkspaceShell
+        activeView={activeView}
+        viewHeader={activeView !== WORKBENCH_VIEW && (
+          <DesktopPageHeader view={activeView} onReturnToTerminal={handleReturnToWorkbench} actions={windowActions} />
+        )}
+        workbench={(
+          <Workbench
+            workbench={workbench}
+            serverApi={serverApi}
+            serversReady
+            terminalTransportReady={desktopTerminalTransportReady}
+            aiAssistantAdapters={aiAssistantAdapters}
+            hidePageHeader
+            unframed
+            settingsDialogOpen={terminalSettingsOpen}
+            onSettingsDialogOpenChange={setTerminalSettingsOpen}
+            tabBarEndContent={activeView === WORKBENCH_VIEW ? windowActions : undefined}
+          />
+        )}
+        views={[
+          {
+            id: "ai",
+            content: (
+              <DesktopViewBoundary view="ai">
+                <DesktopAIAssistantView active={activeView === "ai"} adapters={aiAssistantAdapters} locale={locale} />
+              </DesktopViewBoundary>
+            ),
+          },
+          {
+            id: "scripts",
+            content: (
+              <DesktopViewBoundary view="scripts">
+                <DesktopScriptsView adapters={scriptAdapters} locale={locale} />
+              </DesktopViewBoundary>
+            ),
+          },
+          {
+            id: "tasks",
+            content: (
+              <DesktopViewBoundary view="tasks">
+                <DesktopTaskCenterView
+                  locale={locale}
+                  requestedRunID={requestedTaskRunID}
+                  onClearRequestedRun={() => setRequestedTaskRunID(null)}
+                />
+              </DesktopViewBoundary>
+            ),
+          },
+          {
+            id: "activity-logs",
+            content: (
+              <DesktopViewBoundary view="activity-logs">
+                <DesktopActivityLogsView locale={locale} />
+              </DesktopViewBoundary>
+            ),
+          },
+          {
+            id: "backup-restore",
+            content: (
+              <DesktopViewBoundary view="backup-restore">
+                <DesktopBackupRestoreView locale={locale} />
+              </DesktopViewBoundary>
+            ),
+          },
+          {
+            id: "ssh-keys",
+            keepAlive: false,
+            className: "flex-col",
+            content: (
+              <DesktopViewBoundary view="ssh-keys">
+                <DesktopSSHKeysView locale={locale} />
+              </DesktopViewBoundary>
+            ),
+          },
+          {
+            id: "sync",
+            keepAlive: false,
+            content: (
+              <DesktopViewBoundary view="sync">
+                <DesktopSyncView locale={locale} />
+              </DesktopViewBoundary>
+            ),
+          },
+        ]}
+      />
+      <DesktopUpdateFailureDialog />
+    </SshWorkspace>
   )
 }
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,6 +68,23 @@ func TestDesktopLocalDownloadDoesNotOverwriteConcurrentChange(t *testing.T) {
 	}
 }
 
+// SFTP paths use slashes even when the test server runs on Windows.
+// pkg/sftp maps /C:/... back to the native C:\... filesystem path.
+func desktopSFTPTestPath(local string) string {
+	remote := filepath.ToSlash(local)
+	if !path.IsAbs(remote) {
+		remote = "/" + remote
+	}
+	return remote
+}
+
+func desktopSFTPTestLocalPath(remote string) string {
+	if filepath.VolumeName(strings.TrimPrefix(remote, "/")) != "" {
+		remote = strings.TrimPrefix(remote, "/")
+	}
+	return filepath.FromSlash(remote)
+}
+
 func desktopAtomicSFTPFixture(t *testing.T) *sftp.Client {
 	t.Helper()
 	serverConn, clientConn := net.Pipe()
@@ -93,7 +111,11 @@ func TestDesktopRemoteReplacementKeepsOldFileUntilSuccessfulCommit(t *testing.T)
 	if err := os.WriteFile(target, []byte("original"), 0640); err != nil {
 		t.Fatal(err)
 	}
-	_, err := writeDesktopSFTPAtomic(context.Background(), client, target, 0600, func(file *sftp.File) error {
+	originalInfo, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = writeDesktopSFTPAtomic(context.Background(), client, desktopSFTPTestPath(target), 0600, func(file *sftp.File) error {
 		if _, err := file.Write([]byte("partial")); err != nil {
 			return err
 		}
@@ -106,7 +128,7 @@ func TestDesktopRemoteReplacementKeepsOldFileUntilSuccessfulCommit(t *testing.T)
 	if err != nil || string(data) != "original" {
 		t.Fatalf("old file damaged: %q %v", data, err)
 	}
-	info, err := writeDesktopSFTPAtomic(context.Background(), client, target, 0600, func(file *sftp.File) error {
+	info, err := writeDesktopSFTPAtomic(context.Background(), client, desktopSFTPTestPath(target), 0600, func(file *sftp.File) error {
 		_, err := io.Copy(file, strings.NewReader("replacement"))
 		return err
 	})
@@ -114,7 +136,7 @@ func TestDesktopRemoteReplacementKeepsOldFileUntilSuccessfulCommit(t *testing.T)
 		t.Fatalf("commit failed: %+v %v", info, err)
 	}
 	stat, err := os.Stat(target)
-	if err != nil || stat.Mode().Perm() != 0640 {
+	if err != nil || stat.Mode().Perm() != originalInfo.Mode().Perm() {
 		t.Fatalf("existing mode changed: %v %v", stat, err)
 	}
 	entries, err := os.ReadDir(dir)
@@ -130,14 +152,14 @@ func TestDesktopRemoteReplacementRejectsSymlinkAndChangingSource(t *testing.T) {
 	if err := os.WriteFile(target, []byte("before"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	expected, err := client.Lstat(target)
+	expected, err := client.Lstat(desktopSFTPTestPath(target))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = os.WriteFile(target, []byte("changed length"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	source, err := client.Open(target)
+	source, err := client.Open(desktopSFTPTestPath(target))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +171,7 @@ func TestDesktopRemoteReplacementRejectsSymlinkAndChangingSource(t *testing.T) {
 	if err = os.Symlink(target, link); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if _, err = writeDesktopSFTPAtomic(context.Background(), client, link, 0600, func(*sftp.File) error {
+	if _, err = writeDesktopSFTPAtomic(context.Background(), client, desktopSFTPTestPath(link), 0600, func(*sftp.File) error {
 		t.Fatal("symlink target opened for writing")
 		return nil
 	}); err == nil {

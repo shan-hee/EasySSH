@@ -5,7 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
+	"path"
 	"testing"
 
 	"github.com/easyssh/shared/sftputil"
@@ -25,11 +25,11 @@ func (f *desktopDeleteFSFixture) Lstat(p string) (os.FileInfo, error) {
 	if p == f.statPath {
 		return nil, f.statErr
 	}
-	return os.Lstat(p)
+	return os.Lstat(desktopSFTPTestLocalPath(p))
 }
 func (f *desktopDeleteFSFixture) Remove(p string) error {
 	f.removes = append(f.removes, p)
-	if err := os.Remove(p); err != nil {
+	if err := os.Remove(desktopSFTPTestLocalPath(p)); err != nil {
 		return err
 	}
 	if f.afterRemove != nil {
@@ -43,10 +43,10 @@ func TestDesktopDeleteBatchStopsAtDeadlineAndRetainsCompletedRoots(t *testing.T)
 		t.Run(map[bool]string{false: "flat", true: "recursive"}[recursive], func(t *testing.T) {
 			tasks, _ := desktopTaskFixture(t)
 			files := NewDesktopSFTPService(nil, tasks, nil)
-			root := t.TempDir()
-			paths := []string{filepath.Join(root, "removed"), filepath.Join(root, "timed-out"), filepath.Join(root, "unvisited")}
+			root := desktopSFTPTestPath(t.TempDir())
+			paths := []string{path.Join(root, "removed"), path.Join(root, "timed-out"), path.Join(root, "unvisited")}
 			for _, p := range paths {
-				if err := os.WriteFile(p, []byte("payload"), 0600); err != nil {
+				if err := os.WriteFile(desktopSFTPTestLocalPath(p), []byte("payload"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -87,10 +87,10 @@ func TestDesktopDeleteBatchStopsAtDeadlineAndRetainsCompletedRoots(t *testing.T)
 
 func TestDesktopDeleteBatchCancellationAndLostReplyDoNotTouchNextPath(t *testing.T) {
 	for _, lost := range []bool{false, true} {
-		root := t.TempDir()
-		paths := []string{filepath.Join(root, "first"), filepath.Join(root, "next")}
+		root := desktopSFTPTestPath(t.TempDir())
+		paths := []string{path.Join(root, "first"), path.Join(root, "next")}
 		for _, p := range paths {
-			if err := os.WriteFile(p, []byte("data"), 0600); err != nil {
+			if err := os.WriteFile(desktopSFTPTestLocalPath(p), []byte("data"), 0600); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -114,7 +114,7 @@ func TestDesktopDeleteBatchCancellationAndLostReplyDoNotTouchNextPath(t *testing
 		if !lost && (!errors.Is(err, context.Canceled) || len(result.Success) != 1) {
 			t.Fatalf("late cancellation erased confirmed success: %+v %v", result, err)
 		}
-		if _, err := os.Stat(paths[1]); err != nil {
+		if _, err := os.Stat(desktopSFTPTestLocalPath(paths[1])); err != nil {
 			t.Fatal("later path was touched", err)
 		}
 	}
