@@ -41,8 +41,25 @@ export function PageHeaderHost({ children }: React.PropsWithChildren) {
       ? pathname === item.path
       : pathname === item.path || pathname.startsWith(`${item.path}/`)
   ))
-  const { t: tNav } = useTranslation("nav")
   const { t, ready } = useTranslation(route?.namespace ?? "nav", { useSuspense: false })
+  const { t: tNav } = useTranslation("nav")
+  const routeTitle = route ? (ready ? t(route.key) : tNav(route.navKey)) : ""
+
+  return <WorkspaceHeaderHost fallbackTitle={routeTitle}>{children}</WorkspaceHeaderHost>
+}
+
+/** 共用页头布局；独立分享窗口无需路由或账户上下文。 */
+export function WorkspaceHeaderHost({
+  children,
+  fallbackTitle = "",
+  actions = <DashboardHeaderActions />,
+  showSidebarTrigger = true,
+}: React.PropsWithChildren<{
+  fallbackTitle?: string
+  actions?: React.ReactNode
+  showSidebarTrigger?: boolean
+}>) {
+  const { t: tNav } = useTranslation("nav")
   const [titleTarget, setTitleTarget] = React.useState<HTMLDivElement | null>(null)
   const [contentTarget, setContentTarget] = React.useState<HTMLDivElement | null>(null)
   const [hasPageTitle, setHasPageTitle] = React.useState(false)
@@ -56,7 +73,6 @@ export function PageHeaderHost({ children }: React.PropsWithChildren) {
       setHasPageTitle(titleRegistrations.current > 0)
     }
   }, [])
-  const routeTitle = route ? (ready ? t(route.key) : tNav(route.navKey)) : ""
   const targets = React.useMemo(
     () => ({ title: titleTarget, content: contentTarget, registerTitle }),
     [contentTarget, registerTitle, titleTarget],
@@ -66,21 +82,23 @@ export function PageHeaderHost({ children }: React.PropsWithChildren) {
     <PageHeaderContext.Provider value={targets}>
       <header data-slot="page-header" className="z-30 flex h-16 shrink-0 items-center gap-2 bg-transparent transition-none group-data-[ready=true]/sidebar-wrapper:transition-[height] group-data-[ready=true]/sidebar-wrapper:duration-200 group-data-[ready=true]/sidebar-wrapper:ease-in-out group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
         <div className="flex min-w-0 flex-1 items-center gap-2 px-4">
-          <SidebarTrigger
-            className="-ml-1 md:hidden"
-            aria-label={tNav("toggleSidebar")}
-            title={tNav("toggleSidebar")}
-          />
-          {!hasPageTitle && routeTitle ? (
+          {showSidebarTrigger && (
+            <SidebarTrigger
+              className="-ml-1 md:hidden"
+              aria-label={tNav("toggleSidebar")}
+              title={tNav("toggleSidebar")}
+            />
+          )}
+          {!hasPageTitle && fallbackTitle ? (
             <h1 className="truncate text-sm font-semibold text-foreground md:text-base">
-              {routeTitle}
+              {fallbackTitle}
             </h1>
           ) : null}
           <div ref={setTitleTarget} className="contents" />
         </div>
         <div className="flex min-w-0 max-w-[72vw] items-center justify-end gap-2 px-4 md:max-w-none">
           <div ref={setContentTarget} className="contents" />
-          <DashboardHeaderActions />
+          {actions}
         </div>
       </header>
       {children}

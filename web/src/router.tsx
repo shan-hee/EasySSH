@@ -40,7 +40,7 @@ export const createAppRouter = () => {
   // Cross an identity boundary with a full navigation so caches, streams and transport
   // are recreated together. Navigation inside one share remains client-side.
   const initialPath = window.location.pathname
-  const shareRoute: RouteObject = { path: "/share/:publicId", loader: ({ request }) => new URL(request.url).pathname === initialPath ? null : redirectDocument(request.url), lazy: lazyPage(() => import("./pages/share-page"), ["sharing", "activityOverview", "terminal", "sftp", "servers", "terminalSettings", "aiAssistant", "taskCenter"]), ErrorBoundary: RouteErrorBoundary }
+  const shareRoute: RouteObject = { path: "/share/:publicId", loader: ({ request }) => new URL(request.url).pathname === initialPath ? null : redirectDocument(request.url), lazy: lazyPage(() => import("./pages/share-page"), ["sharing", "activityOverview", "terminal", "sftp", "servers", "terminalSettings", "aiAssistant", "taskCenter", "nav", "headerActions"]), ErrorBoundary: RouteErrorBoundary }
   const reload = ({ request }: LoaderFunctionArgs) => redirectDocument(request.url)
   if (isSharePage()) return createBrowserRouter([shareRoute, { path: "*", loader: reload }])
   return createBrowserRouter([

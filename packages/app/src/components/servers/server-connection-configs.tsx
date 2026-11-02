@@ -11,6 +11,7 @@ import { AddServerDialog } from "@/components/servers/add-server-dialog"
 import { EditServerDialog } from "@/components/servers/edit-server-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ServerSystemIcon } from "@/components/servers/server-system-icon"
+import { SERVER_GRID_CLASSNAME, getServerItemClassName, ServerConnectionSummary } from "@/components/servers/server-connection-item"
 import type { ServerFormData } from "@/components/servers/add-server-dialog"
 import { serversApi, type Server } from "@/lib/api"
 import { serverGroupsApi } from "@/lib/api/servers"
@@ -62,7 +63,6 @@ export const defaultServerConnectionConfigsApi: ServerConnectionConfigsApi = { .
 type ViewMode = "grid" | "list"
 type DragOverlaySize = { width: number; height: number } | null
 
-const SERVER_GRID_CLASSNAME = "grid grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),1fr))] gap-2.5"
 const SERVER_VIEW_MODE_STORAGE_KEY = "easyssh:servers:connection-configs:view-mode"
 
 function readStoredViewMode(defaultViewMode: ViewMode): ViewMode {
@@ -101,16 +101,6 @@ export interface ServerConnectionConfigsApi {
  getStatistics: typeof serversApi.getStatistics
 }
 
-function getServerItemClassName(viewMode: ViewMode, sortable = true) {
-  return cn(
-    "server-connection-item relative rounded-lg border border-border bg-card text-card-foreground outline-none transition-[background-color,border-color,box-shadow] duration-200 focus-visible:border-primary/50 focus-visible:ring-[3px] focus-visible:ring-primary/20",
-    sortable && "cursor-grab active:cursor-grabbing",
-    viewMode === "grid"
-      ? "grid min-h-[72px] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-3 hover:bg-accent/60 hover:border-primary/40"
-      : "grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 p-4 hover:bg-accent/60 hover:border-primary/40 sm:flex sm:items-center"
-  )
-}
-
 function ServerItemBody({
   server,
   viewMode,
@@ -129,32 +119,11 @@ function ServerItemBody({
   onDelete?: (id: string) => void
 }) {
   const { t } = useTranslation("servers")
-  const isOnline = server.status === "online"
 
   if (viewMode === "grid") {
     return (
       <>
-        <ServerSystemIcon server={server} size={20} />
-
-        <div className="min-w-0 space-y-1">
-          <h3
-            className={cn(
-              "truncate text-sm font-medium",
-              isOnline
-                ? "text-card-foreground"
-                : "text-muted-foreground"
-            )}
-            title={server.name || server.host}
-          >
-            {server.name || server.host}
-          </h3>
-          <p
-            className="truncate font-mono text-xs text-muted-foreground"
-            title={`${server.username}@${server.host}:${server.port}`}
-          >
-            {server.username}@{server.host}:{server.port}
-          </p>
-        </div>
+        <ServerConnectionSummary server={server} icon={<ServerSystemIcon server={server} size={20} />} />
 
         {showActions && onEdit && onDuplicate && onDelete && (
           <div
