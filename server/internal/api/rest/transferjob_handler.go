@@ -36,7 +36,7 @@ func (h *TransferJobHandler) CreateUpload(c *gin.Context) {
 		RespondError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	req := &transferjob.CreateUploadRequest{ServerID: input.ServerID, TargetPath: input.TargetPath, FileName: input.FileName, FileSize: *input.FileSize, Name: input.Name, Description: input.Description, RetentionDays: input.RetentionDays, DeferStart: input.DeferStart}
+	req := &transferjob.CreateUploadRequest{ServerID: input.ServerID, TargetPath: input.TargetPath, FileName: input.FileName, FileSize: *input.FileSize, Name: input.Name, Description: input.Description, RetentionDays: input.RetentionDays, DeferStart: input.DeferStart, Folder: input.Folder, Merge: input.Merge}
 	job, err := h.service.CreateUploadJob(c.Request.Context(), req)
 	respondTransferCreation(c, job, err)
 }

@@ -1,6 +1,6 @@
 import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 import { useRef, type ReactNode } from "react"
-import { FileText, FolderPlus, RefreshCw, Upload } from "lucide-react"
+import { FileText, FolderPlus, FolderUp, RefreshCw, Upload } from "lucide-react"
 
 import { FileActionMenu, type FileAction } from "@/components/sftp/file-action-menu"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
@@ -42,6 +42,7 @@ export interface SftpBlankContextMenuProps {
   onCreateFolder: () => void
   onCreateFile: () => void
   onUpload: () => void
+  onUploadFolder: () => void
   onRefresh: () => void
   children: ReactNode
 }
@@ -68,6 +69,7 @@ export function SftpBlankContextMenuContent({
   onCreateFolder,
   onCreateFile,
   onUpload,
+  onUploadFolder,
   onRefresh,
 }: Omit<SftpBlankContextMenuProps, "children" | "disabled" | "onOpenChange">) {
   const tSftp = useWorkspaceSftpTranslator()
@@ -114,6 +116,12 @@ export function SftpBlankContextMenuContent({
         <ContextMenuShortcut>⌘U</ContextMenuShortcut>
       </ContextMenuItem>
 
+      {/* 文件夹上传会创建目录，需要写入权限 */}
+      <ContextMenuItem disabled={!can("files.upload") || !can("files.write")} onSelect={onUploadFolder}>
+        <FolderUp className="h-4 w-4" />
+        <span>{tSftp("contextUploadFolder")}</span>
+      </ContextMenuItem>
+
       <ContextMenuItem onSelect={onRefresh}>
         <RefreshCw className="h-4 w-4" />
         <span>{tSftp("contextRefresh")}</span>
@@ -152,6 +160,7 @@ export function SftpBlankContextMenu({
   onCreateFolder,
   onCreateFile,
   onUpload,
+  onUploadFolder,
   onRefresh,
   children,
 }: SftpBlankContextMenuProps) {
@@ -165,6 +174,7 @@ export function SftpBlankContextMenu({
         onCreateFolder={onCreateFolder}
         onCreateFile={onCreateFile}
         onUpload={onUpload}
+        onUploadFolder={onUploadFolder}
         onRefresh={onRefresh}
       />
     </ContextMenu>

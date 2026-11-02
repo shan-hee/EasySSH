@@ -21,13 +21,18 @@ type DesktopRemoteFileSelection struct {
 	Name      string    `json:"name"`
 	Size      int64     `json:"size"`
 	ExpiresAt time.Time `json:"expires_at"`
+	// Links and special files a folder selection leaves out.
+	Skipped int `json:"skipped,omitempty"`
 }
 
+// A file selection holds the opened file; a folder selection holds its
+// manifest instead and opens each file only while sending it.
 type desktopRemoteFileSelection struct {
 	info         DesktopRemoteFileSelection
 	connectionID string
 	file         *os.File
 	snapshot     os.FileInfo
+	folder       *desktopRemoteFolder
 }
 
 type DesktopRemoteTransfer struct {

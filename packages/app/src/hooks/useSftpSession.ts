@@ -28,6 +28,7 @@ import type { SshWorkspaceTransferManager } from "@/lib/session/workspace";
 import type { TransferTaskActions } from "@/lib/session/transfer-controller";
 import type { TransferJob } from "@/lib/transfer-job-types";
 import type { TerminalAuthMethod } from "@/lib/websocket-terminal";
+import type { UploadFolder } from "@/lib/folder-upload";
 
 type SftpAuthMethod = TerminalAuthMethod;
 type SftpCredentialRetryRunner = <T>(options: {
@@ -188,6 +189,9 @@ export function useSftpSession(
       uploadFile: (targetServerId, path, file, options) => (
         runSftpOperation(() => baseApi.uploadFile(targetServerId, path, file, options))
       ),
+      uploadFolder: (targetServerId, path, folder, options) => (
+        runSftpOperation(() => baseApi.uploadFolder(targetServerId, path, folder, options))
+      ),
     };
   }, [fileTransferOptions?.api, runSftpOperation, sessionApi]);
 
@@ -209,6 +213,11 @@ export function useSftpSession(
           runSftpOperation(() => Promise.resolve(transferManager.uploadFile!(...args)))
         )
       : internalFileTransfer.uploadFile,
+    uploadFolder: transferManager?.uploadFolder
+      ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["uploadFolder"]>>) => (
+          runSftpOperation(() => transferManager.uploadFolder!(...args))
+        )
+      : internalFileTransfer.uploadFolder,
     downloadFile: transferManager?.downloadFile
       ? (...args: Parameters<NonNullable<SshWorkspaceTransferManager["downloadFile"]>>) => (
           runSftpOperation(() => Promise.resolve(transferManager.downloadFile!(...args)))
@@ -470,6 +479,29 @@ export function useSftpSession(
   );
 
   /**
+   * 上传文件夹；merge 表示写入已存在的同名文件夹。
+   */
+  const uploadFolder = useCallback(
+    async (folder: UploadFolder, merge: boolean) => {
+      try {
+        await fileTransfer.uploadFolder(serverId, currentPath, folder, merge);
+        sessionNotifier.success(tSftp("toastUploadFolderSuccess", { name: folder.name }));
+      } catch (error) {
+        console.error('[useSftpSession] 上传文件夹失败:', error);
+        sessionNotifier.error(getErrorMessage(error, tSftp("toastUploadFolderFailed", { name: folder.name })));
+        throw error;
+      } finally {
+        // 合并失败时已提交的文件仍会保留，结果如何都重新读取目录。
+        directorySource.invalidate([currentPath]);
+        if (loadedCacheRef.current === directoryCache && currentPathRef.current === currentPath && (!activeDirectoryRequest.current || activeDirectoryRequest.current.path === currentPath)) {
+          void loadDirectory(currentPathRef.current, { force: true });
+        }
+      }
+    },
+    [serverId, currentPath, fileTransfer, loadDirectory, sessionNotifier, tSftp, directoryCache, directorySource]
+  );
+
+  /**
    * 下载文件
    */
   const downloadFile = useCallback(
@@ -702,6 +734,7 @@ export function useSftpSession(
     goForward,
     refresh,
     uploadFiles,
+    uploadFolder,
     downloadFile,
     deleteFile,
     createFolder,

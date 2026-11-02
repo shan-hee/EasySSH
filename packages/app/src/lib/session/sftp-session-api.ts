@@ -69,6 +69,7 @@ const completeSftpSessionApiMethods = [
   "listTransfers",
   "cancelTransfer",
   "uploadFile",
+  "uploadFolder",
   "downloadFile",
   "batchDownload",
   "directTransfer",

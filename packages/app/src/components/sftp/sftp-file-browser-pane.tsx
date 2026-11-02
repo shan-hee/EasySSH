@@ -39,6 +39,7 @@ export interface SftpFileBrowserPaneProps {
   dragOverFolder: string | null
   dropZoneRef: Ref<HTMLDivElement>
   fileInputRef: RefObject<HTMLInputElement | null>
+  folderInputRef: RefObject<HTMLInputElement | null>
   editInputRef: RefObject<HTMLInputElement | null>
   folderLabel: string
   onClearSelectedFiles: () => void
@@ -47,6 +48,7 @@ export interface SftpFileBrowserPaneProps {
   onCreateFolder: () => void
   onCreateFile: () => void
   onUpload: () => void
+  onUploadFolder: () => void
   onRefresh: () => void
   onEditingFileNameChange: (value: string) => void
   onFinishCreate: () => void | Promise<void>
@@ -62,6 +64,7 @@ export interface SftpFileBrowserPaneProps {
   onAction: (file: EnhancedSftpFileBrowserItem, action: FileAction) => void
   onContextAction: (action: FileAction) => void
   onInputChange: (event: ChangeEvent<HTMLInputElement>) => void
+  onFolderInputChange: (event: ChangeEvent<HTMLInputElement>) => void
 }
 
 export function SftpFileBrowserPane({
@@ -84,6 +87,7 @@ export function SftpFileBrowserPane({
   dragOverFolder,
   dropZoneRef,
   fileInputRef,
+  folderInputRef,
   editInputRef,
   folderLabel,
   onClearSelectedFiles,
@@ -92,6 +96,7 @@ export function SftpFileBrowserPane({
   onCreateFolder,
   onCreateFile,
   onUpload,
+  onUploadFolder,
   onRefresh,
   onEditingFileNameChange,
   onFinishCreate,
@@ -107,6 +112,7 @@ export function SftpFileBrowserPane({
   onAction,
   onContextAction,
   onInputChange,
+  onFolderInputChange,
 }: SftpFileBrowserPaneProps) {
   const listScrollRef = useRef<HTMLDivElement>(null)
   const gridScrollRef = useRef<HTMLDivElement>(null)
@@ -365,6 +371,17 @@ export function SftpFileBrowserPane({
         tabIndex={-1}
         onChange={onInputChange}
       />
+      <input
+        ref={(element) => {
+          folderInputRef.current = element
+          // React 不认识 webkitdirectory，直接设置到元素上。
+          element?.setAttribute("webkitdirectory", "")
+        }}
+        type="file"
+        className="hidden"
+        tabIndex={-1}
+        onChange={onFolderInputChange}
+      />
     </div>
   )
 
@@ -382,6 +399,7 @@ export function SftpFileBrowserPane({
       onCreateFolder={onCreateFolder}
       onCreateFile={onCreateFile}
       onUpload={onUpload}
+      onUploadFolder={onUploadFolder}
       onRefresh={onRefresh}
     >
       {browserPane}

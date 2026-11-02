@@ -144,11 +144,12 @@ func (session *desktopRemoteSession) refreshUploadResult(ctx context.Context, ta
 	return err
 }
 
-func (session *desktopRemoteSession) runFileUpload(task *desktopRemoteTransfer, selection *desktopRemoteFileSelection) {
+func (session *desktopRemoteSession) runFileUpload(task *desktopRemoteTransfer, selection *desktopRemoteFileSelection, merge bool) {
 	info := task.snapshot()
 	var source protocol.TransferJob
 	err := session.client.request(task.ctx, http.MethodPost, "/api/v1/transfer-jobs/sftp/upload", protocol.TransferUploadInput{
 		ServerID: task.connection.ServerID, TargetPath: path.Dir(info.RemotePath), FileName: path.Base(info.RemotePath), FileSize: &info.Total,
+		Folder: selection.folder != nil, Merge: merge,
 	}, &source, true)
 	if err != nil {
 		if task.ctx.Err() != nil {
@@ -213,6 +214,23 @@ func (session *desktopRemoteSession) runFileUpload(task *desktopRemoteTransfer, 
 	task.finish("unknown", "upload_outcome_unknown")
 }
 
+// write sends the selected file, or a folder bundle, unchanged since selection.
+func (selection *desktopRemoteFileSelection) write(w io.Writer) error {
+	if selection.folder != nil {
+		return selection.folder.write(w)
+	}
+	if !sameDesktopUploadFile(selection.file, selection.snapshot) {
+		return remoteError("local_file_changed")
+	}
+	if _, err := io.CopyN(w, io.NewSectionReader(selection.file, 0, selection.info.Size), selection.info.Size); err != nil {
+		return err
+	}
+	if !sameDesktopUploadFile(selection.file, selection.snapshot) {
+		return remoteError("local_file_changed")
+	}
+	return nil
+}
+
 func (session *desktopRemoteSession) uploadFileBody(task *desktopRemoteTransfer, selection *desktopRemoteFileSelection) error {
 	ctx, touch, stop := remoteTransferContext(task.ctx)
 	defer stop()
@@ -221,18 +239,7 @@ func (session *desktopRemoteSession) uploadFileBody(task *desktopRemoteTransfer,
 	var producerErr error
 	go func() {
 		defer func() { _ = writer.CloseWithError(producerErr); close(producer) }()
-		if !sameDesktopUploadFile(selection.file, selection.snapshot) {
-			producerErr = remoteError("local_file_changed")
-			return
-		}
-		_, producerErr = io.CopyN(remoteTransferWriter{writer, task, touch}, io.NewSectionReader(selection.file, 0, selection.info.Size), selection.info.Size)
-		if producerErr != nil {
-			return
-		}
-		if !sameDesktopUploadFile(selection.file, selection.snapshot) {
-			producerErr = remoteError("local_file_changed")
-			return
-		}
+		producerErr = selection.write(remoteTransferWriter{writer, task, touch})
 	}()
 	defer func() { _ = reader.CloseWithError(context.Canceled); <-producer }()
 	info := task.snapshot()

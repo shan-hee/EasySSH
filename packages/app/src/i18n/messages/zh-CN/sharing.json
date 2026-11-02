@@ -127,6 +127,11 @@
   "forgetConfirm": "移除保存的分享授权并关闭对应窗口？",
   "nativeUploadHint": "请使用文件页顶部的“选择本机文件上传”",
   "nativeUpload": "选择本机文件上传",
+  "nativeUploadFolder": "选择本机文件夹上传",
+  "nativeUploadFolderSkipped": "已跳过 {count} 个链接或特殊文件",
+  "nativeUploadFolderMergeTitle": "文件夹已存在",
+  "nativeUploadFolderMergeDescription": "目标目录已有文件夹「{name}」。合并会把内容写入其中并覆盖同名文件，其他文件保持不变。",
+  "nativeUploadFolderMergeConfirm": "合并上传",
   "nativeTransfers": "本机传输",
   "nativeTransfersEmpty": "暂无本机传输",
   "transferKind": {

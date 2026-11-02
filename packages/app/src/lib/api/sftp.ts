@@ -2,6 +2,7 @@ import { apiFetch, getWebSocketUrl } from "@/lib/api-client"
 import { createAccessTicket } from "@/lib/access-ticket"
 import { connectionHeader, withServerConnection } from "@/lib/api/connections"
 import { transferJobsApi } from "@/lib/api/transfer-jobs"
+import { createFolderBundle } from "@/lib/folder-upload"
 import type { FileTransferSftpApi } from "@/lib/session/transfer-manager-controller"
 import type {
   TerminalAuthMethod,
@@ -287,6 +288,20 @@ export const sftpApi = {
     })
     onStarted(job.id)
     await transferJobsApi.uploadInput(job.id, file, { onProgress, signal })
+  },
+
+  async uploadFolder(serverId, remotePath, folder, { merge, onStarted, onProgress, signal }) {
+    const bundle = createFolderBundle(folder)
+    const job = await transferJobsApi.createUpload({
+      serverId,
+      targetPath: remotePath,
+      fileName: folder.name,
+      fileSize: bundle.size,
+      folder: true,
+      merge,
+    })
+    onStarted(job.id)
+    await transferJobsApi.uploadInput(job.id, bundle, { onProgress, signal })
   },
 
   async downloadFile(serverId, remotePath, { onStarted }) {

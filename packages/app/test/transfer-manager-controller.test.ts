@@ -169,6 +169,7 @@ function createHarness(overrides: Partial<FileTransferSftpApi>) {
     listTransfers: async () => [],
     cancelTransfer: async () => undefined,
     uploadFile: unavailable,
+    uploadFolder: unavailable,
     downloadFile: unavailable,
     batchDownload: unavailable,
     directTransfer: unavailable,

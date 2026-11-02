@@ -17,6 +17,8 @@ import (
 
 type uploadInput struct {
 	DeferStart bool `json:"defer_start"`
+	Folder     bool `json:"folder,omitempty"`
+	Merge      bool `json:"merge,omitempty"`
 }
 
 // Persist the target before accepting bytes. Awaiting input is distinct from a
@@ -30,6 +32,10 @@ func (s *service) CreateUploadJob(ctx context.Context, req *CreateUploadRequest)
 	if req == nil || req.FileSize < 0 || req.RetentionDays < 0 || req.RetentionDays > 30 ||
 		!path.IsAbs(req.TargetPath) || strings.ContainsAny(req.TargetPath, "\x00\\") || len(req.TargetPath) > 4096 ||
 		req.FileName == "" || req.FileName == "." || req.FileName == ".." || len(req.FileName) > 255 || strings.ContainsAny(req.FileName, "/\\\x00") {
+		return nil, ErrInvalidJobRequest
+	}
+	// A folder lands as a whole tree, never as a deferred scheduled-task input.
+	if req.Merge && !req.Folder || req.Folder && req.DeferStart {
 		return nil, ErrInvalidJobRequest
 	}
 	targetPath := path.Join(req.TargetPath, req.FileName)
@@ -47,6 +53,11 @@ func (s *service) CreateUploadJob(ctx context.Context, req *CreateUploadRequest)
 	requirement := access.Requirement{Action: protocol.FilesUpload, ServerID: serverID.String()}
 	if err := scope.CheckBytes(ctx, requirement, req.FileSize); err != nil {
 		return nil, err
+	}
+	if req.Folder {
+		if err := scope.Check(ctx, access.Requirement{Action: protocol.FilesWrite, ServerID: serverID.String()}); err != nil {
+			return nil, err
+		}
 	}
 	if _, err := s.serverService.GetByID(ctx, scope, serverID); err != nil {
 		return nil, err
@@ -66,9 +77,16 @@ func (s *service) CreateUploadJob(ctx context.Context, req *CreateUploadRequest)
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		label := []rune("上传 " + req.FileName)
+		if req.Folder {
+			label = []rune("上传文件夹 " + req.FileName)
+		}
 		name = string(label[:min(len(label), 160)])
 	}
-	detail, err := json.Marshal(uploadInput{DeferStart: req.DeferStart})
+	filesTotal := 1
+	if req.Folder {
+		filesTotal = 0 // counted from the manifest when the transfer starts
+	}
+	detail, err := json.Marshal(uploadInput{DeferStart: req.DeferStart, Folder: req.Folder, Merge: req.Merge})
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +95,7 @@ func (s *service) CreateUploadJob(ctx context.Context, req *CreateUploadRequest)
 		Status: JobStatusCreated, Stage: JobStageAwaitingInput, TargetServerID: &serverID,
 		SourcePath: req.FileName, TargetPath: targetPath, FileName: req.FileName,
 		ArtifactName: req.FileName, ArtifactManaged: true, ArtifactExpiresAt: &expires,
-		BytesTotal: req.FileSize, FilesTotal: 1, Description: req.Description, DetailJSON: string(detail),
+		BytesTotal: req.FileSize, FilesTotal: filesTotal, Description: req.Description, DetailJSON: string(detail),
 	}
 	return s.saveAdmission(ctx, job)
 }
@@ -126,7 +144,11 @@ func (s *service) UploadJobContent(ctx context.Context, id uuid.UUID, reader io.
 		return nil, err
 	}
 	requirement := access.Requirement{Action: protocol.FilesUpload, ServerID: job.TargetServerID.String()}
-	lease, err := access.Current(ctx).OpenWork(ctx, access.Task, requirement)
+	requirements := []access.Requirement{requirement}
+	if input.Folder {
+		requirements = append(requirements, access.Requirement{Action: protocol.FilesWrite, ServerID: job.TargetServerID.String()})
+	}
+	lease, err := access.Current(ctx).OpenWork(ctx, access.Task, requirements...)
 	if err != nil {
 		return nil, err
 	}

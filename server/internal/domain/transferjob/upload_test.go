@@ -2,6 +2,7 @@ package transferjob
 
 import (
 	"context"
+	"errors"
 	"github.com/easyssh/server/internal/testutil"
 	"io"
 	"os"
@@ -54,6 +55,24 @@ func assertUploadQueue(t *testing.T, db *gorm.DB, id uuid.UUID, want int64) {
 	var count int64
 	if err := db.Model(&jobqueue.Job{}).Where("id = ?", id).Count(&count).Error; err != nil || count != want {
 		t.Fatalf("queue count=%d want=%d err=%v", count, want, err)
+	}
+}
+
+func TestFolderUploadIntentValidatesOptions(t *testing.T) {
+	ctx, s, _, req := uploadFixture(t)
+	for _, invalid := range []CreateUploadRequest{
+		{ServerID: req.ServerID, TargetPath: req.TargetPath, FileName: "site", FileSize: 1, Merge: true},
+		{ServerID: req.ServerID, TargetPath: req.TargetPath, FileName: "site", FileSize: 1, Folder: true, DeferStart: true},
+	} {
+		if _, err := s.CreateUploadJob(ctx, &invalid); !errors.Is(err, ErrInvalidJobRequest) {
+			t.Fatalf("accepted %+v: %v", invalid, err)
+		}
+	}
+	folder := *req
+	folder.FileName, folder.Folder, folder.Merge = "site", true, true
+	job, err := s.CreateUploadJob(ctx, &folder)
+	if err != nil || job.FilesTotal != 0 || job.TargetPath != "/incoming/site" || !strings.Contains(job.DetailJSON, `"folder":true`) || !strings.Contains(job.DetailJSON, `"merge":true`) {
+		t.Fatalf("job=%+v err=%v", job, err)
 	}
 }
 

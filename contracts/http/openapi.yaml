@@ -3069,6 +3069,14 @@ components:
           type: boolean
           description: 仅所有者可用；完整接收后作为定时任务输入保留，不立即派发。
           x-go-type-skip-optional-pointer: true
+        folder:
+          type: boolean
+          description: 上传文件夹；file_name 为文件夹名，file_size 为文件夹包大小，input 为文件夹包（魔数、4 字节大端清单长度、JSON 清单，随后按清单顺序拼接文件内容）。需要 files.upload 与 files.write，不能与 defer_start 同用。
+          x-go-type-skip-optional-pointer: true
+        merge:
+          type: boolean
+          description: 仅文件夹上传可用；目标文件夹已存在时写入其中并替换同名文件。未设置时目标已存在则失败。
+          x-go-type-skip-optional-pointer: true
     TransferDownloadInput:
       type: object
       description: 创建持久下载任务。source_path 与 source_paths 必须且只能提供一个；目录及 source_paths 生成 ZIP，单个普通文件保留原格式。

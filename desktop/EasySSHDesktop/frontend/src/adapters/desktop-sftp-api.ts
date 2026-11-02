@@ -11,6 +11,7 @@ import type {
 } from "@easyssh/app/lib/sftp-types"
 import type { TransferJob } from "@easyssh/app/desktop"
 import { sftpRemoteBaseName } from "@easyssh/app/lib/sftp-file-utils"
+import { createFolderBundle } from "@easyssh/app/lib/folder-upload"
 import {
   DesktopSFTPService,
   type DesktopSSHCredential,
@@ -155,6 +156,37 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
       privateKey: options?.privateKey || (desktopAuthRequiresPrivateKey(authMethod) && !desktopAuthRequiresPassword(authMethod) ? secret : "") || "",
       privateKeyPassphrase,
     })
+  }
+
+  // 文件与文件夹包都以原始字节流交给本机网关，桌面任务由网关落库并报告进度。
+  const sendGatewayUpload = async (query: Record<string, string>, body: Blob, { taskId, onStarted, signal }: { taskId: string; onStarted: (jobId: string) => void; signal: AbortSignal }) => {
+    if (!gateway?.httpBaseUrl || !gateway.token) {
+      throw new Error("Desktop upload gateway is not ready")
+    }
+    signal.throwIfAborted()
+    const url = new URL(`${gateway.httpBaseUrl}/sftp/upload`)
+    url.search = new URLSearchParams({ ...query, taskId }).toString()
+    onStarted(taskId)
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-EasySSH-Desktop-Gateway-Token": gateway.token,
+      },
+      credentials: "omit",
+      redirect: "error",
+      body,
+      signal,
+    })
+    if (!response.ok) {
+      const message = (await response.text()).trim()
+      if (response.status === 409 && message === "upload_cancelled") {
+        throw new DOMException("Upload cancelled", "AbortError")
+      }
+      const error = new Error(message || `Upload failed (${response.status})`)
+      if (response.status === 409) throw Object.assign(error, { transferOutcome: "unknown" })
+      throw error
+    }
   }
 
   return {
@@ -382,34 +414,13 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
       })
     },
     uploadProgress: "task",
-    async uploadFile(serverId, remotePath, file, { taskId, onStarted, signal }) {
-      if (!gateway?.httpBaseUrl || !gateway.token) {
-        throw new Error("Desktop upload gateway is not ready")
-      }
-      signal.throwIfAborted()
-      const url = new URL(`${gateway.httpBaseUrl}/sftp/upload`)
-      url.search = new URLSearchParams({ serverId, path: remotePath, fileName: file.name, taskId }).toString()
-      onStarted(taskId)
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "X-EasySSH-Desktop-Gateway-Token": gateway.token,
-        },
-        credentials: "omit",
-        redirect: "error",
-        body: file,
-        signal,
-      })
-      if (!response.ok) {
-        const message = (await response.text()).trim()
-        if (response.status === 409 && message === "upload_cancelled") {
-          throw new DOMException("Upload cancelled", "AbortError")
-        }
-        const error = new Error(message || `Upload failed (${response.status})`)
-        if (response.status === 409) throw Object.assign(error, { transferOutcome: "unknown" })
-        throw error
-      }
+    async uploadFile(serverId, remotePath, file, options) {
+      await sendGatewayUpload({ serverId, path: remotePath, fileName: file.name }, file, options)
+    },
+    async uploadFolder(serverId, remotePath, folder, { merge, ...options }) {
+      const query: Record<string, string> = { serverId, path: remotePath, fileName: folder.name, folder: "1" }
+      if (merge) query.merge = "1"
+      await sendGatewayUpload(query, createFolderBundle(folder), options)
     },
     async directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, options) {
       options.onStarted(options.taskId)

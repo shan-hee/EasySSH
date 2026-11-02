@@ -89,6 +89,7 @@ export function useFileTransfer({
     downloadFile: controller.downloadFile,
     batchDownload: controller.batchDownload,
     uploadFile: controller.uploadFile,
+    uploadFolder: controller.uploadFolder,
     cancelTask: controller.cancelTask,
     removeTask: controller.removeTask,
     retryTask: controller.retryTask,

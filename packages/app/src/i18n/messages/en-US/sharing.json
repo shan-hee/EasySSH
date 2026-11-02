@@ -127,6 +127,11 @@
   "forgetConfirm": "Remove saved share access and close its windows?",
   "nativeUploadHint": "Use the native upload picker above the file browser",
   "nativeUpload": "Upload a local file",
+  "nativeUploadFolder": "Upload a local folder",
+  "nativeUploadFolderSkipped": "Skipped {count} links or special files",
+  "nativeUploadFolderMergeTitle": "Folder already exists",
+  "nativeUploadFolderMergeDescription": "A folder named \"{name}\" already exists at the destination. Merging writes into it and replaces files with the same name; other files stay as they are.",
+  "nativeUploadFolderMergeConfirm": "Merge upload",
   "nativeTransfers": "Local transfers",
   "nativeTransfersEmpty": "No local transfers",
   "transferKind": {

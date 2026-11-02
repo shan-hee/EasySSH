@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 
-import { useRef, useMemo, useEffect, type ReactNode } from "react"
+import { useRef, useMemo, useEffect, useState, type ChangeEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { SftpSessionProvider } from "@/contexts/sftp-session-context"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -27,6 +27,8 @@ import { useSftpFileBrowserController, type SftpFileBrowserItem } from "@/compon
 import { useSftpDragDropController } from "@/components/sftp/use-sftp-drag-drop-controller"
 import { useSftpFileActionController } from "@/components/sftp/use-sftp-file-action-controller"
 import { useSftpWorkspaceHeaderController } from "@/components/sftp/use-sftp-workspace-header-controller"
+import { readDroppedEntries, uploadFoldersFromInput, type UploadFolder } from "@/lib/folder-upload"
+import { getErrorMessage } from "@/lib/error-utils"
 
 export type SftpManagerFileItem = SftpFileBrowserItem
 
@@ -68,6 +70,8 @@ export interface SftpManagerProps {
     handler: { handle: () => boolean | Promise<boolean> } | null
   ) => void
   onUpload: (files: FileList, onProgress?: (fileName: string, loaded: number, total: number) => void) => void
+  /** 上传到当前目录下的同名文件夹；merge 表示写入已存在的文件夹。 */
+  onUploadFolder: (folder: UploadFolder, merge: boolean) => Promise<void>
   onDownload: (fileName: string) => void
   onDelete: (fileName: string, isDirectory: boolean) => void
   onBatchDelete?: (fileNames: string[], hasDirectory: boolean) => Promise<BatchDeleteResult>
@@ -122,6 +126,7 @@ export function SftpManager(props: SftpManagerProps) {
     canNavigateForward,
     onInternalBackHandlerChange,
     onUpload,
+    onUploadFolder,
     onDownload,
     onDelete,
     onBatchDelete,
@@ -202,8 +207,29 @@ export function SftpManager(props: SftpManagerProps) {
     })
   }, [files, setSelectedFiles])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const editingSessionLabelRef = useRef(false)
+  // 同名文件夹已存在、等待确认合并的上传，逐个确认。
+  const [folderConflicts, setFolderConflicts] = useState<{ folder: UploadFolder; path: string; upload: SftpManagerProps["onUploadFolder"] }[]>([])
+  const notifier = workspace?.adapters.notifier
+
+  const startFolderUploads = (folders: UploadFolder[]) => {
+    const conflicts: UploadFolder[] = []
+    for (const folder of folders) {
+      const existing = files.find((file) => file.name === folder.name)
+      if (!existing) {
+        // 失败已由会话提示。
+        void onUploadFolder(folder, false).catch(() => undefined)
+      } else if (existing.type === "directory") {
+        conflicts.push(folder)
+      } else {
+        notifier?.error(tSftp("uploadFolderTargetIsFile", { name: folder.name }))
+      }
+    }
+    // 展开拖入目录期间可以切换远端目录；确认后仍使用发起时绑定的目标。
+    if (conflicts.length > 0) setFolderConflicts((pending) => [...pending, ...conflicts.map((folder) => ({ folder, path: currentPath, upload: onUploadFolder }))])
+  }
 
   const {
     isDragging,
@@ -218,7 +244,25 @@ export function SftpManager(props: SftpManagerProps) {
     files,
     onRename,
     onUpload,
+    onUploadEntries: (entries) => {
+      void readDroppedEntries(entries).then(({ files: droppedFiles, folders }) => {
+        if (droppedFiles.length > 0) {
+          const transfer = new DataTransfer()
+          droppedFiles.forEach((file) => transfer.items.add(file))
+          onUpload(transfer.files)
+        }
+        startFolderUploads(folders)
+      }, (error: unknown) => {
+        notifier?.error(getErrorMessage(error, tSftp("uploadFolderReadFailed")))
+      })
+    },
   })
+
+  const handleFolderInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const selected = event.target.files
+    if (selected && selected.length > 0) startFolderUploads(uploadFoldersFromInput(selected))
+    event.target.value = ""
+  }
 
   const excludePatterns = workspace?.adapters.settings?.sftp?.downloadExcludePatterns
     ?? DEFAULT_SFTP_DOWNLOAD_EXCLUDE_PATTERNS
@@ -503,6 +547,7 @@ export function SftpManager(props: SftpManagerProps) {
             registerDragItem={registerDragItem}
             dropZoneRef={dropZoneRef}
             fileInputRef={fileInputRef}
+            folderInputRef={folderInputRef}
             editInputRef={editInputRef}
             folderLabel={tSftp("itemTypeFolder")}
             onClearSelectedFiles={clearSelectedFiles}
@@ -511,6 +556,8 @@ export function SftpManager(props: SftpManagerProps) {
             onCreateFolder={() => startCreateNew("folder")}
             onCreateFile={() => startCreateNew("file")}
             onUpload={() => fileInputRef.current?.click()}
+            onUploadFolder={() => folderInputRef.current?.click()}
+            onFolderInputChange={handleFolderInputChange}
             onRefresh={onRefresh}
             onEditingFileNameChange={setEditingFileName}
             onFinishCreate={finishCreate}
@@ -571,6 +618,19 @@ export function SftpManager(props: SftpManagerProps) {
         confirmText={tSftp("deleteConfirmButton")}
         variant="destructive"
         onConfirm={confirmDelete}
+      />
+
+      <ConfirmDialog
+        open={folderConflicts.length > 0}
+        onOpenChange={(open) => { if (!open) setFolderConflicts((pending) => pending.slice(1)) }}
+        title={tSftp("uploadFolderMergeTitle")}
+        description={tSftp("uploadFolderMergeDescription", { name: folderConflicts[0]?.folder.name ?? "", path: folderConflicts[0]?.path ?? "" })}
+        confirmText={tSftp("uploadFolderMergeConfirm")}
+        onConfirm={() => {
+          const [pending] = folderConflicts
+          // 失败已由会话提示。
+          if (pending) void pending.upload(pending.folder, true).catch(() => undefined)
+        }}
       />
 
 

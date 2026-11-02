@@ -826,6 +826,7 @@ function TabTerminalContentComponent({
               onInternalBackHandlerChange={setSftpInternalBackHandler}
               onRefresh={sftpSession.refresh}
               onUpload={sftpSession.uploadFiles}
+              onUploadFolder={sftpSession.uploadFolder}
               onDownload={sftpSession.downloadFile}
               onDelete={sftpSession.deleteFile}
               onRename={sftpSession.renameFile}

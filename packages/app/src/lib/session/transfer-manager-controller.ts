@@ -1,5 +1,6 @@
 import { isTransferJobSettled, type TransferJob } from "@/lib/transfer-job-types"
 import type { DirectTransferOptions } from "@/lib/sftp-types"
+import { uploadFolderSize, type UploadFolder } from "@/lib/folder-upload"
 import { sftpParentPath } from "./sftp-directory-source"
 import {
   createDownloadTransferTask,
@@ -38,6 +39,11 @@ export interface TransferUploadOptions extends TransferStartOptions {
   onProgress?: (loaded: number, total: number) => void
 }
 
+export interface TransferFolderUploadOptions extends TransferUploadOptions {
+  /** 目标文件夹已存在时写入其中并替换同名文件；否则目标已存在即失败。 */
+  merge: boolean
+}
+
 /**
  * 宿主提供的传输能力。所有传输都是可查询的传输任务：启动方法在宿主接收全部输入后返回，
  * 其后的进度、结果与取消都通过任务 ID 完成。
@@ -50,6 +56,8 @@ export interface FileTransferSftpApi {
   listTransfers: () => Promise<TransferJob[]>
   cancelTransfer: (id: string) => Promise<unknown>
   uploadFile: (serverId: string, remotePath: string, file: File, options: TransferUploadOptions) => Promise<void>
+  /** 整个文件夹作为一个传输任务上传到 remotePath 下的同名文件夹。 */
+  uploadFolder: (serverId: string, remotePath: string, folder: UploadFolder, options: TransferFolderUploadOptions) => Promise<void>
   downloadFile: (serverId: string, remotePath: string, options: TransferStartOptions) => Promise<void>
   batchDownload: (
     serverId: string,
@@ -98,6 +106,7 @@ export interface FileTransferController {
     file: File,
     onProgress?: (loaded: number, total: number) => void,
   ) => Promise<void>
+  uploadFolder: (serverId: string, remotePath: string, folder: UploadFolder, merge: boolean) => Promise<void>
   cancelTask: (taskId: string) => void
   removeTask: (taskId: string) => void
   /** 以原参数重新发起失败的任务；新任务替换原列表项。 */
@@ -275,6 +284,15 @@ export function createFileTransferController({
     }
   }
 
+  const reportUploadProgress = (taskId: string, loaded: number, total: number) => {
+    updateTask(taskId, {
+      status: "uploading",
+      stage: "http",
+      bytesTransferred: loaded,
+      progress: total > 0 ? Math.round((loaded / total) * 100) : 0,
+    }, true)
+  }
+
   const cancelTask = (taskId: string) => {
     const task = findTransferTask(getTasks(), taskId)
     const entry = running.get(taskId)
@@ -324,14 +342,23 @@ export function createFileTransferController({
       }), (options) => api.uploadFile(serverId, remotePath, file, {
         ...options,
         onProgress: (loaded, total) => {
-          updateTask(options.taskId, {
-            status: "uploading",
-            stage: "http",
-            bytesTransferred: loaded,
-            progress: total > 0 ? Math.round((loaded / total) * 100) : 0,
-          }, true)
+          reportUploadProgress(options.taskId, loaded, total)
           onProgress?.(loaded, total)
         },
+      }), { limitConcurrency: true, watchAfterStart: api.uploadProgress !== "task" })
+    },
+
+    uploadFolder(serverId, remotePath, folder, merge) {
+      return runTransfer(() => createUploadTransferTask({
+        taskId: newTaskId(),
+        fileName: folder.name,
+        fileSizeBytes: uploadFolderSize(folder),
+        serverId,
+        remotePath,
+      }), (options) => api.uploadFolder(serverId, remotePath, folder, {
+        ...options,
+        merge,
+        onProgress: (loaded, total) => reportUploadProgress(options.taskId, loaded, total),
       }), { limitConcurrency: true, watchAfterStart: api.uploadProgress !== "task" })
     },
 

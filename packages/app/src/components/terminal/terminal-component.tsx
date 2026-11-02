@@ -175,6 +175,7 @@ const disabledFileTransferApi: FileTransferSftpApi = {
   listTransfers: async () => [],
   cancelTransfer: async () => undefined,
   uploadFile: unavailableTransfer,
+  uploadFolder: unavailableTransfer,
   downloadFile: unavailableTransfer,
   batchDownload: unavailableTransfer,
   directTransfer: unavailableTransfer,
@@ -290,6 +291,7 @@ export function TerminalComponent({
       !api.listTransfers ||
       !api.cancelTransfer ||
       !api.uploadFile ||
+      !api.uploadFolder ||
       !api.downloadFile ||
       !api.batchDownload ||
       !api.directTransfer
@@ -303,6 +305,7 @@ export function TerminalComponent({
       listTransfers: api.listTransfers,
       cancelTransfer: api.cancelTransfer,
       uploadFile: api.uploadFile,
+      uploadFolder: api.uploadFolder,
       downloadFile: api.downloadFile,
       batchDownload: api.batchDownload,
       deliverArtifact: api.deliverArtifact,

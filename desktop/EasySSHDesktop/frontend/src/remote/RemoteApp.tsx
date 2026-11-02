@@ -140,7 +140,7 @@ function RemoteWorkspace({
       refresh={refresh}
       fileActions={(resource, path) =>
         resource.actions.includes("files.upload")
-          ? transfers.upload(resource.id, path)
+          ? transfers.upload(resource.id, path, resource.actions.includes("files.write"))
           : null
       }
       header={

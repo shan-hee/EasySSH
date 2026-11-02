@@ -5226,10 +5226,16 @@ type TransferStatistics struct {
 // TransferUploadInput 先持久化上传目标和准确大小，再向返回任务的 input 入口发送原始文件；完整接收后才进入远端上传队列。
 type TransferUploadInput struct {
 	// DeferStart 仅所有者可用；完整接收后作为定时任务输入保留，不立即派发。
-	DeferStart    bool   `json:"defer_start,omitempty"`
-	Description   string `json:"description,omitempty"`
-	FileName      string `binding:"required" json:"file_name"`
-	FileSize      *int64 `binding:"required" json:"file_size"`
+	DeferStart  bool   `json:"defer_start,omitempty"`
+	Description string `json:"description,omitempty"`
+	FileName    string `binding:"required" json:"file_name"`
+	FileSize    *int64 `binding:"required" json:"file_size"`
+
+	// Folder 上传文件夹；file_name 为文件夹名，file_size 为文件夹包大小，input 为文件夹包（魔数、4 字节大端清单长度、JSON 清单，随后按清单顺序拼接文件内容）。需要 files.upload 与 files.write，不能与 defer_start 同用。
+	Folder bool `json:"folder,omitempty"`
+
+	// Merge 仅文件夹上传可用；目标文件夹已存在时写入其中并替换同名文件。未设置时目标已存在则失败。
+	Merge         bool   `json:"merge,omitempty"`
 	Name          string `json:"name,omitempty"`
 	RetentionDays int    `json:"retention_days,omitempty"`
 	ServerID      string `binding:"required" json:"server_id"`

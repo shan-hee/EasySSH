@@ -819,6 +819,13 @@ func (s *service) executeUpload(ctx context.Context, job *TransferJob) error {
 	if err := access.Current(ctx).CheckBytes(ctx, access.Requirement{Action: protocol.FilesUpload, ServerID: job.TargetServerID.String()}, job.ArtifactSize); err != nil {
 		return finish(err)
 	}
+	var input uploadInput
+	if err := json.Unmarshal([]byte(job.DetailJSON), &input); err != nil {
+		return finish(err)
+	}
+	if input.Folder {
+		return s.executeFolderUpload(ctx, job, input.Merge)
+	}
 	file, err := os.Open(job.ArtifactPath)
 	if err != nil {
 		return finish(err)

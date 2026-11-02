@@ -1821,6 +1821,11 @@ export class DesktopRemoteFileSelection {
     "size": number;
     "expires_at": time$0.Time;
 
+    /**
+     * Links and special files a folder selection leaves out.
+     */
+    "skipped"?: number;
+
     /** Creates a new DesktopRemoteFileSelection instance. */
     constructor($$source: Partial<DesktopRemoteFileSelection> = {}) {
         if (!("id" in $$source)) {

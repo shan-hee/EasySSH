@@ -75,6 +75,9 @@ export const remoteFileApi: NonNullable<SshWorkspaceApiClient["sftp"]> = {
   async uploadFile() {
     throw new Error("Use the native upload picker")
   },
+  async uploadFolder() {
+    throw new Error("Use the native upload picker")
+  },
   async downloadFile() {
     throw new Error("Native transfer manager required")
   },

@@ -12,6 +12,7 @@ import type {
   SftpFileItem,
 } from "@/lib/sftp-types"
 import type { FileTransferSftpApi } from "./transfer-manager-controller"
+import type { UploadFolder } from "@/lib/folder-upload"
 import type {
   StreamTicketOptions,
   TerminalConnectionPhase,
@@ -646,6 +647,7 @@ export interface SshWorkspaceTransferManager {
     file: File,
     onProgress?: (loaded: number, total: number) => void,
   ) => Promise<void>
+  uploadFolder?: (serverId: string, remotePath: string, folder: UploadFolder, merge: boolean) => Promise<void>
   directTransfer?: (
     sourceServerId: string,
     sourcePath: string,

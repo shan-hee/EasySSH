@@ -93,6 +93,12 @@ export function ChooseUploadFile(connectionID: string): $CancellablePromise<$mod
     });
 }
 
+export function ChooseUploadFolder(connectionID: string): $CancellablePromise<$models.DesktopRemoteFileSelection> {
+    return $Call.ByID(4206373522, connectionID).then(($result: any) => {
+        return $$createType9($result);
+    });
+}
+
 export function ClaimHandoff(localID: string): $CancellablePromise<$models.DesktopRemoteWorkspace> {
     return $Call.ByID(2714637652, localID).then(($result: any) => {
         return $$createType10($result);
@@ -477,6 +483,16 @@ export function StartFileDownload(connectionID: string, remotePath: string): $Ca
 
 export function StartFileUpload(connectionID: string, selectionID: string, remotePath: string): $CancellablePromise<$models.DesktopRemoteTransfer> {
     return $Call.ByID(1579794329, connectionID, selectionID, remotePath).then(($result: any) => {
+        return $$createType41($result);
+    });
+}
+
+/**
+ * StartFolderUpload refuses an existing remotePath unless merge is set, so the
+ * caller can ask before any file is sent.
+ */
+export function StartFolderUpload(connectionID: string, selectionID: string, remotePath: string, merge: boolean): $CancellablePromise<$models.DesktopRemoteTransfer> {
+    return $Call.ByID(588716051, connectionID, selectionID, remotePath, merge).then(($result: any) => {
         return $$createType41($result);
     });
 }

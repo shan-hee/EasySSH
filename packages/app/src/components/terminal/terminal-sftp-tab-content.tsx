@@ -184,6 +184,7 @@ export function TerminalSftpTabContent({
         onNavigateForward={sftp.goForward}
         canNavigateForward={sftp.canGoForward}
         onUpload={sftp.uploadFiles}
+        onUploadFolder={sftp.uploadFolder}
         onDownload={sftp.downloadFile}
         onDelete={sftp.deleteFile}
         onBatchDelete={sftp.batchDeleteFiles}

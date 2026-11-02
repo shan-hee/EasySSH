@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"math"
 	"os"
 	"path"
 	"strings"
-	"time"
 
 	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/systemconfig"
@@ -221,27 +219,7 @@ func (s *service) executeRelay(ctx context.Context, job *TransferJob) error {
 	if !changed {
 		return finish(context.Canceled)
 	}
-	start, last := time.Now(), time.Time{}
-	publish := func(force bool) {
-		if !force && time.Since(last) < 500*time.Millisecond {
-			return
-		}
-		last = time.Now()
-		job.Progress = transferProgress(job.BytesProcessed, job.BytesTotal)
-		progressCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		_, err := s.repo.UpdateIfStatus(progressCtx, job.ID, []JobStatus{JobStatusRunning, JobStatusCanceling}, map[string]interface{}{
-			"bytes_processed": job.BytesProcessed, "bytes_completed": job.BytesCompleted,
-			"files_completed": job.FilesCompleted, "progress": job.Progress,
-			"speed_bps": int64(float64(job.BytesProcessed) / max(time.Since(start).Seconds(), 0.001)),
-		})
-		if err == nil {
-			err = s.syncTaskRun(progressCtx, job.ID)
-		}
-		if err != nil {
-			log.Printf("[TransferJob] relay progress persistence: job=%s error=%v", job.ID, err)
-		}
-	}
+	progress := s.newTreeProgress(ctx, job)
 	for _, directory := range plan.directories {
 		if err := access.Current(ctx).Check(ctx, writeReq); err != nil {
 			return finish(err)
@@ -254,13 +232,13 @@ func (s *service) executeRelay(ctx context.Context, job *TransferJob) error {
 		if err := ctx.Err(); err != nil {
 			return finish(err)
 		}
-		err := copyRelayFile(ctx, source.RawClient(), target.RawClient(), file, path.Join(job.ResultPath, file.relative), readReq, writeReq, func(n int) { job.BytesProcessed += int64(n); publish(false) })
+		err := copyRelayFile(ctx, source.RawClient(), target.RawClient(), file, path.Join(job.ResultPath, file.relative), readReq, writeReq, func(n int) { job.BytesProcessed += int64(n); progress.publish(false) })
 		if err != nil {
 			return finish(err)
 		}
 		job.BytesCompleted += file.info.Size()
 		job.FilesCompleted++
-		publish(true)
+		progress.publish(true)
 	}
 	return finish(nil)
 }

@@ -23,6 +23,10 @@ export interface CreateUploadJobOptions {
   description?: string
   retentionDays?: number
   deferStart?: boolean
+  /** 上传文件夹：fileName 为文件夹名，内容为文件夹包。 */
+  folder?: boolean
+  /** 文件夹已存在时写入其中并替换同名文件。 */
+  merge?: boolean
 }
 
 export interface UploadJobInputOptions {
@@ -62,7 +66,7 @@ function rejectUpload(xhr: XMLHttpRequest): Error {
 }
 
 /** 以原始字节流提交上传内容；使用 XHR 以获得发送进度。 */
-async function sendUploadInput(jobId: string, file: File, { onProgress, signal }: UploadJobInputOptions): Promise<TransferJob> {
+async function sendUploadInput(jobId: string, body: Blob, { onProgress, signal }: UploadJobInputOptions): Promise<TransferJob> {
   const headers = await platformRequestHeaders("PUT")
   signal?.throwIfAborted()
   return new Promise<TransferJob>((resolve, reject) => {
@@ -99,7 +103,7 @@ async function sendUploadInput(jobId: string, file: File, { onProgress, signal }
     xhr.withCredentials = true
     xhr.setRequestHeader("Content-Type", "application/octet-stream")
     Object.entries(headers).forEach(([key, value]) => xhr.setRequestHeader(key, value))
-    xhr.send(file)
+    xhr.send(body)
   })
 }
 
@@ -139,6 +143,8 @@ export const transferJobsApi = {
         description: options.description,
         retention_days: options.retentionDays,
         defer_start: options.deferStart,
+        folder: options.folder,
+        merge: options.merge,
       },
       retry: false,
     })

@@ -108,6 +108,9 @@ type CreateUploadRequest struct {
 	RetentionDays int    `json:"retention_days"`
 	Description   string `json:"description"`
 	DeferStart    bool   `json:"defer_start"`
+	// Folder means FileName names a folder and the input is a folder bundle.
+	Folder bool `json:"folder"`
+	Merge  bool `json:"merge"`
 }
 
 type CreateDownloadRequest struct {

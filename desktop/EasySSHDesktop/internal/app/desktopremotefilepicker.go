@@ -91,15 +91,8 @@ func (s *DesktopRemoteWorkspaceService) ChooseUploadFile(ctx context.Context, co
 		return DesktopRemoteFileSelection{}, err
 	}
 	defer done()
-	if _, err = session.fileAction(ctx, connectionID, protocol.FilesUpload); err != nil {
+	if err = session.prepareSelection(ctx, connectionID, protocol.FilesUpload); err != nil {
 		return DesktopRemoteFileSelection{}, err
-	}
-	session.maintainFiles()
-	session.resourcesMu.Lock()
-	full := len(session.selections) >= remoteFileSelectionLimit
-	session.resourcesMu.Unlock()
-	if full {
-		return DesktopRemoteFileSelection{}, remoteError("file_selection_capacity")
 	}
 	selected, err := s.promptRemoteFile(ctx, func() (string, error) {
 		return s.app.Dialog.OpenFile().AttachToWindow(session.window).CanChooseFiles(true).CanChooseDirectories(false).
@@ -117,26 +110,48 @@ func (s *DesktopRemoteWorkspaceService) ChooseUploadFile(ctx context.Context, co
 		file.Close()
 		return DesktopRemoteFileSelection{}, remoteError("local_file_not_regular")
 	}
-	info := DesktopRemoteFileSelection{uuid.NewString(), filepath.Base(selected), stat.Size(), time.Now().Add(5 * time.Minute)}
+	info := DesktopRemoteFileSelection{ID: uuid.NewString(), Name: filepath.Base(selected), Size: stat.Size(), ExpiresAt: time.Now().Add(5 * time.Minute)}
+	if err = session.storeSelection(ctx, &desktopRemoteFileSelection{info: info, connectionID: connectionID, file: file, snapshot: stat}); err != nil {
+		file.Close()
+		return DesktopRemoteFileSelection{}, err
+	}
+	return info, nil
+}
+
+// Selections are bounded before a native dialog opens and again when stored.
+func (session *desktopRemoteSession) prepareSelection(ctx context.Context, connectionID string, actions ...protocol.Action) error {
+	for _, action := range actions {
+		if _, err := session.fileAction(ctx, connectionID, action); err != nil {
+			return err
+		}
+	}
+	session.maintainFiles()
+	session.resourcesMu.Lock()
+	full := len(session.selections) >= remoteFileSelectionLimit
+	session.resourcesMu.Unlock()
+	if full {
+		return remoteError("file_selection_capacity")
+	}
+	return nil
+}
+
+func (session *desktopRemoteSession) storeSelection(ctx context.Context, selection *desktopRemoteFileSelection) error {
 	session.resourcesMu.Lock()
 	defer session.resourcesMu.Unlock()
 	if session.stopping || ctx.Err() != nil {
-		file.Close()
-		return DesktopRemoteFileSelection{}, remoteError("workspace_closed")
+		return remoteError("workspace_closed")
 	}
-	if _, ok := session.connections[connectionID]; !ok {
-		file.Close()
-		return DesktopRemoteFileSelection{}, remoteError("connection_unavailable")
+	if _, ok := session.connections[selection.connectionID]; !ok {
+		return remoteError("connection_unavailable")
 	}
 	if len(session.selections) >= remoteFileSelectionLimit {
-		file.Close()
-		return DesktopRemoteFileSelection{}, remoteError("file_selection_capacity")
+		return remoteError("file_selection_capacity")
 	}
 	if session.selections == nil {
 		session.selections = make(map[string]*desktopRemoteFileSelection)
 	}
-	session.selections[info.ID] = &desktopRemoteFileSelection{info, connectionID, file, stat}
-	return info, nil
+	session.selections[selection.info.ID] = selection
+	return nil
 }
 
 func (s *DesktopRemoteWorkspaceService) DiscardUploadFile(ctx context.Context, id string) error {
@@ -155,6 +170,12 @@ func (s *DesktopRemoteWorkspaceService) DiscardUploadFile(ctx context.Context, i
 }
 
 func (s *DesktopRemoteWorkspaceService) StartFileUpload(ctx context.Context, connectionID, selectionID, remotePath string) (DesktopRemoteTransfer, error) {
+	return s.startUpload(ctx, connectionID, selectionID, remotePath, false, false)
+}
+
+// A native selection is consumed by exactly one upload. remotePath names the
+// file or folder to create; merge lets a folder write into an existing one.
+func (s *DesktopRemoteWorkspaceService) startUpload(ctx context.Context, connectionID, selectionID, remotePath string, folder, merge bool) (DesktopRemoteTransfer, error) {
 	if !validRemoteFilePath(remotePath) || remotePath == "/" {
 		return DesktopRemoteTransfer{}, remoteError("invalid_path")
 	}
@@ -167,17 +188,29 @@ func (s *DesktopRemoteWorkspaceService) StartFileUpload(ctx context.Context, con
 	if err != nil {
 		return DesktopRemoteTransfer{}, err
 	}
+	if folder {
+		// Creating directories needs write access too.
+		if _, err = session.fileAction(ctx, connectionID, protocol.FilesWrite); err != nil {
+			return DesktopRemoteTransfer{}, err
+		}
+		if !merge {
+			if err = session.requireFreeRemotePath(ctx, connectionID, remotePath); err != nil {
+				return DesktopRemoteTransfer{}, err
+			}
+		}
+	}
 	session.resourcesMu.Lock()
 	if ctx.Err() != nil {
 		session.resourcesMu.Unlock()
 		return DesktopRemoteTransfer{}, ctx.Err()
 	}
 	selection := session.selections[selectionID]
-	if selection == nil || selection.connectionID != connectionID {
+	if selection == nil || selection.connectionID != connectionID || (selection.folder != nil) != folder {
 		session.resourcesMu.Unlock()
 		return DesktopRemoteTransfer{}, remoteError("file_selection_unavailable")
 	}
-	if !selection.info.ExpiresAt.After(time.Now()) || !sameDesktopUploadFile(selection.file, selection.snapshot) {
+	// Folder files are checked one by one while they are sent.
+	if !selection.info.ExpiresAt.After(time.Now()) || !folder && !sameDesktopUploadFile(selection.file, selection.snapshot) {
 		delete(session.selections, selectionID)
 		session.resourcesMu.Unlock()
 		selection.file.Close()
@@ -197,7 +230,7 @@ func (s *DesktopRemoteWorkspaceService) StartFileUpload(ctx context.Context, con
 		defer selection.file.Close()
 		stopRead := context.AfterFunc(task.ctx, func() { _ = selection.file.Close() })
 		defer stopRead()
-		session.runFileUpload(task, selection)
+		session.runFileUpload(task, selection, merge)
 	}()
 	return task.snapshot(), nil
 }

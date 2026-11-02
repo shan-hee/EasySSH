@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { ChevronLeft, ChevronRight, ListChecks, RefreshCw, X } from "lucide-react"
 import { Button } from "@easyssh/app/components/ui/button"
+import { ConfirmDialog } from "@easyssh/app/components/ui/confirm-dialog"
 import {
   TransferListPopover,
   TransferListRow,
@@ -50,6 +51,9 @@ export function useRemoteTransfers() {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
+  // 同名文件夹已存在、等待确认合并的上传；本机选择在确认或取消前保持有效。
+  const pendingMerge = useRef<{ connection: string; selection: string; target: string } | null>(null)
+  const [mergeName, setMergeName] = useState<string | null>(null)
   const refresh = useCallback(async () => {
     const result = await Remote.ListFileTransfers(
       new DesktopRemoteTransferListInput({ page, page_size: PAGE_SIZE }),
@@ -105,33 +109,99 @@ export function useRemoteTransfers() {
       uploadFile: async () => {
         throw new Error(t("nativeUploadHint"))
       },
+      uploadFolder: async () => {
+        throw new Error(t("nativeUploadHint"))
+      },
     }),
     [act, t],
   )
-  const upload = (serverId: string, path: string) => (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={busy}
-      onClick={() =>
-        void act(async () => {
-          await withServerConnection(serverId, "files", async (connection) => {
-            const selected = await Remote.ChooseUploadFile(connection)
-            try {
-              await Remote.StartFileUpload(
-                connection,
-                selected.id,
-                `${path.replace(/\/$/, "")}/${selected.name}`,
-              )
-            } finally {
-              await Remote.DiscardUploadFile(selected.id).catch(() => undefined)
-            }
+  const upload = (serverId: string, path: string, canUploadFolder: boolean) => (
+    <>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() =>
+          void act(async () => {
+            await withServerConnection(serverId, "files", async (connection) => {
+              const selected = await Remote.ChooseUploadFile(connection)
+              try {
+                await Remote.StartFileUpload(
+                  connection,
+                  selected.id,
+                  `${path.replace(/\/$/, "")}/${selected.name}`,
+                )
+              } finally {
+                await Remote.DiscardUploadFile(selected.id).catch(() => undefined)
+              }
+            })
           })
+        }
+      >
+        {t("nativeUpload")}
+      </Button>
+      {canUploadFolder && (
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy}
+          onClick={() =>
+            void act(async () => {
+              await withServerConnection(serverId, "files", async (connection) => {
+                const selected = await Remote.ChooseUploadFolder(connection)
+                const target = `${path.replace(/\/$/, "")}/${selected.name}`
+                if (selected.skipped) toast.warning(t("nativeUploadFolderSkipped", { count: selected.skipped }))
+                let keep = false
+                try {
+                  await Remote.StartFolderUpload(connection, selected.id, target, false)
+                } catch (error) {
+                  if (!String(error).includes("target_exists")) throw error
+                  // 本机选择保留到用户确认或取消合并。
+                  keep = true
+                  pendingMerge.current = { connection, selection: selected.id, target }
+                  setMergeName(selected.name)
+                } finally {
+                  if (!keep) await Remote.DiscardUploadFile(selected.id).catch(() => undefined)
+                }
+              })
+            })
+          }
+        >
+          {t("nativeUploadFolder")}
+        </Button>
+      )}
+    </>
+  )
+  const takePendingMerge = () => {
+    const pending = pendingMerge.current
+    pendingMerge.current = null
+    setMergeName(null)
+    return pending
+  }
+  const mergeDialog = (
+    <ConfirmDialog
+      open={mergeName !== null}
+      onOpenChange={(open) => {
+        if (open) return
+        // 确认时已取走待合并的选择，这里只释放被取消的选择。
+        const pending = takePendingMerge()
+        if (pending) void Remote.DiscardUploadFile(pending.selection).catch(() => undefined)
+      }}
+      title={t("nativeUploadFolderMergeTitle")}
+      description={t("nativeUploadFolderMergeDescription", { name: mergeName ?? "" })}
+      confirmText={t("nativeUploadFolderMergeConfirm")}
+      onConfirm={() => {
+        const pending = takePendingMerge()
+        if (!pending) return
+        void act(async () => {
+          try {
+            await Remote.StartFolderUpload(pending.connection, pending.selection, pending.target, true)
+          } finally {
+            await Remote.DiscardUploadFile(pending.selection).catch(() => undefined)
+          }
         })
-      }
-    >
-      {t("nativeUpload")}
-    </Button>
+      }}
+    />
   )
   const activeCount = items.filter((item) => active(item.status)).length
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
@@ -217,5 +287,5 @@ export function useRemoteTransfers() {
       )}
     />
   )
-  return { manager, upload, panel }
+  return { manager, upload, panel: <>{panel}{mergeDialog}</> }
 }

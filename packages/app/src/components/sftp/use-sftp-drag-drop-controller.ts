@@ -6,6 +6,7 @@ import { dropTargetForExternal } from "@atlaskit/pragmatic-drag-and-drop/externa
 import { containsFiles, getFiles } from "@atlaskit/pragmatic-drag-and-drop/external/file"
 import { isSftpFileDragData, SFTP_FILE_DRAG_TYPE } from "@/lib/session/cross-session-file-drag"
 import { joinSftpRelativePath, joinSftpRemotePath } from "@/lib/sftp-file-utils"
+import { takeDroppedEntries } from "@/lib/folder-upload"
 
 export interface SftpDragDropFileItem { name: string; type: "file" | "directory" }
 export type RegisterSftpDragItem = (element: HTMLElement, fileName: string) => () => void
@@ -15,16 +16,18 @@ export interface UseSftpDragDropControllerOptions {
   files: SftpDragDropFileItem[]
   onRename: (oldName: string, newName: string) => void
   onUpload: (files: FileList) => void | Promise<void>
+  /** 拖入内容包含文件夹时，交出全部条目由调用方展开。 */
+  onUploadEntries: (entries: FileSystemEntry[]) => void
 }
 
-export function useSftpDragDropController({ sessionId, currentPath, files, onRename, onUpload }: UseSftpDragDropControllerOptions) {
+export function useSftpDragDropController({ sessionId, currentPath, files, onRename, onUpload, onUploadEntries }: UseSftpDragDropControllerOptions) {
   const can = useWorkspaceAction()
   const [isDragging, setIsDragging] = useState(false)
   const [draggedFileName, setDraggedFileName] = useState<string | null>(null)
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null)
   const fileTypes = useMemo(() => new Map(files.map(file => [file.name, file.type])), [files])
-  const latest = useRef({ sessionId, currentPath, fileTypes, onRename, onUpload, can })
-  useLayoutEffect(() => { latest.current = { sessionId, currentPath, fileTypes, onRename, onUpload, can } }, [sessionId, currentPath, fileTypes, onRename, onUpload, can])
+  const latest = useRef({ sessionId, currentPath, fileTypes, onRename, onUpload, onUploadEntries, can })
+  useLayoutEffect(() => { latest.current = { sessionId, currentPath, fileTypes, onRename, onUpload, onUploadEntries, can } }, [sessionId, currentPath, fileTypes, onRename, onUpload, onUploadEntries, can])
 
   // Rows register in their own effect. Read current directory metadata when a gesture occurs.
   const registerDragItem = useCallback<RegisterSftpDragItem>((element, name) => combine(
@@ -75,6 +78,12 @@ export function useSftpDragDropController({ sessionId, currentPath, files, onRen
       onDrop: ({ source, location, self }) => {
         setIsDragging(false)
         if (location.current.dropTargets[0]?.element !== self.element) return
+        // 条目只能在 drop 事件内取得；包含文件夹时整体交给调用方异步展开。
+        const entries = takeDroppedEntries(source.items)
+        if (entries.some((entry) => entry.isDirectory)) {
+          latest.current.onUploadEntries(entries)
+          return
+        }
         const files = getFiles({ source })
         if (files.length) {
           const transfer = new DataTransfer()

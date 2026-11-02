@@ -67,7 +67,13 @@ func (g *DesktopGateway) handleSFTPUpload(w http.ResponseWriter, r *http.Request
 	}
 	defer r.Body.Close()
 	body := desktopUploadBody{ReadCloser: r.Body, controller: http.NewResponseController(w)}
-	_, err := g.sftpService.uploadStream(r.Context(), serverID, remotePath, fileName, taskID, r.ContentLength, body)
+	var err error
+	// A folder upload names the folder in fileName and sends a folder bundle.
+	if r.URL.Query().Get("folder") == "1" {
+		err = g.sftpService.uploadFolderStream(r.Context(), serverID, remotePath, fileName, taskID, r.URL.Query().Get("merge") == "1", r.ContentLength, body)
+	} else {
+		_, err = g.sftpService.uploadStream(r.Context(), serverID, remotePath, fileName, taskID, r.ContentLength, body)
+	}
 	if err != nil {
 		if errors.Is(err, errDesktopSFTPTaskCancelled) {
 			http.Error(w, "upload_cancelled", http.StatusConflict)
