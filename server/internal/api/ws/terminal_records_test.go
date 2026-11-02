@@ -3,14 +3,17 @@ package ws
 import (
 	"context"
 	"errors"
-	"github.com/easyssh/server/internal/testutil"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/api/middleware"
+	"github.com/easyssh/server/internal/domain/auth"
 	"github.com/easyssh/server/internal/domain/operationrecord"
+	"github.com/easyssh/server/internal/domain/security"
+	"github.com/easyssh/server/internal/testutil"
 	"github.com/easyssh/shared/protocol"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -40,6 +43,12 @@ func (a terminalRecordAuthority) OpenWork(ctx context.Context, scope access.Scop
 	return a.runtime.Reserve(ctx, scope, kind, 0, requirements...)
 }
 
+type terminalRecordSecurity struct{ security.Service }
+
+func (terminalRecordSecurity) CheckIPAllowed(context.Context, string) (bool, error) {
+	return true, nil
+}
+
 func TestTerminalRejectsConnectionWhenIntentCannotBeSaved(t *testing.T) {
 	runtime := access.NewRuntime()
 	defer runtime.Close()
@@ -54,22 +63,20 @@ func TestTerminalRejectsConnectionWhenIntentCannotBeSaved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logical, err := runtime.Connection(ctx, scope, info.ID, serverID)
-	if err != nil {
-		t.Fatal(err)
-	}
 	// All SSH dependencies are deliberately absent: rejection must precede dial.
 	handler := &TerminalHandler{operationRecords: &terminalRecordService{err: errors.New("database unavailable")}}
+	tickets := &upgradeTickets{ticket: auth.Ticket{Type: auth.TicketTypeWSTerminal, Ref: serverID, Scope: scope, ConnectionID: info.ID}}
 	router := gin.New()
-	router.GET("/terminal/:server_id", func(c *gin.Context) {
-		bound, release := logical.Bind(access.WithScope(c.Request.Context(), scope))
-		defer release()
-		c.Request = c.Request.WithContext(bound)
-		handler.HandleSSH(c)
-	})
+	// Use the production authentication path so the upgrade reaches the record
+	// write instead of failing because no ticket was consumed.
+	router.GET("/api/v1/ssh/terminal/:server_id",
+		middleware.ExecutionAuth(&auth.Service{}, tickets, terminalRecordSecurity{}, nil),
+		middleware.ConnectionContext(runtime, "server_id"),
+		handler.HandleSSH,
+	)
 	server := httptest.NewServer(router)
 	defer server.Close()
-	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/terminal/"+serverID, nil)
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/api/v1/ssh/terminal/"+serverID+"?ticket=valid-ticket", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
