@@ -7,6 +7,7 @@
   "shareLink": "分享链接",
   "copied": "已复制",
   "copy": "复制链接",
+  "openLink": "打开链接",
   "copyFailed": "复制失败，请手动复制链接",
   "revoked": "已撤销",
   "longLived": "长期有效",
@@ -36,6 +37,11 @@
   "docker": "容器",
   "expiryHint": "到期时间（留空为 24 小时）",
   "resources": "可用服务器",
+  "openResource": "打开 {name}",
+  "openResourceMode": "打开 {name} · {mode}",
+  "doubleClickResource": "双击打开默认内容",
+  "resourceActions": "可用操作",
+  "resourcePaused": "已暂停",
   "interactive": "允许访客响应 SSH 交互认证（编辑时需重新确认）",
   "scriptVersions": "仅允许已选脚本的当前版本；修改脚本后需要更新授权。",
   "limits": "会话与额度",
@@ -57,7 +63,6 @@
   "openDesktop": "在桌面端打开",
   "handoffHint": "桌面端绑定后点击刷新，核对两端确认码一致，再确认授权。",
   "approveHandoff": "桌面端显示的确认码也是 {code} 吗？确认后允许该桌面访问。",
-  "chooseResource": "选择要操作的服务器。只展示此链接允许的功能。",
   "actions": {
     "terminal": {
       "connect": "连接终端"
@@ -132,8 +137,7 @@
   "sourcePath": "源文件或目录绝对路径",
   "targetPath": "目标绝对路径",
   "startRelay": "开始中转",
-  "configureOrigin": "设置分享域名",
-  "originHint": "分享链接使用系统设置中的公开访问地址。未配置时先填写可访问的实例域名。",
+  "originHint": "分享链接使用当前访问地址，请确保接收者也能访问该地址。",
   "reviewAfterEdit": "连接信息已更新；关联分享可能需要重新确认。",
   "reviewGrants": "查看关联分享",
   "affectedHint": "下面列出包含此服务器的分享。暂停的资源需核对当前连接身份后确认。",

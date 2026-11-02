@@ -2,6 +2,7 @@ import { apiFetch } from "@/lib/api-client"
 import type { components } from "@/generated/openapi"
 import { connectionsApi } from "@/lib/api/connections"
 import type { SshWorkspaceAuthTicketProvider } from "@/lib/session/workspace"
+import type { StreamTicketOptions } from "@/lib/session/terminal-types"
 
 export type AccessTicketType =
   | "ws_vnc" | "ws_rdp"
@@ -30,23 +31,38 @@ export async function createAccessTicket(input: AccessTicketInput): Promise<stri
 }
 
 /**
- * 为终端或监控流签发握手票据。每个流使用独立的逻辑连接，流结束时服务端随之关闭；
- * 票据签发失败时立即关闭连接，握手失败的连接由服务端在空闲超时后回收。
+ * 监控可附属于已有终端连接，独立流才申请新名额。
+ * 新连接随流的取消信号释放，包括票据已签发但 WebSocket 尚未完成握手的情况。
  */
-export async function createStreamTicket(type: "ws_terminal" | "ws_monitor", serverId: string): Promise<string> {
-  const connection = await connectionsApi.create(serverId, type === "ws_terminal" ? "terminal" : "monitor")
+export async function createStreamTicket(type: "ws_terminal" | "ws_monitor", serverId: string, options: StreamTicketOptions = {}): Promise<string> {
+  const { signal } = options
+  signal?.throwIfAborted()
+  const borrowed = type === "ws_monitor" ? options.connectionId : undefined
+  const connectionId = borrowed ?? (await connectionsApi.create(serverId, type === "ws_terminal" ? "terminal" : "monitor")).id
+  let released = false
+  const release = () => {
+    if (released || borrowed) return
+    released = true
+    void connectionsApi.close(connectionId).catch(() => undefined)
+  }
+  signal?.addEventListener("abort", release, { once: true })
   try {
-    return await createAccessTicket({ type, server_id: serverId, connection_id: connection.id })
+    signal?.throwIfAborted()
+    const ticket = await createAccessTicket({ type, server_id: serverId, connection_id: connectionId })
+    signal?.throwIfAborted()
+    options.onConnection?.(connectionId)
+    return ticket
   } catch (error) {
-    void connectionsApi.close(connection.id).catch(() => undefined)
+    signal?.removeEventListener("abort", release)
+    release()
     throw error
   }
 }
 
 /** 工作区使用的票据提供方：流票据自带逻辑连接，其余票据按载荷签发。 */
-export const workspaceAccessTicketProvider: SshWorkspaceAuthTicketProvider = (scope, payload) => {
+export const workspaceAccessTicketProvider: SshWorkspaceAuthTicketProvider = (scope, payload, options) => {
   if ((scope === "ws_terminal" || scope === "ws_monitor") && typeof payload?.server_id === "string") {
-    return createStreamTicket(scope, payload.server_id)
+    return createStreamTicket(scope, payload.server_id, options)
   }
   return createAccessTicket({ ...payload, type: scope as AccessTicketType })
 }

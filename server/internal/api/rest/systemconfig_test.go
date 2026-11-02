@@ -46,7 +46,7 @@ func (s systemConfigTransferStorage) ConfigureStorage(ctx context.Context, confi
 
 func TestSystemBasicPatchPreservesOmittedValues(t *testing.T) {
 	repo := &systemConfigPatchRepository{config: systemconfig.SystemConfig{
-		PublicURL: "https://share.example.test", SystemName: "original", SystemLogo: "logo", SystemFavicon: "icon",
+		SystemName: "original", SystemLogo: "logo", SystemFavicon: "icon",
 		DefaultLanguage: "zh-CN", DefaultTimezone: "Asia/Shanghai", DateFormat: "YYYY-MM-DD",
 		TransferStoragePath: "/managed-artifacts", JobQueueMaxConcurrency: 4,
 	}}
@@ -64,11 +64,11 @@ func TestSystemBasicPatchPreservesOmittedValues(t *testing.T) {
 		}
 	}
 	patch(`{"system_name":"renamed"}`, http.StatusOK)
-	if repo.config.SystemName != "renamed" || repo.config.PublicURL != "https://share.example.test" || repo.config.SystemLogo != "logo" || repo.config.DefaultLanguage != "zh-CN" || repo.config.TransferStoragePath != "/managed-artifacts" || repo.config.JobQueueMaxConcurrency != 4 {
+	if repo.config.SystemName != "renamed" || repo.config.SystemLogo != "logo" || repo.config.DefaultLanguage != "zh-CN" || repo.config.TransferStoragePath != "/managed-artifacts" || repo.config.JobQueueMaxConcurrency != 4 {
 		t.Fatalf("partial edit erased unrelated configuration: %+v", repo.config)
 	}
-	patch(`{"system_logo":"","public_url":""}`, http.StatusOK)
-	if repo.config.SystemLogo != "" || repo.config.PublicURL != "" || repo.config.SystemFavicon != "icon" {
+	patch(`{"system_logo":""}`, http.StatusOK)
+	if repo.config.SystemLogo != "" || repo.config.SystemFavicon != "icon" {
 		t.Fatal("explicit clearing or omitted favicon was lost")
 	}
 	patch(`{"system_name":""}`, http.StatusBadRequest)
@@ -107,7 +107,7 @@ func TestFileTransferPatchPreservesStorageAndAcceptsExplicitFalseAndZero(t *test
 func TestPublicBrandingDoesNotExposeSystemConfiguration(t *testing.T) {
 	repo := &systemConfigPatchRepository{config: systemconfig.SystemConfig{
 		SystemName: "Personal workspace", SystemLogo: "/logo.svg", SystemFavicon: "/icon.ico", DefaultLanguage: "zh-CN",
-		PublicURL: "https://private.example", TransferStoragePath: "/private/artifacts", JobQueueMaxConcurrency: 8,
+		TransferStoragePath: "/private/artifacts", JobQueueMaxConcurrency: 8,
 	}}
 	handler := NewSystemConfigHandler(systemconfig.NewService(repo), nil, nil, nil)
 	router := gin.New()

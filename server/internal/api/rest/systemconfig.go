@@ -68,7 +68,6 @@ func (h *SystemConfigHandler) GetSystemConfig(c *gin.Context) {
 // toDTO 将模型转换为DTO
 func (h *SystemConfigHandler) toDTO(config *systemconfig.SystemConfig) *protocol.SystemConfig {
 	dto := &protocol.SystemConfig{
-		PublicURL:                  config.PublicURL,
 		SystemName:                 config.SystemName,
 		SystemLogo:                 config.SystemLogo,
 		SystemFavicon:              config.SystemFavicon,
@@ -120,9 +119,6 @@ func (h *SystemConfigHandler) PatchBasicInfo(c *gin.Context) {
 	}
 
 	// 只更新基本信息字段
-	if dto.PublicURL != nil {
-		existingConfig.PublicURL = *dto.PublicURL
-	}
 	if dto.SystemName != nil {
 		existingConfig.SystemName = *dto.SystemName
 	}

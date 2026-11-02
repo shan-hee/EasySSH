@@ -1,4 +1,7 @@
 import { createStreamTicket } from '@/lib/access-ticket'
+import { toast } from '@/components/ui/sonner'
+import i18n from 'i18next'
+import { useTerminalStore } from '@/stores/terminal-store'
 import { getWebSocketUrl as getPlatformWebSocketUrl } from '@/lib/api-client'
 import { monitor } from '@/lib/proto/metrics'
 import type {
@@ -25,6 +28,8 @@ interface MonitorTransport extends MonitorTransportOptions {
   reconnectTimer: ReturnType<typeof setTimeout> | null
   pollingTimer: ReturnType<typeof setTimeout> | null
   destroyTimer: ReturnType<typeof setTimeout> | null
+  streamController: AbortController | null
+  errorNotified: boolean
 }
 
 type PollingMonitorApi = WorkspaceMonitorApi & {
@@ -159,6 +164,8 @@ const clearTimer = (
 }
 
 const closeSocket = (transport: MonitorTransport, reason: string) => {
+  transport.streamController?.abort()
+  transport.streamController = null
   const ws = transport.ws
   transport.ws = null
   if (!ws) return
@@ -171,6 +178,14 @@ const closeSocket = (transport: MonitorTransport, reason: string) => {
   if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
     ws.close(1000, reason)
   }
+}
+
+const reportError = (transport: MonitorTransport, error: unknown) => {
+  if (transport.errorNotified) return
+  transport.errorNotified = true
+  toast.error(i18n.t('terminal:monitorConnectionFailed'), {
+    description: error instanceof Error ? error.message : String(error),
+  })
 }
 
 const scheduleReconnect = (transport: MonitorTransport) => {
@@ -199,6 +214,7 @@ const startPolling = (transport: MonitorTransport, generation: number) => {
         intervalSeconds: transport.interval,
       })
       if (!isCurrentTransport(transport, generation)) return
+      transport.errorNotified = false
       useMonitorStore.getState().publishMetrics(
         transport.serverId,
         toStoreMetrics(metrics),
@@ -206,6 +222,7 @@ const startPolling = (transport: MonitorTransport, generation: number) => {
     } catch (error) {
       if (isCurrentTransport(transport, generation)) {
         console.error('[Monitor Polling] 采集失败:', error)
+        reportError(transport, error)
       }
     } finally {
       if (isCurrentTransport(transport, generation)) {
@@ -221,14 +238,21 @@ const startPolling = (transport: MonitorTransport, generation: number) => {
   void collect()
 }
 
-const getWebSocketUrl = async (transport: MonitorTransport) => {
+const getWebSocketUrl = async (transport: MonitorTransport, signal: AbortSignal) => {
   const monitorApi = transport.monitorApi as WebSocketMonitorApi | undefined
+  // 同一服务器的监控流复用一个已连接终端的逻辑会话，避免占用分享连接名额。
+  // 服务端仍单独校验 monitor.read；终端结束后，重连时重新选择存活的会话。
+  const terminal = [...useTerminalStore.getState().terminals.values()]
+    .find((entry) => entry.serverId === transport.serverId && entry.wsConnection?.getConnectionId())
   const ticket = monitorApi?.createAuthTicket
     ? await monitorApi.createAuthTicket({
         type: 'ws_monitor',
         server_id: transport.serverId,
       })
-    : await createStreamTicket('ws_monitor', transport.serverId)
+    : await createStreamTicket('ws_monitor', transport.serverId, {
+        signal,
+        connectionId: terminal?.wsConnection?.getConnectionId(),
+      })
 
   if (monitorApi?.createWebSocketUrl) {
     return monitorApi.createWebSocketUrl({
@@ -247,9 +271,11 @@ const getWebSocketUrl = async (transport: MonitorTransport) => {
 
 const startWebSocket = async (transport: MonitorTransport, generation: number) => {
   transport.connecting = true
+  const streamController = new AbortController()
+  transport.streamController = streamController
 
   try {
-    const wsUrl = await getWebSocketUrl(transport)
+    const wsUrl = await getWebSocketUrl(transport, streamController.signal)
     if (!isCurrentTransport(transport, generation)) return
 
     const SocketCtor = transport.monitorApi?.WebSocketCtor ?? WebSocket
@@ -257,11 +283,6 @@ const startWebSocket = async (transport: MonitorTransport, generation: number) =
     ws.binaryType = 'arraybuffer'
     transport.ws = ws
     transport.connecting = false
-
-    ws.onopen = () => {
-      if (!isCurrentTransport(transport, generation) || transport.ws !== ws) return
-      transport.reconnectAttempts = 0
-    }
 
     ws.onmessage = (event) => {
       if (!isCurrentTransport(transport, generation) || transport.ws !== ws) return
@@ -272,6 +293,8 @@ const startWebSocket = async (transport: MonitorTransport, generation: number) =
             transport.serverId,
             toStoreMetrics(decodeMetrics(event.data)),
           )
+          transport.reconnectAttempts = 0
+          transport.errorNotified = false
         } catch (error) {
           console.error('[Monitor WS] 解析数据失败:', error)
         }
@@ -282,6 +305,7 @@ const startWebSocket = async (transport: MonitorTransport, generation: number) =
       try {
         const message = JSON.parse(event.data)
         if (message?.type === 'error') {
+          reportError(transport, new Error(message.message || i18n.t('terminal:monitorConnectionFailed')))
           console.error(
             '[Monitor WS] 服务端返回错误:',
             new Error(message.message || 'Monitoring connection failed'),
@@ -295,17 +319,21 @@ const startWebSocket = async (transport: MonitorTransport, generation: number) =
     ws.onclose = () => {
       if (!isCurrentTransport(transport, generation) || transport.ws !== ws) return
       transport.ws = null
+      streamController.abort()
       scheduleReconnect(transport)
     }
 
     ws.onerror = (error) => {
       if (!isCurrentTransport(transport, generation) || transport.ws !== ws) return
       console.error('[Monitor WS] 连接错误:', error)
+      reportError(transport, new Error(i18n.t('terminal:monitorConnectionInterrupted')))
     }
   } catch (error) {
     if (!isCurrentTransport(transport, generation)) return
     transport.connecting = false
+    streamController.abort()
     console.error('[Monitor WS] 创建连接失败:', error)
+    reportError(transport, error)
     scheduleReconnect(transport)
   }
 }
@@ -369,6 +397,8 @@ export const acquireMonitorTransport = ({
       reconnectTimer: null,
       pollingTimer: null,
       destroyTimer: null,
+      streamController: null,
+      errorNotified: false,
     }
     transports.set(serverId, transport)
   }

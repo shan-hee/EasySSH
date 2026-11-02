@@ -117,7 +117,6 @@ func (r *repository) update(ctx context.Context, values map[string]any) error {
 func (r *repository) SaveBasic(ctx context.Context, config *SystemConfig) error {
 	return r.update(ctx, map[string]any{
 		"system_name":      config.SystemName,
-		"public_url":       config.PublicURL,
 		"system_logo":      config.SystemLogo,
 		"system_favicon":   config.SystemFavicon,
 		"default_language": config.DefaultLanguage,

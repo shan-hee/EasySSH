@@ -12,6 +12,8 @@ import (
 type MetricsSubscriber interface {
 	// OnMetrics 收到新指标时调用
 	OnMetrics(metrics *pb.SystemMetrics)
+	// OnError ends a failed stream so the client can reconnect with a fresh SSH transport.
+	OnError(error)
 	// ID 返回订阅者唯一标识
 	ID() string
 }
@@ -117,6 +119,15 @@ func (sc *SharedCollector) collectAndBroadcast() {
 	metrics, err := sc.collector.Collect()
 	if err != nil {
 		log.Printf("[SharedCollector] 采集失败: serverID=%s, err=%v", sc.serverID, err)
+		sc.mu.RLock()
+		subscribers := make([]MetricsSubscriber, 0, len(sc.subscribers))
+		for _, sub := range sc.subscribers {
+			subscribers = append(subscribers, sub)
+		}
+		sc.mu.RUnlock()
+		for _, sub := range subscribers {
+			sub.OnError(err)
+		}
 		return
 	}
 

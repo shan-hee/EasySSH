@@ -50,8 +50,8 @@ export function ServerScopePicker({ servers, value, loading = false, disabled = 
   }
 
   return <div className="space-y-2">
-    {/* Modal keeps wheel scrolling inside the list while nested in a dialog. */}
-    <Popover modal>
+    {/* Keep the list inside the dialog's focus/scroll boundary without a second modal lock. */}
+    <Popover>
       <PopoverTrigger asChild>
         <Button type="button" variant="outline" disabled={disabled} className="w-full justify-start font-normal text-muted-foreground">
           {loading ? <Spinner className="text-muted-foreground" /> : <Search className="size-4" />}
@@ -59,7 +59,7 @@ export function ServerScopePicker({ servers, value, loading = false, disabled = 
           {value.length > 0 && <span className="ml-auto text-foreground">{t("serverPicker.selectedCount", { count: value.length })}</span>}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+      <PopoverContent portalled={false} align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
         <Command>
           <CommandInput placeholder={t("serverPicker.search")} />
           <CommandList>

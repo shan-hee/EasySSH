@@ -176,8 +176,8 @@ function getErrorPayload(data: unknown): { code?: string; message: string; detai
   return { code, message, details }
 }
 
-const defaultCreateTerminalAuthTicket: TerminalWebSocketAuthTicketProvider = ({ type, server_id }) => (
-  createStreamTicket(type, server_id)
+const defaultCreateTerminalAuthTicket: TerminalWebSocketAuthTicketProvider = ({ type, server_id }, options) => (
+  createStreamTicket(type, server_id, options)
 )
 
 const defaultCreateTerminalWebSocketUrl: TerminalWebSocketUrlResolver = ({
@@ -215,6 +215,8 @@ export interface ScriptItem {
 
 export class TerminalWebSocket {
   private ws: WebSocket | null = null
+  private streamController: AbortController | null = null
+  private connectionId: string | undefined
   private serverId: string
   private cols: number
   private rows: number
@@ -332,6 +334,9 @@ export class TerminalWebSocket {
       return
     }
 
+    if (this.streamController && !this.streamController.signal.aborted) return
+    const streamController = new AbortController()
+    this.streamController = streamController
     try {
       performance.mark('ws-terminal-connect-start')
       this.setPhase("ticket")
@@ -343,8 +348,11 @@ export class TerminalWebSocket {
       const ticket = await this.createTerminalAuthTicket({
         type: "ws_terminal",
         server_id: this.serverId,
+      }, {
+        signal: streamController.signal,
+        onConnection: (id) => { this.connectionId = id },
       })
-      if (this.isDestroyed) return
+      if (this.isDestroyed || streamController.signal.aborted) return
 
       this.setPhase("ws_connecting")
       const wsUrl = await this.createTerminalWebSocketUrl({
@@ -353,6 +361,7 @@ export class TerminalWebSocket {
         rows: this.rows,
         ticket,
       })
+      if (this.isDestroyed || streamController.signal.aborted) return
       const SocketCtor = this.WebSocketCtor ?? globalThis.WebSocket
       if (!SocketCtor) {
         throw new Error("WebSocket is not available in this runtime")
@@ -397,6 +406,8 @@ export class TerminalWebSocket {
       }
 
       this.ws.onclose = (event) => {
+        streamController.abort()
+        this.connectionId = undefined
         this.stopPing()
 
         const remaining = this.decoder.decode()
@@ -428,6 +439,9 @@ export class TerminalWebSocket {
         }
       }
     } catch (error) {
+      streamController.abort()
+      this.connectionId = undefined
+      if (this.isDestroyed) return
       console.error("[TerminalWS] 连接失败:", error)
       const terminalError = createTerminalConnectionError(
         error instanceof Error ? error.message : "连接失败",
@@ -627,6 +641,8 @@ export class TerminalWebSocket {
   }
 
   disconnect(): void {
+    this.streamController?.abort()
+    this.connectionId = undefined
     if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
     this.isManualClose = true
@@ -647,6 +663,7 @@ export class TerminalWebSocket {
         this.ws.onmessage = null
         this.ws.onerror = null
         this.ws.onclose = null
+        this.ws.close(1000, "客户端主动断开")
       }
       // CLOSED 状态无需处理
 
@@ -667,6 +684,10 @@ export class TerminalWebSocket {
 
   getPhase(): TerminalConnectionPhase {
     return this.phase
+  }
+
+  getConnectionId(): string | undefined {
+    return this.isConnected() ? this.connectionId : undefined
   }
 
   /**

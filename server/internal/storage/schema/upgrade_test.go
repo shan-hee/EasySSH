@@ -70,7 +70,7 @@ func TestRemoveCSRFOriginsPreservesOtherSettings(t *testing.T) {
 	if err = CheckUpgradeSource(ctx, db, "sqlite", BaselineVersion); err != nil {
 		t.Fatal(err)
 	}
-	if err = Migrate(ctx, db, "sqlite", false); err != nil {
+	if _, err = provider.UpTo(ctx, 2); err != nil {
 		t.Fatal(err)
 	}
 	if err = CheckUpgradeSource(ctx, db, "sqlite", 2); err != nil {
@@ -95,5 +95,58 @@ func TestRemoveCSRFOriginsPreservesOtherSettings(t *testing.T) {
 	}
 	if err = CheckUpgradeSource(ctx, db, "sqlite", 2); err == nil {
 		t.Fatal("accepted a schema 2 marker with the obsolete column present")
+	}
+}
+
+func TestRemovePublicURLPreservesOtherSettings(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "public-url.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	definition, err := Definition("sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, definition.Files, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = provider.UpTo(ctx, 2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, "INSERT INTO system_config (id,public_url,system_name) VALUES (1,?,?)", "https://old.example", "My instance"); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckUpgradeSource(ctx, db, "sqlite", 2); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckUpgradeSource(ctx, db, "sqlite", 3); err == nil {
+		t.Fatal("accepted schema 3 with the obsolete public_url column")
+	}
+	if _, err = provider.UpTo(ctx, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckUpgradeSource(ctx, db, "sqlite", 3); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckUpgradeSource(ctx, db, "sqlite", 2); err == nil {
+		t.Fatal("accepted schema 2 without public_url")
+	}
+	var name string
+	if err = db.QueryRowContext(ctx, "SELECT system_name FROM system_config WHERE id=1").Scan(&name); err != nil || name != "My instance" {
+		t.Fatalf("unrelated setting changed: %q %v", name, err)
+	}
+	if _, err = provider.DownTo(ctx, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckUpgradeSource(ctx, db, "sqlite", 2); err != nil {
+		t.Fatal(err)
+	}
+	var oldURL sql.NullString
+	if err = db.QueryRowContext(ctx, "SELECT public_url,system_name FROM system_config WHERE id=1").Scan(&oldURL, &name); err != nil || oldURL.Valid || name != "My instance" {
+		t.Fatalf("rollback must restore an empty column and retain other settings: %+v %q %v", oldURL, name, err)
 	}
 }

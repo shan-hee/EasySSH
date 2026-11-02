@@ -4,12 +4,13 @@ import (
 	"errors"
 	"github.com/easyssh/shared/protocol"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 
 	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/api/middleware"
 	"github.com/easyssh/server/internal/domain/grant"
+	"github.com/easyssh/server/internal/domain/security"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -20,12 +21,12 @@ const accessCookieName = "easyssh_access"
 // AccessHandler serves only visitor authentication. It never reads owner
 // cookies, owner tokens, or client-provided owner IDs.
 type AccessHandler struct {
-	service *grant.Service
-	origin  func(*gin.Context) (string, error)
+	service  *grant.Service
+	security security.Service
 }
 
-func NewAccessHandler(service *grant.Service, origin func(*gin.Context) (string, error)) *AccessHandler {
-	return &AccessHandler{service: service, origin: origin}
+func NewAccessHandler(service *grant.Service, securityService security.Service) *AccessHandler {
+	return &AccessHandler{service: service, security: securityService}
 }
 
 func accessError(c *gin.Context, err error) {
@@ -73,17 +74,11 @@ func noStoreAccess(c *gin.Context) {
 }
 
 func (h *AccessHandler) browserOrigin(c *gin.Context) (string, bool) {
-	configured, err := h.origin(c)
+	expected, err := middleware.RequestOrigin(c, h.security)
 	if err != nil {
-		accessError(c, err)
+		accessError(c, access.ErrForbidden)
 		return "", false
 	}
-	u, err := url.Parse(configured)
-	if err != nil || u.Host == "" || u.User != nil {
-		accessError(c, errors.New("public origin is unavailable"))
-		return "", false
-	}
-	expected := u.Scheme + "://" + u.Host
 	if c.GetHeader("Origin") != expected || c.GetHeader("Sec-Fetch-Site") == "cross-site" {
 		accessError(c, access.ErrForbidden)
 		return "", false

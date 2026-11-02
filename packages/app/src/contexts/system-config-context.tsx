@@ -31,7 +31,6 @@ export const SystemConfigContextProvider = SystemConfigContext.Provider
 
 // 默认系统配置（用于未能从后端获取配置时的兜底）
 export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
-  public_url: "",
   system_name: DEFAULT_BRAND_NAME,
   system_logo: DEFAULT_BRAND_LOGO,
   system_favicon: DEFAULT_BRAND_ICON,

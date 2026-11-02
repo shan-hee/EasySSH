@@ -8,8 +8,7 @@ import (
 
 // SystemConfig 系统配置模型
 type SystemConfig struct {
-	PublicURL string `gorm:"size:512" json:"public_url"`
-	ID        uint   `gorm:"primarykey" json:"id"`
+	ID uint `gorm:"primarykey" json:"id"`
 
 	// 基本信息
 	SystemName    string `gorm:"size:100;not null;default:'EasySSH'" json:"system_name"`

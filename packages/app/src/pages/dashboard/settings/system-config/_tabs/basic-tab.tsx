@@ -77,8 +77,7 @@ export function BasicTab() {
   return (
     <div className="space-y-6 p-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <FormInput form={form} name="system_name" label={t("fieldSystemName")} description={t("fieldSystemNameDesc")} required placeholder="EasySSH" />
-        <FormInput form={form} name="public_url" label={t("fieldPublicUrl")} description={t("fieldPublicUrlDesc")} type="url" placeholder="https://ssh.example.com" />
+        <FormInput form={form} name="system_name" label={t("fieldSystemName")} description={t("fieldSystemNameDesc")} required placeholder="EasySSH" className="lg:col-span-2" />
         <ImageUrlField form={form} name="system_logo" label={t("fieldSystemLogo")} placeholder="https://example.com/logo.svg" url={logoUrl} previewClassName="h-10" />
         <ImageUrlField form={form} name="system_favicon" label={t("fieldFavicon")} placeholder="https://example.com/favicon.ico" url={faviconUrl} previewClassName="h-6" />
       </div>

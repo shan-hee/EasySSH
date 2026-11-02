@@ -4,20 +4,19 @@ import { VNCSession } from "@/components/vnc/vnc-session"
 import { ActivityOverview } from "@/components/activity/activity-overview"
 import { ApprovedScripts } from "./approved-scripts"
 import { WorkspaceRelay } from "./workspace-relay"
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Search } from "lucide-react"
-import { PageHeader, WorkspaceHeaderHost } from "@/components/page-header"
+import { Share2 } from "lucide-react"
+import { SessionTabBar } from "@/components/tabs/session-tab-bar"
+import { AccessServerList, accessModeActions as modeAction, type AccessResourceMode as Mode } from "./access-server-list"
 import { ThemeMenu } from "@/components/theme-menu"
-import { SERVER_GRID_CLASSNAME, getServerItemClassName, ServerConnectionSummary } from "@/components/servers/server-connection-item"
 import { WORKBENCH_VIEW, WorkspaceShell } from "@/workbench/workspace-shell"
-import { cn } from "@/lib/utils"
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { SshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { TabTerminalContent } from "@/components/terminal/tab-terminal-content"
 import { TerminalSftpTabContent } from "@/components/terminal/terminal-sftp-tab-content"
+import { TerminalSettingsDialog } from "@/components/terminal/terminal-settings-dialog"
 import { MonitorPanel } from "@/components/terminal/monitor/MonitorPanel"
 import { MonitorWebSocketProvider } from "@/components/terminal/monitor/contexts/MonitorWebSocketContext"
 import { DockerPopover } from "@/components/terminal/docker"
@@ -31,20 +30,11 @@ import type { Server } from "@/lib/server-types"
 import type { AccessContext, AccessResource } from "@/lib/api/grants"
 import type { SshWorkspaceAdapters } from "@/lib/session/workspace"
 import type { AIAssistantWorkspaceAdapters } from "@/components/ai-agent/ai-assistant-workspace-view"
-import type { TerminalSession } from "@/components/terminal/types"
+import type { TerminalConnectionPhase, TerminalSession } from "@/components/terminal/types"
 import { apiFetch } from "@/lib/api-client"
 import type { components } from "@/generated/openapi"
 
-type Mode = "terminal" | "files" | "monitor" | "docker" | "vnc" | "rdp"
-const modeAction = {
-  terminal: "terminal.connect",
-  files: "files.list",
-  monitor: "monitor.read",
-  docker: "docker.read",
-  vnc: "vnc.connect",
-  rdp: "rdp.connect",
-} as const
-type OpenTab = { id: string; resourceId: string; server: Server; mode: Mode }
+type OpenTab = { id: string; resourceId: string; server: Server; mode: Mode; session: TerminalSession }
 
 /** Shared visitors use the existing task components, with only explicitly granted resources. */
 export function AccessWorkspace({
@@ -71,11 +61,12 @@ export function AccessWorkspace({
   onLeave?: () => Promise<void>
 }) {
   const { t } = useTranslation("sharing")
-  const { t: tServers } = useTranslation("servers")
   const { confirm, confirmDialog } = useConfirmDialog()
   const [tabs, setTabs] = useState<OpenTab[]>([])
-  const [search, setSearch] = useState("")
-  const initialOpened = useRef(false)
+  const [resourceMode, setResourceMode] = useState<Mode | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const settings = useTerminalSettingsStore(state => state.settings)
+  const saveSettings = useTerminalSettingsStore(state => state.saveSettings)
   const mounted = useRef(false)
   const pendingOpen = useRef(false)
   const latestContext = useRef(context)
@@ -116,11 +107,6 @@ export function AccessWorkspace({
   const canActivity = context.resources.some(
     (r) => !r.paused && r.actions.includes("activity.read"),
   )
-  const visibleResources = context.resources.filter((resource) =>
-    [resource.name, resource.host, resource.username].some((value) =>
-      value?.toLowerCase().includes(search.trim().toLowerCase()),
-    ),
-  )
   const activeView =
     tabs.some((tab) => tab.id === active && context.resources.some((resource) =>
       resource.id === tab.resourceId && !resource.paused && resource.actions.includes(modeAction[tab.mode]),
@@ -135,15 +121,15 @@ export function AccessWorkspace({
       setError(e instanceof Error ? e.message : String(e))
     }
   }
-  const openResource = async (r: AccessResource, mode: Mode) => {
-    if (pendingOpen.current) return
+  const openResource = async (r: AccessResource, mode: Mode, duplicate = false) => {
+    if (pendingOpen.current || !latestContext.current.resources.some(resource => resource.id === r.id && !resource.paused && resource.actions.includes(modeAction[mode]))) return
     pendingOpen.current = true
     setOpening(true)
     await attempt(async () => {
       const existing = tabs.find(
         (tab) => tab.resourceId === r.id && tab.mode === mode,
       )
-      if (existing) {
+      if (existing && !duplicate) {
         setActive(existing.id)
         return
       }
@@ -158,11 +144,21 @@ export function AccessWorkspace({
         )
       )
         return
-      const tab = {
-        id: `access-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      const id = `access-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const tab: OpenTab = {
+        id,
         resourceId: r.id,
         server,
         mode,
+        session: {
+          id, serverId: server.id, serverName: server.name || server.host,
+          host: server.host, port: server.port, username: server.username,
+          authMethod: server.auth_method, shouldConnect: true,
+          connectionPhase: mode === "monitor" || mode === "docker" ? "ready" : "idle",
+          status: mode === "monitor" || mode === "docker" ? "connected" : "reconnecting",
+          lastActivity: Date.now(),
+          type: mode === "files" ? "sftp" : mode === "monitor" || mode === "docker" ? "config" : mode,
+        },
       }
       setTabs((current) => [...current, tab])
       setActive(tab.id)
@@ -170,17 +166,6 @@ export function AccessWorkspace({
     pendingOpen.current = false
     if (mounted.current) setOpening(false)
   }
-  useEffect(() => {
-    if (initialOpened.current) return
-    initialOpened.current = true
-    const resources = context.resources.filter((r) => !r.paused)
-    if (resources.length === 1) {
-      const resource = resources[0]
-      const mode = context.default_content as Mode
-      if (modeAction[mode] && resource.actions.includes(modeAction[mode]))
-        void openResource(resource, mode)
-    }
-  }, [context])
   const closeTab = (id: string) => {
     useTerminalStore.getState().destroySession(id)
     setTabs((current) => current.filter((tab) => tab.id !== id))
@@ -228,25 +213,38 @@ export function AccessWorkspace({
     window.addEventListener("easyssh:open-task", open)
     return () => window.removeEventListener("easyssh:open-task", open)
   }, [])
+  const updatePhase = useCallback((id: string, phase: TerminalConnectionPhase) => {
+    setTabs(current => current.map(tab => tab.id !== id || tab.session.connectionPhase === phase ? tab : {
+      ...tab,
+      session: { ...tab.session, connectionPhase: phase, status: phase === "ready" ? "connected" : phase === "failed" || phase === "closed" ? "disconnected" : "reconnecting" },
+    }))
+  }, [])
+  const showResources = (mode: Mode | null = null) => {
+    setResourceMode(mode)
+    setActive("")
+  }
+  const canOpenMode = (mode: Mode) => context.resources.some(resource => !resource.paused && resource.actions.includes(modeAction[mode]))
+  const tabSessions = tabs.map(tab => ({
+    ...tab.session,
+    serverName: tab.mode === "monitor" || tab.mode === "docker" ? `${tab.session.serverName} · ${t(tab.mode)}` : tab.session.serverName,
+  }))
   return (
     <SidebarProvider
       defaultOpen={false}
       className="h-svh min-h-0 flex-col overflow-hidden"
     >
-      <WorkspaceHeaderHost showSidebarTrigger={false} actions={<ThemeMenu />}>
-        <PageHeader title={context.grant_name} titleActions={
-          <span className="hidden text-xs text-muted-foreground lg:inline">
-            {t("sharedWorkspace")} ·{" "}
-            {t("expires", {
-              date: new Date(context.expires_at).toLocaleString(),
-            })}
-          </span>
-        }>
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border/60 bg-muted/40 px-4 py-2" data-share-banner>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground"><Share2 className="size-3.5" />{t("sharedWorkspace")}</span>
+          <h1 className="max-w-64 truncate text-sm font-semibold" title={context.grant_name}>{context.grant_name}</h1>
+          <span className="text-xs text-muted-foreground">{t("expires", { date: new Date(context.expires_at).toLocaleString() })}</span>
+        </div>
+        <div className="flex min-w-0 max-w-full items-center gap-1 overflow-x-auto scrollbar-none">
             <Button
               size="sm"
               variant={activeView === WORKBENCH_VIEW ? "secondary" : "ghost"}
               onClick={() => {
-                setActive("")
+                showResources()
                 void attempt(refresh)
               }}
             >
@@ -318,7 +316,8 @@ export function AccessWorkspace({
                 {t("leave")}
               </Button>
             )}
-        </PageHeader>
+        </div>
+      </header>
         {error && (
           <div
             role="alert"
@@ -366,90 +365,41 @@ export function AccessWorkspace({
             </div>
           </div>
         )}
-        {tabs.length > 0 && (
-          <nav className="flex shrink-0 gap-1 overflow-x-auto border-b p-1">
-            {tabs.map((tab) => (
-              <div className="flex items-center" key={tab.id}>
-                <Button
-                  variant={active === tab.id ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setActive(tab.id)}
-                >
-                  {tab.server.name || tab.server.host} · {t(tab.mode)}
-                </Button>
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={t("close")}
-                  onClick={() => closeTab(tab.id)}
-                >
-                  ×
-                </Button>
-              </div>
-            ))}
-          </nav>
-        )}
-        <div className="flex min-h-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4">
+        <SessionTabBar
+          sessions={tabSessions}
+          activeId={activeView}
+          onChangeActive={setActive}
+          onNewSession={() => showResources()}
+          onNewSftpSession={canOpenMode("files") ? () => showResources("files") : undefined}
+          onNewVncSession={canOpenMode("vnc") ? () => showResources("vnc") : undefined}
+          onNewRdpSession={canOpenMode("rdp") ? () => showResources("rdp") : undefined}
+          onCloseSession={closeTab}
+          onDuplicateSession={id => {
+            const tab = tabs.find(item => item.id === id)
+            const resource = context.resources.find(item => item.id === tab?.resourceId)
+            if (tab && resource) void openResource(resource, tab.mode, true)
+          }}
+          onCloseOthers={id => tabs.filter(tab => tab.id !== id && !tab.session.pinned).forEach(tab => closeTab(tab.id))}
+          onCloseAll={() => tabs.filter(tab => !tab.session.pinned).forEach(tab => closeTab(tab.id))}
+          onTogglePin={id => setTabs(current => current.map(tab => tab.id === id ? { ...tab, session: { ...tab.session, pinned: !tab.session.pinned } } : tab))}
+          onReorder={ids => setTabs(current => ids.flatMap(id => current.filter(tab => tab.id === id)))}
+          canAcceptCrossSessionFileDrop={() => false}
+          onOpenSettings={() => setSettingsOpen(true)}
+          hideBreadcrumb
+          endContent={<div className="flex items-center pr-2"><ThemeMenu /></div>}
+        />
+        <div className="flex min-h-0 flex-1 flex-col">
           <WorkspaceShell
-            className="rounded-xl border"
             activeView={activeView}
             workbench={
-              <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-                <div className="w-full max-w-6xl space-y-3">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h2 className="text-sm font-semibold">{t("resources")}</h2>
-                      <p className="mt-1 text-xs text-muted-foreground">{t("chooseResource")}</p>
-                    </div>
-                    <div className="relative w-full sm:max-w-xs">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        aria-label={tServers("searchPlaceholder")}
-                        placeholder={tServers("searchPlaceholder")}
-                        className="bg-card pl-10"
-                        value={search}
-                        onChange={(event) => setSearch(event.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className={SERVER_GRID_CLASSNAME}>
-                    {visibleResources.map((resource) => (
-                      <section key={resource.id} className={cn(getServerItemClassName("grid", false), "content-start")}>
-                        <ServerConnectionSummary server={resource} />
-                        <div className="col-span-full space-y-3">
-                          <p className="text-xs leading-relaxed text-muted-foreground">
-                            {resource.actions.map((action) => t(`actions.${action}`)).join(" · ")}
-                          </p>
-                          {resource.paused ? (
-                            <p className="text-sm text-muted-foreground">{t("paused")}</p>
-                          ) : (
-                            <div className="flex flex-wrap gap-2">
-                              {(Object.keys(modeAction) as Mode[])
-                                .sort((a, b) => Number(b === context.default_content) - Number(a === context.default_content))
-                                .filter((mode) => resource.actions.includes(modeAction[mode]))
-                                .map((mode) => (
-                                  <Button
-                                    key={mode}
-                                    size="sm"
-                                    disabled={opening}
-                                    variant={mode === context.default_content ? "default" : "outline"}
-                                    onClick={() => void openResource(resource, mode)}
-                                  >
-                                    {t(mode)}
-                                  </Button>
-                                ))}
-                              {resource.actions.includes("scripts.execute") && <ApprovedScripts serverId={resource.id} />}
-                            </div>
-                          )}
-                        </div>
-                      </section>
-                    ))}
-                  </div>
-                  {visibleResources.length === 0 && (
-                    <p className="py-12 text-center text-sm text-muted-foreground">{t("noResources")}</p>
-                  )}
-                </div>
-              </div>
+              <AccessServerList
+                resources={context.resources}
+                defaultContent={context.default_content}
+                mode={resourceMode}
+                opening={opening}
+                onClearMode={() => setResourceMode(null)}
+                onOpen={(resource, mode) => void openResource(resource, mode)}
+              />
             }
             views={[
               ...tabs.flatMap((tab) => {
@@ -467,6 +417,7 @@ export function AccessWorkspace({
                       desktop={desktop}
                       fileActions={fileActions}
                       close={() => closeTab(tab.id)}
+                      onPhase={updatePhase}
                     />
                   ),
                 }]
@@ -499,8 +450,8 @@ export function AccessWorkspace({
             ]}
           />
         </div>
-        </WorkspaceHeaderHost>
       {confirmDialog}
+      <TerminalSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} settings={settings} onSettingsChange={saveSettings} />
     </SidebarProvider>
   )
 }
@@ -511,6 +462,7 @@ function AccessResourcePanel({
   active,
   adapters,
   close,
+  onPhase,
   fileActions,
   desktop,
 }: {
@@ -519,25 +471,13 @@ function AccessResourcePanel({
   active: boolean
   adapters: SshWorkspaceAdapters
   close: () => void
+  onPhase: (id: string, phase: TerminalConnectionPhase) => void
   fileActions?: (resource: AccessResource, path: string) => ReactNode
   desktop: boolean
 }) {
   const [path, setPath] = useState("~")
   const settings = useTerminalSettingsStore((s) => s.settings)
-  const [session, setSession] = useState<TerminalSession>(() => ({
-    id: tab.id,
-    serverId: tab.server.id,
-    serverName: tab.server.name || tab.server.host,
-    host: tab.server.host,
-    port: tab.server.port,
-    username: tab.server.username,
-    authMethod: tab.server.auth_method,
-    shouldConnect: true,
-    connectionPhase: "idle",
-    status: "reconnecting",
-    lastActivity: Date.now(),
-    type: "terminal",
-  }))
+  const session = tab.session
   const capabilities = useMemo(
     () => ({
       terminal: resource.actions.includes("terminal.connect"),
@@ -563,8 +503,8 @@ function AccessResourcePanel({
       capabilities={capabilities}
       layout="embedded"
     >
-      {tab.mode === "rdp" && <RDPSession serverId={tab.server.id} isActive={active} onPhase={() => undefined} createSocket={adapters.apiClient?.remoteDesktopSocket} />}
-      {tab.mode === "vnc" && <VNCSession serverId={tab.server.id} isActive={active} onPhase={() => undefined} createSocket={adapters.apiClient?.remoteDesktopSocket} />}
+      {tab.mode === "rdp" && <RDPSession serverId={tab.server.id} isActive={active} onPhase={phase => onPhase(tab.id, phase)} createSocket={adapters.apiClient?.remoteDesktopSocket} />}
+      {tab.mode === "vnc" && <VNCSession serverId={tab.server.id} isActive={active} onPhase={phase => onPhase(tab.id, phase)} createSocket={adapters.apiClient?.remoteDesktopSocket} />}
       {tab.mode === "terminal" && (
         <TabTerminalContent
           session={session}
@@ -573,18 +513,7 @@ function AccessResourcePanel({
           effectiveIsLoading={false}
           onCommand={() => undefined}
           onAuthCancelled={close}
-          onConnectionPhaseChange={(_, phase) =>
-            setSession((s) => ({
-              ...s,
-              connectionPhase: phase,
-              status:
-                phase === "ready"
-                  ? "connected"
-                  : phase === "failed" || phase === "closed"
-                    ? "disconnected"
-                    : "reconnecting",
-            }))
-          }
+          onConnectionPhaseChange={onPhase}
         />
       )}
       {tab.mode === "files" && (
@@ -602,6 +531,7 @@ function AccessResourcePanel({
             label={tab.server.name || tab.server.host}
             initialPath="~"
             onPathChange={setPath}
+            onConnectionStateChange={(connected, loading) => onPhase(tab.id, connected ? "ready" : loading ? "ssh_connecting" : "failed")}
             onClose={close}
             onRenameSession={() => undefined}
           />

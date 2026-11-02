@@ -8,7 +8,32 @@ import (
 	"strings"
 
 	"github.com/easyssh/server/internal/domain/security"
+	"github.com/gin-gonic/gin"
 )
+
+// RequestOrigin resolves the external origin without trusting the Origin header.
+// A trusted reverse proxy must overwrite forwarded headers from its clients.
+func RequestOrigin(c *gin.Context, securityService security.Service) (string, error) {
+	scheme := "http"
+	if RequestUsesHTTPS(c, securityService) {
+		scheme = "https"
+	}
+	host := c.Request.Host
+	if requestFromTrustedProxy(c, securityService) {
+		if forwarded := c.GetHeader("X-Forwarded-Host"); forwarded != "" {
+			host = strings.TrimSpace(strings.Split(forwarded, ",")[0])
+		}
+	}
+	u, err := url.Parse(scheme + "://" + host)
+	if err != nil || u.Hostname() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.ContainsAny(host, "/?#\\") {
+		return "", fmt.Errorf("invalid request host")
+	}
+	u.Host = strings.ToLower(u.Host)
+	if scheme == "https" && u.Port() == "443" || scheme == "http" && u.Port() == "80" {
+		u.Host = strings.TrimSuffix(u.Host, ":"+u.Port())
+	}
+	return u.String(), nil
+}
 
 func IsAllowedOrigin(r *http.Request, securityService security.Service, webDevPort int) bool {
 	origin := strings.TrimSpace(r.Header.Get("Origin"))

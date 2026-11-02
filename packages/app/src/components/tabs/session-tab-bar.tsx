@@ -595,6 +595,13 @@ export function SessionTabBar(props: SessionTabBarProps) {
     )
   }
 
+  const availableProtocols = CONNECTION_PROTOCOLS.filter(protocol =>
+    protocol === "SFTP" ? !!onNewSftpSession : protocol === "noVNC" ? !!onNewVncSession : !!onNewRdpSession,
+  )
+  const activeProtocol = availableProtocols.includes(connectionProtocol)
+    ? connectionProtocol
+    : availableProtocols[0] ?? "SFTP"
+
   const connectionActions = (
     <div role="group" aria-label={tTerminal("connectionActions")} className="ml-1 flex shrink-0 items-center rounded-lg transition-colors hover:bg-accent/70 focus-within:bg-accent/70">
       <Button
@@ -607,18 +614,17 @@ export function SessionTabBar(props: SessionTabBarProps) {
       >
         <Plus className="h-4 w-4" />
       </Button>
-      {(onNewSftpSession || onNewVncSession) && (
+      {availableProtocols.length > 0 && (
         <>
           <Button
             variant="ghost"
             size="sm"
             className="h-8 w-16 rounded-lg px-2 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent"
-            disabled={connectionProtocol === "SFTP" ? !onNewSftpSession : connectionProtocol === "noVNC" ? !onNewVncSession : !onNewRdpSession}
-            onClick={connectionProtocol === "SFTP" ? onNewSftpSession : connectionProtocol === "noVNC" ? onNewVncSession : onNewRdpSession}
-            aria-label={connectionProtocol === "SFTP" ? tTerminal("sftpPickerActionLabel") : connectionProtocol === "noVNC" && onNewVncSession ? tTerminal("vncTitle") : connectionProtocol === "RDP" && onNewRdpSession ? tTerminal("rdpTitle") : tTerminal("connectionProtocolPending", { protocol: connectionProtocol })}
-            title={connectionProtocol === "SFTP" ? tTerminal("sftpPickerActionLabel") : connectionProtocol === "noVNC" && onNewVncSession ? tTerminal("vncTitle") : connectionProtocol === "RDP" && onNewRdpSession ? tTerminal("rdpTitle") : tTerminal("connectionProtocolPending", { protocol: connectionProtocol })}
+            onClick={activeProtocol === "SFTP" ? onNewSftpSession : activeProtocol === "noVNC" ? onNewVncSession : onNewRdpSession}
+            aria-label={tTerminal(activeProtocol === "SFTP" ? "sftpPickerActionLabel" : activeProtocol === "noVNC" ? "vncTitle" : "rdpTitle")}
+            title={tTerminal(activeProtocol === "SFTP" ? "sftpPickerActionLabel" : activeProtocol === "noVNC" ? "vncTitle" : "rdpTitle")}
           >
-            {connectionProtocol}
+            {activeProtocol}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -633,8 +639,8 @@ export function SessionTabBar(props: SessionTabBarProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuRadioGroup value={connectionProtocol} onValueChange={(value) => setConnectionProtocol(value as ConnectionProtocol)}>
-                {CONNECTION_PROTOCOLS.map((protocol) => (
+              <DropdownMenuRadioGroup value={activeProtocol} onValueChange={(value) => setConnectionProtocol(value as ConnectionProtocol)}>
+                {availableProtocols.map((protocol) => (
                   <DropdownMenuRadioItem key={protocol} value={protocol}>
                     {protocol}
                   </DropdownMenuRadioItem>

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"net/url"
 	"strings"
 )
 
@@ -71,21 +69,6 @@ func (s *service) SaveScheduledTasks(ctx context.Context, config *SystemConfig) 
 
 func (s *service) validateBasic(config *SystemConfig) error {
 
-	config.PublicURL = strings.TrimSpace(config.PublicURL)
-	if config.PublicURL != "" {
-		u, err := url.Parse(config.PublicURL)
-		if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-			return errors.New("public_url must be an instance origin")
-		}
-		local := u.Hostname() == "localhost"
-		if ip := net.ParseIP(u.Hostname()); ip != nil {
-			local = ip.IsLoopback()
-		}
-		if u.Scheme != "https" && !(u.Scheme == "http" && local) {
-			return errors.New("public_url must use HTTPS")
-		}
-		config.PublicURL = u.Scheme + "://" + u.Host
-	}
 	if strings.TrimSpace(config.SystemName) == "" {
 		return errors.New("system name is required")
 	}

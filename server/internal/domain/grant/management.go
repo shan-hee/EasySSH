@@ -170,14 +170,6 @@ func (s *Service) RotateSecret(ctx context.Context, scope access.Scope, id uuid.
 	if err := scope.RequireOwner(ctx, protocol.GrantsManage); err != nil {
 		return nil, err
 	}
-	raw, err := s.publicURL(ctx)
-	if err != nil {
-		return nil, err
-	}
-	origin, err := publicOrigin(raw)
-	if err != nil {
-		return nil, err
-	}
 	secret, err := randomSecret()
 	if err != nil {
 		return nil, err
@@ -209,7 +201,7 @@ func (s *Service) RotateSecret(ctx context.Context, scope access.Scope, id uuid.
 		return nil, err
 	}
 	s.runtime.Invalidate(id.String(), "", "", access.ErrRevoked)
-	return &protocol.GrantCreated{Grant: g.Public(), Link: origin + "/share/" + g.PublicID + "#" + secret}, nil
+	return &protocol.GrantCreated{Grant: g.Public(), Link: "/share/" + g.PublicID + "#" + secret}, nil
 }
 
 func (s *Service) EndSession(ctx context.Context, scope access.Scope, id uuid.UUID) error {

@@ -124,7 +124,7 @@ export function createWorkspaceTerminalAuthTicketProviderAdapter(
     return undefined
   }
 
-  return ({ type, server_id }) => authTicketProvider(type, { server_id })
+  return ({ type, server_id }, options) => authTicketProvider(type, { server_id }, options)
 }
 
 export interface CreateWorkspaceTransferManagerAdapterOptions {

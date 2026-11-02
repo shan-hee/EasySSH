@@ -54,7 +54,7 @@ func grantActivityFixture(t *testing.T) (*Service, context.Context, access.Scope
 	}
 	runtime := access.NewRuntime()
 	t.Cleanup(runtime.Close)
-	s := NewService(db, activityCatalog{NewResourceCatalog(nil)}, runtime, func(context.Context) (string, error) { return "https://share.example", nil })
+	s := NewService(db, activityCatalog{NewResourceCatalog(nil)}, runtime)
 	scope, err := access.NewScope(protocol.Actor{Kind: protocol.Owner, ID: uuid.NewString(), SessionID: uuid.NewString()}, time.Now().Add(time.Hour), activityAuthority{})
 	if err != nil {
 		t.Fatal(err)
@@ -119,6 +119,12 @@ func TestGrantConfigurationActivityLifecycle(t *testing.T) {
 	rotated, err := s.RotateSecret(ctx, scope, created.Grant.ID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, result := range []*protocol.GrantCreated{created, rotated} {
+		path, secret, ok := strings.Cut(result.Link, "#")
+		if !ok || path != "/share/"+result.Grant.PublicID || secret == "" {
+			t.Fatal("share creation and rotation must return a relative link with its secret")
+		}
 	}
 	ended, _, endedLease := grantActivitySession(t, s, rotated.Grant, second)
 	for range 2 {

@@ -25,6 +25,9 @@ func CORS(cfg *config.Config, securityService security.Service) gin.HandlerFunc 
 			if strings.TrimSpace(origin) == "" {
 				return false
 			}
+			if expected, err := RequestOrigin(c, securityService); err == nil && origin == expected {
+				return true
+			}
 			return IsConfiguredOriginAllowed(origin, securityService, cfg.Server.WebDevPort)
 		},
 		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"},

@@ -2,7 +2,6 @@ import { z } from "zod"
 
 // 基本信息 Schema（包含国际化设置）
 export const basicInfoSchema = z.object({
-  public_url: z.string().url("settingsValidation.urlInvalid").or(z.literal("")),
   system_name: z
     .string()
     .min(1, "settingsValidation.systemNameRequired")

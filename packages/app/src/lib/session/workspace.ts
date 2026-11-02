@@ -13,6 +13,7 @@ import type {
 } from "@/lib/sftp-types"
 import type { FileTransferSftpApi } from "./transfer-manager-controller"
 import type {
+  StreamTicketOptions,
   TerminalConnectionPhase,
   TerminalWebSocketConstructor,
   TerminalWebSocketUrlResolver,
@@ -502,6 +503,7 @@ export interface SshWorkspaceSessionController {
 export type SshWorkspaceAuthTicketProvider = (
   scope: string,
   payload?: Record<string, unknown>,
+  options?: StreamTicketOptions,
 ) => Promise<string>
 
 export type WorkspaceTransferHistoryStatus = "pending" | "transferring" | "completed" | "failed" | "partial" | "canceled" | "timeout" | "warning" | "unknown"

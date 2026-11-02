@@ -77,28 +77,37 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 			return err
 		}
 	}
-	rows, err := db.QueryContext(ctx, "SELECT * FROM security_config WHERE 1=0")
-	if err != nil {
-		return err
-	}
-	columns, columnErr := rows.Columns()
-	closeErr := rows.Close()
-	if columnErr != nil {
-		return columnErr
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	hasCSRFOrigins := false
-	for _, column := range columns {
-		if strings.EqualFold(column, "csrf_trusted_origins") {
-			hasCSRFOrigins = true
-			break
+	for _, field := range []struct {
+		table, column string
+		present       bool
+	}{
+		{"security_config", "csrf_trusted_origins", version == BaselineVersion},
+		{"system_config", "public_url", version < 3},
+	} {
+		rows, err := db.QueryContext(ctx, "SELECT * FROM "+field.table+" WHERE 1=0")
+		if err != nil {
+			return err
+		}
+		columns, columnErr := rows.Columns()
+		closeErr := rows.Close()
+		if columnErr != nil {
+			return columnErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		present := false
+		for _, column := range columns {
+			if strings.EqualFold(column, field.column) {
+				present = true
+				break
+			}
+		}
+		if present != field.present {
+			return fmt.Errorf("schema %d disagrees with %s.%s; inspect interrupted DDL before retrying", version, field.table, field.column)
 		}
 	}
-	if hasCSRFOrigins != (version == BaselineVersion) {
-		return fmt.Errorf("schema %d disagrees with security_config.csrf_trusted_origins; inspect interrupted DDL before retrying", version)
-	}
+	var err error
 	var count int
 	switch driver {
 	case "sqlite":

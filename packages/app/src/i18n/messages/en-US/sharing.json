@@ -7,6 +7,7 @@
   "shareLink": "Share link",
   "copied": "Copied",
   "copy": "Copy link",
+  "openLink": "Open link",
   "copyFailed": "Copy failed. Please copy the link manually.",
   "revoked": "Revoked",
   "longLived": "No expiry",
@@ -36,6 +37,11 @@
   "docker": "Containers",
   "expiryHint": "Expiry (blank means 24 hours)",
   "resources": "Servers",
+  "openResource": "Open {name}",
+  "openResourceMode": "Open {name} · {mode}",
+  "doubleClickResource": "Double-click to open the default content",
+  "resourceActions": "Available actions",
+  "resourcePaused": "Paused",
   "interactive": "Allow visitor SSH interactive authentication (review when editing)",
   "scriptVersions": "Only the selected script versions are permitted. Update the share after editing a script.",
   "limits": "Sessions and quotas",
@@ -57,7 +63,6 @@
   "openDesktop": "Open in desktop",
   "handoffHint": "After the desktop binds, refresh and compare the confirmation codes before approving.",
   "approveHandoff": "Does the desktop show {code}? Confirm to grant access to that desktop.",
-  "chooseResource": "Choose a server. Only capabilities allowed by this link are available.",
   "actions": {
     "terminal": {
       "connect": "Terminal"
@@ -132,8 +137,7 @@
   "sourcePath": "Absolute source path",
   "targetPath": "Absolute target path",
   "startRelay": "Start transfer",
-  "configureOrigin": "Set sharing origin",
-  "originHint": "Share links use the public URL in system settings. Set your instance origin before creating a share.",
+  "originHint": "Share links use your current address. Make sure recipients can access it.",
   "reviewAfterEdit": "Connection updated; linked shares may require confirmation.",
   "reviewGrants": "Review shares",
   "affectedHint": "Shares containing this server are listed below. Review the current connection identity before confirming a paused resource.",

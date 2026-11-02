@@ -42,6 +42,12 @@ WebSocket 入口必须消费绑定端点、资源与访问主体的一次性 tic
 
 `WebSecurityConfig` 和更新接口已移除 `csrf_trusted_origins`，额外 HTTP CORS 来源仍通过独立 CORS 设置维护。
 
+系统基本配置已移除 `public_url`。`POST /grants` 和 `POST /grants/{id}/rotate-secret` 返回的 `link` 为 `/share/{public_id}#secret` 相对地址；Web 在显示和复制时使用 `window.location.origin` 补全协议、域名及端口。API 调用者须使用对应实例的 Web 来源补全，不能直接把相对地址当作完整分享链接。现有分享 ID 和密钥不变，已发出的绝对链接仍指向原来的域名。
+
+分享工作区先展示服务器主页，沿用桌面工作台的搜索、网格／列表布局和会话标签栏；顶部独立展示分享名称、到期时间及退出入口。双击服务器按 `default_content` 打开获授权的默认功能，也可通过卡片操作选择其他已授权功能。单台服务器不再自动连接；新增、编辑、删除及所有者分组信息不向访客开放。
+
+访客首次兑换及携带访客 Cookie 的写请求要求 `Origin` 与请求的对外来源一致，并拒绝 `Sec-Fetch-Site: cross-site`；后续写请求继续校验 CSRF Token。对外来源从请求 Host 和 TLS 推导；只有连接对端在现有可信代理列表内，才读取 `X-Forwarded-Proto` 和 `X-Forwarded-Host`。反向代理必须覆盖客户端传入的这些头，并保留外部 Host（含非默认端口），或通过 `X-Forwarded-Host` 传递。CORS 同步识别该对外来源，无需为同源分享额外配置固定域名。
+
 ## 飞书聊天接入（后端）
 
 飞书复用 `/chat-connections` 的管理、启停、绑定、会话和审批接口，使用企业自建应用及官方 SDK 长连接，无需公网 Webhook。创建连接的请求体示例：
@@ -93,6 +99,8 @@ AIUIMessage、AIServerReference 直接由契约生成，手写 aichatui 包消�
 登录页使用匿名 `GET /public/branding` 获取 `system_name`、`system_logo`、`system_favicon`、`default_language`，响应是直接对象。完整 `GET /settings/system` 继续要求所有者身份。
 
 依赖逻辑连接的 SFTP、Docker 和系统探测请求必须带 `X-EasySSH-Connection`。浏览器 WebSocket 通过一次性 ticket 绑定连接，无需自定义该头；若提供则必须与票据匹配。该头已加入 CORS 允许列表。
+
+浏览器终端旁的监控使用同一服务器已连接终端的逻辑连接签发 `ws_monitor` 票据，不额外占用分享的连接名额，仍独立校验 `monitor.read`。没有可用终端时，独立监控创建自己的逻辑连接。浏览器取消握手或关闭独立流时主动释放所创建的连接，避免等待空闲回收；监控子流关闭不会释放终端的连接。
 
 `GET /scripts` 返回 `{data, total, page, page_size, total_pages}`，Script 含版本、标签、执行次数及作者。`GET /notifications` 返回 `{notifications, unread_count, total, page, page_size, total_pages}`，没有 data 包装。前端应按各自契约读取，不能统一解包 data。
 

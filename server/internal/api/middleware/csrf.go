@@ -29,6 +29,14 @@ func RequestUsesHTTPS(c *gin.Context, service security.Service) bool {
 	if c.Request.TLS != nil {
 		return true
 	}
+	if !requestFromTrustedProxy(c, service) {
+		return false
+	}
+	proto := strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Proto"), ",")[0])
+	return strings.EqualFold(proto, "https")
+}
+
+func requestFromTrustedProxy(c *gin.Context, service security.Service) bool {
 	peer, _, err := net.SplitHostPort(c.Request.RemoteAddr)
 	if err != nil {
 		return false
@@ -41,22 +49,15 @@ func RequestUsesHTTPS(c *gin.Context, service security.Service) bool {
 	if cfg == nil {
 		return false
 	}
-	trusted := false
 	for _, raw := range cfg.TrustedProxyList() {
 		if prefix, err := netip.ParsePrefix(raw); err == nil && prefix.Contains(ip) {
-			trusted = true
-			break
+			return true
 		}
 		if other, err := netip.ParseAddr(raw); err == nil && other == ip {
-			trusted = true
-			break
+			return true
 		}
 	}
-	if !trusted {
-		return false
-	}
-	proto := strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Proto"), ",")[0])
-	return strings.EqualFold(proto, "https")
+	return false
 }
 
 // RequireJSONBody prevents unauthenticated browser writes from using a simple

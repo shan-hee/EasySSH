@@ -1,8 +1,6 @@
 {
   "fieldSystemName": "System name",
   "fieldSystemNameDesc": "Displayed in browser title and across the UI",
-  "fieldPublicUrl": "Public URL",
-  "fieldPublicUrlDesc": "Instance origin used for share links and other external addresses. Must use HTTPS (HTTP is allowed for localhost)",
   "fieldSystemLogo": "System logo URL",
   "fieldFavicon": "System favicon URL",
   "fieldDefaultLanguage": "Default language",

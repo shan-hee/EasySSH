@@ -4069,7 +4069,7 @@ export interface components {
             /** Format: date-time */
             revoked_at: string | null;
         };
-        /** @description 包含秘密的链接仅在创建和轮换时返回。 */
+        /** @description 包含秘密的相对链接（/share/{public_id}#secret）仅在创建和轮换时返回；客户端使用当前实例的 Web 来源补全为绝对地址。 */
         GrantCreated: {
             grant: components["schemas"]["Grant"];
             link: string;
@@ -4611,8 +4611,6 @@ export interface components {
             collected_at: string;
         };
         SystemBasicConfig: {
-            /** @description 实例公开来源；可为空，非本地地址必须使用 HTTPS，不包含路径、查询参数或片段。 */
-            public_url: string;
             system_name: string;
             system_logo: string;
             system_favicon: string;
@@ -4620,10 +4618,8 @@ export interface components {
             default_timezone: string;
             date_format: string;
         };
-        /** @description 省略字段保持现值；public_url/system_logo/system_favicon 可用空字符串清空，其余字段必须满足已有配置校验。 */
+        /** @description 省略字段保持现值；system_logo/system_favicon 可用空字符串清空，其余字段必须满足已有配置校验。 */
         SystemBasicUpdate: {
-            /** @description 实例公开来源；可为空，非本地地址必须使用 HTTPS，不包含路径、查询参数或片段。 */
-            public_url?: string;
             system_name?: string;
             system_logo?: string;
             system_favicon?: string;

@@ -31,6 +31,7 @@ import type { Server } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 type SystemIcon = typeof SiDebian
+type ServerIconSource = Partial<Pick<Server, "os" | "name" | "group" | "description" | "host" | "tags">>
 
 type ServerSystemIconDefinition = {
   label: string
@@ -78,7 +79,7 @@ function normalizeSearchText(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, " ")
 }
 
-function buildSystemIconSearchText(server: Server) {
+function buildSystemIconSearchText(server: ServerIconSource) {
   return normalizeSearchText([
     server.os,
     server.name,
@@ -93,7 +94,7 @@ function matchesKeyword(searchText: string, keyword: string) {
   return searchText.includes(normalizeSearchText(keyword))
 }
 
-function findSystemIcon(server: Server) {
+function findSystemIcon(server: ServerIconSource) {
   const searchText = buildSystemIconSearchText(server)
 
   for (const definition of SYSTEM_ICON_DEFINITIONS) {
@@ -105,7 +106,7 @@ function findSystemIcon(server: Server) {
   return null
 }
 
-function findLucideSystemIcon(server: Server) {
+function findLucideSystemIcon(server: ServerIconSource) {
   const searchText = buildSystemIconSearchText(server)
 
   for (const definition of LUCIDE_SYSTEM_ICON_DEFINITIONS) {
@@ -122,7 +123,7 @@ export function ServerSystemIcon({
   className,
   size = 20,
 }: {
-  server: Server
+  server: ServerIconSource
   className?: string
   size?: number
 }) {

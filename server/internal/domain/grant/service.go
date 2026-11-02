@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/scriptutil"
-	"net"
-	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -41,17 +39,16 @@ type Catalog interface {
 }
 
 type Service struct {
-	db        *gorm.DB
-	catalog   Catalog
-	runtime   *access.Runtime
-	publicURL func(context.Context) (string, error)
+	db      *gorm.DB
+	catalog Catalog
+	runtime *access.Runtime
 	// This is a single-process service. The mutex serializes issuance, revocation
 	// and idle reclamation; the database transaction makes each change durable.
 	mu sync.Mutex
 }
 
-func NewService(db *gorm.DB, catalog Catalog, runtime *access.Runtime, publicURL func(context.Context) (string, error)) *Service {
-	return &Service{db: db, catalog: catalog, runtime: runtime, publicURL: publicURL}
+func NewService(db *gorm.DB, catalog Catalog, runtime *access.Runtime) *Service {
+	return &Service{db: db, catalog: catalog, runtime: runtime}
 }
 
 func randomSecret() (string, error) {
@@ -69,21 +66,6 @@ func digest(value string) string {
 
 func matches(value, hash string) bool {
 	return value != "" && subtle.ConstantTimeCompare([]byte(digest(value)), []byte(hash)) == 1
-}
-
-func publicOrigin(raw string) (string, error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" && u.Path != "/" {
-		return "", fmt.Errorf("%w: configure a public instance origin", ErrPreparation)
-	}
-	loopback := u.Hostname() == "localhost"
-	if ip := net.ParseIP(u.Hostname()); ip != nil {
-		loopback = ip.IsLoopback()
-	}
-	if u.Scheme != "https" && !(u.Scheme == "http" && loopback) {
-		return "", fmt.Errorf("%w: public instance origin must use HTTPS", ErrPreparation)
-	}
-	return u.Scheme + "://" + u.Host, nil
 }
 
 func normalizeRequest(req *protocol.CreateGrantInput, now time.Time) error {
@@ -167,14 +149,6 @@ func (s *Service) Create(ctx context.Context, scope access.Scope, req protocol.C
 	if err := normalizeRequest(&req, now); err != nil {
 		return nil, err
 	}
-	rawOrigin, err := s.publicURL(ctx)
-	if err != nil {
-		return nil, err
-	}
-	origin, err := publicOrigin(rawOrigin)
-	if err != nil {
-		return nil, err
-	}
 	secret, err := randomSecret()
 	if err != nil {
 		return nil, err
@@ -198,7 +172,7 @@ func (s *Service) Create(ctx context.Context, scope access.Scope, req protocol.C
 	if err != nil {
 		return nil, err
 	}
-	return &protocol.GrantCreated{Grant: g.Public(), Link: origin + "/share/" + g.PublicID + "#" + secret}, nil
+	return &protocol.GrantCreated{Grant: g.Public(), Link: "/share/" + g.PublicID + "#" + secret}, nil
 }
 
 func (s *Service) writeResources(ctx context.Context, tx *gorm.DB, grantID uuid.UUID, inputs []protocol.GrantResourceInput, approved map[uuid.UUID]int64) error {

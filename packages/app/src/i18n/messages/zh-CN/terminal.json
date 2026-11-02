@@ -318,5 +318,7 @@
   "rdpGatewayMissing": "尚未配置 RDP 网关，请按部署文档配置可选的 guacd 服务。",
   "rdpSecurity": "认证方式",
   "rdpIgnoreCertificate": "允许未验证的 RDP 证书（仅用于已确认的可信目标）",
-  "rdpDomain": "域（可选）"
+  "rdpDomain": "域（可选）",
+  "monitorConnectionFailed": "监控连接失败，正在重试",
+  "monitorConnectionInterrupted": "监控连接已中断，请检查网络或分享权限。"
 }

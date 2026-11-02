@@ -4,13 +4,12 @@ import { PageLoading } from "@/components/page-loading"
 import { useState, useEffect, useMemo, useRef } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { AddServerDialog } from "@/components/servers/add-server-dialog"
 import { EditServerDialog } from "@/components/servers/edit-server-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ServerSystemIcon } from "@/components/servers/server-system-icon"
+import { ServerConnectionToolbar } from "@/components/servers/server-connection-toolbar"
 import { SERVER_GRID_CLASSNAME, getServerItemClassName, ServerConnectionSummary } from "@/components/servers/server-connection-item"
 import type { ServerFormData } from "@/components/servers/add-server-dialog"
 import { serversApi, type Server } from "@/lib/api"
@@ -27,8 +26,6 @@ import {
  Edit,
  Copy,
  Trash2,
- LayoutGrid,
- List,
  } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -740,94 +737,24 @@ export function ServerConnectionConfigs({
  <div className="flex min-h-0 flex-1 flex-col items-center px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
  <div className={cn("flex min-h-0 w-full flex-1 flex-col gap-3 transition-[max-width] duration-200", viewMode === "grid" ? "max-w-6xl" : "max-w-3xl")}>
  {/* 工具栏在加载、空列表和有数据时保持同一布局。 */}
- <div className="shrink-0 space-y-3">
- <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
- {/* 左侧：搜索框 */}
- <div className="relative w-full sm:max-w-md sm:flex-1">
- <Search className="pointer-events-none absolute left-3 top-1/2 z-10 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
- <Input
- placeholder={t("searchPlaceholder")}
- className={"pl-10 bg-card border-border text-foreground placeholder:text-muted-foreground"}
- value={searchTerm}
- onChange={(e) => setSearchTerm(e.target.value)}
- disabled={saving || draggedServer !== null}
+ <ServerConnectionToolbar
+   search={searchTerm}
+   onSearchChange={setSearchTerm}
+   viewMode={viewMode}
+   onViewModeChange={setViewMode}
+   total={statistics?.total ?? (loading ? "—" : servers.length)}
+   groups={groupFilters}
+   activeGroup={activeGroup}
+   onGroupChange={setActiveGroup}
+   disabled={saving || draggedServer !== null}
+   actions={<>
+     {serverApi.sharing && <GrantManager />}
+     <Button onClick={() => setIsAddDialogOpen(true)} className="flex-1 shadow-sm sm:flex-none">
+       <Plus className="mr-2 h-4 w-4" />
+       {t("addServer")}
+     </Button>
+   </>}
  />
- </div>
-
- {/* 右侧：视图切换和添加按钮 */}
- <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-end">
- <div className="flex items-center rounded-md border bg-card p-0.5">
- <Tooltip>
- <TooltipTrigger asChild>
- <Button
- type="button"
- variant={viewMode === "grid" ? "secondary" : "ghost"}
- size="icon-sm"
- className="h-8 w-8"
- onClick={() => setViewMode("grid")}
- aria-label={t("viewGridTooltip")}
- aria-pressed={viewMode === "grid"}
- >
- <LayoutGrid className="h-4 w-4" />
- </Button>
- </TooltipTrigger>
- <TooltipContent side="bottom">{t("viewGridTooltip")}</TooltipContent>
- </Tooltip>
- <Tooltip>
- <TooltipTrigger asChild>
- <Button
- type="button"
- variant={viewMode === "list" ? "secondary" : "ghost"}
- size="icon-sm"
- className="h-8 w-8"
- onClick={() => setViewMode("list")}
- aria-label={t("viewListTooltip")}
- aria-pressed={viewMode === "list"}
- >
- <List className="h-4 w-4" />
- </Button>
- </TooltipTrigger>
- <TooltipContent side="bottom">{t("viewListTooltip")}</TooltipContent>
- </Tooltip>
- </div>
-
- {serverApi.sharing && <GrantManager />}
- <Button onClick={() => setIsAddDialogOpen(true)} className="flex-1 shadow-sm sm:flex-none">
- <Plus className="mr-2 h-4 w-4" />
- {t("addServer")}
- </Button>
- </div>
- </div>
-
- {/* 分组切换 - 始终显示 */}
- <div className="flex flex-wrap items-center gap-x-2 gap-y-2 py-1">
- <Button
- variant={activeGroup === 'all' ? 'default' : 'outline'}
- data-server-group-selected={activeGroup === 'all'}
- aria-pressed={activeGroup === 'all'}
- size="sm"
- onClick={() => setActiveGroup('all')}
- disabled={saving || draggedServer !== null}
- className="h-8"
- >
- {t("tabAll")} ({statistics?.total ?? (loading ? "—" : servers.length)})
- </Button>
- {groupFilters.map(([groupId, group, count]) => (
- <Button
- key={groupId}
- variant={activeGroup === groupId ? 'default' : 'outline'}
- data-server-group-selected={activeGroup === groupId}
- aria-pressed={activeGroup === groupId}
- size="sm"
- onClick={() => setActiveGroup(groupId)}
- disabled={saving || draggedServer !== null}
- className="h-8"
- >
- {group} ({count})
- </Button>
- ))}
- </div>
- </div>
 
  {/* 与空状态共用占位高度，避免加载提示被 flex-1 推到页面中央。 */}
  {loading && (

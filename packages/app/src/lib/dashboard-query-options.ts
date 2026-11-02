@@ -77,7 +77,6 @@ export function operationRecordsQueryOptions(
 export async function loadSystemBasicSettings() {
   const data = await settingsApi.getSystemConfig()
   return {
-    public_url: data.public_url,
     system_name: data.system_name,
     system_logo: data.system_logo,
     system_favicon: data.system_favicon,

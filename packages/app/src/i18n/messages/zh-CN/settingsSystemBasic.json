@@ -1,8 +1,6 @@
 {
   "fieldSystemName": "系统名称",
   "fieldSystemNameDesc": "显示在浏览器标题和页面中的系统名称",
-  "fieldPublicUrl": "实例公开地址",
-  "fieldPublicUrlDesc": "分享链接等对外地址使用的实例源，须为 HTTPS（本机地址可用 HTTP）",
   "fieldSystemLogo": "系统 Logo URL",
   "fieldFavicon": "系统 Favicon URL",
   "fieldDefaultLanguage": "默认语言",

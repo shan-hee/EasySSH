@@ -318,5 +318,7 @@
   "rdpGatewayMissing": "RDP gateway is not configured. Configure the optional guacd service using the deployment guide.",
   "rdpSecurity": "Authentication",
   "rdpIgnoreCertificate": "Allow an unverified RDP certificate (confirmed trusted targets only)",
-  "rdpDomain": "Domain (optional)"
+  "rdpDomain": "Domain (optional)",
+  "monitorConnectionFailed": "Monitoring connection failed, retrying",
+  "monitorConnectionInterrupted": "Monitoring connection interrupted. Check the network or sharing permissions."
 }

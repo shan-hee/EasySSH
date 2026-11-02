@@ -1358,7 +1358,7 @@ components:
           $ref: '#/components/schemas/Grant'
         link:
           type: string
-      description: 包含秘密的链接仅在创建和轮换时返回。
+      description: 包含秘密的相对链接（/share/{public_id}#secret）仅在创建和轮换时返回；客户端使用当前实例的 Web 来源补全为绝对地址。
     GrantList:
       type: object
       required:
@@ -2693,12 +2693,8 @@ components:
           format: date-time
     SystemBasicConfig:
       type: object
-      required: [public_url, system_name, system_logo, system_favicon, default_language, default_timezone, date_format]
+      required: [system_name, system_logo, system_favicon, default_language, default_timezone, date_format]
       properties:
-        public_url:
-          type: string
-          x-go-name: PublicURL
-          description: 实例公开来源；可为空，非本地地址必须使用 HTTPS，不包含路径、查询参数或片段。
         system_name:
           type: string
         system_logo:
@@ -2713,12 +2709,8 @@ components:
           type: string
     SystemBasicUpdate:
       type: object
-      description: 省略字段保持现值；public_url/system_logo/system_favicon 可用空字符串清空，其余字段必须满足已有配置校验。
+      description: 省略字段保持现值；system_logo/system_favicon 可用空字符串清空，其余字段必须满足已有配置校验。
       properties:
-        public_url:
-          type: string
-          x-go-name: PublicURL
-          description: 实例公开来源；可为空，非本地地址必须使用 HTTPS，不包含路径、查询参数或片段。
         system_name:
           type: string
         system_logo:

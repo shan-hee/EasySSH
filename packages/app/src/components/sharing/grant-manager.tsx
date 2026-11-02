@@ -2,7 +2,7 @@ import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { GrantResourcesEditor } from "./grant-resources-editor"
 import { useEffect, useId, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Share2 } from "lucide-react"
+import { Copy, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -30,7 +30,7 @@ import { serversApi } from "@/lib/api/servers"
 import type { Server } from "@/lib/server-types"
 import { scriptsApi } from "@/lib/api/scripts"
 import type { Script } from "@/lib/script-types"
-import { toast } from "sonner"
+import { toast } from "@/components/ui/sonner"
 import { cn } from "@/lib/utils"
 
 const fresh = (server?: Server): GrantInput => ({
@@ -134,7 +134,6 @@ function GrantManagerContent({
   )
   const [link, setLink] = useState("")
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState("")
   const loadList = async () => {
     if (!reviewServer) return grantsApi.list(offset)
     const matched: Grant[] = []
@@ -169,7 +168,7 @@ function GrantManagerContent({
         }
       })
       .catch((e) => {
-        if (active) setError(String(e))
+        if (active) toast.error(e instanceof Error ? e.message : String(e))
       })
     return () => {
       active = false
@@ -196,7 +195,12 @@ function GrantManagerContent({
         setCatalogReady(true)
       }
     })().catch((e) => {
-      if (active) setError(String(e))
+      if (active) toast.error(e instanceof Error ? e.message : String(e), {
+        action: {
+          label: t("refresh"),
+          onClick: () => setCatalogRequest((value) => value + 1),
+        },
+      })
     })
     return () => {
       active = false
@@ -204,11 +208,10 @@ function GrantManagerContent({
   }, [catalogRequest])
   const run = async (fn: () => Promise<void>) => {
     setBusy(true)
-    setError("")
     try {
       await fn()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      toast.error(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
@@ -255,47 +258,33 @@ function GrantManagerContent({
           <p className="text-xs text-muted-foreground">{t("affectedHint")}</p>
         )}
         <p className="text-xs text-muted-foreground">
-          {t("originHint")}{" "}
-          <a
-            className="underline"
-            href="/dashboard/settings?section=basic"
-            target="_blank"
-            rel="noreferrer"
-          >
-            {t("configureOrigin")}
-          </a>
+          {t("originHint")}
         </p>
-        {error && (
-          <p
-            role="alert"
-            className="rounded border border-destructive p-3 text-sm text-destructive"
-          >
-            {error}
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => {
-                setCatalogRequest((value) => value + 1)
-                void run(refresh)
-              }}
-            >
-              {t("refresh")}
-            </Button>
-          </p>
-        )}
         {link && (
           <div className="space-y-2 rounded-lg border p-3">
             <p className="text-sm">{t("linkOnce")}</p>
-            <Input readOnly value={link} aria-label={t("shareLink")} />
-            <Button
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(link)
-                  .then(() => toast.success(t("copied")))
-                  .catch(() => setError(t("copyFailed")))
-              }
-            >
-              {t("copy")}
+            <div className="flex items-center gap-2">
+              <Input className="min-w-0 flex-1" readOnly value={link} aria-label={t("shareLink")} />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title={t("copy")}
+                aria-label={t("copy")}
+                onClick={() =>
+                  void navigator.clipboard
+                    .writeText(link)
+                    .then(() => toast.success(t("copied")))
+                    .catch(() => toast.error(t("copyFailed")))
+                }
+              >
+                <Copy aria-hidden="true" />
+              </Button>
+            </div>
+            <Button asChild>
+              <a href={link} target="_blank" rel="noopener noreferrer">
+                {t("openLink")}
+              </a>
             </Button>
           </div>
         )}
@@ -326,7 +315,10 @@ function GrantManagerContent({
             <Button
               variant="outline"
               disabled={busy}
-              onClick={() => void run(refresh)}
+              onClick={() => {
+                setCatalogRequest((value) => value + 1)
+                void run(refresh)
+              }}
             >
               {t("refresh")}
             </Button>
@@ -427,7 +419,7 @@ function GrantManagerContent({
                     void run(async () => {
                       if (!await confirm({ description: t("rotateConfirm"), variant: "destructive" })) return
                       const r = await grantsApi.rotate(detail.grant.id)
-                      setLink(r.link)
+                      setLink(new URL(r.link, window.location.origin).href)
                       setDetail(await grantsApi.detail(r.grant.id))
                       await refresh()
                     })
@@ -538,7 +530,7 @@ function GrantManagerContent({
                   setDetail(await grantsApi.detail(detail.grant.id))
                 } else {
                   const r = await grantsApi.create(form)
-                  setLink(r.link)
+                  setLink(new URL(r.link, window.location.origin).href)
                   setDetail(await grantsApi.detail(r.grant.id))
                 }
                 setForm(null)

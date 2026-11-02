@@ -18,7 +18,7 @@
   "itemAIConfig": "AI 配置",
   "itemNotificationConfig": "通知配置",
   "itemBackup": "备份与恢复",
-  "itemBasicDescription": "系统名称、访问地址、品牌图标与默认区域格式。",
+  "itemBasicDescription": "系统名称、品牌图标与默认区域格式。",
   "itemAuthenticationDescription": "所有者登录会话的有效期与登录限流。",
   "itemAccessControlDescription": "按 IP 允许或拒绝访问，对所有用户生效。",
   "itemWorkspaceDescription": "浏览器中终端标签页的数量与休眠行为，不影响登录会话。",

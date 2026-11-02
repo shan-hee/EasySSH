@@ -18,7 +18,7 @@
   "itemAIConfig": "AI config",
   "itemNotificationConfig": "Notification config",
   "itemBackup": "Backup & restore",
-  "itemBasicDescription": "System name, public URL, brand icons and default locale formats.",
+  "itemBasicDescription": "System name, brand icons and default locale formats.",
   "itemAuthenticationDescription": "Owner sign-in session lifetime and sign-in rate limits.",
   "itemAccessControlDescription": "Allow or deny access by IP address for all users.",
   "itemWorkspaceDescription": "Terminal tab limits and hibernation in the browser. Sign-in sessions are unaffected.",

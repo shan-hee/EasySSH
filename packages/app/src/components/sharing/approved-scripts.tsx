@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
+import { ScrollText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -14,7 +15,7 @@ import { openWorkspaceTask } from "@/lib/workspace-task-navigation"
 import type { components } from "@/generated/openapi"
 
 type Script = components["schemas"]["AvailableScript"]
-export function ApprovedScripts({ serverId }: { serverId: string }) {
+export function ApprovedScripts({ serverId, compact = false }: { serverId: string; compact?: boolean }) {
   const { t } = useTranslation("sharing")
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<Script | null>(null)
@@ -43,8 +44,8 @@ export function ApprovedScripts({ serverId }: { serverId: string }) {
   })
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
-        {t("approvedScripts")}
+      <Button variant={compact ? "ghost" : "outline"} size={compact ? "icon-sm" : "default"} title={t("approvedScripts")} aria-label={t("approvedScripts")} onClick={() => setOpen(true)}>
+        {compact ? <ScrollText className="size-3.5" /> : t("approvedScripts")}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>

@@ -174,13 +174,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	grantService := grant.NewService(database, grant.NewResourceCatalog(encryptor), accessRuntime, func(ctx context.Context) (string, error) {
-		settings, err := systemConfigService.Get(ctx)
-		if err != nil {
-			return "", err
-		}
-		return settings.PublicURL, nil
-	})
+	grantService := grant.NewService(database, grant.NewResourceCatalog(encryptor), accessRuntime)
 	restoreExecution := func(ctx context.Context, actor protocol.Actor) (access.Scope, error) {
 		switch actor.Kind {
 		case protocol.Visitor:
@@ -390,13 +384,7 @@ func main() {
 	// 初始化处理器
 	ownerHandler := rest.NewOwnerHandler(authService, securityService)
 	grantHandler := rest.NewGrantHandler(grantService)
-	accessHandler := rest.NewAccessHandler(grantService, func(c *gin.Context) (string, error) {
-		settings, err := systemConfigService.Get(c.Request.Context())
-		if err != nil {
-			return "", err
-		}
-		return settings.PublicURL, nil
-	})
+	accessHandler := rest.NewAccessHandler(grantService, securityService)
 	serverHandler := rest.NewServerHandler(serverService)
 	serverGroupHandler := rest.NewServerGroupHandler(server.NewGroupService(database))
 	sshHandler := rest.NewSSHHandler(sessionManager)

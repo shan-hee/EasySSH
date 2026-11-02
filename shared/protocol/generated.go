@@ -3548,7 +3548,7 @@ type Grant struct {
 	Version         int64              `json:"version"`
 }
 
-// GrantCreated 包含秘密的链接仅在创建和轮换时返回。
+// GrantCreated 包含秘密的相对链接（/share/{public_id}#secret）仅在创建和轮换时返回；客户端使用当前实例的 Web 来源补全为绝对地址。
 type GrantCreated struct {
 	Grant Grant  `json:"grant"`
 	Link  string `json:"link"`
@@ -4812,38 +4812,29 @@ type SystemBasicConfig struct {
 	DateFormat      string `json:"date_format"`
 	DefaultLanguage string `json:"default_language"`
 	DefaultTimezone string `json:"default_timezone"`
-
-	// PublicURL 实例公开来源；可为空，非本地地址必须使用 HTTPS，不包含路径、查询参数或片段。
-	PublicURL     string `json:"public_url"`
-	SystemFavicon string `json:"system_favicon"`
-	SystemLogo    string `json:"system_logo"`
-	SystemName    string `json:"system_name"`
+	SystemFavicon   string `json:"system_favicon"`
+	SystemLogo      string `json:"system_logo"`
+	SystemName      string `json:"system_name"`
 }
 
-// SystemBasicUpdate 省略字段保持现值；public_url/system_logo/system_favicon 可用空字符串清空，其余字段必须满足已有配置校验。
+// SystemBasicUpdate 省略字段保持现值；system_logo/system_favicon 可用空字符串清空，其余字段必须满足已有配置校验。
 type SystemBasicUpdate struct {
 	DateFormat      *string `json:"date_format,omitempty"`
 	DefaultLanguage *string `json:"default_language,omitempty"`
 	DefaultTimezone *string `json:"default_timezone,omitempty"`
-
-	// PublicURL 实例公开来源；可为空，非本地地址必须使用 HTTPS，不包含路径、查询参数或片段。
-	PublicURL     *string `json:"public_url,omitempty"`
-	SystemFavicon *string `json:"system_favicon,omitempty"`
-	SystemLogo    *string `json:"system_logo,omitempty"`
-	SystemName    *string `json:"system_name,omitempty"`
+	SystemFavicon   *string `json:"system_favicon,omitempty"`
+	SystemLogo      *string `json:"system_logo,omitempty"`
+	SystemName      *string `json:"system_name,omitempty"`
 }
 
 // SystemConfig defines model for SystemConfig.
 type SystemConfig struct {
-	DateFormat              string `json:"date_format"`
-	DefaultLanguage         string `json:"default_language"`
-	DefaultTimezone         string `json:"default_timezone"`
-	DownloadExcludePatterns string `json:"download_exclude_patterns"`
-	JobQueueMaxConcurrency  int    `binding:"required,min=1,max=16" json:"job_queue_max_concurrency"`
-	MaxFileUploadSize       int    `json:"max_file_upload_size"`
-
-	// PublicURL 实例公开来源；可为空，非本地地址必须使用 HTTPS，不包含路径、查询参数或片段。
-	PublicURL                  string `json:"public_url"`
+	DateFormat                 string `json:"date_format"`
+	DefaultLanguage            string `json:"default_language"`
+	DefaultTimezone            string `json:"default_timezone"`
+	DownloadExcludePatterns    string `json:"download_exclude_patterns"`
+	JobQueueMaxConcurrency     int    `binding:"required,min=1,max=16" json:"job_queue_max_concurrency"`
+	MaxFileUploadSize          int    `json:"max_file_upload_size"`
 	SFTPCleanupIntervalSeconds int    `json:"sftp_cleanup_interval_seconds"`
 	SFTPConnTimeoutSeconds     int    `json:"sftp_conn_timeout_seconds"`
 	SFTPMaxIdleTimeSeconds     int    `json:"sftp_max_idle_time_seconds"`

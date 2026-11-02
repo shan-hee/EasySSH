@@ -42,6 +42,14 @@ func (s *wsSubscriber) ID() string {
 	return s.id
 }
 
+func (s *wsSubscriber) OnError(err error) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	_ = s.conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
+	_ = s.conn.WriteJSON(map[string]string{"type": "error", "message": err.Error()})
+	_ = s.conn.Close()
+}
+
 func (s *wsSubscriber) OnMetrics(metrics *pb.SystemMetrics) {
 	s.persistOSIfEmpty(metrics)
 
