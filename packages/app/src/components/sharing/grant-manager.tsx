@@ -547,8 +547,8 @@ function GrantManagerContent({
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </label>
-              <label className="block space-y-1 text-sm">
-                {t("landing")}
+              <div className="space-y-1 text-sm">
+                <label htmlFor={`${formId}-landing`}>{t("landing")}</label>
                 <Select
                   value={form.default_content}
                   onValueChange={(value) =>
@@ -558,7 +558,7 @@ function GrantManagerContent({
                     })
                   }
                 >
-                  <SelectTrigger className="w-full" aria-label={t("landing")}>
+                  <SelectTrigger id={`${formId}-landing`} className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -569,9 +569,9 @@ function GrantManagerContent({
                     ))}
                   </SelectContent>
                 </Select>
-              </label>
+              </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
+            <label className="flex w-fit items-center gap-2 text-sm">
               <Checkbox
                 checked={!!form.long_lived}
                 onCheckedChange={(checked) =>

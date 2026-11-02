@@ -160,12 +160,39 @@
   "verifyTransfer": "Recheck transfer result",
   "selectedResourceCount": "{count} servers selected",
   "selectedResources": "Selected servers",
-  "removeNamedResource": "Remove {name}",
   "selectResourceToConfigure": "Add a server to configure its permissions here.",
   "resourceUnavailable": "This server was deleted or is unavailable. Remove it from the share.",
   "backToShares": "Back to shares",
   "interactiveRequired": "Confirm SSH interactive authentication for “{name}”.",
-  "loadingResources": "Loading servers…",
   "vnc": "VNC desktop",
-  "rdp": "RDP desktop"
+  "rdp": "RDP desktop",
+  "permissionGroups": {
+    "terminal": "Terminal",
+    "vnc": "VNC remote desktop",
+    "rdp": "RDP remote desktop",
+    "monitor": "View monitoring",
+    "scripts": "Run approved scripts",
+    "ai": "Use AI",
+    "activity": "View activity and tasks",
+    "files": "Files",
+    "docker": "Containers"
+  },
+  "permissionLevels": {
+    "none": "None",
+    "custom": "Custom",
+    "files": {
+      "1": "Read",
+      "2": "Read & write",
+      "3": "Full"
+    },
+    "docker": {
+      "1": "View",
+      "2": "Manage"
+    }
+  },
+  "sameForAll": "{count} servers share the same permissions",
+  "setIndividually": "Set per server",
+  "applyToAll": "Apply “{name}” to all",
+  "noScripts": "No scripts to approve yet. Create one in the script library first.",
+  "scriptParameters": "Allowed parameters (optional)"
 }

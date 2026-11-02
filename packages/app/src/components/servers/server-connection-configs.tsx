@@ -1,7 +1,7 @@
 import { GrantManager } from "@/components/sharing/grant-manager"
 import { PageLoading } from "@/components/page-loading"
 
-import { useState, useEffect, useMemo, useRef, type ReactNode } from "react"
+import { useState, useEffect, useMemo, useRef, type ReactNode, type SyntheticEvent } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -99,6 +99,12 @@ export interface ServerConnectionConfigsApi {
  getStatistics: typeof serversApi.getStatistics
 }
 
+// Portal events bubble through the React tree too. Only stop events from the
+// action bar's DOM so dialog dropdowns can reach Radix's document listeners.
+function stopServerActionPropagation(event: SyntheticEvent<HTMLDivElement>) {
+  if (event.currentTarget.contains(event.target as Node)) event.stopPropagation()
+}
+
 function ServerItemBody({
   server,
   viewMode,
@@ -126,9 +132,9 @@ function ServerItemBody({
         {showActions && onEdit && onDuplicate && onDelete && (
           <div
             className="flex items-center justify-end gap-1"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            onDoubleClick={(e) => e.stopPropagation()}
+            onPointerDown={stopServerActionPropagation}
+            onClick={stopServerActionPropagation}
+            onDoubleClick={stopServerActionPropagation}
           >
             {sharing && (
               <GrantManager
@@ -211,9 +217,9 @@ function ServerItemBody({
       {showActions && onEdit && onDuplicate && onDelete && (
         <div
           className="col-start-2 flex items-center justify-end gap-1 sm:col-start-auto sm:flex-shrink-0"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={(e) => e.stopPropagation()}
+          onPointerDown={stopServerActionPropagation}
+          onClick={stopServerActionPropagation}
+          onDoubleClick={stopServerActionPropagation}
         >
           {sharing && <GrantManager server={server} compact />}
           <Button
@@ -338,9 +344,15 @@ function SortableServerItem({
       style={style}
       {...attributes}
       {...listeners}
+      onPointerDown={(event) => {
+        if (event.currentTarget.contains(event.target as Node)) listeners?.onPointerDown?.(event)
+      }}
       className={getServerItemClassName(viewMode)}
-      onDoubleClick={() => onConnect(server.id)}
+      onDoubleClick={(event) => {
+        if (event.currentTarget.contains(event.target as Node)) onConnect(server.id)
+      }}
       onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return
         if (event.key !== "Enter" && event.key !== " ") return
         event.preventDefault()
         onConnect(server.id)

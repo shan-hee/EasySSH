@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ServerScopePicker } from "@/components/servers/server-scope-picker"
-import { TokenApprovedScripts, TokenPermissionActions, useActionLabel } from "./token-permission-fields"
+import { TokenPermissionActions, useActionLabel } from "./token-permission-fields"
+import { ApprovedScriptsField } from "@/components/sharing/grant-permissions"
 import {
   presetPermissions, tokenPresets, tokenResourceLimit,
   type TokenAuthorizationDraft, type TokenPermissions, type TokenPreset,
@@ -50,7 +51,7 @@ export function TokenAuthorizationEditor({ value, servers, scripts, disabled, lo
         </Button>
       </div>
       {customizing && <div className="rounded-lg border p-3"><TokenPermissionActions value={value.permissions} disabled={disabled} onChange={permissions => changePermissions(permissions)} /></div>}
-      {actions.includes("scripts.execute") && <TokenApprovedScripts value={value.permissions.scripts} scripts={scripts} disabled={disabled} onChange={allowed => changePermissions({ ...value.permissions, scripts: allowed }, value.preset)} />}
+      {actions.includes("scripts.execute") && <ApprovedScriptsField value={value.permissions.scripts} scripts={scripts} disabled={disabled} onChange={allowed => changePermissions({ ...value.permissions, scripts: allowed }, value.preset)} />}
     </section>
 
     <section className="space-y-2" aria-labelledby={`${id}-scope`}>

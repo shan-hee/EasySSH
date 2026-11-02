@@ -160,12 +160,39 @@
   "verifyTransfer": "核对传输结果",
   "selectedResourceCount": "已选 {count} 台服务器",
   "selectedResources": "已选服务器",
-  "removeNamedResource": "移除 {name}",
   "selectResourceToConfigure": "添加服务器后，在这里设置它的权限。",
   "resourceUnavailable": "服务器已删除或不可用，请移除此项。",
   "backToShares": "返回分享列表",
   "interactiveRequired": "请确认服务器“{name}”的 SSH 交互认证设置。",
-  "loadingResources": "正在加载服务器…",
   "vnc": "VNC 远程桌面",
-  "rdp": "RDP 远程桌面"
+  "rdp": "RDP 远程桌面",
+  "permissionGroups": {
+    "terminal": "终端",
+    "vnc": "VNC 远程桌面",
+    "rdp": "RDP 远程桌面",
+    "monitor": "查看监控",
+    "scripts": "执行指定脚本",
+    "ai": "使用 AI",
+    "activity": "查看活动与任务",
+    "files": "文件",
+    "docker": "容器"
+  },
+  "permissionLevels": {
+    "none": "无",
+    "custom": "自定义",
+    "files": {
+      "1": "只读",
+      "2": "读写",
+      "3": "完全"
+    },
+    "docker": {
+      "1": "查看",
+      "2": "管理"
+    }
+  },
+  "sameForAll": "{count} 台服务器使用相同权限",
+  "setIndividually": "为每台服务器单独设置",
+  "applyToAll": "将“{name}”的设置应用到全部",
+  "noScripts": "还没有可授权的脚本，请先在脚本库创建。",
+  "scriptParameters": "设置允许的参数（可选）"
 }
