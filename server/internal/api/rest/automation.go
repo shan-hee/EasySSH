@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/easyssh/server/internal/api/middleware"
+	"github.com/easyssh/server/internal/domain/aichat/registry"
 	"github.com/easyssh/server/internal/domain/automation"
 	"github.com/easyssh/server/internal/domain/security"
 	"github.com/gin-gonic/gin"
@@ -25,26 +27,32 @@ func NewAutomationHandler(service *automation.Service, securityService security.
 	server := mcp.NewServer(&mcp.Implementation{Name: "EasySSH", Version: "1.0.0"}, nil)
 	for _, spec := range service.Tools() {
 		name := spec.Name
-		server.AddTool(&mcp.Tool{Name: name, Description: spec.Description, InputSchema: spec.Parameters}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		server.AddTool(&mcp.Tool{Name: name, Description: spec.Description, InputSchema: spec.Parameters, Annotations: toolAnnotations(spec)}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			value, err := service.Call(ctx, name, req.Params.Arguments)
 			if err != nil {
 				return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, nil
+			}
+			// Resource tools already produce model text; task tools return one JSON object.
+			if output, ok := value.(automation.Output); ok {
+				return &mcp.CallToolResult{IsError: output.IsError || output.Unknown || output.Cancelled, Content: []mcp.Content{&mcp.TextContent{Text: output.Content}}}, nil
 			}
 			data, err := json.Marshal(value)
 			if err != nil {
 				return nil, err
 			}
-			var status struct {
-				IsError   bool `json:"is_error"`
-				Unknown   bool `json:"unknown"`
-				Cancelled bool `json:"cancelled"`
-			}
-			_ = json.Unmarshal(data, &status)
-			return &mcp.CallToolResult{IsError: status.IsError || status.Unknown || status.Cancelled, Content: []mcp.Content{&mcp.TextContent{Text: string(data)}}}, nil
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: string(data)}}}, nil
 		})
 	}
 	return &AutomationHandler{service: service, mcp: mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true}), security: securityService, devPort: devPort}
 }
+
+// Clients use these hints to decide which calls need user approval. Read-only
+// tools are those the in-app assistant allows in strict read-only mode.
+func toolAnnotations(spec registry.ToolSpec) *mcp.ToolAnnotations {
+	destructive := spec.Dangerous
+	return &mcp.ToolAnnotations{Title: spec.DisplayName, ReadOnlyHint: slices.Contains(spec.SupportedModes, "readonly"), DestructiveHint: &destructive}
+}
+
 func (h *AutomationHandler) MCP(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	if !strings.HasPrefix(c.GetHeader("Authorization"), "Bearer ess_api_") {

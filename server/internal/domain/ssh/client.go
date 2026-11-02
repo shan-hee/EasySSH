@@ -14,7 +14,6 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/shared/aiworkspace"
 	"github.com/easyssh/shared/secretcrypto"
-	"github.com/easyssh/shared/sftputil"
 	"github.com/easyssh/shared/sshutil"
 	"golang.org/x/crypto/ssh"
 )
@@ -385,8 +384,6 @@ func (c *Client) ExecuteCommandDetailedContext(ctx context.Context, cmd string) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	stop := sftputil.CloseOnCancel(ctx, c.Close)
-	defer stop()
 	started := time.Now().UTC()
 	output := aiworkspace.NewOutput(ctx)
 	session.Stdout, session.Stderr = output, output
@@ -397,17 +394,52 @@ func (c *Client) ExecuteCommandDetailedContext(ctx context.Context, cmd string) 
 		done <- err
 	}()
 	var runErr error
+	canceled := false
 	select {
 	case runErr = <-done:
 	case <-ctx.Done():
-		_ = c.Close()
-		runErr = <-done
+		canceled = true
+		runErr = c.stopRemote(session, done)
 	}
 	result := sshCommandResult(cmd, []byte(output.String()), runErr, started, time.Now().UTC())
+	var exit *ssh.ExitError
+	if canceled && errors.As(runErr, &exit) && (exit.Signal() == string(ssh.SIGTERM) || exit.Signal() == string(ssh.SIGKILL)) {
+		// Confirmed stopped by our signal; effects produced before it remain.
+		result.Outcome, result.Error = "canceled", "command canceled; remote process ended by SIG"+exit.Signal()
+		return result, errors.Join(ctx.Err(), runErr)
+	}
 	if result.Outcome == "unknown" {
 		return result, errors.Join(sshutil.ErrCommandOutcomeUnknown, runErr)
 	}
 	return result, runErr
+}
+
+// A command without a PTY receives no SIGHUP when the connection drops, so
+// closing alone may leave it running. Signal the session's process group first;
+// closing an unresponsive transport leaves the remote outcome unknown.
+func (c *Client) stopRemote(session *ssh.Session, done <-chan error) error {
+	// Signal itself writes to the transport and can block. Bound that write as
+	// well as the exit wait, then join an already-started close before returning.
+	closed := make(chan struct{})
+	timer := time.AfterFunc(3*time.Second, func() { defer close(closed); _ = c.Close() })
+	defer func() {
+		if !timer.Stop() {
+			<-closed
+		}
+	}()
+	for _, step := range []struct {
+		signal ssh.Signal
+		wait   time.Duration
+	}{{ssh.SIGTERM, 2 * time.Second}, {ssh.SIGKILL, time.Second}} {
+		_ = session.Signal(step.signal)
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(step.wait):
+		}
+	}
+	_ = c.Close()
+	return <-done
 }
 
 func sshCommandResult(cmd string, output []byte, err error, started time.Time, completed time.Time) *CommandResult {

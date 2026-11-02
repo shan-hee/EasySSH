@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/easyssh/shared/protocol"
 	"io"
 	"os"
@@ -15,9 +16,10 @@ import (
 )
 
 type writeFileArguments struct {
-	ServerID string  `json:"server_id"`
-	Path     string  `json:"path"`
-	Content  *string `json:"content"`
+	ServerID       string  `json:"server_id"`
+	Path           string  `json:"path"`
+	Content        *string `json:"content"`
+	ExpectedSHA256 string  `json:"expected_sha256"`
 }
 
 func (s *ToolExecutorService) readFileSnapshot(ctx context.Context, serverID, filePath string) (string, bool, error) {
@@ -85,6 +87,10 @@ func (s *ToolExecutorService) prepareWriteFileFor(ctx context.Context, raw json.
 	before, existed, err := s.readFileSnapshotFor(ctx, args.ServerID, args.Path, requireAI)
 	if err != nil {
 		return nil, err
+	}
+	// The caller's last read is the baseline; the prepare-time read only spans this request.
+	if args.ExpectedSHA256 != "" && (!existed || aiworkspace.Hash(before) != args.ExpectedSHA256) {
+		return nil, fmt.Errorf("文件在读取后已变化或已被删除（当前 sha256=%s），本次修改未写入；请重新读取后再修改", aiworkspace.Hash(before))
 	}
 	return aiworkspace.PrepareWrite(args.ServerID, args.Path, before, *args.Content, existed)
 }

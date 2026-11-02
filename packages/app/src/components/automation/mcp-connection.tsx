@@ -15,7 +15,8 @@ const bearer = (token: string) => ({ Authorization: `Bearer ${token}` })
 // replace the token placeholder instead of rewriting field names.
 const clients = {
   codex: (url: string, token: string) => `[mcp_servers.easyssh]\nurl = ${JSON.stringify(url)}\nhttp_headers = { Authorization = ${JSON.stringify(`Bearer ${token}`)} }`,
-  "claude-code": (url: string, token: string) => `claude mcp add --transport http easyssh ${url} --header "Authorization: Bearer ${token}"`,
+  // The default local scope binds the server to the directory where the command ran.
+  "claude-code": (url: string, token: string) => `claude mcp add --scope user --transport http easyssh ${url} --header "Authorization: Bearer ${token}"`,
   cursor: (url: string, token: string) => json({ mcpServers: { easyssh: { url, headers: bearer(token) } } }),
   vscode: (url: string, token: string) => json({ servers: { easyssh: { type: "http", url, headers: bearer(token) } } }),
   generic: (url: string, token: string) => json({ url, transport: "streamable-http", headers: bearer(token) }),

@@ -45,7 +45,7 @@ func (d *NotificationDelivery) BeforeCreate(_ *gorm.DB) error {
 }
 
 func enqueueCompletion(tx *gorm.DB, run *TaskRun) error {
-	if !isTerminalStatus(run.Status) {
+	if !IsTerminalStatus(run.Status) {
 		return nil
 	}
 	item := NotificationDelivery{NotificationID: uuid.NewSHA1(uuid.NameSpaceOID, []byte("task-completion:"+run.ID.String())), SourceType: "task_run", SourceID: run.ID.String(), Channel: "completion", Status: "queued", PayloadJSON: "", MaxAttempts: 5, NextAttemptAt: time.Now().UTC()}

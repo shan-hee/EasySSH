@@ -161,7 +161,7 @@ func (r *repository) updateIfStatus(ctx context.Context, id uuid.UUID, statuses 
 		run.applyBody(body)
 		changed = true
 		if _, changesStatus := updates["status"]; changesStatus {
-			if isTerminalStatus(run.Status) && run.DefinitionID != nil {
+			if IsTerminalStatus(run.Status) && run.DefinitionID != nil {
 				if err := projectDefinitionOutcome(tx, &run); err != nil {
 					return err
 				}

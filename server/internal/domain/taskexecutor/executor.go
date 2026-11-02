@@ -737,6 +737,8 @@ func (e *Executor) executeOnSingleServer(
 	switch commandResult.Outcome {
 	case "succeeded":
 		result.Status = executionStatusSuccess
+	case "canceled":
+		result.Status = executionStatusCanceled
 	case "unknown":
 		result.Status = executionStatusUnknown
 	default:

@@ -579,9 +579,11 @@ func (c *Client) openRead(path string, action protocol.Action) (*File, error) {
 	reader := io.LimitReader(metered, info.Size())
 	return &File{file: file, reader: reader, snapshot: info, settle: finish}, nil
 }
+
+// A text write reads the baseline it replaces; that read is files.read, not a download.
 func (c *Client) OpenFile(path string) (*File, error) {
 	action := protocol.FilesDownload
-	if c.action == protocol.FilesRead {
+	if c.action == protocol.FilesRead || c.action == protocol.FilesWrite {
 		action = protocol.FilesRead
 	}
 	return c.openRead(path, action)

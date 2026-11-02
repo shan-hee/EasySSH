@@ -17,7 +17,7 @@
   },
   "clientHints": {
     "codex": "Add to ~/.codex/config.toml. If [mcp_servers.easyssh] already exists, update that section.",
-    "claude-code": "Run this command in a terminal.",
+    "claude-code": "Run this command in a terminal. It is saved at user scope and works in every directory.",
     "cursor": "Add to ~/.cursor/mcp.json or .cursor/mcp.json in your project.",
     "vscode": "Add to .vscode/mcp.json in your project.",
     "generic": "Enter the endpoint and header as your client requires. OAuth authorization is not supported."
@@ -138,16 +138,16 @@
   "toolDescriptions": {
     "list_servers": "List servers available to this token, including identifiers, names, addresses and status. Unauthorized servers are excluded.",
     "get_server_info": "Read details of an authorized server, including address, port, username, status and operating system.",
-    "list_directory": "List files and subdirectories at a remote path. Requires directory listing permission.",
-    "read_file": "Read a remote text file. Oversized files are rejected and long content is truncated by line count. Requires file read permission.",
-    "write_file": "Write up to 2 MiB of UTF-8 text. Requires both file read and write permissions. The original content is checked before writing; changes stop the write.",
+    "list_directory": "List files and subdirectories at a remote path, sorted by name and paginated. Requires directory listing permission.",
+    "read_file": "Read a remote text file in line ranges, with the total line count and a content hash for later write checks. Oversized files are rejected. Requires file read permission.",
+    "write_file": "Write up to 2 MiB of UTF-8 text. Requires both file read and write permissions. Pass the hash from the last read to stop the write if the file has changed since.",
     "create_directory": "Create a remote directory, including missing parent directories. Requires file write permission.",
     "delete_file": "Delete a remote file or directory. Directories are removed recursively. Requires explicitly granted file deletion permission.",
     "get_system_info": "Inspect CPU, memory, disks and network status. Requires monitoring permission; container statistics are included only with container read permission.",
-    "execute_command": "Submit a shell command as a durable background task. Use the returned task identifier to read status and output. Never automatically retry an uncertain execution.",
+    "execute_command": "Submit a shell command as a durable background task and briefly wait for it, returning the exit code and output directly. Unfinished tasks return an identifier to check later. Never automatically retry an uncertain execution.",
     "list_scripts": "List approved scripts, exact versions and parameter constraints using cursor pagination. When more results exist, continue using the returned next-page cursor.",
-    "execute_script": "Submit an approved script version as a background task. Parameters must satisfy grant rules. Use the returned task identifier to inspect status and output.",
-    "get_task": "Read the status and output of tasks created by this token. Tasks created by other credentials are not accessible.",
-    "cancel_task": "Request cancellation of a task created by this token. Cancellation does not roll back effects already produced on the remote server."
+    "execute_script": "Submit an approved script version as a background task. Parameters must satisfy grant rules. Results are returned directly when the script finishes quickly; otherwise a task identifier is returned.",
+    "get_task": "Read the status, exit codes and output of tasks created by this token, optionally waiting for completion. Tasks created by other credentials are not accessible.",
+    "cancel_task": "Request cancellation of a task created by this token and attempt to stop its remote process; query the task result to confirm. Effects already produced are not rolled back. Processes may keep running if the SSH server does not support signals or they have detached from the session."
   }
 }

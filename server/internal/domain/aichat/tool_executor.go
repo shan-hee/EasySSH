@@ -1,13 +1,13 @@
 package aichat
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/shared/protocol"
+	"slices"
 	"strings"
 	"time"
 
@@ -46,6 +46,21 @@ func NewToolExecutorService(
 	}
 }
 
+var toolActions = map[string][]protocol.Action{
+	"get_server_info":  {protocol.WorkspaceRead},
+	"execute_command":  {protocol.TerminalConnect},
+	"list_directory":   {protocol.FilesList},
+	"read_file":        {protocol.FilesRead},
+	"write_file":       {protocol.FilesWrite, protocol.FilesRead},
+	"create_directory": {protocol.FilesWrite},
+	"delete_file":      {protocol.FilesDelete},
+	"get_system_info":  {protocol.MonitorRead},
+}
+
+// ToolActions lists the permissions a server tool needs on its target server.
+// list_servers has none: it only returns servers the scope can already read.
+func ToolActions(name string) []protocol.Action { return toolActions[name] }
+
 // ExecuteTool 执行工具调用
 func (s *ToolExecutorService) ExecuteTool(ctx context.Context, toolCall *ToolCall, permissionMode PermissionMode) (*ToolResult, error) {
 	return s.executeAuthorizedTool(ctx, toolCall, permissionMode, true)
@@ -73,12 +88,14 @@ func (s *ToolExecutorService) executeAuthorizedTool(ctx context.Context, toolCal
 		if _, err := uuid.Parse(target.ServerID); err != nil {
 			return nil, access.ErrForbidden
 		}
-		actions := map[string]protocol.Action{"get_server_info": protocol.WorkspaceRead, "execute_command": protocol.TerminalConnect, "list_directory": protocol.FilesList, "read_file": protocol.FilesRead, "write_file": protocol.FilesWrite, "create_directory": protocol.FilesWrite, "delete_file": protocol.FilesDelete, "get_system_info": protocol.MonitorRead}
-		action, ok := actions[toolCall.Name]
-		if !ok {
+		actions := ToolActions(toolCall.Name)
+		if len(actions) == 0 {
 			return nil, access.ErrForbidden
 		}
-		requirements = []access.Requirement{{Action: action, ServerID: target.ServerID}}
+		requirements = make([]access.Requirement, 0, len(actions)+1)
+		for _, action := range actions {
+			requirements = append(requirements, access.Requirement{Action: action, ServerID: target.ServerID})
+		}
 		if requireAI {
 			requirements = append(requirements, access.Requirement{Action: protocol.AIUse, ServerID: target.ServerID})
 		}
@@ -330,6 +347,15 @@ func (s *ToolExecutorService) executeCommand(ctx context.Context, toolCall *Tool
 		result.Unknown = true
 		return result, nil
 	}
+	if commandResult.Outcome == "canceled" {
+		title := "命令已取消，远端进程已终止；此前产生的效果不会回滚"
+		if errors.Is(err, context.DeadlineExceeded) {
+			title = fmt.Sprintf("命令超过 %d 秒已终止；此前产生的效果不会回滚", args.Timeout)
+		}
+		result.Content = aiToolJSON(title, payload)
+		result.Cancelled = true
+		return result, nil
+	}
 	if commandResult.Outcome != "succeeded" {
 		result.Content = aiToolJSON("命令执行失败", payload)
 		result.IsError = true
@@ -347,6 +373,8 @@ func (s *ToolExecutorService) executeListDirectory(ctx context.Context, toolCall
 	var args struct {
 		ServerID string `json:"server_id"`
 		Path     string `json:"path"`
+		Offset   int    `json:"offset"`
+		Limit    int    `json:"limit"`
 	}
 	if err := json.Unmarshal(toolCall.Arguments, &args); err != nil {
 		result.Content = fmt.Sprintf("参数解析失败: %v", err)
@@ -356,6 +384,10 @@ func (s *ToolExecutorService) executeListDirectory(ctx context.Context, toolCall
 
 	if args.Path == "" || args.Path == "~" {
 		args.Path = "."
+	}
+	args.Offset = max(args.Offset, 0)
+	if args.Limit <= 0 {
+		args.Limit = 100
 	}
 
 	serverID, err := uuid.Parse(args.ServerID)
@@ -382,9 +414,15 @@ func (s *ToolExecutorService) executeListDirectory(ctx context.Context, toolCall
 		return result, nil
 	}
 
-	files := make([]map[string]interface{}, 0, len(listing.Files))
-	for _, f := range listing.Files {
-		files = append(files, map[string]interface{}{
+	// SFTP returns entries in server order; pages need a stable order.
+	slices.SortFunc(listing.Files, func(a, b *sftp.FileInfo) int { return strings.Compare(a.Name, b.Name) })
+	start := min(args.Offset, len(listing.Files))
+	end, size := start, 0
+	files := make([]map[string]interface{}, 0, min(args.Limit, len(listing.Files)-start))
+	// Stop at whole entries within the same output budget as read_file.
+	for ; end < len(listing.Files) && end-start < args.Limit; end++ {
+		f := listing.Files[end]
+		entry := map[string]interface{}{
 			"name":        f.Name,
 			"path":        f.Path,
 			"size":        f.Size,
@@ -393,16 +431,29 @@ func (s *ToolExecutorService) executeListDirectory(ctx context.Context, toolCall
 			"permission":  f.Permission,
 			"modified_at": f.ModTime,
 			"link_target": f.LinkTarget,
-		})
+		}
+		// Measured as aiToolJSON renders it, two levels deep: the first line's
+		// indent and the trailing ",\n" are added separately.
+		rendered, _ := json.MarshalIndent(entry, "    ", "  ")
+		size += len(rendered) + 6
+		if size > aitooloutput.StoredTextBytes && end > start {
+			break
+		}
+		files = append(files, entry)
 	}
 
-	result.Content = aiToolJSON("目录列表", map[string]interface{}{
+	page := map[string]interface{}{
 		"path":     listing.Path,
 		"parent":   sftputil.ParentPath(listing.Path),
 		"files":    files,
-		"total":    len(files),
+		"offset":   start,
+		"total":    len(listing.Files),
 		"can_read": listing.CanRead,
-	})
+	}
+	if end < len(listing.Files) {
+		page["next_offset"] = end
+	}
+	result.Content = aiToolJSON("目录列表", page)
 	return result, nil
 }
 
@@ -411,9 +462,10 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, toolCall *Too
 	result := &ToolResult{ToolCallID: toolCall.ID}
 
 	var args struct {
-		ServerID string `json:"server_id"`
-		Path     string `json:"path"`
-		MaxLines int    `json:"max_lines"`
+		ServerID  string `json:"server_id"`
+		Path      string `json:"path"`
+		StartLine int    `json:"start_line"`
+		MaxLines  int    `json:"max_lines"`
 	}
 	if err := json.Unmarshal(toolCall.Arguments, &args); err != nil {
 		result.Content = fmt.Sprintf("参数解析失败: %v", err)
@@ -421,11 +473,10 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, toolCall *Too
 		return result, nil
 	}
 
+	args.StartLine = max(args.StartLine, 1)
+	// No upper bound: the output byte budget below is the hard limit.
 	if args.MaxLines <= 0 {
 		args.MaxLines = 100
-	}
-	if args.MaxLines > 500 {
-		args.MaxLines = 500
 	}
 
 	serverID, err := uuid.Parse(args.ServerID)
@@ -459,21 +510,38 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, toolCall *Too
 		file.Kind, file.Path, file.ServerID = "read", args.Path, args.ServerID
 		result.Artifact = file
 	}
-	// 限制行数
-	lines := strings.Split(aitooloutput.Sanitize(string(content)), "\n")
-	truncated := false
-	if len(lines) > args.MaxLines {
-		lines = lines[:args.MaxLines]
-		truncated = true
+	// The hash covers the raw file, so it matches write_file's expected_sha256 check.
+	hash := aiworkspace.Hash(content)
+	lines := strings.Split(strings.TrimSuffix(aitooloutput.Sanitize(content), "\n"), "\n")
+	if args.StartLine > len(lines) {
+		result.Content = fmt.Sprintf("文件 %s 共 %d 行，start_line=%d 超出范围 (sha256=%s)", args.Path, len(lines), args.StartLine, hash)
+		result.IsError = true
+		return result, nil
+	}
+	// Stop at whole lines within the output budget so the reported range is exact.
+	end := args.StartLine - 1
+	for size := 0; end < len(lines) && end-args.StartLine+1 < args.MaxLines; end++ {
+		lineBytes := len(lines[end])
+		if end > args.StartLine-1 {
+			lineBytes++ // separator between returned lines
+		}
+		if size+lineBytes > aitooloutput.StoredTextBytes {
+			if end == args.StartLine-1 {
+				result.Content = fmt.Sprintf("文件 %s 第 %d 行超过 %d 字节的单次输出限制，无法按整行返回；请使用有权限的命令按字节范围读取 (sha256=%s)", args.Path, args.StartLine, aitooloutput.StoredTextBytes, hash)
+				result.IsError = true
+				return result, nil
+			}
+			break
+		}
+		size += lineBytes
+	}
+	output := strings.Join(lines[args.StartLine-1:end], "\n")
+	next := ""
+	if end < len(lines) {
+		next = fmt.Sprintf("，继续读取请传 start_line=%d", end+1)
 	}
 
-	output := strings.Join(lines, "\n")
-	if truncated {
-		output += fmt.Sprintf("\n\n... (文件已截断，仅显示前 %d 行)", args.MaxLines)
-	}
-	output = aitooloutput.Truncate(output, aitooloutput.StoredTextBytes)
-
-	result.Content = fmt.Sprintf("文件内容 (%s):\n```\n%s\n```", args.Path, output)
+	result.Content = fmt.Sprintf("文件内容 (%s，第 %d-%d 行，共 %d 行，sha256=%s%s):\n```\n%s\n```", args.Path, args.StartLine, end, len(lines), hash, next, output)
 	return result, nil
 }
 
@@ -772,17 +840,4 @@ func aiToolJSON(title string, value interface{}) string {
 		return strings.TrimSpace(title) + ":\n" + fmt.Sprint(value)
 	}
 	return strings.TrimSpace(title) + ":\n" + string(data)
-}
-
-// 辅助函数：按行读取并限制行数
-func readLines(content string, maxLines int) ([]string, bool) {
-	scanner := bufio.NewScanner(strings.NewReader(content))
-	var lines []string
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-		if len(lines) >= maxLines {
-			return lines, true
-		}
-	}
-	return lines, false
 }

@@ -40,21 +40,26 @@ Authorization: Bearer <ess_api_令牌>
 
 入口：**主页侧边栏 → 开放与自动化 → MCP 接入**。页面展示接入步骤、可复制的通用连接参数和从 `GET /api/v1/automation/tools` 读取的实际工具目录。工具名称、功能说明和参数说明支持中英文；协议标识保留用于核对，原始 JSON 定义放在折叠区。工具范围、参数类型、必填项和数值约束仍以服务端返回的实际定义为准；列出工具不代表拥有执行权限。签发后先复制保存令牌，再进入 MCP 页面配置客户端。
 
-MCP 地址：`https://<实例域名>/api/v1/mcp`。使用 Streamable HTTP，并配置 Bearer 请求头。当前提供无状态 JSON 响应，不维护 MCP 会话；GET SSE 订阅和 DELETE 会话关闭返回 405。没有实现 OAuth 授权发现，客户端必须支持手动设置访问令牌。
+MCP 地址：`https://<实例域名>/api/v1/mcp`。使用 Streamable HTTP，并配置 Bearer 请求头。当前提供无状态 JSON 响应，不维护 MCP 会话；GET SSE 订阅和 DELETE 会话关闭返回 405。没有实现 OAuth 授权发现，客户端必须支持手动设置访问令牌。Claude Code 片段使用 `--scope user`：默认的 local 作用域只对执行命令时所在的目录生效。
 
 MCP 不需要内置 AI 配置，也不创建内置 AI 对话。SDK 负责 MCP 协议，业务适配层负责输入验证和调用已有服务；工具权限由服务端 Scope 检查，客户端不能通过工具参数提升权限。
+
+所有令牌看到同一份工具目录。每个工具的说明末尾写明所需权限，并带有 `readOnlyHint` / `destructiveHint` 标注供客户端决定是否需要确认；调用被拒绝时，错误信息指出缺少的权限或不可用的服务器。参数不符合定义时，错误信息包含具体的校验失败位置。
+
+文件与系统工具直接返回给模型阅读的文本，不包含界面使用的完整文件快照；任务工具返回一个 JSON 对象。
 
 | 工具 | 权限与行为 |
 | --- | --- |
 | `list_servers` / `get_server_info` | 仅返回授权范围内的服务器 |
 | `get_system_info` | `monitor.read` |
-| `list_directory` / `read_file` | `files.list` / `files.read` |
-| `write_file` | 同时需要 `files.read` 与 `files.write`；复用文本文件快照与写入前冲突检查 |
+| `list_directory` | `files.list`；按名称排序，`offset` / `limit` 分页（默认 100 条，单页内容超过约 48 KiB 时在整条处提前结束），未列完时返回 `next_offset` |
+| `read_file` | `files.read`；`start_line` / `max_lines` 按行分段（默认 100 行，单次内容超过 48 KiB 时在整行处提前结束，单行超过限制时明确报错），返回总行数、下一段起始行和整个文件的 `sha256` |
+| `write_file` | 同时需要 `files.read` 与 `files.write`；可传入 `read_file` 返回的 `sha256` 作为 `expected_sha256`，文件在读取后被修改或删除时拒绝写入 |
 | `create_directory` / `delete_file` | `files.write` / `files.delete`；删除目录包含其子目录 |
 | `list_scripts` | 列出指定服务器允许的脚本、版本和参数限制；支持 `limit` / `after_id` 分页 |
-| `execute_command` | `terminal.connect`；提交持久化任务 |
-| `execute_script` | `scripts.execute`，且脚本版本及参数符合授权；提交持久化任务 |
-| `get_task` / `cancel_task` | 查询/取消该执行身份的任务，不能借任务 ID 访问别人的任务 |
+| `execute_command` | `terminal.connect`；提交持久化任务，并在 `wait_seconds`（默认 10，最多 50）内完成时直接返回结果 |
+| `execute_script` | `scripts.execute`，且脚本版本及参数符合授权；提交持久化任务，等待方式同上 |
+| `get_task` / `cancel_task` | 查询/取消该执行身份的任务，不能借任务 ID 访问别人的任务；`get_task` 可用 `wait_seconds` 等待完成 |
 
 任意命令执行拥有远端账号实际具备的系统权限。只读令牌不要授权 `terminal.connect`；关闭文件写入工具不能限制 Shell 的写入能力。
 
@@ -68,7 +73,11 @@ Content-Type: application/json
 {"server_id":"<服务器 UUID>","command":"uptime"}
 ```
 
-成功返回 `task_id`，再调用 `get_task` 获取状态与输出。网络断开或结果未知时先核对远端状态，不自动重试有副作用的请求。工具参数上限 1 MiB；MCP 请求体上限 2 MiB。非队列工具有 60 秒服务端超时；文件读取和输出继续使用已有工具的大小限制。
+命令与脚本工具和 `get_task` 返回相同结构：`task_id`、`status`、`finished`、`cancelable`、`started_at` / `finished_at`，以及 `results` 中每台服务器的 `status`、`exit_code`、`output`、`error` 和 `duration_ms`。`output` 为合并的 stdout/stderr，保留最后 48 KiB，直接内联返回，不使用内容引用。任务未在等待时间内完成时 `finished` 为 `false`，再用 `get_task` 查询。执行期间不提供增量输出；长时间运行的命令可将输出写入文件，再用 `read_file` 分段读取。
+
+服务端不为命令设置执行时限，可能挂起的命令请自行用 `timeout N` 包装。取消任务时，EasySSH 先向远端会话的进程组发送 SIGTERM，2 秒后发送 SIGKILL，1 秒后关闭连接；确认进程因信号结束时任务状态为 `canceled`，否则仍为 `unknown`。此方式依赖 SSH 服务端支持 RFC 4254 的 `signal` 请求：OpenSSH 对会话进程组执行 `killpg`，其他实现可能不支持；不支持时只能关闭连接，未分配终端的远端进程可能继续运行。`nohup`、`setsid` 等脱离会话的进程不受取消影响。
+
+网络断开或结果未知时先核对远端状态，不自动重试有副作用的请求。工具参数上限 1 MiB；MCP 请求体上限 2 MiB。非队列工具有 60 秒服务端超时；文件读取和输出继续使用已有工具的大小限制。
 
 配置修改及工具操作会保存归属记录。令牌名称可以从令牌管理页面对应到记录中的会话 ID；命令与脚本沿用任务中心的执行记录。日志不保存令牌原文和 VNC 密码。
 

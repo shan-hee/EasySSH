@@ -120,7 +120,7 @@ func (s *service) Start(ctx context.Context, id uuid.UUID, stage string) error {
 		}
 		return err
 	}
-	if isTerminalStatus(run.Status) {
+	if IsTerminalStatus(run.Status) {
 		return nil
 	}
 	now := time.Now()
@@ -200,7 +200,7 @@ func (s *service) CompleteTransfer(ctx context.Context, id uuid.UUID, status Sta
 
 // CompleteDocker retains the observed end time when storage must be retried.
 func (s *service) CompleteDocker(ctx context.Context, id uuid.UUID, status Status, resultJSON, errorCode, errorMessage string, successCount, failureCount int, finishedAt time.Time) error {
-	if finishedAt.IsZero() || !isTerminalStatus(status) {
+	if finishedAt.IsZero() || !IsTerminalStatus(status) {
 		return errors.New("invalid Docker outcome")
 	}
 	return s.complete(ctx, id, status, &resultJSON, errorCode, errorMessage, successCount, failureCount, false, &finishedAt, nil)
@@ -239,7 +239,7 @@ func (s *service) ObserveExecution(ctx context.Context, expected TaskRun, result
 // completion time. It requires no live permission lease: revocation may stop work,
 // but must not prevent saving the effects already observed by that executor.
 func (s *service) CompleteExecution(ctx context.Context, expected TaskRun, status Status, resultJSON, errorCode, errorMessage string, successCount, failureCount int, finishedAt time.Time) error {
-	if expected.ID == uuid.Nil || !expected.Actor.Valid() || expected.SourceID == "" || (expected.SourceType != "batch_task" && expected.SourceType != "scheduled_task" && expected.SourceType != "sftp_delete" && expected.SourceType != "sftp_operation") || finishedAt.IsZero() || !isTerminalStatus(status) {
+	if expected.ID == uuid.Nil || !expected.Actor.Valid() || expected.SourceID == "" || (expected.SourceType != "batch_task" && expected.SourceType != "scheduled_task" && expected.SourceType != "sftp_delete" && expected.SourceType != "sftp_operation") || finishedAt.IsZero() || !IsTerminalStatus(status) {
 		return ErrObservedOutcomeConflict
 	}
 	return s.complete(ctx, expected.ID, status, &resultJSON, errorCode, errorMessage, successCount, failureCount, false, &finishedAt, &expected)
@@ -274,7 +274,7 @@ func (s *service) complete(ctx context.Context, id uuid.UUID, status Status, res
 	matches := func(run *TaskRun) bool {
 		return run.Status == status && run.ResultJSON == resultValue && run.ErrorCode == errorCode && run.ErrorMessage == errorMessage && run.SuccessCount == successCount && run.FailureCount == failureCount && (observedAt == nil || run.FinishedAt != nil && run.FinishedAt.Equal(*observedAt))
 	}
-	if isTerminalStatus(existing.Status) {
+	if IsTerminalStatus(existing.Status) {
 		if (transfer || observedAt != nil) && !matches(existing) {
 			if transfer {
 				return ErrTransferOutcomeConflict
@@ -326,7 +326,7 @@ func (s *service) complete(ctx context.Context, id uuid.UUID, status Status, res
 	return nil
 }
 
-func isTerminalStatus(status Status) bool {
+func IsTerminalStatus(status Status) bool {
 	return status == StatusSucceeded || status == StatusFailed || status == StatusPartialSuccess || status == StatusCanceled || status == StatusTimeout || status == StatusUnknown
 }
 

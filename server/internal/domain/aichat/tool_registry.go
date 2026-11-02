@@ -93,7 +93,7 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 		{
 			Name:        "list_directory",
 			DisplayName: "列出目录",
-			Description: "列出服务器上指定目录的内容，包括文件和子目录。",
+			Description: "列出服务器上指定目录的内容，包括文件和子目录。按名称排序分页返回；结果含 next_offset 时用它继续读取。",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -103,8 +103,17 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 					},
 					"path": map[string]interface{}{
 						"type":        "string",
-						"description": "目录路径，默认 /",
-						"default":     "/",
+						"description": "目录路径，默认为登录用户的主目录",
+					},
+					"offset": map[string]interface{}{
+						"type":        "integer",
+						"minimum":     0,
+						"description": "跳过的条目数，默认 0",
+					},
+					"limit": map[string]interface{}{
+						"type":        "integer",
+						"minimum":     1,
+						"description": "本页最多返回条目数，默认 100；内容超过约 48 KiB 时提前结束本页",
 					},
 				},
 				"required": []string{"server_id"},
@@ -116,7 +125,7 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 		{
 			Name:        "read_file",
 			DisplayName: "读取文件",
-			Description: "读取服务器上指定文本文件的内容。超大文件会拒绝读取，长内容会按行截断。",
+			Description: "读取服务器上指定文本文件（最大 2 MiB）。按行分段返回，结果包含总行数和 sha256；未读完时用提示的 start_line 继续读取。单行超过 48 KiB 时明确报错，不会跳过该行。",
 			Parameters: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
@@ -128,10 +137,15 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 						"type":        "string",
 						"description": "文件路径",
 					},
+					"start_line": map[string]interface{}{
+						"type":        "integer",
+						"minimum":     1,
+						"description": "起始行号，从 1 开始，默认 1",
+					},
 					"max_lines": map[string]interface{}{
 						"type":        "integer",
-						"description": "最大读取行数，默认100行",
-						"default":     100,
+						"minimum":     1,
+						"description": "最多返回行数，默认 100；内容超过约 48 KiB 时在整行处提前结束",
 					},
 				},
 				"required": []string{"server_id", "path"},
@@ -158,6 +172,10 @@ func (s *ToolExecutorService) BuildToolRegistry() *registry.ToolRegistry {
 					"content": map[string]interface{}{
 						"type":        "string",
 						"description": "要写入的内容",
+					},
+					"expected_sha256": map[string]interface{}{
+						"type":        "string",
+						"description": "可选：read_file 返回的 sha256。文件当前内容与之不同或已删除时拒绝写入",
 					},
 				},
 				"required": []string{"server_id", "path", "content"},
