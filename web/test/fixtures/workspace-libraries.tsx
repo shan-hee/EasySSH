@@ -28,6 +28,7 @@ function Body({ id, visible }: { id: string; visible: boolean }) {
   const drag = useSftpDragDropController({ sessionId: id, currentPath: "/tmp", files,
     onRename: (oldName, newName) => operations.push({ kind: "move", id, oldName, newName }),
     onUpload: files => { operations.push({ kind: "upload", id, names: Array.from(files).map(f => f.name) }) },
+    onUploadEntries: entries => { operations.push({ kind: "upload-entries", id, names: entries.map(entry => entry.name) }) },
   })
   const drop = useCrossSessionFileDropTarget({ sessionId: id, enabled: visible,
     onDrop: (target, data) => operations.push({ kind: "transfer", target, data }),

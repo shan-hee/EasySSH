@@ -2,7 +2,7 @@
 import { useEffect } from "react"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { TerminalSftpPanel } from "@/components/terminal/terminal-sftp-panel"
+import { TerminalSftpPanel, type TerminalSftpPanelProps } from "@/components/terminal/terminal-sftp-panel"
 import { PanelPositionControl } from "./panel-position-control"
 import type { TerminalPanelPosition } from "@/stores/tab-ui-store"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
@@ -43,6 +43,7 @@ export interface FileManagerPanelProps {
     handler: { handle: () => boolean | Promise<boolean> } | null
   ) => void
   onUpload: (files: FileList, onProgress?: (fileName: string, loaded: number, total: number) => void) => void
+  onUploadFolder: TerminalSftpPanelProps["onUploadFolder"]
   onDownload: (fileName: string) => void
   onDelete: (fileName: string, isDirectory: boolean) => void
   onBatchDelete?: (fileNames: string[], hasDirectory: boolean) => Promise<BatchDeleteResult>
