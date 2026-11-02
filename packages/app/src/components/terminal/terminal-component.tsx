@@ -208,6 +208,7 @@ export interface TerminalComponentProps {
   onConnectionPhaseChange?: (sessionId: string, phase: TerminalConnectionPhase) => void
   serverApi?: ServerConnectionConfigsApi
   serverConfigsReady?: boolean
+  serverToolbarActions?: ReactNode
   aiAssistantAdapters?: AIAssistantWorkspaceAdapters
   hidePageHeader?: boolean
   unframed?: boolean
@@ -244,6 +245,7 @@ export function TerminalComponent({
   onConnectionPhaseChange,
   serverApi,
   serverConfigsReady,
+  serverToolbarActions,
   aiAssistantAdapters,
   hidePageHeader = false,
   unframed = false,
@@ -1384,6 +1386,7 @@ export function TerminalComponent({
                   onConnect={handleConnectFromHome}
                   serverApi={serverApi}
                   ready={serverConfigsReady}
+                  toolbarActions={serverToolbarActions}
                 />
               </div>
             )}

@@ -1,7 +1,7 @@
 import { GrantManager } from "@/components/sharing/grant-manager"
 import { PageLoading } from "@/components/page-loading"
 
-import { useState, useEffect, useMemo, useRef } from "react"
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -80,6 +80,7 @@ interface ServerConnectionConfigsProps {
  defaultViewMode?: ViewMode
  serverApi?: ServerConnectionConfigsApi
  ready?: boolean
+ toolbarActions?: ReactNode
 }
 
 export interface ServerConnectionConfigsApi {
@@ -362,6 +363,7 @@ export function ServerConnectionConfigs({
  defaultViewMode = "list",
  serverApi = defaultServerConnectionConfigsApi,
  ready: externalReady,
+ toolbarActions,
 }: ServerConnectionConfigsProps) {
  const authReady = useAuthReady()
  const ready = externalReady ?? authReady.ready
@@ -748,6 +750,7 @@ export function ServerConnectionConfigs({
    onGroupChange={setActiveGroup}
    disabled={saving || draggedServer !== null}
    actions={<>
+     {toolbarActions}
      {serverApi.sharing && <GrantManager />}
      <Button onClick={() => setIsAddDialogOpen(true)} className="flex-1 shadow-sm sm:flex-none">
        <Plus className="mr-2 h-4 w-4" />

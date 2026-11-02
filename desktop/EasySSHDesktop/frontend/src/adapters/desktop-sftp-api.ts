@@ -127,21 +127,6 @@ function normalizeDirectoryList(result: DirectoryListResponse): DirectoryListRes
   }
 }
 
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-
-    reader.onload = () => {
-      const result = typeof reader.result === "string" ? reader.result : ""
-      const commaIndex = result.indexOf(",")
-      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result)
-    }
-    reader.onerror = () => reject(reader.error || new Error("读取文件失败"))
-
-    reader.readAsDataURL(file)
-  })
-}
-
 async function chooseSavePath(filename: string) {
   const localPath = await Dialogs.SaveFile({
     Filename: filename,
@@ -396,17 +381,35 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
         taskId,
       })
     },
-    async uploadFile(serverId, remotePath, file, { taskId, onStarted, onProgress }) {
-      const data = await readFileAsBase64(file)
+    uploadProgress: "task",
+    async uploadFile(serverId, remotePath, file, { taskId, onStarted, signal }) {
+      if (!gateway?.httpBaseUrl || !gateway.token) {
+        throw new Error("Desktop upload gateway is not ready")
+      }
+      signal.throwIfAborted()
+      const url = new URL(`${gateway.httpBaseUrl}/sftp/upload`)
+      url.search = new URLSearchParams({ serverId, path: remotePath, fileName: file.name, taskId }).toString()
       onStarted(taskId)
-      await DesktopSFTPService.UploadFile({
-        serverId,
-        path: remotePath,
-        fileName: file.name,
-        data,
-        taskId,
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-EasySSH-Desktop-Gateway-Token": gateway.token,
+        },
+        credentials: "omit",
+        redirect: "error",
+        body: file,
+        signal,
       })
-      onProgress?.(file.size, file.size)
+      if (!response.ok) {
+        const message = (await response.text()).trim()
+        if (response.status === 409 && message === "upload_cancelled") {
+          throw new DOMException("Upload cancelled", "AbortError")
+        }
+        const error = new Error(message || `Upload failed (${response.status})`)
+        if (response.status === 409) throw Object.assign(error, { transferOutcome: "unknown" })
+        throw error
+      }
     },
     async directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, options) {
       options.onStarted(options.taskId)

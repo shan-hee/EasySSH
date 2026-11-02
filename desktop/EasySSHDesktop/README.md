@@ -22,6 +22,10 @@ Desktop is a single-user local app. It should use `local_owner` / `owner` runtim
 
 When Desktop reuses Web components, prefer adapter props such as `desktopMode` and runtime capabilities to keep the visible UI local and personal. Web-compatible backup fields such as the synthetic `users` table are compatibility shims, not a Desktop user model.
 
+## File uploads
+
+The local-owner file panel streams browser-selected and dropped files through the authenticated loopback gateway at `/sftp/upload`. Go streams the request body directly to SFTP and reports remote-write progress through the existing transfer task. This path does not base64-encode the file or apply the text editor's 5 MiB limit. Native local-path uploads use the same streaming and atomic replacement implementation. Cancellation interrupts the input and SFTP operation; incomplete uploads never replace the destination. Web instances and shared workspaces retain their own upload policies.
+
 ## Build
 
 From this directory:

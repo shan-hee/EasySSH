@@ -86,28 +86,45 @@ func (s *DesktopSFTPService) StartLocalUpload(input DesktopSFTPLocalUploadInput)
 }
 
 func (s *DesktopSFTPService) uploadLocalFile(ctx context.Context, taskID, serverID, remotePath string, source *os.File, snapshot os.FileInfo) error {
-	if err := s.startTask(taskID, "uploading", snapshot.Size()); err != nil {
-		return err
-	}
-	client, closeClient, err := s.openClientContext(ctx, serverID)
-	if err != nil {
-		return err
-	}
-	defer closeClient()
-	_, err = writeDesktopSFTPAtomic(ctx, client, remotePath, 0600, func(file *sftp.File) error {
-		if !sameDesktopUploadFile(source, snapshot) {
-			return errors.New("local source changed")
-		}
-		writer := newDesktopSFTPProgressWriter(file, snapshot.Size(), func(loaded, total int64) error {
-			return s.updateTaskProgress(taskID, loaded, total, "stream")
-		})
-		if _, err := io.CopyN(writer, io.NewSectionReader(source, 0, snapshot.Size()), snapshot.Size()); err != nil {
-			return err
-		}
+	_, err := s.writeUploadStream(ctx, taskID, serverID, remotePath, io.NewSectionReader(source, 0, snapshot.Size()), snapshot.Size(), func() error {
 		if !sameDesktopUploadFile(source, snapshot) {
 			return errors.New("local source changed during transfer")
 		}
 		return nil
 	})
 	return err
+}
+
+// Local-path and renderer uploads share bounded streaming, progress and atomic
+// replacement. Validate the local snapshot before reading and before committing.
+func (s *DesktopSFTPService) writeUploadStream(ctx context.Context, taskID, serverID, remotePath string, source io.Reader, size int64, validate func() error) (DesktopSFTPFileInfo, error) {
+	if err := s.startTask(taskID, "uploading", size); err != nil {
+		return DesktopSFTPFileInfo{}, err
+	}
+	client, closeClient, err := s.openClientContext(ctx, serverID)
+	if err != nil {
+		return DesktopSFTPFileInfo{}, err
+	}
+	defer closeClient()
+	return writeDesktopSFTPAtomic(ctx, client, remotePath, 0600, func(file *sftp.File) error {
+		if validate != nil {
+			if err := validate(); err != nil {
+				return err
+			}
+		}
+		writer := newDesktopSFTPProgressWriter(file, size, func(loaded, total int64) error {
+			return s.updateTaskProgress(taskID, loaded, total, "stream")
+		})
+		if _, err := io.CopyN(writer, source, size); err != nil {
+			return err
+		}
+		var extra [1]byte
+		if _, err := io.ReadFull(source, extra[:]); err != io.EOF {
+			return errors.New("upload size does not match content length")
+		}
+		if validate != nil {
+			return validate()
+		}
+		return nil
+	})
 }

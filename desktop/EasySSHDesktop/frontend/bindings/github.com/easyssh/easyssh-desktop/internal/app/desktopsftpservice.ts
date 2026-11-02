@@ -168,12 +168,6 @@ export function StartLocalUpload(input: $models.DesktopSFTPLocalUploadInput): $C
     });
 }
 
-export function UploadFile(input: $models.DesktopSFTPUploadFileInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {
-    return $Call.ByID(1747135679, input).then(($result: any) => {
-        return $$createType2($result);
-    });
-}
-
 export function WriteFile(input: $models.DesktopSFTPWriteFileInput): $CancellablePromise<$models.DesktopSFTPFileInfo> {
     return $Call.ByID(2715044169, input).then(($result: any) => {
         return $$createType2($result);

@@ -172,6 +172,7 @@ func (g *DesktopGateway) ServiceStartup(_ context.Context, _ application.Service
 	mux.HandleFunc("/monitor", g.trackHandler(g.handleMonitor))
 	mux.HandleFunc("/sftp-auth", g.trackHandler(g.handleSFTPAuth))
 	mux.HandleFunc("/sftp/auth", g.trackHandler(g.handleSFTPAuth))
+	mux.HandleFunc("/sftp/upload", g.trackHandler(g.handleSFTPUpload))
 
 	server := &http.Server{
 		Handler: mux,

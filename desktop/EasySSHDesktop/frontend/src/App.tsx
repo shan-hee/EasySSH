@@ -1,6 +1,9 @@
 import { startDesktopSync } from "./adapters/desktop-sync"
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react"
 import { RoutePending } from "@easyssh/app/components/route-pending"
+import { Button } from "@easyssh/app/components/ui/button"
+import { Link2 } from "lucide-react"
+import { OpenShareDialog } from "./remote/open-share-dialog"
 import { useTranslation } from "react-i18next"
 import {
   DEFAULT_SYSTEM_CONFIG,
@@ -76,6 +79,8 @@ function DesktopContent({ activeView, setActiveView }: {
     return () => window.removeEventListener("easyssh:open-task", open)
   }, [setActiveView])
   const [terminalSettingsOpen, setTerminalSettingsOpen] = useState(false)
+  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+  const { t: tSharing } = useTranslation("sharing")
   const { t: tCommon } = useTranslation("common")
   const { t: tTerminal } = useTranslation("terminal")
   const { t: tSftp } = useTranslation("sftp")
@@ -365,6 +370,17 @@ function DesktopContent({ activeView, setActiveView }: {
           <Workbench
             workbench={workbench}
             serverApi={serverApi}
+            serverToolbarActions={(
+              <Button
+                variant="outline"
+                size="icon"
+                title={tSharing("openSharedLink")}
+                aria-label={tSharing("openSharedLink")}
+                onClick={() => setShareDialogOpen(true)}
+              >
+                <Link2 className="size-4" />
+              </Button>
+            )}
             serversReady
             terminalTransportReady={desktopTerminalTransportReady}
             aiAssistantAdapters={aiAssistantAdapters}
@@ -442,6 +458,7 @@ function DesktopContent({ activeView, setActiveView }: {
         ]}
       />
       <DesktopUpdateFailureDialog />
+      <OpenShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />
     </SshWorkspace>
   )
 }

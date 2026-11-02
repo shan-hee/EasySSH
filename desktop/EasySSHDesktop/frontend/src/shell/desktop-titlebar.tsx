@@ -1,4 +1,3 @@
-import { OpenShareDialog } from "../remote/open-share-dialog"
 import { useCallback, useEffect, useState, type ReactNode } from "react"
 import { Browser, Window } from "@wailsio/runtime"
 import { Button } from "@easyssh/app/components/ui/button"
@@ -326,7 +325,6 @@ export function DesktopWindowActions({
           <Bot className="h-4 w-4" />
         </Button>
       )}
-      <OpenShareDialog />
       <DesktopSyncAction onOpenSettings={onOpenSync} />
       <DesktopSettingsMenu
         runtime={runtime}

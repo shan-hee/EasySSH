@@ -43,6 +43,8 @@ export interface TransferUploadOptions extends TransferStartOptions {
  * 其后的进度、结果与取消都通过任务 ID 完成。
  */
 export interface FileTransferSftpApi {
+  /** 原生流式上传由任务报告远端写入进度；默认使用请求发送进度。 */
+  uploadProgress?: "request" | "task"
   getTransfer: (id: string) => Promise<TransferJob>
   /** 最近的传输任务，用于页面刷新后恢复未结束的任务。 */
   listTransfers: () => Promise<TransferJob[]>
@@ -295,7 +297,7 @@ export function createFileTransferController({
           }, true)
           onProgress?.(loaded, total)
         },
-      }), { limitConcurrency: true, watchAfterStart: true })
+      }), { limitConcurrency: true, watchAfterStart: api.uploadProgress !== "task" })
     },
 
     downloadFile(serverId, remotePath, fileName) {

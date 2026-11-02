@@ -18,7 +18,7 @@ const VNCLauncher = lazy(() => import("@/components/vnc/vnc-launcher").then(m =>
 
 type TerminalPresentationProps = Pick<
   TerminalComponentProps,
-  "aiAssistantAdapters" | "hidePageHeader" | "unframed" | "settingsDialogOpen" | "onSettingsDialogOpenChange" | "tabBarEndContent"
+  "aiAssistantAdapters" | "hidePageHeader" | "unframed" | "settingsDialogOpen" | "onSettingsDialogOpenChange" | "tabBarEndContent" | "serverToolbarActions"
 >
 
 export interface WorkbenchProps extends TerminalPresentationProps {

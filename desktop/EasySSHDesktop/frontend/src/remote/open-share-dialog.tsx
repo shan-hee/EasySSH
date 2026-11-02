@@ -1,7 +1,6 @@
 import { useConfirmDialog } from "@easyssh/app/hooks/use-confirm-dialog"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Link2 } from "lucide-react"
 import { Button } from "@easyssh/app/components/ui/button"
 import { Input } from "@easyssh/app/components/ui/input"
 import {
@@ -17,10 +16,12 @@ import type {
   DesktopHandoffPending,
 } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/models"
 
-export function OpenShareDialog() {
+export function OpenShareDialog({ open, onOpenChange: setOpen }: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const { t } = useTranslation("sharing")
   const { confirm, confirmDialog } = useConfirmDialog()
-  const [open, setOpen] = useState(false)
   const [link, setLink] = useState("")
   const [recent, setRecent] = useState<DesktopRemoteWorkspace[]>([])
   const [launches, setLaunches] = useState<DesktopIncomingLaunch[]>([])
@@ -37,7 +38,10 @@ export function OpenShareDialog() {
     setLaunches(incoming)
     setHandoffs(pending)
     if (incoming.length || pending.length) setOpen(true)
-  }, [])
+  }, [setOpen])
+  useEffect(() => {
+    if (open) void refresh().catch((e) => setError(String(e)))
+  }, [open, refresh])
   useEffect(() => {
     const receive = () => {
       void refresh().catch((e) => setError(String(e)))
@@ -67,18 +71,6 @@ export function OpenShareDialog() {
   }
   return (
     <>
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        title={t("openSharedLink")}
-        aria-label={t("openSharedLink")}
-        onClick={() => {
-          setOpen(true)
-          void refresh().catch((e) => setError(String(e)))
-        }}
-      >
-        <Link2 className="size-4" />
-      </Button>
       <Dialog
         open={open}
         onOpenChange={(value) => {

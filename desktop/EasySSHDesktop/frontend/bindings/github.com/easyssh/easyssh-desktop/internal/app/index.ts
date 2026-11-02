@@ -121,7 +121,6 @@ export {
     DesktopSFTPLocalUploadInput,
     DesktopSFTPPathInput,
     DesktopSFTPRenameInput,
-    DesktopSFTPUploadFileInput,
     DesktopSFTPWriteFileInput,
     DesktopSSHCredential,
     DesktopScript,

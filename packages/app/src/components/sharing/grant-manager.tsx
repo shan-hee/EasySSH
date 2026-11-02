@@ -78,7 +78,7 @@ export function GrantManager({
     <>
       <Button
         variant={compact ? "ghost" : "outline"}
-        size={compact ? "icon-sm" : "sm"}
+        size={compact ? "icon-sm" : "icon"}
         className={cn(
           compact &&
             "h-8 w-8 p-0 hover:bg-transparent hover:text-foreground dark:hover:bg-transparent",
@@ -89,7 +89,6 @@ export function GrantManager({
         onClick={() => setOpen(true)}
       >
         <Share2 className="h-4 w-4" />
-        {!compact && t("manage")}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex max-h-[90svh] flex-col overflow-hidden p-0 sm:max-w-4xl">

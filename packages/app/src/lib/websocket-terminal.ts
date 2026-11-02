@@ -6,21 +6,25 @@
 import { getWebSocketUrl } from "@/lib/api-client"
 import { createStreamTicket } from "@/lib/access-ticket"
 import type { AuthMethod } from "@/lib/server-types"
+import type {
+  TerminalConnectionPhase,
+  TerminalWebSocketAuthTicketProvider,
+  TerminalWebSocketConstructor,
+  TerminalWebSocketUrlResolver,
+} from "@/lib/session/terminal-types"
+
+export type {
+  TerminalConnectionPhase,
+  TerminalWebSocketAuthTicketRequest,
+  TerminalWebSocketAuthTicketProvider,
+  TerminalWebSocketUrlRequest,
+  TerminalWebSocketUrlResolver,
+  TerminalWebSocketConstructor,
+} from "@/lib/session/terminal-types"
 
 const TERMINAL_PING_INTERVAL_MS = 5000
 const TERMINAL_PING_TIMEOUT_MS = 60000
 const TERMINAL_MAX_PENDING_PINGS = 20
-
-export type TerminalConnectionPhase =
-  | "idle"
-  | "ticket"
-  | "ws_connecting"
-  | "ssh_connecting"
-  | "authenticating"
-  | "ready"
-  | "reconnecting"
-  | "failed"
-  | "closed"
 
 export interface TerminalConnectionError extends Error {
   code?: string
@@ -70,28 +74,6 @@ export interface TerminalWebSocketOptions {
   createWebSocketUrl?: TerminalWebSocketUrlResolver
   WebSocketCtor?: TerminalWebSocketConstructor
 }
-
-export interface TerminalWebSocketAuthTicketRequest {
-  type: "ws_terminal"
-  server_id: string
-}
-
-export type TerminalWebSocketAuthTicketProvider = (
-  request: TerminalWebSocketAuthTicketRequest,
-) => Promise<string>
-
-export interface TerminalWebSocketUrlRequest {
-  serverId: string
-  cols: number
-  rows: number
-  ticket: string
-}
-
-export type TerminalWebSocketUrlResolver = (
-  request: TerminalWebSocketUrlRequest,
-) => string | Promise<string>
-
-export type TerminalWebSocketConstructor = new (url: string | URL, protocols?: string | string[]) => WebSocket
 
 export interface TerminalAuthPromptItem {
   text: string

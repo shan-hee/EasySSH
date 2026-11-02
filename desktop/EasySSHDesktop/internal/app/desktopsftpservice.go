@@ -1,9 +1,7 @@
 package app
 
 import (
-	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -47,14 +45,6 @@ type DesktopSFTPChmodInput struct {
 	ServerID string `json:"serverId"`
 	Path     string `json:"path"`
 	Mode     string `json:"mode"`
-}
-
-type DesktopSFTPUploadFileInput struct {
-	ServerID string `json:"serverId"`
-	Path     string `json:"path"`
-	FileName string `json:"fileName"`
-	Data     string `json:"data"`
-	TaskID   string `json:"taskId,omitempty"`
 }
 
 type DesktopSFTPDownloadFileInput struct {
@@ -1246,34 +1236,24 @@ func (s *DesktopSFTPService) Chmod(input DesktopSFTPChmodInput) (result DesktopS
 	return result, desktopSFTPMutationError(client.Chmod(remotePath, mode))
 }
 
-func (s *DesktopSFTPService) UploadFile(input DesktopSFTPUploadFileInput) (info DesktopSFTPFileInfo, err error) {
-	ctx, done, err := s.beginOperation(context.Background())
+func (s *DesktopSFTPService) uploadStream(parent context.Context, serverID, remoteDir, fileName, requestedTaskID string, size int64, source io.ReadCloser) (info DesktopSFTPFileInfo, err error) {
+	ctx, done, err := s.beginOperation(parent)
 	if err != nil {
 		return info, err
 	}
 	defer done()
-	fileName := input.FileName
-	if fileName == "" || fileName == "." || fileName == ".." || strings.ContainsAny(fileName, "/\x00") {
-		return info, errors.New("file name must be a single path component")
-	}
-	// Renderer uploads are intentionally small; large files belong to native streaming.
-	if len(input.Data) > base64.StdEncoding.EncodedLen(desktopSFTPMaxTextBytes) {
-		return info, errors.New("renderer upload exceeds 5 MiB limit")
-	}
-	data, err := base64.StdEncoding.DecodeString(input.Data)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return info, err
 	}
-	if len(data) > desktopSFTPMaxTextBytes {
-		return info, errors.New("renderer upload exceeds 5 MiB limit")
-	}
-	remotePath := sftputil.JoinPath(input.Path, fileName)
-	taskID, err := s.createTransferTask(ctx, input.TaskID, int64(len(data)), desktopTransferIntent{Kind: desktopSFTPTaskUpload, FileName: fileName, TargetServerID: input.ServerID, SourcePaths: []string{fileName}, TargetPath: remotePath, ResultPath: remotePath})
+	remotePath := sftputil.JoinPath(remoteDir, fileName)
+	taskID, err := s.createTransferTask(ctx, requestedTaskID, size, desktopTransferIntent{Kind: desktopSFTPTaskUpload, FileName: fileName, TargetServerID: serverID, SourcePaths: []string{fileName}, TargetPath: remotePath, ResultPath: remotePath})
 	if err != nil {
 		return info, err
 	}
 	ctx, cancel := s.bindTaskContext(ctx, taskID)
 	defer cancel()
+	stop := sftputil.CloseOnCancel(ctx, source.Close)
+	defer stop()
 	defer func() {
 		err = desktopSFTPOperationError(ctx, err)
 		if err != nil {
@@ -1282,20 +1262,7 @@ func (s *DesktopSFTPService) UploadFile(input DesktopSFTPUploadFileInput) (info 
 			err = s.completeTask(taskID, "Upload completed")
 		}
 	}()
-	if err = s.startTask(taskID, "uploading", int64(len(data))); err != nil {
-		return info, err
-	}
-	client, closer, err := s.openClientContext(ctx, input.ServerID)
-	if err != nil {
-		return info, err
-	}
-	defer closer()
-	return writeDesktopSFTPAtomic(ctx, client, remotePath, 0600, func(file *sftp.File) error {
-		_, err := io.Copy(newDesktopSFTPProgressWriter(file, int64(len(data)), func(loaded, total int64) error {
-			return s.updateTaskProgress(taskID, loaded, total, "stream")
-		}), bytes.NewReader(data))
-		return err
-	})
+	return s.writeUploadStream(ctx, taskID, serverID, remotePath, source, size, nil)
 }
 
 func (s *DesktopSFTPService) CancelUploadTask(taskID string) error {

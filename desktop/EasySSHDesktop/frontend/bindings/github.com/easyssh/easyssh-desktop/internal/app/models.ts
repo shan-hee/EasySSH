@@ -2712,40 +2712,6 @@ export class DesktopSFTPRenameInput {
     }
 }
 
-export class DesktopSFTPUploadFileInput {
-    "serverId": string;
-    "path": string;
-    "fileName": string;
-    "data": string;
-    "taskId"?: string;
-
-    /** Creates a new DesktopSFTPUploadFileInput instance. */
-    constructor($$source: Partial<DesktopSFTPUploadFileInput> = {}) {
-        if (!("serverId" in $$source)) {
-            this["serverId"] = "";
-        }
-        if (!("path" in $$source)) {
-            this["path"] = "";
-        }
-        if (!("fileName" in $$source)) {
-            this["fileName"] = "";
-        }
-        if (!("data" in $$source)) {
-            this["data"] = "";
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopSFTPUploadFileInput instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopSFTPUploadFileInput {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopSFTPUploadFileInput($$parsedSource as Partial<DesktopSFTPUploadFileInput>);
-    }
-}
-
 export class DesktopSFTPWriteFileInput {
     "serverId": string;
     "path": string;
