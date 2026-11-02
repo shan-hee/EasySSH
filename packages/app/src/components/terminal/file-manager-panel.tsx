@@ -6,7 +6,7 @@ import { TerminalSftpPanel } from "@/components/terminal/terminal-sftp-panel"
 import { PanelPositionControl } from "./panel-position-control"
 import type { TerminalPanelPosition } from "@/stores/tab-ui-store"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
-import type { WorkspaceTransferTask } from "@/lib/session/workspace"
+import type { TransferTaskActions } from "@/lib/session/transfer-controller"
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 import type { SftpDirectorySource } from "@/lib/session/sftp-directory-source"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
@@ -57,9 +57,7 @@ export interface FileManagerPanelProps {
   onInsertTerminalText?: (text: string) => void
   onExecuteTerminalCommand?: (command: string) => void
   // 传输任务管理
-  transferTasks?: WorkspaceTransferTask[]
-  onClearCompletedTransfers?: () => void
-  onCancelTransfer?: (taskId: string) => void
+  transfers?: TransferTaskActions
   backgroundColor?: string
 }
 
@@ -70,9 +68,7 @@ export function FileManagerPanel({
   keyboardActive = true,
   isOpen,
   onClose,
-  transferTasks,
-  onClearCompletedTransfers,
-  onCancelTransfer,
+  transfers,
   backgroundColor,
   onInsertTerminalText,
   onExecuteTerminalCommand,
@@ -139,9 +135,7 @@ export function FileManagerPanel({
               keyboardShortcutsEnabled={isOpen && keyboardActive}
               isFullscreen={false}
               onDisconnect={onClose}
-              transferTasks={transferTasks}
-              onClearCompletedTransfers={onClearCompletedTransfers}
-              onCancelTransfer={onCancelTransfer}
+              transfers={transfers}
               onInsertTerminalText={onInsertTerminalText}
               onExecuteTerminalCommand={onExecuteTerminalCommand}
             />

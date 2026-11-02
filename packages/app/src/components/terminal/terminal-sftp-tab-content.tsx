@@ -6,7 +6,7 @@ import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspac
 import { rememberSftpDirectory } from "@/lib/sftp-connection-history"
 import { useSftpSession } from "@/hooks/useSftpSession"
 import { assertCompleteSftpSessionApi } from "@/lib/session/sftp-session-api"
-import type { WorkspaceTransferTask } from "@/lib/session/workspace"
+import { mergeTransferTaskActions, type TransferTaskActions } from "@/lib/session/transfer-controller"
 import type { Server } from "@/lib/server-types"
 import { useTerminalAuthFlowAdapters } from "@/components/terminal/use-terminal-auth-flow-adapters"
 import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sftp-auth-retry"
@@ -14,9 +14,7 @@ import { getServerAuthMethod, useSftpAuthRetry } from "@/components/sftp/use-sft
 export interface TerminalSftpTabContentProps {
   sessionId: string
   isActive: boolean
-  externalTransferTasks?: WorkspaceTransferTask[]
-  onClearExternalTransfers?: () => void
-  onCancelExternalTransfer?: (id: string) => void
+  externalTransfers?: TransferTaskActions
   server: Server
   label: string
   onConnectionStateChange?: (connected: boolean, loading: boolean) => void
@@ -39,9 +37,7 @@ export interface TerminalSftpTabContentProps {
 export function TerminalSftpTabContent({
   sessionId,
   isActive,
-  externalTransferTasks = [],
-  onClearExternalTransfers,
-  onCancelExternalTransfer,
+  externalTransfers,
   server,
   label,
   onConnectionStateChange,
@@ -125,6 +121,11 @@ export function TerminalSftpTabContent({
     onHistoryChange,
   })
   const { currentPath, error, refresh } = sftp
+  const sessionTransfers = sftp.transfers
+  const transfers = useMemo(
+    () => mergeTransferTaskActions([sessionTransfers, externalTransfers]),
+    [externalTransfers, sessionTransfers],
+  )
   const notifyConnectionState = useEffectEvent((connected: boolean, loading: boolean) => onConnectionStateChange?.(connected, loading))
   const notifyPathChange = useEffectEvent((path: string) => onPathChange?.(path))
   useEffect(() => { notifyConnectionState(sftp.isConnected, sftp.isLoading) }, [sftp.isConnected, sftp.isLoading])
@@ -195,9 +196,7 @@ export function TerminalSftpTabContent({
         onReadFile={sftp.readFile}
         onSaveFile={sftp.saveFile}
         onRenameSession={onRenameSession}
-        transferTasks={[...sftp.transferTasks, ...externalTransferTasks]}
-        onClearCompletedTransfers={() => { sftp.clearCompletedTransfers(); onClearExternalTransfers?.() }}
-        onCancelTransfer={id => { if (externalTransferTasks.some(task => task.id === id)) onCancelExternalTransfer?.(id); else sftp.cancelTransfer(id) }}
+        transfers={transfers}
       />
       {canRetrySftpCredentials && credentialDialog}
     </div>

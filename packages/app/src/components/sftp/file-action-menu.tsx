@@ -1,7 +1,6 @@
 import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 
 import {
-  CloudDownload,
   Download,
   Trash2,
   Eye,
@@ -32,7 +31,6 @@ interface FileItem {
 export type FileAction =
   | "open"
   | "download"
-  | "backgroundDownload"
   | "rename"
   | "chmod"
   | "delete"
@@ -41,7 +39,6 @@ interface FileActionMenuProps {
   file: FileItem
   mode: "dropdown" | "context"
   selectedFilesCount?: number
-  enableBackgroundDownload?: boolean
   onAction: (action: FileAction) => void
 }
 
@@ -98,7 +95,6 @@ export function FileActionMenu({
   file,
   mode,
   selectedFilesCount = 0,
-  enableBackgroundDownload = false,
   onAction,
 }: FileActionMenuProps) {
   const t = useWorkspaceSftpTranslator()
@@ -149,18 +145,6 @@ export function FileActionMenu({
         </FileActionMenuItem>
       ) : (
         null
-      )}
-
-      {enableBackgroundDownload && file.type === "file" && (
-        <FileActionMenuItem
-          mode={mode}
-          className={itemClassName}
-          allowed={can("files.download")}
-        onClick={() => onAction("backgroundDownload")}
-        >
-          <CloudDownload className="h-4 w-4 mr-2" />
-          <span className="flex-1">{t("actionBackgroundDownload")}</span>
-        </FileActionMenuItem>
       )}
 
       <FileActionMenuSeparator mode={mode} className={separatorClassName} />

@@ -1,5 +1,6 @@
 
 import * as React from "react"
+import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import {
   Check,
@@ -23,7 +24,9 @@ import { useOptionalClientAuth } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/contexts/system-config-context"
 import { useUpdateCheck } from "@/hooks/use-update-check"
 import { getEffectiveLocale, saveLocaleToStorage } from "@/utils/datetime"
-import { NotificationCenter } from "@/components/notification-center"
+import { NotificationCenter, type NotificationCenterSource } from "@/components/notification-center"
+import { inboxNotificationsApi } from "@/lib/api/inbox-notifications"
+import { subscribeRealtimeEvents } from "@/lib/api/realtime-events"
 
 type SupportedLocale = "zh-CN" | "en-US"
 
@@ -32,8 +35,20 @@ const localeOptions: Array<{ value: SupportedLocale; labelKey: "languageZhCN" | 
   { value: "en-US", labelKey: "languageEnUS" },
 ]
 
+const inboxNotificationSource: NotificationCenterSource = {
+  list: () => inboxNotificationsApi.list({ page: 1, page_size: 40 }),
+  markRead: inboxNotificationsApi.markRead,
+  markAllRead: inboxNotificationsApi.markAllRead,
+  remove: inboxNotificationsApi.remove,
+  clearRead: inboxNotificationsApi.clearRead,
+  subscribe: (onChange) => subscribeRealtimeEvents((event) => {
+    if (event.type.startsWith("notification.")) onChange()
+  }),
+}
+
 export function DashboardHeaderActions() {
   const { t } = useTranslation("headerActions")
+  const navigate = useNavigate()
   const clientAuth = useOptionalClientAuth()
   const user = clientAuth?.user ?? null
   const isAuthenticated = clientAuth?.isAuthenticated ?? false
@@ -71,7 +86,10 @@ export function DashboardHeaderActions() {
 
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <NotificationCenter />
+      <NotificationCenter
+        source={inboxNotificationSource}
+        onOpenTask={(runId) => navigate(runId ? `/dashboard/tasks?run=${encodeURIComponent(runId)}` : "/dashboard/tasks")}
+      />
 
       <DropdownMenu>
         <Tooltip>

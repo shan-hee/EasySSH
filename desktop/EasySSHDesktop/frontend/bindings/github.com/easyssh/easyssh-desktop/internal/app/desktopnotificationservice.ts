@@ -9,6 +9,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function ClearRead(): $CancellablePromise<void> {
+    return $Call.ByID(2074496727);
+}
+
 export function Delete(id: string): $CancellablePromise<void> {
     return $Call.ByID(2891306117, id);
 }

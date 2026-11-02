@@ -25,6 +25,8 @@ import {
   type SftpSessionApiAdapter,
 } from "@/lib/session/sftp-session-api";
 import type { SshWorkspaceTransferManager } from "@/lib/session/workspace";
+import type { TransferTaskActions } from "@/lib/session/transfer-controller";
+import type { TransferJob } from "@/lib/transfer-job-types";
 import type { TerminalAuthMethod } from "@/lib/websocket-terminal";
 
 type SftpAuthMethod = TerminalAuthMethod;
@@ -189,10 +191,15 @@ export function useSftpSession(
     };
   }, [fileTransferOptions?.api, runSftpOperation, sessionApi]);
 
+  const hasTransferManager = !!transferManager;
   const effectiveFileTransferOptions = useMemo<UseFileTransferOptions>(() => ({
     ...fileTransferOptions,
     api: fileTransferApi,
-  }), [fileTransferApi, fileTransferOptions]);
+    // 工作区统一管理传输时由其恢复；否则每个会话只接管本服务器的上传和下载。
+    restore: hasTransferManager
+      ? undefined
+      : (job: TransferJob) => job.kind !== "sftp_transfer" && (job.source_server_id === serverId || job.target_server_id === serverId),
+  }), [fileTransferApi, fileTransferOptions, hasTransferManager, serverId]);
 
   const internalFileTransfer = useFileTransfer(effectiveFileTransferOptions);
   const fileTransfer = useMemo(() => ({
@@ -214,8 +221,19 @@ export function useSftpSession(
       : internalFileTransfer.batchDownload,
     cancelTask: transferManager?.cancelTask ?? internalFileTransfer.cancelTask,
     removeTask: transferManager?.removeTask ?? internalFileTransfer.removeTask,
-    clearCompleted: transferManager?.clearCompleted ?? internalFileTransfer.clearCompleted,
+    retryTask: transferManager ? transferManager.retryTask : internalFileTransfer.retryTask,
   }), [internalFileTransfer, runSftpOperation, transferManager]);
+  // 宿主自行展示传输（例如远程工作区的本机传输）时，会话不提供传输列表。
+  const transfers = useMemo<TransferTaskActions | undefined>(() => (
+    transferManager && !(transferManager.cancelTask && transferManager.removeTask)
+      ? undefined
+      : {
+          tasks: fileTransfer.tasks,
+          cancel: fileTransfer.cancelTask,
+          remove: fileTransfer.removeTask,
+          retry: fileTransfer.retryTask,
+        }
+  ), [fileTransfer, transferManager]);
 
   /**
    * 转换后端FileInfo为前端FileItem
@@ -672,7 +690,7 @@ export function useSftpSession(
     pendingPath,
     failedPath,
     error,
-    transferTasks: fileTransfer.tasks,
+    transfers,
     pathBackStack,
     pathForwardStack,
     canGoBack: pathBackStack.length > 0,
@@ -695,10 +713,5 @@ export function useSftpSession(
     // 批量操作
     batchDeleteFiles,
     batchDownloadFiles,
-
-    // 传输管理
-    cancelTransfer: fileTransfer.cancelTask,
-    removeTransfer: fileTransfer.removeTask,
-    clearCompletedTransfers: fileTransfer.clearCompleted,
   };
 }

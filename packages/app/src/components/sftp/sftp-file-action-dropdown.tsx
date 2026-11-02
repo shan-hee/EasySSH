@@ -11,14 +11,12 @@ export type SftpFileActionDropdownFile = Pick<SftpFileItem, "name" | "type" | "s
 export interface SftpFileActionDropdownProps {
   file: SftpFileActionDropdownFile
   selectedFilesCount: number
-  enableBackgroundDownload?: boolean
   onAction: (action: FileAction) => void
 }
 
 export function SftpFileActionDropdown({
   file,
   selectedFilesCount,
-  enableBackgroundDownload = false,
   onAction,
 }: SftpFileActionDropdownProps) {
   return (
@@ -44,7 +42,6 @@ export function SftpFileActionDropdown({
           file={file}
           mode="dropdown"
           selectedFilesCount={selectedFilesCount}
-          enableBackgroundDownload={enableBackgroundDownload}
           onAction={onAction}
         />
       </DropdownMenuContent>

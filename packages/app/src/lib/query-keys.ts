@@ -2,9 +2,6 @@ export const queryKeys = {
   dashboard: {
     overview: ["dashboard", "overview"] as const,
   },
-  notifications: {
-    inbox: ["notifications", "inbox"] as const,
-  },
   settings: {
     form: (cacheKey: string) => ["settings", "form", cacheKey] as const,
     scheduledTaskRuntime: ["settings", "scheduled-tasks", "runtime"] as const,

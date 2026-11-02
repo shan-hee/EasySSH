@@ -101,7 +101,7 @@ export function getErrorMessage(error: unknown, defaultMessage = "操作失败")
       return "服务器内部错误，请稍后重试或联系管理员"
     }
   } else if (error instanceof Error) {
-    return error.message
+    return error.message || defaultMessage
   } else if (typeof error === 'string') {
     return error
   }

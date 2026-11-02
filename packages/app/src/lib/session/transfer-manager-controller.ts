@@ -1,5 +1,6 @@
 import { isTransferJobSettled, type TransferJob } from "@/lib/transfer-job-types"
 import type { DirectTransferOptions } from "@/lib/sftp-types"
+import { sftpParentPath } from "./sftp-directory-source"
 import {
   createDownloadTransferTask,
   createServerTransferTask,
@@ -12,7 +13,6 @@ import {
 import {
   appendTransferTask,
   applyTransferTaskUpdate,
-  clearSettledTransferTasks,
   findTransferTask,
   getActiveTransferTasks,
   isTransferTaskActiveStatus,
@@ -83,11 +83,13 @@ export interface CreateFileTransferControllerOptions {
 }
 
 export interface RestoreTransfersOptions {
+  /** 只恢复由本实例负责的任务，避免多个实例重复展示和轮询同一任务。 */
+  owns: (job: TransferJob) => boolean
   shouldSkip?: () => boolean
 }
 
 export interface FileTransferController {
-  restoreTransfers: (options?: RestoreTransfersOptions) => Promise<void>
+  restoreTransfers: (options: RestoreTransfersOptions) => Promise<void>
   downloadFile: (serverId: string, remotePath: string, fileName?: string) => Promise<void>
   batchDownload: (serverId: string, remotePaths: string[], excludePatterns?: string[]) => Promise<void>
   uploadFile: (
@@ -98,7 +100,8 @@ export interface FileTransferController {
   ) => Promise<void>
   cancelTask: (taskId: string) => void
   removeTask: (taskId: string) => void
-  clearCompleted: () => void
+  /** 以原参数重新发起失败的任务；新任务替换原列表项。 */
+  retryTask: (taskId: string) => Promise<void>
   clearAll: () => void
   updateTask: (taskId: string, update: TransferTaskUpdate) => void
   directTransfer: (
@@ -111,7 +114,6 @@ export interface FileTransferController {
     fileName: string,
     options?: FileTransferDirectTransferOptions,
   ) => Promise<void>
-  cancelDirectTransfer: (taskId: string) => Promise<void>
 }
 
 interface RunningTransfer {
@@ -119,11 +121,28 @@ interface RunningTransfer {
   abort: AbortController
 }
 
+interface RunTransferOptions {
+  limitConcurrency?: boolean
+  watchAfterStart?: boolean
+  deliver?: boolean
+}
+
+/** 任务已结束但未成功；消息取自任务记录，为空时由调用方给出本地化描述。 */
+class TransferOutcomeError extends Error {
+  constructor(message: string | undefined, readonly transferOutcome: "failed" | "unknown") {
+    super(message ?? "")
+  }
+}
+
 // 进度查询连续失败达到上限后放弃观察，避免任务被外部删除后无限轮询。
 const MAX_POLL_FAILURES = 30
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError"
+}
+
+function isUnknownOutcome(error: unknown): boolean {
+  return error instanceof Error && "transferOutcome" in error && error.transferOutcome === "unknown"
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -155,6 +174,8 @@ export function createFileTransferController({
   logWarn = (message, ...args) => console.warn(message, ...args),
 }: CreateFileTransferControllerOptions): FileTransferController {
   const running = new Map<string, RunningTransfer>()
+  // 失败任务的重新发起入口；持有上传的本机文件，移除任务时一并释放。
+  const retries = new Map<string, () => Promise<void>>()
 
   const updateTask = (taskId: string, update: TransferTaskUpdate, mergeProgress = false) => {
     setTasks((prev) => applyTransferTaskUpdate(prev, taskId, update, { mergeProgress }))
@@ -187,8 +208,7 @@ export function createFileTransferController({
       return
     }
     if (job.status === "cancelled") return
-    if (job.status === "unknown") throw Object.assign(new Error(job.error_message || "Transfer outcome unknown; verify the remote result before retrying"), { transferOutcome: "unknown" })
-    throw new Error(job.error_message || "传输失败")
+    throw new TransferOutcomeError(job.error_message, job.status === "unknown" ? "unknown" : "failed")
   }
 
   /**
@@ -196,10 +216,12 @@ export function createFileTransferController({
    * 避免任务状态覆盖本机发送进度。
    */
   const runTransfer = async (
-    task: TransferTask,
+    createTask: () => TransferTask,
     start: (options: TransferStartOptions) => Promise<void>,
-    { limitConcurrency = false, watchAfterStart = false, deliver = false } = {},
-  ) => {
+    options: RunTransferOptions = {},
+  ): Promise<void> => {
+    const { limitConcurrency = false, watchAfterStart = false, deliver = false } = options
+    const task = createTask()
     const entry: RunningTransfer = { abort: new AbortController() }
     const { signal } = entry.abort
     // 启动失败时停止已开始的观察，不当作用户取消。
@@ -236,8 +258,16 @@ export function createFileTransferController({
         setTasks((prev) => markTransferTaskCancelled(prev, task.id))
         return
       }
-      const message = error instanceof Error ? error.message : String(error)
-      updateTask(task.id, { status: error instanceof Error && "transferOutcome" in error && error.transferOutcome === "unknown" ? "unknown" : "failed", error: message || "传输失败" })
+      // 结果未知时远端可能已生效，重新发起可能重复执行，只能人工核对。
+      const unknown = isUnknownOutcome(error)
+      if (!unknown) retries.set(task.id, () => runTransfer(createTask, start, options))
+      updateTask(task.id, {
+        status: unknown ? "unknown" : "failed",
+        error: (error instanceof Error ? error.message : String(error)) || undefined,
+        retryable: !unknown,
+        speed: undefined,
+        timeRemaining: undefined,
+      })
       throw error
     } finally {
       release?.()
@@ -272,12 +302,12 @@ export function createFileTransferController({
   }
 
   return {
-    async restoreTransfers({ shouldSkip } = {}) {
+    async restoreTransfers({ owns, shouldSkip }) {
       const jobs = await api.listTransfers()
       if (shouldSkip?.()) return
 
       // 等待本机输入的上传无法在刷新后继续，不再恢复。
-      const active = jobs.filter((job) => !isTransferJobSettled(job) && job.stage !== "awaiting_input" && !running.has(job.id))
+      const active = jobs.filter((job) => owns(job) && !isTransferJobSettled(job) && job.stage !== "awaiting_input" && !running.has(job.id))
       if (active.length === 0) return
 
       setTasks((prev) => mergeRestoredTransferTasks(prev, active.map(createTransferTaskFromJob)))
@@ -285,11 +315,16 @@ export function createFileTransferController({
     },
 
     uploadFile(serverId, remotePath, file, onProgress) {
-      const task = createUploadTransferTask({ taskId: newTaskId(), fileName: file.name, fileSizeBytes: file.size })
-      return runTransfer(task, (options) => api.uploadFile(serverId, remotePath, file, {
+      return runTransfer(() => createUploadTransferTask({
+        taskId: newTaskId(),
+        fileName: file.name,
+        fileSizeBytes: file.size,
+        serverId,
+        remotePath,
+      }), (options) => api.uploadFile(serverId, remotePath, file, {
         ...options,
         onProgress: (loaded, total) => {
-          updateTask(task.id, {
+          updateTask(options.taskId, {
             status: "uploading",
             stage: "http",
             bytesTransferred: loaded,
@@ -301,56 +336,63 @@ export function createFileTransferController({
     },
 
     downloadFile(serverId, remotePath, fileName) {
-      const task = createDownloadTransferTask({
+      return runTransfer(() => createDownloadTransferTask({
         taskId: newTaskId(),
         fileName: fileName || remotePath.split("/").filter(Boolean).pop() || "download",
-      })
-      return runTransfer(task, (options) => api.downloadFile(serverId, remotePath, options), { deliver: true })
+        serverId,
+        remotePath,
+      }), (options) => api.downloadFile(serverId, remotePath, options), { deliver: true })
     },
 
     batchDownload(serverId, remotePaths, excludePatterns) {
-      const fileName = remotePaths.length === 1
-        ? remotePaths[0]?.split("/").filter(Boolean).pop() || "download"
-        : "easyssh-download"
-      const task = createDownloadTransferTask({ taskId: newTaskId(), fileName })
-      return runTransfer(task, (options) => api.batchDownload(serverId, remotePaths, excludePatterns, options), { deliver: true })
+      const single = remotePaths.length === 1 ? remotePaths[0] : undefined
+      return runTransfer(() => createDownloadTransferTask({
+        taskId: newTaskId(),
+        fileName: single?.split("/").filter(Boolean).pop() || (single ? "download" : "easyssh-download"),
+        serverId,
+        remotePath: single ?? sftpParentPath(remotePaths[0] ?? "/"),
+      }), (options) => api.batchDownload(serverId, remotePaths, excludePatterns, options), { deliver: true })
     },
 
     cancelTask,
 
     removeTask(taskId) {
       cancelTask(taskId)
+      retries.delete(taskId)
       setTasks((prev) => removeTransferTaskById(prev, taskId))
     },
 
-    clearCompleted() {
-      setTasks((prev) => clearSettledTransferTasks(prev))
+    retryTask(taskId) {
+      const retry = retries.get(taskId)
+      if (!retry) return Promise.resolve()
+      retries.delete(taskId)
+      setTasks((prev) => removeTransferTaskById(prev, taskId))
+      return retry()
     },
 
     clearAll() {
       getActiveTransferTasks(getTasks()).forEach((task) => cancelTask(task.id))
+      retries.clear()
       setTasks(() => [])
     },
 
     updateTask,
 
     directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, sourceServerName, targetServerName, fileName, options) {
-      const task = createServerTransferTask({
+      return runTransfer(() => createServerTransferTask({
         taskId: newTaskId(),
         fileName,
+        sourceServerId,
         sourceServer: sourceServerName,
+        targetServerId,
         targetServer: targetServerName,
-      })
-      return runTransfer(task, (startOptions) => api.directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, {
+        targetPath,
+      }), (startOptions) => api.directTransfer(sourceServerId, sourcePath, targetServerId, targetPath, {
         ...options,
         sourceServerName: options?.sourceServerName ?? sourceServerName,
         targetServerName: options?.targetServerName ?? targetServerName,
         ...startOptions,
       }))
-    },
-
-    async cancelDirectTransfer(taskId) {
-      cancelTask(taskId)
     },
   }
 }

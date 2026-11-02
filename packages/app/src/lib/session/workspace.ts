@@ -82,6 +82,12 @@ export interface WorkspaceTransferTask {
   resultPath?: string
   id: string
   fileName: string
+  /** 涉及的服务器：上传、下载为所在服务器，服务器间传输为源和目标。 */
+  serverIds: string[]
+  /** 远端位置：上传为目标文件，下载为源路径，服务器间传输为目标目录。 */
+  remotePath?: string
+  /** 失败后可按原参数重新发起；页面刷新后恢复的任务没有原始输入，不可重试。 */
+  retryable?: boolean
   fileSize: string
   fileSizeBytes: number
   progress: number
@@ -95,7 +101,6 @@ export interface WorkspaceTransferTask {
   stage?: "http" | "sftp" | "stream"
   sourceServer?: string
   targetServer?: string
-  transferMethod?: "rsync" | "scp" | "sftp"
 }
 
 export interface WorkspaceSessionSnapshot {
@@ -653,10 +658,9 @@ export interface SshWorkspaceTransferManager {
   ) => Promise<void>
   updateTask?: (taskId: string, update: Partial<WorkspaceTransferTask>) => void
   removeTask?: (taskId: string) => void
+  retryTask?: (taskId: string) => Promise<void>
   clearAll?: () => void
-  clearCompleted?: () => void
   cancelTask?: (taskId: string) => void
-  cancelDirectTransfer?: (taskId: string) => Promise<void>
   history?: SshWorkspaceTransferHistoryAdapter
 }
 

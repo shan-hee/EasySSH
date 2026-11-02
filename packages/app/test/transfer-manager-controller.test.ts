@@ -98,6 +98,67 @@ describe("createFileTransferController", () => {
     assert.deepEqual(cancelled, ["running-job"])
     assert.equal(harness.tasks[0]?.status, "cancelled")
   })
+
+  it("retries a failed upload with its original input", async () => {
+    let attempts = 0
+    const harness = createHarness({
+      async uploadFile(_serverId, _path, _file, { taskId, onStarted }) {
+        attempts += 1
+        onStarted(taskId)
+      },
+      async getTransfer(id) {
+        return job({ id, kind: "sftp_upload", status: attempts < 2 ? "failed" : "completed" })
+      },
+    })
+
+    await assert.rejects(harness.controller.uploadFile("server", "/tmp", new File(["data"], "a.txt")))
+    const failed = harness.tasks[0]!
+    assert.equal(failed.retryable, true)
+
+    await harness.controller.retryTask(failed.id)
+
+    assert.equal(attempts, 2)
+    assert.equal(harness.tasks.length, 1)
+    assert.notEqual(harness.tasks[0]?.id, failed.id)
+    assert.equal(harness.tasks[0]?.status, "completed")
+    assert.equal(harness.tasks[0]?.remotePath, "/tmp/a.txt")
+  })
+
+  it("does not offer retry when the outcome is unknown", async () => {
+    const harness = createHarness({
+      async downloadFile(_serverId, _path, { onStarted }) {
+        onStarted("unknown-job")
+      },
+      async getTransfer(id) {
+        return job({ id, kind: "sftp_download", status: "unknown" })
+      },
+    })
+
+    await assert.rejects(harness.controller.downloadFile("server", "/data/app.log"))
+
+    assert.equal(harness.tasks[0]?.status, "unknown")
+    assert.equal(harness.tasks[0]?.retryable, false)
+  })
+
+  it("restores only the transfers it owns", async () => {
+    const harness = createHarness({
+      async listTransfers() {
+        return [
+          job({ id: "upload", kind: "sftp_upload", status: "running", stage: "transfer_to_remote", target_server_id: "server", target_path: "/srv", file_name: "a.txt" }),
+          job({ id: "relay", kind: "sftp_transfer", status: "running", stage: "transfer_to_remote" }),
+        ]
+      },
+      async getTransfer(id) {
+        return job({ id, kind: id === "upload" ? "sftp_upload" : "sftp_transfer", status: "completed" })
+      },
+    })
+
+    await harness.controller.restoreTransfers({ owns: (restored) => restored.kind !== "sftp_transfer" })
+
+    assert.deepEqual(harness.tasks.map((task) => task.id), ["upload"])
+    assert.deepEqual(harness.tasks[0]?.serverIds, ["server"])
+    assert.equal(harness.tasks[0]?.remotePath, "/srv/a.txt")
+  })
 })
 
 function createHarness(overrides: Partial<FileTransferSftpApi>) {

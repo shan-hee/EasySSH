@@ -53,6 +53,34 @@ func TestDesktopCompletionAndInboxShareTransaction(t *testing.T) {
 	}
 }
 
+func TestDesktopNotificationClearReadKeepsUnread(t *testing.T) {
+	tasks, _ := desktopTaskFixture(t)
+	notices := &DesktopNotificationService{db: tasks.db}
+	for _, title := range []string{"read", "unread"} {
+		if err := notices.Publish("test", "info", title, "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := notices.List(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range list.Notifications {
+		if item.Title == "read" {
+			if err := notices.MarkRead(item.ID); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err := notices.ClearRead(); err != nil {
+		t.Fatal(err)
+	}
+	list, err = notices.List(20)
+	if err != nil || len(list.Notifications) != 1 || list.Notifications[0].Title != "unread" || list.UnreadCount != 1 {
+		t.Fatal("clear read removed the wrong notifications", list, err)
+	}
+}
+
 func TestDesktopTaskCleanupRollsBackNotificationDeletion(t *testing.T) {
 	tasks, id := desktopTaskFixture(t)
 	if _, err := tasks.persistCompletion(context.Background(), id, desktopTaskCompletion{Status: "succeeded", FinishedAt: desktopTaskNow()}); err != nil {

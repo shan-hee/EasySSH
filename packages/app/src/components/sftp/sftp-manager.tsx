@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { SessionWorkspaceToolbar } from "@/components/tabs/session-workspace-toolbar"
 
-import { useRef, useMemo, useCallback, useEffect, type ChangeEvent, type ReactNode } from "react"
+import { useRef, useMemo, useEffect, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { SftpSessionProvider } from "@/contexts/sftp-session-context"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -15,7 +15,8 @@ import { FolderTree } from "lucide-react"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import type { BatchDeleteResult } from "@/lib/session/sftp-operations"
 import { DEFAULT_SFTP_DOWNLOAD_EXCLUDE_PATTERNS } from "@/lib/session/workspace-settings"
-import type { SshWorkspacePreferenceAdapter, WorkspaceTransferTask } from "@/lib/session/workspace"
+import type { SshWorkspacePreferenceAdapter } from "@/lib/session/workspace"
+import type { TransferTaskActions } from "@/lib/session/transfer-controller"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import { SftpWorkspaceToolbar } from "@/components/sftp/sftp-workspace-toolbar"
 import { SftpFileToolbar } from "@/components/sftp/sftp-file-toolbar"
@@ -26,7 +27,6 @@ import { useSftpFileBrowserController, type SftpFileBrowserItem } from "@/compon
 import { useSftpDragDropController } from "@/components/sftp/use-sftp-drag-drop-controller"
 import { useSftpFileActionController } from "@/components/sftp/use-sftp-file-action-controller"
 import { useSftpWorkspaceHeaderController } from "@/components/sftp/use-sftp-workspace-header-controller"
-import type { TransferJob } from "@/lib/api/transfer-jobs"
 
 export type SftpManagerFileItem = SftpFileBrowserItem
 
@@ -83,16 +83,8 @@ export interface SftpManagerProps {
   onToggleFullscreen?: () => void
   terminalPathActions?: SftpTerminalPathActions
   toolbarActions?: ReactNode
-  // 传输任务管理(从外部传入)
-  transferTasks?: WorkspaceTransferTask[]
-  backgroundTransferJobs?: TransferJob[]
-  onClearCompletedTransfers?: () => void
-  onCancelTransfer?: (taskId: string) => void
-  onCreateBackgroundUpload?: (files: FileList) => void | Promise<void>
-  onCreateBackgroundDownload?: (fileName: string) => void | Promise<void>
-  onCancelBackgroundTransfer?: (jobId: string) => void
-  onDeleteBackgroundTransfer?: (jobId: string) => void
-  onDownloadBackgroundArtifact?: (jobId: string) => void
+  /** 传输任务；未传入时使用工作区的传输管理。 */
+  transfers?: TransferTaskActions
   preferences?: SshWorkspacePreferenceAdapter
 }
 
@@ -145,15 +137,7 @@ export function SftpManager(props: SftpManagerProps) {
     onToggleFullscreen,
     terminalPathActions,
     toolbarActions,
-    transferTasks,
-    backgroundTransferJobs,
-    onClearCompletedTransfers,
-    onCancelTransfer,
-    onCreateBackgroundUpload,
-    onCreateBackgroundDownload,
-    onCancelBackgroundTransfer,
-    onDeleteBackgroundTransfer,
-    onDownloadBackgroundArtifact,
+    transfers: providedTransfers,
     preferences,
   } = props
   const treeLayout = useSftpTreeLayout(viewModeStorageKey, preferences ?? workspace?.adapters.preferences)
@@ -161,29 +145,29 @@ export function SftpManager(props: SftpManagerProps) {
   const shouldRenderWorkspaceToolbar = chrome !== "content"
   const shouldRenderBody = chrome !== "toolbar"
   const shouldRenderFileToolbar = chrome !== "toolbar"
-  const effectiveTransferTasks = transferTasks ?? workspaceTransferManager?.tasks ?? []
-  const effectiveClearCompletedTransfers = onClearCompletedTransfers ?? workspaceTransferManager?.clearCompleted
-  const effectiveCancelTransfer = onCancelTransfer ?? workspaceTransferManager?.cancelTask
-  const hasWorkspaceTransferTaskSurface = !!workspaceTransferManager && (
-    workspaceTransferManager.tasks.length > 0 ||
-    !!workspaceTransferManager.downloadFile ||
-    !!workspaceTransferManager.batchDownload ||
-    !!workspaceTransferManager.uploadFile ||
-    !!workspaceTransferManager.directTransfer ||
-    !!workspaceTransferManager.updateTask ||
-    !!workspaceTransferManager.removeTask ||
-    !!workspaceTransferManager.clearAll ||
-    !!workspaceTransferManager.clearCompleted ||
-    !!workspaceTransferManager.cancelTask ||
-    !!workspaceTransferManager.cancelDirectTransfer
-  )
-  const showTransferTasks = (
-    transferTasks !== undefined ||
-    hasWorkspaceTransferTaskSurface ||
-    !!backgroundTransferJobs?.length ||
-    !!onCreateBackgroundUpload ||
-    !!onCreateBackgroundDownload
-  )
+  const transfers = useMemo<TransferTaskActions | undefined>(() => {
+    if (providedTransfers) return providedTransfers
+    if (!workspaceTransferManager?.cancelTask || !workspaceTransferManager.removeTask) return undefined
+    return {
+      tasks: workspaceTransferManager.tasks,
+      cancel: workspaceTransferManager.cancelTask,
+      remove: workspaceTransferManager.removeTask,
+      retry: workspaceTransferManager.retryTask,
+    }
+  }, [providedTransfers, workspaceTransferManager])
+  // 面板只显示与当前服务器相关的任务；服务器间传输在源和目标两侧都可见。
+  const serverTransfers = useMemo<TransferTaskActions | undefined>(() => transfers && {
+    ...transfers,
+    tasks: transfers.tasks.filter((task) => task.serverIds.includes(serverId)),
+    retry: transfers.retry && ((taskId) => {
+      const task = transfers.tasks.find((item) => item.id === taskId)
+      // 重新上传到本服务器后刷新目录；失败结果由面板展示。
+      return transfers.retry!(taskId).then(
+        () => { if (task?.type !== "download" && task?.serverIds.at(-1) === serverId) onRefresh?.() },
+        () => undefined,
+      )
+    }),
+  }, [onRefresh, serverId, transfers])
   const {
     selectedFiles,
     setSelectedFiles,
@@ -218,7 +202,6 @@ export function SftpManager(props: SftpManagerProps) {
     })
   }, [files, setSelectedFiles])
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const backgroundFileInputRef = useRef<HTMLInputElement>(null)
   const editInputRef = useRef<HTMLInputElement>(null)
   const editingSessionLabelRef = useRef(false)
 
@@ -299,7 +282,6 @@ export function SftpManager(props: SftpManagerProps) {
     canNavigateBack,
     onInternalBackHandlerChange,
     onDownload,
-    onBackgroundDownload: onCreateBackgroundDownload,
     onDelete,
     onBatchDelete,
     onBatchDownload,
@@ -327,19 +309,6 @@ export function SftpManager(props: SftpManagerProps) {
     onRenameSession,
     editingSessionLabelRef,
   })
-
-  // 清除已完成任务 - 使用外部传入的处理函数
-  const handleClearCompleted = useCallback(() => {
-    effectiveClearCompletedTransfers?.()
-  }, [effectiveClearCompletedTransfers])
-
-  const handleBackgroundUploadInputChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const inputFiles = event.target.files
-    if (inputFiles && inputFiles.length > 0) {
-      void onCreateBackgroundUpload?.(inputFiles)
-    }
-    event.target.value = ""
-  }, [onCreateBackgroundUpload])
 
   // Context value for nested components
   const sessionContextValue = useMemo(() => ({
@@ -428,15 +397,7 @@ export function SftpManager(props: SftpManagerProps) {
         canNavigateForward={canNavigateForward}
         terminalPathActions={editorState.isOpen ? undefined : terminalPathActions}
         toolbarActions={toolbarActions}
-        showTransferTasks={showTransferTasks}
-        transferTasks={effectiveTransferTasks}
-        backgroundTransferJobs={backgroundTransferJobs}
-        onClearCompletedTransfers={handleClearCompleted}
-        onCancelTransfer={effectiveCancelTransfer}
-        onCreateBackgroundUpload={onCreateBackgroundUpload ? () => backgroundFileInputRef.current?.click() : undefined}
-        onCancelBackgroundTransfer={onCancelBackgroundTransfer}
-        onDeleteBackgroundTransfer={onDeleteBackgroundTransfer}
-        onDownloadBackgroundArtifact={onDownloadBackgroundArtifact}
+        transfers={serverTransfers}
         isFullscreen={isFullscreen}
         onToggleFullscreen={onToggleFullscreen}
         onDisconnect={() => leaveEditor(onDisconnect)}
@@ -550,7 +511,6 @@ export function SftpManager(props: SftpManagerProps) {
             onCreateFolder={() => startCreateNew("folder")}
             onCreateFile={() => startCreateNew("file")}
             onUpload={() => fileInputRef.current?.click()}
-            onBackgroundUpload={onCreateBackgroundUpload ? () => backgroundFileInputRef.current?.click() : undefined}
             onRefresh={onRefresh}
             onEditingFileNameChange={setEditingFileName}
             onFinishCreate={finishCreate}
@@ -563,7 +523,6 @@ export function SftpManager(props: SftpManagerProps) {
             onFileDoubleClick={handleFileDoubleClick}
             onOpenFileContextMenu={handleContextMenu}
             onSort={handleSort}
-            enableBackgroundDownload={!!onCreateBackgroundDownload}
             onAction={handleFileAction}
             onContextAction={handleContextMenuAction}
             onInputChange={handleInputChange}
@@ -572,17 +531,6 @@ export function SftpManager(props: SftpManagerProps) {
       )}
         </div>
       </div>}
-
-      {onCreateBackgroundUpload && (
-      <input
-        ref={backgroundFileInputRef}
-        type="file"
-        multiple
-        className="hidden"
-        tabIndex={-1}
-        onChange={handleBackgroundUploadInputChange}
-      />
-      )}
 
       <AlertDialog open={!!pendingLeave} onOpenChange={(open) => { if (!open) void resolveLeave("cancel") }}>
         <AlertDialogContent overlayClassName="z-[10001]" containerClassName="z-[10002]">

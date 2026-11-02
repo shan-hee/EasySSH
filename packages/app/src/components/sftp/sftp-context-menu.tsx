@@ -1,6 +1,6 @@
 import { useWorkspaceAction } from "@/components/ssh-workspace/use-workspace-action"
 import { useRef, type ReactNode } from "react"
-import { CloudUpload, FileText, FolderPlus, RefreshCw, Upload } from "lucide-react"
+import { FileText, FolderPlus, RefreshCw, Upload } from "lucide-react"
 
 import { FileActionMenu, type FileAction } from "@/components/sftp/file-action-menu"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
@@ -28,7 +28,6 @@ export type SftpContextMenuFile = Pick<SftpFileItem, "name" | "type" | "size" | 
 export interface SftpFileContextMenuProps {
   file: SftpContextMenuFile
   selectedFilesCount: number
-  enableBackgroundDownload?: boolean
   disabled?: boolean
   onOpen?: () => void
   onOpenChange?: (open: boolean) => void
@@ -43,7 +42,6 @@ export interface SftpBlankContextMenuProps {
   onCreateFolder: () => void
   onCreateFile: () => void
   onUpload: () => void
-  onBackgroundUpload?: () => void
   onRefresh: () => void
   children: ReactNode
 }
@@ -70,7 +68,6 @@ export function SftpBlankContextMenuContent({
   onCreateFolder,
   onCreateFile,
   onUpload,
-  onBackgroundUpload,
   onRefresh,
 }: Omit<SftpBlankContextMenuProps, "children" | "disabled" | "onOpenChange">) {
   const tSftp = useWorkspaceSftpTranslator()
@@ -105,13 +102,6 @@ export function SftpBlankContextMenuContent({
         <ContextMenuShortcut>⌘⇧N</ContextMenuShortcut>
       </ContextMenuItem>
 
-      {onBackgroundUpload && (
-        <ContextMenuItem disabled={!can("files.upload")} onSelect={onBackgroundUpload}>
-          <CloudUpload className="h-4 w-4" />
-          <span>{tSftp("contextBackgroundUploadFile")}</span>
-        </ContextMenuItem>
-      )}
-
       <ContextMenuItem disabled={!can("files.write")} onSelect={() => handleCreateAction(onCreateFile)}>
         <FileText className="h-4 w-4" />
         <span>{tSftp("contextNewFile")}</span>
@@ -136,9 +126,8 @@ export function SftpBlankContextMenuContent({
 export function SftpFileContextMenuContent({
   file,
   selectedFilesCount,
-  enableBackgroundDownload = false,
   onAction,
-}: Pick<SftpFileContextMenuProps, "file" | "selectedFilesCount" | "enableBackgroundDownload" | "onAction">) {
+}: Pick<SftpFileContextMenuProps, "file" | "selectedFilesCount" | "onAction">) {
   return (
     <ContextMenuContent
       className={cn(
@@ -150,7 +139,6 @@ export function SftpFileContextMenuContent({
         file={file}
         mode="context"
         selectedFilesCount={selectedFilesCount}
-        enableBackgroundDownload={enableBackgroundDownload}
         onAction={onAction}
       />
     </ContextMenuContent>
@@ -164,7 +152,6 @@ export function SftpBlankContextMenu({
   onCreateFolder,
   onCreateFile,
   onUpload,
-  onBackgroundUpload,
   onRefresh,
   children,
 }: SftpBlankContextMenuProps) {
@@ -178,7 +165,6 @@ export function SftpBlankContextMenu({
         onCreateFolder={onCreateFolder}
         onCreateFile={onCreateFile}
         onUpload={onUpload}
-        onBackgroundUpload={onBackgroundUpload}
         onRefresh={onRefresh}
       />
     </ContextMenu>
@@ -188,7 +174,6 @@ export function SftpBlankContextMenu({
 export function SftpFileContextMenu({
   file,
   selectedFilesCount,
-  enableBackgroundDownload = false,
   disabled = false,
   onOpen,
   onOpenChange,
@@ -217,7 +202,6 @@ export function SftpFileContextMenu({
       <SftpFileContextMenuContent
         file={file}
         selectedFilesCount={selectedFilesCount}
-        enableBackgroundDownload={enableBackgroundDownload}
         onAction={onAction}
       />
     </ContextMenu>

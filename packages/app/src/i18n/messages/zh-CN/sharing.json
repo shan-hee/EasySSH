@@ -128,6 +128,11 @@
   "nativeUploadHint": "请使用文件页顶部的“选择本机文件上传”",
   "nativeUpload": "选择本机文件上传",
   "nativeTransfers": "本机传输",
+  "nativeTransfersEmpty": "暂无本机传输",
+  "transferKind": {
+    "upload": "上传",
+    "download": "下载"
+  },
   "activity": "活动概览",
   "leave": "退出分享",
   "relay": "服务器中转",
@@ -145,15 +150,10 @@
   "scriptChanged": "脚本已变更，当前授权仍引用旧版本",
   "noResources": "没有可用服务器",
   "transferStatus": {
-    "queued": "排队中",
     "running": "传输中",
     "canceling": "取消中",
-    "created": "已创建",
-    "transferring": "传输中",
-    "completed": "已完成",
     "failed": "失败",
     "canceled": "已取消",
-    "cancelled": "已取消",
     "unknown": "结果未知",
     "succeeded": "已完成"
   },

@@ -44,7 +44,8 @@ import {
   resolveTerminalThemeName,
 } from "@/components/terminal/use-terminal-renderer-settings"
 
-import type { WorkspaceTransferTask } from "@/lib/session/workspace"
+import type { TransferTaskActions } from "@/lib/session/transfer-controller"
+import type { TransferJob } from "@/lib/transfer-job-types"
 import { PreloadedTabTerminalContent as TabTerminalContent } from "@/lib/terminal-preload"
 
 export interface TerminalExtraSessionRenderOptions {
@@ -52,9 +53,7 @@ export interface TerminalExtraSessionRenderOptions {
   surface?: "normal" | "transparent"
   isVisible?: boolean
   isActive?: boolean
-  externalTransferTasks?: WorkspaceTransferTask[]
-  onClearExternalTransfers?: () => void
-  onCancelExternalTransfer?: (id: string) => void
+  externalTransfers?: TransferTaskActions
   onPathChange?: (path: string) => void
   refreshRequestVersion?: number
   initialPath?: string
@@ -167,6 +166,9 @@ const WORKSPACE_TAB_LABEL = "工作空间"
 const DEFAULT_TERMINAL_SFTP_PATH = "/root"
 
 const unavailableTransfer = () => Promise.reject(new Error("SFTP transfer API is unavailable"))
+
+// 跨会话实例只负责服务器间传输，上传和下载由各会话恢复。
+const restoreCrossSessionTransfer = (job: TransferJob) => job.kind === "sftp_transfer"
 
 const disabledFileTransferApi: FileTransferSftpApi = {
   getTransfer: unavailableTransfer,
@@ -331,6 +333,7 @@ export function TerminalComponent({
   }, [canUseCrossSessionDragCapability, runDirectTransferWithCredentialRetry, workspaceSftpApi])
   const crossSessionTransfer = useFileTransfer({
     api: crossSessionFileTransferApi ?? disabledFileTransferApi,
+    restore: crossSessionFileTransferApi ? restoreCrossSessionTransfer : undefined,
   })
   const canUseCrossSessionTransfer = !!crossSessionFileTransferApi
   const [activeSession, setActiveSession] = useState<string>(
@@ -392,12 +395,12 @@ export function TerminalComponent({
   const activeExtraSession = extraSessions.find((s) => s.id === activeSession) ?? null
   const isConnectionConfigVisible = !activeSession || contentSessionIdSet.size === 0
   const activeTerminalSession = active?.type === "terminal" ? active : null
-  const crossSessionTransferTasks = crossSessionTransfer.tasks
-  const clearCrossSessionCompletedTransfers = crossSessionTransfer.clearCompleted
-  const cancelCrossSessionTransfer = crossSessionTransfer.cancelDirectTransfer
-  const handleCancelCrossSessionTransfer = useCallback((taskId: string) => {
-    void cancelCrossSessionTransfer(taskId)
-  }, [cancelCrossSessionTransfer])
+  const crossSessionTransfers = useMemo<TransferTaskActions>(() => ({
+    tasks: crossSessionTransfer.tasks,
+    cancel: crossSessionTransfer.cancelTask,
+    remove: crossSessionTransfer.removeTask,
+    retry: crossSessionTransfer.retryTask,
+  }), [crossSessionTransfer.cancelTask, crossSessionTransfer.removeTask, crossSessionTransfer.retryTask, crossSessionTransfer.tasks])
 
   const setActiveSessionFromUser = useCallback((nextSessionId: string) => {
     setActiveSession((previousSessionId) => {
@@ -1162,21 +1165,17 @@ export function TerminalComponent({
           onSftpPathChange={handleSftpPathChange}
           initialSftpPath={sftpPathBySessionId[session.id] ?? DEFAULT_TERMINAL_SFTP_PATH}
           sftpRefreshRequestVersion={sftpRefreshRequests[session.id] ?? 0}
-          externalTransferTasks={crossSessionTransferTasks}
-          onClearExternalCompletedTransfers={clearCrossSessionCompletedTransfers}
-          onCancelExternalTransfer={handleCancelCrossSessionTransfer}
+          externalTransfers={crossSessionTransfers}
         />
       </Suspense>
     )
   }, [
     activeSession,
     terminalTheme.background,
-    clearCrossSessionCompletedTransfers,
-    crossSessionTransferTasks,
+    crossSessionTransfers,
     handleInternalBackAvailabilityChange,
     handleCommand,
     handleInternalBackHandlerChange,
-    handleCancelCrossSessionTransfer,
     handleSftpPathChange,
     aiAssistantAdapters,
     onAuthCancelled,
@@ -1198,9 +1197,7 @@ export function TerminalComponent({
       surface,
       isVisible,
       isActive: isVisible && activeSession === session.id,
-      externalTransferTasks: crossSessionTransferTasks,
-      onClearExternalTransfers: clearCrossSessionCompletedTransfers,
-      onCancelExternalTransfer: handleCancelCrossSessionTransfer,
+      externalTransfers: crossSessionTransfers,
       onPathChange: (path) => handleSftpPathChange(session.id, path),
       refreshRequestVersion: sftpRefreshRequests[session.id] ?? 0,
       initialPath: sftpHistory?.currentPath ?? sftpPathBySessionId[session.id],
@@ -1210,9 +1207,7 @@ export function TerminalComponent({
     }
   }, [
     activeSession,
-    crossSessionTransferTasks,
-    clearCrossSessionCompletedTransfers,
-    handleCancelCrossSessionTransfer,
+    crossSessionTransfers,
     handleSftpHistoryChange,
     handleSftpPathChange,
     sftpHistoryBySessionId,

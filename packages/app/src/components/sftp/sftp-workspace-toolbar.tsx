@@ -7,7 +7,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react"
-import { ChevronLeft, ChevronRight, Clipboard, CloudUpload, CornerDownRight, FolderInput, Home, LoaderCircle, Maximize2, Minimize2, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, Clipboard, CornerDownRight, FolderInput, Home, LoaderCircle, Maximize2, Minimize2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -15,8 +15,7 @@ import { TransferTaskPanel } from "@/components/sftp/transfer-task-panel"
 import { ActivityLogPane } from "@/components/ssh-workspace/activity-log-pane"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
-import type { TransferJob } from "@/lib/api/transfer-jobs"
-import type { WorkspaceTransferTask } from "@/lib/session/workspace"
+import type { TransferTaskActions } from "@/lib/session/transfer-controller"
 import type { SftpTerminalPathActions } from "@/components/sftp/sftp-manager"
 
 const PATH_DRAG_THRESHOLD_PX = 5
@@ -48,15 +47,8 @@ export interface SftpWorkspaceToolbarProps {
 
   terminalPathActions?: SftpTerminalPathActions
   toolbarActions?: ReactNode
-  showTransferTasks: boolean
-  transferTasks: WorkspaceTransferTask[]
-  backgroundTransferJobs?: TransferJob[]
-  onClearCompletedTransfers?: () => void
-  onCancelTransfer?: (taskId: string) => void
-  onCreateBackgroundUpload?: () => void
-  onCancelBackgroundTransfer?: (jobId: string) => void
-  onDeleteBackgroundTransfer?: (jobId: string) => void
-  onDownloadBackgroundArtifact?: (jobId: string) => void
+  /** 当前服务器相关的传输任务；未提供时不显示传输面板。 */
+  transfers?: TransferTaskActions
   isFullscreen: boolean
   onToggleFullscreen?: () => void
   onDisconnect: () => void
@@ -80,15 +72,7 @@ export function SftpWorkspaceToolbar({
   canNavigateForward,
   terminalPathActions,
   toolbarActions,
-  showTransferTasks,
-  transferTasks,
-  backgroundTransferJobs,
-  onClearCompletedTransfers,
-  onCancelTransfer,
-  onCreateBackgroundUpload,
-  onCancelBackgroundTransfer,
-  onDeleteBackgroundTransfer,
-  onDownloadBackgroundArtifact,
+  transfers,
   isFullscreen,
   onToggleFullscreen,
   onDisconnect,
@@ -430,29 +414,7 @@ export function SftpWorkspaceToolbar({
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
-        {onCreateBackgroundUpload && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-md transition-all duration-200 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            onClick={onCreateBackgroundUpload}
-            title={tSftp("backgroundUploadTooltip")}
-          >
-            <CloudUpload className="h-3.5 w-3.5" />
-          </Button>
-        )}
-
-        {showTransferTasks && (
-          <TransferTaskPanel
-            transferTasks={transferTasks}
-            backgroundTransferJobs={backgroundTransferJobs}
-            onClearCompletedTransfers={onClearCompletedTransfers}
-            onCancelTransfer={onCancelTransfer}
-            onCancelBackgroundTransfer={onCancelBackgroundTransfer}
-            onDeleteBackgroundTransfer={onDeleteBackgroundTransfer}
-            onDownloadBackgroundArtifact={onDownloadBackgroundArtifact}
-          />
-        )}
+        {transfers && <TransferTaskPanel transfers={transfers} />}
 
         {showActivityLogPane ? <ActivityLogPane compact /> : null}
 

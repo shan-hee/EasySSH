@@ -1,274 +1,134 @@
-import { openWorkspaceTask } from "@/lib/workspace-task-navigation"
-import { Activity, CheckCircle2, Download, Loader2, Trash2, Upload, X, XCircle } from "lucide-react"
+import { useMemo } from "react"
+import { ListChecks, RotateCw, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Progress } from "@/components/ui/progress"
-import { cn } from "@/lib/utils"
-import { formatBytesString, formatSpeed } from "@/lib/format-utils"
-import { useWorkspaceSftpTranslator, type WorkspaceUiTranslator } from "@/components/ssh-workspace/use-workspace-translator"
-import { UploadProgressItem } from "@/components/sftp/upload-progress-item"
-import type { TransferJob } from "@/lib/api/transfer-jobs"
+import { TransferListPopover, TransferListRow, TransferRowAction, type TransferRowTone } from "@/components/sftp/transfer-list"
+import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
+import { formatBytesString } from "@/lib/format-utils"
+import { isTransferTaskActiveStatus, type TransferTaskActions } from "@/lib/session/transfer-controller"
 import type { WorkspaceTransferTask } from "@/lib/session/workspace"
+import { openWorkspaceTask } from "@/lib/workspace-task-navigation"
 
-export interface TransferTaskPanelProps {
-  transferTasks: WorkspaceTransferTask[]
-  backgroundTransferJobs?: TransferJob[]
-  onClearCompletedTransfers?: () => void
-  onCancelTransfer?: (taskId: string) => void
-  onCancelBackgroundTransfer?: (jobId: string) => void
-  onDeleteBackgroundTransfer?: (jobId: string) => void
-  onDownloadBackgroundArtifact?: (jobId: string) => void
-}
+const typeLabelKeys = {
+  upload: "transferTypeUpload",
+  download: "transferTypeDownload",
+  transfer: "transferTypeTransfer",
+} as const
 
-const activeBackgroundStatuses = new Set<TransferJob["status"]>(["staging", "queued", "running", "canceling"])
-const removableBackgroundStatuses = new Set<TransferJob["status"]>(["created", "completed", "failed", "cancelled"])
-
-function getBackgroundStatusLabel(job: TransferJob, tSftp: WorkspaceUiTranslator) {
-  switch (job.status) {
-    case "unknown":
-      return tSftp("transferUnknownHint")
-    case "created":
-      return tSftp("backgroundStatusCreated")
-    case "staging":
-      return tSftp("backgroundStatusStaging")
-    case "queued":
-      return tSftp("backgroundStatusQueued")
-    case "running":
-      return tSftp("backgroundStatusRunning")
+function taskTone(task: WorkspaceTransferTask): TransferRowTone {
+  switch (task.status) {
+    case "pending":
     case "completed":
-      // 产物过期清理后任务仍为已完成，仅不再提供下载。
-      return job.artifact_cleaned_at ? tSftp("backgroundStatusExpired") : tSftp("backgroundStatusCompleted")
     case "failed":
-      return tSftp("backgroundStatusFailed")
     case "cancelled":
-      return tSftp("backgroundStatusCancelled")
+    case "unknown":
+      return task.status
     default:
-      return job.status
+      return "running"
   }
 }
 
-function getBackgroundStageLabel(job: TransferJob, tSftp: WorkspaceUiTranslator) {
-  switch (job.stage) {
-    case "staging":
-      return tSftp("backgroundStageStaging")
-    case "transfer_to_remote":
-      return tSftp("backgroundStageTransferToRemote")
-    case "download_from_remote":
-      return tSftp("backgroundStageDownloadFromRemote")
-    case "ready_for_download":
-      return tSftp("backgroundStageReadyForDownload")
-    case "cleanup":
-      return tSftp("backgroundStageCleanup")
-    default:
-      return job.stage
-  }
-}
-
-function BackgroundTransferItem({
-  job,
-  onCancel,
-  onDelete,
-  onDownloadArtifact,
-}: {
-  job: TransferJob
-  onCancel?: (jobId: string) => void
-  onDelete?: (jobId: string) => void
-  onDownloadArtifact?: (jobId: string) => void
-}) {
+function TransferTaskItem({ task, transfers }: { task: WorkspaceTransferTask; transfers: TransferTaskActions }) {
   const tSftp = useWorkspaceSftpTranslator()
-  const isActive = activeBackgroundStatuses.has(job.status)
-  const isScheduledStagedInput = job.kind === "sftp_upload" && job.status === "created" && !!job.scheduled_task_id
-  const canDelete = removableBackgroundStatuses.has(job.status) && !isScheduledStagedInput
-  const artifactExpired = job.status === "completed" && !!job.artifact_cleaned_at
-  const canDownloadArtifact = job.kind === "sftp_download" && job.status === "completed" && !artifactExpired && !!onDownloadArtifact
-  const progress = Number.isFinite(job.progress) ? Math.max(0, Math.min(100, job.progress)) : 0
-  const fileSize = job.bytes_total > 0 ? formatBytesString(job.bytes_total, 1) : job.artifact_size > 0 ? formatBytesString(job.artifact_size, 1) : "-"
-  const speed = job.speed_bps > 0 && isActive ? formatSpeed(job.speed_bps) : ""
+  const tone = taskTone(task)
+  const active = isTransferTaskActiveStatus(task.status)
+  const running = tone === "running"
+  const progress = Math.min(100, Math.max(0, Math.round(task.progress || 0)))
+
+  const status = (() => {
+    switch (tone) {
+      case "pending":
+        return tSftp("transferStatusPending")
+      case "completed":
+        return tSftp("transferStatusCompleted")
+      case "failed":
+        return tSftp("transferStatusFailed")
+      case "cancelled":
+        return tSftp("transferStatusCancelled")
+      case "unknown":
+        return tSftp("transferUnknownHint")
+      default:
+        return [
+          `${progress}%`,
+          task.speed,
+          task.timeRemaining ? tSftp("transferRemaining", { time: task.timeRemaining }) : undefined,
+        ].filter(Boolean).join(" · ")
+    }
+  })()
+
+  const size = running && task.fileSizeBytes > 0 && task.bytesTransferred !== undefined
+    ? `${formatBytesString(task.bytesTransferred, 1)} / ${task.fileSize}`
+    : task.fileSize !== "-" ? task.fileSize : ""
 
   return (
-    <div className="border-b px-3 py-3 last:border-b-0">
-      <div className="flex items-start gap-3">
-        <div className={cn(
-          "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md",
-          job.status === "completed" && !artifactExpired && "bg-emerald-500/10 text-emerald-600",
-          job.status === "failed" && "bg-destructive/10 text-destructive",
-          job.status === "cancelled" && "bg-muted text-muted-foreground",
-          artifactExpired && "bg-amber-500/10 text-amber-600",
-          isActive && "bg-primary/10 text-primary",
-        )}>
-          {job.status === "completed" ? (
-            <CheckCircle2 className="h-4 w-4" />
-          ) : job.status === "failed" ? (
-            <XCircle className="h-4 w-4" />
-          ) : isActive ? (
-            <Loader2 className={cn("h-4 w-4", job.status !== "created" && "animate-spin")} />
-          ) : (
-            <Upload className="h-4 w-4" />
+    <TransferListRow
+      type={task.type}
+      typeLabel={tSftp(typeLabelKeys[task.type])}
+      name={task.fileName}
+      location={task.type === "transfer" && task.sourceServer && task.targetServer
+        ? `${task.sourceServer} → ${task.targetServer} · ${task.remotePath ?? ""}`
+        : task.resultPath || task.remotePath}
+      tone={tone}
+      progress={running ? progress : undefined}
+      status={status}
+      meta={[
+        task.filesTotal && task.filesTotal > 1 ? tSftp("transferFiles", { done: task.filesCompleted ?? 0, total: task.filesTotal }) : "",
+        size,
+      ].filter(Boolean).join(" · ")}
+      error={tone === "failed" || tone === "unknown" ? task.error : undefined}
+      actions={(
+        <>
+          {tone === "failed" && task.retryable && transfers.retry && (
+            <TransferRowAction label={tSftp("transferRetry")} onClick={() => void transfers.retry?.(task.id)}>
+              <RotateCw className="size-3.5" />
+            </TransferRowAction>
           )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium">{job.name || job.file_name || job.artifact_name}</div>
-              <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                {job.kind === "sftp_upload" ? tSftp("backgroundKindUpload") : tSftp("backgroundKindDownload")} · {getBackgroundStageLabel(job, tSftp)}
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {canDownloadArtifact && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 rounded-md"
-                  onClick={() => onDownloadArtifact?.(job.id)}
-                  title={tSftp("backgroundDownloadArtifactTitle")}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                </Button>
-              )}
-              {isActive && onCancel && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 rounded-md"
-                  onClick={() => onCancel(job.id)}
-                  title={tSftp("backgroundCancelTitle")}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              )}
-              {canDelete && onDelete && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 rounded-md text-muted-foreground hover:text-destructive"
-                  onClick={() => onDelete(job.id)}
-                  title={tSftp("backgroundDeleteTitle")}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-          </div>
-          <div className="mt-2 space-y-1.5">
-            <Progress value={progress} className="h-1.5" />
-            <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-              <span className="truncate">{getBackgroundStatusLabel(job, tSftp)} · {progress}%</span>
-              <span className="shrink-0 tabular-nums">{speed ? `${speed} · ` : ""}{fileSize}</span>
-            </div>
-            <p className="text-xs text-muted-foreground">{tSftp("transferFacts", { files: job.files_completed, total: job.files_total, bytes: job.bytes_completed })}</p>
-            {job.result_path && <p className="truncate text-xs" title={job.result_path}>{job.result_path}</p>}
-            {job.task_run_id && <Button size="sm" variant="ghost" onClick={() => openWorkspaceTask(job.task_run_id!)}>{tSftp("viewOperationTask")}</Button>}
-            {job.error_message && (
-              <div className="line-clamp-2 text-xs text-destructive">{job.error_message}</div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+          {!active && task.taskRunId && (
+            <TransferRowAction label={tSftp("viewOperationTask")} onClick={() => openWorkspaceTask(task.taskRunId!)}>
+              <ListChecks className="size-3.5" />
+            </TransferRowAction>
+          )}
+          <TransferRowAction
+            label={tSftp(active ? "transferCancel" : "transferRemove")}
+            destructive
+            onClick={() => (active ? transfers.cancel(task.id) : transfers.remove(task.id))}
+          >
+            <X className="size-3.5" />
+          </TransferRowAction>
+        </>
+      )}
+    />
   )
 }
 
-export function TransferTaskPanel({
-  transferTasks,
-  backgroundTransferJobs = [],
-  onClearCompletedTransfers,
-  onCancelTransfer,
-  onCancelBackgroundTransfer,
-  onDeleteBackgroundTransfer,
-  onDownloadBackgroundArtifact,
-}: TransferTaskPanelProps) {
+export function TransferTaskPanel({ transfers }: { transfers: TransferTaskActions }) {
   const tSftp = useWorkspaceSftpTranslator()
-  const effectiveTransferTasks = transferTasks
-  const pendingSessionCount = effectiveTransferTasks.filter((task) => task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled").length
-  const pendingBackgroundCount = backgroundTransferJobs.filter((job) => activeBackgroundStatuses.has(job.status)).length
-  const pendingCount = pendingSessionCount + pendingBackgroundCount
-  const totalCount = effectiveTransferTasks.length + backgroundTransferJobs.length
-  const showSectionTitles = effectiveTransferTasks.length > 0 && backgroundTransferJobs.length > 0
-  const hasCompletedTasks = effectiveTransferTasks.some((task) => task.status === "completed" || task.status === "failed" || task.status === "cancelled")
+  // 进行中的任务在前，各组内新任务在前。
+  const tasks = useMemo(() => {
+    const newestFirst = [...transfers.tasks].reverse()
+    return [
+      ...newestFirst.filter((task) => isTransferTaskActiveStatus(task.status)),
+      ...newestFirst.filter((task) => !isTransferTaskActiveStatus(task.status)),
+    ]
+  }, [transfers.tasks])
+  const activeCount = tasks.filter((task) => isTransferTaskActiveStatus(task.status)).length
+  const settledTasks = tasks.slice(activeCount)
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <TransferListPopover
+      title={tSftp("transferPanelTitle")}
+      activeCount={activeCount}
+      empty={tSftp("transferPanelEmpty")}
+      headerAction={settledTasks.length > 0 && (
         <Button
           variant="ghost"
-          size="icon"
-          className={cn(
-            "h-7 w-7 rounded-md transition-all duration-200 text-muted-foreground hover:bg-accent hover:text-accent-foreground relative",
-          )}
-          title={tSftp("transferPanelButtonTitle")}
+          size="sm"
+          className="h-7 px-2 text-xs text-muted-foreground"
+          onClick={() => settledTasks.forEach((task) => transfers.remove(task.id))}
         >
-          <Upload className="h-3.5 w-3.5" />
-          {pendingCount > 0 && (
-            <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] font-medium flex items-center justify-center">
-              {pendingCount}
-            </span>
-          )}
+          {tSftp("transferPanelClearCompleted")}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[400px] max-h-[500px] overflow-hidden">
-        <div className="px-3 py-2 flex items-center justify-between border-b">
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">
-              {tSftp("transferPanelTitle", { count: totalCount })}
-            </span>
-          </div>
-          {hasCompletedTasks && onClearCompletedTransfers && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={onClearCompletedTransfers}
-            >
-              {tSftp("transferPanelClearCompleted")}
-            </Button>
-          )}
-        </div>
-
-        {totalCount > 0 ? (
-          <div className="max-h-[400px] overflow-y-auto">
-            {effectiveTransferTasks.length > 0 && (
-              <div>
-                {showSectionTitles && (
-                  <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                    {tSftp("transferPanelSessionSection")}
-                  </div>
-                )}
-                {effectiveTransferTasks.map((task) => (
-                  <UploadProgressItem
-                    key={task.id}
-                    task={task}
-                    onCancel={onCancelTransfer}
-                  />
-                ))}
-              </div>
-            )}
-            {backgroundTransferJobs.length > 0 && (
-              <div>
-                {showSectionTitles && (
-                  <div className="border-b bg-muted/40 px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                    {tSftp("transferPanelBackgroundSection")}
-                  </div>
-                )}
-                {backgroundTransferJobs.map((job) => (
-                  <BackgroundTransferItem
-                    key={job.id}
-                    job={job}
-                    onCancel={onCancelBackgroundTransfer}
-                    onDelete={onDeleteBackgroundTransfer}
-                    onDownloadArtifact={onDownloadBackgroundArtifact}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-            {tSftp("transferPanelEmpty")}
-          </div>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      )}
+      items={tasks.map((task) => <TransferTaskItem key={task.id} task={task} transfers={transfers} />)}
+    />
   )
 }

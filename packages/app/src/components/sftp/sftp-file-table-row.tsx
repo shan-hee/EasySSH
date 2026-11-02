@@ -34,7 +34,6 @@ export interface SftpFileTableRowProps {
   onDoubleClick: (fileName: string, fileType: "file" | "directory") => void
   onOpenContextMenu: (fileName: string, fileType: "file" | "directory") => void
   onCloseContextMenu: () => void
-  enableBackgroundDownload?: boolean
   onAction: (file: SftpFileTableRowItem, action: FileAction) => void
   onContextAction: (action: FileAction) => void
 }
@@ -59,7 +58,6 @@ export function SftpFileTableRow({
   onDoubleClick,
   onOpenContextMenu,
   onCloseContextMenu,
-  enableBackgroundDownload = false,
   onAction,
   onContextAction,
 }: SftpFileTableRowProps) {
@@ -155,7 +153,6 @@ export function SftpFileTableRow({
         <SftpFileActionDropdown
           file={file}
           selectedFilesCount={selectedFilesCount}
-          enableBackgroundDownload={enableBackgroundDownload}
           onAction={(action) => onAction(file, action)}
         />
       </TableCell>
@@ -170,7 +167,6 @@ export function SftpFileTableRow({
     <SftpFileContextMenu
       file={file}
       selectedFilesCount={selectedFilesCount}
-      enableBackgroundDownload={enableBackgroundDownload}
       onOpen={() => onOpenContextMenu(file.name, file.type)}
       onOpenChange={(open) => {
         if (!open) {

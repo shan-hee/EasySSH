@@ -40,7 +40,7 @@ import {
   buildTerminalCompletionProviderFlags,
   type TerminalSettings,
 } from './terminal-settings'
-import type { WorkspaceTransferTask } from "@/lib/session/workspace"
+import { mergeTransferTaskActions, type TransferTaskActions } from "@/lib/session/transfer-controller"
 import { useTranslation } from "react-i18next"
 import type { TerminalInputApi } from "./use-terminal-container-api"
 import { useEffectiveThemeMode } from "@/hooks/use-effective-theme-mode"
@@ -120,9 +120,7 @@ interface TabTerminalContentProps {
   onSftpPathChange?: (sessionId: string, path: string) => void
   initialSftpPath?: string
   sftpRefreshRequestVersion?: number
-  externalTransferTasks?: WorkspaceTransferTask[]
-  onClearExternalCompletedTransfers?: () => void
-  onCancelExternalTransfer?: (taskId: string) => void
+  externalTransfers?: TransferTaskActions
 }
 
 function TabTerminalContentComponent({
@@ -142,9 +140,7 @@ function TabTerminalContentComponent({
   onSftpPathChange,
   initialSftpPath = DEFAULT_TERMINAL_SFTP_INITIAL_PATH,
   sftpRefreshRequestVersion = 0,
-  externalTransferTasks = [],
-  onClearExternalCompletedTransfers,
-  onCancelExternalTransfer,
+  externalTransfers,
 }: TabTerminalContentProps) {
   const [sftpInternalBackHandler, setSftpInternalBackHandler] =
     useState<InternalBackHandler | null>(null)
@@ -403,28 +399,11 @@ function TabTerminalContentComponent({
     isFileManagerSessionActive,
   ])
 
-  const externalTransferTaskIds = React.useMemo(
-    () => new Set(externalTransferTasks.map((task) => task.id)),
-    [externalTransferTasks]
+  const sessionTransfers = sftpSession.transfers
+  const transfers = React.useMemo(
+    () => mergeTransferTaskActions([sessionTransfers, externalTransfers]),
+    [externalTransfers, sessionTransfers]
   )
-  const combinedTransferTasks = React.useMemo(
-    () => externalTransferTasks.length > 0
-      ? [...sftpSession.transferTasks, ...externalTransferTasks]
-      : sftpSession.transferTasks,
-    [externalTransferTasks, sftpSession.transferTasks]
-  )
-  const handleClearCompletedTransfers = React.useCallback(() => {
-    sftpSession.clearCompletedTransfers()
-    onClearExternalCompletedTransfers?.()
-  }, [onClearExternalCompletedTransfers, sftpSession])
-  const handleCancelTransfer = React.useCallback((taskId: string) => {
-    if (externalTransferTaskIds.has(taskId)) {
-      onCancelExternalTransfer?.(taskId)
-      return
-    }
-
-    sftpSession.cancelTransfer(taskId)
-  }, [externalTransferTaskIds, onCancelExternalTransfer, sftpSession])
 
   // 监控数据源跟随已就绪的终端页签保持订阅；后台面板仅暂停图表绘制，历史仍持续积累。
   const connectedServerId =
@@ -859,9 +838,7 @@ function TabTerminalContentComponent({
               onInsertTerminalText={handleInsertTerminalText}
               onExecuteTerminalCommand={handleExecuteTerminalCommand}
               onDisconnect={() => setTabState(session.id, { isFileManagerOpen: false })}
-              transferTasks={combinedTransferTasks}
-              onClearCompletedTransfers={handleClearCompletedTransfers}
-              onCancelTransfer={handleCancelTransfer}
+              transfers={transfers}
               backgroundColor={hasWorkspaceBackground ? undefined : terminalSurfaceBackground}
             />
           )}

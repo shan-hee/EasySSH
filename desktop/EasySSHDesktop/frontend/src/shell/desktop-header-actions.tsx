@@ -15,7 +15,8 @@ import {
   DropdownMenuTrigger,
 } from "@easyssh/app/components/ui/dropdown-menu"
 import { useTranslation } from "react-i18next"
-import { DesktopNotificationCenter } from "./desktop-notification-center"
+import { NotificationCenter } from "@easyssh/app/components/notification-center"
+import { desktopNotificationSource } from "../adapters/desktop-notifications-api"
 
 const localeOptions: Array<{ value: Locale; labelKey: "languageZhCN" | "languageEnUS" }> = [
   { value: "zh-CN", labelKey: "languageZhCN" },
@@ -35,7 +36,7 @@ export function DesktopHeaderActions({
 
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <DesktopNotificationCenter onOpenTask={onOpenTask} />
+      <NotificationCenter source={desktopNotificationSource} onOpenTask={onOpenTask} />
 
       <DropdownMenu>
         <Tooltip>

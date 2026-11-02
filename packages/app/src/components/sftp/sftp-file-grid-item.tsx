@@ -32,7 +32,6 @@ export interface SftpFileGridItemProps {
   onOpenContextMenu: (fileName: string, fileType: "file" | "directory") => void
   onCloseContextMenu: () => void
   selectedFilesCount: number
-  enableBackgroundDownload?: boolean
   onContextAction: (action: FileAction) => void
 }
 
@@ -55,7 +54,6 @@ export function SftpFileGridItem({
   onOpenContextMenu,
   onCloseContextMenu,
   selectedFilesCount,
-  enableBackgroundDownload = false,
   onContextAction,
 }: SftpFileGridItemProps) {
   const dragRef = useRef<HTMLDivElement | null>(null)
@@ -146,7 +144,6 @@ export function SftpFileGridItem({
     <SftpFileContextMenu
       file={file}
       selectedFilesCount={selectedFilesCount}
-      enableBackgroundDownload={enableBackgroundDownload}
       onOpen={() => onOpenContextMenu(file.name, file.type)}
       onOpenChange={(open) => {
         if (!open) {

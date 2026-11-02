@@ -100,12 +100,8 @@ export function applyTransferTaskUpdate(
 export function markTransferTaskCancelled(
   tasks: readonly TransferTask[],
   taskId: string,
-  error: string = "已取消",
 ): TransferTask[] {
-  return applyTransferTaskUpdate(tasks, taskId, {
-    status: "cancelled",
-    error,
-  })
+  return applyTransferTaskUpdate(tasks, taskId, { status: "cancelled", speed: undefined, timeRemaining: undefined })
 }
 
 export function removeTransferTaskById(
@@ -115,6 +111,26 @@ export function removeTransferTaskById(
   return tasks.filter((task) => task.id !== taskId)
 }
 
-export function clearSettledTransferTasks(tasks: readonly TransferTask[]): TransferTask[] {
-  return tasks.filter((task) => !isTransferTaskSettledStatus(task.status))
+/** 传输面板可对一组任务执行的操作。 */
+export interface TransferTaskActions {
+  tasks: readonly TransferTask[]
+  cancel: (taskId: string) => void
+  remove: (taskId: string) => void
+  /** 未提供时该来源的任务不可重试。 */
+  retry?: (taskId: string) => Promise<void>
+}
+
+/** 合并多个来源的任务，操作按任务所属来源转发；没有来源时不显示传输面板。 */
+export function mergeTransferTaskActions(
+  candidates: readonly (TransferTaskActions | undefined)[],
+): TransferTaskActions | undefined {
+  const sources = candidates.filter((source): source is TransferTaskActions => !!source)
+  if (sources.length <= 1) return sources[0]
+  const owner = (taskId: string) => sources.find((source) => source.tasks.some((task) => task.id === taskId))
+  return {
+    tasks: sources.flatMap((source) => source.tasks),
+    cancel: (taskId) => owner(taskId)?.cancel(taskId),
+    remove: (taskId) => owner(taskId)?.remove(taskId),
+    retry: (taskId) => owner(taskId)?.retry?.(taskId) ?? Promise.resolve(),
+  }
 }

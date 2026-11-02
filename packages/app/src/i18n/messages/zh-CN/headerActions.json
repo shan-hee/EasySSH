@@ -9,6 +9,19 @@
   "notificationsMarkReadFailed": "标记通知为已读失败",
   "notificationsMarkAllReadFailed": "全部标为已读失败",
   "notificationsDeleteFailed": "删除通知失败",
+  "notificationsClearRead": "清除已读",
+  "notificationsClearReadFailed": "清除已读通知失败",
+  "notificationsRetry": "重试",
+  "notificationsViewAll": "在任务管理中查看全部",
+  "notificationEvents": {
+    "task": {
+      "succeeded": "任务执行成功",
+      "failed": "任务执行失败",
+      "partial_success": "任务部分成功",
+      "unknown": "任务结果未知，请核对远端效果",
+      "canceled": "任务已取消"
+    }
+  },
   "settingsTooltip": "系统设置",
   "languageTooltip": "界面语言",
   "languageTitle": "界面语言",

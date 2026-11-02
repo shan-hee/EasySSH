@@ -132,6 +132,9 @@ func (s *DesktopNotificationService) MarkAllRead() error {
 func (s *DesktopNotificationService) Delete(id string) error {
 	return s.update(`DELETE FROM desktop_notifications WHERE id=?`, id)
 }
+func (s *DesktopNotificationService) ClearRead() error {
+	return s.update(`DELETE FROM desktop_notifications WHERE read_at<>''`)
+}
 func (s *DesktopNotificationService) update(query string, args ...any) error {
 	db, err := s.database()
 	if err != nil {

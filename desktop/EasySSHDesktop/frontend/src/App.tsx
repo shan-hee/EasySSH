@@ -43,7 +43,9 @@ import { desktopViews, preloadDesktopView, type DesktopView } from "./shell/desk
 import { DesktopUpdateFailureDialog } from "./shell/desktop-update-failure-dialog"
 import { createDesktopTerminalSocket } from "./terminal/desktop-terminal-socket"
 import { useFileTransfer, type FileTransferSftpApi } from "@easyssh/app/hooks/useFileTransfer"
-import type { TransferStartOptions } from "@easyssh/app/desktop"
+import type { TransferJob, TransferStartOptions } from "@easyssh/app/desktop"
+
+const restoreSessionTransfer = (job: TransferJob) => job.kind !== "sftp_transfer"
 
 const DesktopAIAssistantView = desktopViews.ai.Component
 const DesktopActivityLogsView = desktopViews["activity-logs"].Component
@@ -101,6 +103,8 @@ function DesktopContent({ activeView, setActiveView }: {
   const sftpApi = useMemo(() => createDesktopSftpApi(desktopGateway, runtimeLoaded), [desktopGateway, runtimeLoaded])
   const fileTransfer = useFileTransfer({
     api: sftpApi as FileTransferSftpApi,
+    // 服务器间传输由终端的跨会话实例负责。
+    restore: restoreSessionTransfer,
   })
   const monitorApi = useMemo(
     () => createDesktopMonitorApi(desktopGateway),
@@ -211,9 +215,8 @@ function DesktopContent({ activeView, setActiveView }: {
       updateTask: fileTransfer.updateTask,
       removeTask: fileTransfer.removeTask,
       clearAll: fileTransfer.clearAll,
-      clearCompleted: fileTransfer.clearCompleted,
+      retryTask: fileTransfer.retryTask,
       cancelTask: fileTransfer.cancelTask,
-      cancelDirectTransfer: fileTransfer.cancelDirectTransfer,
       history: transferHistory,
     },
     activityLog,
@@ -228,13 +231,12 @@ function DesktopContent({ activeView, setActiveView }: {
     workspaceApi,
     desktopGatewayToken,
     fileTransfer.batchDownload,
-    fileTransfer.cancelDirectTransfer,
     fileTransfer.cancelTask,
     fileTransfer.clearAll,
-    fileTransfer.clearCompleted,
     fileTransfer.directTransfer,
     fileTransfer.downloadFile,
     fileTransfer.removeTask,
+    fileTransfer.retryTask,
     fileTransfer.tasks,
     fileTransfer.updateTask,
     fileTransfer.uploadFile,

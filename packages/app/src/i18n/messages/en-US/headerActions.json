@@ -9,6 +9,19 @@
   "notificationsMarkReadFailed": "Failed to mark the notification as read",
   "notificationsMarkAllReadFailed": "Failed to mark all notifications as read",
   "notificationsDeleteFailed": "Failed to delete the notification",
+  "notificationsClearRead": "Clear read",
+  "notificationsClearReadFailed": "Failed to clear read notifications",
+  "notificationsRetry": "Retry",
+  "notificationsViewAll": "View all in Task Center",
+  "notificationEvents": {
+    "task": {
+      "succeeded": "Task succeeded",
+      "failed": "Task failed",
+      "partial_success": "Task partially succeeded",
+      "unknown": "Task outcome unknown — verify on the remote",
+      "canceled": "Task canceled"
+    }
+  },
   "settingsTooltip": "System settings",
   "languageTooltip": "Interface language",
   "languageTitle": "Interface language",

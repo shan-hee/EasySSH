@@ -1,3 +1,4 @@
+import { joinSftpRemotePath } from "@/lib/sftp-file-utils"
 import { isTransferJobSettled, type TransferJob } from "@/lib/transfer-job-types"
 import { formatBytesString, formatRemainingTime, formatSpeed } from "@/utils/format"
 import type { WorkspaceTransferTask } from "./workspace"
@@ -10,20 +11,28 @@ export interface CreateUploadTransferTaskOptions {
   taskId: string
   fileName: string
   fileSizeBytes: number
+  serverId: string
+  /** 目标目录。 */
+  remotePath: string
   startTime?: number
 }
 
 export interface CreateServerTransferTaskOptions {
   taskId: string
   fileName: string
+  sourceServerId: string
   sourceServer: string
+  targetServerId: string
   targetServer: string
+  targetPath: string
   startTime?: number
 }
 
 export interface CreateDownloadTransferTaskOptions {
   taskId: string
   fileName: string
+  serverId: string
+  remotePath: string
   fileSizeBytes?: number
   startTime?: number
 }
@@ -32,11 +41,15 @@ export function createUploadTransferTask({
   taskId,
   fileName,
   fileSizeBytes,
+  serverId,
+  remotePath,
   startTime = Date.now(),
 }: CreateUploadTransferTaskOptions): WorkspaceTransferTask {
   return {
     id: taskId,
     fileName,
+    serverIds: [serverId],
+    remotePath: joinSftpRemotePath(remotePath, fileName),
     fileSize: formatBytesString(fileSizeBytes),
     fileSizeBytes,
     progress: 0,
@@ -50,13 +63,18 @@ export function createUploadTransferTask({
 export function createServerTransferTask({
   taskId,
   fileName,
+  sourceServerId,
   sourceServer,
+  targetServerId,
   targetServer,
+  targetPath,
   startTime = Date.now(),
 }: CreateServerTransferTaskOptions): WorkspaceTransferTask {
   return {
     id: taskId,
     fileName,
+    serverIds: [sourceServerId, targetServerId],
+    remotePath: targetPath,
     fileSize: "-",
     fileSizeBytes: 0,
     progress: 0,
@@ -71,12 +89,16 @@ export function createServerTransferTask({
 export function createDownloadTransferTask({
   taskId,
   fileName,
+  serverId,
+  remotePath,
   fileSizeBytes = 0,
   startTime = Date.now(),
 }: CreateDownloadTransferTaskOptions): WorkspaceTransferTask {
   return {
     id: taskId,
     fileName,
+    serverIds: [serverId],
+    remotePath,
     fileSize: fileSizeBytes > 0 ? formatBytesString(fileSizeBytes) : "-",
     fileSizeBytes,
     progress: 0,
@@ -151,9 +173,14 @@ export function mapTransferJobToTaskUpdate(job: TransferJob): TransferTaskUpdate
 /** 页面刷新后从未结束的传输任务恢复列表项。 */
 export function createTransferTaskFromJob(job: TransferJob): WorkspaceTransferTask {
   const startedAt = Date.parse(job.started_at || job.created_at)
+  const fileName = job.file_name || job.name || job.source_path.split("/").filter(Boolean).pop() || job.id
   const task: WorkspaceTransferTask = {
     id: job.id,
-    fileName: job.file_name || job.name || job.source_path.split("/").filter(Boolean).pop() || job.id,
+    fileName,
+    serverIds: [job.source_server_id, job.target_server_id].filter((id): id is string => !!id),
+    remotePath: job.kind === "sftp_download"
+      ? job.source_path
+      : job.kind === "sftp_upload" ? joinSftpRemotePath(job.target_path, fileName) : job.target_path,
     fileSize: "-",
     fileSizeBytes: 0,
     progress: 0,

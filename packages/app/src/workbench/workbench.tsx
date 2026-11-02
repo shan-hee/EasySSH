@@ -72,9 +72,7 @@ export function Workbench({
         <TerminalSftpTabContent
           sessionId={tab.id}
           isActive={options?.isActive ?? true}
-          externalTransferTasks={options?.externalTransferTasks}
-          onClearExternalTransfers={options?.onClearExternalTransfers}
-          onCancelExternalTransfer={options?.onCancelExternalTransfer}
+          externalTransfers={options?.externalTransfers}
           server={tab.server}
           label={tab.label}
           chrome={options?.chrome}
