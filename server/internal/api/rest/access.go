@@ -38,6 +38,8 @@ func accessError(c *gin.Context, err error) {
 		status, code, message = http.StatusConflict, "protocol_mismatch", "The instance access protocol version is not supported"
 	case errors.Is(err, grant.ErrConflict):
 		status, code, message = http.StatusConflict, "state_changed", "Access state has changed; reload before continuing"
+	case errors.Is(err, grant.ErrTokenNotStored):
+		status, code, message = http.StatusConflict, "token_not_stored", err.Error()
 	case errors.Is(err, access.ErrUnauthenticated), errors.Is(err, grant.ErrInvalidLink):
 		status, code, message = http.StatusUnauthorized, "invalid_access", "Access is invalid or unavailable"
 	case errors.Is(err, access.ErrExpired), errors.Is(err, access.ErrRevoked):

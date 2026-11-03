@@ -48,7 +48,7 @@ function TokenPermissions({ token }: { token: AccessToken }) {
   return <>
     <DialogHeader className="shrink-0 border-b p-6 pr-12">
       <DialogTitle className="truncate">{token.name}</DialogTitle>
-      <DialogDescription>{t("permissionsHelp")}</DialogDescription>
+      <DialogDescription>{token.editable ? t("permissionsHelp") : t("permissionsHelpShared", { name: token.grant_name })}</DialogDescription>
     </DialogHeader>
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
       {detail.isPending && <PageLoading className="min-h-0 py-10" />}

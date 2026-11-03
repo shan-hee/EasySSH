@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/shared/protocol"
 	"github.com/google/uuid"
 )
@@ -32,7 +33,10 @@ func TestAutomationTokenUsesGrantWithoutChangingLegacySessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stored.TokenHash == raw || stored.TokenHash != digest(raw) {
-		t.Fatal("credential must be stored only as a digest")
+		t.Fatal("authentication must use the token digest")
+	}
+	if stored.TokenCipher == nil || *stored.TokenCipher == raw || strings.Contains(*stored.TokenCipher, raw) {
+		t.Fatal("viewable token copy must be encrypted")
 	}
 	if err := s.db.Model(&stored).Update("last_seen_at", time.Now().Add(-2*time.Hour)).Error; err != nil {
 		t.Fatal(err)
@@ -162,5 +166,116 @@ func TestInlineTokenAuthorizationIsAtomicAndNotAShare(t *testing.T) {
 	}
 	if before != after {
 		t.Fatal("failed issuance left an orphan grant")
+	}
+}
+
+func TestAutomationTokenRevealAndRotate(t *testing.T) {
+	s, ctx, owner, input, _ := grantActivityFixture(t)
+	view, raw, err := s.CreateToken(ctx, owner, CreateTokenInput{Name: "agent", Authorization: &input, ExpiresAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shown, err := s.RevealToken(ctx, owner, view.SessionID); err != nil || shown != raw {
+		t.Fatalf("issued token not viewable: %v", err)
+	}
+	var reveals []operationrecord.OperationRecord
+	if err := s.db.Where("action = ? AND source_table = ?", "token_reveal", "configuration_changes").Find(&reveals).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(reveals) != 1 || reveals[0].Actor != owner.Actor() || !strings.Contains(reveals[0].DetailJSON, view.SessionID.String()) {
+		t.Fatalf("viewing a token must leave an attributed record: %+v", reveals)
+	}
+	rotated, err := s.RotateToken(ctx, owner, view.SessionID)
+	if err != nil || rotated == raw {
+		t.Fatalf("rotation did not replace the value: %v", err)
+	}
+	if _, err := s.AuthenticateToken(ctx, raw); !errors.Is(err, access.ErrUnauthenticated) {
+		t.Fatalf("old value still accepted: %v", err)
+	}
+	scope, err := s.AuthenticateToken(ctx, rotated)
+	if err != nil || scope.Actor().SessionID != view.SessionID.String() {
+		t.Fatalf("rotated token must keep its identity: %v", err)
+	}
+	if shown, err := s.RevealToken(ctx, owner, view.SessionID); err != nil || shown != rotated {
+		t.Fatalf("view did not follow rotation: %v", err)
+	}
+	if err := s.db.Model(&AutomationToken{}).Where("session_id = ?", view.SessionID).Update("token_cipher", nil).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RevealToken(ctx, owner, view.SessionID); !errors.Is(err, ErrTokenNotStored) {
+		t.Fatalf("token without a stored copy: %v", err)
+	}
+	if items, err := s.ListTokens(ctx, owner); err != nil || len(items) != 1 || items[0].Viewable || !items[0].Editable {
+		t.Fatalf("unexpected view flags: %+v %v", items, err)
+	}
+	if _, err := s.AuthenticateToken(ctx, rotated); err != nil {
+		t.Fatalf("legacy token without a stored copy must still authenticate: %v", err)
+	}
+	recovered, err := s.RotateToken(ctx, owner, view.SessionID)
+	if err != nil {
+		t.Fatalf("legacy token must be rotatable: %v", err)
+	}
+	if shown, err := s.RevealToken(ctx, owner, view.SessionID); err != nil || shown != recovered {
+		t.Fatalf("legacy token rotation must store a viewable copy: %v", err)
+	}
+	if err := s.RevokeToken(ctx, owner, view.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RotateToken(ctx, owner, view.SessionID); !errors.Is(err, access.ErrRevoked) {
+		t.Fatalf("revoked token rotated: %v", err)
+	}
+	if _, err := s.RevealToken(ctx, owner, view.SessionID); !errors.Is(err, access.ErrRevoked) {
+		t.Fatalf("revoked token revealed: %v", err)
+	}
+}
+
+func TestAutomationGrantEditKeepsItsToken(t *testing.T) {
+	s, ctx, owner, input, _ := grantActivityFixture(t)
+	serverID := input.Resources[0].ServerID.String()
+	view, raw, err := s.CreateToken(ctx, owner, CreateTokenInput{Name: "agent", Authorization: &input, ExpiresAt: time.Now().Add(time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := s.Detail(ctx, owner, view.GrantID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldScope, err := s.AuthenticateToken(ctx, raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := oldScope.OpenWork(ctx, access.Connection, access.Requirement{Action: protocol.FilesList, ServerID: serverID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close(nil)
+	edited := input
+	edited.Name = "renamed agent"
+	expires := time.Now().Add(48 * time.Hour).UTC()
+	edited.ExpiresAt = &expires
+	edited.LongLived = false
+	edited.Resources = []protocol.GrantResourceInput{{ServerID: input.Resources[0].ServerID, Actions: []protocol.Action{protocol.FilesList, protocol.FilesRead}}}
+	if err := s.Update(ctx, owner, view.GrantID, detail.Grant.Version, edited); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-lease.Context().Done():
+	default:
+		t.Fatal("editing token permissions must interrupt existing work")
+	}
+	scope, err := s.AuthenticateToken(ctx, raw)
+	if err != nil {
+		t.Fatalf("edit invalidated the grant's own token: %v", err)
+	}
+	if err := scope.Check(ctx, access.Requirement{Action: protocol.FilesRead, ServerID: serverID}); err != nil {
+		t.Fatalf("edited permission not applied: %v", err)
+	}
+	items, err := s.ListTokens(ctx, owner)
+	if err != nil || len(items) != 1 || !items[0].Active || items[0].Name != edited.Name || items[0].ExpiresAt.Sub(expires).Abs() > time.Second {
+		t.Fatalf("token did not follow the edit: %+v %v", items, err)
+	}
+	edited.ExpiresAt = nil
+	if err := s.Update(ctx, owner, view.GrantID, detail.Grant.Version+1, edited); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("automation edit without expiry accepted: %v", err)
 	}
 }

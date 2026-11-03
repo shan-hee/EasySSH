@@ -126,6 +126,7 @@ server/
 - `GET /api/v1/owner/profile` - 当前所有者资料
 - `/api/v1/grants` - 所有者管理资源授权
 - `GET/POST /api/v1/access-tokens`、`DELETE /api/v1/access-tokens/:id` - 令牌列表、签发与撤销
+- `GET /api/v1/access-tokens/:id/secret`、`POST /api/v1/access-tokens/:id/rotate` - 查看令牌与原地轮转；编辑按用途创建的令牌权限使用 `PUT /api/v1/grants/:id`
 - `POST /api/v1/mcp` - 使用自动化 Bearer 令牌调用 MCP Streamable HTTP
 - `POST /api/v1/automation/tools/:name` - 调用与 MCP 相同的业务工具
 - `GET/PUT /api/v1/vnc/:server_id/config` - VNC 配置；修改仅限所有者

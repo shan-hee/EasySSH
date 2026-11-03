@@ -44,6 +44,7 @@ func TestInstanceCredentialVerification(t *testing.T) {
 		{"server_auth", "password", "", crypto.SecretAAD("server_auth", "server", "password"), map[string]any{"server_id": "server", "auth_method": "password"}},
 		{"ssh_keys", "private_key", "", crypto.SecretAAD("ssh_keys", "key", "private_key"), map[string]any{"id": "key", "fingerprint": "fingerprint", "name": "fixture", "algorithm": "ed25519", "public_key": "fixture"}},
 		{"sync_vault_objects", "ciphertext", "", []byte("easyssh:sync-vault:owner:object"), map[string]any{"owner_id": "owner", "id": "object", "kind": "ai_config", "resource_id": "config"}},
+		{"automation_tokens", "token_cipher", "", crypto.SecretAAD("automation_tokens", "token", "token_cipher"), map[string]any{"session_id": "token", "name": "fixture", "grant_id": "grant", "grant_version": 1, "token_hash": "hash", "created_at": "2026-01-01T00:00:00Z", "last_seen_at": "2026-01-01T00:00:00Z", "expires_at": "2027-01-01T00:00:00Z"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.table+"/"+tc.column, func(t *testing.T) {
@@ -63,6 +64,17 @@ func TestInstanceCredentialVerification(t *testing.T) {
 			}
 			if err := VerifyStoredCredentials(ctx, db, encryptor); err != nil {
 				t.Fatalf("empty instance: %v", err)
+			}
+			if tc.table == "automation_tokens" {
+				if err := schema.Migrate(ctx, raw, "sqlite", true); err != nil {
+					t.Fatal(err)
+				}
+				if err := VerifyStoredCredentials(ctx, db, encryptor); err != nil {
+					t.Fatalf("schema 3 must pass credential verification before upgrading: %v", err)
+				}
+				if err := schema.Migrate(ctx, raw, "sqlite", false); err != nil {
+					t.Fatal(err)
+				}
 			}
 			encode := func(aad []byte) string {
 				t.Helper()
@@ -88,6 +100,11 @@ func TestInstanceCredentialVerification(t *testing.T) {
 			}
 			if tc.table == "server_auth" {
 				if err := db.Table("servers").Create(map[string]any{"id": "server", "host": "example.test", "username": "root"}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.table == "automation_tokens" {
+				if err := db.Exec(`INSERT INTO grants (id,public_id,secret_hash,name,version,default_content,max_sessions,max_connections,created_at,updated_at) VALUES ('grant','public','hash','fixture',1,'files',1,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`).Error; err != nil {
 					t.Fatal(err)
 				}
 			}

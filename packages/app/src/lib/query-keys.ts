@@ -27,6 +27,7 @@ export const queryKeys = {
     tokenSources: ["automation", "token-sources"] as const,
     tools: ["automation", "tools"] as const,
     grant: (id: string) => ["automation", "grant", id] as const,
+    tokenSecret: (id: string) => ["automation", "token-secret", id] as const,
   },
   taskCenter: {
     root: ["task-center"] as const,

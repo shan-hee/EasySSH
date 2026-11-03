@@ -8,7 +8,9 @@ import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { CreateTokenDialog } from "@/components/automation/create-token-dialog"
 import { MCPConnection } from "@/components/automation/mcp-connection"
 import { MCPToolCatalog } from "@/components/automation/mcp-tool-catalog"
+import { TokenEditDialog } from "@/components/automation/token-edit-dialog"
 import { TokenPermissionsDialog } from "@/components/automation/token-permissions-dialog"
+import { TokenSecretDialog, type ShownToken } from "@/components/automation/token-secret-dialog"
 import { TokenTable } from "@/components/automation/token-table"
 import { automationApi, type AccessToken } from "@/lib/api/automation"
 import { queryKeys } from "@/lib/query-keys"
@@ -22,6 +24,8 @@ export default function MCPPage() {
   const web = runtime?.profile === "web"
   const [creating, setCreating] = useState(false)
   const [viewing, setViewing] = useState<AccessToken | null>(null)
+  const [editing, setEditing] = useState<AccessToken | null>(null)
+  const [shown, setShown] = useState<ShownToken | null>(null)
   const [toolsOpen, setToolsOpen] = useState(false)
   const toolsContentId = useId()
   const tokens = useQuery({ queryKey: queryKeys.automation.tokens, queryFn: automationApi.listTokens, enabled: web })
@@ -49,7 +53,7 @@ export default function MCPPage() {
           <Button variant="outline" size="sm" onClick={() => void tokens.refetch()}>{t("retry")}</Button>
         </div>}
         {tokens.data && (tokens.data.length
-          ? <TokenTable tokens={tokens.data} onViewPermissions={setViewing} />
+          ? <TokenTable tokens={tokens.data} onViewPermissions={setViewing} onEdit={setEditing} onShowToken={(token, value) => setShown({ token, value })} />
           : <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-8 text-center">
             <KeyRound className="size-6 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">{t("empty")}</p>
@@ -78,5 +82,7 @@ export default function MCPPage() {
     </DashboardPageContent>
     <CreateTokenDialog open={creating} onOpenChange={setCreating} />
     <TokenPermissionsDialog token={viewing} onClose={() => setViewing(null)} />
+    <TokenEditDialog token={editing} onClose={() => setEditing(null)} />
+    <TokenSecretDialog shown={shown} onClose={() => setShown(null)} />
   </>
 }

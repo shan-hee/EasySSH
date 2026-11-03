@@ -370,9 +370,11 @@ components:
           type: boolean
     AutomationToken:
       type: object
-      required: [id, name, grant_id, grant_name, created_at, expires_at, active]
+      required: [id, name, grant_id, grant_name, created_at, expires_at, active, viewable, editable]
       properties:
         active: {type: boolean}
+        viewable: {type: boolean, description: False for tokens issued before encrypted copies were kept; rotate to view.}
+        editable: {type: boolean, description: The token owns its grant. Tokens bound to a share grant follow that grant.}
         id: {type: string, format: uuid}
         name: {type: string}
         grant_id: {type: string, format: uuid}
@@ -394,8 +396,13 @@ components:
       type: object
       required: [token, metadata]
       properties:
-        token: {type: string, description: Only returned once; never logged or stored in plaintext.}
+        token: {type: string, description: Stored only as a hash and an encrypted copy; never logged.}
         metadata: {$ref: '#/components/schemas/AutomationToken'}
+    AutomationTokenSecret:
+      type: object
+      required: [token]
+      properties:
+        token: {type: string}
     RDPConfig:
       type: object
       required: [server_id, enabled, port, security, ignore_certificate]
@@ -610,6 +617,9 @@ components:
             $ref: '#/components/schemas/Action'
         paused:
           type: boolean
+        allow_interactive:
+          type: boolean
+          description: Whether connections needing interactive verification are permitted; editors resend it unchanged.
     AccessContext:
       type: object
       required:
@@ -15800,6 +15810,44 @@ paths:
       responses:
         '204':
           description: Success
+        default:
+          description: Request failed
+  /access-tokens/{id}/secret:
+    get:
+      operationId: revealAutomationToken
+      summary: Return the current value of an unrevoked token
+      description: Tokens issued before encrypted copies were kept return 409 token_not_stored until rotated.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationTokenSecret'
+        default:
+          description: Request failed
+  /access-tokens/{id}/rotate:
+    post:
+      operationId: rotateAutomationToken
+      summary: Replace a usable token's value; the old value stops working immediately
+      description: The token keeps its ID, permissions, expiry and task history. Running work is not interrupted.
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutomationTokenSecret'
         default:
           description: Request failed
   /automation/tools/{name}:

@@ -83,6 +83,7 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 	}{
 		{"security_config", "csrf_trusted_origins", version == BaselineVersion},
 		{"system_config", "public_url", version < 3},
+		{"automation_tokens", "token_cipher", version >= 4},
 	} {
 		rows, err := db.QueryContext(ctx, "SELECT * FROM "+field.table+" WHERE 1=0")
 		if err != nil {

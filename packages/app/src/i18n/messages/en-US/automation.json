@@ -45,7 +45,14 @@
   "revokeTitle": "Revoke token “{name}”?",
   "revokeDescription": "Clients using this token lose access immediately and associated connections stop. This cannot be undone.",
   "revokeFailed": "Revocation failed. Please retry.",
-  "permissionsHelp": "Token permissions cannot be changed. To adjust them, create a new token, update the client, then revoke the old one.",
+  "showToken": "View token",
+  "editPermissions": "Edit permissions",
+  "rotate": "Rotate token",
+  "rotateTitle": "Rotate token \"{name}\"?",
+  "rotateDescription": "A new token value is generated and the old one stops working immediately, so clients must be updated. Permissions, expiry and task history stay the same, and running tasks are not interrupted. Revoke the token instead if it may have leaked.",
+  "rotateFailed": "Rotation failed. Please try again.",
+  "permissionsHelp": "Use \"Edit permissions\" to change them; changes take effect when saved.",
+  "permissionsHelpShared": "This token uses the share grant \"{name}\" and follows its permissions. Create a new token after changing that grant.",
   "reviewTarget": "Review changed target",
   "confirmTarget": "This server's connection target changed. Confirming allows this token to access: {target}",
   "scriptCount": "{count} approved scripts",
@@ -67,7 +74,7 @@
   "maxConnections": "Maximum concurrent connections",
   "summaryGrant": "{name} · {days} days",
   "createdTitle": "Token created",
-  "createdDescription": "This token is shown only once and cannot be retrieved after closing. Save it now.",
+  "createdDescription": "You can view it again from the token list. Keep it safe and out of repositories and logs.",
   "createdNext": "Use it in your client (token included)",
   "done": "Done",
   "toolsTitle": "Available tools",
@@ -149,5 +156,22 @@
     "execute_script": "Submit an approved script version as a background task. Parameters must satisfy grant rules. Results are returned directly when the script finishes quickly; otherwise a task identifier is returned.",
     "get_task": "Read the status, exit codes and output of tasks created by this token, optionally waiting for completion. Tasks created by other credentials are not accessible.",
     "cancel_task": "Request cancellation of a task created by this token and attempt to stop its remote process; query the task result to confirm. Effects already produced are not rolled back. Processes may keep running if the SSH server does not support signals or they have detached from the session."
+  },
+  "secret": {
+    "description": "Use this token in your client. Keep it safe and out of repositories and logs.",
+    "notStored": "This token was created by an earlier version, which kept only a hash, so it cannot be shown. Choose \"Rotate token\" in the list to get a new value you can view.",
+    "loadFailed": "The token could not be loaded. Please try again."
+  },
+  "edit": {
+    "title": "Edit \"{name}\"",
+    "description": "Change the purpose, servers and expiry. The token value stays the same.",
+    "keepExpiry": "Keep current ({date})",
+    "effect": "Changes take effect when saved, and tasks this token is running are interrupted.",
+    "nonUniform": "Servers previously had different permissions; saving applies the settings below to all of them.",
+    "nameRequired": "Enter a name.",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Token permissions updated",
+    "saveFailed": "Saving failed. Please try again."
   }
 }

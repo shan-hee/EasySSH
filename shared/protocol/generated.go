@@ -2369,13 +2369,16 @@ type AccessProtocolVersion int
 
 // AccessResource defines model for AccessResource.
 type AccessResource struct {
-	Actions  []Action           `json:"actions"`
-	Host     string             `json:"host"`
-	ID       openapi_types.UUID `json:"id"`
-	Name     string             `json:"name"`
-	Paused   bool               `json:"paused"`
-	Port     int                `json:"port"`
-	Username string             `json:"username"`
+	Actions []Action `json:"actions"`
+
+	// AllowInteractive Whether connections needing interactive verification are permitted; editors resend it unchanged.
+	AllowInteractive *bool              `json:"allow_interactive,omitempty"`
+	Host             string             `json:"host"`
+	ID               openapi_types.UUID `json:"id"`
+	Name             string             `json:"name"`
+	Paused           bool               `json:"paused"`
+	Port             int                `json:"port"`
+	Username         string             `json:"username"`
 }
 
 // AccessSession defines model for AccessSession.
@@ -2802,8 +2805,11 @@ type AuditLogSummary struct {
 
 // AutomationToken defines model for AutomationToken.
 type AutomationToken struct {
-	Active     bool               `json:"active"`
-	CreatedAt  time.Time          `json:"created_at"`
+	Active    bool      `json:"active"`
+	CreatedAt time.Time `json:"created_at"`
+
+	// Editable The token owns its grant. Tokens bound to a share grant follow that grant.
+	Editable   bool               `json:"editable"`
 	ExpiresAt  time.Time          `json:"expires_at"`
 	GrantID    openapi_types.UUID `json:"grant_id"`
 	GrantName  string             `json:"grant_name"`
@@ -2811,13 +2817,21 @@ type AutomationToken struct {
 	LastUsedAt *time.Time         `json:"last_used_at,omitempty"`
 	Name       string             `json:"name"`
 	RevokedAt  *time.Time         `json:"revoked_at,omitempty"`
+
+	// Viewable False for tokens issued before encrypted copies were kept; rotate to view.
+	Viewable bool `json:"viewable"`
 }
 
 // AutomationTokenCreated defines model for AutomationTokenCreated.
 type AutomationTokenCreated struct {
 	Metadata AutomationToken `json:"metadata"`
 
-	// Token Only returned once; never logged or stored in plaintext.
+	// Token Stored only as a hash and an encrypted copy; never logged.
+	Token string `json:"token"`
+}
+
+// AutomationTokenSecret defines model for AutomationTokenSecret.
+type AutomationTokenSecret struct {
 	Token string `json:"token"`
 }
 

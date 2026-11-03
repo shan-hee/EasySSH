@@ -2,6 +2,7 @@ package grant
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"github.com/easyssh/server/internal/testutil"
@@ -15,6 +16,7 @@ import (
 	servermodel "github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/server/internal/storage/schema"
 	"github.com/easyssh/shared/protocol"
+	crypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -54,7 +56,11 @@ func grantActivityFixture(t *testing.T) (*Service, context.Context, access.Scope
 	}
 	runtime := access.NewRuntime()
 	t.Cleanup(runtime.Close)
-	s := NewService(db, activityCatalog{NewResourceCatalog(nil)}, runtime)
+	encryptor, err := crypto.NewEncryptor(base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewService(db, activityCatalog{NewResourceCatalog(nil)}, runtime, encryptor)
 	scope, err := access.NewScope(protocol.Actor{Kind: protocol.Owner, ID: uuid.NewString(), SessionID: uuid.NewString()}, time.Now().Add(time.Hour), activityAuthority{})
 	if err != nil {
 		t.Fatal(err)

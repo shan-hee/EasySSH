@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/easyssh/shared/dbmigration"
 	crypto "github.com/easyssh/shared/secretcrypto"
 	"gorm.io/gorm"
 )
@@ -16,6 +17,14 @@ import (
 func VerifyStoredCredentials(ctx context.Context, db *gorm.DB, encryptor *crypto.Encryptor) error {
 	if encryptor == nil {
 		return fmt.Errorf("credential encryptor is unavailable")
+	}
+	raw, err := db.DB()
+	if err != nil {
+		return err
+	}
+	version, err := dbmigration.Version(ctx, raw, db.Dialector.Name())
+	if err != nil {
+		return err
 	}
 	checks := []struct {
 		table      string
@@ -31,8 +40,13 @@ func VerifyStoredCredentials(ctx context.Context, db *gorm.DB, encryptor *crypto
 		{"owners", []string{"id", "two_factor_secret", "pending_two_factor_secret"}, false},
 		{"sync_vault_objects", []string{"owner_id", "id", "ciphertext"}, false},
 		{"chat_connections", []string{"id", "token_cipher"}, false},
+		{"automation_tokens", []string{"session_id", "token_cipher"}, false},
 	}
 	for _, check := range checks {
+		// Startup verifies the source database before applying schema 4.
+		if check.table == "automation_tokens" && version < 4 {
+			continue
+		}
 		query := db.WithContext(ctx).Table(check.table).Select(check.columns)
 		if check.activeOnly {
 			query = query.Where("deleted_at IS NULL")
@@ -78,6 +92,8 @@ func verifyInstanceCredentialRow(table string, row map[string]string, encryptor 
 		return nil
 	}
 	switch table {
+	case "automation_tokens":
+		return verify("token_cipher", crypto.SecretAAD(table, row["session_id"], "token_cipher"))
 	case "chat_connections":
 		return verify("token_cipher", crypto.SecretAAD(table, row["id"], "token_cipher"))
 	case "ai_config":

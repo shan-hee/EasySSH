@@ -1,4 +1,4 @@
-import type { Action, GrantInput } from "@/lib/api/grants"
+import type { Action, GrantDetail, GrantInput } from "@/lib/api/grants"
 import type { Script } from "@/lib/script-types"
 import type { Server } from "@/lib/server-types"
 
@@ -69,4 +69,28 @@ export function tokenAuthorizationIssue(draft: TokenAuthorizationDraft, servers:
   const available = new Set(servers.map(server => server.id))
   if (draft.serverIds.some(serverId => !available.has(serverId))) return "serverUnavailable"
   return null
+}
+
+const sameActions = (a: Action[], b: Action[]) => a.length === b.length && a.every(action => b.includes(action))
+
+// Tokens apply one permission set to every server. A grant changed through the
+// API may differ per server; the editor then starts from the first server's set,
+// and saving applies it to all of them.
+export function draftFromGrant(detail: GrantDetail): { draft: TokenAuthorizationDraft; uniform: boolean } {
+  const [first] = detail.resources
+  const actions = first?.actions ?? []
+  const allow_interactive = first?.allow_interactive ?? false
+  const scriptsOf = (serverId: string) => detail.scripts
+    .filter(script => script.server_id === serverId)
+    .map(({ script_id, version, parameters }) => ({ script_id, version, parameters }))
+  const scripts = first ? scriptsOf(first.id) : []
+  const preset = (Object.keys(tokenPresets) as TokenPreset[])
+    .find(name => name !== "custom" && sameActions(tokenPresets[name], actions)) ?? "custom"
+  const uniform = detail.resources.every(resource => sameActions(resource.actions, actions)
+    && (resource.allow_interactive ?? false) === allow_interactive
+    && JSON.stringify(scriptsOf(resource.id)) === JSON.stringify(scripts))
+  return {
+    draft: { preset, permissions: { actions: [...actions], allow_interactive, scripts }, serverIds: detail.resources.map(resource => resource.id) },
+    uniform,
+  }
 }

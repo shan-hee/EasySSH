@@ -22,7 +22,7 @@ import type { Script } from "@/lib/script-types"
 import { loadAllServers } from "@/lib/server-utils"
 import { newTokenAuthorization, tokenAuthorizationIssue, tokenResources } from "@/lib/token-authorization"
 
-const expiryDays = [7, 30, 90, 180, 365]
+export const expiryDays = [7, 30, 90, 180, 365]
 
 // Only the creation form needs the full catalog, so it loads when the dialog opens.
 async function loadAllScripts() {
@@ -44,14 +44,14 @@ async function loadActiveGrants() {
   return grants.filter(grant => !grant.revoked_at && (!grant.expires_at || Date.parse(grant.expires_at) > Date.now()))
 }
 
-async function loadTokenSources() {
+export async function loadTokenSources() {
   const [servers, scripts, grants] = await Promise.all([loadAllServers(params => serversApi.list(params)), loadAllScripts(), loadActiveGrants()])
   return { servers, scripts, grants }
 }
 
 export function CreateTokenDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const [secret, setSecret] = useState("")
-  // Dialog blocks outside clicks and Escape so the one-time secret is not lost.
+  // Dialog blocks outside clicks and Escape so the new token is not dismissed before it is copied.
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent onExitComplete={() => setSecret("")} className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
       {secret ? <TokenCreated token={secret} onDone={() => onOpenChange(false)} /> : <CreateTokenForm onCreated={setSecret} />}
@@ -176,18 +176,23 @@ function TokenCreated({ token, onDone }: { token: string; onDone: () => void }) 
       <DialogTitle>{t("createdTitle")}</DialogTitle>
       <DialogDescription className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400"><TriangleAlert className="size-4 shrink-0" />{t("createdDescription")}</DialogDescription>
     </DialogHeader>
-    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
-      <div className="flex items-center gap-2 rounded-md border bg-muted/40 py-1 pl-3 pr-1">
-        <code className="min-w-0 flex-1 break-all text-sm">{token}</code>
-        <CopyButton value={token} label={t("copyToken")} />
-      </div>
-      <section className="space-y-2">
-        <h3 className="text-sm font-medium">{t("createdNext")}</h3>
-        <MCPConnection token={token} />
-      </section>
-    </div>
+    <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4"><TokenSecretView token={token} /></div>
     <DialogFooter className="shrink-0 border-t p-4">
       <Button type="button" onClick={onDone}>{t("done")}</Button>
     </DialogFooter>
+  </>
+}
+
+export function TokenSecretView({ token }: { token: string }) {
+  const { t } = useTranslation("automation")
+  return <>
+    <div className="flex items-center gap-2 rounded-md border bg-muted/40 py-1 pl-3 pr-1">
+      <code className="min-w-0 flex-1 break-all text-sm">{token}</code>
+      <CopyButton value={token} label={t("copyToken")} />
+    </div>
+    <section className="space-y-2">
+      <h3 className="text-sm font-medium">{t("createdNext")}</h3>
+      <MCPConnection token={token} />
+    </section>
   </>
 }

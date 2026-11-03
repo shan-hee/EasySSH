@@ -174,7 +174,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	grantService := grant.NewService(database, grant.NewResourceCatalog(encryptor), accessRuntime)
+	grantService := grant.NewService(database, grant.NewResourceCatalog(encryptor), accessRuntime, encryptor)
 	restoreExecution := func(ctx context.Context, actor protocol.Actor) (access.Scope, error) {
 		switch actor.Kind {
 		case protocol.Visitor:
@@ -635,6 +635,8 @@ func main() {
 		tokenRoutes.GET("", middleware.OwnerRoute(protocol.GrantsManage, ""), accessHandler.ListTokens)
 		tokenRoutes.POST("", middleware.OwnerRoute(protocol.GrantsManage, ""), accessHandler.CreateToken)
 		tokenRoutes.DELETE("/:id", middleware.OwnerRoute(protocol.GrantsManage, ""), accessHandler.RevokeToken)
+		tokenRoutes.GET("/:id/secret", middleware.OwnerRoute(protocol.GrantsManage, ""), accessHandler.RevealToken)
+		tokenRoutes.POST("/:id/rotate", middleware.OwnerRoute(protocol.GrantsManage, ""), accessHandler.RotateToken)
 		automationRoutes := v1.Group("/automation", executionAuth, middleware.APIRateLimitMiddleware(securityService))
 		automationRoutes.GET("/tools", middleware.AccessRoute(protocol.WorkspaceRead, ""), automationHandler.Catalog)
 		automationRoutes.POST("/tools/:name", middleware.AccessRoute(protocol.WorkspaceRead, ""), automationHandler.Call)

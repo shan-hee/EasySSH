@@ -315,6 +315,8 @@ func (s *Service) resourceViews(ctx context.Context, tx *gorm.DB, grantID uuid.U
 		}
 		view.Paused = view.Paused || revision != resource.ApprovedConnectionRevision
 		view.Actions = resource.Actions
+		allowInteractive := resource.AllowInteractive
+		view.AllowInteractive = &allowInteractive
 		views = append(views, view)
 	}
 	return views, nil

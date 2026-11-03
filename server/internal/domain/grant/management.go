@@ -71,7 +71,8 @@ func (s *Service) Detail(ctx context.Context, scope access.Scope, id uuid.UUID) 
 	return &result, err
 }
 
-// Update replaces the explicit permission set and invalidates old sessions. It
+// Update replaces the explicit permission set, invalidates old sessions and
+// interrupts running work, which resumes only under the new permissions. It
 // preserves resource approval revisions; ConfirmResource is the only reconfirmation.
 func (s *Service) Update(ctx context.Context, scope access.Scope, id uuid.UUID, version int64, req protocol.CreateGrantInput) error {
 	if err := scope.RequireOwner(ctx, protocol.GrantsManage); err != nil {
@@ -126,6 +127,13 @@ func (s *Service) Update(ctx context.Context, scope access.Scope, id uuid.UUID, 
 		}
 		if err := tx.Model(&Session{}).Where("grant_id = ? AND revoked_at IS NULL", id).Update("revoked_at", now).Error; err != nil {
 			return err
+		}
+		// An automation grant is its token's own permission set, so an edit carries
+		// that token forward. Tokens bound to a share grant still end with it.
+		if g.Purpose == "automation" {
+			if err := tx.Model(&AutomationToken{}).Where("grant_id = ? AND grant_version = ? AND revoked_at IS NULL", id, version).Updates(map[string]any{"grant_version": version + 1, "name": req.Name, "expires_at": req.ExpiresAt.UTC()}).Error; err != nil {
+				return err
+			}
 		}
 		g.Name = req.Name
 		// Even equivalent permissions explicitly advance the version and end old sessions.

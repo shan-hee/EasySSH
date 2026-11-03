@@ -3448,6 +3448,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/access-tokens/{id}/secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return the current value of an unrevoked token
+         * @description Tokens issued before encrypted copies were kept return 409 token_not_stored until rotated.
+         */
+        get: operations["revealAutomationToken"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/access-tokens/{id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace a usable token's value; the old value stops working immediately
+         * @description The token keeps its ID, permissions, expiry and task history. Running work is not interrupted.
+         */
+        post: operations["rotateAutomationToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/automation/tools/{name}": {
         parameters: {
             query?: never;
@@ -3684,6 +3724,10 @@ export interface components {
         };
         AutomationToken: {
             active: boolean;
+            /** @description False for tokens issued before encrypted copies were kept; rotate to view. */
+            viewable: boolean;
+            /** @description The token owns its grant. Tokens bound to a share grant follow that grant. */
+            editable: boolean;
             /** Format: uuid */
             id: string;
             name: string;
@@ -3708,9 +3752,12 @@ export interface components {
             expires_at: string;
         };
         AutomationTokenCreated: {
-            /** @description Only returned once; never logged or stored in plaintext. */
+            /** @description Stored only as a hash and an encrypted copy; never logged. */
             token: string;
             metadata: components["schemas"]["AutomationToken"];
+        };
+        AutomationTokenSecret: {
+            token: string;
         };
         RDPConfig: {
             /** Format: uuid */
@@ -3781,6 +3828,8 @@ export interface components {
             username: string;
             actions: components["schemas"]["Action"][];
             paused: boolean;
+            /** @description Whether connections needing interactive verification are permitted; editors resend it unchanged. */
+            allow_interactive?: boolean;
         };
         AccessContext: {
             protocol_version: components["schemas"]["AccessProtocolVersion"];
@@ -14073,6 +14122,64 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    revealAutomationToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationTokenSecret"];
+                };
+            };
+            /** @description Request failed */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rotateAutomationToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationTokenSecret"];
+                };
             };
             /** @description Request failed */
             default: {

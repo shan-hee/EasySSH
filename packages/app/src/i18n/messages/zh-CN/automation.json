@@ -45,7 +45,14 @@
   "revokeTitle": "撤销令牌「{name}」？",
   "revokeDescription": "使用此令牌的客户端将立即失去访问权限，关联连接会被中止，且无法恢复。",
   "revokeFailed": "撤销失败，请重试。",
-  "permissionsHelp": "令牌权限创建后不可修改。如需调整，请创建新令牌，更新客户端后再撤销旧令牌。",
+  "showToken": "查看令牌",
+  "editPermissions": "编辑权限",
+  "rotate": "轮转令牌",
+  "rotateTitle": "轮转令牌「{name}」？",
+  "rotateDescription": "将生成新的令牌值，旧值立即失效，需要在客户端中替换。权限、到期时间和任务记录保持不变，正在运行的任务不受影响；怀疑令牌泄露时请直接撤销。",
+  "rotateFailed": "轮转失败，请重试。",
+  "permissionsHelp": "可通过“编辑权限”调整，保存后立即生效。",
+  "permissionsHelpShared": "此令牌沿用分享授权「{name}」，权限随该授权变化；修改该授权后需要重新创建令牌。",
   "reviewTarget": "重新确认连接目标",
   "confirmTarget": "该服务器的连接目标已变更，确认后此令牌可以访问：{target}",
   "scriptCount": "{count} 个指定脚本",
@@ -67,7 +74,7 @@
   "maxConnections": "最大并发连接数",
   "summaryGrant": "{name} · {days} 天",
   "createdTitle": "令牌已创建",
-  "createdDescription": "令牌只显示这一次，关闭后无法再次查看，请立即保存。",
+  "createdDescription": "之后可在令牌列表中再次查看。请妥善保管，不要写入代码仓库或日志。",
   "createdNext": "在客户端中使用（已填入令牌）",
   "done": "完成",
   "toolsTitle": "可用工具",
@@ -149,5 +156,22 @@
     "execute_script": "将已授权的指定版本脚本提交为后台任务，参数必须满足授权约束。短时间内完成时直接返回结果，否则返回任务标识。",
     "get_task": "读取由当前令牌创建的任务状态、退出码和输出，可等待任务完成后再返回；不能查看其他凭据创建的任务。",
     "cancel_task": "请求取消由当前令牌创建的任务，并尝试终止远端进程；需查询任务结果确认是否停止。取消不会回滚已经产生的操作结果，远端不支持信号或进程已脱离会话时可能继续运行。"
+  },
+  "secret": {
+    "description": "在客户端中使用此令牌。请妥善保管，不要写入代码仓库或日志。",
+    "notStored": "此令牌创建于旧版本，服务器只保存了校验值，无法再次查看。在列表中选择“轮转令牌”后即可查看新的令牌值。",
+    "loadFailed": "无法读取令牌，请重试。"
+  },
+  "edit": {
+    "title": "编辑「{name}」",
+    "description": "调整用途、服务器范围和有效期，令牌值保持不变。",
+    "keepExpiry": "保持不变（{date}）",
+    "effect": "保存后立即生效，该令牌正在运行的任务会被中断。",
+    "nonUniform": "各服务器原本的权限不完全一致，保存后将统一为下方设置。",
+    "nameRequired": "请填写名称。",
+    "save": "保存",
+    "saving": "正在保存…",
+    "saved": "令牌权限已更新",
+    "saveFailed": "保存失败，请重试。"
   }
 }

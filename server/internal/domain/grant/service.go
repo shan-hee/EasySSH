@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/access"
+	crypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -39,16 +40,17 @@ type Catalog interface {
 }
 
 type Service struct {
-	db      *gorm.DB
-	catalog Catalog
-	runtime *access.Runtime
+	db        *gorm.DB
+	catalog   Catalog
+	runtime   *access.Runtime
+	encryptor *crypto.Encryptor
 	// This is a single-process service. The mutex serializes issuance, revocation
 	// and idle reclamation; the database transaction makes each change durable.
 	mu sync.Mutex
 }
 
-func NewService(db *gorm.DB, catalog Catalog, runtime *access.Runtime) *Service {
-	return &Service{db: db, catalog: catalog, runtime: runtime}
+func NewService(db *gorm.DB, catalog Catalog, runtime *access.Runtime, encryptor *crypto.Encryptor) *Service {
+	return &Service{db: db, catalog: catalog, runtime: runtime, encryptor: encryptor}
 }
 
 func randomSecret() (string, error) {
@@ -88,6 +90,11 @@ func normalizeRequestFor(req *protocol.CreateGrantInput, now time.Time, automati
 	}
 	if req.LongLived && req.ExpiresAt != nil {
 		return invalidRequest("long-lived grants cannot also specify expiry")
+	}
+	// Edits resend the whole grant; without this an omitted expiry would fall
+	// back to the 24-hour share default below.
+	if automation && (req.LongLived || req.ExpiresAt == nil || req.ExpiresAt.After(now.Add(366*24*time.Hour))) {
+		return invalidRequest("automation access needs an expiry within one year")
 	}
 	if req.ExpiresAt == nil && !req.LongLived {
 		end := now.Add(24 * time.Hour)

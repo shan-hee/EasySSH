@@ -13,5 +13,9 @@ export const automationApi = {
     apiFetch<components["schemas"]["AutomationTokenCreated"]>("/access-tokens", { method: "POST", body }),
   revokeToken: (id: string) =>
     apiFetch<void>(`/access-tokens/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  revealToken: (id: string) =>
+    apiFetch<components["schemas"]["AutomationTokenSecret"]>(`/access-tokens/${encodeURIComponent(id)}/secret`),
+  rotateToken: (id: string) =>
+    apiFetch<components["schemas"]["AutomationTokenSecret"]>(`/access-tokens/${encodeURIComponent(id)}/rotate`, { method: "POST" }),
   listTools: () => apiFetch<MCPTool[]>("/automation/tools"),
 }

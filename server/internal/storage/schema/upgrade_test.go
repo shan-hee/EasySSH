@@ -150,3 +150,42 @@ func TestRemovePublicURLPreservesOtherSettings(t *testing.T) {
 		t.Fatalf("rollback must restore an empty column and retain other settings: %+v %q %v", oldURL, name, err)
 	}
 }
+
+func TestAutomationTokenCipherColumnFollowsVersion(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "token-cipher.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	definition, err := Definition("sqlite")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db, definition.Files, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = provider.UpTo(ctx, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckUpgradeSource(ctx, db, "sqlite", 4); err == nil {
+		t.Fatal("accepted schema 4 without token_cipher")
+	}
+	if _, err = provider.UpTo(ctx, 4); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckUpgradeSource(ctx, db, "sqlite", 4); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckUpgradeSource(ctx, db, "sqlite", 3); err == nil {
+		t.Fatal("accepted schema 3 with token_cipher present")
+	}
+	if _, err = provider.DownTo(ctx, 3); err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckUpgradeSource(ctx, db, "sqlite", 3); err != nil {
+		t.Fatal(err)
+	}
+}

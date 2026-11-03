@@ -13,9 +13,11 @@ import { queryKeys } from "@/lib/query-keys"
 
 const formatTime = (value: string) => new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
 
-export function TokenTable({ tokens, onViewPermissions }: {
+export function TokenTable({ tokens, onViewPermissions, onEdit, onShowToken }: {
   tokens: AccessToken[]
   onViewPermissions: (token: AccessToken) => void
+  onEdit: (token: AccessToken) => void
+  onShowToken: (token: AccessToken, value?: string) => void
 }) {
   const { t } = useTranslation("automation")
   const queryClient = useQueryClient()
@@ -27,6 +29,16 @@ export function TokenTable({ tokens, onViewPermissions }: {
       await queryClient.invalidateQueries({ queryKey: queryKeys.automation.tokens })
     } catch (error) {
       toast.error(getErrorMessage(error, t("revokeFailed")))
+    }
+  }
+  const rotate = async (token: AccessToken) => {
+    if (!await confirm({ title: t("rotateTitle", { name: token.name }), description: t("rotateDescription"), confirmText: t("rotate") })) return
+    try {
+      const { token: value } = await automationApi.rotateToken(token.id)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.automation.tokens })
+      onShowToken(token, value)
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("rotateFailed")))
     }
   }
 
@@ -60,7 +72,10 @@ export function TokenTable({ tokens, onViewPermissions }: {
                 <Button variant="ghost" size="icon-sm" aria-label={t("columns.actions")}><MoreHorizontal className="size-4" /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {token.active && <DropdownMenuItem onSelect={() => onShowToken(token)}>{t("showToken")}</DropdownMenuItem>}
+                {token.active && token.editable && <DropdownMenuItem onSelect={() => onEdit(token)}>{t("editPermissions")}</DropdownMenuItem>}
                 <DropdownMenuItem onSelect={() => onViewPermissions(token)}>{t("viewPermissions")}</DropdownMenuItem>
+                {token.active && <DropdownMenuItem onSelect={() => void rotate(token)}>{t("rotate")}</DropdownMenuItem>}
                 {!token.revoked_at && <DropdownMenuItem variant="destructive" onSelect={() => void revoke(token)}>{t("revoke")}</DropdownMenuItem>}
               </DropdownMenuContent>
             </DropdownMenu>
