@@ -112,7 +112,8 @@ function ToolFallbackResult({
   result?: unknown
 }) {
   const { t } = useTranslation("aiAssistant")
-  if (result === undefined) return null
+  // 超出实时预算的结果正文只在历史中，运行结束后补齐。
+  if (result === undefined || result === "") return null
   const text = formatToolResult(result)
 
   return (

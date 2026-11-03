@@ -686,14 +686,17 @@ func (s *aiSDKUIMessageStreamer) writeRuntimeEvent(event runtime.Event) (bool, e
 			}
 			s.taskOutputs[task.ID] = task.CommandOutput
 			task.CommandOutput = ""
-			item, err := aiwire.DescribeHistoryItem(task.ID, task)
+			fits, err := liveTaskFits(task)
 			if err != nil {
 				return false, err
 			}
-			if len(item.Data) == 0 {
-				// The commit notification refreshes its durable descriptor.
-				// Never advertise a hash for an uncommitted runtime payload.
-				return false, nil
+			if !fits {
+				// Committed history carries the full result. The live event still
+				// reports the state, so a large command does not look stuck.
+				task.Result, task.Error = "", ""
+				if fits, err = liveTaskFits(task); err != nil || !fits {
+					return false, err
+				}
 			}
 			if err := s.writeChunk(map[string]interface{}{"type": "data-workspace-task", "data": map[string]interface{}{"session_id": event.SessionID, "task": task}, "transient": true}); err != nil {
 				return false, err
@@ -805,6 +808,12 @@ func (s *aiSDKUIMessageStreamer) writeTextPart(parts map[string]*aiSDKTextPartSt
 	}
 
 	return nil
+}
+
+// The inline history budget bounds a live task event; its hash is never sent.
+func liveTaskFits(task runtime.TaskView) (bool, error) {
+	item, err := aiwire.DescribeHistoryItem(task.ID, task)
+	return len(item.Data) > 0, err
 }
 
 func (s *aiSDKUIMessageStreamer) writeTask(task runtime.TaskView) error {

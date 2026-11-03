@@ -826,7 +826,7 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		if err := s.saveSession(record); err != nil {
 			return DesktopAICreateSessionResponse{}, err
 		}
-		s.emitAISessionSnapshot(record)
+		s.emitAITaskSnapshot(record, tasks...)
 
 		for _, taskID := range autoTaskIDs {
 			var executeErr error
@@ -995,7 +995,7 @@ func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input Desk
 	view := record.toView()
 	s.sessionMu.Unlock()
 
-	s.emitAISessionSnapshot(record)
+	s.emitAITaskSnapshot(record, record.Tasks[taskIndex])
 	go s.resolveDesktopConfirmedTask(sessionID, taskID, approved, run)
 
 	return DesktopAICreateSessionResponse{
@@ -1097,6 +1097,8 @@ func (s *DesktopAIService) resolveDesktopConfirmedTask(
 
 	if saveErr != nil {
 		s.emitAISessionEvent(DesktopAISessionEvent{SessionID: sessionID, Type: "error", Error: "AI 执行结果保存失败，已停止后续执行：" + saveErr.Error()})
+	} else if taskIndex >= 0 {
+		s.emitAITaskSnapshot(record, record.Tasks[taskIndex])
 	} else {
 		s.emitAISessionSnapshot(record)
 	}
@@ -1951,7 +1953,7 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 		if err := s.saveSession(record); err != nil {
 			return record, err
 		}
-		s.emitAISessionSnapshot(record)
+		s.emitAITaskSnapshot(record, record.Tasks[taskIndex])
 		return record, nil
 	}
 	if message := desktopAIValidateServerReference(record, spec, record.Tasks[taskIndex].Arguments); message != "" {
@@ -1963,7 +1965,7 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 		if err := s.saveSession(record); err != nil {
 			return record, err
 		}
-		s.emitAISessionSnapshot(record)
+		s.emitAITaskSnapshot(record, record.Tasks[taskIndex])
 		return record, nil
 	}
 	record.Tasks[taskIndex].Arguments = desktopAIEnforceScopedArguments(record.Scope, spec, record.Tasks[taskIndex].Arguments)
@@ -1982,7 +1984,7 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 		record.Status, record.UpdatedAt = DesktopAISessionIdle, time.Now().UTC().Format(desktopAITimeLayout)
 		return record, s.saveSession(record)
 	}
-	s.emitAISessionSnapshot(record)
+	s.emitAITaskSnapshot(record, record.Tasks[taskIndex])
 
 	var result desktopAIToolResult
 	var err error
@@ -2009,7 +2011,7 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 	if err := s.saveSession(record); err != nil {
 		return record, err
 	}
-	s.emitAISessionSnapshot(record)
+	s.emitAITaskSnapshot(record, record.Tasks[taskIndex])
 	return record, nil
 }
 
@@ -2672,6 +2674,15 @@ func (s *DesktopAIService) emitAISessionSnapshot(record desktopAISessionRecord) 
 		Type:      "session",
 		Session:   &view,
 	})
+}
+
+// Like the server's task events: the open conversation sees each task change
+// during a run; committed history replaces it when the run returns.
+func (s *DesktopAIService) emitAITaskSnapshot(record desktopAISessionRecord, tasks ...DesktopAITaskView) {
+	s.emitAISessionSnapshot(record)
+	for index := range tasks {
+		s.emitAISessionEvent(DesktopAISessionEvent{SessionID: record.ID, Type: "task.updated", Task: &tasks[index]})
+	}
 }
 
 func (s *DesktopAIService) emitAISessionEvent(event DesktopAISessionEvent) {

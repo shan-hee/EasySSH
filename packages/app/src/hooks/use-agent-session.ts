@@ -353,17 +353,19 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
   }, [adapter, refreshSessionSnapshot])
 
+  /** 返回采用并补齐历史正文后的任务，供任务列表和聊天卡片共同使用。 */
   const updateWorkspaceTask = useCallback((targetSessionId: string, task: TaskView) => {
     const current = sessionRef.current
-    if (!current || current.id !== targetSessionId || closingSessionIdRef.current === targetSessionId) return
+    if (!current || current.id !== targetSessionId || closingSessionIdRef.current === targetSessionId) return null
     const previous = current.tasks.find((item) => item.id === task.id)
     // A final/cancel snapshot can arrive before an already queued progress event.
-    if (previous && ["succeeded", "failed", "cancelled"].includes(previous.status)
-      && ["queued", "waiting_confirm", "running"].includes(task.status)) return
+    if (previous && ["succeeded", "failed", "unknown", "cancelled"].includes(previous.status)
+      && ["queued", "waiting_confirm", "running"].includes(task.status)) return null
     snapshotRevisionRef.current++
     const next = { ...current, tasks: mergeTaskView(current.tasks, task) }
     sessionRef.current = next
     setSession(next)
+    return next.tasks.find((item) => item.id === task.id)!
   }, [])
 
   // 命令输出增量不改变快照版本：它不是持久内容，不能阻止已提交历史的刷新结果。
@@ -513,8 +515,9 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
       if (event.task) {
         const task = event.task
-        updateWorkspaceTask(activeSession.id, task)
-        setChatMessages((current) => upsertTaskUIPart(current, task))
+        // Wails 并发分发事件；晚到的进度不能把已结束的工具改回执行中。
+        const merged = updateWorkspaceTask(activeSession.id, task)
+        if (merged) setChatMessages((current) => upsertTaskUIPart(current, merged))
       }
 
       if (event.output) applyWorkspaceTaskOutput(activeSession.id, event.output)
@@ -544,8 +547,9 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         setTransport("ai_sdk_ui")
       }
 
-      // 运行中由发送调用结束时的快照统一刷新，避免替换正在生成的消息。
-      if (event.history && sessionRef.current?.status !== "running") {
+      // 确认后的工具在后台继续执行，没有发送调用返回来补齐历史。
+      // history.changed 可能先于结束概况到达，因此结束概况也需要触发刷新。
+      if ((event.history || event.session) && sessionRef.current?.status !== "running") {
         void refreshSessionSnapshot(activeSession.id)
       }
     })
@@ -815,6 +819,11 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
     try {
       if (adapter) {
+        // 与后端一致，从该用户消息之后重新生成；实时增量写入新的助手消息，而不是旧回复。
+        setChatMessages((current) => {
+          const index = current.findIndex((message) => message.id === messageId)
+          return index >= 0 ? current.slice(0, index + 1) : current
+        })
         const response = await adapter.regenerateMessage({
           session_id: activeSessionId,
           message_id: messageId,
@@ -847,7 +856,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       void refreshSessionSnapshot(activeSessionId)
       return false
     }
-  }, [requestReasoningEffort, adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot, resetRecovery])
+  }, [requestReasoningEffort, adapter, applySessionResponse, chat, pushLocalError, refreshSessionSnapshot, resetRecovery, setChatMessages])
 
   const continuationRef = useRef(false)
   const continueRun = useCallback(async (messageId: string, prompt: string, input: {

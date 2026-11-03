@@ -86,12 +86,77 @@ describe("AI live updates", () => {
     assert.equal(applyTextDelta(second, { ...delta, offset: 9, next_offset: 10, text: "x" }), null)
   })
 
+  it("keeps every model response of a turn in one assistant message", () => {
+    const at = "2026-10-30T00:00:00Z"
+    const text = (message_id: string, value: string, kind: "text" | "reasoning" = "text") =>
+      ({ message_id, kind, offset: 0, next_offset: new TextEncoder().encode(value).length, text: value, created_at: at })
+    let messages = buildUIMessages([user], [])
+    messages = applyTextDelta(messages, text("step-1", "先看日志"))!
+    messages = upsertTaskUIPart(messages, { ...task, id: "task-a", tool_call_id: "call-a", assistant_message_id: "step-1", status: "running" })
+    messages = upsertTaskUIPart(messages, { ...task, id: "task-b", tool_call_id: "call-b", assistant_message_id: "step-2", status: "running" })
+    messages = applyTextDelta(messages, text("step-3", "已修复"))!
+    messages = applyTextDelta(messages, text("step-3", "检查权限", "reasoning"))!
+
+    assert.deepEqual(messages.map((message) => message.role), ["user", "assistant"])
+    const parts = messages[1]!.parts.filter((part) => part.type !== "step-start")
+    assert.deepEqual(parts.map((part) => part.type), ["text", "dynamic-tool", "dynamic-tool", "reasoning", "text"])
+    assert.equal((parts[4] as { text: string }).text, "已修复")
+  })
+
+  it("continues a response loaded from history", () => {
+    const loaded = buildUIMessages([user, { ...assistant, content: "ab" }], [])
+    const part = loaded[1]!.parts.find((item) => item.type === "text") as { state?: string }
+    part.state = "streaming"
+    const next = applyTextDelta(loaded, { message_id: "assistant-1", kind: "text", offset: 2, next_offset: 4, text: "cd", created_at: "2026-10-30T00:00:02Z" })!
+
+    assert.equal(next[1]!.parts.filter((item) => item.type === "text").length, 1)
+    assert.equal((next[1]!.parts.find((item) => item.type === "text") as { text: string }).text, "abcd")
+  })
+
+  it("does not append a delayed delta from an earlier turn to the current reply", () => {
+    const messages = buildUIMessages([
+      user,
+      assistant,
+      { ...assistant, id: "first-turn-final", content: "检查完成", created_at: "2026-10-30T00:00:03Z" },
+      { ...user, id: "user-2", created_at: "2026-10-30T00:00:04Z" },
+      { ...assistant, id: "assistant-2", content: "正在处理新问题", created_at: "2026-10-30T00:00:05Z" },
+    ], [])
+    const updated = applyTextDelta(messages, {
+      message_id: "first-turn-final", kind: "text", offset: 0, next_offset: 6,
+      text: "检查", created_at: "2026-10-30T00:00:03Z",
+    })
+
+    assert.equal(updated, messages)
+  })
+
+  it("places a delayed task in the earlier turn identified by its source response", () => {
+    const messages = buildUIMessages([
+      user,
+      assistant,
+      { ...assistant, id: "first-turn-final", content: "检查完成", created_at: "2026-10-30T00:00:03Z" },
+      { ...user, id: "user-2", created_at: "2026-10-30T00:00:04Z" },
+      { ...assistant, id: "assistant-2", created_at: "2026-10-30T00:00:05Z" },
+    ], [])
+    const updated = upsertTaskUIPart(messages, { ...task, assistant_message_id: "first-turn-final" })
+
+    assert.equal(updated[1]!.parts.filter((part) => part.type === "dynamic-tool").length, 1)
+    assert.equal(updated[3], messages[3])
+  })
+
   it("keeps received command output when task metadata arrives without it", () => {
     const tasks = applyTaskOutputDelta([task], { session_id: "s", task_id: "task-1", offset: 0, next_offset: 2, text: "ok", reset: true })!
     const merged = mergeTaskView(tasks, { ...task, status: "running" })
 
     assert.equal(merged[0]?.command_output, "ok")
     assert.equal(merged[0]?.status, "running")
+  })
+
+  it("keeps a loaded result when a live event of the same state arrives without it", () => {
+    const loaded = { ...task, result: "命令执行成功:\n{}" }
+    const merged = mergeTaskView([loaded], { ...task, result: undefined })
+    assert.equal(merged[0]?.result, loaded.result)
+    const newer = mergeTaskView([loaded], { ...task, status: "failed", result: undefined, updated_at: "2026-10-30T00:00:09Z" })
+    assert.equal(newer[0]?.result, undefined)
   })
 
   it("replaces the tool part of an existing call", () => {

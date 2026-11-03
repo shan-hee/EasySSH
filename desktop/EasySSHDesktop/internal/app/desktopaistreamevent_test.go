@@ -16,9 +16,12 @@ func TestDesktopLiveTaskSeparatesOutputAndPrivateArtifact(t *testing.T) {
 	if task.Artifact == nil || task.Artifact.Content != "private" || task.CommandOutput == "" {
 		t.Fatal("stream conversion mutated stored task")
 	}
-	task.Result = strings.Repeat("large result", 10000)
-	_, send, err = desktopAIWireEvent(DesktopAISessionEvent{SessionID: "session", Type: "task.updated", Task: &task})
-	if err != nil || send {
-		t.Fatal("uncommitted oversized task must wait for history commit", err)
+	task.Status, task.Result = DesktopAITaskSucceeded, strings.Repeat("large result", 10000)
+	event, send, err = desktopAIWireEvent(DesktopAISessionEvent{SessionID: "session", Type: "task.updated", Task: &task})
+	if err != nil || !send || event.Task == nil || event.Task.Status != DesktopAITaskSucceeded || event.Task.Result != "" {
+		t.Fatal("a large result must leave its body to history but still report the state", err)
+	}
+	if task.Result == "" {
+		t.Fatal("stream conversion mutated stored task result")
 	}
 }

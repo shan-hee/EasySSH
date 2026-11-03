@@ -15,22 +15,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLargeLiveTaskWaitsForCommittedHistory(t *testing.T) {
+func TestLargeLiveTaskSendsStateWithoutBody(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	stream := newAISDKUIMessageStreamer(recorder, false)
-	task := runtime.TaskView{ID: "task", ToolCallID: "call", ToolName: "execute_command", Status: runtime.TaskStatusSucceeded, Result: strings.Repeat("large output", 10000), Artifact: &aiworkspace.FileArtifact{Content: "private artifact"}}
+	task := runtime.TaskView{ID: "task", ToolCallID: "call", ToolName: "execute_command", Status: runtime.TaskStatusFailed, Result: strings.Repeat("large output", 10000), Error: strings.Repeat("large output", 10000), Artifact: &aiworkspace.FileArtifact{Content: "private artifact"}}
 	done, err := stream.writeRuntimeEvent(runtime.Event{Type: runtime.EventTaskUpdated, SessionID: "session", Task: &task})
 	require.NoError(t, err)
 	require.False(t, done)
-	require.Empty(t, recorder.Body.String())
 	change := protocol.AIHistoryChange{SessionID: "session", UpdatedAt: time.Now().UTC()}
 	_, err = stream.writeRuntimeEvent(runtime.Event{Type: runtime.EventHistoryChanged, SessionID: "session", History: &change})
 	require.NoError(t, err)
 	chunks := parseSSEChunks(t, recorder)
-	require.Len(t, chunks, 1)
-	require.Equal(t, "data-history-changed", chunks[0]["type"])
+	live, ok := findChunk(chunks, "data-workspace-task")
+	require.True(t, ok, "a large result must not hide the task state")
+	view := live["data"].(map[string]any)["task"].(map[string]any)
+	require.Equal(t, string(runtime.TaskStatusFailed), view["status"])
+	require.Nil(t, view["result"])
+	_, ok = findChunk(chunks, "tool-output-error")
+	require.True(t, ok)
+	_, ok = findChunk(chunks, "data-history-changed")
+	require.True(t, ok)
 	require.NotContains(t, recorder.Body.String(), "private artifact")
 	require.NotContains(t, recorder.Body.String(), "large output")
+	require.Equal(t, strings.Repeat("large output", 10000), task.Result, "the stored task keeps its result")
 }
 
 func TestLiveTaskOutputSendsOnlyAppendedBytes(t *testing.T) {

@@ -91,6 +91,19 @@ function extractLastTagged(content: string, tag: string): [string, string] {
   return [content.slice(valueStart, end).trim(), (content.slice(0, start) + content.slice(end + close.length)).trim()]
 }
 
+// 一轮对话的多次模型响应合并为一条助手消息；正文与推理片段记录来源响应，供桌面实时增量续写。
+const sourcedBy = (messageId: string) => ({ providerMetadata: { easyssh: { messageId } } })
+const partSource = (part: UIPart) => ((part as LoosePart).providerMetadata as { easyssh?: { messageId?: unknown } } | undefined)?.easyssh?.messageId
+
+function assistantIndexForSource(messages: UIMessage[], messageId: string) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]!
+    if (message.role === "assistant"
+      && (message.id === messageId || message.parts.some((part) => partSource(part) === messageId))) return index
+  }
+  return -1
+}
+
 function assistantParts(message: MessageView): LoosePart[] {
   const [toolStatus, withoutToolStatus] = extractLastTagged(message.content, "tool-status")
   const [taggedReasoning, text] = extractLastTagged(withoutToolStatus, "think")
@@ -99,8 +112,8 @@ function assistantParts(message: MessageView): LoosePart[] {
   if (toolStatus.trim()) {
     parts.push({ type: "data-tool-status", id: `${message.id}:tool-status`, data: { text: toolStatus.trim() } })
   }
-  if (reasoning.trim()) parts.push({ type: "reasoning", text: reasoning.trim(), state: "done" })
-  if (text.trim()) parts.push({ type: "text", text: text.trim(), state: "done" })
+  if (reasoning.trim()) parts.push({ type: "reasoning", text: reasoning.trim(), state: "done", ...sourcedBy(message.id) })
+  if (text.trim()) parts.push({ type: "text", text: text.trim(), state: "done", ...sourcedBy(message.id) })
   if (message.stopped_at) {
     parts.push({ type: "data-stopped-run", id: `${message.id}:stopped`, data: { messageId: message.id, stoppedAt: message.stopped_at } })
   }
@@ -263,15 +276,16 @@ function sliceUtf8(text: string, bytes: number) {
 }
 
 /**
- * 把桌面实时文本增量写入对应的助手消息。偏移与已收到内容不连续时返回 null，
+ * 把桌面实时文本增量写入当前轮次的助手消息，与历史合并规则一致。偏移与已收到内容不连续时返回 null，
  * 调用方保留当前正文，等待连续增量或生成结束后的历史快照。
  */
 export function applyTextDelta(messages: UIMessage[], delta: AITextDelta): UIMessage[] | null {
-  const index = messages.findIndex((message) => message.id === delta.message_id)
+  const sourceIndex = assistantIndexForSource(messages, delta.message_id)
+  const index = sourceIndex >= 0 ? sourceIndex : messages.at(-1)?.role === "assistant" ? messages.length - 1 : -1
   const current: UIMessage = index >= 0
     ? { ...messages[index]!, parts: [...messages[index]!.parts] }
     : { ...emptyAssistant(delta.message_id, delta.created_at), metadata: { source: "message", createdAt: delta.created_at, originalRole: "assistant", pending: true } }
-  const partIndex = current.parts.findIndex((part) => part.type === delta.kind)
+  const partIndex = current.parts.findIndex((part) => part.type === delta.kind && partSource(part) === delta.message_id)
   const previous = partIndex >= 0 ? current.parts[partIndex] : undefined
   const received = textLength(previous)
   // A late event must neither truncate received text nor reopen committed text.
@@ -282,12 +296,16 @@ export function applyTextDelta(messages: UIMessage[], delta: AITextDelta): UIMes
   const base = previous && "text" in previous
     ? delta.offset === received ? previous.text : sliceUtf8(previous.text, delta.offset)
     : ""
-  const next = { type: delta.kind, text: base + delta.text, state: "streaming" } as UIPart
+  const next = { type: delta.kind, text: base + delta.text, state: "streaming", ...sourcedBy(delta.message_id) } as UIPart
   textByteLengths.set(next, delta.next_offset)
+  // 推理显示在同一响应的正文之前。
+  const textIndex = delta.kind === "reasoning"
+    ? current.parts.findIndex((part) => part.type === "text" && partSource(part) === delta.message_id)
+    : -1
   if (partIndex >= 0) {
     current.parts[partIndex] = next
-  } else if (delta.kind === "reasoning") {
-    current.parts.unshift(next)
+  } else if (textIndex >= 0) {
+    current.parts.splice(textIndex, 0, next)
   } else {
     current.parts.push(next)
   }
@@ -300,7 +318,7 @@ export function applyTextDelta(messages: UIMessage[], delta: AITextDelta): UIMes
   return [...messages, current]
 }
 
-/** 把工具任务写入时间线：替换同一工具调用的片段，否则追加到所属助手消息。 */
+/** 把工具任务写入时间线：替换同一工具调用的片段，否则追加到当前轮次的助手消息。 */
 export function upsertTaskUIPart(messages: UIMessage[], task: TaskView): UIMessage[] {
   const toolCallId = nonEmpty(task.tool_call_id, task.id)
   const part = taskUIPart(task)
@@ -315,21 +333,32 @@ export function upsertTaskUIPart(messages: UIMessage[], task: TaskView): UIMessa
     return result
   }
 
-  const ownerId = nonEmpty(task.assistant_message_id, `task:${task.id}`)
-  const ownerIndex = messages.findIndex((message) => message.id === ownerId)
+  const sourceIndex = assistantIndexForSource(messages, nonEmpty(task.assistant_message_id, `task:${task.id}`))
+  const ownerIndex = sourceIndex >= 0 ? sourceIndex : messages.at(-1)?.role === "assistant" ? messages.length - 1 : -1
   if (ownerIndex >= 0) {
     const owner = messages[ownerIndex]!
     const result = [...messages]
     result[ownerIndex] = { ...owner, parts: [...owner.parts, part] }
     return result
   }
-  return [...messages, { ...emptyAssistant(ownerId, task.created_at), parts: [{ type: "step-start" } as UIPart, part] }]
+  return [...messages, { ...emptyAssistant(nonEmpty(task.assistant_message_id, `task:${task.id}`), task.created_at), parts: [{ type: "step-start" } as UIPart, part] }]
 }
 
-/** 实时任务元数据不含命令输出，合并时保留已收到的输出。 */
+/**
+ * 实时任务不含命令输出，超出实时预算时也不含结果正文；合并时保留已收到的输出，
+ * 同一状态下保留已有的结果，避免晚到的实时事件覆盖已读取的历史。
+ */
 export function mergeTaskView(tasks: TaskView[], task: TaskView): TaskView[] {
   const previous = tasks.find((item) => item.id === task.id)
-  const next = previous && !task.command_output ? { ...task, command_output: previous.command_output } : task
+  let next = task
+  if (previous) {
+    const sameState = previous.status === task.status && previous.updated_at === task.updated_at
+    next = {
+      ...task,
+      command_output: task.command_output || previous.command_output,
+      ...(sameState && !task.result && !task.error ? { result: previous.result, error: previous.error } : {}),
+    }
+  }
   return [...tasks.filter((item) => item.id !== task.id), next]
 }
 
