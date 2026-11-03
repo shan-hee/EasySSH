@@ -186,6 +186,14 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
             <p className="whitespace-pre-wrap break-words text-muted-foreground">{error}</p>
             <div className="flex flex-wrap gap-2">
               {loadError ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void refresh()}>{t("syncRefreshStatus")}</Button>
+                : status?.auth_expired && adapter.disconnect ? (
+                  // The old token is already invalid, so a failed remote revocation is expected.
+                  <Button size="sm" variant="outline" disabled={disabled} onClick={() => void action(async () => {
+                    const server = status.server_url ?? ""
+                    await adapter.disconnect!()
+                    setUrl(server)
+                  })}>{t("syncLoginAgain")}</Button>
+                )
                 : (!actionError || failedSync) && desktopMode && status?.connected && status.enabled && (
                   <Button size="sm" variant="outline" disabled={disabled} onClick={() => void syncNow()}>{t("syncRetry")}</Button>
                 )}
@@ -226,7 +234,7 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
         )}
       </SettingsSection>
 
-      {!!status?.conflicts.length && <SyncConflicts status={status} adapter={adapter} busy={disabled || !status.enabled} action={action} />}
+      {status && <SyncConflicts key={status.space_id ?? "server"} status={status} adapter={adapter} busy={disabled || !status.enabled} action={action} />}
 
       {desktopMode && status?.connected && adapter.setScopes && (
         <SyncContentSettings key={`scopes-${status.space_id}`} scopes={status.scopes ?? emptySyncScopes}

@@ -272,6 +272,9 @@ type VaultConflict struct {
 	Field    string                  `json:"field"`
 	Values   []string                `json:"values"`
 	Previews map[string]VaultSummary `json:"previews"`
+	// Identical marks versions that differ only by encrypted copy, e.g. both
+	// sides re-uploaded the same credential after a re-login.
+	Identical bool `json:"identical,omitempty"`
 }
 
 func Summarize(p VaultPayload) VaultSummary {

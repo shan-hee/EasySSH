@@ -19,6 +19,14 @@ export type SyncConflict = {
   field: string
   values: string[]
   previews?: Record<string, SyncVersionPreview>
+  /** All versions hold the same content under different encrypted copies. */
+  identical?: boolean
+}
+export type SyncChoice = { key: string; field: string; value: string }
+export class SyncResolutionError extends Error {
+  constructor(message: string, readonly affected: SyncAffectedGrant[]) {
+    super(message)
+  }
 }
 export type SyncDevice = {
   id: string
@@ -38,6 +46,8 @@ export type SyncStatus = {
   space_id?: string
   last_sync?: string
   error?: string
+  /** The device authorization was revoked or expired; only a new login helps. */
+  auth_expired?: boolean
   records?: number
   conflicts: SyncConflict[]
   devices?: SyncDevice[]
@@ -47,7 +57,7 @@ export type SyncStatus = {
 export interface SyncAdapter {
   status(): Promise<SyncStatus>
   sync(): Promise<void>
-  resolve(key: string, field: string, value: string): Promise<void | SyncAffectedGrant[]>
+  resolve(choices: SyncChoice[]): Promise<void | SyncAffectedGrant[]>
   beginLogin?(url: string, name: string): Promise<SyncLogin>
   pollLogin?(): Promise<boolean>
   cancelLogin?(): Promise<void>

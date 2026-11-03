@@ -1,6 +1,6 @@
 import type { components } from "@/generated/openapi"
 import { authenticatedFetch, getApiUrl } from "@/lib/api-client"
-import type { SyncAdapter, SyncStatus } from "./types"
+import { SyncResolutionError, type SyncAdapter, type SyncAffectedGrant, type SyncStatus } from "./types"
 export async function syncRequest<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await authenticatedFetch(getApiUrl(`/sync${path}`), {
     ...options,
@@ -36,9 +36,19 @@ export const webSyncAdapter: SyncAdapter = {
     })
     window.dispatchEvent(new Event("easyssh:sync-applied"))
   },
-  async resolve(key, field, value) {
-    const result = await syncRequest<components["schemas"]["SyncExchangeResult"]>("/resolve", { method: "POST", body: JSON.stringify({ key, field, value }) })
-    window.dispatchEvent(new Event("easyssh:sync-applied"))
-    return result.affected_grants
+  async resolve(choices) {
+    const affected: SyncAffectedGrant[] = []
+    try {
+      for (const choice of choices) {
+        const result = await syncRequest<components["schemas"]["SyncExchangeResult"]>("/resolve", { method: "POST", body: JSON.stringify(choice) })
+        affected.push(...result.affected_grants)
+      }
+    } catch (error) {
+      // Earlier requests may already have invalidated shared connections.
+      throw new SyncResolutionError(error instanceof Error ? error.message : String(error), affected)
+    } finally {
+      window.dispatchEvent(new Event("easyssh:sync-applied"))
+    }
+    return affected
   },
 }

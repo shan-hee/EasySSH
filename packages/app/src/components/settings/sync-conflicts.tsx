@@ -1,13 +1,21 @@
 import { useState } from "react"
-import { Check, Circle, Loader2 } from "lucide-react"
+import { Check, Circle } from "lucide-react"
 import { GrantManager } from "@/components/sharing/grant-manager"
-import type { SyncAffectedGrant } from "@/lib/sync/types"
 import { useTranslation } from "react-i18next"
 import { toast } from "sonner"
 import { SettingsSection } from "./settings-section"
 import { Button } from "@/components/ui/button"
-import type { SyncAdapter, SyncStatus } from "@/lib/sync/types"
+import { Spinner } from "@/components/ui/spinner"
+import { SyncResolutionError, type SyncAdapter, type SyncAffectedGrant, type SyncChoice, type SyncConflict, type SyncStatus } from "@/lib/sync/types"
 import { cn } from "@/lib/utils"
+
+type Source = "desktop" | "server"
+
+// Only versions whose origin is known and unique can be chosen in bulk.
+function versionFrom(conflict: SyncConflict, source: Source) {
+  const matches = conflict.values.filter((value) => conflict.previews?.[value]?.source === source)
+  return matches.length === 1 ? matches[0] : undefined
+}
 
 export function SyncConflicts({ status, adapter, busy, action }: {
   status: SyncStatus
@@ -16,8 +24,33 @@ export function SyncConflicts({ status, adapter, busy, action }: {
   action: (fn: () => Promise<void>) => Promise<boolean>
 }) {
   const [affected, setAffected] = useState<SyncAffectedGrant[]>([])
-  const [selecting, setSelecting] = useState<{ key: string; field: string; value: string } | null>(null)
+  const [selecting, setSelecting] = useState<SyncChoice | null>(null)
+  const [batching, setBatching] = useState<Source | null>(null)
   const { t } = useTranslation("settingsManagementBackup")
+  const working = busy || selecting !== null || batching !== null
+  const batchable = status.conflicts.filter((conflict) => versionFrom(conflict, "desktop") && versionFrom(conflict, "server"))
+  const rememberAffected = (items: SyncAffectedGrant[]) => setAffected((previous) => {
+    const merged = new Map(previous.map((item) => [`${item.grant_id}:${item.server_id}`, item]))
+    for (const item of items) merged.set(`${item.grant_id}:${item.server_id}`, item)
+    return [...merged.values()]
+  })
+  const resolve = async (choices: SyncChoice[]) => {
+    try {
+      rememberAffected(await adapter.resolve(choices) || [])
+    } catch (error) {
+      if (error instanceof SyncResolutionError) rememberAffected(error.affected)
+      throw error
+    }
+  }
+  const resolveAll = (source: Source) => void action(async () => {
+    setBatching(source)
+    try {
+      await resolve(batchable.map((conflict) => ({ key: conflict.key, field: conflict.field, value: versionFrom(conflict, source)! })))
+    } finally {
+      setBatching(null)
+    }
+  })
+  if (!status.conflicts.length && !affected.length) return null
   return (
     <div id="sync-conflicts" className="scroll-mt-4">
       {affected.length > 0 && <section className="my-3 space-y-2 rounded border p-3"><p className="text-sm">{t("syncAffectedShares")}</p>{affected.map(item => <div key={`${item.grant_id}:${item.server_id}`} className="flex items-center justify-between gap-2 text-xs"><span>{item.grant_name} · {item.server_name} · {t(item.reason === "resource_deleted" ? "syncSharedResourceDeleted" : "syncSharedConnectionChanged")}</span><GrantManager grantId={item.grant_id} compact /></div>)}</section>}
@@ -26,6 +59,16 @@ export function SyncConflicts({ status, adapter, busy, action }: {
           title={t("syncConflicts")}
           description={t("syncConflictHint")}
           className="rounded-xl border border-border bg-card/40 p-5"
+          actions={batchable.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {(["desktop", "server"] as const).map((source) => (
+                <Button key={source} size="sm" variant="outline" disabled={working} onClick={() => resolveAll(source)}>
+                  {batching === source && <Spinner />}
+                  {t(source === "desktop" ? "syncUseAllDesktop" : "syncUseAllServer", { count: batchable.length })}
+                </Button>
+              ))}
+            </div>
+          )}
         >
           {status.conflicts.map((conflict) => (
             <div key={`${conflict.key}/${conflict.field}`} className="space-y-2 border-t pt-4">
@@ -50,14 +93,13 @@ export function SyncConflicts({ status, adapter, busy, action }: {
                       <button
                         type="button"
                         className="group flex w-full min-w-0 flex-1 cursor-pointer flex-col gap-3 p-4 text-left outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
-                        disabled={busy || selecting !== null}
+                        disabled={working}
                         aria-label={t("syncUseVersion", { number: i + 1 })}
                         aria-busy={selected}
                         onClick={() => void action(async () => {
                           setSelecting({ key: conflict.key, field: conflict.field, value })
                           try {
-                            const result = await adapter.resolve(conflict.key, conflict.field, value)
-                            setAffected(result || [])
+                            await resolve([{ key: conflict.key, field: conflict.field, value }])
                           } finally {
                             setSelecting(null)
                           }
@@ -122,7 +164,7 @@ export function SyncConflicts({ status, adapter, busy, action }: {
                           </span>
                         )}
                         <span className="mt-auto flex items-center gap-2 pt-2 text-xs text-muted-foreground">
-                          {selected && <Loader2 className="size-3 animate-spin" aria-hidden="true" />}
+                          {selected && <Spinner className="size-3" />}
                           {t(selected ? "syncApplyingVersion" : "syncClickToUseVersion")}
                         </span>
                       </button>
@@ -133,7 +175,7 @@ export function SyncConflicts({ status, adapter, busy, action }: {
                             className="mx-4 mb-4 self-start"
                             size="sm"
                             variant="outline"
-                            disabled={busy || selecting !== null}
+                            disabled={working}
                             onClick={() =>
                               void action(async () => {
                                 await adapter.forkSession!(conflict.key, value)

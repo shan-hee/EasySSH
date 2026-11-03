@@ -7,6 +7,7 @@ import type {
   SyncLogin,
   SyncScopes,
   SyncConflict,
+  SyncChoice,
 } from "@easyssh/app/lib/sync/types"
 import type { SyncSnapshot, SyncPeer } from "@easyssh/app/lib/sync/automerge"
 import type { components } from "@easyssh/app/generated/openapi"
@@ -32,6 +33,7 @@ let lastError = ""
 let changingAccount = false
 let syncPending = false
 let syncTimer: number | undefined
+const authExpiredMessage = "设备授权已失效或被撤销，请重新登录同步"
 
 function parseSyncResponse(raw: string): SyncPeer {
   const result = JSON.parse(raw) as components["schemas"]["SyncExchangeResult"]
@@ -60,6 +62,8 @@ function syncErrorMessage(error: unknown): string {
   if (message === "conversation is busy" || message === "AI is busy; retry after the current operation") {
     return "本地 AI 会话正在运行或等待确认，请处理该会话后重试同步"
   }
+  // The server rejects revoked or expired device tokens; retrying cannot help.
+  if (message.startsWith("sync HTTP 401:")) return authExpiredMessage
   return message
 }
 
@@ -198,6 +202,59 @@ async function synchronizeVault(entry: VaultEntry) {
   }
   throw new Error("Local data changed during sync; the next attempt will retry")
 }
+// Configuration choices share one document and one save; each vault record is
+// its own document. Callers publish and schedule a single sync afterwards.
+async function resolveChoices(choices: SyncChoice[]) {
+  const engine = await import("@easyssh/app/lib/sync/automerge")
+  const configuration = choices.filter((choice) => !choice.key.startsWith("vault/"))
+  if (configuration.length) {
+    const state = await call<LocalState>("Load")
+    let doc = engine.loadDocument(state.document)
+    try {
+      doc = engine.reconcileDocument(doc, state.snapshot)
+      for (const choice of configuration) doc = engine.resolveConflict(doc, choice.key, choice.field, choice.value)
+      const saved = await call<boolean>("Save", {
+        ...state,
+        document: engine.saveDocument(doc),
+        snapshot: engine.projectConfiguration(doc, state.snapshot).snapshot,
+      })
+      if (!saved) throw new Error("Local data changed; refresh and retry")
+    } finally {
+      engine.freeDocument(doc)
+    }
+  }
+  for (const choice of choices.filter((choice) => choice.key.startsWith("vault/"))) {
+    await resolveVaultChoice(choice)
+  }
+}
+
+async function resolveVaultChoice(choice: SyncChoice, identicalValues?: string[]) {
+  const engine = await import("@easyssh/app/lib/sync/automerge")
+  const [, kind, id] = choice.key.split("/")
+  const state = await call<VaultState>("PrepareVault", kind, id)
+  let doc = engine.loadDocument(state.document)
+  try {
+    doc = engine.reconcileDocument(doc, state.snapshot)
+    if (identicalValues) {
+      // PrepareVault can capture a local edit made after the equality check.
+      // Only resolve automatically while the compared versions still match.
+      const conflict = engine.projectDocument(doc).conflicts.find((item) => item.key === valueKey && item.field === "ref")
+      if (!conflict || conflict.values.length !== identicalValues.length || conflict.values.some((value) => !identicalValues.includes(value))) {
+        throw new Error("Local data changed; refresh and retry")
+      }
+    }
+    doc = engine.resolveConflict(doc, valueKey, "ref", choice.value)
+    const saved = await call<boolean>("SaveVault", {
+      ...state,
+      document: engine.saveDocument(doc),
+      ...engine.projectDocument(doc),
+    })
+    if (!saved) throw new Error("Local data changed; refresh and retry")
+  } finally {
+    engine.freeDocument(doc)
+  }
+}
+
 async function synchronize() {
   const initial = await call<LocalState>("Load")
   if (!initial.enabled || !initial.space_id) return
@@ -215,12 +272,29 @@ async function synchronize() {
           if (entry.kind === "credential") changes.serversChanged = true
         }
       } catch (error) {
+        const message = syncErrorMessage(error)
+        if (message === authExpiredMessage) throw new Error(message)
         errors.push(
-          `${entry.kind === "ai_session" ? `AI 会话「${entry.name || entry.id}」` : entry.name || entry.kind}: ${syncErrorMessage(error)}`,
+          `${entry.kind === "ai_session" ? `AI 会话「${entry.name || entry.id}」` : entry.name || entry.kind}: ${message}`,
         )
       }
     }
     if (errors.length) throw new Error(errors.join("\n"))
+    // Versions with the same content (e.g. both sides re-encrypted the same
+    // credential after a re-login) need no user decision; keep the server copy.
+    const identical = (await call<SyncConflict[]>("VaultConflicts")).filter((conflict) => conflict.identical)
+    for (const conflict of identical) {
+      await resolveVaultChoice({
+        key: conflict.key,
+        field: conflict.field,
+        value: conflict.values.find((value) => conflict.previews?.[value]?.source === "server") ?? conflict.values[0],
+      }, conflict.values)
+      // A record first received with such a conflict is only applied now.
+      changes.changed = true
+      if (conflict.key.startsWith("vault/credential/")) changes.serversChanged = true
+      // The next round uploads the resolution.
+      syncPending = true
+    }
     await call("MarkSynced", binding.space_id, binding.revision)
     lastError = ""
   } finally {
@@ -241,7 +315,7 @@ function syncNow(): Promise<void> {
     active = synchronize()
       .catch((error) => {
         lastError = syncErrorMessage(error)
-        throw error
+        throw new Error(lastError)
       })
       .finally(() => {
         active = null
@@ -275,6 +349,7 @@ export const desktopSyncAdapter: SyncAdapter = {
       account_name: state.account_name,
       last_sync: state.last_sync,
       error: lastError,
+      auth_expired: lastError === authExpiredMessage,
       conflicts: [...conflicts, ...(await call<SyncConflict[]>("VaultConflicts"))],
       scopes: state.scopes,
       grants: state.grants,
@@ -366,48 +441,15 @@ export const desktopSyncAdapter: SyncAdapter = {
       changingAccount = false
     }
   },
-  async resolve(key, field, value) {
+  async resolve(choices) {
     if (active) await active.catch(() => {})
-    const engine = await import("@easyssh/app/lib/sync/automerge")
-    if (key.startsWith("vault/")) {
-      const [, kind, id] = key.split("/")
-      const state = await call<VaultState>("PrepareVault", kind, id)
-      let doc = engine.loadDocument(state.document)
-      try {
-        doc = engine.resolveConflict(
-          engine.reconcileDocument(doc, state.snapshot),
-          valueKey,
-          "ref",
-          value,
-        )
-        const saved = await call<boolean>("SaveVault", {
-          ...state,
-          document: engine.saveDocument(doc),
-          ...engine.projectDocument(doc),
-        })
-        if (!saved) throw new Error("Local data changed; refresh and retry")
-      } finally {
-        engine.freeDocument(doc)
-      }
+    try {
+      await resolveChoices(choices)
+    } finally {
+      // Choices saved before a failure still need publishing and uploading.
       window.dispatchEvent(new Event("easyssh:sync-applied"))
       requestDesktopSync()
-      return
     }
-    const state = await call<LocalState>("Load")
-    let doc = engine.loadDocument(state.document)
-    try {
-      doc = engine.resolveConflict(engine.reconcileDocument(doc, state.snapshot), key, field, value)
-      const saved = await call<boolean>("Save", {
-        ...state,
-        document: engine.saveDocument(doc),
-        snapshot: engine.projectConfiguration(doc, state.snapshot).snapshot,
-      })
-      if (!saved) throw new Error("Local data changed; refresh and retry")
-      window.dispatchEvent(new Event("easyssh:sync-applied"))
-    } finally {
-      engine.freeDocument(doc)
-    }
-    requestDesktopSync()
   },
 }
 export function startDesktopSync(): () => void {

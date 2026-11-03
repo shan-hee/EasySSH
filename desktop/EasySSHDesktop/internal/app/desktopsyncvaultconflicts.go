@@ -75,7 +75,9 @@ func (s *DesktopSyncService) VaultConflicts() ([]syncdata.VaultConflict, error) 
 			c.Key = "vault/" + e.kind + "/" + e.id
 			c.Field = "ref"
 			c.Previews = map[string]syncdata.VaultSummary{}
-			for _, ref := range c.Values {
+			c.Identical = true
+			first := ""
+			for i, ref := range c.Values {
 				value, err := localVaultObject(tx, space, e.kind, e.id, ref)
 				if err != nil {
 					return nil, err
@@ -85,6 +87,11 @@ func (s *DesktopSyncService) VaultConflicts() ([]syncdata.VaultConflict, error) 
 					return nil, err
 				}
 				c.Previews[ref] = syncdata.Summarize(p)
+				if i == 0 {
+					first = value
+				} else if !syncdata.SameVaultValue(first, value) {
+					c.Identical = false
+				}
 			}
 			result = append(result, c)
 		}

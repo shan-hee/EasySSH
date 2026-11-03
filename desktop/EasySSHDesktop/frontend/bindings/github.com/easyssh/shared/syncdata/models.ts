@@ -48,6 +48,12 @@ export class VaultConflict {
     "values": string[];
     "previews": { [_ in string]?: VaultSummary };
 
+    /**
+     * Identical marks versions that differ only by encrypted copy, e.g. both
+     * sides re-uploaded the same credential after a re-login.
+     */
+    "identical"?: boolean;
+
     /** Creates a new VaultConflict instance. */
     constructor($$source: Partial<VaultConflict> = {}) {
         if (!("key" in $$source)) {
