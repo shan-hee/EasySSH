@@ -67,7 +67,11 @@ export interface AIAssistantWorkspaceAdapters {
 }
 
 export interface AIAssistantWorkspaceViewProps {
-  requestedSessionId?: string
+  /**
+   * 当前会话由宿主路由承载（Web 的 `?session=`）：刷新或外部链接按它恢复，会话切换后回写，无参数即空白新会话。
+   * 未提供时（桌面、分享），进入视图恢复最近会话。
+   */
+  routeSession?: { id?: string; onChange: (sessionId: string | undefined) => void }
   canConfigure?: boolean
   active?: boolean
   hidePageHeader?: boolean
@@ -76,14 +80,16 @@ export interface AIAssistantWorkspaceViewProps {
 }
 
 export function AIAssistantWorkspaceView({
-  requestedSessionId,
+  routeSession,
   active = true,
   canConfigure = true,
   hidePageHeader = false,
   onReturnToTerminal,
   adapters,
 }: AIAssistantWorkspaceViewProps) {
-  const restoredRequest = useRef<string | null>(null)
+  const routeSessionId = routeSession?.id
+  const onRouteSessionChange = routeSession?.onChange
+  const lastRouteSessionId = useRef<string | undefined>(undefined)
   const { t } = useTranslation("aiAssistant")
   const sidebar = useAISidebarHost()
   const { ready } = useAuthReady()
@@ -214,18 +220,21 @@ export function AIAssistantWorkspaceView({
   }, [loadServers])
 
   useEffect(() => {
-    if (!active || !requestedSessionId) restoredRequest.current = null
-    if (!active || !ready || isLoading || agentSession.transport !== "idle") return
-    if (requestedSessionId) {
-      if (restoredRequest.current !== requestedSessionId) {
-        restoredRequest.current = requestedSessionId
-        void restoreSession(requestedSessionId)
-      }
-      return
+    if (!onRouteSessionChange || !active || !ready || isLoading) return
+    const routeChanged = routeSessionId !== lastRouteSessionId.current
+    lastRouteSessionId.current = routeSessionId
+    // 路由新指向另一个会话（刷新、外部链接）时恢复它；其余情况以当前会话为准回写，加载中不回写。
+    if (routeSessionId && routeChanged && routeSessionId !== sessionId) {
+      void restoreSession(routeSessionId)
+    } else if (agentSession.transport !== "connecting" && (routeSessionId ?? null) !== sessionId) {
+      onRouteSessionChange(sessionId ?? undefined)
     }
-    if (!isConfigured || session) return
+  }, [active, agentSession.transport, isLoading, onRouteSessionChange, ready, restoreSession, routeSessionId, sessionId])
+
+  useEffect(() => {
+    if (onRouteSessionChange || !active || !ready || isLoading || !isConfigured || session || agentSession.transport !== "idle") return
     void restoreLatestSession()
-  }, [active, agentSession.transport, isConfigured, isLoading, ready, requestedSessionId, restoreLatestSession, restoreSession, session])
+  }, [active, agentSession.transport, isConfigured, isLoading, onRouteSessionChange, ready, restoreLatestSession, session])
 
 
   const isConfigChecking = !ready || isLoading
