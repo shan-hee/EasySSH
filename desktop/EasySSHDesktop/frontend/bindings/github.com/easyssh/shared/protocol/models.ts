@@ -860,6 +860,11 @@ export enum AccessProtocolVersion {
  */
 export class AccessResource {
     "actions": Action[];
+
+    /**
+     * AllowInteractive Whether connections needing interactive verification are permitted; editors resend it unchanged.
+     */
+    "allow_interactive"?: boolean | null;
     "host": string;
     "id": types$0.UUID;
     "name": string;

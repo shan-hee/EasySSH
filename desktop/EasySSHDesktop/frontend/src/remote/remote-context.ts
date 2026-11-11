@@ -46,6 +46,7 @@ export function remoteAccessContext(value: NativeAccessContext): AccessContext {
     resources: value.resources.map((r) => ({
       ...r,
       actions: r.actions.map(action),
+      allow_interactive: r.allow_interactive ?? undefined,
     })),
   }
 }
