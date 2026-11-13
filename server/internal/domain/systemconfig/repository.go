@@ -11,6 +11,7 @@ import (
 	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/operationrecord"
 
+	"github.com/easyssh/shared/retention"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -23,6 +24,7 @@ type Repository interface {
 	SaveBasic(ctx context.Context, config *SystemConfig) error
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
 	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
+	SaveRetention(ctx context.Context, config *SystemConfig) error
 }
 
 type repository struct {
@@ -59,6 +61,8 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 				TransferMaxDepth:           DefaultTransferMaxDepth(),
 				TransferCleanupEnabled:     true,
 				JobQueueMaxConcurrency:     DefaultJobQueueMaxConcurrency(),
+				TaskRetentionDays:          retention.DefaultDays,
+				LogRetentionDays:           retention.DefaultDays,
 				SFTPMaxIdleTimeSeconds:     120,
 				SFTPCleanupIntervalSeconds: 30,
 				SFTPConnTimeoutSeconds:     10,
@@ -148,5 +152,12 @@ func (r *repository) SaveFileTransfer(ctx context.Context, config *SystemConfig)
 func (r *repository) SaveScheduledTasks(ctx context.Context, config *SystemConfig) error {
 	return r.update(ctx, map[string]any{
 		"job_queue_max_concurrency": config.JobQueueMaxConcurrency,
+	})
+}
+
+func (r *repository) SaveRetention(ctx context.Context, config *SystemConfig) error {
+	return r.update(ctx, map[string]any{
+		"task_retention_days": config.TaskRetentionDays,
+		"log_retention_days":  config.LogRetentionDays,
 	})
 }

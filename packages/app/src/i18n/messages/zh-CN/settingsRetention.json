@@ -1,0 +1,20 @@
+{
+  "title": "数据保留",
+  "description": "已结束的记录超过保留期后由系统每天自动清理。本机的保留期只作用于本机数据，不会同步到其他设备。",
+  "taskLabel": "任务记录",
+  "taskDescription": "已结束的任务运行记录及其事件、通知。排队中和运行中的任务不受影响。",
+  "logLabel": "日志",
+  "logDescription": "活动、操作和审计日志。",
+  "days": "{{count}} 天",
+  "forever": "永久保留",
+  "saved": "保留期已更新，下次清理时生效",
+  "saveFailed": "保存保留期失败",
+  "loadFailed": "加载保留期失败",
+  "runTitle": "立即清理",
+  "runDescription": "不等待每天的自动清理，现在就按上面的保留期清理一次。删除后无法恢复。",
+  "runButton": "立即清理",
+  "running": "清理中…",
+  "runSuccess": "已清理 {{tasks}} 条任务记录、{{logs}} 条日志",
+  "runNothing": "没有超过保留期的记录",
+  "runFailed": "清理失败"
+}

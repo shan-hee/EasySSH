@@ -163,7 +163,7 @@ func TestConfigurationRetentionMarksOverviewCoverageIncomplete(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := time.Now().UTC().AddDate(0, 0, -90)
-	if count, err := repo.DeleteOldLogs(ctx, before, CategoryAudit); err != nil || count != 1 {
+	if count, err := records.DeleteOld(ctx, before, operationrecord.CategoryAudit); err != nil || count != 1 {
 		t.Fatalf("configuration retention: count=%d err=%v", count, err)
 	}
 	var coverage operationrecord.Coverage

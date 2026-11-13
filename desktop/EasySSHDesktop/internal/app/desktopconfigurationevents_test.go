@@ -8,6 +8,7 @@ import (
 	"github.com/easyssh/shared/protocol"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
@@ -100,7 +101,7 @@ func TestServerActivityTracksActualChangesAndKeepsDeletedName(t *testing.T) {
 	if _, err := s.db.Exec(`UPDATE activity_logs SET finished_at='2000-01-01T00:00:00Z'`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = activity.Clear(""); err != nil {
+	if _, err = activity.pruneBefore(context.Background(), time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.db.QueryRow(`SELECT COUNT(*) FROM desktop_configuration_events`).Scan(&count); err != nil || count != 0 {

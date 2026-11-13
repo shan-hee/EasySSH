@@ -3,21 +3,11 @@ import { ActivityLinks } from "@/components/activity/activity-links"
 import * as React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef, Row } from "@tanstack/react-table"
-import { Download, Trash2 } from "lucide-react"
+import { Download } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { CopyCheckIcon } from "@/components/animate-ui/icons/copy-check"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -26,15 +16,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { toast } from "@/components/ui/sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { getErrorMessage } from "@/lib/error-utils"
 import { serversApi } from "@/lib/api/servers"
 import type {
   AuditLog,
-  AuditLogCleanupResponse,
   AuditLogListParams,
   AuditLogStatus,
   AuditLogSummary,
@@ -90,7 +77,6 @@ interface LogsClientProps {
       total_pages: number
     }>
     getById: (id: string) => Promise<AuditLog>
-    cleanup: (retentionDays: number) => Promise<AuditLogCleanupResponse>
   }
 }
 
@@ -238,9 +224,6 @@ export function LogsClient({ defaultAction, desktopMode = false, overview, serve
   const [selectedLogId, setSelectedLogId] = React.useState<string | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
-  const [cleanupOpen, setCleanupOpen] = React.useState(false)
-  const [cleanupLoading, setCleanupLoading] = React.useState(false)
-  const [retentionDays, setRetentionDays] = React.useState("90")
   const [filters, setFilters] = React.useState<LogFilterValues>(defaultFilters)
   const [appliedFilters, setAppliedFilters] = React.useState<LogFilterValues>(defaultFilters)
   const [sort, setSort] = React.useState<LogSortState>(defaultLogSort)
@@ -326,30 +309,6 @@ export function LogsClient({ defaultAction, desktopMode = false, overview, serve
   const handleRefresh = () => {
     void logsQuery.refetch()
     if (isDetailDialogOpen && selectedLogId) void detailQuery.refetch()
-  }
-
-  const handleCleanupLogs = async () => {
-    const parsedRetentionDays = Number(retentionDays)
-    if (!Number.isInteger(parsedRetentionDays) || parsedRetentionDays < 1 || parsedRetentionDays > 3650) {
-      toast.error(t("cleanupInvalidRetention"))
-      return
-    }
-
-    try {
-      setCleanupLoading(true)
-      const result = await api.cleanup(parsedRetentionDays)
-      toast.success(t("cleanupSuccess", { count: result.deleted_count }))
-      await queryClient.invalidateQueries({ queryKey: queryKeys.logs.auditRoot })
-      setCleanupOpen(false)
-      setPage(1)
-      setSelectedLogId(null)
-      setIsDetailDialogOpen(false)
-      setCopied(false)
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, t("cleanupFailed")))
-    } finally {
-      setCleanupLoading(false)
-    }
   }
 
   const handlePageChange = (nextPage: number) => {
@@ -663,16 +622,6 @@ export function LogsClient({ defaultAction, desktopMode = false, overview, serve
             onRefresh={handleRefresh}
             isRefreshing={tableLoading}
           >
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-destructive hover:text-destructive"
-              disabled={cleanupLoading}
-              onClick={() => setCleanupOpen(true)}
-            >
-              <Trash2 className="mr-2 h-4 w-4" />
-              {t("cleanupButton")}
-            </Button>
             <Button variant="outline" size="sm" onClick={() => downloadLogsJson(table.getFilteredRowModel().rows.map((row) => row.original), "logs")} className="h-8">
               <Download className="mr-2 h-4 w-4" />
               {t("exportCurrentPage")}
@@ -747,49 +696,6 @@ export function LogsClient({ defaultAction, desktopMode = false, overview, serve
           )}
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={cleanupOpen} onOpenChange={setCleanupOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("cleanupDialogTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("cleanupDialogDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="grid gap-3 py-2">
-            <div className="grid gap-2">
-              <Label htmlFor="activity-log-retention-days">{t("cleanupRetentionLabel")}</Label>
-              <Input
-                id="activity-log-retention-days"
-                type="number"
-                min={1}
-                max={3650}
-                value={retentionDays}
-                disabled={cleanupLoading}
-                onChange={(event) => setRetentionDays(event.target.value)}
-              />
-              <p className="text-sm text-muted-foreground">{t("cleanupRetentionHint")}</p>
-            </div>
-            <p className="text-sm text-destructive">{t("cleanupWarning")}</p>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={cleanupLoading}>{t("cleanupCancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
-              disabled={cleanupLoading}
-              onClick={(event) => {
-                event.preventDefault()
-                void handleCleanupLogs()
-              }}
-            >
-              {cleanupLoading ? (
-                <>
-                  <Spinner className="mr-2" />
-                  {t("cleanupRunning")}
-                </>
-              ) : t("cleanupConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </DashboardPageContent>
   )
 }

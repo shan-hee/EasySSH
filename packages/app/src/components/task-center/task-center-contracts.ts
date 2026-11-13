@@ -58,13 +58,6 @@ export interface TaskRunListResponse {
 
 export type TaskStatistics = components["schemas"]["TaskStatistics"]
 
-export interface TaskCleanupResult {
-  deleted_count: number
-  deleted_events: number
-  deleted_notifications: number
-  retention_days: number
-}
-
 export interface TaskRunListParams {
   status?: TaskRunStatus[]
   task_type?: string[]
@@ -77,7 +70,6 @@ export interface TaskRunListParams {
 export interface TaskCenterApi {
   list(params?: TaskRunListParams): Promise<TaskRunListResponse>
   statistics(): Promise<TaskStatistics>
-  cleanup(retentionDays: number): Promise<TaskCleanupResult>
   get(id: string): Promise<{ run: TaskRun; events: TaskEvent[]; eventPage?: components["schemas"]["TaskEventPage"] }>
   events?(id: string, after: number): Promise<components["schemas"]["TaskEventPage"]>
   cancel(id: string): Promise<{ id: string; status: TaskRunStatus }>

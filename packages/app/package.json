@@ -17,6 +17,7 @@
     "./components/resource-boundary": "./src/components/resource-boundary.tsx",
     "./components/route-pending": "./src/components/route-pending.tsx",
     "./components/settings/account-ssh-keys": "./src/components/settings/account-ssh-keys.tsx",
+    "./components/settings/retention-panel": "./src/components/settings/retention-panel.tsx",
     "./components/settings/settings-loading": "./src/components/settings/settings-loading.tsx",
     "./components/settings/settings-section": "./src/components/settings/settings-section.tsx",
     "./components/settings/sync-panel": "./src/components/settings/sync-panel.tsx",

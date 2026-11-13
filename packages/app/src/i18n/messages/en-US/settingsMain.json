@@ -27,5 +27,7 @@
   "itemFileTransferDescription": "Session transfers, background staging and the SSH/SFTP connection pool.",
   "itemAIConfigDescription": "Model service and API key used by the AI assistant.",
   "itemNotificationConfigDescription": "External channels that deliver task notifications; sending follows each account's notification preferences.",
-  "itemBackupDescription": "Full instance backup, verification and restore. Use device sync for personal data across devices."
+  "itemBackupDescription": "Full instance backup, verification and restore. Use device sync for personal data across devices.",
+  "itemRetention": "Data retention",
+  "itemRetentionDescription": "Retention periods and cleanup for task records and logs."
 }

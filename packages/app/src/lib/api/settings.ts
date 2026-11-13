@@ -6,6 +6,7 @@ import type { components } from "@/generated/openapi"
  * 写入时省略字段保持原值，显式空字符串清空。
  */
 export type WebhookMethod = "POST" | "GET"
+export type RetentionConfig = components["schemas"]["RetentionConfig"]
 export type NotificationConfigView = components["schemas"]["NotificationConfigView"]
 export type NotificationConfigUpdate = components["schemas"]["NotificationConfigUpdate"]
 export type SMTPConfigUpdate = components["schemas"]["SMTPConfigUpdate"]
@@ -214,6 +215,18 @@ export const settingsApi = {
       method: "PATCH",
       body: config,
     })
+  },
+
+  async getRetentionSettings(): Promise<RetentionConfig> {
+    return apiFetch<RetentionConfig>("/settings/system/retention", { method: "GET" })
+  },
+
+  async saveRetentionSettings(config: RetentionConfig): Promise<RetentionConfig> {
+    return apiFetch<RetentionConfig>("/settings/system/retention", { method: "PATCH", body: config })
+  },
+
+  async runRetention(): Promise<{ deleted_tasks: number; deleted_logs: number }> {
+    return apiFetch<{ deleted_tasks: number; deleted_logs: number }>("/settings/system/retention/run", { method: "POST", retry: false })
   },
 
   async getWorkspaceConfig(): Promise<WorkspaceConfig> {

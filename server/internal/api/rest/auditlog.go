@@ -72,23 +72,6 @@ func (h *AuditLogHandler) GetAllStatistics(c *gin.Context) {
 	RespondSuccess(c, stats)
 }
 
-// CleanupOldLogs 清理旧日志（由 audit:view + audit:manage 策略授权）
-// DELETE /api/v1/logs/cleanup?retention_days=90
-func (h *AuditLogHandler) CleanupOldLogs(c *gin.Context) {
-	retentionDays, ok := parseBoundedQueryInt(c, "retention_days", 90, 1, 3650)
-	if !ok {
-		return
-	}
-
-	deletedCount, err := h.auditService.CleanupOldLogs(c.Request.Context(), retentionDays)
-	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "cleanup_failed", err.Error())
-		return
-	}
-
-	RespondSuccess(c, protocol.AuditLogCleanupResult{DeletedCount: deletedCount, RetentionDays: retentionDays})
-}
-
 func (h *AuditLogHandler) getLogByID(c *gin.Context) (*auditlog.AuditLog, bool) {
 	logID, err := uuid.Parse(c.Param("id"))
 	if err != nil {

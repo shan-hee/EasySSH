@@ -13,6 +13,7 @@ const activityFamilySQL = "COALESCE(parent_work_id,work_id)"
 
 // Retention removes completed work families, not individual attempts. A recent
 // retry, active target or interruption interval protects the entire family.
+// Every outcome is kept for the same period.
 // Each short transaction has a bounded candidate set and its own coverage write.
 func (r *repository) DeleteOld(ctx context.Context, before time.Time, category Category) (int64, error) {
 	var total int64
@@ -38,8 +39,7 @@ func (r *repository) DeleteOld(ctx context.Context, before time.Time, category C
 				Select("actor_kind,actor_id,actor_session_id,actor_grant_id,"+activityFamilySQL+" AS family_id").
 				Group(group).
 				Having("SUM(CASE WHEN status IN ? THEN 1 ELSE 0 END)=0", []Status{StatusPending, StatusRunning}).
-				Having("MAX("+end+") < ?", before).
-				Having("SUM(CASE WHEN status IN ? THEN 1 ELSE 0 END)=0 OR MAX("+end+") < ?", []Status{StatusFailure, StatusPartial, StatusTimeout, StatusUnknown}, before.AddDate(0, 0, -90))
+				Having("MAX("+end+") < ?", before)
 			if category != "" {
 				// A category filter may select a whole family; it cannot remove
 				// one part of a family that also contains another category.

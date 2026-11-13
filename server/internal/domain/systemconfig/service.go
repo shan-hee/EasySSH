@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/easyssh/shared/retention"
 )
 
 // Service 系统配置服务接口
@@ -15,6 +17,7 @@ type Service interface {
 	SaveBasic(ctx context.Context, config *SystemConfig) error
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
 	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
+	SaveRetention(ctx context.Context, config *SystemConfig) error
 }
 
 type service struct {
@@ -65,6 +68,16 @@ func (s *service) SaveScheduledTasks(ctx context.Context, config *SystemConfig) 
 		return errors.New("job queue max concurrency must be between 1 and 16")
 	}
 	return s.repo.SaveScheduledTasks(ctx, config)
+}
+
+func (s *service) SaveRetention(ctx context.Context, config *SystemConfig) error {
+	if config == nil {
+		return errors.New("retention configuration is required")
+	}
+	if !retention.Valid(config.TaskRetentionDays) || !retention.Valid(config.LogRetentionDays) {
+		return errors.New("retention days must be one of the offered periods, or 0 to keep records forever")
+	}
+	return s.repo.SaveRetention(ctx, config)
 }
 
 func (s *service) validateBasic(config *SystemConfig) error {

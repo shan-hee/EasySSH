@@ -19,12 +19,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const (
-	desktopTaskChangedEvent         = "desktop:task-center-changed"
-	desktopTaskRetentionInterval    = 24 * time.Hour
-	desktopTaskSuccessRetentionDays = 90
-	desktopTaskFailureRetentionDays = 180
-)
+const desktopTaskChangedEvent = "desktop:task-center-changed"
 
 var desktopTaskTerminalStatuses = []string{"succeeded", "failed", "partial_success", "canceled", "timeout", "unknown"}
 
@@ -110,7 +105,6 @@ type DesktopTaskCleanupResult struct {
 	DeletedCount         int64 `json:"deleted_count"`
 	DeletedEvents        int64 `json:"deleted_events"`
 	DeletedNotifications int64 `json:"deleted_notifications"`
-	RetentionDays        int   `json:"retention_days"`
 }
 
 type desktopTaskCreateInput struct {
@@ -156,8 +150,6 @@ type DesktopTaskService struct {
 	window        *application.WebviewWindow
 	notifications *DesktopNotificationService
 	handlers      map[string]desktopTaskHandler
-	workerCancel  context.CancelFunc
-	workerWG      sync.WaitGroup
 }
 
 func NewDesktopTaskService(notifications *DesktopNotificationService) *DesktopTaskService {
@@ -177,25 +169,13 @@ func (s *DesktopTaskService) ServiceStartup(ctx context.Context, _ application.S
 	if err := s.recoverInterrupted(ctx); err != nil {
 		return err
 	}
-	workerCtx, cancel := context.WithCancel(ctx)
-	s.mu.Lock()
-	s.workerCancel = cancel
-	s.workerWG.Add(1)
-	s.mu.Unlock()
-	go s.runRetentionWorker(workerCtx)
 	return nil
 }
 
 func (s *DesktopTaskService) ServiceShutdown() error {
 	s.mu.Lock()
-	cancel := s.workerCancel
 	s.stopping = true
-	s.workerCancel = nil
 	s.mu.Unlock()
-	if cancel != nil {
-		cancel()
-		s.workerWG.Wait()
-	}
 	s.completionWG.Wait()
 	s.mu.Lock()
 	database := s.db
@@ -363,14 +343,11 @@ func (s *DesktopTaskService) Retry(id string) (map[string]string, error) {
 	return map[string]string{"id": newID, "retry_of_id": run.ID}, nil
 }
 
-func (s *DesktopTaskService) Cleanup(retentionDays int) (DesktopTaskCleanupResult, error) {
-	if retentionDays < 1 || retentionDays > 3650 {
-		return DesktopTaskCleanupResult{}, errors.New("retention days must be between 1 and 3650")
-	}
-	cutoff := time.Now().UTC().AddDate(0, 0, -retentionDays).Format(time.RFC3339Nano)
-	result, err := s.cleanupWhere("finished_at != '' AND finished_at < ? AND status IN ("+desktopSQLPlaceholders(len(desktopTaskTerminalStatuses))+")", append([]any{cutoff}, desktopStringsToAny(desktopTaskTerminalStatuses)...)...)
-	result.RetentionDays = retentionDays
-	return result, err
+// cleanupBefore removes finished runs older than the retention cutoff. Only the
+// retention service removes runs by age.
+func (s *DesktopTaskService) cleanupBefore(before time.Time) (DesktopTaskCleanupResult, error) {
+	cutoff := before.UTC().Format(time.RFC3339Nano)
+	return s.cleanupWhere("finished_at != '' AND finished_at < ? AND status IN ("+desktopSQLPlaceholders(len(desktopTaskTerminalStatuses))+")", append([]any{cutoff}, desktopStringsToAny(desktopTaskTerminalStatuses)...)...)
 }
 
 func (s *DesktopTaskService) create(input desktopTaskCreateInput) (string, error) {
@@ -643,31 +620,6 @@ func (s *DesktopTaskService) emitChanged(eventType string, taskID string) {
 	if window != nil {
 		window.EmitEvent(desktopTaskChangedEvent, map[string]any{"type": eventType, "task_id": taskID})
 	}
-}
-
-func (s *DesktopTaskService) runRetentionWorker(ctx context.Context) {
-	defer s.workerWG.Done()
-	if !waitForDesktopActivation(ctx) {
-		return
-	}
-	_, _ = s.cleanupDefaultRetention()
-	ticker := time.NewTicker(desktopTaskRetentionInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			_, _ = s.cleanupDefaultRetention()
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func (s *DesktopTaskService) cleanupDefaultRetention() (DesktopTaskCleanupResult, error) {
-	now := time.Now().UTC()
-	shortCutoff := now.AddDate(0, 0, -desktopTaskSuccessRetentionDays).Format(time.RFC3339Nano)
-	longCutoff := now.AddDate(0, 0, -desktopTaskFailureRetentionDays).Format(time.RFC3339Nano)
-	return s.cleanupWhere(`finished_at != '' AND ((status IN ('failed','partial_success','timeout','unknown') AND finished_at < ?) OR (status IN ('succeeded','canceled') AND finished_at < ?))`, longCutoff, shortCutoff)
 }
 
 func (s *DesktopTaskService) cleanupWhere(where string, args ...any) (DesktopTaskCleanupResult, error) {

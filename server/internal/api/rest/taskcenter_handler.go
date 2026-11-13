@@ -109,21 +109,6 @@ func (h *TaskCenterHandler) Statistics(c *gin.Context) {
 	RespondSuccess(c, result.Wire())
 }
 
-// Cleanup 删除当前用户保留期外的已结束任务运行记录。
-func (h *TaskCenterHandler) Cleanup(c *gin.Context) {
-	retentionDays, err := strconv.Atoi(c.DefaultQuery("retention_days", "90"))
-	if err != nil || retentionDays < 1 || retentionDays > 3650 {
-		RespondError(c, http.StatusBadRequest, "invalid_retention_days", "Retention days must be between 1 and 3650")
-		return
-	}
-	result, err := h.service.Cleanup(c.Request.Context(), retentionDays)
-	if err != nil {
-		RespondError(c, http.StatusInternalServerError, "cleanup_task_runs_failed", err.Error())
-		return
-	}
-	RespondSuccess(c, protocol.TaskCleanupResult{DeletedCount: result.DeletedCount, DeletedEvents: result.DeletedEvents, DeletedNotifications: result.DeletedNotifications, RetentionDays: retentionDays})
-}
-
 func (h *TaskCenterHandler) Get(c *gin.Context) {
 	id, ok := taskCenterID(c)
 	if !ok {

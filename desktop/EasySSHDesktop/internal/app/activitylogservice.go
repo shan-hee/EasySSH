@@ -106,15 +106,12 @@ func (s *ActivityLogService) ServiceStartup(ctx context.Context, _ application.S
 	if err = recoverDesktopConnections(ctx, db); err != nil {
 		return err
 	}
-	if _, err = pruneDesktopActivity(ctx, db, time.Now().UTC().AddDate(0, 0, -90), true); err != nil {
-		return err
-	}
 	worker, cancel := context.WithCancel(ctx)
 	s.mu.Lock()
 	s.workerCancel = cancel
 	s.workerWG.Add(1)
 	s.mu.Unlock()
-	go s.runRetention(worker)
+	go s.runReconciliation(worker)
 	return nil
 }
 
@@ -255,21 +252,6 @@ func (s *ActivityLogService) GetById(id string) (DesktopActivityLogItem, error) 
 		return item, err
 	}
 	return item, nil
-}
-
-func (s *ActivityLogService) Clear(before string) (int64, error) {
-	if err := s.reconcileConnections(context.Background()); err != nil {
-		return 0, err
-	}
-	cutoff, err := desktopActivityClearBefore(before)
-	if err != nil {
-		return 0, err
-	}
-	db, err := s.database()
-	if err != nil {
-		return 0, err
-	}
-	return pruneDesktopActivity(context.Background(), db, cutoff, false)
 }
 
 func (s *ActivityLogService) database() (*sql.DB, error) {

@@ -39,10 +39,6 @@ export function createDesktopTaskCenterApi(): TaskCenterApi {
       return await DesktopTaskService.Statistics() as unknown as Awaited<ReturnType<TaskCenterApi["statistics"]>>
     },
 
-    async cleanup(retentionDays: number) {
-      return await DesktopTaskService.Cleanup(retentionDays) as unknown as Awaited<ReturnType<TaskCenterApi["cleanup"]>>
-    },
-
     async get(id: string) {
       const details = await DesktopTaskService.Get(id)
       const page = await DesktopTaskService.ListEvents(id, new TaskEventInput({ after_id: 0, limit: 50 }))

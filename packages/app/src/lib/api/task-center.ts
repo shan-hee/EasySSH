@@ -4,7 +4,6 @@ import { readInstanceContentChunk } from "@/lib/api/content"
 import { apiFetch } from "@/lib/api-client"
 import type {
   TaskCenterApi,
-  TaskCleanupResult,
   TaskRunListParams,
   TaskRunListResponse,
   TaskRunStatus,
@@ -13,7 +12,6 @@ import type {
 
 export type {
   TaskCenterApi,
-  TaskCleanupResult,
   TaskEvent,
   TaskRun,
   TaskRunListParams,
@@ -33,9 +31,6 @@ export const taskCenterApi: TaskCenterApi = {
   },
   statistics() {
     return apiFetch<TaskStatistics>("/tasks/statistics")
-  },
-  cleanup(retentionDays: number) {
-    return apiFetch<TaskCleanupResult>(`/tasks/cleanup?retention_days=${retentionDays}`, { method: "DELETE" })
   },
   async get(id: string) {
     const details = await apiFetch<components["schemas"]["TaskRunDetails"]>(`/tasks/${id}`)

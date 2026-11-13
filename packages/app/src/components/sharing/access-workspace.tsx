@@ -435,7 +435,6 @@ export function AccessWorkspace({
                   <TaskCenterView
                     api={visitorTasks}
                     hidePageHeader
-                    canCleanup={false}
                     requestedRunID={requestedTask}
                     onClearRequestedRun={() => setRequestedTask(null)}
                   />

@@ -90,7 +90,7 @@ func TestInterruptedConnectionStopsAtLastObservation(t *testing.T) {
 	if err != nil || overview.ConnectionDurationMs != (2*time.Minute).Milliseconds() || !overview.ConnectionDurationIsLowerBound || overview.Volume.Connections != 1 || overview.Volume.ConnectionFailures != 0 || overview.Volume.ByStatus[activitystats.StatusUnknown] != 1 {
 		t.Fatalf("interruption became uptime or definite failure: %+v %v", overview, err)
 	}
-	if _, err = pruneDesktopActivity(context.Background(), s.db, day.Add(24*time.Hour), false); err != nil {
+	if _, err = pruneDesktopActivity(context.Background(), s.db, day.Add(24*time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	var count int

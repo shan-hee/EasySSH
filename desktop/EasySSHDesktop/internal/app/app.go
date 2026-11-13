@@ -117,6 +117,7 @@ func Run(assets fs.FS, appIcon []byte) {
 	for _, service := range []application.Service{
 		application.NewService(activityLogService),
 		application.NewService(taskService),
+		application.NewService(NewDesktopRetentionService(taskService, activityLogService)),
 		application.NewService(&DesktopContentService{database: taskService.database}),
 		application.NewService(serverService),
 		application.NewService(remoteWorkspaces),

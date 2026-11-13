@@ -1,0 +1,20 @@
+{
+  "title": "Data retention",
+  "description": "Finished records are removed automatically every day once they are older than their retention period. The periods set here apply to this instance only and are not synced to other devices.",
+  "taskLabel": "Task records",
+  "taskDescription": "Finished task runs with their events and notifications. Queued and running tasks are not affected.",
+  "logLabel": "Logs",
+  "logDescription": "Activity, operation and audit logs.",
+  "days": "{{count}} days",
+  "forever": "Keep forever",
+  "saved": "Retention updated; it applies to the next cleanup",
+  "saveFailed": "Failed to save retention",
+  "loadFailed": "Failed to load retention",
+  "runTitle": "Clean up now",
+  "runDescription": "Apply the periods above now instead of waiting for the daily cleanup. Removed records cannot be restored.",
+  "runButton": "Clean up now",
+  "running": "Cleaning up…",
+  "runSuccess": "Removed {{tasks}} task records and {{logs}} log entries",
+  "runNothing": "Nothing is older than its retention period",
+  "runFailed": "Cleanup failed"
+}

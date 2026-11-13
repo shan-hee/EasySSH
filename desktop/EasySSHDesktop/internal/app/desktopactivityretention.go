@@ -3,14 +3,15 @@ package app
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"time"
 )
 
 // Retain complete work families, including retry chains and batch children.
 // Never remove the latest projection and accidentally expose an earlier attempt
 // as current, or recreate a running source after the user clears history.
-func pruneDesktopActivity(ctx context.Context, db *sql.DB, before time.Time, retention bool) (int64, error) {
+// pruneDesktopActivity removes whole finished work families older than before.
+// Every outcome is kept for the same period.
+func pruneDesktopActivity(ctx context.Context, db *sql.DB, before time.Time) (int64, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -19,10 +20,6 @@ func pruneDesktopActivity(ctx context.Context, db *sql.DB, before time.Time, ret
 	family := `CASE WHEN parent_work_id='' THEN work_id ELSE parent_work_id END`
 	query := `SELECT ` + family + ` AS family_id FROM activity_logs GROUP BY ` + family + ` HAVING SUM(CASE WHEN finished_at='' OR status IN ('pending','running') THEN 1 ELSE 0 END)=0 AND MAX(julianday(finished_at))<julianday(?)`
 	args := []any{before.Format(time.RFC3339Nano)}
-	if retention {
-		query += ` AND (SUM(CASE WHEN status IN ('failure','partial','timeout','unknown') THEN 1 ELSE 0 END)=0 OR MAX(julianday(finished_at))<julianday(?))`
-		args = append(args, before.AddDate(0, 0, -90).Format(time.RFC3339Nano))
-	}
 	result, err := tx.ExecContext(ctx, `DELETE FROM activity_logs WHERE `+family+` IN (`+query+`)`, args...)
 	if err != nil {
 		return 0, err
@@ -42,22 +39,8 @@ func pruneDesktopActivity(ctx context.Context, db *sql.DB, before time.Time, ret
 	return count, nil
 }
 
-func desktopActivityClearBefore(value string) (time.Time, error) {
-	if value == "" {
-		return time.Now().UTC(), nil
-	}
-	for _, layout := range []string{time.RFC3339Nano, "2006-01-02"} {
-		if parsed, err := time.Parse(layout, value); err == nil {
-			if parsed.After(time.Now()) {
-				return time.Time{}, errors.New("activity cutoff cannot be in the future")
-			}
-			return parsed.UTC(), nil
-		}
-	}
-	return time.Time{}, errors.New("invalid activity cutoff")
-}
-
-func (s *ActivityLogService) runRetention(ctx context.Context) {
+// Connections left open by a crash are closed daily so their logs can expire.
+func (s *ActivityLogService) runReconciliation(ctx context.Context) {
 	defer s.workerWG.Done()
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
@@ -67,24 +50,24 @@ func (s *ActivityLogService) runRetention(ctx context.Context) {
 			return
 		case <-ticker.C:
 			bounded, cancel := context.WithTimeout(ctx, 10*time.Second)
-			err := s.pruneRetainedActivity(bounded)
+			err := s.reconcileConnections(bounded)
 			cancel()
 			if err != nil && ctx.Err() == nil {
-				desktopLogPrintf("activity retention failed: %v", err)
+				desktopLogPrintf("connection reconciliation failed: %v", err)
 			}
-
 		}
 	}
 }
 
-func (s *ActivityLogService) pruneRetainedActivity(ctx context.Context) error {
+// pruneBefore removes logs older than the retention cutoff. Only the retention
+// service removes logs by age.
+func (s *ActivityLogService) pruneBefore(ctx context.Context, before time.Time) (int64, error) {
 	if err := s.reconcileConnections(ctx); err != nil {
-		return err
+		return 0, err
 	}
 	db, err := s.database()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = pruneDesktopActivity(ctx, db, time.Now().UTC().AddDate(0, 0, -90), true)
-	return err
+	return pruneDesktopActivity(ctx, db, before)
 }

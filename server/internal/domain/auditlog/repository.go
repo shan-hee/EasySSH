@@ -15,7 +15,6 @@ type Repository interface {
 	List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLogSummary, int64, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*AuditLog, error)
 	GetStatistics(ctx context.Context, req *AuditLogStatisticsRequest) (*AuditLogStatistics, error)
-	DeleteOldLogs(ctx context.Context, before time.Time, category LogCategory) (int64, error)
 }
 
 type repository struct {
@@ -89,10 +88,6 @@ func (r *repository) GetStatistics(ctx context.Context, req *AuditLogStatisticsR
 	}
 
 	return stats, nil
-}
-
-func (r *repository) DeleteOldLogs(ctx context.Context, before time.Time, category LogCategory) (int64, error) {
-	return r.records.DeleteOld(ctx, before, mapLogCategory(category))
 }
 
 func (r *repository) statisticsQuery(ctx context.Context, req *AuditLogStatisticsRequest) *gorm.DB {

@@ -21,7 +21,7 @@ export const desktopViews = {
   "ssh-keys": view("keyPairsLabel", async () => { const m = await import("./desktop-ssh-keys-view"); return { default: m.DesktopSSHKeysView } }, ["accountSettings", "servers"]),
   tasks: view("taskManagementLabel", async () => { const m = await import("./desktop-task-center-view"); return { default: m.DesktopTaskCenterView } }, ["taskCenter"]),
   "activity-logs": view("activityLogLabel", async () => { const m = await import("./desktop-activity-logs-view"); return { default: m.DesktopActivityLogsView } }, ["logsAudit"]),
-  "backup-restore": view("backupRestoreLabel", async () => { const m = await import("./desktop-backup-restore-view"); return { default: m.DesktopBackupRestoreView } }, ["settingsManagementBackup"]),
+  "backup-restore": view("backupRestoreLabel", async () => { const m = await import("./desktop-backup-restore-view"); return { default: m.DesktopBackupRestoreView } }, ["settingsManagementBackup", "settingsRetention"]),
   sync: view("syncSettingsLabel", async () => { const m = await import("./desktop-sync-view"); return { default: m.DesktopSyncView } }, ["settingsManagementBackup"]),
 }
 

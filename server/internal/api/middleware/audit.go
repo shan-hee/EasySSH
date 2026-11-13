@@ -181,7 +181,8 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 	{"POST", "/api/v1/settings/webhook"}:                 auditlog.ActionNotificationSettingsUpdate,
 	{"POST", "/api/v1/settings/dingtalk"}:                auditlog.ActionNotificationSettingsUpdate,
 	{"POST", "/api/v1/settings/wecom"}:                   auditlog.ActionNotificationSettingsUpdate,
-	{"DELETE", "/api/v1/logs/cleanup"}:                   auditlog.ActionAuditLogsCleanup,
+	{"PATCH", "/api/v1/settings/system/retention"}:       auditlog.ActionSystemSettingsUpdate,
+	{"POST", "/api/v1/settings/system/retention/run"}:    auditlog.ActionAuditLogsCleanup,
 }
 
 func determineAction(method, path string) auditlog.ActionType {

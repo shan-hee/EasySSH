@@ -1,7 +1,7 @@
 import { Suspense } from "react"
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { Archive, Bot, Cable, Clock3, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Workflow } from "lucide-react"
+import { Archive, Bot, Cable, Clock3, Eraser, Fingerprint, Globe, HardDrive, Mail, Settings, Shield, Workflow } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { cn } from "@/lib/utils"
@@ -46,6 +46,7 @@ const groups: SettingsGroup[] = [
     { id: "notification-config", nameKey: "itemNotificationConfig", icon: Mail },
   ] },
   { id: "data", nameKey: "groupData", items: [
+    { id: "retention", nameKey: "itemRetention", icon: Eraser },
     { id: "backup", nameKey: "itemBackup", icon: Archive },
   ] },
 ]

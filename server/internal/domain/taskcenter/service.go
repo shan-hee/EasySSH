@@ -6,8 +6,6 @@ import (
 	"errors"
 	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/shared/protocol"
-	"log"
-	"sync"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/realtime"
@@ -20,12 +18,6 @@ var (
 	ErrNotCancelable           = errors.New("task run is not cancelable")
 	ErrObservedOutcomeConflict = errors.New("task outcome conflicts with the observed result")
 	ErrTransferOutcomeConflict = errors.New("task outcome conflicts with the transfer source")
-)
-
-const (
-	retentionCleanupInterval    = 24 * time.Hour
-	defaultSuccessRetentionDays = 90
-	defaultFailureRetentionDays = 180
 )
 
 type CancelHandler interface {
@@ -54,39 +46,25 @@ type Service interface {
 	List(ctx context.Context, req *ListRequest) (*ListResponse, error)
 	Statistics(ctx context.Context) (*Statistics, error)
 	Events(ctx context.Context, runID uuid.UUID, input protocol.TaskEventInput) (*protocol.TaskEventPage, error)
-	Cleanup(ctx context.Context, retentionDays int) (*CleanupResult, error)
-	StartRetention(ctx context.Context)
-	StopRetention()
+	// CleanupBefore removes finished runs older than the retention cutoff. The
+	// retention service decides the cutoff; nothing else removes runs by age.
+	CleanupBefore(ctx context.Context, before time.Time) (*CleanupResult, error)
 	RequestCancel(ctx context.Context, id uuid.UUID) error
 	RecoverInterrupted(ctx context.Context) error
 	SetCanceler(canceler CancelHandler)
-	SetContentCleanup(cleanup func(context.Context) error)
 }
 
 type service struct {
-	repo           Repository
-	canceler       CancelHandler
-	events         *realtime.Hub
-	contentCleanup func(context.Context) error
-
-	retentionMu     sync.Mutex
-	retentionCancel context.CancelFunc
-	retentionWG     sync.WaitGroup
+	repo     Repository
+	canceler CancelHandler
+	events   *realtime.Hub
 }
 
 func NewService(repo Repository, events *realtime.Hub) Service {
 	return &service{repo: repo, events: events}
 }
 
-func (s *service) SetCanceler(canceler CancelHandler)                    { s.canceler = canceler }
-func (s *service) SetContentCleanup(cleanup func(context.Context) error) { s.contentCleanup = cleanup }
-func (s *service) cleanupContent(ctx context.Context) {
-	if s.contentCleanup != nil {
-		if err := s.contentCleanup(ctx); err != nil && !errors.Is(err, context.Canceled) {
-			log.Printf("[TaskCenter] content retention: %v", err)
-		}
-	}
-}
+func (s *service) SetCanceler(canceler CancelHandler) { s.canceler = canceler }
 func (s *service) Create(ctx context.Context, run *TaskRun) error {
 	if !run.Actor.Valid() {
 		run.Actor = access.Current(ctx).Actor()
@@ -368,105 +346,18 @@ func (s *service) Events(ctx context.Context, runID uuid.UUID, input protocol.Ta
 	return s.repo.ListEvents(ctx, runID, input)
 }
 
-func (s *service) Cleanup(ctx context.Context, retentionDays int) (*CleanupResult, error) {
-	if err := access.Current(ctx).RequireOwner(ctx, protocol.ActivityRead); err != nil {
-		return nil, err
-	}
-	if retentionDays <= 0 {
-		retentionDays = 90
-	}
-	result, err := s.repo.CleanupTerminalBefore(ctx, time.Now().AddDate(0, 0, -retentionDays))
+func (s *service) CleanupBefore(ctx context.Context, before time.Time) (*CleanupResult, error) {
+	result, err := s.repo.CleanupTerminalBefore(ctx, before)
 	if err != nil {
 		return nil, err
 	}
-	s.publishCleanup(access.Current(ctx).Actor(), result, map[string]interface{}{"policy": "manual", "retention_days": retentionDays})
-	s.cleanupContent(ctx)
+	if s.events != nil {
+		for _, actor := range result.AffectedActors {
+			s.events.Publish(actor, "task.cleanup.completed", map[string]interface{}{"policy": "retention"})
+			s.events.Publish(actor, "notification.cleanup.completed", map[string]interface{}{"policy": "retention"})
+		}
+	}
 	return result, nil
-}
-
-func (s *service) StartRetention(ctx context.Context) {
-	s.retentionMu.Lock()
-	defer s.retentionMu.Unlock()
-	if s.retentionCancel != nil {
-		return
-	}
-	workerCtx, cancel := context.WithCancel(ctx)
-	s.retentionCancel = cancel
-	s.retentionWG.Add(1)
-	go s.runRetentionWorker(workerCtx)
-}
-
-func (s *service) StopRetention() {
-	s.retentionMu.Lock()
-	defer s.retentionMu.Unlock()
-	cancel := s.retentionCancel
-	if cancel == nil {
-		return
-	}
-	cancel()
-	s.retentionWG.Wait()
-	s.retentionCancel = nil
-}
-
-func (s *service) runRetentionWorker(ctx context.Context) {
-	defer s.retentionWG.Done()
-	s.applyDefaultRetention(ctx)
-	ticker := time.NewTicker(retentionCleanupInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			s.applyDefaultRetention(ctx)
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-func (s *service) applyDefaultRetention(ctx context.Context) {
-	result, err := s.repo.CleanupDefaultRetention(ctx, time.Now())
-	if err != nil {
-		if !errors.Is(err, context.Canceled) {
-			log.Printf("[TaskCenter] default retention cleanup failed: %v", err)
-		}
-		return
-	}
-	if result.DeletedCount > 0 {
-		log.Printf("[TaskCenter] default retention cleanup completed: runs=%d events=%d notifications=%d", result.DeletedCount, result.DeletedEvents, result.DeletedNotifications)
-	}
-	s.cleanupContent(ctx)
-	for _, actor := range result.AffectedActors {
-		s.publishDefaultRetention(actor)
-	}
-}
-
-func (s *service) publishDefaultRetention(actor protocol.Actor) {
-	if s.events == nil {
-		return
-	}
-	payload := map[string]interface{}{
-		"policy": "default", "success_retention_days": defaultSuccessRetentionDays, "failure_retention_days": defaultFailureRetentionDays,
-	}
-	s.events.Publish(actor, "task.cleanup.completed", payload)
-	s.events.Publish(actor, "notification.cleanup.completed", payload)
-}
-
-func (s *service) publishCleanup(actor protocol.Actor, result *CleanupResult, extra map[string]interface{}) {
-	if s.events == nil || result == nil {
-		return
-	}
-	payload := map[string]interface{}{
-		"deleted_count":         result.DeletedCount,
-		"deleted_events":        result.DeletedEvents,
-		"deleted_notifications": result.DeletedNotifications,
-	}
-	for key, value := range extra {
-		payload[key] = value
-	}
-	s.events.Publish(actor, "task.cleanup.completed", payload)
-	if result.DeletedNotifications > 0 {
-		s.events.Publish(actor, "notification.cleanup.completed", payload)
-	}
 }
 
 func (s *service) RequestCancel(ctx context.Context, id uuid.UUID) error {

@@ -790,26 +790,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/tasks/cleanup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * 清理当前用户保留期外的已结束任务运行记录
-         * @description 手动按统一保留天数清理终态任务。系统默认每天自动清理一次：成功和已取消任务保留 90 天，失败、部分成功和超时任务保留 180 天；排队中、运行中和取消中的任务永久保留且禁止清理。任务事件、结果日志和关联通知随任务记录一并清理。
-         */
-        delete: operations["deleteTasksCleanup"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/tasks/statistics": {
         parameters: {
             query?: never;
@@ -1611,22 +1591,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/logs/cleanup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete: operations["deleteLogsCleanup"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/logs/statistics": {
         parameters: {
             query?: never;
@@ -2125,6 +2089,43 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["patchSettingsSystemScheduledTasks"];
+        trace?: never;
+    };
+    "/settings/system/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSettingsSystemRetention"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 更新保留策略，下一次清理时生效 */
+        patch: operations["patchSettingsSystemRetention"];
+        trace?: never;
+    };
+    "/settings/system/retention/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 立即按当前保留策略清理一次
+         * @description 系统每天自动执行同样的清理。排队中、运行中和取消中的任务不受影响；永久保留的类别不清理。
+         */
+        post: operations["postSettingsSystemRetentionRun"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/settings/workspace": {
@@ -4715,6 +4716,25 @@ export interface components {
         ScheduledTaskConfig: {
             job_queue_max_concurrency: number;
         };
+        /** @description 已结束记录的保留天数。0 表示永久保留；各端各自保存，互不同步。 */
+        RetentionConfig: {
+            /**
+             * @description 任务运行记录及其事件、通知
+             * @enum {integer}
+             */
+            task_retention_days: 0 | 7 | 14 | 30 | 60 | 90 | 180 | 365;
+            /**
+             * @description 活动、操作和审计日志
+             * @enum {integer}
+             */
+            log_retention_days: 0 | 7 | 14 | 30 | 60 | 90 | 180 | 365;
+        };
+        RetentionRunResult: {
+            /** Format: int64 */
+            deleted_tasks: number;
+            /** Format: int64 */
+            deleted_logs: number;
+        };
         /** @description 当前实例队列状态；降低并发时已有任务继续完成，scaling_down 表示仍在等待活动数量降到限制内。 */
         JobQueueRuntimeStatus: {
             max_concurrency: number;
@@ -5203,15 +5223,6 @@ export interface components {
             timeout: number;
             /** Format: int64 */
             unknown: number;
-        };
-        TaskCleanupResult: {
-            /** Format: int64 */
-            deleted_count: number;
-            /** Format: int64 */
-            deleted_events: number;
-            /** Format: int64 */
-            deleted_notifications: number;
-            retention_days: number;
         };
         InboxNotification: {
             /** Format: uuid */
@@ -6926,11 +6937,6 @@ export interface components {
             action_stats: {
                 [key: string]: number;
             };
-        };
-        AuditLogCleanupResult: {
-            /** Format: int64 */
-            deleted_count: number;
-            retention_days: number;
         };
         AuditLogSummary: {
             /** Format: uuid */
@@ -8761,37 +8767,6 @@ export interface operations {
             };
         };
     };
-    deleteTasksCleanup: {
-        parameters: {
-            query?: {
-                retention_days?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 清理结果 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TaskCleanupResult"];
-                };
-            };
-            /** @description 保留天数无效 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     getTasksStatistics: {
         parameters: {
             query?: never;
@@ -10386,29 +10361,6 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
-    deleteLogsCleanup: {
-        parameters: {
-            query?: {
-                retention_days?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 直接返回结果对象，无 data 包装。 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuditLogCleanupResult"];
-                };
-            };
-            default: components["responses"]["Error"];
-        };
-    };
     getLogsStatistics: {
         parameters: {
             query?: {
@@ -11496,6 +11448,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScheduledTaskConfigResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSettingsSystemRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前保留策略 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionConfig"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    patchSettingsSystemRetention: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionConfig"];
+            };
+        };
+        responses: {
+            /** @description 更新后的保留策略 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionConfig"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    postSettingsSystemRetentionRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 本次清理的数量 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionRunResult"];
                 };
             };
             default: components["responses"]["Error"];

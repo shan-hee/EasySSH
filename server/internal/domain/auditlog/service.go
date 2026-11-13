@@ -13,7 +13,6 @@ type Service interface {
 	List(ctx context.Context, req *ListAuditLogsRequest) ([]*AuditLogSummary, int64, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*AuditLog, error)
 	GetStatistics(ctx context.Context, req *AuditLogStatisticsRequest) (*AuditLogStatistics, error)
-	CleanupOldLogs(ctx context.Context, retentionDays int) (int64, error)
 }
 
 type service struct {
@@ -101,13 +100,4 @@ func (s *service) GetStatistics(ctx context.Context, req *AuditLogStatisticsRequ
 	}
 
 	return s.repo.GetStatistics(ctx, req)
-}
-
-func (s *service) CleanupOldLogs(ctx context.Context, retentionDays int) (int64, error) {
-	if retentionDays <= 0 {
-		retentionDays = 90
-	}
-
-	before := time.Now().AddDate(0, 0, -retentionDays)
-	return s.repo.DeleteOldLogs(ctx, before, "")
 }

@@ -45,6 +45,7 @@ import (
 	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/rdp"
 	"github.com/easyssh/server/internal/domain/realtime"
+	"github.com/easyssh/server/internal/domain/retention"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/script"
 	"github.com/easyssh/server/internal/domain/security"
@@ -346,7 +347,27 @@ func main() {
 	operationRecordService.SetPublisher(realtimeHub)
 	taskCenterRepo := taskcenter.NewRepository(database, contentService)
 	taskCenterService := taskcenter.NewService(taskCenterRepo, realtimeHub)
-	taskCenterService.SetContentCleanup(contentService.Cleanup)
+	// The only place that deletes finished records by age.
+	retentionService := &retention.Service{
+		Policy: func(ctx context.Context) (retention.Policy, error) {
+			current, err := systemConfigService.Get(ctx)
+			if err != nil {
+				return retention.Policy{}, err
+			}
+			return retention.Policy{TaskDays: current.TaskRetentionDays, LogDays: current.LogRetentionDays}, nil
+		},
+		Tasks: func(ctx context.Context, before time.Time) (int64, error) {
+			result, err := taskCenterService.CleanupBefore(ctx, before)
+			if err != nil {
+				return 0, err
+			}
+			return result.DeletedCount, nil
+		},
+		Logs: func(ctx context.Context, before time.Time) (int64, error) {
+			return operationRecordService.DeleteOld(ctx, before, "")
+		},
+		Content: contentService.Cleanup,
+	}
 	inboxNotificationRepo := inboxnotification.NewRepository(database)
 	inboxNotificationService := inboxnotification.NewService(inboxNotificationRepo, authRepo, notificationConfigService, nil, realtimeHub)
 
@@ -458,6 +479,7 @@ func main() {
 	// 新的配置处理器
 	securityHandler := rest.NewSecurityHandler(securityService)
 	systemConfigHandler := rest.NewSystemConfigHandler(systemConfigService, jobQueue, transferLimiter, transferJobService)
+	retentionHandler := rest.NewRetentionHandler(systemConfigService, retentionService)
 	notificationConfigHandler := rest.NewNotificationConfigHandler(notificationConfigService)
 	aiConfigHandler := rest.NewAIConfigHandler(aiConfigService)
 	aiRuntimeConfigHandler := rest.NewAIRuntimeConfigHandler(aichat.NewConfigResolver(aiConfigService))
@@ -788,7 +810,6 @@ func main() {
 		{
 			logRoutes.GET("", middleware.OwnerRoute(protocol.ActivityRead, ""), auditLogHandler.ListAll)
 			logRoutes.GET("/statistics", middleware.OwnerRoute(protocol.ActivityRead, ""), auditLogHandler.GetAllStatistics)
-			logRoutes.DELETE("/cleanup", middleware.OwnerRoute(protocol.ActivityRead, ""), auditLogHandler.CleanupOldLogs)
 			logRoutes.GET("/:id", middleware.OwnerRoute(protocol.ActivityRead, ""), auditLogHandler.GetAnyByID)
 		}
 
@@ -831,7 +852,6 @@ func main() {
 		{
 			taskCenterRoutes.GET("", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.List)
 			taskCenterRoutes.GET("/statistics", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.Statistics)
-			taskCenterRoutes.DELETE("/cleanup", middleware.OwnerRoute(protocol.ResourcesManage, ""), taskCenterHandler.Cleanup)
 			taskCenterRoutes.GET("/:id/events", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.Events)
 			taskCenterRoutes.GET("/:id", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.Get)
 			taskCenterRoutes.POST("/:id/cancel", middleware.AccessRoute(protocol.WorkspaceRead, ""), taskCenterHandler.Cancel)
@@ -903,6 +923,9 @@ func main() {
 			settingsGroup.PATCH("/system/file-transfer", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.PatchFileTransferConfig)
 			settingsGroup.GET("/system/scheduled-tasks", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.GetScheduledTaskConfig)
 			settingsGroup.PATCH("/system/scheduled-tasks", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.PatchScheduledTaskConfig)
+			settingsGroup.GET("/system/retention", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.Get)
+			settingsGroup.PATCH("/system/retention", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.Patch)
+			settingsGroup.POST("/system/retention/run", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.Run)
 
 			settingsGroup.GET("/workspace", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.GetWorkspaceConfig)
 			settingsGroup.POST("/workspace", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.SaveWorkspaceConfig)
@@ -1173,7 +1196,7 @@ func main() {
 	close(instanceStarted)
 	inboxNotificationService.Start(context.Background())
 	chatConnectionService.Start(context.Background())
-	taskCenterService.StartRetention(context.Background())
+	retentionService.Start(context.Background())
 	transferJobService.StartMaintenance(context.Background())
 	httpReady.Store(true)
 
@@ -1201,8 +1224,8 @@ func main() {
 	}
 	cancelAIStop()
 
-	taskCenterService.StopRetention()
-	log.Println("✅ Task retention worker stopped")
+	retentionService.Stop()
+	log.Println("✅ Retention worker stopped")
 
 	// 停止任务调度器
 	taskScheduler.Stop()

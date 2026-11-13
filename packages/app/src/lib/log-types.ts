@@ -58,11 +58,6 @@ export interface AuditLogStatisticsResponse {
   action_stats: Record<string, number>
 }
 
-export interface AuditLogCleanupResponse {
-  deleted_count: number
-  retention_days: number
-}
-
 export interface AuditLogListParams {
   page?: number
   page_size?: number

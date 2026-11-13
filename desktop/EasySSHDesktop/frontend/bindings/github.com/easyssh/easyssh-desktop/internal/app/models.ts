@@ -2749,6 +2749,31 @@ export class DesktopSFTPWriteFileInput {
     }
 }
 
+export class DesktopRetentionResult {
+    "deleted_tasks": number;
+    "deleted_logs": number;
+
+    /** Creates a new DesktopRetentionResult instance. */
+    constructor($$source: Partial<DesktopRetentionResult> = {}) {
+        if (!("deleted_tasks" in $$source)) {
+            this["deleted_tasks"] = 0;
+        }
+        if (!("deleted_logs" in $$source)) {
+            this["deleted_logs"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopRetentionResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopRetentionResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopRetentionResult($$parsedSource as Partial<DesktopRetentionResult>);
+    }
+}
+
 export class DesktopSSHCredential {
     "authMethod": DesktopServerAuthMethod;
     "secret": string;
@@ -3205,39 +3230,6 @@ export class DesktopSyncState {
             $$parsedSource["conflicts"] = $$createField10_0($$parsedSource["conflicts"]);
         }
         return new DesktopSyncState($$parsedSource as Partial<DesktopSyncState>);
-    }
-}
-
-export class DesktopTaskCleanupResult {
-    "deleted_count": number;
-    "deleted_events": number;
-    "deleted_notifications": number;
-    "retention_days": number;
-
-    /** Creates a new DesktopTaskCleanupResult instance. */
-    constructor($$source: Partial<DesktopTaskCleanupResult> = {}) {
-        if (!("deleted_count" in $$source)) {
-            this["deleted_count"] = 0;
-        }
-        if (!("deleted_events" in $$source)) {
-            this["deleted_events"] = 0;
-        }
-        if (!("deleted_notifications" in $$source)) {
-            this["deleted_notifications"] = 0;
-        }
-        if (!("retention_days" in $$source)) {
-            this["retention_days"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopTaskCleanupResult instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopTaskCleanupResult {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopTaskCleanupResult($$parsedSource as Partial<DesktopTaskCleanupResult>);
     }
 }
 

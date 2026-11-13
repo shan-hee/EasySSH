@@ -13,10 +13,6 @@ import * as protocol$0 from "../../../shared/protocol/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
-export function Clear(before: string): $CancellablePromise<number> {
-    return $Call.ByID(2968202617, before);
-}
-
 export function GetById(id: string): $CancellablePromise<$models.DesktopActivityLogItem> {
     return $Call.ByID(1965881272, id).then(($result: any) => {
         return $$createType0($result);

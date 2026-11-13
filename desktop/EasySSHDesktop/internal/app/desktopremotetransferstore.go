@@ -48,28 +48,6 @@ func (s *DesktopRemoteWorkspaceService) ServiceStartup(ctx context.Context, _ ap
 	if err = recoverRemoteTransferReceipts(ctx, db, now); err != nil {
 		return err
 	}
-	if err := cleanupRemoteTransferReceipts(ctx, db, now); err != nil {
-		return err
-	}
-	s.workers.Add(1)
-	go func() {
-		defer s.workers.Done()
-		ticker := time.NewTicker(24 * time.Hour)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-s.ctx.Done():
-				return
-			case now := <-ticker.C:
-				cleanup, cancel := context.WithTimeout(s.ctx, 30*time.Second)
-				err := cleanupRemoteTransferReceipts(cleanup, db, now.UTC())
-				cancel()
-				if err != nil && s.ctx.Err() == nil {
-					desktopLogPrintf("remote transfer receipt retention failed: %v", err)
-				}
-			}
-		}
-	}()
 	return nil
 }
 
@@ -103,9 +81,14 @@ func recoverRemoteTransferReceipts(ctx context.Context, db *sql.DB, now time.Tim
 	return err
 }
 
-func cleanupRemoteTransferReceipts(ctx context.Context, db *sql.DB, now time.Time) error {
-	_, err := db.ExecContext(ctx, `DELETE FROM desktop_remote_transfers WHERE (status='unknown' AND updated_at<?) OR (status IN ('succeeded','failed','canceled') AND updated_at<?)`, now.AddDate(0, 0, -180).Format(time.RFC3339Nano), now.AddDate(0, 0, -90).Format(time.RFC3339Nano))
-	return err
+// cleanupRemoteTransferReceipts removes receipts of finished transfers older
+// than the retention cutoff for task records.
+func cleanupRemoteTransferReceipts(ctx context.Context, db *sql.DB, before time.Time) (int64, error) {
+	result, err := db.ExecContext(ctx, `DELETE FROM desktop_remote_transfers WHERE status IN ('unknown','succeeded','failed','canceled') AND updated_at<?`, before.UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 func (store *desktopRemoteTransferStore) insert(ctx context.Context, info DesktopRemoteTransfer) error {

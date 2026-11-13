@@ -96,7 +96,7 @@ func TestDesktopHistoryClearKeepsActiveFamilyAndAdvancesCoverage(t *testing.T) {
 		insertDesktopActivityFixture(t, tasks, DesktopActivityLogItem{Actor: desktopLocalActor(), ID: row.id, WorkID: row.work, ParentWorkID: row.parent, WorkStartedAt: old, Attempt: attempt, SourceTable: "test_source", SourceID: row.id, Action: "script", Status: DesktopActivityLogStatus(row.status), StartedAt: old, FinishedAt: finished, CreatedAt: old, Resources: []activitystats.Resource{{ServerID: "deleted-server", Name: "historical"}}})
 	}
 	activity := &ActivityLogService{db: tasks.db}
-	count, err := activity.Clear("")
+	count, err := activity.pruneBefore(context.Background(), time.Now().UTC())
 	if err != nil || count != 1 {
 		t.Fatalf("active retry family pruned: %d %v", count, err)
 	}

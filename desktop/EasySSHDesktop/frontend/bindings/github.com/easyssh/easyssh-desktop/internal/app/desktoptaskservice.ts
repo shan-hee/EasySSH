@@ -19,12 +19,6 @@ export function Cancel(id: string): $CancellablePromise<$models.DesktopTaskOverv
     });
 }
 
-export function Cleanup(retentionDays: number): $CancellablePromise<$models.DesktopTaskCleanupResult> {
-    return $Call.ByID(110109688, retentionDays).then(($result: any) => {
-        return $$createType1($result);
-    });
-}
-
 export function Get(id: string): $CancellablePromise<$models.DesktopTaskDetails> {
     return $Call.ByID(3748273232, id).then(($result: any) => {
         return $$createType2($result);
@@ -57,7 +51,6 @@ export function Statistics(): $CancellablePromise<$models.DesktopTaskStatistics>
 
 // Private type creation functions
 const $$createType0 = $models.DesktopTaskOverview.createFrom;
-const $$createType1 = $models.DesktopTaskCleanupResult.createFrom;
 const $$createType2 = $models.DesktopTaskDetails.createFrom;
 const $$createType3 = $models.DesktopTaskRunList.createFrom;
 const $$createType4 = protocol$0.TaskEventPage.createFrom;

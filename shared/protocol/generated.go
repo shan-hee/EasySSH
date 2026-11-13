@@ -950,6 +950,78 @@ func (e RDPConfigSecurity) Valid() bool {
 	}
 }
 
+// Defines values for RetentionConfigLogRetentionDays.
+const (
+	RetentionConfigLogRetentionDaysN0   RetentionConfigLogRetentionDays = 0
+	RetentionConfigLogRetentionDaysN14  RetentionConfigLogRetentionDays = 14
+	RetentionConfigLogRetentionDaysN180 RetentionConfigLogRetentionDays = 180
+	RetentionConfigLogRetentionDaysN30  RetentionConfigLogRetentionDays = 30
+	RetentionConfigLogRetentionDaysN365 RetentionConfigLogRetentionDays = 365
+	RetentionConfigLogRetentionDaysN60  RetentionConfigLogRetentionDays = 60
+	RetentionConfigLogRetentionDaysN7   RetentionConfigLogRetentionDays = 7
+	RetentionConfigLogRetentionDaysN90  RetentionConfigLogRetentionDays = 90
+)
+
+// Valid indicates whether the value is a known member of the RetentionConfigLogRetentionDays enum.
+func (e RetentionConfigLogRetentionDays) Valid() bool {
+	switch e {
+	case RetentionConfigLogRetentionDaysN0:
+		return true
+	case RetentionConfigLogRetentionDaysN14:
+		return true
+	case RetentionConfigLogRetentionDaysN180:
+		return true
+	case RetentionConfigLogRetentionDaysN30:
+		return true
+	case RetentionConfigLogRetentionDaysN365:
+		return true
+	case RetentionConfigLogRetentionDaysN60:
+		return true
+	case RetentionConfigLogRetentionDaysN7:
+		return true
+	case RetentionConfigLogRetentionDaysN90:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RetentionConfigTaskRetentionDays.
+const (
+	RetentionConfigTaskRetentionDaysN0   RetentionConfigTaskRetentionDays = 0
+	RetentionConfigTaskRetentionDaysN14  RetentionConfigTaskRetentionDays = 14
+	RetentionConfigTaskRetentionDaysN180 RetentionConfigTaskRetentionDays = 180
+	RetentionConfigTaskRetentionDaysN30  RetentionConfigTaskRetentionDays = 30
+	RetentionConfigTaskRetentionDaysN365 RetentionConfigTaskRetentionDays = 365
+	RetentionConfigTaskRetentionDaysN60  RetentionConfigTaskRetentionDays = 60
+	RetentionConfigTaskRetentionDaysN7   RetentionConfigTaskRetentionDays = 7
+	RetentionConfigTaskRetentionDaysN90  RetentionConfigTaskRetentionDays = 90
+)
+
+// Valid indicates whether the value is a known member of the RetentionConfigTaskRetentionDays enum.
+func (e RetentionConfigTaskRetentionDays) Valid() bool {
+	switch e {
+	case RetentionConfigTaskRetentionDaysN0:
+		return true
+	case RetentionConfigTaskRetentionDaysN14:
+		return true
+	case RetentionConfigTaskRetentionDaysN180:
+		return true
+	case RetentionConfigTaskRetentionDaysN30:
+		return true
+	case RetentionConfigTaskRetentionDaysN365:
+		return true
+	case RetentionConfigTaskRetentionDaysN60:
+		return true
+	case RetentionConfigTaskRetentionDaysN7:
+		return true
+	case RetentionConfigTaskRetentionDaysN90:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RuntimeProfile.
 const (
 	RuntimeProfileDesktop RuntimeProfile = "desktop"
@@ -2736,12 +2808,6 @@ type ApproveAccessHandoffInput struct {
 	Confirmation string `json:"confirmation"`
 }
 
-// AuditLogCleanupResult defines model for AuditLogCleanupResult.
-type AuditLogCleanupResult struct {
-	DeletedCount  int64 `json:"deleted_count"`
-	RetentionDays int   `json:"retention_days"`
-}
-
 // AuditLogDetail defines model for AuditLogDetail.
 type AuditLogDetail struct {
 	Action string `json:"action"`
@@ -4126,6 +4192,27 @@ type RenameAISessionRequest struct {
 	Title string `binding:"required" json:"title"`
 }
 
+// RetentionConfig 已结束记录的保留天数。0 表示永久保留；各端各自保存，互不同步。
+type RetentionConfig struct {
+	// LogRetentionDays 活动、操作和审计日志
+	LogRetentionDays RetentionConfigLogRetentionDays `json:"log_retention_days"`
+
+	// TaskRetentionDays 任务运行记录及其事件、通知
+	TaskRetentionDays RetentionConfigTaskRetentionDays `json:"task_retention_days"`
+}
+
+// RetentionConfigLogRetentionDays 活动、操作和审计日志
+type RetentionConfigLogRetentionDays int
+
+// RetentionConfigTaskRetentionDays 任务运行记录及其事件、通知
+type RetentionConfigTaskRetentionDays int
+
+// RetentionRunResult defines model for RetentionRunResult.
+type RetentionRunResult struct {
+	DeletedLogs  int64 `json:"deleted_logs"`
+	DeletedTasks int64 `json:"deleted_tasks"`
+}
+
 // RuntimeCapability 运行形态支持的功能声明，不替代请求授权。
 type RuntimeCapability = string
 
@@ -4926,14 +5013,6 @@ type TaskBody struct {
 type TaskCancellation struct {
 	ID     openapi_types.UUID `json:"id"`
 	Status TaskRunStatus      `json:"status"`
-}
-
-// TaskCleanupResult defines model for TaskCleanupResult.
-type TaskCleanupResult struct {
-	DeletedCount         int64 `json:"deleted_count"`
-	DeletedEvents        int64 `json:"deleted_events"`
-	DeletedNotifications int64 `json:"deleted_notifications"`
-	RetentionDays        int   `json:"retention_days"`
 }
 
 // TaskContent TaskBody 正文描述。小正文内联 data；文件化正文使用 content，摘要与大小描述整个 TaskBody JSON，二者互斥。
@@ -5792,11 +5871,6 @@ type GetLogsParams struct {
 	EndDate *string `form:"end_date,omitempty" json:"end_date,omitempty"`
 }
 
-// DeleteLogsCleanupParams defines parameters for DeleteLogsCleanup.
-type DeleteLogsCleanupParams struct {
-	RetentionDays *int `form:"retention_days,omitempty" json:"retention_days,omitempty"`
-}
-
 // GetLogsStatisticsParams defines parameters for GetLogsStatistics.
 type GetLogsStatisticsParams struct {
 	Days      *int    `form:"days,omitempty" json:"days,omitempty"`
@@ -6128,11 +6202,6 @@ type GetTasksParams struct {
 	PageSize    *int    `form:"page_size,omitempty" json:"page_size,omitempty"`
 }
 
-// DeleteTasksCleanupParams defines parameters for DeleteTasksCleanup.
-type DeleteTasksCleanupParams struct {
-	RetentionDays *int `form:"retention_days,omitempty" json:"retention_days,omitempty"`
-}
-
 // GetTasksIDEventsParams defines parameters for GetTasksIDEvents.
 type GetTasksIDEventsParams struct {
 	AfterID *int `form:"after_id,omitempty" json:"after_id,omitempty"`
@@ -6352,6 +6421,9 @@ type PatchSettingsSystemBasicJSONRequestBody = SystemBasicUpdate
 
 // PatchSettingsSystemFileTransferJSONRequestBody defines body for PatchSettingsSystemFileTransfer for application/json ContentType.
 type PatchSettingsSystemFileTransferJSONRequestBody = FileTransferConfigUpdate
+
+// PatchSettingsSystemRetentionJSONRequestBody defines body for PatchSettingsSystemRetention for application/json ContentType.
+type PatchSettingsSystemRetentionJSONRequestBody = RetentionConfig
 
 // PatchSettingsSystemScheduledTasksJSONRequestBody defines body for PatchSettingsSystemScheduledTasks for application/json ContentType.
 type PatchSettingsSystemScheduledTasksJSONRequestBody = ScheduledTaskConfig

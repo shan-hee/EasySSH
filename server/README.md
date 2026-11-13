@@ -173,7 +173,6 @@ server/
 - `GET /api/v1/logs` - 活动日志/安全审计统一列表
 - `GET /api/v1/logs/statistics` - 日志统计
 - `GET /api/v1/logs/:id` - 日志详情
-- `DELETE /api/v1/logs/cleanup` - 清理旧日志（需要 `audit:manage`）
 - `GET /api/v1/operation-records` - 历史连接、传输、执行统一操作记录
 - `GET /api/v1/operation-records/statistics` - 操作记录统计
 - `GET /api/v1/operation-records/:id` - 操作记录详情
@@ -392,4 +391,4 @@ Web 的“账户设置 → 数据与同步”页面用于管理已授权的桌�
 
 ## 备份、数据迁移与数据库升级
 
-日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理，当前服务端 schema 为 5、桌面端为 2；同步协议切换只清空同步文档，设备授权和数据加入关系保留，两端升级后的第一次同步自动重新对齐。服务端启动默认创建加密升级恢复点并自动迁移受支持的旧库，成功后才开放业务；可通过 `EASYSSH_AUTO_MIGRATE=off` 关闭，迁移总超时默认 `EASYSSH_MIGRATION_TIMEOUT=30m`。不会自动降级或覆盖数据库。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../docs/backup-and-migrations.md)。
+日常跨端使用设备同步，完整实例使用加密原生数据库备份；通用 JSON 导入导出已移除。数据库结构由 Goose 的编号迁移管理，当前服务端 schema 为 6、桌面端为 2；同步协议切换只清空同步文档，设备授权和数据加入关系保留，两端升级后的第一次同步自动重新对齐。服务端启动默认创建加密升级恢复点并自动迁移受支持的旧库，成功后才开放业务；可通过 `EASYSSH_AUTO_MIGRATE=off` 关闭，迁移总超时默认 `EASYSSH_MIGRATION_TIMEOUT=30m`。不会自动降级或覆盖数据库。具体命令、数据目录与根密钥恢复步骤见[备份、设备同步与数据库升级](../docs/backup-and-migrations.md)。

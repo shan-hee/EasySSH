@@ -3,21 +3,11 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, ty
 import type { TFunction } from "i18next"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
-import { AlertTriangle, CheckCircle2, CircleStop, Clock3, Eye, Loader2, MoreHorizontal, RotateCcw, Search, Trash2 } from "lucide-react"
+import { AlertTriangle, CheckCircle2, CircleStop, Clock3, Eye, Loader2, MoreHorizontal, RotateCcw, Search } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { DataTableColumnMeta } from "@/components/ui/column-meta"
@@ -27,7 +17,6 @@ import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -54,7 +43,6 @@ import { PageLoading } from "@/components/page-loading"
 const emptyStatistics: TaskStatistics = { total: 0, queued: 0, running: 0, canceling: 0, succeeded: 0, failed: 0, partial_success: 0, canceled: 0, timeout: 0, unknown: 0 }
 
 export interface TaskCenterViewProps {
-  canCleanup?: boolean
   api: TaskCenterApi
   subscribeEvents?: SubscribeRealtimeEvents | null
   hidePageHeader?: boolean
@@ -65,7 +53,6 @@ export interface TaskCenterViewProps {
 
 export function TaskCenterView({
   api,
-  canCleanup = true,
   subscribeEvents = null,
   hidePageHeader = false,
   schedulesContent,
@@ -86,9 +73,6 @@ export function TaskCenterView({
   const [pendingActions, setPendingActions] = useState<Record<string, "cancel" | "retry">>({})
   const pendingActionsRef = useRef<Record<string, "cancel" | "retry">>({})
   const [loadingEvents, setLoadingEvents] = useState(false)
-  const [cleanupOpen, setCleanupOpen] = useState(false)
-  const [cleanupLoading, setCleanupLoading] = useState(false)
-  const [retentionDays, setRetentionDays] = useState("90")
   const handledRequestedRunRef = useRef<string | null>(null)
 
   const listParams = useMemo(() => {
@@ -276,28 +260,6 @@ export function TaskCenterView({
     }
   }, [api, queryClient, t])
 
-  const cleanupRuns = useCallback(async () => {
-    const parsedRetentionDays = Number(retentionDays)
-    if (!Number.isInteger(parsedRetentionDays) || parsedRetentionDays < 1 || parsedRetentionDays > 3650) {
-      toast.error(t("cleanupInvalidRetention"))
-      return
-    }
-    try {
-      setCleanupLoading(true)
-      const result = await api.cleanup(parsedRetentionDays)
-      toast.success(t("cleanupSuccess", { count: result.deleted_count }))
-      await queryClient.invalidateQueries({ queryKey: queryKeys.taskCenter.root })
-      setCleanupOpen(false)
-      setSelectedRunId(null)
-      clearRequestedRun()
-      setPage(1)
-    } catch (error) {
-      toast.error(getErrorMessage(error, t("cleanupFailed")))
-    } finally {
-      setCleanupLoading(false)
-    }
-  }, [api, clearRequestedRun, queryClient, retentionDays, t])
-
   const metricItems = useMemo(() => [
     { label: t("metricAll"), value: statistics.total, icon: Clock3 },
     { label: t("metricActive"), value: statistics.running + statistics.queued + statistics.canceling, icon: Loader2 },
@@ -479,18 +441,7 @@ export function TaskCenterView({
                       />
                     </div>
                   )}
-                >
-                  {canCleanup && <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-destructive hover:text-destructive"
-                    disabled={cleanupLoading}
-                    onClick={() => setCleanupOpen(true)}
-                  >
-                    <Trash2 className="size-4" />
-                    {t("cleanupButton")}
-                  </Button>}
-                </DataTableToolbar>
+                />
               )}
             />
           </TabsContent>
@@ -537,50 +488,6 @@ export function TaskCenterView({
           )}
         </DialogContent>
       </Dialog>
-
-      <AlertDialog open={cleanupOpen} onOpenChange={setCleanupOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("cleanupDialogTitle")}</AlertDialogTitle>
-            <AlertDialogDescription>{t("cleanupDialogDescription")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="grid gap-3 py-2">
-            <div className="grid gap-2">
-              <Label htmlFor="task-run-retention-days">{t("cleanupRetentionLabel")}</Label>
-              <Input
-                id="task-run-retention-days"
-                type="number"
-                min={1}
-                max={3650}
-                value={retentionDays}
-                disabled={cleanupLoading}
-                onChange={(event) => setRetentionDays(event.target.value)}
-              />
-              <p className="text-sm text-muted-foreground">{t("cleanupRetentionHint")}</p>
-            </div>
-            <p className="border-l-2 border-border pl-3 text-sm text-muted-foreground">{t("cleanupDefaultPolicy")}</p>
-            <p className="text-sm text-destructive">{t("cleanupWarning")}</p>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={cleanupLoading}>{t("cleanupCancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
-              disabled={cleanupLoading}
-              onClick={(event) => {
-                event.preventDefault()
-                void cleanupRuns()
-              }}
-            >
-              {cleanupLoading ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  {t("cleanupRunning")}
-                </>
-              ) : t("cleanupConfirm")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   )
 }

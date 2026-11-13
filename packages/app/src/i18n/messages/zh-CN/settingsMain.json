@@ -27,5 +27,7 @@
   "itemFileTransferDescription": "会话传输、后台暂存与 SSH/SFTP 连接池。",
   "itemAIConfigDescription": "AI 助手使用的模型服务与 API 密钥。",
   "itemNotificationConfigDescription": "任务完成时投递通知的外部渠道；是否发送由账户通知偏好决定。",
-  "itemBackupDescription": "实例完整备份、校验与恢复；跨端个人数据请使用设备同步。"
+  "itemBackupDescription": "实例完整备份、校验与恢复；跨端个人数据请使用设备同步。",
+  "itemRetention": "数据保留",
+  "itemRetentionDescription": "任务记录和日志的保留期与清理。"
 }

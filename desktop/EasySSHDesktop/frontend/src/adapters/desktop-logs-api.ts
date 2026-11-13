@@ -10,7 +10,6 @@ import {
 } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
 import type {
   AuditLog,
-  AuditLogCleanupResponse,
   AuditLogListParams,
   AuditLogListResponse,
 } from "@easyssh/app/desktop"
@@ -122,12 +121,6 @@ async function fetchDesktopLogs(params?: AuditLogListParams) {
   return allItems.map(mapDesktopActivityLogItemToAuditLog)
 }
 
-function retentionDaysToBefore(retentionDays: number) {
-  const before = new Date()
-  before.setUTCDate(before.getUTCDate() - retentionDays)
-  return before.toISOString()
-}
-
 export function createDesktopLogsApi() {
   return {
     async list(params?: AuditLogListParams): Promise<AuditLogListResponse> {
@@ -155,15 +148,6 @@ export function createDesktopLogsApi() {
         item.detail = body.result_json || body.progress_json || body.description || ""
       }
       return mapDesktopActivityLogItemToAuditLog(item)
-    },
-
-    async cleanup(retentionDays: number): Promise<AuditLogCleanupResponse> {
-      const deletedCount = await ActivityLogService.Clear(retentionDaysToBefore(retentionDays))
-
-      return {
-        deleted_count: deletedCount,
-        retention_days: retentionDays,
-      }
     },
   }
 }

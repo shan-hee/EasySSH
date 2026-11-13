@@ -42,6 +42,10 @@ type SystemConfig struct {
 	// 后台任务队列（运行时动态生效）
 	JobQueueMaxConcurrency int `gorm:"not null;default:2" json:"job_queue_max_concurrency"`
 
+	// 数据保留天数，0 表示永久保留；取值见 shared/retention。
+	TaskRetentionDays int `gorm:"not null;default:90" json:"task_retention_days"`
+	LogRetentionDays  int `gorm:"not null;default:90" json:"log_retention_days"`
+
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

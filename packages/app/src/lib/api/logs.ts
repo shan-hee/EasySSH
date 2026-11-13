@@ -1,7 +1,6 @@
 import { apiFetch } from "@/lib/api-client"
 import type {
   AuditLog,
-  AuditLogCleanupResponse,
   AuditLogListParams,
   AuditLogListResponse,
   AuditLogStatisticsResponse,
@@ -9,7 +8,6 @@ import type {
 
 export type {
   AuditLog,
-  AuditLogCleanupResponse,
   AuditLogListParams,
   AuditLogListResponse,
   AuditLogStatisticsResponse,
@@ -53,15 +51,5 @@ export const logsApi = {
 
     const url = `/logs/statistics${queryParams.toString() ? `?${queryParams}` : ""}`
     return apiFetch<AuditLogStatisticsResponse>(url)
-  },
-
-  async cleanup(retentionDays: number): Promise<AuditLogCleanupResponse> {
-    const queryParams = new URLSearchParams()
-    queryParams.set("retention_days", retentionDays.toString())
-
-    return apiFetch<AuditLogCleanupResponse>(`/logs/cleanup?${queryParams.toString()}`, {
-      method: "DELETE",
-      retry: false,
-    })
   },
 }

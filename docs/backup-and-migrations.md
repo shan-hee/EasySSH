@@ -48,7 +48,7 @@
 
 ## 服务端启动自动迁移
 
-服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前服务端 schema 为 5；从 schema 1 升级时先执行 `00002_remove_csrf_trusted_origins.sql`，删除废弃的 `security_config.csrf_trusted_origins` 列和旧来源列表，再执行 `00003_remove_public_url.sql`，删除 `system_config.public_url` 列和原来保存的固定公开地址，然后执行 `00004_add_automation_token_cipher.sql`，为 `automation_tokens` 新增可空的 `token_cipher` 列，最后执行 `00005_reset_sync_documents.sql`，清空 `sync_states.document` 以及 `sync_vault_documents` 的 `document` 和 `conflicts`；schema 2 从第二项开始，依此类推。协议 6 的同步文档与此前的 Automerge 文档互不兼容，清空后丢失的只有同步历史和未解决的冲突；服务器、脚本、凭据及其引用的载荷对象不变，设备授权和数据加入关系也保留。清空文档等同于换了一条同步时间线：各设备升级后无需重新授权或重新加入数据，下一次同步自动重新对齐（见下文“恢复与同步时间线”）。分享授权、密钥及其他系统配置不变，分享链接改用当前访问地址；已有访问令牌继续可用，其加密副本为空，轮转后才能查看。旧字段迁移的回滚只恢复空字段；同步协议切换必须通过完整的升级前恢复点回退，不能原地回滚。SQLite/PostgreSQL 在事务内迁移；MySQL DDL 隐式提交，中断时按下文恢复流程处理。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
+服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前服务端 schema 为 6；从 schema 1 升级时先执行 `00002_remove_csrf_trusted_origins.sql`，删除废弃的 `security_config.csrf_trusted_origins` 列和旧来源列表，再执行 `00003_remove_public_url.sql`，删除 `system_config.public_url` 列和原来保存的固定公开地址，然后执行 `00004_add_automation_token_cipher.sql`，为 `automation_tokens` 新增可空的 `token_cipher` 列，最后执行 `00005_reset_sync_documents.sql`，清空 `sync_states.document` 以及 `sync_vault_documents` 的 `document` 和 `conflicts`；schema 2 从第二项开始，依此类推。协议 6 的同步文档与此前的 Automerge 文档互不兼容，清空后丢失的只有同步历史和未解决的冲突；服务器、脚本、凭据及其引用的载荷对象不变，设备授权和数据加入关系也保留。清空文档等同于换了一条同步时间线：各设备升级后无需重新授权或重新加入数据，下一次同步自动重新对齐（见下文“恢复与同步时间线”）。之后的 `00006_add_data_retention.sql` 为 `system_config` 新增 `task_retention_days` 和 `log_retention_days` 两列，默认 90 天。分享授权、密钥及其他系统配置不变，分享链接改用当前访问地址；已有访问令牌继续可用，其加密副本为空，轮转后才能查看。旧字段迁移的回滚只恢复空字段；同步协议切换必须通过完整的升级前恢复点回退，不能原地回滚。SQLite/PostgreSQL 在事务内迁移；MySQL DDL 隐式提交，中断时按下文恢复流程处理。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
 
 | 数据库状态 | 行为 |
 | --- | --- |
@@ -330,7 +330,19 @@ EasySSHDesktop maintenance schema-rollback --file /backup/before-rollback.age --
 
 桌面端 schema 2 的 `00002_reset_sync_documents.sql` 清空 `desktop_sync_spaces.document` 以及 `desktop_sync_vault` 的 `document` 和 `conflicts`，把 `desktop_sync_vault.current_ref` 重置为本机实际应用的版本，并删除已废弃的 `desktop_sync_spaces.remote_heads` 和 `desktop_sync_vault.heads` 列（同步游标改存在文档内）。设备绑定、数据加入关系和本地业务数据保留，升级后的第一次同步自动重新对齐。这是桌面端的第一个增量迁移，schema 1 的数据库在新版本首次启动时自动升级。
 
-当前服务端有 schema 1 → 2 → 3 → 4 → 5 增量迁移，桌面端有 schema 1 → 2。`schema-rollback` 每次仅退一版，不能回退到初始化基线之前。服务端 schema 5 与桌面端 schema 2（均为 `reset_sync_documents`）的 Down 同样清空同步文档，因为旧程序读不了协议 6 的文档；桌面端的 Down 另外恢复空的 `desktop_sync_spaces.remote_heads` 和 `desktop_sync_vault.heads` 列。被清空的 Automerge 历史只存在于升级前的备份中。服务端 schema 4 的 Down 删除 `token_cipher`；schema 3 的 Down 只恢复空的 `public_url`；schema 2 的 Down 只恢复空的 CSRF Origin 字段，旧值均需从升级前备份恢复。
+当前服务端有 schema 1 → 2 → 3 → 4 → 5 → 6 增量迁移，桌面端有 schema 1 → 2。`schema-rollback` 每次仅退一版，不能回退到初始化基线之前。服务端 schema 5 与桌面端 schema 2（均为 `reset_sync_documents`）的 Down 同样清空同步文档，因为旧程序读不了协议 6 的文档；桌面端的 Down 另外恢复空的 `desktop_sync_spaces.remote_heads` 和 `desktop_sync_vault.heads` 列。被清空的 Automerge 历史只存在于升级前的备份中。服务端 schema 4 的 Down 删除 `token_cipher`；schema 3 的 Down 只恢复空的 `public_url`；schema 2 的 Down 只恢复空的 CSRF Origin 字段，旧值均需从升级前备份恢复。
+
+## 数据保留
+
+已结束的任务记录和日志超过保留期后自动清理。两个类别各有一个保留期：7、14、30、60、90、180、365 天或永久保留，默认 90 天。成功和失败的记录使用同一保留期；排队中、运行中的任务以及仍有活动成员的日志组不清理。记录引用的详情内容在任务和日志都不再引用后一并清理。
+
+- 服务端：系统设置 → 数据保留，保存在 `system_config` 的 `task_retention_days` / `log_retention_days`（0 表示永久保留）。
+- 桌面端：备份与恢复页面下方，保存在本地 `preferences.json` 的 `retention.taskDays` / `retention.logDays`；远程传输回执随任务记录的保留期清理。
+- 两端各自保存、各自清理，保留期不随设备同步。
+
+每端只有一个清理任务：启动时执行一次，之后每 24 小时一次；设置页的“立即清理”按当前保留期提前执行同一次清理。任务中心和日志页面不再提供单独的清理入口，`DELETE /tasks/cleanup` 与 `DELETE /logs/cleanup` 已移除。
+
+**升级后的行为变化**：服务端日志此前只能手动清理，现在默认 90 天后自动清理；需要保留更久须在升级后把日志保留期改为更长或永久。失败的任务和日志此前比成功的多保留 90 天，现在不再区分。传输文件的保留仍由“文件传输”设置单独控制。
 
 ## 统一发布版本入口
 

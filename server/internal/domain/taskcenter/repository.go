@@ -30,7 +30,6 @@ type Repository interface {
 	AppendEvent(ctx context.Context, event *TaskEvent) error
 	ListEvents(ctx context.Context, runID uuid.UUID, input protocol.TaskEventInput) (*protocol.TaskEventPage, error)
 	CleanupTerminalBefore(ctx context.Context, before time.Time) (*CleanupResult, error)
-	CleanupDefaultRetention(ctx context.Context, now time.Time) (*CleanupResult, error)
 }
 
 // Bodies is the host's existing immutable body store. It owns the backup
@@ -424,25 +423,6 @@ func (r *repository) CleanupTerminalBefore(ctx context.Context, before time.Time
 	return result, err
 }
 
-func (r *repository) CleanupDefaultRetention(ctx context.Context, now time.Time) (*CleanupResult, error) {
-	result := &CleanupResult{}
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var runs []cleanupRunRef
-		if err := tx.Model(&TaskRun{}).
-			Select("id", "actor_kind", "actor_id", "actor_session_id", "actor_grant_id").
-			Where(
-				"finished_at IS NOT NULL AND ((status IN ? AND finished_at < ?) OR (status IN ? AND finished_at < ?))",
-				defaultLongRetentionStatuses(), now.AddDate(0, 0, -defaultFailureRetentionDays),
-				defaultShortRetentionStatuses(), now.AddDate(0, 0, -defaultSuccessRetentionDays),
-			).
-			Scan(&runs).Error; err != nil {
-			return err
-		}
-		return cleanupTaskRuns(tx, runs, result)
-	})
-	return result, err
-}
-
 func cleanupTaskRuns(tx *gorm.DB, runs []cleanupRunRef, result *CleanupResult) error {
 	runIDs := make([]uuid.UUID, 0, len(runs))
 	affectedActors := make(map[protocol.Actor]struct{})
@@ -495,14 +475,6 @@ func cleanupTaskRuns(tx *gorm.DB, runs []cleanupRunRef, result *CleanupResult) e
 
 func terminalTaskStatuses() []Status {
 	return []Status{StatusSucceeded, StatusFailed, StatusPartialSuccess, StatusCanceled, StatusTimeout, StatusUnknown}
-}
-
-func defaultLongRetentionStatuses() []Status {
-	return []Status{StatusFailed, StatusPartialSuccess, StatusTimeout, StatusUnknown}
-}
-
-func defaultShortRetentionStatuses() []Status {
-	return []Status{StatusSucceeded, StatusCanceled}
 }
 
 type cleanupRunRef struct {
