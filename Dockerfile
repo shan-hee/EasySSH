@@ -20,10 +20,8 @@ RUN corepack enable && corepack prepare pnpm@11.1.3 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY web/package.json ./web/package.json
 COPY packages/app/package.json ./packages/app/package.json
-COPY packages/sync-document/package.json ./packages/sync-document/package.json
 COPY tooling/frontend/package.json ./tooling/frontend/package.json
 COPY desktop/EasySSHDesktop/frontend/package.json ./desktop/EasySSHDesktop/frontend/package.json
-COPY server/sync-runtime/package.json ./server/sync-runtime/package.json
 RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store --filter "easyssh-web..."
 
@@ -31,25 +29,8 @@ RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
 COPY VERSION ./VERSION
 COPY tooling/frontend/ ./tooling/frontend/
 COPY packages/app/ ./packages/app/
-COPY packages/sync-document/ ./packages/sync-document/
 COPY web/ ./web/
 RUN pnpm --filter easyssh-web run build
-
-# Automerge runs as a private stdio worker managed by the Go service.
-# 当前依赖仅包含 JavaScript/WASM，在构建机原生架构安装一次，供各目标架构共用。
-# 保留工作区相对路径及 pnpm 链接，不使用会重新解析整个工作区的 legacy deploy。
-FROM --platform=$BUILDPLATFORM node:24-alpine AS sync-runtime-builder
-WORKDIR /app
-ENV PNPM_HOME=/pnpm \
-    PATH=/pnpm:$PATH
-RUN corepack enable && corepack prepare pnpm@11.1.3 --activate
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/sync-document/package.json ./packages/sync-document/package.json
-COPY server/sync-runtime/package.json ./server/sync-runtime/package.json
-RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
-    pnpm install --prod --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store --filter "easyssh-sync-runtime..."
-COPY packages/sync-document/ ./packages/sync-document/
-COPY server/sync-runtime/engine.mjs ./server/sync-runtime/engine.mjs
 
 # Stage 2: 在构建机原生架构上交叉编译 Go，避免通过 QEMU 执行编译器
 FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine AS backend-builder
@@ -85,7 +66,7 @@ FROM alpine:3.22
 WORKDIR /app
 
 # 运行时组件：证书与时区；健康检查使用 Alpine 自带的 BusyBox wget
-RUN apk --no-cache add ca-certificates tzdata nodejs postgresql-client mariadb-client tini
+RUN apk --no-cache add ca-certificates tzdata postgresql-client mariadb-client tini
 
 # 使用非 root 用户运行
 ARG APP_UID=1001
@@ -99,16 +80,10 @@ RUN addgroup -S -g ${APP_GID} appuser \
 ENV TZ=Asia/Shanghai \
     ENV=production \
     BACKEND_URL=http://localhost:8520 \
-    EASYSSH_SYNC_ENGINE=/app/server/sync-runtime/engine.mjs \
     EASYSSH_BACKUP_DIR=/app/backups \
     EASYSSH_INSTANCE_STATE_DIR=/app/instance-state \
     DB_DRIVER=sqlite \
     DB_DSN=/app/data/easyssh.db
-
-# 保持三个目录的相对位置，确保 pnpm 的外部依赖和 workspace 链接在运行镜像中有效。
-COPY --from=sync-runtime-builder --chown=appuser:appuser /app/node_modules ./node_modules
-COPY --from=sync-runtime-builder --chown=appuser:appuser /app/packages/sync-document ./packages/sync-document
-COPY --from=sync-runtime-builder --chown=appuser:appuser /app/server/sync-runtime ./server/sync-runtime
 
 # 复制后端二进制与前端静态资源
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./

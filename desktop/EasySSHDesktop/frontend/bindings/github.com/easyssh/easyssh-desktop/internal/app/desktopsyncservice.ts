@@ -11,6 +11,9 @@ import * as protocol$0 from "../../../shared/protocol/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as syncdata$0 from "../../../shared/syncdata/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as syncengine$0 from "../../../shared/syncengine/models.js";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -61,14 +64,6 @@ export function EnrollSession(spaceID: string, localID: string): $CancellablePro
     return $Call.ByID(1642289030, spaceID, localID);
 }
 
-export function Exchange(payload: string, revision: number): $CancellablePromise<string> {
-    return $Call.ByID(1480741299, payload, revision);
-}
-
-export function ExchangeVault(kind: string, id: string, peer: string, space: string, binding: number): $CancellablePromise<string> {
-    return $Call.ByID(492436469, kind, id, peer, space, binding);
-}
-
 export function ForkVaultSession(spaceID: string, key: string, ref: string): $CancellablePromise<void> {
     return $Call.ByID(1326218454, spaceID, key, ref);
 }
@@ -90,31 +85,32 @@ export function PollAuthorization(): $CancellablePromise<boolean> {
     return $Call.ByID(773924620);
 }
 
-export function PrepareVault(kind: string, id: string): $CancellablePromise<$models.DesktopVaultState> {
-    return $Call.ByID(1491752155, kind, id).then(($result: any) => {
-        return $$createType4($result);
-    });
-}
-
 /**
  * Refresh only the currently bound device. Increasing the owner's grants never
  * silently enables additional local data; narrowing them removes local selection.
  */
 export function RefreshAuthorization(): $CancellablePromise<protocol$0.SyncIdentity> {
     return $Call.ByID(4038226458).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType4($result);
     });
 }
 
 /**
- * Compare-and-swap protects edits made by another Wails call during network IO.
+ * ResolveConflicts applies the user's choices locally; the next exchange reports
+ * them. Configuration choices share one document and one save, each vault
+ * record is its own document.
  */
-export function Save(input: $models.DesktopSyncSave): $CancellablePromise<boolean> {
-    return $Call.ByID(1976427615, input);
+export function ResolveConflicts(choices: syncengine$0.Resolution[]): $CancellablePromise<void> {
+    return $Call.ByID(259404905, choices);
 }
 
-export function SaveVault(input: $models.DesktopVaultSave): $CancellablePromise<boolean> {
-    return $Call.ByID(4118438921, input);
+/**
+ * ResolveVault chooses one version of a vault record. A non-nil identical is
+ * the candidate set that was compared as equal; the choice is only made
+ * automatically while those are still the candidates.
+ */
+export function ResolveVault(key: string, value: string, identical: string[]): $CancellablePromise<void> {
+    return $Call.ByID(443403166, key, value, identical);
 }
 
 export function SessionCandidates(): $CancellablePromise<$models.DesktopSyncCandidate[]> {
@@ -129,6 +125,24 @@ export function SetEnabled(enabled: boolean): $CancellablePromise<void> {
 
 export function SetScopes(scopes: syncdata$0.SyncScopes): $CancellablePromise<void> {
     return $Call.ByID(1245110335, scopes);
+}
+
+/**
+ * SynchronizeConfiguration exchanges servers, scripts, groups and their order
+ * with the connected account once.
+ */
+export function SynchronizeConfiguration(): $CancellablePromise<$models.DesktopSyncChange> {
+    return $Call.ByID(3250795898).then(($result: any) => {
+        return $$createType5($result);
+    });
+}
+
+/**
+ * SynchronizeVault exchanges one credential, AI configuration or AI session and
+ * reports whether a different version was applied locally.
+ */
+export function SynchronizeVault(kind: string, id: string): $CancellablePromise<boolean> {
+    return $Call.ByID(1663075164, kind, id);
 }
 
 export function VaultConflicts(): $CancellablePromise<syncdata$0.VaultConflict[]> {
@@ -148,8 +162,8 @@ const $$createType0 = $models.DesktopSyncLogin.createFrom;
 const $$createType1 = $models.DesktopSyncCandidate.createFrom;
 const $$createType2 = $Create.Array($$createType1);
 const $$createType3 = $models.DesktopSyncState.createFrom;
-const $$createType4 = $models.DesktopVaultState.createFrom;
-const $$createType5 = protocol$0.SyncIdentity.createFrom;
+const $$createType4 = protocol$0.SyncIdentity.createFrom;
+const $$createType5 = $models.DesktopSyncChange.createFrom;
 const $$createType6 = syncdata$0.VaultConflict.createFrom;
 const $$createType7 = $Create.Array($$createType6);
 const $$createType8 = $models.DesktopVaultEntry.createFrom;

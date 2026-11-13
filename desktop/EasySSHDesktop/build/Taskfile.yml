@@ -46,7 +46,6 @@ tasks:
       - "../../../packages/app/package.json"
       - "../../../packages/app/vite.ts"
       - "../../../packages/app/tsconfig.consumer.json"
-      - "../../../packages/sync-document/*"
       - "../../../tooling/frontend/*.ts"
       - "../../../tooling/frontend/package.json"
       - "../../../pnpm-lock.yaml"

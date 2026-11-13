@@ -200,8 +200,8 @@ EasySSH/
 ### 常用命令
 
 ```bash
-# 前端开发（仓库根目录的 pnpm 工作区：web、桌面前端、packages、tooling 与服务端同步进程）
-pnpm install            # 安装全部前端与同步进程依赖，统一使用根目录 pnpm-lock.yaml
+# 前端开发（仓库根目录的 pnpm 工作区：web、桌面前端、packages 与 tooling）
+pnpm install            # 安装全部前端依赖，统一使用根目录 pnpm-lock.yaml
 pnpm dev:web            # Web 开发服务器
 pnpm build:web          # Vite 构建生产版本（静态产物到 web/dist）
 pnpm typecheck          # 各前端包类型检查

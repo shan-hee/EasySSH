@@ -6,8 +6,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/syncdata"
+	"github.com/easyssh/shared/syncengine"
 	"github.com/google/uuid"
 )
 
@@ -22,7 +22,6 @@ type DesktopVaultState struct {
 	ID              string            `json:"id"`
 	LocalID         string            `json:"-"`
 	Document        string            `json:"document"`
-	Heads           []string          `json:"heads"`
 	CurrentRef      string            `json:"-"`
 	AppliedRef      string            `json:"-"`
 	ObservedRef     string            `json:"-"`
@@ -180,7 +179,7 @@ func (s *DesktopSyncService) readVault(tx *sql.Tx, kind, id string) (DesktopVaul
 	var v DesktopVaultState
 	v.Kind = kind
 	v.ID = id
-	var scopes, heads string
+	var scopes string
 	err := tx.QueryRow(`SELECT s.space_id,s.revision,p.scopes FROM desktop_sync_state s JOIN desktop_sync_spaces p ON p.id=s.space_id WHERE s.id=1 AND s.token<>'' AND s.enabled=1`).Scan(&v.SpaceID, &v.BindingRevision, &scopes)
 	if err != nil {
 		return v, err
@@ -192,11 +191,7 @@ func (s *DesktopSyncService) readVault(tx *sql.Tx, kind, id string) (DesktopVaul
 	if !enabled.Allows(kind) {
 		return v, errors.New("sync scope is disabled")
 	}
-	err = tx.QueryRow(`SELECT local_id,document,current_ref,observed_ref,applied_ref,heads,revision FROM desktop_sync_vault WHERE space_id=? AND kind=? AND remote_id=?`, v.SpaceID, kind, id).Scan(&v.LocalID, &v.Document, &v.CurrentRef, &v.ObservedRef, &v.AppliedRef, &heads, &v.Revision)
-	if err != nil {
-		return v, err
-	}
-	err = json.Unmarshal([]byte(heads), &v.Heads)
+	err = tx.QueryRow(`SELECT local_id,document,current_ref,observed_ref,applied_ref,revision FROM desktop_sync_vault WHERE space_id=? AND kind=? AND remote_id=?`, v.SpaceID, kind, id).Scan(&v.LocalID, &v.Document, &v.CurrentRef, &v.ObservedRef, &v.AppliedRef, &v.Revision)
 	return v, err
 }
 func (s *DesktopSyncService) putLocalObject(tx *sql.Tx, space, kind, id, resource, value string, uploaded bool) error {
@@ -235,7 +230,7 @@ func localObject(tx *sql.Tx, space, id string) (string, error) {
 	}
 	return decryptDesktopCredential(encrypted, "desktop_sync_objects", space+":"+id, "value")
 }
-func (s *DesktopSyncService) PrepareVault(kind, id string) (DesktopVaultState, error) {
+func (s *DesktopSyncService) prepareVault(kind, id string) (DesktopVaultState, error) {
 	db, err := s.database()
 	if err != nil {
 		return DesktopVaultState{}, err
@@ -305,14 +300,13 @@ type DesktopVaultSave struct {
 	BindingRevision int64                    `json:"binding_revision"`
 	Revision        int64                    `json:"revision"`
 	Document        string                   `json:"document"`
-	Heads           []string                 `json:"heads"`
 	Snapshot        syncdata.Snapshot        `json:"snapshot"`
 	Conflicts       []syncdata.VaultConflict `json:"conflicts"`
 }
 
-func (s *DesktopSyncService) SaveVault(input DesktopVaultSave) (bool, error) {
+func (s *DesktopSyncService) saveVault(input DesktopVaultSave) (bool, error) {
 	if len(input.Document) > syncdata.MaxDocumentBytes {
-		return false, errors.New("conversation sync history exceeds 32 MiB")
+		return false, errors.New("sync state exceeds 32 MiB")
 	}
 	db, err := s.database()
 	if err != nil {
@@ -396,7 +390,7 @@ func (s *DesktopSyncService) SaveVault(input DesktopVaultSave) (bool, error) {
 			}
 		}
 	}
-	_, err = tx.Exec(`UPDATE desktop_sync_vault SET document=?,heads=?,current_ref=?,observed_ref=?,applied_ref=?,conflicts=?,revision=revision+1 WHERE space_id=? AND kind=? AND remote_id=?`, input.Document, syncdata.JSON(input.Heads), ref, v.ObservedRef, v.AppliedRef, syncdata.JSON(input.Conflicts), v.SpaceID, v.Kind, v.ID)
+	_, err = tx.Exec(`UPDATE desktop_sync_vault SET document=?,current_ref=?,observed_ref=?,applied_ref=?,conflicts=?,revision=revision+1 WHERE space_id=? AND kind=? AND remote_id=?`, input.Document, ref, v.ObservedRef, v.AppliedRef, syncdata.JSON(input.Conflicts), v.SpaceID, v.Kind, v.ID)
 	if err != nil {
 		return false, err
 	}
@@ -409,24 +403,25 @@ func (s *DesktopSyncService) SaveVault(input DesktopVaultSave) (bool, error) {
 	}
 	return true, nil
 }
-func (s *DesktopSyncService) ExchangeVault(kind, id, peer string, space string, binding int64) (string, error) {
+func (s *DesktopSyncService) exchangeVault(kind, id string, peer syncengine.Peer, space string, binding int64) (syncengine.Peer, error) {
+	var none syncengine.Peer
 	if _, err := s.RefreshAuthorization(); err != nil {
-		return "", err
+		return none, err
 	}
 	state, err := s.Load()
 	if err != nil {
-		return "", err
+		return none, err
 	}
 	if state.SpaceID != space || state.Revision != binding || !state.Scopes.Allows(kind) {
-		return "", errors.New("sync account or scope changed")
+		return none, errors.New("sync account or scope changed")
 	}
 	db, err := s.database()
 	if err != nil {
-		return "", err
+		return none, err
 	}
 	rows, err := db.Query(`SELECT id,kind,resource_id,ciphertext FROM desktop_sync_objects WHERE space_id=? AND uploaded=0 AND ((resource_id=? AND kind=?) OR (?='ai_session' AND kind='attachment')) ORDER BY CASE WHEN kind='attachment' THEN 0 ELSE 1 END`, space, id, kind, kind)
 	if err != nil {
-		return "", err
+		return none, err
 	}
 	type object struct{ ID, Kind, Resource, Ciphertext string }
 	pending := []object{}
@@ -434,37 +429,83 @@ func (s *DesktopSyncService) ExchangeVault(kind, id, peer string, space string, 
 		var o object
 		if err = rows.Scan(&o.ID, &o.Kind, &o.Resource, &o.Ciphertext); err != nil {
 			rows.Close()
-			return "", err
+			return none, err
 		}
 		pending = append(pending, o)
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return "", err
+		return none, err
 	}
-	for _, o := range pending {
+	upload := func(o object) error {
 		plain, err := decryptDesktopCredential(o.Ciphertext, "desktop_sync_objects", space+":"+o.ID, "value")
 		if err != nil {
-			return "", err
+			return err
 		}
 		payload, _ := json.Marshal(map[string]string{"kind": o.Kind, "resource_id": o.Resource, "value": plain})
 		if _, err = s.vaultRequest(space, binding, "/objects/"+o.ID, payload); err != nil {
-			return "", err
+			return err
 		}
-		if _, err = db.Exec(`UPDATE desktop_sync_objects SET uploaded=1 WHERE space_id=? AND id=?`, space, o.ID); err != nil {
-			return "", err
+		_, err = db.Exec(`UPDATE desktop_sync_objects SET uploaded=1 WHERE space_id=? AND id=?`, space, o.ID)
+		return err
+	}
+	for _, o := range pending {
+		if err = upload(o); err != nil {
+			return none, err
 		}
 	}
-	data, err := s.vaultRequest(space, binding, "/documents/"+kind+"/"+id, []byte(`{"peer":`+peer+`}`))
+	request, err := json.Marshal(map[string]syncengine.Peer{"peer": peer})
 	if err != nil {
-		return "", err
+		return none, err
 	}
-	var result protocol.SyncVaultResult
-	if err = json.Unmarshal(data, &result); err != nil {
-		return "", err
+	type answer struct {
+		Response  syncengine.Peer       `json:"response"`
+		Snapshot  syncdata.Snapshot     `json:"snapshot"`
+		Conflicts []syncengine.Conflict `json:"conflicts"`
+		Missing   []string              `json:"missing_objects"`
+	}
+	var data []byte
+	var result answer
+	for attempt := 0; ; attempt++ {
+		if data, err = s.vaultRequest(space, binding, "/documents/"+kind+"/"+id, request); err != nil {
+			return none, err
+		}
+		result = answer{}
+		if err = json.Unmarshal(data, &result); err != nil {
+			return none, err
+		}
+		if len(result.Missing) == 0 {
+			break
+		}
+		// The server applied nothing because it lacks objects this device had
+		// marked as uploaded, as after a server restore. Send them again.
+		if attempt > 0 {
+			return none, errors.New("server still lacks sync objects after they were uploaded")
+		}
+		for _, objectID := range result.Missing {
+			o := object{ID: objectID}
+			err = db.QueryRow(`SELECT kind,resource_id,ciphertext FROM desktop_sync_objects WHERE space_id=? AND id=?`, space, objectID).Scan(&o.Kind, &o.Resource, &o.Ciphertext)
+			if err == sql.ErrNoRows {
+				return none, errors.New("the server lacks a sync object that this device does not have")
+			}
+			if err != nil {
+				return none, err
+			}
+			if err = upload(o); err != nil {
+				return none, err
+			}
+		}
 	}
 	refs := []string{result.Snapshot[syncdata.ValueKey]["ref"]}
+	for _, change := range result.Response.Changes {
+		if change.Key == syncdata.ValueKey && change.Field == "ref" {
+			refs = append(refs, change.Value)
+		}
+	}
+	for _, conflict := range result.Response.Conflicts {
+		refs = append(refs, conflict.Values...)
+	}
 	for _, c := range result.Conflicts {
 		refs = append(refs, c.Values...)
 	}
@@ -476,25 +517,24 @@ func (s *DesktopSyncService) ExchangeVault(kind, id, peer string, space string, 
 		seen[ref] = true
 		value, err := s.downloadObject(space, binding, kind, id, ref)
 		if err != nil {
-			return "", err
+			return none, err
 		}
 		p, err := syncdata.DecodeVault(value, kind)
 		if err != nil {
-			return "", err
+			return none, err
 		}
 		if p.Conversation != nil {
 			for _, m := range p.Conversation.Messages {
 				for _, a := range m.Attachments {
 					aid := strings.TrimPrefix(a.Data, "sync-attachment:")
 					if _, err = s.downloadObject(space, binding, "attachment", id, aid); err != nil {
-						return "", err
+						return none, err
 					}
 				}
 			}
 		}
 	}
-	response, err := json.Marshal(protocol.SyncExchangeResult{Response: result.Response, AffectedGrants: result.AffectedGrants})
-	return string(response), err
+	return decodeSyncResponse(data)
 }
 func (s *DesktopSyncService) downloadObject(space string, binding int64, kind, resource, id string) (string, error) {
 	db, err := s.database()

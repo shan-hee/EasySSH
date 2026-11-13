@@ -15,7 +15,7 @@ import (
 //go:embed */*.sql
 var scripts embed.FS
 
-const Version int64 = 1
+const Version int64 = 2
 
 const BaselineVersion int64 = 1
 
@@ -42,7 +42,7 @@ func Start(ctx context.Context, db *sql.DB, driver string) error {
 		return err
 	}
 	if version >= BaselineVersion && version < Version {
-		return fmt.Errorf("database schema %d requires an explicit upgrade: stop EasySSHDesktop and run maintenance schema-upgrade --file <backup> --password-file <password>", version)
+		return fmt.Errorf("database schema %d must be upgraded to schema %d before it is opened", version, Version)
 	}
 	return dbmigration.Start(ctx, db, driver, definition)
 }

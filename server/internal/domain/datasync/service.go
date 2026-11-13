@@ -89,7 +89,6 @@ type Service struct {
 	Content              *content.Service
 	Encryptor            *crypto.Encryptor
 	WithSessionSync      func(uuid.UUID, string, func() error) error
-	Engine               *Engine
 	InvalidateConnection func(uuid.UUID, uuid.UUID)
 	InvalidateScript     func(string)
 }
@@ -153,7 +152,7 @@ func (s *Service) InspectConfiguration(ctx context.Context, owner uuid.UUID) (En
 	if state.Document == "" {
 		return EngineResult{}, servers + scripts + groups, nil
 	}
-	result, err := s.Engine.Run(ctx, EngineInput{Document: string(state.Document), Inspect: true})
+	result, err := runEngine(EngineInput{Document: string(state.Document), Inspect: true})
 	return result, servers + scripts + groups, err
 }
 
@@ -177,7 +176,7 @@ func (s *Service) Exchange(ctx context.Context, owner uuid.UUID, peer Peer, reso
 		if err != nil {
 			return err
 		}
-		result, err = s.Engine.Run(ctx, EngineInput{Document: string(state.Document), Current: current, Peer: peer, Resolution: resolution, Configuration: true})
+		result, err = runEngine(EngineInput{Document: string(state.Document), Current: current, Peer: peer, Resolution: resolution, Configuration: true})
 		if err != nil {
 			return err
 		}

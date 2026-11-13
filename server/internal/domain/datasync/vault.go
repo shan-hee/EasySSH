@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -128,8 +129,12 @@ func (s *Service) vaultPayload(tx *gorm.DB, owner uuid.UUID, kind, resource, ref
 	}
 	return syncdata.DecodeVault(plain, kind)
 }
+
+var errVaultObjectsMissing = errors.New("sync objects are missing")
+
 func (s *Service) VaultExchange(ctx context.Context, owner uuid.UUID, kind, id string, peer Peer, resolution *Resolution) (EngineResult, error) {
 	var result EngineResult
+	var missing []string
 	if kind != "credential" && kind != "ai_config" && kind != "ai_session" {
 		return result, errors.New("invalid sync kind")
 	}
@@ -188,7 +193,7 @@ func (s *Service) VaultExchange(ctx context.Context, owner uuid.UUID, kind, id s
 			if state.CurrentRef != "" {
 				snapshot[syncdata.ValueKey] = syncdata.Record{"ref": state.CurrentRef}
 			}
-			result, err = s.Engine.Run(ctx, EngineInput{Document: string(state.Document), Current: snapshot, Peer: peer, Resolution: resolution})
+			result, err = runEngine(EngineInput{Document: string(state.Document), Current: snapshot, Peer: peer, Resolution: resolution})
 			if err != nil {
 				return err
 			}
@@ -206,13 +211,39 @@ func (s *Service) VaultExchange(ctx context.Context, owner uuid.UUID, kind, id s
 			for _, c := range result.Conflicts {
 				refs = append(refs, c.Values...)
 			}
+			missing = nil
 			for _, candidate := range refs {
 				if candidate == "" {
 					continue
 				}
-				if _, err = s.vaultPayload(tx, owner, kind, id, candidate); err != nil {
+				payload, err := s.vaultPayload(tx, owner, kind, id, candidate)
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					missing = append(missing, candidate)
+					continue
+				}
+				if err != nil {
 					return err
 				}
+				if payload.Conversation == nil {
+					continue
+				}
+				for _, message := range payload.Conversation.Messages {
+					for _, attachment := range message.Attachments {
+						attachmentID := strings.TrimPrefix(attachment.Data, "sync-attachment:")
+						var count int64
+						if err = tx.Model(&VaultObject{}).Where("owner_id = ? AND id = ?", owner, attachmentID).Count(&count).Error; err != nil {
+							return err
+						}
+						if count == 0 {
+							missing = append(missing, attachmentID)
+						}
+					}
+				}
+			}
+			// The document must not point at objects the server lacks, which
+			// happens after a restore: the device re-uploads them and retries.
+			if len(missing) > 0 {
+				return errVaultObjectsMissing
 			}
 			if ref != "" && len(result.Conflicts) == 0 && ref != state.AppliedRef {
 				payload, err := s.vaultPayload(tx, owner, kind, id, ref)
@@ -275,6 +306,10 @@ func (s *Service) VaultExchange(ctx context.Context, owner uuid.UUID, kind, id s
 		err = s.WithSessionSync(owner, id, run)
 	} else {
 		err = run()
+	}
+	if errors.Is(err, errVaultObjectsMissing) {
+		slices.Sort(missing)
+		return EngineResult{Missing: slices.Compact(missing), AffectedGrants: []protocol.SyncAffectedGrant{}}, nil
 	}
 	if err == nil && applied && kind == "credential" && s.InvalidateConnection != nil {
 		rid, _ := uuid.Parse(id)

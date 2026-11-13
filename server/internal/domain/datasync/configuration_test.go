@@ -20,7 +20,7 @@ func TestInspectConfigurationWorksWithReadOnlyDatabase(t *testing.T) {
 	if err := s.DB.Exec("INSERT INTO servers(id) VALUES(?)", uuid.NewString()).Error; err != nil {
 		t.Fatal(err)
 	}
-	document, err := s.Engine.Run(ctx, EngineInput{Configuration: true, Current: syncdata.Snapshot{syncdata.ServerOrderKey: {"ids": "[]"}}})
+	document, err := runEngine(EngineInput{Configuration: true, Current: syncdata.Snapshot{syncdata.ServerOrderKey: {"ids": "[]"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

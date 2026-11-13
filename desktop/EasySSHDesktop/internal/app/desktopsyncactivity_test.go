@@ -36,7 +36,7 @@ func TestDesktopSyncEquivalentConfigurationDoesNotCreateActivity(t *testing.T) {
 	state.Snapshot[key]["tags"] = "[ ]"
 	delete(state.Snapshot[key], "description")
 	delete(state.Snapshot[key], "group_id")
-	if ok, err := s.Save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot}); err != nil || !ok {
+	if ok, err := s.save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot}); err != nil || !ok {
 		t.Fatal("equivalent save rejected", ok, err)
 	}
 	var afterCount int
@@ -62,7 +62,7 @@ func TestDesktopSyncNewServersDoNotCountInitialOrderTwice(t *testing.T) {
 		state.Snapshot["server/"+id] = syncdata.Record{"name": "server", "connection": syncdata.JSON(syncdata.Connection{Host: "host.test", Port: 22, Username: "owner", AuthMethod: "password"}), "tags": "[]"}
 	}
 	state.Snapshot[syncdata.ServerOrderKey] = syncdata.Record{"ids": syncdata.JSON(ids)}
-	if ok, err := s.Save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot}); err != nil || !ok {
+	if ok, err := s.save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot}); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
 	var creates, reorders int
@@ -99,7 +99,7 @@ func TestDesktopSyncGroupDeletionRetainsMembersBeforeDetachment(t *testing.T) {
 		t.Fatal(err)
 	}
 	input := DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot}
-	if ok, err := s.Save(input); err == nil || ok {
+	if ok, err := s.save(input); err == nil || ok {
 		t.Fatal("group change committed without its fact")
 	}
 	stored, err := s.servers.getByIDStored(server.ID.String())
@@ -109,7 +109,7 @@ func TestDesktopSyncGroupDeletionRetainsMembersBeforeDetachment(t *testing.T) {
 	if _, err := s.servers.db.Exec("DROP TRIGGER reject_group_activity"); err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := s.Save(input); err != nil || !ok {
+	if ok, err := s.save(input); err != nil || !ok {
 		t.Fatal(ok, err)
 	}
 	var name string

@@ -131,8 +131,8 @@ export {
     DesktopServerCommandInput,
     DesktopServerCommandResult,
     DesktopSyncCandidate,
+    DesktopSyncChange,
     DesktopSyncLogin,
-    DesktopSyncSave,
     DesktopSyncState,
     DesktopTaskCleanupResult,
     DesktopTaskDetails,
@@ -151,9 +151,7 @@ export {
     DesktopTerminalWriteInput,
     DesktopUpdateCheckResult,
     DesktopUpdateFailureNotice,
-    DesktopVaultEntry,
-    DesktopVaultSave,
-    DesktopVaultState
+    DesktopVaultEntry
 } from "./models.js";
 
 export type {

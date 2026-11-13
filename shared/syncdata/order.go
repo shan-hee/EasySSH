@@ -11,8 +11,8 @@ import (
 // remote server IDs from that space, never local database primary keys.
 const ServerOrderKey = "order/00000000-0000-4000-8000-000000000001"
 
-// ConfigurationProtocol includes independent groups and stable server references.
-const ConfigurationProtocol = 5
+// ConfigurationProtocol 6 exchanges versioned field changes; earlier protocols exchanged Automerge documents.
+const ConfigurationProtocol = 6
 
 func ParseServerOrder(value string) ([]string, error) {
 	if len(value) > 1<<20 {

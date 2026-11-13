@@ -9,6 +9,7 @@ import (
 
 	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/syncdata"
+	"github.com/easyssh/shared/syncengine"
 	"github.com/google/uuid"
 )
 
@@ -45,7 +46,7 @@ func TestDeviceScopeRefreshNarrowsSelectionWithoutEnablingNewData(t *testing.T) 
 		t.Fatal("unchanged grants invalidated prepared sync", err)
 	}
 	identity.Grants = protocol.SyncScopes{AIConfig: true}
-	if _, err := s.Exchange("{}", before.Revision); err == nil || exchanges != 0 {
+	if _, err := s.exchange(syncengine.Peer{}, before.Revision); err == nil || exchanges != 0 {
 		t.Fatal("scope change did not invalidate prepared exchange", err)
 	}
 	changed, err := s.Load()

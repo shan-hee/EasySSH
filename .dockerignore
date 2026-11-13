@@ -101,7 +101,6 @@ data/
 .env.test
 .env.production
 
-server/sync-runtime/node_modules
 
 # Versioned SQL is application source required by go:embed.
 !shared/dbmigration/**/*.sql

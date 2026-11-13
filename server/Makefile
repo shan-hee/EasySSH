@@ -17,7 +17,7 @@ help:
 	@echo ""
 
 # 开发模式运行 - 支持热重载
-dev: sync-deps
+dev:
 	@if [ -f /root/go/bin/air ]; then \
 		/root/go/bin/air; \
 	elif command -v air >/dev/null 2>&1; then \
@@ -29,7 +29,7 @@ dev: sync-deps
 	fi
 
 # 开发模式运行 - 无热重载
-dev-simple: sync-deps
+dev-simple:
 	go run ./cmd/api
 
 # 构建
@@ -37,20 +37,15 @@ build:
 	go build -o bin/easyssh-api ./cmd/api
 
 # 运行测试
-test: sync-deps
+test:
 	go test -v ./...
 
 # 清理构建文件
 clean:
 	rm -rf bin/
 
-# Automerge worker runtime; Go remains CGO-free. 依赖由仓库根 pnpm 工作区按锁文件安装。
-.PHONY: sync-deps
-sync-deps:
-	cd .. && pnpm install --frozen-lockfile --ignore-scripts --filter "easyssh-sync-runtime..."
-
 # 安装依赖
-deps: sync-deps
+deps:
 	go mod download
 	go mod tidy
 

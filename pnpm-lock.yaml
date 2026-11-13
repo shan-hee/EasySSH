@@ -6,9 +6,6 @@ settings:
 
 catalogs:
   default:
-    '@automerge/automerge':
-      specifier: 3.5.0
-      version: 3.5.0
     '@eslint/js':
       specifier: ^10.0.1
       version: 10.0.1
@@ -175,9 +172,6 @@ importers:
       '@atlaskit/pragmatic-drag-and-drop':
         specifier: ^3.1.0
         version: 3.1.0
-      '@automerge/automerge':
-        specifier: 'catalog:'
-        version: 3.5.0
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -190,9 +184,6 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.8)
-      '@easyssh/sync-document':
-        specifier: workspace:*
-        version: link:../sync-document
       '@fontsource-variable/cascadia-code':
         specifier: ^5.3.0
         version: 5.3.0
@@ -471,17 +462,6 @@ importers:
         specifier: 'catalog:'
         version: 8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)
 
-  packages/sync-document: {}
-
-  server/sync-runtime:
-    dependencies:
-      '@automerge/automerge':
-        specifier: 'catalog:'
-        version: 3.5.0
-      '@easyssh/sync-document':
-        specifier: workspace:*
-        version: link:../../packages/sync-document
-
   tooling/frontend:
     dependencies:
       '@eslint/js':
@@ -742,9 +722,6 @@ packages:
 
   '@atlaskit/pragmatic-drag-and-drop@3.1.0':
     resolution: {integrity: sha512-VU+2Oh6OgvC6D1xiX3lfm1gZJsaSPD+ZKjAHodOQ9IO6RfOvAyReLlK5ut9gIUpPmbD8d09wlCs7y4A6/I8c5Q==}
-
-  '@automerge/automerge@3.5.0':
-    resolution: {integrity: sha512-ejbqJWfXWM2QbTcUK/5ugYiQiyOP7LYVAp/RuSvthCc07oek0FClMxEuouuhjrLjVPDSI34RP1ftGc45PF7WRA==}
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -5795,8 +5772,6 @@ snapshots:
       '@babel/runtime': 7.29.7
       bind-event-listener: 3.0.0
       raf-schd: 4.0.3
-
-  '@automerge/automerge@3.5.0': {}
 
   '@babel/code-frame@7.29.7':
     dependencies:

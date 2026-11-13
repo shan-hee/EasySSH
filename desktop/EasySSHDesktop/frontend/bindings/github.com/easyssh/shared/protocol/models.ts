@@ -4220,7 +4220,7 @@ export enum SyncIdentityProtocol {
     /**
      * Defines values for SyncIdentityProtocol.
      */
-    N4 = 4,
+    N6 = 6,
 };
 
 /**

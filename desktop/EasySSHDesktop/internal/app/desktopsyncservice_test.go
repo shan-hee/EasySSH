@@ -74,7 +74,7 @@ func TestDesktopSyncOrderPreservesUnenrolledServerSlots(t *testing.T) {
 		t.Fatalf("enrolled order: %v %v", remoteIDs, err)
 	}
 	state.Snapshot[syncdata.ServerOrderKey]["ids"] = syncdata.JSON([]string{remoteIDs[1], remoteIDs[0]})
-	saved, err := s.Save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot})
+	saved, err := s.save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot})
 	if err != nil || !saved {
 		t.Fatalf("save reordered snapshot: %v %v", saved, err)
 	}
@@ -108,7 +108,7 @@ func TestDesktopSyncOrderPreservesUnenrolledServerSlots(t *testing.T) {
 	if _, err := s.servers.db.Exec("UPDATE desktop_servers SET sort_order=-1 WHERE id=?", localIDs[0]); err != nil {
 		t.Fatal(err)
 	}
-	if saved, err := s.Save(DesktopSyncSave{Revision: stale.Revision, Hash: stale.Hash, Snapshot: stale.Snapshot}); err != nil || saved {
+	if saved, err := s.save(DesktopSyncSave{Revision: stale.Revision, Hash: stale.Hash, Snapshot: stale.Snapshot}); err != nil || saved {
 		t.Fatalf("accepted response after local reorder: %v %v", saved, err)
 	}
 }
@@ -173,7 +173,7 @@ func TestDesktopSyncEnrollmentAndAccountIsolation(t *testing.T) {
 	if syncConfigurationCount(current.Snapshot) != 0 {
 		t.Fatal("new account inherited previous space data")
 	}
-	saved, err := s.Save(DesktopSyncSave{Revision: old.Revision, Hash: old.Hash, Document: "stale"})
+	saved, err := s.save(DesktopSyncSave{Revision: old.Revision, Hash: old.Hash, Document: "stale"})
 	if err != nil || saved {
 		t.Fatalf("accepted stale account response: %v", err)
 	}
@@ -216,7 +216,7 @@ func TestDesktopSyncRejectsChangesMadeDuringExchange(t *testing.T) {
 	if _, err := s.servers.db.Exec(`UPDATE desktop_scripts SET content='echo edited' WHERE id=?`, id); err != nil {
 		t.Fatal(err)
 	}
-	saved, err := s.Save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Document: "stale", Snapshot: state.Snapshot})
+	saved, err := s.save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Document: "stale", Snapshot: state.Snapshot})
 	if err != nil || saved {
 		t.Fatalf("overwrote concurrent local edit: %v", err)
 	}

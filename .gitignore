@@ -119,7 +119,6 @@ yarn-error.log*
 # vercel
 .vercel
 
-/server/sync-runtime/node_modules/
 
 # Local database migration source and encrypted instance archives
 /server/data1/

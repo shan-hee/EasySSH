@@ -21,6 +21,7 @@ import (
 	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/api/rest"
 	"github.com/easyssh/server/internal/domain/auth"
+	"github.com/easyssh/server/internal/domain/datasync"
 	"github.com/easyssh/server/internal/infra/config"
 	dbinfra "github.com/easyssh/server/internal/infra/db"
 	"github.com/easyssh/server/internal/storage/schema"
@@ -498,6 +499,10 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 		}
 	}
 	if err = tx.Exec("UPDATE chat_connections SET enabled = false, revision = revision + 1, bind_code_hash = '', bind_expires_at = NULL, last_error = '', last_poll_at = NULL").Error; err != nil {
+		return err
+	}
+	// The restored sync versions no longer continue what devices have seen.
+	if err = datasync.RotateTimelines(tx); err != nil {
 		return err
 	}
 	if err = tx.Exec("UPDATE grants SET revoked_at = ?, version = version + 1", time.Now().UTC()).Error; err != nil {

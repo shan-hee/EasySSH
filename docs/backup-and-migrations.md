@@ -48,7 +48,7 @@
 
 ## 服务端启动自动迁移
 
-服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前服务端 schema 为 4；从 schema 1 升级时先执行 `00002_remove_csrf_trusted_origins.sql`，删除废弃的 `security_config.csrf_trusted_origins` 列和旧来源列表，再执行 `00003_remove_public_url.sql`，删除 `system_config.public_url` 列和原来保存的固定公开地址，最后执行 `00004_add_automation_token_cipher.sql`，为 `automation_tokens` 新增可空的 `token_cipher` 列；schema 2 从第二项开始，schema 3 只执行最后一项。分享授权、密钥及其他系统配置不变，分享链接改用当前访问地址；已有访问令牌继续可用，其加密副本为空，轮转后才能查看。回滚只恢复可空字段，不恢复旧值；需要旧值时使用升级前恢复点。SQLite/PostgreSQL 在事务内迁移；MySQL DDL 隐式提交，中断时按下文恢复流程处理。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
+服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前服务端 schema 为 5；从 schema 1 升级时先执行 `00002_remove_csrf_trusted_origins.sql`，删除废弃的 `security_config.csrf_trusted_origins` 列和旧来源列表，再执行 `00003_remove_public_url.sql`，删除 `system_config.public_url` 列和原来保存的固定公开地址，然后执行 `00004_add_automation_token_cipher.sql`，为 `automation_tokens` 新增可空的 `token_cipher` 列，最后执行 `00005_reset_sync_documents.sql`，清空 `sync_states.document` 以及 `sync_vault_documents` 的 `document` 和 `conflicts`；schema 2 从第二项开始，依此类推。协议 6 的同步文档与此前的 Automerge 文档互不兼容，清空后丢失的只有同步历史和未解决的冲突；服务器、脚本、凭据及其引用的载荷对象不变，设备授权和数据加入关系也保留。清空文档等同于换了一条同步时间线：各设备升级后无需重新授权或重新加入数据，下一次同步自动重新对齐（见下文“恢复与同步时间线”）。分享授权、密钥及其他系统配置不变，分享链接改用当前访问地址；已有访问令牌继续可用，其加密副本为空，轮转后才能查看。旧字段迁移的回滚只恢复空字段；同步协议切换必须通过完整的升级前恢复点回退，不能原地回滚。SQLite/PostgreSQL 在事务内迁移；MySQL DDL 隐式提交，中断时按下文恢复流程处理。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
 
 | 数据库状态 | 行为 |
 | --- | --- |
@@ -205,7 +205,7 @@ MySQL 原生连接支持 unix socket、TCP 和驱动的 `tls=true/false/skip-ver
 2. 检查应用版本及数据库版本。仅支持本次新基线及其后续版本的归档；服务端和桌面端各自判断版本，旧迁移链归档不兼容。
 3. SQLite 恢复到临时数据库；PostgreSQL/MySQL 恢复到操作者提供的空数据库。
 4. 后续出现增量迁移时，在隔离副本中升级受支持的备份到当前 schema。验证根密钥能够解密应用凭据，SQLite 另检查数据库与外键完整性。
-5. 清理登录会话、自动化令牌、设备授权和短期认证请求，并撤销恢复出的资源授权，防止旧快照复活已撤销授权；保留资源及同步文档。传输文件路径调整为恢复目录内的 `transfers`。
+5. 清理登录会话、自动化令牌、设备授权和短期认证请求，并撤销恢复出的资源授权，防止旧快照复活已撤销授权；保留资源，同步文档保留但换用新的同步时间线（见“恢复与同步时间线”）。传输文件路径调整为恢复目录内的 `transfers`。
 6. 把恢复完成的文件发布到新目录，输出该目录。**不会自动替换原实例或启动服务。**
 
 SQLite 切换时，将 `DB_DSN` 设置为 `/srv/easyssh-restored/easyssh.db`。保留旧目录，即可在停止新实例后切回。根密钥从恢复目录的 `easyssh-root.key` 读取；必须取消旧的 `ENCRYPTION_KEY` 覆盖，或确保它与恢复密钥完全相同。
@@ -263,7 +263,24 @@ Windows 使用实际的 `.exe` 路径；macOS 使用应用包内的可执行文�
 - 容量：单份同步历史上限为 32 MiB（Base64 编码后的文档）；交换请求上限 48 MiB，桌面接收上限 96 MiB。单条内容和附件限制保持不变，暂不自动压缩或清理历史。
 - 数据副本：关闭同步范围或撤销设备授权只阻止后续同步，不会收回已经复制的数据。凭据与同步对象在两端加密存储，服务端能够解密处理，并非端到端加密。
 
-完整备份用于同端整体恢复和迁机，包含对应实例持久化的 AI 历史；恢复后设备同步需要重新授权。Web 与桌面不能互相恢复完整归档。完全离线的跨端迁移、跨数据库类型迁移及通用 JSON 资源导入导出不属于当前产品能力。
+完整备份用于同端整体恢复和迁机，包含对应实例持久化的 AI 历史；恢复后设备同步需要重新授权。
+
+### 恢复与同步时间线
+
+同步靠服务端分配的递增版本号判断谁新谁旧，这些版本号只在一条连续的历史内有意义。服务端从备份恢复后版本号倒退，同一个编号会对应不同的修改，因此恢复流程给每份同步文档换一个新的时间线标识并清空请求回执。清空同步文档（如协议切换迁移）效果相同。
+
+设备每次请求都带上其基准所属的时间线。服务端发现不一致时不应用该请求，只回复需要重新对齐；设备随即丢弃同步基准（不改动本地数据），再发起一次无基准请求。无基准的合并只按值比较：
+
+- 两边相同的值不产生任何变化。
+- 一方有、另一方没有的记录，补给缺少的一方；**不推断删除**，即使服务端留有该记录的删除标记，设备上的副本也会保留并重新上传。
+- 连接参数、脚本内容、排序、分组名称等关键字段不同，保留双方的值，在同步页面由用户选择。
+- 名称、标签、描述等其他字段不同，以服务端为准。
+
+因此服务端恢复后，设备上在备份时间点之后产生的数据不会被旧备份覆盖或删除；代价是恢复时间点之后的删除不会重放，被删的记录可能重新出现，需要再删一次。撤销误操作不应依赖整库恢复。
+
+服务端缺少设备已上传过的载荷对象或附件时（同样常见于恢复之后），会在回复中列出缺失的对象且不应用请求，设备补传后自动重试。
+
+桌面端从备份恢复不需要换时间线：它只是一台游标较旧的设备，重新授权后按原时间线增量追上；重新授权时会重置设备的请求编号。Web 与桌面不能互相恢复完整归档。完全离线的跨端迁移、跨数据库类型迁移及通用 JSON 资源导入导出不属于当前产品能力。
 
 
 ## 迁移工具和命名规范
@@ -300,14 +317,20 @@ node scripts/new-migration.mjs desktop add_server_notes
 ./easyssh-api maintenance schema-rollback
 ```
 
-桌面端先退出应用，再显式运行维护命令，每次操作必须先创建加密完整备份：
+桌面端同样在启动时自动升级：发现数据库版本落后时，先把数据库快照到备份目录的 `migrations/schema-<旧版本>-to-<新版本>-<时间>.sqlite`，再逐版执行迁移，成功后继续启动。每个迁移与其版本记录在同一事务内，失败时数据库停在最后一个完成的版本，程序报错退出并在错误信息中给出快照路径。
+
+快照是未另行加密的数据库副本：其中的密码、私钥等仍是密文，与旁边正在使用的数据库文件相同，都由操作系统凭据库中的根密钥解开，根密钥不写入快照。快照因此只能在本机用于回退，迁移到其他设备仍须使用完整备份。快照不会自动清理。
+
+程序不会自动降级；回到旧版本需先退出应用，用旧程序和对应的快照替换数据库文件。无法启动时仍可使用离线维护命令，它会先创建加密完整备份：
 
 ```bash
 EasySSHDesktop maintenance schema-upgrade --file /backup/before-upgrade.age --password-file /secure/backup-password
 EasySSHDesktop maintenance schema-rollback --file /backup/before-rollback.age --password-file /secure/backup-password
 ```
 
-当前服务端有 schema 1 → 2 → 3 → 4 增量迁移；`schema-rollback` 每次仅退一版，不能回退到初始化基线之前。schema 4 的 Down 删除 `token_cipher` 列，令牌仍可凭哈希使用，但不能再查看；schema 3 的 Down 只恢复空的 `public_url` 字段，schema 2 的 Down 只恢复空的 CSRF Origin 字段；恢复旧值需使用升级前备份。回退后使用匹配程序，避免新程序自动再次升级。
+桌面端 schema 2 的 `00002_reset_sync_documents.sql` 清空 `desktop_sync_spaces.document` 以及 `desktop_sync_vault` 的 `document` 和 `conflicts`，把 `desktop_sync_vault.current_ref` 重置为本机实际应用的版本，并删除已废弃的 `desktop_sync_spaces.remote_heads` 和 `desktop_sync_vault.heads` 列（同步游标改存在文档内）。设备绑定、数据加入关系和本地业务数据保留，升级后的第一次同步自动重新对齐。这是桌面端的第一个增量迁移，schema 1 的数据库在新版本首次启动时自动升级。
+
+当前服务端有 schema 1 → 2 → 3 → 4 → 5 增量迁移，桌面端有 schema 1 → 2。`schema-rollback` 每次仅退一版，不能回退到初始化基线之前。服务端 schema 5 与桌面端 schema 2（均为 `reset_sync_documents`）的 Down 同样清空同步文档，因为旧程序读不了协议 6 的文档；桌面端的 Down 另外恢复空的 `desktop_sync_spaces.remote_heads` 和 `desktop_sync_vault.heads` 列。被清空的 Automerge 历史只存在于升级前的备份中。服务端 schema 4 的 Down 删除 `token_cipher`；schema 3 的 Down 只恢复空的 `public_url`；schema 2 的 Down 只恢复空的 CSRF Origin 字段，旧值均需从升级前备份恢复。
 
 ## 统一发布版本入口
 

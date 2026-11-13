@@ -1183,13 +1183,13 @@ func (e SyncConflictField) Valid() bool {
 
 // Defines values for SyncIdentityProtocol.
 const (
-	N4 SyncIdentityProtocol = 4
+	N6 SyncIdentityProtocol = 6
 )
 
 // Valid indicates whether the value is a known member of the SyncIdentityProtocol enum.
 func (e SyncIdentityProtocol) Valid() bool {
 	switch e {
-	case N4:
+	case N6:
 		return true
 	default:
 		return false
@@ -4687,12 +4687,31 @@ type SyncAuthorizationUserCode struct {
 	UserCode string `json:"user_code"`
 }
 
+// SyncChange 单个字段的修改或整条记录的删除。
+type SyncChange struct {
+	Deleted *bool `json:"deleted,omitempty"`
+
+	// Field 删除记录时省略
+	Field *string `json:"field,omitempty"`
+	Key   string  `json:"key"`
+
+	// Resolve 设备对冲突作出的选择
+	Resolve *bool   `json:"resolve,omitempty"`
+	Value   *string `json:"value,omitempty"`
+
+	// Version 设备提交时为该修改所基于的服务端版本（resolve 为 true 时是冲突版本）；服务端返回时为该值或该删除的版本
+	Version *int64 `json:"version,omitempty"`
+}
+
 // SyncConflict defines model for SyncConflict.
 type SyncConflict struct {
 	Field    SyncConflictField              `json:"field"`
 	Key      string                         `json:"key"`
 	Previews *map[string]SyncVersionPreview `json:"previews,omitempty"`
 	Values   []string                       `json:"values"`
+
+	// Version 候选值每次变化都会递增，设备解决冲突时回传
+	Version *int64 `json:"version,omitempty"`
 }
 
 // SyncConflictField defines model for SyncConflict.Field.
@@ -4735,12 +4754,25 @@ type SyncIdentityProtocol int
 
 // SyncPeer defines model for SyncPeer.
 type SyncPeer struct {
-	// Changes Base64 Automerge changes since the last acknowledged heads
-	Changes *[]string `json:"changes,omitempty"`
+	Changes *[]SyncChange `json:"changes,omitempty"`
 
-	// Document Base64 Automerge document for initial synchronization
-	Document *string   `json:"document,omitempty"`
-	Heads    *[]string `json:"heads,omitempty"`
+	// Conflicts 仅服务端返回，始终为完整的未决冲突列表
+	Conflicts *[]SyncConflict `json:"conflicts,omitempty"`
+
+	// Cursor 发送方已应用的最高服务端版本
+	Cursor int64 `json:"cursor"`
+
+	// Realign 仅服务端返回。设备的基准属于另一条时间线（例如服务端从备份恢复过），本次请求未被应用；设备须丢弃基准后重新发起无基准请求
+	Realign *bool `json:"realign,omitempty"`
+
+	// Replica 设备文档的随机身份，重试时保持不变
+	Replica *string `json:"replica,omitempty"`
+
+	// Sequence 每个设备文档单调递增的写请求编号；0 表示只读拉取
+	Sequence *int64 `json:"sequence,omitempty"`
+
+	// Timeline 游标和版本号所属的服务端时间线。设备发送其基准所在的时间线，没有基准时省略；服务端返回当前时间线
+	Timeline *string `json:"timeline,omitempty"`
 }
 
 // SyncResolution defines model for SyncResolution.
@@ -4801,8 +4833,11 @@ type SyncVaultObjectKind string
 
 // SyncVaultResult defines model for SyncVaultResult.
 type SyncVaultResult struct {
-	AffectedGrants []SyncAffectedGrant          `json:"affected_grants"`
-	Conflicts      []SyncConflict               `json:"conflicts"`
+	AffectedGrants []SyncAffectedGrant `json:"affected_grants"`
+	Conflicts      []SyncConflict      `json:"conflicts"`
+
+	// MissingObjects 非空时本次请求未被应用：文档引用了服务端没有的载荷对象或附件，设备须上传这些对象后重试
+	MissingObjects *[]string                    `json:"missing_objects,omitempty"`
 	Response       SyncPeer                     `json:"response"`
 	Snapshot       map[string]map[string]string `json:"snapshot"`
 }

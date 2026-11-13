@@ -84,7 +84,7 @@ func TestDesktopSyncGroupCollisionDoesNotAdoptLocalGroup(t *testing.T) {
 	}
 	group.Name = "remote"
 	state.Snapshot["group/"+group.ID] = syncdata.GroupRecord(group)
-	if ok, err := s.Save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot}); err == nil || ok {
+	if ok, err := s.save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot}); err == nil || ok {
 		t.Fatal("unrelated group overwritten")
 	}
 	var name string
@@ -112,7 +112,7 @@ func TestDesktopSyncEmptyGroupAndDeletion(t *testing.T) {
 		t.Fatal("empty group absent")
 	}
 	delete(state.Snapshot, "group/"+group.ID)
-	if ok, err := s.Save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot}); err != nil || !ok {
+	if ok, err := s.save(DesktopSyncSave{Revision: state.Revision, Hash: state.Hash, Snapshot: state.Snapshot}); err != nil || !ok {
 		t.Fatalf("delete: %v %v", ok, err)
 	}
 	page, err := s.servers.ListGroups(1, 20)

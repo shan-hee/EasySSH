@@ -1,171 +1,89 @@
 package datasync
 
 import (
-	"bufio"
-	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"sync"
 
 	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/syncdata"
+	"github.com/easyssh/shared/syncengine"
 )
 
-type Peer struct {
-	Document string   `json:"document,omitempty"`
-	Changes  []string `json:"changes,omitempty"`
-	Heads    []string `json:"heads,omitempty"`
-}
-type Conflict struct {
-	Key    string   `json:"key"`
-	Field  string   `json:"field"`
-	Values []string `json:"values"`
-}
-type Resolution struct {
-	Key   string `json:"key"`
-	Field string `json:"field"`
-	Value string `json:"value"`
-}
+type Peer = syncengine.Peer
+type Conflict = syncengine.Conflict
+type Resolution = syncengine.Resolution
+
 type EngineInput struct {
-	Inspect       bool              `json:"inspect,omitempty"`
-	Configuration bool              `json:"configuration,omitempty"`
-	Document      string            `json:"document"`
-	Current       syncdata.Snapshot `json:"current"`
-	Peer          Peer              `json:"peer"`
-	Resolution    *Resolution       `json:"resolution,omitempty"`
+	Inspect       bool
+	Configuration bool
+	Document      string
+	Current       syncdata.Snapshot
+	Peer          Peer
+	Resolution    *Resolution
 }
 type EngineResult struct {
-	Document       string                       `json:"document"`
-	Snapshot       syncdata.Snapshot            `json:"snapshot"`
-	Conflicts      []Conflict                   `json:"conflicts"`
-	Response       Peer                         `json:"response"`
-	AffectedGrants []protocol.SyncAffectedGrant `json:"affected_grants"`
+	Document       string
+	Snapshot       syncdata.Snapshot
+	Conflicts      []Conflict
+	Response       Peer
+	AffectedGrants []protocol.SyncAffectedGrant
+	// Missing lists payload objects the request refers to but the server lacks.
+	// When it is set, nothing was applied.
+	Missing []string
 }
 
-func (peer Peer) Public() protocol.SyncPeer {
-	var result protocol.SyncPeer
-	if peer.Document != "" {
-		result.Document = &peer.Document
-	}
-	if peer.Changes != nil {
-		result.Changes = &peer.Changes
-	}
-	if peer.Heads != nil {
-		result.Heads = &peer.Heads
+func publicConflicts(conflicts []Conflict) []protocol.SyncConflict {
+	result := make([]protocol.SyncConflict, len(conflicts))
+	for i, conflict := range conflicts {
+		version := int64(conflict.Version)
+		result[i] = protocol.SyncConflict{Key: conflict.Key, Field: protocol.SyncConflictField(conflict.Field), Values: conflict.Values, Version: &version}
 	}
 	return result
 }
 
+func publicPeer(peer Peer) protocol.SyncPeer {
+	changes := make([]protocol.SyncChange, len(peer.Changes))
+	for i, change := range peer.Changes {
+		version := int64(change.Version)
+		changes[i] = protocol.SyncChange{Key: change.Key, Field: &change.Field, Value: &change.Value, Version: &version, Deleted: &change.Deleted, Resolve: &change.Resolve}
+	}
+	conflicts := publicConflicts(peer.Conflicts)
+	sequence := int64(peer.Sequence)
+	return protocol.SyncPeer{Timeline: &peer.Timeline, Realign: &peer.Realign, Replica: &peer.Replica, Sequence: &sequence, Cursor: int64(peer.Cursor), Changes: &changes, Conflicts: &conflicts}
+}
+
 func (result EngineResult) ExchangeResult() protocol.SyncExchangeResult {
-	return protocol.SyncExchangeResult{Response: result.Response.Public(), AffectedGrants: result.AffectedGrants}
+	return protocol.SyncExchangeResult{Response: publicPeer(result.Response), AffectedGrants: result.AffectedGrants}
 }
 
 func (result EngineResult) VaultResult() protocol.SyncVaultResult {
-	output := protocol.SyncVaultResult{Response: result.Response.Public(), AffectedGrants: result.AffectedGrants,
-		Snapshot: make(map[string]map[string]string, len(result.Snapshot)), Conflicts: make([]protocol.SyncConflict, 0, len(result.Conflicts))}
+	output := protocol.SyncVaultResult{Response: publicPeer(result.Response), AffectedGrants: result.AffectedGrants,
+		Snapshot: make(map[string]map[string]string, len(result.Snapshot)), Conflicts: publicConflicts(result.Conflicts)}
 	for key, record := range result.Snapshot {
 		output.Snapshot[key] = map[string]string(record)
 	}
-	for _, conflict := range result.Conflicts {
-		output.Conflicts = append(output.Conflicts, protocol.SyncConflict{Key: conflict.Key, Field: protocol.SyncConflictField(conflict.Field), Values: conflict.Values})
+	if len(result.Missing) > 0 {
+		output.MissingObjects = &result.Missing
 	}
 	return output
 }
 
-type Engine struct {
-	mu     sync.Mutex
-	cmd    *exec.Cmd
-	input  io.WriteCloser
-	output *bufio.Scanner
-}
-
-func (e *Engine) stop() {
-	if e.cmd != nil {
-		_ = e.cmd.Process.Kill()
-		_ = e.cmd.Wait()
-		e.cmd = nil
+// runEngine merges on the hub side. The server is the only hub of its sync space.
+func runEngine(input EngineInput) (EngineResult, error) {
+	var result syncengine.Result
+	var err error
+	if input.Inspect {
+		result, err = syncengine.Inspect(input.Document)
+	} else {
+		result, err = syncengine.Exchange(syncengine.HubInput{Document: input.Document, Current: input.Current, Peer: input.Peer, Resolution: input.Resolution, Configuration: input.Configuration})
 	}
-}
-func (e *Engine) Close() { e.mu.Lock(); defer e.mu.Unlock(); e.stop() }
-func (e *Engine) Run(ctx context.Context, input EngineInput) (EngineResult, error) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if err := ctx.Err(); err != nil {
+	if err != nil {
 		return EngineResult{}, err
 	}
-	if e.cmd == nil {
-		path := os.Getenv("EASYSSH_SYNC_ENGINE")
-		if path == "" {
-			path = filepath.Join("sync-runtime", "engine.mjs")
-			if _, err := os.Stat(path); err != nil {
-				exe, _ := os.Executable()
-				path = filepath.Join(filepath.Dir(exe), "sync-runtime", "engine.mjs")
-			}
-		}
-		cmd := exec.Command("node", "--max-old-space-size=512", path)
-		cmd.Stderr = os.Stderr
-		stdin, err := cmd.StdinPipe()
-		if err != nil {
-			return EngineResult{}, err
-		}
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			_ = stdin.Close()
-			return EngineResult{}, err
-		}
-		if err = cmd.Start(); err != nil {
-			return EngineResult{}, fmt.Errorf("start sync runtime (Node.js 22+ required): %w", err)
-		}
-		e.cmd = cmd
-		e.input = stdin
-		e.output = bufio.NewScanner(stdout)
-		e.output.Buffer(make([]byte, 4096), syncdata.MaxRuntimeMessageBytes)
+	if len(result.Document) > syncdata.MaxDocumentBytes {
+		return EngineResult{}, errors.New("sync state exceeds the 32 MiB limit")
 	}
-	type response struct {
-		Result EngineResult `json:"result"`
-		Error  string       `json:"error"`
-	}
-	done := make(chan error, 1)
-	var result response
-	go func() {
-		if err := json.NewEncoder(e.input).Encode(input); err != nil {
-			done <- err
-			return
-		}
-		if !e.output.Scan() {
-			err := e.output.Err()
-			if err == nil {
-				err = io.ErrUnexpectedEOF
-			}
-			done <- err
-			return
-		}
-		done <- json.Unmarshal(e.output.Bytes(), &result)
-	}()
-	select {
-	case <-ctx.Done():
-		e.stop()
-		<-done
-		return EngineResult{}, ctx.Err()
-	case err := <-done:
-		if err != nil {
-			e.stop()
-			return EngineResult{}, fmt.Errorf("sync runtime: %w", err)
-		}
-	}
-	if result.Error != "" {
-		return EngineResult{}, errors.New(result.Error)
-	}
-	if len(result.Result.Document) > syncdata.MaxDocumentBytes {
-		return EngineResult{}, errors.New("sync history exceeds the 32 MiB limit")
-	}
-	if err := syncdata.Validate(result.Result.Snapshot); err != nil {
+	if err := syncdata.Validate(result.Snapshot); err != nil {
 		return EngineResult{}, err
 	}
-	return result.Result, nil
+	return EngineResult{Document: result.Document, Snapshot: result.Snapshot, Conflicts: result.Conflicts, Response: result.Response}, nil
 }

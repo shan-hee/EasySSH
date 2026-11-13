@@ -80,11 +80,6 @@ const rules: Rule[] = [
       || (target !== null && !isWithin(target, hostRoot(file))),
   },
   {
-    name: "Sync document logic must stay host-independent; Automerge is injected by each host",
-    roots: ["packages/sync-document"],
-    violates: () => true,
-  },
-  {
     name: "Desktop must not import Web dashboard pages or owner API clients",
     roots: [DESKTOP_SOURCE],
     // The isolated remote window installs a native PlatformTransport. Only its

@@ -4134,12 +4134,41 @@ export interface components {
             scripts: components["schemas"]["GrantScriptScope"][];
             sessions: components["schemas"]["AccessSession"][];
         };
+        /** @description 单个字段的修改或整条记录的删除。 */
+        SyncChange: {
+            key: string;
+            /** @description 删除记录时省略 */
+            field?: string;
+            value?: string;
+            /**
+             * Format: int64
+             * @description 设备提交时为该修改所基于的服务端版本（resolve 为 true 时是冲突版本）；服务端返回时为该值或该删除的版本
+             */
+            version?: number;
+            deleted?: boolean;
+            /** @description 设备对冲突作出的选择 */
+            resolve?: boolean;
+        };
         SyncPeer: {
-            /** @description Base64 Automerge document for initial synchronization */
-            document?: string;
-            /** @description Base64 Automerge changes since the last acknowledged heads */
-            changes?: string[];
-            heads?: string[];
+            /** @description 游标和版本号所属的服务端时间线。设备发送其基准所在的时间线，没有基准时省略；服务端返回当前时间线 */
+            timeline?: string;
+            /** @description 仅服务端返回。设备的基准属于另一条时间线（例如服务端从备份恢复过），本次请求未被应用；设备须丢弃基准后重新发起无基准请求 */
+            realign?: boolean;
+            /** @description 设备文档的随机身份，重试时保持不变 */
+            replica?: string;
+            /**
+             * Format: int64
+             * @description 每个设备文档单调递增的写请求编号；0 表示只读拉取
+             */
+            sequence?: number;
+            /**
+             * Format: int64
+             * @description 发送方已应用的最高服务端版本
+             */
+            cursor: number;
+            changes?: components["schemas"]["SyncChange"][];
+            /** @description 仅服务端返回，始终为完整的未决冲突列表 */
+            conflicts?: components["schemas"]["SyncConflict"][];
         };
         SyncConflict: {
             previews?: {
@@ -4149,6 +4178,11 @@ export interface components {
             /** @enum {string} */
             field: "connection" | "content" | "ref" | "ids";
             values: string[];
+            /**
+             * Format: int64
+             * @description 候选值每次变化都会递增，设备解决冲突时回传
+             */
+            version?: number;
         };
         SyncResolution: {
             key: string;
@@ -4219,6 +4253,8 @@ export interface components {
                 };
             };
             conflicts: components["schemas"]["SyncConflict"][];
+            /** @description 非空时本次请求未被应用：文档引用了服务端没有的载荷对象或附件，设备须上传这些对象后重试 */
+            missing_objects?: string[];
         };
         SyncDevice: {
             revoked: boolean;
@@ -4276,7 +4312,7 @@ export interface components {
             user_id: string;
             account_name: string;
             /** @enum {integer} */
-            protocol: 4;
+            protocol: 6;
             grants: components["schemas"]["SyncScopes"];
         };
         Error: {

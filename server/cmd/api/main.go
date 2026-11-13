@@ -507,9 +507,7 @@ func main() {
 	instanceBackupHandler := rest.NewInstanceBackupHandler(instanceHistory, cfg.Database.Driver == "sqlite" || os.Getenv("EASYSSH_RESTORE_DSN") != "")
 	instanceBackupHandler.SetActivation(launcher)
 
-	syncEngine := &datasync.Engine{}
-	defer syncEngine.Close()
-	syncHandler := rest.NewSyncHandler(&datasync.Service{DB: database, Content: contentService, Engine: syncEngine, Encryptor: encryptor, WithSessionSync: aiRuntimeManager.WithSyncSession, InvalidateScript: func(id string) { accessRuntime.InvalidateScript(id, access.ErrResourceChanged) }, InvalidateConnection: func(owner, id uuid.UUID) {
+	syncHandler := rest.NewSyncHandler(&datasync.Service{DB: database, Content: contentService, Encryptor: encryptor, WithSessionSync: aiRuntimeManager.WithSyncSession, InvalidateScript: func(id string) { accessRuntime.InvalidateScript(id, access.ErrResourceChanged) }, InvalidateConnection: func(owner, id uuid.UUID) {
 		accessRuntime.RevalidateResource(id.String())
 		runtimeCredentialStore.Invalidate(owner, id)
 		sftpHandler.GetPool().InvalidateResource(owner, id)

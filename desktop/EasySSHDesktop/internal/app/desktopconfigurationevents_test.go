@@ -95,6 +95,11 @@ func TestServerActivityTracksActualChangesAndKeepsDeletedName(t *testing.T) {
 	if err != nil || len(deletedDetail.Resources) != 1 || !deletedDetail.Resources[0].Deleted || deletedDetail.Resources[0].Name != "original" {
 		t.Fatalf("deleted resource marker or name missing: %+v %v", deletedDetail.Resources, err)
 	}
+	// This checks cascading retention, not equality with the cutoff. SQLite's
+	// julianday rounds to milliseconds, so newly written rows can equal "now".
+	if _, err := s.db.Exec(`UPDATE activity_logs SET finished_at='2000-01-01T00:00:00Z'`); err != nil {
+		t.Fatal(err)
+	}
 	if _, err = activity.Clear(""); err != nil {
 		t.Fatal(err)
 	}

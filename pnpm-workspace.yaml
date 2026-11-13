@@ -3,12 +3,9 @@ packages:
   - desktop/EasySSHDesktop/frontend
   - packages/*
   - tooling/*
-  - server/sync-runtime
 
 # 两端共享的单例依赖与工具链统一版本，各包以 catalog: 引用。
 catalog:
-  # 前端与服务端同步进程必须使用同一 Automerge 版本处理同步文档。
-  '@automerge/automerge': 3.5.0
   '@eslint/js': ^10.0.1
   '@tailwindcss/postcss': ^4.3.3
   '@tanstack/react-query': ^5.101.4

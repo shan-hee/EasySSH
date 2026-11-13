@@ -9,8 +9,6 @@ import type {
   SyncConflict,
   SyncChoice,
 } from "@easyssh/app/lib/sync/types"
-import type { SyncSnapshot, SyncPeer } from "@easyssh/app/lib/sync/automerge"
-import type { components } from "@easyssh/app/generated/openapi"
 
 type LocalState = {
   scopes: SyncScopes
@@ -19,12 +17,11 @@ type LocalState = {
   space_id: string
   account_name: string
   enabled: boolean
-  document: string
-  remote_heads: string[] | null
   last_sync: string
   revision: number
-  snapshot: SyncSnapshot
+  snapshot: Record<string, Record<string, string>>
   hash: string
+  conflicts: SyncConflict[]
 }
 const call = <T>(method: keyof typeof DesktopSyncService, ...args: unknown[]): Promise<T> =>
   (DesktopSyncService[method] as unknown as (...input: unknown[]) => Promise<T>)(...args)
@@ -34,16 +31,6 @@ let changingAccount = false
 let syncPending = false
 let syncTimer: number | undefined
 const authExpiredMessage = "设备授权已失效或被撤销，请重新登录同步"
-
-function parseSyncResponse(raw: string): SyncPeer {
-  const result = JSON.parse(raw) as components["schemas"]["SyncExchangeResult"]
-  const response = result?.response
-  // An exchange envelope is not a peer: treating it as one silently applies no changes.
-  if (!response || !Array.isArray(response.heads)) {
-    throw new Error("Invalid sync response: missing peer or heads")
-  }
-  return { ...response, heads: response.heads }
-}
 
 function syncErrorMessage(error: unknown): string {
   let message = error instanceof Error ? error.message : String(error)
@@ -86,173 +73,25 @@ function notifySyncStatus() {
   window.dispatchEvent(new Event("easyssh:sync-status-changed"))
 }
 
-// Go maps and Automerge records enumerate fields in different orders. Compare
-// their contents, including the effective order after deleted/new server IDs.
-function snapshotSignature(snapshot: SyncSnapshot, serversOnly = false) {
-  return JSON.stringify(Object.keys(snapshot).sort()
-    .filter(key => !serversOnly || key.startsWith("server/") || key.startsWith("order/"))
-    .map(key => {
-      const record = snapshot[key]
-      if (key.startsWith("order/")) {
-        const remaining = new Set(Object.keys(snapshot).filter(id => id.startsWith("server/")).map(id => id.slice(7)))
-        const ids = (JSON.parse(record.ids) as string[]).filter(id => remaining.delete(id))
-        return [key, [...ids, ...[...remaining].sort()]]
-      }
-      return [key, Object.keys(record).sort().map(field => [field, record[field]])]
-    }))
-}
-
+// One round runs entirely in the desktop backend, which owns both the data and
+// the merge. It reports whether local records were replaced.
 async function synchronizeConfiguration() {
-  // Lazy loading keeps WASM off the startup path for users without sync.
-  let state = await call<LocalState>("Load")
-  if (!state.enabled || !state.space_id) return { changed: false, serversChanged: false }
-  const engine = await import("@easyssh/app/lib/sync/automerge")
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if (attempt) state = await call<LocalState>("Load")
-    if (!state.enabled) return { changed: false, serversChanged: false }
-    let doc = engine.loadDocument(state.document)
-    try {
-      doc = engine.reconcileDocument(doc, state.snapshot)
-      const saved = await call<boolean>("Save", {
-        ...state,
-        document: engine.saveDocument(doc),
-        snapshot: null,
-      })
-      if (!saved) continue
-      const response = parseSyncResponse(
-        await call<string>(
-          "Exchange",
-          JSON.stringify(engine.outgoing(doc, state.remote_heads ?? [])),
-          state.revision + 1,
-        ),
-      )
-      doc = engine.receive(doc, response)
-      const projected = engine.projectConfiguration(doc, state.snapshot)
-      const applied = await call<boolean>("Save", {
-        revision: state.revision + 1,
-        hash: state.hash,
-        document: engine.saveDocument(doc),
-        remote_heads: response.heads,
-        snapshot: projected.snapshot,
-      })
-      if (!applied) continue
-      return {
-        changed: snapshotSignature(state.snapshot) !== snapshotSignature(projected.snapshot),
-        serversChanged: snapshotSignature(state.snapshot, true) !== snapshotSignature(projected.snapshot, true),
-      }
-    } finally {
-      engine.freeDocument(doc)
-    }
-  }
-  throw new Error("Local data changed during sync; the next attempt will retry")
+  const result = await call<{ changed: boolean; servers_changed: boolean }>("SynchronizeConfiguration")
+  return { changed: result.changed, serversChanged: result.servers_changed }
 }
 type VaultEntry = { kind: string; id: string; name: string }
-type VaultState = VaultEntry & {
-  space_id: string
-  document: string
-  heads: string[] | null
-  snapshot: SyncSnapshot
-  revision: number
-  binding_revision: number
-}
-const valueKey = "value/00000000-0000-4000-8000-000000000001"
 
-async function synchronizeVault(entry: VaultEntry) {
-  const engine = await import("@easyssh/app/lib/sync/automerge")
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const state = await call<VaultState>("PrepareVault", entry.kind, entry.id)
-    let doc = engine.loadDocument(state.document)
-    try {
-      doc = engine.reconcileDocument(doc, state.snapshot)
-      if (
-        !(await call<boolean>("SaveVault", {
-          ...state,
-          document: engine.saveDocument(doc),
-          snapshot: null,
-          conflicts: engine.projectDocument(doc).conflicts,
-        }))
-      )
-        continue
-      const response = parseSyncResponse(
-        await call<string>(
-          "ExchangeVault",
-          entry.kind,
-          entry.id,
-          JSON.stringify(engine.outgoing(doc, state.heads ?? [])),
-          state.space_id,
-          state.binding_revision,
-        ),
-      )
-      doc = engine.receive(doc, response)
-      const projected = engine.projectDocument(doc)
-      if (
-        !(await call<boolean>("SaveVault", {
-          ...state,
-          revision: state.revision + 1,
-          document: engine.saveDocument(doc),
-          heads: response.heads,
-          ...projected,
-        }))
-      )
-        continue
-      return snapshotSignature(state.snapshot) !== snapshotSignature(projected.snapshot) && !projected.conflicts.length
-    } finally {
-      engine.freeDocument(doc)
-    }
-  }
-  throw new Error("Local data changed during sync; the next attempt will retry")
+function synchronizeVault(entry: VaultEntry) {
+  return call<boolean>("SynchronizeVault", entry.kind, entry.id)
 }
-// Configuration choices share one document and one save; each vault record is
-// its own document. Callers publish and schedule a single sync afterwards.
-async function resolveChoices(choices: SyncChoice[]) {
-  const engine = await import("@easyssh/app/lib/sync/automerge")
-  const configuration = choices.filter((choice) => !choice.key.startsWith("vault/"))
-  if (configuration.length) {
-    const state = await call<LocalState>("Load")
-    let doc = engine.loadDocument(state.document)
-    try {
-      doc = engine.reconcileDocument(doc, state.snapshot)
-      for (const choice of configuration) doc = engine.resolveConflict(doc, choice.key, choice.field, choice.value)
-      const saved = await call<boolean>("Save", {
-        ...state,
-        document: engine.saveDocument(doc),
-        snapshot: engine.projectConfiguration(doc, state.snapshot).snapshot,
-      })
-      if (!saved) throw new Error("Local data changed; refresh and retry")
-    } finally {
-      engine.freeDocument(doc)
-    }
-  }
-  for (const choice of choices.filter((choice) => choice.key.startsWith("vault/"))) {
-    await resolveVaultChoice(choice)
-  }
+function resolveChoices(choices: SyncChoice[]) {
+  return call<void>("ResolveConflicts", choices)
 }
 
-async function resolveVaultChoice(choice: SyncChoice, identicalValues?: string[]) {
-  const engine = await import("@easyssh/app/lib/sync/automerge")
-  const [, kind, id] = choice.key.split("/")
-  const state = await call<VaultState>("PrepareVault", kind, id)
-  let doc = engine.loadDocument(state.document)
-  try {
-    doc = engine.reconcileDocument(doc, state.snapshot)
-    if (identicalValues) {
-      // PrepareVault can capture a local edit made after the equality check.
-      // Only resolve automatically while the compared versions still match.
-      const conflict = engine.projectDocument(doc).conflicts.find((item) => item.key === valueKey && item.field === "ref")
-      if (!conflict || conflict.values.length !== identicalValues.length || conflict.values.some((value) => !identicalValues.includes(value))) {
-        throw new Error("Local data changed; refresh and retry")
-      }
-    }
-    doc = engine.resolveConflict(doc, valueKey, "ref", choice.value)
-    const saved = await call<boolean>("SaveVault", {
-      ...state,
-      document: engine.saveDocument(doc),
-      ...engine.projectDocument(doc),
-    })
-    if (!saved) throw new Error("Local data changed; refresh and retry")
-  } finally {
-    engine.freeDocument(doc)
-  }
+// identicalValues are the versions that were compared as equal; the backend
+// only resolves automatically while they are still the candidates.
+function resolveVaultChoice(choice: SyncChoice, identicalValues?: string[]) {
+  return call<void>("ResolveVault", choice.key, choice.value, identicalValues ?? null)
 }
 
 async function synchronize() {
@@ -330,16 +169,6 @@ function syncNow(): Promise<void> {
 export const desktopSyncAdapter: SyncAdapter = {
   async status(): Promise<SyncStatus> {
     const state = await call<LocalState>("Load")
-    const engine = state.document ? await import("@easyssh/app/lib/sync/automerge") : null
-    let conflicts: SyncStatus["conflicts"] = []
-    if (engine) {
-      const doc = engine.loadDocument(state.document)
-      try {
-        conflicts = engine.projectDocument(doc).conflicts
-      } finally {
-        engine.freeDocument(doc)
-      }
-    }
     return {
       connected: !!state.space_id,
       enabled: state.enabled,
@@ -350,7 +179,7 @@ export const desktopSyncAdapter: SyncAdapter = {
       last_sync: state.last_sync,
       error: lastError,
       auth_expired: lastError === authExpiredMessage,
-      conflicts: [...conflicts, ...(await call<SyncConflict[]>("VaultConflicts"))],
+      conflicts: [...state.conflicts, ...(await call<SyncConflict[]>("VaultConflicts"))],
       scopes: state.scopes,
       grants: state.grants,
       records: Object.keys(state.snapshot).filter((key) => key.startsWith("server/") || key.startsWith("script/")).length,

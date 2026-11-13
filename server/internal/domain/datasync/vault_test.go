@@ -16,6 +16,7 @@ import (
 	"github.com/easyssh/shared/aichatui"
 	crypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/easyssh/shared/syncdata"
+	"github.com/easyssh/shared/syncengine"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -40,19 +41,12 @@ func newSyncTestService(t *testing.T) *Service {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path, err := filepath.Abs("../../../sync-runtime/engine.mjs")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("EASYSSH_SYNC_ENGINE", path)
-	engine := &Engine{}
-	t.Cleanup(engine.Close)
 	bodies, err := content.New(db, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = bodies.Close() })
-	return &Service{DB: db, Encryptor: encryptor, Engine: engine, Content: bodies}
+	return &Service{DB: db, Encryptor: encryptor, Content: bodies}
 }
 
 func TestSyncEnabledPreservesDocumentAndOtherOwners(t *testing.T) {
@@ -134,11 +128,11 @@ func TestVaultAIConfigExchangeIsStable(t *testing.T) {
 	if err := s.PutVaultObject(ctx, owner, p.Kind, ref, syncdata.AIConfigID, syncdata.JSON(p)); err != nil {
 		t.Fatal(err)
 	}
-	peer, err := s.Engine.Run(ctx, EngineInput{Current: syncdata.Snapshot{syncdata.ValueKey: {"ref": ref}}})
+	peer, err := syncengine.Outgoing("", syncdata.Snapshot{syncdata.ValueKey: {"ref": ref}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := s.VaultExchange(ctx, owner, p.Kind, syncdata.AIConfigID, Peer{Document: peer.Document}, nil)
+	first, err := s.VaultExchange(ctx, owner, p.Kind, syncdata.AIConfigID, peer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +159,7 @@ func TestVaultAIConfigExchangeIsStable(t *testing.T) {
 	var updated aiconfig.Config
 	s.DB.First(&updated, "id=?", aiconfig.ConfigID)
 	for i := 0; i < 3; i++ {
-		result, err := s.VaultExchange(ctx, owner, p.Kind, syncdata.AIConfigID, Peer{Heads: first.Response.Heads}, nil)
+		result, err := s.VaultExchange(ctx, owner, p.Kind, syncdata.AIConfigID, Peer{Cursor: first.Response.Cursor}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -190,14 +184,14 @@ func TestVaultConcurrentConversationsCanBeForkedWithoutExecution(t *testing.T) {
 	ctx := context.Background()
 	owner := uuid.New()
 	id := uuid.NewString()
-	makePeer := func(title string) (string, EngineResult) {
+	makePeer := func(title string) (string, Peer) {
 		t.Helper()
 		ref := uuid.NewString()
 		p := syncdata.VaultPayload{Kind: "ai_session", Source: "desktop", Conversation: &syncdata.Conversation{Title: title, CreatedAt: time.Now(), Messages: []aichatui.MessageView{{ID: uuid.NewString(), Role: "user", Content: title}}, Tasks: []aichatui.TaskView{{ID: "task", Status: aichatui.TaskStatusRunning, RequiresConfirmation: true}}}}
 		if err := s.PutVaultObject(ctx, owner, p.Kind, ref, id, syncdata.JSON(p)); err != nil {
 			t.Fatal(err)
 		}
-		peer, err := s.Engine.Run(ctx, EngineInput{Current: syncdata.Snapshot{syncdata.ValueKey: {"ref": ref}}})
+		peer, err := syncengine.Outgoing("", syncdata.Snapshot{syncdata.ValueKey: {"ref": ref}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -205,10 +199,10 @@ func TestVaultConcurrentConversationsCanBeForkedWithoutExecution(t *testing.T) {
 	}
 	_, left := makePeer("left")
 	rightRef, right := makePeer("right")
-	if _, err := s.VaultExchange(ctx, owner, "ai_session", id, Peer{Document: left.Document}, nil); err != nil {
+	if _, err := s.VaultExchange(ctx, owner, "ai_session", id, left, nil); err != nil {
 		t.Fatal(err)
 	}
-	merged, err := s.VaultExchange(ctx, owner, "ai_session", id, Peer{Document: right.Document}, nil)
+	merged, err := s.VaultExchange(ctx, owner, "ai_session", id, right, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

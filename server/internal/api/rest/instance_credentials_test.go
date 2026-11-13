@@ -12,6 +12,7 @@ import (
 	"github.com/easyssh/server/internal/storage/schema"
 	crypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/glebarez/sqlite"
+	"github.com/pressly/goose/v3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -59,16 +60,25 @@ func TestInstanceCredentialVerification(t *testing.T) {
 			t.Cleanup(func() { raw.Close() })
 			raw.SetMaxOpenConns(1)
 			ctx := context.Background()
-			if err := schema.Initialize(ctx, raw, "sqlite"); err != nil {
+			if tc.table == "automation_tokens" {
+				definition, err := schema.Definition("sqlite")
+				if err != nil {
+					t.Fatal(err)
+				}
+				provider, err := goose.NewProvider(goose.DialectSQLite3, raw, definition.Files, goose.WithDisableGlobalRegistry(true))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := provider.UpTo(ctx, 3); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := schema.Initialize(ctx, raw, "sqlite"); err != nil {
 				t.Fatal(err)
 			}
 			if err := VerifyStoredCredentials(ctx, db, encryptor); err != nil {
 				t.Fatalf("empty instance: %v", err)
 			}
 			if tc.table == "automation_tokens" {
-				if err := schema.Migrate(ctx, raw, "sqlite", true); err != nil {
-					t.Fatal(err)
-				}
 				if err := VerifyStoredCredentials(ctx, db, encryptor); err != nil {
 					t.Fatalf("schema 3 must pass credential verification before upgrading: %v", err)
 				}

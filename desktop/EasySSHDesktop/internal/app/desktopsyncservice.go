@@ -22,6 +22,7 @@ import (
 	"github.com/easyssh/shared/scriptutil"
 	"github.com/easyssh/shared/servergroup"
 	"github.com/easyssh/shared/syncdata"
+	"github.com/easyssh/shared/syncengine"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -31,6 +32,7 @@ type DesktopSyncService struct {
 	scripts *DesktopScriptService
 	sftp    *DesktopSFTPService
 	ai      *DesktopAIService
+	syncMu  sync.Mutex
 	authMu  sync.Mutex
 	pending *desktopSyncAuthorization
 }
@@ -63,12 +65,13 @@ type DesktopSyncState struct {
 	Scopes      syncdata.SyncScopes `json:"scopes"`
 	Grants      syncdata.SyncScopes `json:"grants"`
 	Enabled     bool                `json:"enabled"`
-	Document    string              `json:"document"`
-	RemoteHeads []string            `json:"remote_heads"`
+	Document    string              `json:"-"`
 	LastSync    string              `json:"last_sync"`
 	Revision    int64               `json:"revision"`
 	Snapshot    syncdata.Snapshot   `json:"snapshot"`
 	Hash        string              `json:"hash"`
+	// Conflicts are the configuration conflicts awaiting a choice.
+	Conflicts []syncengine.Conflict `json:"conflicts"`
 }
 type desktopSyncQuery interface {
 	Query(string, ...any) (*sql.Rows, error)
@@ -163,14 +166,16 @@ func (s *DesktopSyncService) Load() (DesktopSyncState, error) {
 		return result, err
 	}
 	defer tx.Rollback()
-	var heads, scopes, grants string
-	err = tx.QueryRow(`SELECT COALESCE(p.server_url,''),s.space_id,COALESCE(p.account_name,''),COALESCE(p.scopes,'{}'),s.grants,s.enabled,COALESCE(p.document,''),COALESCE(p.remote_heads,'[]'),COALESCE(p.last_sync,''),s.revision FROM desktop_sync_state s LEFT JOIN desktop_sync_spaces p ON p.id=s.space_id WHERE s.id=1`).Scan(&result.ServerURL, &result.SpaceID, &result.AccountName, &scopes, &grants, &result.Enabled, &result.Document, &heads, &result.LastSync, &result.Revision)
+	var scopes, grants string
+	err = tx.QueryRow(`SELECT COALESCE(p.server_url,''),s.space_id,COALESCE(p.account_name,''),COALESCE(p.scopes,'{}'),s.grants,s.enabled,COALESCE(p.document,''),COALESCE(p.last_sync,''),s.revision FROM desktop_sync_state s LEFT JOIN desktop_sync_spaces p ON p.id=s.space_id WHERE s.id=1`).Scan(&result.ServerURL, &result.SpaceID, &result.AccountName, &scopes, &grants, &result.Enabled, &result.Document, &result.LastSync, &result.Revision)
 	if err != nil {
 		return result, err
 	}
-	if err = json.Unmarshal([]byte(heads), &result.RemoteHeads); err != nil {
+	inspected, err := syncengine.Inspect(result.Document)
+	if err != nil {
 		return result, err
 	}
+	result.Conflicts = inspected.Conflicts
 	if err = json.Unmarshal([]byte(scopes), &result.Scopes); err != nil {
 		return result, err
 	}
@@ -240,6 +245,52 @@ func syncRequest(serverURL, token, path string, payload []byte) ([]byte, error) 
 	}
 	return data, nil
 }
+
+// A new authorization is a new replica. After this device or the server was
+// restored from a backup, the request sequence stored in the documents no
+// longer continues the server's receipts and every write would be rejected.
+func resetDesktopSyncReplica(tx *sql.Tx, spaceID string) error {
+	var document string
+	if err := tx.QueryRow(`SELECT document FROM desktop_sync_spaces WHERE id=?`, spaceID).Scan(&document); err != nil {
+		return err
+	}
+	detached, err := syncengine.Detach(document)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE desktop_sync_spaces SET document=? WHERE id=?`, detached, spaceID); err != nil {
+		return err
+	}
+	rows, err := tx.Query(`SELECT kind,remote_id,document FROM desktop_sync_vault WHERE space_id=?`, spaceID)
+	if err != nil {
+		return err
+	}
+	type entry struct{ kind, id, document string }
+	var entries []entry
+	for rows.Next() {
+		var e entry
+		if err = rows.Scan(&e.kind, &e.id, &e.document); err != nil {
+			rows.Close()
+			return err
+		}
+		entries = append(entries, e)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if detached, err = syncengine.Detach(e.document); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(`UPDATE desktop_sync_vault SET document=? WHERE space_id=? AND kind=? AND remote_id=?`, detached, spaceID, e.kind, e.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *DesktopSyncService) connect(serverURL, token string) error {
 	address, err := syncURL(serverURL)
 	if err != nil {
@@ -305,6 +356,9 @@ func (s *DesktopSyncService) connect(serverURL, token string) error {
 	}
 	_, err = tx.Exec(`INSERT INTO desktop_sync_spaces(id,instance_id,user_id,account_name,server_url) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET account_name=excluded.account_name,server_url=excluded.server_url`, identity.SpaceID, identity.InstanceID, identity.UserID, identity.AccountName, address)
 	if err != nil {
+		return err
+	}
+	if err = resetDesktopSyncReplica(tx, identity.SpaceID); err != nil {
 		return err
 	}
 	var rawScopes string
@@ -400,41 +454,61 @@ func (s *DesktopSyncService) Disconnect() (bool, error) {
 	}
 	return revokeErr == nil, nil
 }
-func (s *DesktopSyncService) Exchange(payload string, revision int64) (string, error) {
+
+// decodeSyncResponse extracts the hub's answer from an exchange envelope. An
+// envelope without one must fail: treating it as an empty answer would silently
+// apply no changes.
+func decodeSyncResponse(data []byte) (syncengine.Peer, error) {
+	var envelope struct {
+		Response *syncengine.Peer `json:"response"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil || envelope.Response == nil {
+		return syncengine.Peer{}, errors.New("invalid sync response")
+	}
+	return *envelope.Response, nil
+}
+
+func (s *DesktopSyncService) exchange(peer syncengine.Peer, revision int64) (syncengine.Peer, error) {
+	payload, err := json.Marshal(peer)
+	if err != nil {
+		return syncengine.Peer{}, err
+	}
 	if len(payload) > syncdata.MaxExchangeRequestBytes {
-		return "", errors.New("sync payload is too large")
+		return syncengine.Peer{}, errors.New("sync payload is too large")
 	}
 	if _, err := s.RefreshAuthorization(); err != nil {
-		return "", err
+		return syncengine.Peer{}, err
 	}
 	db, err := s.database()
 	if err != nil {
-		return "", err
+		return syncengine.Peer{}, err
 	}
 	var address, encrypted string
 	if err = db.QueryRow(`SELECT p.server_url,s.token FROM desktop_sync_state s JOIN desktop_sync_spaces p ON p.id=s.space_id WHERE s.id=1 AND s.enabled=1 AND s.revision=?`, revision).Scan(&address, &encrypted); err != nil {
-		return "", errors.New("sync configuration changed; retry")
+		return syncengine.Peer{}, errors.New("sync configuration changed; retry")
 	}
 	token, err := decryptDesktopCredential(encrypted, "desktop_sync_state", "1", "token")
 	if err != nil {
-		return "", err
+		return syncengine.Peer{}, err
 	}
-	data, err := syncRequest(address, token, "/device/exchange", []byte(payload))
-	return string(data), err
+	data, err := syncRequest(address, token, "/device/exchange", payload)
+	if err != nil {
+		return syncengine.Peer{}, err
+	}
+	return decodeSyncResponse(data)
 }
 
 type DesktopSyncSave struct {
-	Revision    int64             `json:"revision"`
-	Hash        string            `json:"hash"`
-	Document    string            `json:"document"`
-	RemoteHeads []string          `json:"remote_heads"`
-	Snapshot    syncdata.Snapshot `json:"snapshot"`
+	Revision int64
+	Hash     string
+	Document string
+	Snapshot syncdata.Snapshot
 }
 
 // Compare-and-swap protects edits made by another Wails call during network IO.
-func (s *DesktopSyncService) Save(input DesktopSyncSave) (bool, error) {
+func (s *DesktopSyncService) save(input DesktopSyncSave) (bool, error) {
 	if len(input.Document) > syncdata.MaxDocumentBytes {
-		return false, errors.New("sync history exceeds 32 MiB")
+		return false, errors.New("sync state exceeds 32 MiB")
 	}
 	if input.Snapshot != nil {
 		for key := range input.Snapshot {
@@ -479,7 +553,7 @@ func (s *DesktopSyncService) Save(input DesktopSyncSave) (bool, error) {
 			return false, err
 		}
 	}
-	_, err = tx.Exec(`UPDATE desktop_sync_spaces SET document=?,remote_heads=? WHERE id=?`, input.Document, syncdata.JSON(input.RemoteHeads), spaceID)
+	_, err = tx.Exec(`UPDATE desktop_sync_spaces SET document=? WHERE id=?`, input.Document, spaceID)
 	if err != nil {
 		return false, err
 	}
@@ -586,9 +660,19 @@ func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapsho
 		}
 		id := ids[key]
 		if id == "" {
-			// Stable resource IDs are preserved across the sync space. A local
-			// collision fails the transaction instead of rebinding another space.
+			// Stable IDs must not adopt or overwrite an unenrolled local copy.
 			id = parts[1]
+			table := "desktop_servers"
+			if parts[0] == "script" {
+				table = "desktop_scripts"
+			}
+			var exists bool
+			if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM "+table+" WHERE id=?)", id).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				return errors.New("本地存在同 ID 的未加入记录，请先在同步设置中主动加入对应服务器或脚本，再处理版本差异")
+			}
 			_, err := tx.Exec(`INSERT INTO desktop_sync_records(kind,local_id,space_id,remote_id) VALUES(?,?,?,?) ON CONFLICT(space_id,kind,remote_id) DO UPDATE SET local_id=excluded.local_id`, parts[0], id, spaceID, parts[1])
 			if err != nil {
 				return err

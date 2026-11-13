@@ -87,7 +87,14 @@ func applyDesktopSyncGroups(tx *sql.Tx, spaceID string, before, after syncdata.S
 			if localID == "" {
 				localID = group.ID
 			}
-			// Plain INSERT rejects a collision with unrelated local metadata.
+			// A remote group must not adopt local metadata the user has not enrolled.
+			var exists bool
+			if err := tx.QueryRow("SELECT EXISTS(SELECT 1 FROM desktop_server_groups WHERE id=?)", localID).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				return errors.New("本地存在同 ID 的未加入分组，请先在同步设置中主动加入该分组或所属服务器")
+			}
 			if _, err = tx.Exec("INSERT INTO desktop_server_groups(id,name,sort_order) VALUES(?,?,?)", localID, group.Name, group.SortOrder); err != nil {
 				return err
 			}
