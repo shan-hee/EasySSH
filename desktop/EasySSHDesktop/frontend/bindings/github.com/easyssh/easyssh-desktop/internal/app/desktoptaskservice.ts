@@ -21,39 +21,39 @@ export function Cancel(id: string): $CancellablePromise<$models.DesktopTaskOverv
 
 export function Get(id: string): $CancellablePromise<$models.DesktopTaskDetails> {
     return $Call.ByID(3748273232, id).then(($result: any) => {
-        return $$createType2($result);
+        return $$createType1($result);
     });
 }
 
 export function List(input: $models.DesktopTaskListInput): $CancellablePromise<$models.DesktopTaskRunList> {
     return $Call.ByID(2358367036, input).then(($result: any) => {
-        return $$createType3($result);
+        return $$createType2($result);
     });
 }
 
 export function ListEvents(id: string, input: protocol$0.TaskEventInput): $CancellablePromise<protocol$0.TaskEventPage | null> {
     return $Call.ByID(4012854245, id, input).then(($result: any) => {
-        return $$createType5($result);
+        return $$createType4($result);
     });
 }
 
 export function Retry(id: string): $CancellablePromise<{ [_ in string]?: string }> {
     return $Call.ByID(1882426718, id).then(($result: any) => {
-        return $$createType6($result);
+        return $$createType5($result);
     });
 }
 
 export function Statistics(): $CancellablePromise<$models.DesktopTaskStatistics> {
     return $Call.ByID(1286308583).then(($result: any) => {
-        return $$createType7($result);
+        return $$createType6($result);
     });
 }
 
 // Private type creation functions
 const $$createType0 = $models.DesktopTaskOverview.createFrom;
-const $$createType2 = $models.DesktopTaskDetails.createFrom;
-const $$createType3 = $models.DesktopTaskRunList.createFrom;
-const $$createType4 = protocol$0.TaskEventPage.createFrom;
-const $$createType5 = $Create.Nullable($$createType4);
-const $$createType6 = $Create.Map($Create.Any, $Create.Any);
-const $$createType7 = $models.DesktopTaskStatistics.createFrom;
+const $$createType1 = $models.DesktopTaskDetails.createFrom;
+const $$createType2 = $models.DesktopTaskRunList.createFrom;
+const $$createType3 = protocol$0.TaskEventPage.createFrom;
+const $$createType4 = $Create.Nullable($$createType3);
+const $$createType5 = $Create.Map($Create.Any, $Create.Any);
+const $$createType6 = $models.DesktopTaskStatistics.createFrom;

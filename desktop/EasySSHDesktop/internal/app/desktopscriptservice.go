@@ -381,7 +381,7 @@ func (s *DesktopScriptService) Delete(id string) error {
 	if err = tx.QueryRow("SELECT name FROM desktop_scripts WHERE id=?", id).Scan(&name); err != nil {
 		return err
 	}
-	if _, err = tx.Exec("DELETE FROM desktop_scripts WHERE id=?", id); err != nil {
+	if err = deleteDesktopScript(tx, id); err != nil {
 		return err
 	}
 	if err = recordDesktopConfiguration(tx, "script_deleted", "script", id, name, "manual", []string{"deleted"}, nil); err != nil {

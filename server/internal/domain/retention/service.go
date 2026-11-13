@@ -17,13 +17,15 @@ const interval = 24 * time.Hour
 
 // Policy is the number of days each category is kept; 0 keeps it forever.
 type Policy struct {
-	TaskDays int
-	LogDays  int
+	TaskDays    int
+	LogDays     int
+	DeletedDays int
 }
 
 type Result struct {
-	Tasks int64
-	Logs  int64
+	Tasks   int64
+	Logs    int64
+	Deleted int64
 }
 
 type Service struct {
@@ -32,6 +34,8 @@ type Service struct {
 	// Tasks and Logs remove records finished before the cutoff and report how many.
 	Tasks func(context.Context, time.Time) (int64, error)
 	Logs  func(context.Context, time.Time) (int64, error)
+	// Deleted empties the recycle bin of entries removed before the cutoff.
+	Deleted func(context.Context, time.Time) (int64, error)
 	// Content removes stored bodies that no remaining record refers to.
 	Content func(context.Context) error
 
@@ -61,6 +65,11 @@ func (s *Service) Run(ctx context.Context) (Result, error) {
 			return result, err
 		}
 	}
+	if before, ok := policy.Cutoff(now, current.DeletedDays); ok && s.Deleted != nil {
+		if result.Deleted, err = s.Deleted(ctx, before); err != nil {
+			return result, err
+		}
+	}
 	// A body is shared by a task and its log entry and goes with the last of them.
 	if s.Content != nil {
 		if err = s.Content(ctx); err != nil && !errors.Is(err, context.Canceled) {
@@ -87,8 +96,8 @@ func (s *Service) Start(ctx context.Context) {
 			result, err := s.Run(ctx)
 			if err != nil && !errors.Is(err, context.Canceled) {
 				log.Printf("[Retention] cleanup failed: %v", err)
-			} else if result.Tasks > 0 || result.Logs > 0 {
-				log.Printf("[Retention] removed %d task records and %d log entries", result.Tasks, result.Logs)
+			} else if result.Tasks > 0 || result.Logs > 0 || result.Deleted > 0 {
+				log.Printf("[Retention] removed %d task records, %d log entries and %d recycle bin entries", result.Tasks, result.Logs, result.Deleted)
 			}
 			select {
 			case <-ticker.C:

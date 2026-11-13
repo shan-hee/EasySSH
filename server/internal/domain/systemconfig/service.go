@@ -74,7 +74,7 @@ func (s *service) SaveRetention(ctx context.Context, config *SystemConfig) error
 	if config == nil {
 		return errors.New("retention configuration is required")
 	}
-	if !retention.Valid(config.TaskRetentionDays) || !retention.Valid(config.LogRetentionDays) {
+	if !retention.Valid(config.TaskRetentionDays) || !retention.Valid(config.LogRetentionDays) || !retention.Valid(config.DeletedRetentionDays) {
 		return errors.New("retention days must be one of the offered periods, or 0 to keep records forever")
 	}
 	return s.repo.SaveRetention(ctx, config)

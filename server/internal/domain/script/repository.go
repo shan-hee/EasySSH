@@ -103,14 +103,11 @@ func (r *repository) Update(ctx context.Context, id uuid.UUID, expectedContent, 
 	})
 }
 
-// Delete 删除脚本（软删除）
+// Delete 删除脚本，副本进入回收站
 func (r *repository) Delete(ctx context.Context, id uuid.UUID) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var row Script
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&row, "id=?", id).Error; err != nil {
-			return err
-		}
-		if err := tx.Delete(&row).Error; err != nil {
+		row, err := DeleteArchived(tx, id)
+		if err != nil {
 			return err
 		}
 		return recordConfiguration(tx, "script_delete", row, []string{"deleted"})
@@ -231,7 +228,7 @@ func (r *repository) IncrementExecutions(ctx context.Context, id uuid.UUID, expe
 func (r *repository) Available(ctx context.Context, grantID, serverID string, input protocol.ScriptCatalogInput) ([]CatalogEntry, bool, error) {
 	var rows []CatalogEntry
 	query := r.db.WithContext(ctx).Table("scripts").
-		Select("id", "name", "description", "language", "version").Where("deleted_at IS NULL")
+		Select("id", "name", "description", "language", "version")
 	if grantID != "" {
 		query = query.Where("EXISTS (SELECT 1 FROM grant_script_scopes AS scopes WHERE scopes.grant_id = ? AND scopes.server_id = ? AND scopes.script_id = scripts.id AND scopes.version = scripts.version)", grantID, serverID)
 	}

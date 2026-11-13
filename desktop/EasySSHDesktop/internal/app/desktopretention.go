@@ -15,11 +15,15 @@ import (
 const (
 	desktopTaskRetentionPreference = "retention.taskDays"
 	desktopLogRetentionPreference  = "retention.logDays"
+	// Deleted data in the recycle bin; defaults to the shorter period.
+	desktopDeletedRetentionPreference = "retention.deletedDays"
 )
 
 type DesktopRetentionResult struct {
 	DeletedTasks int64 `json:"deleted_tasks"`
 	DeletedLogs  int64 `json:"deleted_logs"`
+	// DeletedEntries counts entries purged from the recycle bin.
+	DeletedEntries int64 `json:"deleted_entries"`
 }
 
 // DesktopRetentionService removes finished records once they are older than
@@ -83,6 +87,9 @@ func (s *DesktopRetentionService) ServiceShutdown() error {
 func desktopRetentionDays(preferences DesktopPreferenceSnapshot, key string) int {
 	days, err := strconv.Atoi(preferences[key])
 	if err != nil || !retention.Valid(days) {
+		if key == desktopDeletedRetentionPreference {
+			return retention.DefaultDeletedDays
+		}
 		return retention.DefaultDays
 	}
 	return days
@@ -123,6 +130,15 @@ func (s *DesktopRetentionService) run(ctx context.Context) (DesktopRetentionResu
 	}
 	if before, ok := retention.Cutoff(now, desktopRetentionDays(preferences, desktopLogRetentionPreference)); ok {
 		if result.DeletedLogs, err = s.activity.pruneBefore(ctx, before); err != nil {
+			return result, err
+		}
+	}
+	if before, ok := retention.Cutoff(now, desktopRetentionDays(preferences, desktopDeletedRetentionPreference)); ok {
+		database, err := s.tasks.database()
+		if err != nil {
+			return result, err
+		}
+		if result.DeletedEntries, err = purgeDesktopRecycleBin(ctx, database, before); err != nil {
 			return result, err
 		}
 	}

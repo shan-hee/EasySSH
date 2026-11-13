@@ -63,6 +63,7 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 				JobQueueMaxConcurrency:     DefaultJobQueueMaxConcurrency(),
 				TaskRetentionDays:          retention.DefaultDays,
 				LogRetentionDays:           retention.DefaultDays,
+				DeletedRetentionDays:       retention.DefaultDeletedDays,
 				SFTPMaxIdleTimeSeconds:     120,
 				SFTPCleanupIntervalSeconds: 30,
 				SFTPConnTimeoutSeconds:     10,
@@ -157,7 +158,8 @@ func (r *repository) SaveScheduledTasks(ctx context.Context, config *SystemConfi
 
 func (r *repository) SaveRetention(ctx context.Context, config *SystemConfig) error {
 	return r.update(ctx, map[string]any{
-		"task_retention_days": config.TaskRetentionDays,
-		"log_retention_days":  config.LogRetentionDays,
+		"task_retention_days":    config.TaskRetentionDays,
+		"log_retention_days":     config.LogRetentionDays,
+		"deleted_retention_days": config.DeletedRetentionDays,
 	})
 }

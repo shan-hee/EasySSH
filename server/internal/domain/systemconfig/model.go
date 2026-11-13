@@ -45,6 +45,8 @@ type SystemConfig struct {
 	// 数据保留天数，0 表示永久保留；取值见 shared/retention。
 	TaskRetentionDays int `gorm:"not null;default:90" json:"task_retention_days"`
 	LogRetentionDays  int `gorm:"not null;default:90" json:"log_retention_days"`
+	// 回收站中已删除数据的保留天数
+	DeletedRetentionDays int `gorm:"not null;default:30" json:"deleted_retention_days"`
 
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`

@@ -11,6 +11,7 @@ import (
 	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/aiconfig"
 	"github.com/easyssh/server/internal/domain/operationrecord"
+	"github.com/easyssh/server/internal/domain/recyclebin"
 	"github.com/easyssh/server/internal/domain/script"
 	servermodel "github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/shared/protocol"
@@ -31,7 +32,7 @@ func syncActivityContext(t *testing.T, owner uuid.UUID) context.Context {
 func syncActivityFixture(t *testing.T) (*Service, context.Context, syncdata.Snapshot) {
 	t.Helper()
 	s := newSyncTestService(t)
-	if err := s.DB.AutoMigrate(&servermodel.Server{}, &servermodel.ServerAuth{}, &servermodel.ServerTag{}, &servermodel.ServerGroup{}, &script.Script{}); err != nil {
+	if err := s.DB.AutoMigrate(&recyclebin.Entry{}, &servermodel.Server{}, &servermodel.ServerAuth{}, &servermodel.ServerTag{}, &servermodel.ServerGroup{}, &script.Script{}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DB.Exec("PRAGMA foreign_keys=ON").Error; err != nil {

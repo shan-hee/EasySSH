@@ -11,11 +11,11 @@ import * as DesktopGateway from "./desktopgateway.js";
 import * as DesktopMonitorService from "./desktopmonitorservice.js";
 import * as DesktopNotificationService from "./desktopnotificationservice.js";
 import * as DesktopRemoteWorkspaceService from "./desktopremoteworkspaceservice.js";
+import * as DesktopRetentionService from "./desktopretentionservice.js";
 import * as DesktopSFTPService from "./desktopsftpservice.js";
 import * as DesktopScriptService from "./desktopscriptservice.js";
 import * as DesktopServerService from "./desktopserverservice.js";
 import * as DesktopService from "./desktopservice.js";
-import * as DesktopRetentionService from "./desktopretentionservice.js";
 import * as DesktopSyncService from "./desktopsyncservice.js";
 import * as DesktopTaskService from "./desktoptaskservice.js";
 import * as DesktopTerminalService from "./desktopterminalservice.js";
@@ -31,11 +31,11 @@ export {
     DesktopMonitorService,
     DesktopNotificationService,
     DesktopRemoteWorkspaceService,
+    DesktopRetentionService,
     DesktopSFTPService,
     DesktopScriptService,
     DesktopServerService,
     DesktopService,
-    DesktopRetentionService,
     DesktopSyncService,
     DesktopTaskService,
     DesktopTerminalService,
@@ -96,6 +96,7 @@ export {
     DesktopMonitorSystemInfo,
     DesktopNotification,
     DesktopNotificationList,
+    DesktopRecycleBinEntry,
     DesktopRemoteFileSelection,
     DesktopRemoteFrame,
     DesktopRemoteStreamBatch,
@@ -105,6 +106,7 @@ export {
     DesktopRemoteTransferListInput,
     DesktopRemoteWorkspace,
     DesktopRemoteWorkspaceContext,
+    DesktopRetentionResult,
     DesktopRuntimeInfo,
     DesktopSFTPAuthenticateInput,
     DesktopSFTPBatchDeleteInput,
@@ -133,7 +135,6 @@ export {
     DesktopServerCommandInput,
     DesktopServerCommandResult,
     DesktopSyncCandidate,
-    DesktopRetentionResult,
     DesktopSyncChange,
     DesktopSyncLogin,
     DesktopSyncState,

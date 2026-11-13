@@ -10,7 +10,8 @@ import (
 
 // DeleteConfiguration is shared by owner edits and configuration sync. The
 // caller owns the transaction; credentials and their sync history disappear
-// together. Reusable SSH keys and activity snapshots have their own lifecycle.
+// together, after a copy of the server went to the recycle bin. Reusable SSH
+// keys and activity snapshots have their own lifecycle.
 func DeleteConfiguration(tx *gorm.DB, id uuid.UUID) error {
 	var references int64
 	if err := tx.Model(&Server{}).Where("jump_server_id = ?", id).Count(&references).Error; err != nil {
@@ -24,6 +25,9 @@ func DeleteConfiguration(tx *gorm.DB, id uuid.UUID) error {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrServerNotFound
 		}
+		return err
+	}
+	if err := archiveServer(tx, id); err != nil {
 		return err
 	}
 	for _, table := range []string{"sync_vault_objects", "sync_vault_documents"} {

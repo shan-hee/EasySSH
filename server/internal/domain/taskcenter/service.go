@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/shared/protocol"
+	"log"
 	"time"
 
 	"github.com/easyssh/server/internal/domain/realtime"

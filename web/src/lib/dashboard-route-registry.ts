@@ -9,7 +9,6 @@ import {
   defaultOperationRecordListParams,
   operationRecordsQueryOptions,
   scriptsListQueryOptions,
-  systemBasicSettingsQueryOptions,
   taskCenterRunsQueryOptions,
   taskCenterStatisticsQueryOptions,
 } from "@easyssh/app/lib/dashboard-query-options"
@@ -121,12 +120,6 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
     path: "settings",
     load: () => import("@easyssh/app/pages/dashboard/settings-page"),
     preloadContent: (url) => getSettingsSection(url)?.preload() ?? Promise.resolve(),
-    loadData: (queryClient, url) => {
-      const section = getSearchParams(url).get("section") || "basic"
-      return section === "basic"
-        ? queryClient.ensureQueryData({ ...systemBasicSettingsQueryOptions(), revalidateIfStale: true })
-        : Promise.resolve()
-    },
   },
 ]
 

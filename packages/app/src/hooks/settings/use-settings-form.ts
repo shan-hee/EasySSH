@@ -24,7 +24,6 @@ interface UseSettingsFormOptions<T extends FieldValues> {
   onSuccess?: () => void
   onError?: (error: Error) => void
   defaultValues?: Partial<T>
-  refetchOnMount?: boolean | "always"
 }
 
 interface UseSettingsFormReturn<T extends FieldValues> {
@@ -58,7 +57,6 @@ export function useSettingsForm<T extends FieldValues>({
   onSuccess,
   onError,
   defaultValues,
-  refetchOnMount,
 }: UseSettingsFormOptions<T>): UseSettingsFormReturn<T> {
   const { ready } = useAuthReady()
   const { t } = useTranslation("settingsCommon")
@@ -67,13 +65,12 @@ export function useSettingsForm<T extends FieldValues>({
     queryKey: queryKeys.settings.form(cacheKey),
     queryFn: loadFn,
     enabled: ready,
-    staleTime: 5 * 60 * 1000,
+    // Refresh on entry, including when authentication becomes ready after mount.
+    staleTime: 0,
     gcTime: 10 * 60 * 1000,
-    refetchOnMount,
   })
-  const [isFormInitialized, setIsFormInitialized] = useState(
-    () => settingsQuery.data !== undefined,
-  )
+  // Wait for this visit's read before allowing edits to cached settings.
+  const [isFormInitialized, setIsFormInitialized] = useState(false)
   // 当前 zod / resolvers 的类型声明存在版本细节不兼容，
   // 这里保留官方 zodResolver 运行时实现，仅隔离有问题的重载推断。
   const createResolver = zodResolver as unknown as (schema: unknown) => Resolver<T>
@@ -84,13 +81,14 @@ export function useSettingsForm<T extends FieldValues>({
   })
 
   useEffect(() => {
+    if (!settingsQuery.isFetchedAfterMount) return
     if (settingsQuery.data && !form.formState.isDirty) {
       form.reset(settingsQuery.data)
     }
     if (settingsQuery.data !== undefined) {
       setIsFormInitialized(true)
     }
-  }, [form, form.formState.isDirty, settingsQuery.data])
+  }, [form, form.formState.isDirty, settingsQuery.data, settingsQuery.isFetchedAfterMount])
 
   useEffect(() => {
     if (!settingsQuery.error) return

@@ -950,6 +950,63 @@ func (e RDPConfigSecurity) Valid() bool {
 	}
 }
 
+// Defines values for RecycleBinEntryKind.
+const (
+	RecycleBinEntryKindAISession RecycleBinEntryKind = "ai_session"
+	RecycleBinEntryKindScript    RecycleBinEntryKind = "script"
+	RecycleBinEntryKindServer    RecycleBinEntryKind = "server"
+)
+
+// Valid indicates whether the value is a known member of the RecycleBinEntryKind enum.
+func (e RecycleBinEntryKind) Valid() bool {
+	switch e {
+	case RecycleBinEntryKindAISession:
+		return true
+	case RecycleBinEntryKindScript:
+		return true
+	case RecycleBinEntryKindServer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RetentionConfigDeletedRetentionDays.
+const (
+	RetentionConfigDeletedRetentionDaysN0   RetentionConfigDeletedRetentionDays = 0
+	RetentionConfigDeletedRetentionDaysN14  RetentionConfigDeletedRetentionDays = 14
+	RetentionConfigDeletedRetentionDaysN180 RetentionConfigDeletedRetentionDays = 180
+	RetentionConfigDeletedRetentionDaysN30  RetentionConfigDeletedRetentionDays = 30
+	RetentionConfigDeletedRetentionDaysN365 RetentionConfigDeletedRetentionDays = 365
+	RetentionConfigDeletedRetentionDaysN60  RetentionConfigDeletedRetentionDays = 60
+	RetentionConfigDeletedRetentionDaysN7   RetentionConfigDeletedRetentionDays = 7
+	RetentionConfigDeletedRetentionDaysN90  RetentionConfigDeletedRetentionDays = 90
+)
+
+// Valid indicates whether the value is a known member of the RetentionConfigDeletedRetentionDays enum.
+func (e RetentionConfigDeletedRetentionDays) Valid() bool {
+	switch e {
+	case RetentionConfigDeletedRetentionDaysN0:
+		return true
+	case RetentionConfigDeletedRetentionDaysN14:
+		return true
+	case RetentionConfigDeletedRetentionDaysN180:
+		return true
+	case RetentionConfigDeletedRetentionDaysN30:
+		return true
+	case RetentionConfigDeletedRetentionDaysN365:
+		return true
+	case RetentionConfigDeletedRetentionDaysN60:
+		return true
+	case RetentionConfigDeletedRetentionDaysN7:
+		return true
+	case RetentionConfigDeletedRetentionDaysN90:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RetentionConfigLogRetentionDays.
 const (
 	RetentionConfigLogRetentionDaysN0   RetentionConfigLogRetentionDays = 0
@@ -988,34 +1045,34 @@ func (e RetentionConfigLogRetentionDays) Valid() bool {
 
 // Defines values for RetentionConfigTaskRetentionDays.
 const (
-	RetentionConfigTaskRetentionDaysN0   RetentionConfigTaskRetentionDays = 0
-	RetentionConfigTaskRetentionDaysN14  RetentionConfigTaskRetentionDays = 14
-	RetentionConfigTaskRetentionDaysN180 RetentionConfigTaskRetentionDays = 180
-	RetentionConfigTaskRetentionDaysN30  RetentionConfigTaskRetentionDays = 30
-	RetentionConfigTaskRetentionDaysN365 RetentionConfigTaskRetentionDays = 365
-	RetentionConfigTaskRetentionDaysN60  RetentionConfigTaskRetentionDays = 60
-	RetentionConfigTaskRetentionDaysN7   RetentionConfigTaskRetentionDays = 7
-	RetentionConfigTaskRetentionDaysN90  RetentionConfigTaskRetentionDays = 90
+	N0   RetentionConfigTaskRetentionDays = 0
+	N14  RetentionConfigTaskRetentionDays = 14
+	N180 RetentionConfigTaskRetentionDays = 180
+	N30  RetentionConfigTaskRetentionDays = 30
+	N365 RetentionConfigTaskRetentionDays = 365
+	N60  RetentionConfigTaskRetentionDays = 60
+	N7   RetentionConfigTaskRetentionDays = 7
+	N90  RetentionConfigTaskRetentionDays = 90
 )
 
 // Valid indicates whether the value is a known member of the RetentionConfigTaskRetentionDays enum.
 func (e RetentionConfigTaskRetentionDays) Valid() bool {
 	switch e {
-	case RetentionConfigTaskRetentionDaysN0:
+	case N0:
 		return true
-	case RetentionConfigTaskRetentionDaysN14:
+	case N14:
 		return true
-	case RetentionConfigTaskRetentionDaysN180:
+	case N180:
 		return true
-	case RetentionConfigTaskRetentionDaysN30:
+	case N30:
 		return true
-	case RetentionConfigTaskRetentionDaysN365:
+	case N365:
 		return true
-	case RetentionConfigTaskRetentionDaysN60:
+	case N60:
 		return true
-	case RetentionConfigTaskRetentionDaysN7:
+	case N7:
 		return true
-	case RetentionConfigTaskRetentionDaysN90:
+	case N90:
 		return true
 	default:
 		return false
@@ -1573,19 +1630,19 @@ func (e GetServerSystemSnapshotParamsKind) Valid() bool {
 
 // Defines values for GetTransferJobsParamsKind.
 const (
-	GetTransferJobsParamsKindSftpDownload GetTransferJobsParamsKind = "sftp_download"
-	GetTransferJobsParamsKindSftpTransfer GetTransferJobsParamsKind = "sftp_transfer"
-	GetTransferJobsParamsKindSftpUpload   GetTransferJobsParamsKind = "sftp_upload"
+	SftpDownload GetTransferJobsParamsKind = "sftp_download"
+	SftpTransfer GetTransferJobsParamsKind = "sftp_transfer"
+	SftpUpload   GetTransferJobsParamsKind = "sftp_upload"
 )
 
 // Valid indicates whether the value is a known member of the GetTransferJobsParamsKind enum.
 func (e GetTransferJobsParamsKind) Valid() bool {
 	switch e {
-	case GetTransferJobsParamsKindSftpDownload:
+	case SftpDownload:
 		return true
-	case GetTransferJobsParamsKindSftpTransfer:
+	case SftpTransfer:
 		return true
-	case GetTransferJobsParamsKindSftpUpload:
+	case SftpUpload:
 		return true
 	default:
 		return false
@@ -4178,6 +4235,20 @@ type RDPConfig struct {
 // RDPConfigSecurity defines model for RDPConfig.Security.
 type RDPConfigSecurity string
 
+// RecycleBinEntry defines model for RecycleBinEntry.
+type RecycleBinEntry struct {
+	ID        openapi_types.UUID  `json:"id"`
+	Kind      RecycleBinEntryKind `json:"kind"`
+	Name      string              `json:"name"`
+	RemovedAt time.Time           `json:"removed_at"`
+
+	// ResourceID 被删除记录的原 ID，找回后沿用
+	ResourceID string `json:"resource_id"`
+}
+
+// RecycleBinEntryKind defines model for RecycleBinEntry.Kind.
+type RecycleBinEntryKind string
+
 // RemoteTransferRelayInput 桌面分享窗口提交来源实例内的中转；连接必须属于当前窗口，服务器 ID 由原生后端解析，不接受来源地址或凭据。
 type RemoteTransferRelayInput struct {
 	SourceConnectionID string `json:"source_connection_id"`
@@ -4194,12 +4265,18 @@ type RenameAISessionRequest struct {
 
 // RetentionConfig 已结束记录的保留天数。0 表示永久保留；各端各自保存，互不同步。
 type RetentionConfig struct {
+	// DeletedRetentionDays 回收站中已删除的服务器、脚本和 AI 会话
+	DeletedRetentionDays RetentionConfigDeletedRetentionDays `json:"deleted_retention_days"`
+
 	// LogRetentionDays 活动、操作和审计日志
 	LogRetentionDays RetentionConfigLogRetentionDays `json:"log_retention_days"`
 
 	// TaskRetentionDays 任务运行记录及其事件、通知
 	TaskRetentionDays RetentionConfigTaskRetentionDays `json:"task_retention_days"`
 }
+
+// RetentionConfigDeletedRetentionDays 回收站中已删除的服务器、脚本和 AI 会话
+type RetentionConfigDeletedRetentionDays int
 
 // RetentionConfigLogRetentionDays 活动、操作和审计日志
 type RetentionConfigLogRetentionDays int
@@ -4209,8 +4286,10 @@ type RetentionConfigTaskRetentionDays int
 
 // RetentionRunResult defines model for RetentionRunResult.
 type RetentionRunResult struct {
-	DeletedLogs  int64 `json:"deleted_logs"`
-	DeletedTasks int64 `json:"deleted_tasks"`
+	// DeletedEntries 从回收站清除的条目数
+	DeletedEntries int64 `json:"deleted_entries"`
+	DeletedLogs    int64 `json:"deleted_logs"`
+	DeletedTasks   int64 `json:"deleted_tasks"`
 }
 
 // RuntimeCapability 运行形态支持的功能声明，不替代请求授权。

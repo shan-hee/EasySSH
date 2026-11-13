@@ -183,6 +183,8 @@ var auditActionByRoute = map[auditRouteKey]auditlog.ActionType{
 	{"POST", "/api/v1/settings/wecom"}:                   auditlog.ActionNotificationSettingsUpdate,
 	{"PATCH", "/api/v1/settings/system/retention"}:       auditlog.ActionSystemSettingsUpdate,
 	{"POST", "/api/v1/settings/system/retention/run"}:    auditlog.ActionAuditLogsCleanup,
+	{"POST", "/api/v1/settings/recycle-bin/:id/restore"}: auditlog.ActionSystemSettingsUpdate,
+	{"DELETE", "/api/v1/settings/recycle-bin/:id"}:       auditlog.ActionSystemSettingsUpdate,
 }
 
 func determineAction(method, path string) auditlog.ActionType {

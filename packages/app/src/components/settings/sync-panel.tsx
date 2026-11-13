@@ -53,7 +53,7 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
     window.addEventListener("easyssh:sync-status-changed", update)
     window.addEventListener("easyssh:sync-applied", update)
     return () => {
-      ++refreshVersion.current
+      refreshVersion.current += 1
       window.clearInterval(timer)
       window.removeEventListener("easyssh:sync-status-changed", update)
       window.removeEventListener("easyssh:sync-applied", update)

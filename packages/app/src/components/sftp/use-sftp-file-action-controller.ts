@@ -567,7 +567,7 @@ export function useSftpFileActionController({
         requestDelete(file.name)
         break
     }
-  }, [can, currentPath, handleBatchDownload, handleOpenEditor, notifier, onDownload, onNavigate, requestDelete, setSelectedFiles, startRename, tSftp])
+  }, [can, currentPath, handleBatchDownload, handleOpenEditor, onDownload, onNavigate, requestDelete, setSelectedFiles, startRename])
 
   const contextMenuFile = useMemo<SftpFileActionItem | null>(() => {
     if (!contextMenu?.fileName || !contextMenu.fileType) {

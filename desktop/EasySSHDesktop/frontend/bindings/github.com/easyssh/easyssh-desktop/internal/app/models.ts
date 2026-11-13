@@ -1818,6 +1818,43 @@ export class DesktopNotificationList {
 
 export type DesktopPreferenceSnapshot = { [_ in string]?: string };
 
+export class DesktopRecycleBinEntry {
+    "id": string;
+    "kind": string;
+    "resource_id": string;
+    "name": string;
+    "removed_at": string;
+
+    /** Creates a new DesktopRecycleBinEntry instance. */
+    constructor($$source: Partial<DesktopRecycleBinEntry> = {}) {
+        if (!("id" in $$source)) {
+            this["id"] = "";
+        }
+        if (!("kind" in $$source)) {
+            this["kind"] = "";
+        }
+        if (!("resource_id" in $$source)) {
+            this["resource_id"] = "";
+        }
+        if (!("name" in $$source)) {
+            this["name"] = "";
+        }
+        if (!("removed_at" in $$source)) {
+            this["removed_at"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopRecycleBinEntry instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopRecycleBinEntry {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopRecycleBinEntry($$parsedSource as Partial<DesktopRecycleBinEntry>);
+    }
+}
+
 export class DesktopRemoteFileSelection {
     "id": string;
     "name": string;
@@ -2161,6 +2198,39 @@ export class DesktopRemoteWorkspaceContext {
             $$parsedSource["access"] = $$createField1_0($$parsedSource["access"]);
         }
         return new DesktopRemoteWorkspaceContext($$parsedSource as Partial<DesktopRemoteWorkspaceContext>);
+    }
+}
+
+export class DesktopRetentionResult {
+    "deleted_tasks": number;
+    "deleted_logs": number;
+
+    /**
+     * DeletedEntries counts entries purged from the recycle bin.
+     */
+    "deleted_entries": number;
+
+    /** Creates a new DesktopRetentionResult instance. */
+    constructor($$source: Partial<DesktopRetentionResult> = {}) {
+        if (!("deleted_tasks" in $$source)) {
+            this["deleted_tasks"] = 0;
+        }
+        if (!("deleted_logs" in $$source)) {
+            this["deleted_logs"] = 0;
+        }
+        if (!("deleted_entries" in $$source)) {
+            this["deleted_entries"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DesktopRetentionResult instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DesktopRetentionResult {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DesktopRetentionResult($$parsedSource as Partial<DesktopRetentionResult>);
     }
 }
 
@@ -2746,31 +2816,6 @@ export class DesktopSFTPWriteFileInput {
     static createFrom($$source: any = {}): DesktopSFTPWriteFileInput {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new DesktopSFTPWriteFileInput($$parsedSource as Partial<DesktopSFTPWriteFileInput>);
-    }
-}
-
-export class DesktopRetentionResult {
-    "deleted_tasks": number;
-    "deleted_logs": number;
-
-    /** Creates a new DesktopRetentionResult instance. */
-    constructor($$source: Partial<DesktopRetentionResult> = {}) {
-        if (!("deleted_tasks" in $$source)) {
-            this["deleted_tasks"] = 0;
-        }
-        if (!("deleted_logs" in $$source)) {
-            this["deleted_logs"] = 0;
-        }
-
-        Object.assign(this, $$source);
-    }
-
-    /**
-     * Creates a new DesktopRetentionResult instance from a string or object.
-     */
-    static createFrom($$source: any = {}): DesktopRetentionResult {
-        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
-        return new DesktopRetentionResult($$parsedSource as Partial<DesktopRetentionResult>);
     }
 }
 

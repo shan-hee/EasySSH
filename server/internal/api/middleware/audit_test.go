@@ -143,7 +143,9 @@ func TestDetermineActionCoversGovernanceMutations(t *testing.T) {
 		{"GET", "/api/v1/ssh-keys", ""},
 		{"GET", "/api/v1/grants/:id", ""},
 		{"POST", "/api/v1/owner/ai-config/models", ""},
-		{"DELETE", "/api/v1/logs/cleanup", auditlog.ActionAuditLogsCleanup},
+		{"POST", "/api/v1/settings/system/retention/run", auditlog.ActionAuditLogsCleanup},
+		{"POST", "/api/v1/settings/recycle-bin/:id/restore", auditlog.ActionSystemSettingsUpdate},
+		{"DELETE", "/api/v1/settings/recycle-bin/:id", auditlog.ActionSystemSettingsUpdate},
 	}
 	for _, test := range tests {
 		t.Run(test.method+" "+test.path, func(t *testing.T) {

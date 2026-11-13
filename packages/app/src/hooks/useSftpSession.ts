@@ -134,9 +134,19 @@ export function useSftpSession(
     return resolved;
   }, [api]);
   // 缓存随面板/连接身份销毁，避免不同凭据或产品适配器之间共享目录。
-  const directoryCache = useMemo(() => new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 5 * 60_000 } },
-  }), [serverId, sessionApi]);
+  const [directorySession, setDirectorySession] = useState(() => ({
+    serverId,
+    sessionApi,
+    cache: new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 5 * 60_000 } } }),
+  }));
+  if (directorySession.serverId !== serverId || directorySession.sessionApi !== sessionApi) {
+    setDirectorySession({
+      serverId,
+      sessionApi,
+      cache: new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 5 * 60_000 } } }),
+    });
+  }
+  const directoryCache = directorySession.cache;
   const activeDirectoryRequest = useRef<{ path: string; promise: Promise<string | null>; lease: SftpDirectoryLease } | null>(null);
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [failedPath, setFailedPath] = useState<string | null>(null);

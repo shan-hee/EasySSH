@@ -9,23 +9,29 @@ import { settingsApi } from "@/lib/api/settings"
 import { queryKeys } from "@/lib/query-keys"
 import { scheduledTaskConfigSchema } from "@/schemas/settings/system-config.schema"
 
+const runtimeQueryOptions = {
+  queryKey: queryKeys.settings.scheduledTaskRuntime,
+  queryFn: settingsApi.getScheduledTaskSettings,
+  staleTime: 0,
+}
+
 export function ScheduledTasksTab() {
   const { t } = useTranslation("settingsScheduledTasks")
   const { ready } = useAuthReady()
   const queryClient = useQueryClient()
   const runtimeQuery = useQuery({
-    queryKey: queryKeys.settings.scheduledTaskRuntime,
-    queryFn: settingsApi.getScheduledTaskSettings,
+    ...runtimeQueryOptions,
     enabled: ready,
+    refetchOnMount: "always",
     refetchInterval: 3_000,
   })
   const { form, isLoading } = useSettingsForm({
     cacheKey: "scheduled-tasks",
     schema: scheduledTaskConfigSchema,
-    loadFn: async () => (await settingsApi.getScheduledTaskSettings()).config,
+    // Share the runtime request when the form and status mount together.
+    loadFn: async () => (await queryClient.fetchQuery(runtimeQueryOptions)).config,
     saveFn: async (config) => {
       await settingsApi.saveScheduledTaskSettings(config)
-      await queryClient.invalidateQueries({ queryKey: queryKeys.settings.scheduledTaskRuntime })
     },
   })
 

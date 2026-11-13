@@ -7,13 +7,18 @@ import (
 
 	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/server/internal/domain/operationrecord"
+	"github.com/easyssh/server/internal/storage/schema"
 	"gorm.io/gorm"
 )
 
 func scriptActivityDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db := catalogDB(t)
-	if err := db.AutoMigrate(&Script{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
+	raw, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.Initialize(catalogContext(t), raw, "sqlite"); err != nil {
 		t.Fatal(err)
 	}
 	return db

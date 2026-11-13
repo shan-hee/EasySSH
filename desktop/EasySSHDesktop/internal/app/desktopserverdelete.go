@@ -15,6 +15,9 @@ func deleteDesktopServer(tx *sql.Tx, id string) error {
 	if count > 0 {
 		return errors.New("server is used as a jump host; remove its references first")
 	}
+	if err := archiveDesktopServer(tx, id); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM desktop_sync_objects WHERE kind='credential' AND EXISTS (
   SELECT 1 FROM desktop_sync_records r WHERE r.kind='server' AND r.local_id=?
   AND r.space_id=desktop_sync_objects.space_id AND r.remote_id=desktop_sync_objects.resource_id

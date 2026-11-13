@@ -13,6 +13,10 @@ import (
 	"github.com/easyssh/server/internal/domain/aiconfig"
 	"github.com/easyssh/server/internal/domain/content"
 	"github.com/easyssh/server/internal/domain/operationrecord"
+	"github.com/easyssh/server/internal/domain/rdp"
+	"github.com/easyssh/server/internal/domain/recyclebin"
+	"github.com/easyssh/server/internal/domain/scheduledtask"
+	"github.com/easyssh/server/internal/domain/vnc"
 	"github.com/easyssh/shared/aichatui"
 	crypto "github.com/easyssh/shared/secretcrypto"
 	"github.com/easyssh/shared/syncdata"
@@ -34,7 +38,7 @@ func newSyncTestService(t *testing.T) *Service {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { raw.Close() })
-	if err := db.AutoMigrate(&operationrecord.OperationRecord{}, &operationrecord.Resource{}, &content.Record{}, &State{}, &VaultDocument{}, &VaultObject{}, &aiconfig.Config{}, &runtime.AISessionRecord{}, &runtime.AIMessageRecord{}, &runtime.AIModelMessageRecord{}, &runtime.AISessionTaskRecord{}, &runtime.ToolExecutionRecord{}); err != nil {
+	if err := db.AutoMigrate(&recyclebin.Entry{}, &scheduledtask.ScheduledTask{}, &vnc.Config{}, &rdp.Config{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}, &content.Record{}, &State{}, &VaultDocument{}, &VaultObject{}, &aiconfig.Config{}, &runtime.AISessionRecord{}, &runtime.AIMessageRecord{}, &runtime.AIModelMessageRecord{}, &runtime.AISessionTaskRecord{}, &runtime.ToolExecutionRecord{}); err != nil {
 		t.Fatal(err)
 	}
 	encryptor, err := crypto.NewEncryptor(base64.StdEncoding.EncodeToString(make([]byte, 32)))

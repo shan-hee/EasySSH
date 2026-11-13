@@ -30,15 +30,20 @@ export function useSftpFileTreeController({ source, currentPath, editorPath, sho
   const [focusPath, setFocusPath] = useState(currentPath)
   const leases = useRef(new Map<string, SftpDirectoryLease>())
   const subscription = useMemo(() => {
-    let revision = 0
+    const cache = source.client.getQueryCache()
+    const read = () => new Map(cache.getAll().map((query) => [String(query.queryKey[0]), query.state.data as SftpDirectory | undefined]))
+    let directories = read()
     return {
-      subscribe: (notify: () => void) => source.client.getQueryCache().subscribe((event) => {
-        if (event.type === "added" || event.type === "removed" || event.type === "updated") { revision++; notify() }
-      }),
-      snapshot: () => revision,
+      subscribe: (notify: () => void) => {
+        directories = read()
+        return cache.subscribe((event) => {
+          if (event.type === "added" || event.type === "removed" || event.type === "updated") { directories = read(); notify() }
+        })
+      },
+      snapshot: () => directories,
     }
   }, [source])
-  const revision = useSyncExternalStore(subscription.subscribe, subscription.snapshot, subscription.snapshot)
+  const directories = useSyncExternalStore(subscription.subscribe, subscription.snapshot, subscription.snapshot)
   const targetPath = editorPath || currentPath
 
   useEffect(() => {
@@ -60,7 +65,7 @@ export function useSftpFileTreeController({ source, currentPath, editorPath, sho
     const visit = (node: SftpTreeNode) => {
       result.push(node)
       if (node.type !== "directory" || !expanded.has(node.path)) return
-      const directory = source.client.getQueryData<SftpDirectory>([node.path])
+      const directory = directories.get(node.path)
       let children: Array<{ name: string; type: "file" | "directory" }> = directory?.files ?? []
       if (!directory) {
         children = Array.from(known).filter((path) => path !== "/" && (path.slice(0, path.lastIndexOf("/")) || "/") === node.path)
@@ -75,7 +80,7 @@ export function useSftpFileTreeController({ source, currentPath, editorPath, sho
     }
     visit({ path: "/", name: "/", type: "directory", depth: 0, parent: null, position: 1, siblings: 1 })
     return result
-  }, [source, expanded, revision, showHidden, currentPath, editorPath])
+  }, [directories, expanded, showHidden, currentPath, editorPath])
 
   useEffect(() => {
     const needed = new Set(visible ? nodes.filter((node) => node.type === "directory" && expanded.has(node.path)).map((node) => node.path) : [])

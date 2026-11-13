@@ -225,8 +225,20 @@ export const settingsApi = {
     return apiFetch<RetentionConfig>("/settings/system/retention", { method: "PATCH", body: config })
   },
 
-  async runRetention(): Promise<{ deleted_tasks: number; deleted_logs: number }> {
-    return apiFetch<{ deleted_tasks: number; deleted_logs: number }>("/settings/system/retention/run", { method: "POST", retry: false })
+  async runRetention(): Promise<components["schemas"]["RetentionRunResult"]> {
+    return apiFetch<components["schemas"]["RetentionRunResult"]>("/settings/system/retention/run", { method: "POST", retry: false })
+  },
+
+  async listRecycleBin(): Promise<components["schemas"]["RecycleBinEntry"][]> {
+    return apiFetch<components["schemas"]["RecycleBinEntry"][]>("/settings/recycle-bin", { method: "GET" })
+  },
+
+  async restoreRecycleBinEntry(id: string): Promise<components["schemas"]["RecycleBinEntry"]> {
+    return apiFetch<components["schemas"]["RecycleBinEntry"]>(`/settings/recycle-bin/${id}/restore`, { method: "POST", retry: false })
+  },
+
+  async deleteRecycleBinEntry(id: string): Promise<void> {
+    await apiFetch<void>(`/settings/recycle-bin/${id}`, { method: "DELETE", retry: false })
   },
 
   async getWorkspaceConfig(): Promise<WorkspaceConfig> {

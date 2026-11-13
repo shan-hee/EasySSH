@@ -1,7 +1,7 @@
 import { ActivityLinks } from "@/components/activity/activity-links"
 
 import * as React from "react"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { useQuery } from "@tanstack/react-query"
 import type { ColumnDef, Row } from "@tanstack/react-table"
 import { Download } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -17,7 +17,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/sonner"
-import { Spinner } from "@/components/ui/spinner"
 import { getErrorMessage } from "@/lib/error-utils"
 import { serversApi } from "@/lib/api/servers"
 import type {
@@ -218,7 +217,6 @@ function filtersToParams(filters: LogFilterValues): Pick<AuditLogListParams, "ty
 export function LogsClient({ defaultAction, desktopMode = false, overview, servers = serversApi, api }: LogsClientProps) {
   const { ready } = useAuthReady()
   const { t } = useTranslation("logsAudit")
-  const queryClient = useQueryClient()
   const [page, setPage] = React.useState(1)
   const [pageSize, setPageSize] = React.useState(20)
   const [selectedLogId, setSelectedLogId] = React.useState<string | null>(null)

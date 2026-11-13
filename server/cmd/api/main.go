@@ -45,6 +45,7 @@ import (
 	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/server/internal/domain/rdp"
 	"github.com/easyssh/server/internal/domain/realtime"
+	"github.com/easyssh/server/internal/domain/recyclebin"
 	"github.com/easyssh/server/internal/domain/retention"
 	"github.com/easyssh/server/internal/domain/scheduledtask"
 	"github.com/easyssh/server/internal/domain/script"
@@ -347,6 +348,17 @@ func main() {
 	operationRecordService.SetPublisher(realtimeHub)
 	taskCenterRepo := taskcenter.NewRepository(database, contentService)
 	taskCenterService := taskcenter.NewService(taskCenterRepo, realtimeHub)
+	recycleBinService := &recyclebin.Service{DB: database, Restorers: map[string]recyclebin.Restorer{
+		recyclebin.KindServer:    server.RestoreArchived,
+		recyclebin.KindScript:    script.RestoreArchived,
+		recyclebin.KindAISession: (&datasync.Service{Content: contentService}).RestoreSession,
+	}, Wrap: func(kind string, run func() error) error {
+		// Conversation bodies are files; writing them excludes backup and cleanup.
+		if kind == recyclebin.KindAISession {
+			return contentService.WithStorage(run)
+		}
+		return run()
+	}}
 	// The only place that deletes finished records by age.
 	retentionService := &retention.Service{
 		Policy: func(ctx context.Context) (retention.Policy, error) {
@@ -354,8 +366,9 @@ func main() {
 			if err != nil {
 				return retention.Policy{}, err
 			}
-			return retention.Policy{TaskDays: current.TaskRetentionDays, LogDays: current.LogRetentionDays}, nil
+			return retention.Policy{TaskDays: current.TaskRetentionDays, LogDays: current.LogRetentionDays, DeletedDays: current.DeletedRetentionDays}, nil
 		},
+		Deleted: recycleBinService.Purge,
 		Tasks: func(ctx context.Context, before time.Time) (int64, error) {
 			result, err := taskCenterService.CleanupBefore(ctx, before)
 			if err != nil {
@@ -479,7 +492,7 @@ func main() {
 	// 新的配置处理器
 	securityHandler := rest.NewSecurityHandler(securityService)
 	systemConfigHandler := rest.NewSystemConfigHandler(systemConfigService, jobQueue, transferLimiter, transferJobService)
-	retentionHandler := rest.NewRetentionHandler(systemConfigService, retentionService)
+	retentionHandler := rest.NewRetentionHandler(systemConfigService, retentionService, recycleBinService)
 	notificationConfigHandler := rest.NewNotificationConfigHandler(notificationConfigService)
 	aiConfigHandler := rest.NewAIConfigHandler(aiConfigService)
 	aiRuntimeConfigHandler := rest.NewAIRuntimeConfigHandler(aichat.NewConfigResolver(aiConfigService))
@@ -926,6 +939,9 @@ func main() {
 			settingsGroup.GET("/system/retention", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.Get)
 			settingsGroup.PATCH("/system/retention", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.Patch)
 			settingsGroup.POST("/system/retention/run", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.Run)
+			settingsGroup.GET("/recycle-bin", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.ListRecycleBin)
+			settingsGroup.POST("/recycle-bin/:id/restore", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.RestoreRecycleBinEntry)
+			settingsGroup.DELETE("/recycle-bin/:id", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.DeleteRecycleBinEntry)
 
 			settingsGroup.GET("/workspace", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.GetWorkspaceConfig)
 			settingsGroup.POST("/workspace", middleware.OwnerRoute(protocol.OwnerManage, ""), securityHandler.SaveWorkspaceConfig)

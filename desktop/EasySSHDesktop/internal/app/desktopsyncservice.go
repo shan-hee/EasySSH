@@ -632,7 +632,7 @@ func applyDesktopSync(tx *sql.Tx, spaceID string, before, after syncdata.Snapsho
 			if err := deleteDesktopServer(tx, ids[key]); err != nil {
 				return err
 			}
-		} else if _, err := tx.Exec("DELETE FROM desktop_scripts WHERE id=?", ids[key]); err != nil {
+		} else if err := deleteDesktopScript(tx, ids[key]); err != nil {
 			return err
 		}
 		kind := strings.SplitN(key, "/", 2)[0]

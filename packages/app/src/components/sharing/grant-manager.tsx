@@ -1,6 +1,6 @@
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { GrantResourcesEditor } from "./grant-resources-editor"
-import { useEffect, useId, useState } from "react"
+import { useCallback, useEffect, useId, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Copy, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -133,7 +133,7 @@ function GrantManagerContent({
   )
   const [link, setLink] = useState("")
   const [busy, setBusy] = useState(false)
-  const loadList = async () => {
+  const loadList = useCallback(async () => {
     if (!reviewServer) return grantsApi.list(offset)
     const matched: Grant[] = []
     for (let start = 0; ; start += 30) {
@@ -151,7 +151,7 @@ function GrantManagerContent({
       if (start + page.items.length >= page.total || !page.items.length) break
     }
     return { items: matched.slice(offset, offset + 30), total: matched.length }
-  }
+  }, [offset, reviewServer])
   const refresh = async () => {
     const result = await loadList()
     setItems(result.items)
@@ -172,7 +172,7 @@ function GrantManagerContent({
     return () => {
       active = false
     }
-  }, [offset, reviewServer])
+  }, [loadList])
   useEffect(() => {
     let active = true
     void (async () => {
@@ -204,8 +204,8 @@ function GrantManagerContent({
     return () => {
       active = false
     }
-  }, [catalogRequest])
-  const run = async (fn: () => Promise<void>) => {
+  }, [catalogRequest, t])
+  const run = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true)
     try {
       await fn()
@@ -214,13 +214,13 @@ function GrantManagerContent({
     } finally {
       setBusy(false)
     }
-  }
-  const inspect = (id: string) =>
+  }, [])
+  const inspect = useCallback((id: string) =>
     run(async () => {
       setDetail(await grantsApi.detail(id))
       setForm(null)
       setLink("")
-    })
+    }), [run])
   const edit = () => {
     if (!detail) return
     const g = detail.grant
@@ -249,7 +249,7 @@ function GrantManagerContent({
   }
   useEffect(() => {
     if (initialGrantId) void inspect(initialGrantId)
-  }, [initialGrantId])
+  }, [initialGrantId, inspect])
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 pb-4">

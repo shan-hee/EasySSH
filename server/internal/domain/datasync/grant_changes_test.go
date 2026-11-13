@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/domain/grant"
+	"github.com/easyssh/server/internal/domain/recyclebin"
 	servermodel "github.com/easyssh/server/internal/domain/server"
 	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/syncdata"
@@ -17,7 +18,7 @@ func TestSyncPasswordRotationPreservesSharesAndRemovalReportsCommittedChanges(t 
 	s := newSyncTestService(t)
 	owner := uuid.New()
 	ctx := syncActivityContext(t, owner)
-	if err := s.DB.AutoMigrate(&servermodel.Server{}, &servermodel.ServerAuth{}, &servermodel.ServerTag{}, &servermodel.ServerGroup{}, &grant.Grant{}, &grant.Resource{}); err != nil {
+	if err := s.DB.AutoMigrate(&recyclebin.Entry{}, &servermodel.Server{}, &servermodel.ServerAuth{}, &servermodel.ServerTag{}, &servermodel.ServerGroup{}, &grant.Grant{}, &grant.Resource{}); err != nil {
 		t.Fatal(err)
 	}
 	row := servermodel.Server{ID: uuid.New(), Host: "host.test", Name: "host", Port: 22, Username: "owner", Auth: servermodel.ServerAuth{AuthMethod: servermodel.AuthMethodPassword}}

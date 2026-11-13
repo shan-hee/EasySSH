@@ -74,7 +74,7 @@ function AuthorizationRequest({ code }: { code: string }) {
   useEffect(() => {
     mounted.current = true
     void refresh()
-    return () => { mounted.current = false; ++requestVersion.current }
+    return () => { mounted.current = false; requestVersion.current += 1 }
   }, [refresh])
 
   useEffect(() => {

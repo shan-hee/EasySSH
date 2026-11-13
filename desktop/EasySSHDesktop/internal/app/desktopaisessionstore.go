@@ -368,6 +368,9 @@ func saveDesktopAISession(ctx context.Context, tx *sql.Tx, record desktopAISessi
 }
 
 func deleteDesktopAISession(ctx context.Context, tx *sql.Tx, id string) error {
+	if err := archiveDesktopAISession(tx, id); err != nil {
+		return err
+	}
 	if err := saveDesktopAIExecutions(tx, desktopAISessionRecord{ID: id, UpdatedAt: time.Now().UTC().Format(desktopAITimeLayout)}); err != nil {
 		return err
 	}

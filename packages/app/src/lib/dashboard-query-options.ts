@@ -86,15 +86,6 @@ export async function loadSystemBasicSettings() {
   }
 }
 
-export function systemBasicSettingsQueryOptions() {
-  return queryOptions({
-    queryKey: queryKeys.settings.form("system-basic"),
-    queryFn: loadSystemBasicSettings,
-    staleTime: 5 * 60 * 1000,
-    gcTime: 10 * 60 * 1000,
-  })
-}
-
 export const defaultTaskCenterListParams: TaskRunListParams = {
   status: ["queued", "running", "canceling"],
   page: 1,

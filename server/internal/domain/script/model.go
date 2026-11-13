@@ -11,18 +11,17 @@ import (
 
 // Script 脚本模型
 type Script struct {
-	Version     string         `gorm:"type:char(64);not null" json:"version"`
-	ID          uuid.UUID      `gorm:"type:char(36);primary_key" json:"id"`
-	Name        string         `gorm:"type:varchar(100);not null" json:"name"`
-	Description string         `gorm:"type:text" json:"description"`
-	Content     string         `gorm:"type:text;not null" json:"content"`
-	Language    string         `gorm:"type:varchar(20);default:'bash'" json:"language"`
-	Tags        []string       `gorm:"type:text;serializer:json" json:"tags"`
-	Executions  int            `gorm:"default:0" json:"executions"`
-	Author      string         `gorm:"type:varchar(50)" json:"author"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
+	Version     string    `gorm:"type:char(64);not null" json:"version"`
+	ID          uuid.UUID `gorm:"type:char(36);primary_key" json:"id"`
+	Name        string    `gorm:"type:varchar(100);not null" json:"name"`
+	Description string    `gorm:"type:text" json:"description"`
+	Content     string    `gorm:"type:text;not null" json:"content"`
+	Language    string    `gorm:"type:varchar(20);default:'bash'" json:"language"`
+	Tags        []string  `gorm:"type:text;serializer:json" json:"tags"`
+	Executions  int       `gorm:"default:0" json:"executions"`
+	Author      string    `gorm:"type:varchar(50)" json:"author"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // TableName 指定表名

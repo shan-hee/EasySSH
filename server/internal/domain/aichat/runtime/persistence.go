@@ -229,6 +229,11 @@ func (s *gormSessionStore) GetLatestActive(ctx context.Context, actor protocol.A
 	return snapshot, err
 }
 
+// ArchiveDeletedSession copies a conversation to the recycle bin before its
+// history is removed. The sync package installs it: it owns the portable
+// conversation format, and this package cannot import it.
+var ArchiveDeletedSession func(tx *gorm.DB, record AISessionRecord, bodies *content.Service) error
+
 func (s *gormSessionStore) Delete(ctx context.Context, actor protocol.Actor, sessionID string) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var record AISessionRecord
@@ -237,6 +242,15 @@ func (s *gormSessionStore) Delete(ctx context.Context, actor protocol.Actor, ses
 				return ErrSessionNotFound
 			}
 			return err
+		}
+		if ArchiveDeletedSession != nil {
+			var full AISessionRecord
+			if err := tx.First(&full, "id=?", sessionID).Error; err != nil {
+				return err
+			}
+			if err := ArchiveDeletedSession(tx, full, s.bodies); err != nil {
+				return err
+			}
 		}
 		if err := saveToolExecutions(tx, SessionSnapshot{ID: sessionID, Actor: record.Actor, UpdatedAt: time.Now().UTC()}); err != nil {
 			return err

@@ -2128,6 +2128,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/settings/recycle-bin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 列出回收站中的已删除数据 */
+        get: operations["getSettingsRecycleBin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/recycle-bin/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 按原 ID 找回一条已删除的数据
+         * @description 服务器找回后不恢复分享授权；原分组、跳板机或密钥已不存在时相应留空。AI 会话找回为只读历史。原 ID 已被占用时返回 409。
+         */
+        post: operations["postSettingsRecycleBinRestore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/recycle-bin/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** 立即永久删除回收站中的一条数据 */
+        delete: operations["deleteSettingsRecycleBinEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/workspace": {
         parameters: {
             query?: never;
@@ -4728,8 +4782,29 @@ export interface components {
              * @enum {integer}
              */
             log_retention_days: 0 | 7 | 14 | 30 | 60 | 90 | 180 | 365;
+            /**
+             * @description 回收站中已删除的服务器、脚本和 AI 会话
+             * @enum {integer}
+             */
+            deleted_retention_days: 0 | 7 | 14 | 30 | 60 | 90 | 180 | 365;
+        };
+        RecycleBinEntry: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "server" | "script" | "ai_session";
+            /** @description 被删除记录的原 ID，找回后沿用 */
+            resource_id: string;
+            name: string;
+            /** Format: date-time */
+            removed_at: string;
         };
         RetentionRunResult: {
+            /**
+             * Format: int64
+             * @description 从回收站清除的条目数
+             */
+            deleted_entries: number;
             /** Format: int64 */
             deleted_tasks: number;
             /** Format: int64 */
@@ -11515,6 +11590,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RetentionRunResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSettingsRecycleBin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 按删除时间倒序 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecycleBinEntry"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    postSettingsRecycleBinRestore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已找回的条目 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecycleBinEntry"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteSettingsRecycleBinEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 已删除 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageResponse"];
                 };
             };
             default: components["responses"]["Error"];

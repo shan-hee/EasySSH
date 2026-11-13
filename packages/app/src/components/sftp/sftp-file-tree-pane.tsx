@@ -16,12 +16,16 @@ export function SftpFileTreePane({ source, currentPath, editorPath, showHidden, 
   onOpenFile: (path: string) => void
   onDismiss: () => void
 }) {
+  "use no memo" // TanStack Virtual exposes a mutable instance; render its current items directly.
+
   const t = useWorkspaceSftpTranslator()
   const scrollRef = useRef<HTMLDivElement>(null)
   const savedScroll = useRef(0)
   const lastRevealed = useRef<{ path: string; index: number } | null>(null)
   const id = useId()
   const tree = useSftpFileTreeController({ source, currentPath, editorPath, showHidden, visible })
+  // This component explicitly opts out above; keep the exception local to the mutable API.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: tree.nodes.length, getScrollElement: () => scrollRef.current,
     estimateSize: () => 28, overscan: 8, getItemKey: (index) => tree.nodes[index].path,

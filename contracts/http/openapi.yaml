@@ -2797,7 +2797,7 @@ components:
     RetentionConfig:
       type: object
       description: 已结束记录的保留天数。0 表示永久保留；各端各自保存，互不同步。
-      required: [task_retention_days, log_retention_days]
+      required: [task_retention_days, log_retention_days, deleted_retention_days]
       properties:
         task_retention_days:
           type: integer
@@ -2807,10 +2807,36 @@ components:
           type: integer
           enum: [0, 7, 14, 30, 60, 90, 180, 365]
           description: 活动、操作和审计日志
+        deleted_retention_days:
+          type: integer
+          enum: [0, 7, 14, 30, 60, 90, 180, 365]
+          description: 回收站中已删除的服务器、脚本和 AI 会话
+    RecycleBinEntry:
+      type: object
+      required: [id, kind, resource_id, name, removed_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [server, script, ai_session]
+        resource_id:
+          type: string
+          description: 被删除记录的原 ID，找回后沿用
+        name:
+          type: string
+        removed_at:
+          type: string
+          format: date-time
     RetentionRunResult:
       type: object
-      required: [deleted_tasks, deleted_logs]
+      required: [deleted_tasks, deleted_logs, deleted_entries]
       properties:
+        deleted_entries:
+          type: integer
+          format: int64
+          description: 从回收站清除的条目数
         deleted_tasks:
           type: integer
           format: int64
@@ -13224,6 +13250,74 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RetentionRunResult'
+        default:
+          $ref: '#/components/responses/Error'
+  /settings/recycle-bin:
+    get:
+      operationId: getSettingsRecycleBin
+      tags:
+      - settings
+      summary: 列出回收站中的已删除数据
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: 按删除时间倒序
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RecycleBinEntry'
+        default:
+          $ref: '#/components/responses/Error'
+  /settings/recycle-bin/{id}/restore:
+    post:
+      operationId: postSettingsRecycleBinRestore
+      tags:
+      - settings
+      summary: 按原 ID 找回一条已删除的数据
+      description: 服务器找回后不恢复分享授权；原分组、跳板机或密钥已不存在时相应留空。AI 会话找回为只读历史。原 ID 已被占用时返回 409。
+      security:
+      - ownerCookie: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 已找回的条目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecycleBinEntry'
+        default:
+          $ref: '#/components/responses/Error'
+  /settings/recycle-bin/{id}:
+    delete:
+      operationId: deleteSettingsRecycleBinEntry
+      tags:
+      - settings
+      summary: 立即永久删除回收站中的一条数据
+      security:
+      - ownerCookie: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: 已删除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
         default:
           $ref: '#/components/responses/Error'
   /settings/workspace:

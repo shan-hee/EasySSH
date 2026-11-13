@@ -17,13 +17,40 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
- * Run applies the retention periods once, without waiting for the daily run.
+ * DeleteRecycleBinEntry discards an entry for good.
  */
-export function Run(): $CancellablePromise<$models.DesktopRetentionResult> {
-    return $Call.ByID(3002693496).then(($result: any) => {
+export function DeleteRecycleBinEntry(id: string): $CancellablePromise<void> {
+    return $Call.ByID(1677679882, id);
+}
+
+/**
+ * ListRecycleBin returns deleted records, newest first.
+ */
+export function ListRecycleBin(): $CancellablePromise<$models.DesktopRecycleBinEntry[]> {
+    return $Call.ByID(2189562809).then(($result: any) => {
+        return $$createType1($result);
+    });
+}
+
+/**
+ * RestoreRecycleBinEntry writes a record back under its original ID.
+ */
+export function RestoreRecycleBinEntry(id: string): $CancellablePromise<$models.DesktopRecycleBinEntry> {
+    return $Call.ByID(1366004983, id).then(($result: any) => {
         return $$createType0($result);
     });
 }
 
+/**
+ * Run applies the retention periods once, without waiting for the daily run.
+ */
+export function Run(): $CancellablePromise<$models.DesktopRetentionResult> {
+    return $Call.ByID(3002693496).then(($result: any) => {
+        return $$createType2($result);
+    });
+}
+
 // Private type creation functions
-const $$createType0 = $models.DesktopRetentionResult.createFrom;
+const $$createType0 = $models.DesktopRecycleBinEntry.createFrom;
+const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = $models.DesktopRetentionResult.createFrom;

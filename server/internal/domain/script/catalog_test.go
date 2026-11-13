@@ -37,7 +37,7 @@ func TestCatalogReadsOnlyMetadataAndPagesApprovedVersions(t *testing.T) {
 	db := catalogDB(t)
 	// Deliberately no source column: this query must not depend on loading code.
 	for _, ddl := range []string{
-		`CREATE TABLE scripts (id TEXT PRIMARY KEY, name TEXT, description TEXT, language TEXT, version TEXT, deleted_at DATETIME)`,
+		`CREATE TABLE scripts (id TEXT PRIMARY KEY, name TEXT, description TEXT, language TEXT, version TEXT)`,
 		`CREATE TABLE grant_script_scopes (grant_id TEXT, server_id TEXT, script_id TEXT, version TEXT)`,
 	} {
 		if err := db.Exec(ddl).Error; err != nil {

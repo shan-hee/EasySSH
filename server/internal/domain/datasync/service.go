@@ -2,6 +2,7 @@ package datasync
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -297,7 +298,12 @@ func apply(tx *gorm.DB, encryptor *crypto.Encryptor, before, after syncdata.Snap
 		} else if p[0] == "group" {
 			err = tx.Where("id = ?", p[1]).Delete(&servermodel.ServerGroup{}).Error
 		} else {
-			err = tx.Unscoped().Where("id = ?", p[1]).Delete(&script.Script{}).Error
+			var scriptID uuid.UUID
+			if scriptID, err = uuid.Parse(p[1]); err == nil {
+				if _, err = script.DeleteArchived(tx, scriptID); errors.Is(err, gorm.ErrRecordNotFound) {
+					err = nil
+				}
+			}
 		}
 		if err != nil {
 			return err
@@ -377,7 +383,7 @@ func apply(tx *gorm.DB, encryptor *crypto.Encryptor, before, after syncdata.Snap
 			}
 		} else {
 			var row script.Script
-			err = tx.Unscoped().First(&row, "id = ?", id).Error
+			err = tx.First(&row, "id = ?", id).Error
 			if err != nil && err != gorm.ErrRecordNotFound {
 				return err
 			}
@@ -389,8 +395,7 @@ func apply(tx *gorm.DB, encryptor *crypto.Encryptor, before, after syncdata.Snap
 			row.Language = r["language"]
 			row.Tags = syncdata.Tags(r["tags"])
 			row.Description = r["description"]
-			row.DeletedAt = gorm.DeletedAt{}
-			if err = tx.Unscoped().Save(&row).Error; err != nil {
+			if err = tx.Save(&row).Error; err != nil {
 				return err
 			}
 			if err = recordSyncConfiguration(tx, "script", id.String(), row.Name, operation,

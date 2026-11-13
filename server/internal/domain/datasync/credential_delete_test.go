@@ -3,6 +3,7 @@ package datasync
 import (
 	"context"
 	"errors"
+	"github.com/easyssh/server/internal/domain/recyclebin"
 	"github.com/easyssh/server/internal/testutil"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func TestConnectionDeletionRemovesOnlyItsCredentialHistory(t *testing.T) {
 	for _, mode := range []string{"manual", "sync"} {
 		t.Run(mode, func(t *testing.T) {
 			s := newSyncTestService(t)
-			if err := s.DB.AutoMigrate(&servermodel.Server{}, &servermodel.ServerAuth{}, &servermodel.ServerTag{}, &servermodel.ServerGroup{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
+			if err := s.DB.AutoMigrate(&recyclebin.Entry{}, &servermodel.Server{}, &servermodel.ServerAuth{}, &servermodel.ServerTag{}, &servermodel.ServerGroup{}, &operationrecord.OperationRecord{}, &operationrecord.Resource{}); err != nil {
 				t.Fatal(err)
 			}
 			owner, id, other := uuid.New(), uuid.New(), uuid.New()

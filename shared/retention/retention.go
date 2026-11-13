@@ -13,6 +13,10 @@ const Forever = 0
 // DefaultDays applies until the user chooses a period.
 const DefaultDays = 90
 
+// DefaultDeletedDays applies to the recycle bin. It is shorter because the bin
+// keeps what the user meant to remove, saved credentials included.
+const DefaultDeletedDays = 30
+
 // Choices are the periods offered in settings, in days.
 var Choices = []int{7, 14, 30, 60, 90, 180, 365}
 

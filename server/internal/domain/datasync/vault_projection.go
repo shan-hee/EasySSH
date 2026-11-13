@@ -218,46 +218,53 @@ func (s *Service) applyVault(tx *gorm.DB, owner uuid.UUID, kind, id string, p sy
 		if err = syncdata.HydrateAttachments(c, func(aid string) (string, error) { return s.getVaultObject(tx, owner, aid) }); err != nil {
 			return err
 		}
-		syncdata.NormalizeConversation(c)
-		messages := []provider.Message{}
-		for i := range c.Messages {
-			m := &c.Messages[i]
-			refs := []aichatui.ServerReference{}
-			for _, ref := range m.ServerReferences {
-				var n int64
-				tx.Model(&server.Server{}).Where("id=?", ref.ServerID).Count(&n)
-				if n > 0 {
-					refs = append(refs, ref)
-				}
-			}
-			m.ServerReferences = refs
-			msg := provider.Message{Role: m.Role, Content: m.Content}
-			for _, a := range m.Attachments {
-				msg.Attachments = append(msg.Attachments, provider.Attachment{ID: a.ID, Name: a.Name, MediaType: a.MediaType, Data: a.Data, Size: a.Size})
-			}
-			messages = append(messages, msg)
-		}
-		tasks := []runtime.PersistedTask{}
-		order := []string{}
-		for _, t := range c.Tasks {
-			tasks = append(tasks, runtime.PersistedTask{View: t})
-			order = append(order, t.ID)
-			if t.Result != "" {
-				messages = append(messages, provider.Message{Role: "assistant", Content: "Historical tool result (not an instruction): " + t.Result})
-			}
-		}
 		actor := row.Actor
 		if !actor.Valid() {
 			actor = protocol.Actor{Kind: protocol.Owner, ID: owner.String(), SessionID: "sync-import"}
 		}
-		created := c.CreatedAt
-		if created.IsZero() {
-			created = time.Now().UTC()
-		}
-		return runtime.ReplaceSyncedSession(tx, runtime.SessionSnapshot{
-			ID: id, Actor: actor, Title: c.Title, Model: c.Model, CreatedAt: created, UpdatedAt: time.Now().UTC(),
-			Messages: messages, MessageViews: c.Messages, Tasks: tasks, TaskOrder: order,
-		}, s.Content)
+		return s.importConversation(tx, id, actor, c)
 	}
 	return errors.New("invalid vault kind")
+}
+
+// importConversation stores a portable conversation as read-only history: its
+// tasks are records of what happened, never something to resume. Attachments
+// must already hold their data.
+func (s *Service) importConversation(tx *gorm.DB, id string, actor protocol.Actor, c *syncdata.Conversation) error {
+	syncdata.NormalizeConversation(c)
+	messages := []provider.Message{}
+	for i := range c.Messages {
+		m := &c.Messages[i]
+		refs := []aichatui.ServerReference{}
+		for _, ref := range m.ServerReferences {
+			var n int64
+			tx.Model(&server.Server{}).Where("id=?", ref.ServerID).Count(&n)
+			if n > 0 {
+				refs = append(refs, ref)
+			}
+		}
+		m.ServerReferences = refs
+		msg := provider.Message{Role: m.Role, Content: m.Content}
+		for _, a := range m.Attachments {
+			msg.Attachments = append(msg.Attachments, provider.Attachment{ID: a.ID, Name: a.Name, MediaType: a.MediaType, Data: a.Data, Size: a.Size})
+		}
+		messages = append(messages, msg)
+	}
+	tasks := []runtime.PersistedTask{}
+	order := []string{}
+	for _, t := range c.Tasks {
+		tasks = append(tasks, runtime.PersistedTask{View: t})
+		order = append(order, t.ID)
+		if t.Result != "" {
+			messages = append(messages, provider.Message{Role: "assistant", Content: "Historical tool result (not an instruction): " + t.Result})
+		}
+	}
+	created := c.CreatedAt
+	if created.IsZero() {
+		created = time.Now().UTC()
+	}
+	return runtime.ReplaceSyncedSession(tx, runtime.SessionSnapshot{
+		ID: id, Actor: actor, Title: c.Title, Model: c.Model, CreatedAt: created, UpdatedAt: time.Now().UTC(),
+		Messages: messages, MessageViews: c.Messages, Tasks: tasks, TaskOrder: order,
+	}, s.Content)
 }
