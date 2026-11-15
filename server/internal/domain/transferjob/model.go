@@ -43,7 +43,7 @@ const (
 
 type TransferJob struct {
 	Actor protocol.Actor `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
-	ID    uuid.UUID      `gorm:"type:char(36);primary_key" json:"id"`
+	ID    uuid.UUID      `gorm:"type:char(36);primary_key;not null" json:"id"`
 
 	Name        string    `gorm:"size:160;not null" json:"name"`
 	Kind        JobKind   `gorm:"type:varchar(40);not null;index" json:"kind"`
@@ -68,9 +68,9 @@ type TransferJob struct {
 	Progress       int    `gorm:"default:0" json:"progress"`
 	BytesTotal     int64  `gorm:"default:0" json:"bytes_total"`
 	BytesProcessed int64  `gorm:"default:0" json:"bytes_processed"`
-	BytesCompleted int64  `gorm:"default:0" json:"bytes_completed"`
-	FilesTotal     int    `gorm:"default:0" json:"files_total"`
-	FilesCompleted int    `gorm:"default:0" json:"files_completed"`
+	BytesCompleted int64  `gorm:"default:0;not null" json:"bytes_completed"`
+	FilesTotal     int    `gorm:"default:0;not null" json:"files_total"`
+	FilesCompleted int    `gorm:"default:0;not null" json:"files_completed"`
 	ResultPath     string `gorm:"type:text" json:"result_path"`
 	SpeedBps       int64  `gorm:"default:0" json:"speed_bps"`
 

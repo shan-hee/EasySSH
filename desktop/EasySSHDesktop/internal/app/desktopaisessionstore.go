@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/easyssh/shared/aichatui"
+	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/aiworkspace"
 	"strings"
 	"time"
@@ -286,7 +287,7 @@ func loadDesktopAISession(tx *sql.Tx, id string) (desktopAISessionRecord, error)
 	record.Title = strings.TrimSpace(record.Title)
 	record.CustomTitle = customTitle == 1 && record.Title != ""
 	record.PermissionMode = normalizeDesktopAIPermission(DesktopAIPermissionMode(permissionMode))
-	record.Scope = decodeDesktopAIScope(scopeJSON)
+	record.Scope = desktopAIScopeFromShared(aipermission.DecodeScope(scopeJSON))
 	record.Status = DesktopAISessionStatus(status)
 	if record.Status == "" {
 		record.Status = DesktopAISessionIdle
@@ -309,7 +310,7 @@ func saveDesktopAISession(ctx context.Context, tx *sql.Tx, record desktopAISessi
 	scopeJSON := mustDesktopAIJSON(record.Scope)
 	projection := desktopAIHistoryProjection(record.Title, record.CustomTitle, toAichatUIMessages(record.Messages))
 	scopeKind, scopeServerID, scopeTerminalID := "", "", ""
-	if scope := normalizeDesktopAISessionScope(record.Scope); scope != nil {
+	if scope := desktopAIScopeFromShared(aipermission.NormalizeScopePointer(desktopAISharedScope(record.Scope))); scope != nil {
 		scopeKind, scopeServerID, scopeTerminalID = scope.Kind, scope.ServerID, scope.TerminalSessionID
 	}
 

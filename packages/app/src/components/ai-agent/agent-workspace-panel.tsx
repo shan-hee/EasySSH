@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "@/components/ui/sonner"
 import { PageLoading } from "@/components/page-loading"
-import { getAITaskFile } from "@/lib/api/ai-agent"
+import type { getAITaskFile } from "@/lib/api/ai-agent"
 import type { Server as ManagedServer } from "@/lib/api"
 import type { AgentFileArtifact, AgentSessionScope, MessageView, TaskView } from "@/lib/ai-agent-types"
 import { getServerDisplayName } from "@/lib/server-utils"
@@ -45,14 +45,14 @@ type Workspace = {
 const Context = createContext<Workspace | null>(null)
 
 /** 本会话的命令与文件记录。面板只在用户打开时显示，命令输出已在消息卡片中实时展示。 */
-export function AgentWorkspaceProvider({ sessionId, tasks, servers, messages, scope, active = true, loadFile = getAITaskFile, saveFile, children }: {
+export function AgentWorkspaceProvider({ sessionId, tasks, servers, messages, scope, active = true, loadFile, saveFile, children }: {
   sessionId: string | null
   tasks: TaskView[]
   servers?: ManagedServer[]
   messages?: MessageView[]
   scope?: AgentSessionScope
   active?: boolean
-  loadFile?: typeof getAITaskFile
+  loadFile: typeof getAITaskFile
   saveFile?: Workspace["saveFile"]
   children: ReactNode
 }) {

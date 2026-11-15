@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"github.com/easyssh/shared/protocol"
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -266,19 +264,8 @@ func (s *ActivityLogService) database() (*sql.DB, error) {
 		return s.db, nil
 	}
 
-	dataDir := desktopDataDir()
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create desktop data directory: %w", err)
-	}
-
-	dbPath := filepath.Join(dataDir, "easyssh-desktop.sqlite")
-	database, err := sql.Open("sqlite", dbPath)
+	database, err := openDesktopDatabase()
 	if err != nil {
-		return nil, err
-	}
-
-	if err := configureDesktopDatabase(database); err != nil {
-		database.Close()
 		return nil, err
 	}
 

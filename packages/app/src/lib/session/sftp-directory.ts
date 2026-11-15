@@ -1,4 +1,3 @@
-import { sftpApi } from "@/lib/api/sftp"
 import type { DirectoryListResponse, FileInfo } from "@/lib/sftp-types"
 import type { SftpFileItem } from "@/lib/sftp-file-utils"
 
@@ -26,7 +25,7 @@ export interface LoadSftpDirectoryOptions<T extends SftpDirectoryItemBase> {
   convertFileInfo: (info: FileInfo) => T
   withParentEntry?: boolean
   parentEntry?: T
-  api?: SftpDirectoryApi
+  api: SftpDirectoryApi
   signal?: AbortSignal
 }
 
@@ -43,7 +42,7 @@ export async function loadSftpDirectory<T extends SftpDirectoryItemBase>({
   convertFileInfo,
   withParentEntry = false,
   parentEntry,
-  api = sftpApi,
+  api,
   signal,
 }: LoadSftpDirectoryOptions<T>): Promise<LoadedSftpDirectory<T>> {
   const response = await api.listDirectory(serverId, path, signal)

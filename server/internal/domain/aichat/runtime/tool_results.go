@@ -14,7 +14,7 @@ import (
 func (m *Manager) sessionToolSpec(s *session, name string) (registry.ToolSpec, bool) {
 	if name == aiworkspace.CreateTool {
 		return registry.ToolSpec{Name: name, DisplayName: "生成文件", Description: aiworkspace.CreateDescription,
-			Parameters: aiworkspace.CreateParameters(), ConfirmStrategy: registry.ConfirmNone,
+			Parameters: aiworkspace.CreateParameters(),
 			Executor: func(ctx context.Context, raw json.RawMessage) (registry.ExecutionResult, error) {
 				if err := ctx.Err(); err != nil {
 					return registry.ExecutionResult{}, err
@@ -24,14 +24,14 @@ func (m *Manager) sessionToolSpec(s *session, name string) (registry.ToolSpec, b
 					return registry.ExecutionResult{}, err
 				}
 				return registry.ExecutionResult{Content: "文件已生成，可在文件面板预览和下载：" + file.Name, Artifact: file}, nil
-			}}, true
+			}}.WithPolicy(), true
 	}
 	if name != aitooloutput.ReadResultTool {
 		return m.registry.Get(name)
 	}
 	return registry.ToolSpec{
 		Name: name, DisplayName: "查看执行结果", Description: aitooloutput.ReadResultDescription,
-		Parameters: aitooloutput.ReadResultParameters(), ConfirmStrategy: registry.ConfirmNone,
+		Parameters: aitooloutput.ReadResultParameters(),
 		Executor: func(ctx context.Context, args json.RawMessage) (registry.ExecutionResult, error) {
 			if err := ctx.Err(); err != nil {
 				return registry.ExecutionResult{}, err
@@ -61,7 +61,7 @@ func (m *Manager) sessionToolSpec(s *session, name string) (registry.ToolSpec, b
 			}
 			return registry.ExecutionResult{Content: page}, nil
 		},
-	}, true
+	}.WithPolicy(), true
 }
 
 func (m *Manager) GetTaskFile(ctx context.Context, sessionID, taskID string) (protocol.ContentReference, error) {

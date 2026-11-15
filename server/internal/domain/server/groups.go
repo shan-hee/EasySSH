@@ -17,7 +17,7 @@ var ErrInvalidGroup = servergroup.ErrInvalid
 var ErrGroupNotFound = errors.New("server group not found")
 
 type ServerGroup struct {
-	ID        uuid.UUID `gorm:"type:char(36);primaryKey"`
+	ID        uuid.UUID `gorm:"type:char(36);primaryKey;not null"`
 	Name      string    `gorm:"size:100;not null"`
 	SortOrder int       `gorm:"not null;default:0"`
 }

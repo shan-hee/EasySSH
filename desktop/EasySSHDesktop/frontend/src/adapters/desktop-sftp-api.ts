@@ -1,4 +1,5 @@
 import { Dialogs } from "@wailsio/runtime"
+import type { components } from "@easyssh/app/generated/openapi"
 import type { AuthMethod, SshWorkspaceApiClient } from "@easyssh/app/desktop"
 import { supportsKeyboardInteractive } from "@easyssh/app/desktop"
 import type {
@@ -20,8 +21,6 @@ import { desktopAuthRequiresPassword, desktopAuthRequiresPrivateKey, toDesktopAu
 import type { DesktopGatewayInfo } from "./desktop-runtime"
 
 type DesktopSftpApi = NonNullable<SshWorkspaceApiClient["sftp"]>
-type DesktopSftpPreAuthPrompt = Parameters<Parameters<NonNullable<DesktopSftpApi["preAuthenticate"]>>[2]>[0]
-type DesktopSftpHostKeyPrompt = Parameters<NonNullable<Parameters<NonNullable<DesktopSftpApi["preAuthenticate"]>>[3]>>[0]
 
 const desktopKeyboardInteractiveGatewayRequired = "desktop gateway is required for keyboard-interactive authentication"
 
@@ -243,7 +242,7 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
               secret: credential.secret,
               private_key_passphrase: credential.privateKeyPassphrase,
             },
-          }))
+          } satisfies components["schemas"]["SFTPAuthClientMessage"]))
         }
 
         ws.onerror = () => {
@@ -258,23 +257,23 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
 
         ws.onmessage = (event) => {
           try {
-            const message = JSON.parse(event.data) as { type?: string; data?: unknown }
+            const message: components["schemas"]["SFTPAuthServerMessage"] = JSON.parse(event.data)
             if (message.type === "authenticated") {
               finish()
               return
             }
             if (message.type === "error") {
-              const data = message.data as { error?: string; message?: string } | undefined
+              const data = message.data
               const error = new Error(data?.message || data?.error || "sftp pre-authentication failed")
               ;(error as Error & { code?: string }).code = data?.error
               finish(error)
               return
             }
             if (message.type === "auth_prompt" && message.data && typeof message.data === "object") {
-              const prompt = message.data as DesktopSftpPreAuthPrompt
+              const prompt = message.data
               onAuthPrompt(prompt, (response, cancelled = false, authMethod) => {
                 const payload: {
-                  answers?: string[]
+                  answers: string[]
                   authMethod?: AuthMethod
                   password?: string
                   privateKey?: string
@@ -299,11 +298,11 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
                     private_key: payload.privateKey,
                     private_key_passphrase: payload.privateKeyPassphrase,
                   },
-                }))
+                } satisfies components["schemas"]["SFTPAuthClientMessage"]))
               })
             }
             if (message.type === "host_key_prompt" && message.data && typeof message.data === "object") {
-              const prompt = message.data as DesktopSftpHostKeyPrompt
+              const prompt = message.data
               const respond = (accepted: boolean, fingerprint?: string) => {
                 ws.send(JSON.stringify({
                   type: "host_key_response",
@@ -312,7 +311,7 @@ export function createDesktopSftpApi(gateway?: DesktopGatewayInfo, runtimeReady 
                     accepted,
                     fingerprint,
                   },
-                }))
+                } satisfies components["schemas"]["SFTPAuthClientMessage"]))
               }
               if (onHostKeyPrompt) {
                 onHostKeyPrompt(prompt, respond)

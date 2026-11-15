@@ -165,5 +165,46 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 	if strings.ToLower(kind) != "varchar" || nullable != "NO" || defaultValue != "share" {
 		return fmt.Errorf("grants.purpose does not match schema %d", version)
 	}
+	return checkOperationActorNullability(ctx, db, driver, version)
+}
+
+// Version 8 changes constraints, not column presence. Check them separately so
+// an interrupted MySQL ALTER cannot masquerade as the recorded source schema.
+func checkOperationActorNullability(ctx context.Context, db *sql.DB, driver string, version int64) error {
+	var query string
+	switch driver {
+	case "sqlite":
+		query = `SELECT name, "notnull" FROM pragma_table_info('operation_records') WHERE name`
+	case "postgres":
+		query = "SELECT column_name, is_nullable = 'NO' FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'operation_records' AND column_name"
+	case "mysql":
+		query = "SELECT column_name, is_nullable = 'NO' FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'operation_records' AND column_name"
+	default:
+		return fmt.Errorf("unsupported database driver %q", driver)
+	}
+	query += " IN ('actor_kind', 'actor_id', 'actor_session_id', 'actor_grant_id')"
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	count := 0
+	for rows.Next() {
+		var column string
+		var notNull bool
+		if err := rows.Scan(&column, &notNull); err != nil {
+			return err
+		}
+		if notNull != (version >= 8) {
+			return fmt.Errorf("schema %d disagrees with operation_records.%s NOT NULL=%t; inspect interrupted DDL before retrying", version, column, notNull)
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if count != 4 {
+		return fmt.Errorf("schema %d has incomplete operation_records actor columns: found %d, expected 4", version, count)
+	}
 	return nil
 }

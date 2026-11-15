@@ -1,3 +1,22 @@
+import type { AIAssistantWorkspaceAdapters } from "@easyssh/app/components/ai-agent/ai-assistant-workspace-view"
+import { dockerApi } from "@easyssh/app/lib/api/docker"
+import { serversApi } from "@easyssh/app/lib/api/servers"
+import { taskCenterApi } from "@easyssh/app/lib/api/task-center"
+import { getAIConfig } from "@easyssh/app/lib/api/ai-config"
+import {
+  cancelAISession,
+  createAISession,
+  deleteAIMessage,
+  deleteAISession,
+  getAISession,
+  getAITaskFile,
+  getLatestAISession,
+  listAISessions,
+  renameAISession,
+  updateAIMessage,
+} from "@easyssh/app/lib/api/ai-agent"
+import { getApiUrl } from "@easyssh/app/lib/api-client"
+import { fetchAIChatStream } from "@easyssh/app/lib/ai-agent/stream-transport"
 import { remoteAccessContext } from "./remote-context"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -24,6 +43,28 @@ import { closeRemoteStreams } from "./remote-stream"
 import { remoteFileApi } from "./remote-file-api"
 import { useRemoteTransfers } from "./remote-transfers"
 import { createRemoteDesktopSocket } from "./remote-desktop-socket"
+
+const remoteAIAdapters: AIAssistantWorkspaceAdapters = {
+  aiConfig: { getAIConfig, waitForAuth: true },
+  aiSession: {
+    getTaskFile: getAITaskFile,
+    getSession: getAISession,
+    getLatestSession: getLatestAISession,
+    createSession: createAISession,
+    updateMessage: ({ session_id, message_id, ...input }) => updateAIMessage(session_id, message_id, input),
+    deleteMessage: ({ session_id, message_id }) => deleteAIMessage(session_id, message_id),
+    cancelSession: cancelAISession,
+    deleteSession: deleteAISession,
+    chatStream: {
+      fetch: fetchAIChatStream,
+      getUrl: (sessionId) => getApiUrl(`/ai/sessions/${sessionId}/chat`),
+    },
+  },
+  servers: serversApi,
+  listAISessions,
+  renameAISession,
+  deleteAISession,
+}
 
 installPlatformTransport(remoteTransport)
 export default function RemoteApp() {
@@ -109,6 +150,7 @@ function RemoteWorkspace({
         apiClient: {
           remoteDesktopSocket: createRemoteDesktopSocket,
           sftp: remoteFileApi,
+          docker: dockerApi,
           terminal: {
             WebSocketCtor: RemoteWebSocket,
             createWebSocketUrl: (r) =>
@@ -137,6 +179,9 @@ function RemoteWorkspace({
       desktop
       context={remoteAccessContext(context.access)}
       adapters={adapters}
+      aiAdapters={remoteAIAdapters}
+      tasks={taskCenterApi}
+      loadServer={serversApi.getById}
       refresh={refresh}
       fileActions={(resource, path) =>
         resource.actions.includes("files.upload")

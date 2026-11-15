@@ -13,7 +13,7 @@ import (
 type NotificationDelivery struct {
 	SourceType     string     `gorm:"size:50;not null;index:idx_notification_delivery_source,priority:1" json:"-"`
 	SourceID       string     `gorm:"size:80;not null;index:idx_notification_delivery_source,priority:2" json:"-"`
-	ID             uint       `gorm:"primaryKey" json:"id"`
+	ID             uint       `gorm:"primaryKey;not null" json:"id"`
 	NotificationID uuid.UUID  `gorm:"type:char(36);not null;uniqueIndex:idx_notification_channel,priority:1" json:"notification_id"`
 	Channel        string     `gorm:"size:30;not null;uniqueIndex:idx_notification_channel,priority:2" json:"channel"`
 	Status         string     `gorm:"size:20;not null;index:idx_notification_delivery_due,priority:1" json:"status"`

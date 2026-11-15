@@ -30,7 +30,7 @@ import { useTerminalPanelLayout } from './use-terminal-panel-layout'
 import { useSftpSession } from '@/hooks/useSftpSession'
 import { cn } from '@/lib/utils'
 import { useTabUIStore } from '@/stores/tab-ui-store'
-import { useOptionalSshWorkspace } from '@/components/ssh-workspace/ssh-workspace'
+import { useSshWorkspace } from '@/components/ssh-workspace/ssh-workspace'
 import { assertCompleteSftpSessionApi } from '@/lib/session/sftp-session-api'
 import type { TerminalConnectionPhase, TerminalSession } from './types'
 import {
@@ -193,7 +193,7 @@ function TabTerminalContentComponent({
   // 从 Store 获取当前页签的 UI 状态
   const tabState = useTabUIStore((state) => state.getTabState(session.id))
   const setTabState = useTabUIStore((state) => state.setTabState)
-  const workspace = useOptionalSshWorkspace()
+  const workspace = useSshWorkspace()
   const {
     mode: effectiveAppTheme,
     version: effectiveThemeVersion,
@@ -204,7 +204,7 @@ function TabTerminalContentComponent({
   const isDesktopWorkspace = workspace?.layout === "desktop"
   const canUseSftpCapability = workspaceCapabilities?.sftp !== false
   const canUseMonitorCapability = workspaceCapabilities?.monitor !== false
-  const canUseAiCapability = workspaceCapabilities?.ai !== false
+  const canUseAiCapability = workspaceCapabilities?.ai !== false && !!aiAssistantAdapters
   const canUseDockerCapability = workspaceCapabilities?.docker !== false
   const canShowLatency = canUseMonitorCapability
 
@@ -285,10 +285,7 @@ function TabTerminalContentComponent({
     }
   }, [canMountAi, canUseAi])
 
-  const workspaceSftpApi = workspace?.adapters.apiClient?.sftp
-  if (isDesktopWorkspace && !workspaceSftpApi) {
-    throw new Error("Desktop terminal file manager requires a desktop SFTP api adapter")
-  }
+  const workspaceSftpApi = workspace.adapters.apiClient.sftp
   if (isDesktopWorkspace) {
     assertCompleteSftpSessionApi(workspaceSftpApi, "Desktop terminal file manager")
   }
@@ -844,7 +841,7 @@ function TabTerminalContentComponent({
             />
           )}
 
-          {shouldMountAi && (
+          {shouldMountAi && aiAssistantAdapters && (
             <React.Suspense fallback={canUseAi ? (
               <aside
                 data-terminal-panel

@@ -62,10 +62,10 @@ type TicketRecord struct {
 	ConnectionID string               `gorm:"size:32"`
 	ActorKind    protocol.Kind        `gorm:"size:32;not null"`
 	ActorID      string               `gorm:"size:36;not null"`
-	SessionID    string               `gorm:"size:36;not null"`
+	SessionID    string               `gorm:"size:36"`
 	GrantID      string               `gorm:"size:36"`
 	Requirements []access.Requirement `gorm:"serializer:json;type:text;not null"`
-	ID           uuid.UUID            `gorm:"type:char(36);primaryKey"`
+	ID           uuid.UUID            `gorm:"type:char(36);primaryKey;not null"`
 	TokenHash    string               `gorm:"not null;uniqueIndex;size:64"`
 	Type         TicketType           `gorm:"not null;size:40"`
 	Ref          string               `gorm:"size:255"`

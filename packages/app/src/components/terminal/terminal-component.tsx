@@ -209,7 +209,7 @@ export interface TerminalComponentProps {
   externalActiveSessionId?: string | null
   onActiveSessionChange?: (sessionId: string | null) => void
   onConnectionPhaseChange?: (sessionId: string, phase: TerminalConnectionPhase) => void
-  serverApi?: ServerConnectionConfigsApi
+  serverApi: ServerConnectionConfigsApi
   serverConfigsReady?: boolean
   serverToolbarActions?: ReactNode
   aiAssistantAdapters?: AIAssistantWorkspaceAdapters

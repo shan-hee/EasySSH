@@ -13,7 +13,7 @@ type Session struct {
 	TokenHash     string     `gorm:"size:64;not null;uniqueIndex" json:"-"`
 	CSRFHash      string     `gorm:"size:64;not null" json:"-"`
 	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
-	ID            uuid.UUID  `gorm:"type:char(36);primary_key" json:"id"`
+	ID            uuid.UUID  `gorm:"type:char(36);primary_key;not null" json:"id"`
 	OwnerID       uuid.UUID  `gorm:"type:char(36);not null;index:idx_sessions_owner_expires,priority:1" json:"owner_id"`
 	DeviceType    string     `gorm:"size:100" json:"device_type"`                                                      // 设备类型: desktop, mobile, tablet
 	DeviceName    string     `gorm:"size:200" json:"device_name"`                                                      // 设备名称/浏览器

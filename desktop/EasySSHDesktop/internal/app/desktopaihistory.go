@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/easyssh/shared/aipermission"
 	"strings"
 	"time"
 
@@ -74,7 +75,7 @@ func (s *DesktopAIService) ListSessions(params DesktopAIListSessionsParams) (Des
 		item.CustomTitle = custom == 1
 		item.PermissionMode = DesktopAIPermissionMode(permissionMode)
 		item.Status = DesktopAISessionStatus(status)
-		item.Scope = decodeDesktopAIScope(scopeJSON)
+		item.Scope = desktopAIScopeFromShared(aipermission.DecodeScope(scopeJSON))
 		result.Items = append(result.Items, item)
 	}
 	if err = rows.Err(); err != nil {

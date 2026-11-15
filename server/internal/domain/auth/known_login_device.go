@@ -12,7 +12,7 @@ import (
 // KnownLoginDevice is a browser fingerprint observed after a successful login.
 // It is a notification baseline, not a credential or a trusted authorization device.
 type KnownLoginDevice struct {
-	ID                uuid.UUID `gorm:"type:char(36);primary_key" json:"id"`
+	ID                uuid.UUID `gorm:"type:char(36);primary_key;not null" json:"id"`
 	OwnerID           uuid.UUID `gorm:"type:char(36);not null;uniqueIndex:idx_known_login_owner_fp,priority:1" json:"owner_id"`
 	DeviceFingerprint string    `gorm:"size:64;not null;uniqueIndex:idx_known_login_owner_fp,priority:2" json:"device_fingerprint"` // 设备指纹（哈希）
 	DeviceType        string    `gorm:"size:50" json:"device_type"`                                                                 // desktop, mobile, tablet

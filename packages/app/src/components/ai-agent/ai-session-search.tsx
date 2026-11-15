@@ -4,16 +4,16 @@ import { useTranslation } from "react-i18next"
 import { CommandDialog, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { toast } from "@/components/ui/sonner"
 import { Button } from "@/components/ui/button"
-import { listAISessions, type SessionListItem } from "@/lib/api/ai-agent"
+import type { listAISessions, SessionListItem } from "@/lib/api/ai-agent"
 import { PageLoading } from "@/components/page-loading"
 
 const PAGE_SIZE = 30
 
-export function AISessionSearch({ open, onOpenChange, onSelect, listSessions = listAISessions }: {
+export function AISessionSearch({ open, onOpenChange, onSelect, listSessions }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSelect: (id: string) => void | Promise<void>
-  listSessions?: typeof listAISessions
+  listSessions: typeof listAISessions
 }) {
   const { t, i18n } = useTranslation("aiAssistant")
   const { t: tCommon } = useTranslation("common")

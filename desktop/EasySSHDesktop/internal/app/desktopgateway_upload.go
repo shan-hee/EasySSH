@@ -46,7 +46,7 @@ func (g *DesktopGateway) handleSFTPUpload(w http.ResponseWriter, r *http.Request
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if g.token == "" || r.Header.Get("X-EasySSH-Desktop-Gateway-Token") != g.token {
+	if !desktopGatewayTokenMatches(r.Header.Get("X-EasySSH-Desktop-Gateway-Token"), g.token) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}

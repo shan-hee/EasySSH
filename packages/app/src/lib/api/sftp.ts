@@ -1,3 +1,4 @@
+import type { components } from "@/generated/openapi"
 import { apiFetch, getWebSocketUrl } from "@/lib/api-client"
 import { createAccessTicket } from "@/lib/access-ticket"
 import { connectionHeader, withServerConnection } from "@/lib/api/connections"
@@ -86,7 +87,7 @@ function runPreAuthentication(
           secret: credential.secret,
           private_key_passphrase: credential.privateKeyPassphrase,
         },
-      }))
+      } satisfies components["schemas"]["SFTPAuthClientMessage"]))
     }
 
     ws.onerror = () => {
@@ -101,22 +102,22 @@ function runPreAuthentication(
 
     ws.onmessage = (event) => {
       try {
-        const message = JSON.parse(event.data) as { type?: string; data?: unknown }
+        const message = JSON.parse(event.data) as components["schemas"]["SFTPAuthServerMessage"]
         if (message.type === "authenticated") {
           finish()
           return
         }
         if (message.type === "error") {
-          const data = message.data as { error?: string; message?: string } | undefined
+          const data = message.data
           const error = new Error(data?.message || data?.error || "sftp pre-authentication failed")
           ;(error as Error & { code?: string }).code = data?.error
           finish(error)
           return
         }
         if (message.type === "auth_prompt" && message.data && typeof message.data === "object") {
-          const prompt = message.data as TerminalAuthPrompt
+          const prompt = message.data
           onAuthPrompt(prompt, (response, cancelled = false, authMethod) => {
-            const payload: TerminalAuthResponsePayload & { authMethod?: TerminalAuthMethod } = Array.isArray(response)
+            const payload: TerminalAuthResponsePayload & { answers: string[] } = Array.isArray(response)
               ? { answers: response, authMethod }
               : {
                   answers: response.answers ?? [],
@@ -136,11 +137,11 @@ function runPreAuthentication(
                 private_key: payload.privateKey,
                 private_key_passphrase: payload.privateKeyPassphrase,
               },
-            }))
+            } satisfies components["schemas"]["SFTPAuthClientMessage"]))
           })
         }
         if (message.type === "host_key_prompt" && message.data && typeof message.data === "object") {
-          const prompt = message.data as TerminalHostKeyPrompt
+          const prompt = message.data
           const respond: TerminalHostKeyResponder = (accepted, fingerprint) => {
             ws.send(JSON.stringify({
               type: "host_key_response",
@@ -149,7 +150,7 @@ function runPreAuthentication(
                 accepted,
                 fingerprint,
               },
-            }))
+            } satisfies components["schemas"]["SFTPAuthClientMessage"]))
           }
           if (onHostKeyPrompt) {
             onHostKeyPrompt(prompt, respond)

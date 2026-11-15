@@ -256,9 +256,7 @@ func (w relayProgressWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// Commit complete files without replacing an existing destination. Prefer an
-// atomic hard link when the server supports it; plain SFTP v3 rename must also
-// refuse existing destinations (unlike the posix-rename extension).
+// Complete files are committed without replacing an existing destination.
 func copyRelayFile(ctx context.Context, source, target *sftp.Client, file relayFile, destination string, readReq, writeReq access.Requirement, progress func(int)) error {
 	for _, req := range []access.Requirement{readReq, writeReq} {
 		if err := access.Current(ctx).Check(ctx, req); err != nil {
@@ -277,55 +275,24 @@ func copyRelayFile(ctx context.Context, source, target *sftp.Client, file relayF
 	if !info.Mode().IsRegular() || info.Size() != file.info.Size() || !info.ModTime().Equal(file.info.ModTime()) {
 		return fmt.Errorf("relay source changed after enumeration")
 	}
-	temporary := path.Join(path.Dir(destination), ".easyssh-transfer-"+uuid.NewString())
-	output, err := target.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
-	if err != nil {
-		return sftputil.MutationError(err)
-	}
-	defer func() {
-		_ = output.Close()
-		_ = target.Remove(temporary)
-	}()
-	if err := target.Chmod(temporary, 0600); err != nil {
-		return err
-	}
-	reader, finishRead := access.MeterReader(ctx, readReq, input)
-	defer finishRead()
-	metered, finishWrite := access.MeterWriter(ctx, writeReq, output)
-	defer finishWrite()
-	_, err = io.CopyN(relayProgressWriter{metered, progress}, reader, info.Size())
-	err = errors.Join(err, finishRead(), finishWrite())
-	if err != nil {
-		return err
-	}
-	after, err := input.Stat()
-	if err != nil {
-		return err
-	}
-	if after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) {
-		return fmt.Errorf("relay source changed during transfer")
-	}
-	if err := output.Chmod(info.Mode().Perm()); err != nil {
-		return err
-	}
-	if err := output.Close(); err != nil {
-		return err
-	}
-	if err := access.Current(ctx).Check(ctx, writeReq); err != nil {
-		return err
-	}
-	if _, supported := target.HasExtension("hardlink@openssh.com"); supported {
-		return sftputil.MutationError(target.Link(temporary, destination))
-	}
-	// Catch a name occupied since enumeration, including on servers whose plain
-	// rename implementation incorrectly uses overwrite semantics.
-	if _, err := target.Lstat(destination); err == nil {
-		return os.ErrExist
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	if err := target.Rename(temporary, destination); err != nil {
-		return sftputil.MutationError(err)
-	}
-	return nil
+	_, err = sftputil.WriteAtomic(ctx, target, destination, sftputil.AtomicWrite{
+		Mode:  info.Mode().Perm(),
+		Check: func() error { return access.Current(ctx).Check(ctx, writeReq) },
+	}, func(output *sftp.File) error {
+		reader, finishRead := access.MeterReader(ctx, readReq, input)
+		metered, finishWrite := access.MeterWriter(ctx, writeReq, output)
+		_, err := io.CopyN(relayProgressWriter{metered, progress}, reader, info.Size())
+		if err = errors.Join(err, finishRead(), finishWrite()); err != nil {
+			return err
+		}
+		after, err := input.Stat()
+		if err != nil {
+			return err
+		}
+		if after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) {
+			return fmt.Errorf("relay source changed during transfer")
+		}
+		return nil
+	})
+	return err
 }

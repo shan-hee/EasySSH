@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/protocol"
 	"sync"
 	"testing"
@@ -101,7 +102,7 @@ func (s *memorySessionStore) List(ctx context.Context, actor protocol.Actor, que
 	defer s.mu.Unlock()
 	items := make([]SessionListItem, 0)
 	for _, snapshot := range s.snapshots {
-		if !sameConversationActor(snapshot.Actor, actor) || !scopeMatches(snapshot.Scope, filter) || len(snapshot.MessageViews) == 0 {
+		if !sameConversationActor(snapshot.Actor, actor) || !aipermission.ScopeMatches(snapshot.Scope, filter) || len(snapshot.MessageViews) == 0 {
 			continue
 		}
 		if query != "" && !aichatui.SessionMatchesSearch(snapshot.Title, snapshot.MessageViews, query) {

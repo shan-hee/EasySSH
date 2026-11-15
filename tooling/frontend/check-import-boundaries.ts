@@ -82,10 +82,10 @@ const rules: Rule[] = [
   {
     name: "Desktop must not import Web dashboard pages or owner API clients",
     roots: [DESKTOP_SOURCE],
-    // The isolated remote window installs a native PlatformTransport. Only its
-    // file/connection protocol clients may use that explicit endpoint dispatcher.
     violates: ({ file, specifier }) => /^@easyssh\/app\/(?:pages|lib\/api)(?:\/|$)/.test(specifier)
-      && !(isWithin(file, `${DESKTOP_SOURCE}/remote`) && /^@easyssh\/app\/lib\/api\/(?:connections|sftp)$/.test(specifier)),
+    // The isolated remote window installs a native PlatformTransport. Only the
+    // protocol clients it passes to the shared workspace may use that dispatcher.
+      && !(isWithin(file, `${DESKTOP_SOURCE}/remote`) && /^@easyssh\/app\/lib\/api\/(?:connections|sftp|docker|servers|task-center|ai-config|ai-agent)$/.test(specifier)),
   },
 ]
 

@@ -4,24 +4,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useChat, type UIMessage, type UseChatHelpers } from "@ai-sdk/react"
 import { useAISDKRuntime } from "@assistant-ui/ai-sdk"
 import { DefaultChatTransport, isToolUIPart } from "ai"
-import {
-  cancelAISession,
-  createAISession,
-  deleteAISession,
-  deleteAIMessage,
-  getAISession,
-  getLatestAISession,
-  updateAIMessage,
-  type AgentSessionScope,
-  type AgentImageAttachment,
-  type AgentServerReference,
-  type CreateSessionResponse,
-  type MessageView,
-  type PermissionMode,
-  type SessionView,
-  type TaskView,
+import type {
+  AgentSessionScope,
+  AgentImageAttachment,
+  AgentServerReference,
+  CreateSessionResponse,
+  MessageView,
+  PermissionMode,
+  SessionView,
+  TaskView,
 } from "@/lib/api/ai-agent"
-import { getApiUrl } from "@/lib/api-client"
 import { useAgentFeedback } from "@/hooks/use-agent-feedback"
 import { useAgentComposerDrafts } from "@/hooks/use-agent-composer-draft"
 import { useAISessionRecovery } from "@/hooks/use-ai-session-recovery"
@@ -33,7 +25,7 @@ import {
   mergeTaskView,
   upsertTaskUIPart,
 } from "@/lib/ai-agent/history"
-import { fetchAIChatStream, isRecoverableAIStreamError } from "@/lib/ai-agent/stream-transport"
+import { isRecoverableAIStreamError } from "@/lib/ai-agent/stream-transport"
 import { resolveOutgoingUserMessageId } from "@/lib/ai-agent/message-transport"
 
 import type {
@@ -101,6 +93,16 @@ export interface AgentSessionAdapter {
   deleteSession: (sessionId: string) => Promise<void>
 }
 
+export interface StreamingAgentSessionAdapter extends Pick<AgentSessionAdapter,
+  "getTaskFile" | "getSession" | "getLatestSession" | "createSession" | "updateMessage" | "deleteMessage" | "cancelSession" | "deleteSession"
+> {
+  saveTaskFile?: AgentSessionAdapter["saveTaskFile"]
+  chatStream: {
+    fetch: typeof fetch
+    getUrl: (sessionId: string) => string
+  }
+}
+
 /**
  * 宿主推送的实时会话事件。正文以增量到达，提交后通过 history 通知；
  * 增量不是持久回放，断开后以重新读取历史为准。
@@ -129,10 +131,6 @@ function toErrorMessage(error: unknown) {
 
 function compareTaskExecutionOrder(left: TaskView, right: TaskView) {
   return new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
-}
-
-function getSessionChatApi(sessionId: string) {
-  return getApiUrl(`/ai/sessions/${sessionId}/chat`)
 }
 
 function getSessionScopeKey(scope?: AgentSessionScope) {
@@ -218,7 +216,9 @@ function createOptimisticUserMessage(
   }
 }
 
-export function useAgentSession(adapter?: AgentSessionAdapter) {
+export function useAgentSession(sessionAdapter: AgentSessionAdapter | StreamingAgentSessionAdapter) {
+  const adapter = "chatStream" in sessionAdapter ? undefined : sessionAdapter
+  const chatStream = "chatStream" in sessionAdapter ? sessionAdapter.chatStream : undefined
   const { i18n } = useTranslation()
   const dictation = useMemo(() => WebSpeechDictationAdapter.isSupported()
     ? new WebSpeechDictationAdapter({ language: i18n.resolvedLanguage || i18n.language })
@@ -253,10 +253,14 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
 
   const chatTransport = useMemo(
     () => new DefaultChatTransport<UIMessage>({
-      // Resolve Web URLs only when sending/reconnecting. Desktop uses its
-      // session adapter and must not require a Web platform transport on render.
-      fetch: fetchAIChatStream,
-      prepareReconnectToStreamRequest: ({ id }) => ({ api: `${getSessionChatApi(id)}/stream` }),
+      fetch: (input, init) => {
+        if (!chatStream) throw new Error("AI streaming requires a chatStream adapter")
+        return chatStream.fetch(input, init)
+      },
+      prepareReconnectToStreamRequest: ({ id }) => {
+        if (!chatStream) throw new Error("AI streaming requires a chatStream adapter")
+        return { api: `${chatStream.getUrl(id)}/stream` }
+      },
       prepareSendMessagesRequest(options) {
         const body = options.body ?? {}
         const targetSessionIdValue = body[TARGET_SESSION_ID_BODY_KEY]
@@ -274,8 +278,9 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
             }]
           : []
 
+        if (!chatStream) throw new Error("AI streaming requires a chatStream adapter")
         return {
-          api: getSessionChatApi(targetSessionId),
+          api: chatStream.getUrl(targetSessionId),
           headers: options.headers,
           credentials: options.credentials,
           body: {
@@ -288,7 +293,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         }
       },
     }),
-    []
+    [chatStream]
   )
 
   const commitSessionSnapshot = useCallback((
@@ -317,9 +322,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     const revision = sessionRevisionRef.current
     const snapshotRevision = snapshotRevisionRef.current
     try {
-      const response = adapter
-        ? await adapter.getSession(targetSessionId)
-        : await getAISession(targetSessionId)
+      const response = await sessionAdapter.getSession(targetSessionId)
       if (closingSessionIdRef.current === targetSessionId || sessionRef.current?.id !== targetSessionId || revision !== sessionRevisionRef.current) {
         return null
       }
@@ -337,7 +340,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       }
       return null
     }
-  }, [adapter, commitSessionSnapshot])
+  }, [sessionAdapter, adapter, commitSessionSnapshot])
 
   useEffect(() => {
     const refresh = () => {
@@ -585,9 +588,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     setTransport("connecting")
 
     try {
-      const response = adapter
-        ? await adapter.getLatestSession(scope)
-        : await getLatestAISession(scope)
+      const response = await sessionAdapter.getLatestSession(scope)
       if (revision !== sessionRevisionRef.current) return false
       if (!response) {
         setTransport("idle")
@@ -603,7 +604,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       pushLocalError(message)
       return false
     }
-  }, [adapter, applySessionResponse, pushLocalError, transport])
+  }, [sessionAdapter, applySessionResponse, pushLocalError, transport])
 
   const restoreSession = useCallback(async (targetSessionId: string, input: { silent?: boolean } = {}) => {
     if (!targetSessionId) {
@@ -619,9 +620,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         await chat.stop()
         chat.clearError()
       }
-      const response = adapter
-        ? await adapter.getSession(targetSessionId)
-        : await getAISession(targetSessionId)
+      const response = await sessionAdapter.getSession(targetSessionId)
       if (revision !== sessionRevisionRef.current) return false
       applySessionResponse(response)
       return true
@@ -634,7 +633,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       }
       return false
     }
-  }, [adapter, applySessionResponse, chat, pushLocalError, resetRecovery])
+  }, [sessionAdapter, adapter, applySessionResponse, chat, pushLocalError, resetRecovery])
 
   const startNewSession = useCallback(async (input: {
     model?: string
@@ -654,11 +653,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
     if (currentSession?.status === "running") {
       try {
-        if (adapter) {
-          await adapter.cancelSession(currentSession.id)
-        } else {
-          await cancelAISession(currentSession.id)
-        }
+        await sessionAdapter.cancelSession(currentSession.id)
       } catch {
         // ignore cancellation race when starting a replacement session
       }
@@ -670,9 +665,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         permission_mode: input.permissionMode,
         scope: input.scope,
       }
-      const response = adapter
-        ? await adapter.createSession(createInput)
-        : await createAISession(createInput)
+      const response = await sessionAdapter.createSession(createInput)
       chat.setMessages([])
       applySessionResponse(response, { syncMessages: false })
       return response
@@ -682,7 +675,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       pushLocalError(message)
       return null
     }
-  }, [adapter, applySessionResponse, chat, pushLocalError, resetRecovery])
+  }, [sessionAdapter, adapter, applySessionResponse, chat, pushLocalError, resetRecovery])
 
   const sendMessage = useCallback(async (
     content: string,
@@ -781,9 +774,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         // An old request must neither overwrite the selected conversation nor
         // restore an already accepted message as an unsent draft.
         try {
-          const response = adapter
-            ? await adapter.getSession(activeSessionId)
-            : await getAISession(activeSessionId)
+          const response = await sessionAdapter.getSession(activeSessionId)
           refreshed = response.session
         } catch {
           // Keep the submitted content as a draft when acceptance is unknown.
@@ -795,7 +786,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       ))
       return accepted ? "accepted" as const : "failed" as const
     }
-  }, [requestReasoningEffort, adapter, applySessionResponse, chat, commitSessionSnapshot, pushLocalError, refreshSessionSnapshot, resetRecovery, setChatMessages])
+  }, [sessionAdapter, requestReasoningEffort, adapter, applySessionResponse, chat, commitSessionSnapshot, pushLocalError, refreshSessionSnapshot, resetRecovery, setChatMessages])
 
   const regenerateAfterUpdate = useCallback(async (
     activeSessionId: string,
@@ -913,14 +904,12 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     setError(null)
     setTransport("ai_sdk_ui")
     try {
-      const response = adapter
-        ? await adapter.updateMessage({
-          session_id: activeSessionId,
-          message_id: messageId,
-          content: normalizedContent,
-          server_references: serverReferences,
-        })
-        : await updateAIMessage(activeSessionId, messageId, { content: normalizedContent, server_references: serverReferences })
+      const response = await sessionAdapter.updateMessage({
+        session_id: activeSessionId,
+        message_id: messageId,
+        content: normalizedContent,
+        server_references: serverReferences,
+      })
       applySessionResponse(response)
       setChatMessages(response.session.ui_messages || [])
       if (input.regenerate !== false) {
@@ -933,7 +922,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       void refreshSessionSnapshot(activeSessionId)
       return false
     }
-  }, [adapter, applySessionResponse, pushLocalError, refreshSessionSnapshot, regenerateAfterUpdate, setChatMessages])
+  }, [sessionAdapter, applySessionResponse, pushLocalError, refreshSessionSnapshot, regenerateAfterUpdate, setChatMessages])
 
   const deleteMessage = useCallback(async (messageId: string) => {
     const activeSessionId = sessionRef.current?.id
@@ -945,12 +934,10 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     setError(null)
     setTransport("ai_sdk_ui")
     try {
-      const response = adapter
-        ? await adapter.deleteMessage({
-          session_id: activeSessionId,
-          message_id: messageId,
-        })
-        : await deleteAIMessage(activeSessionId, messageId)
+      const response = await sessionAdapter.deleteMessage({
+        session_id: activeSessionId,
+        message_id: messageId,
+      })
       applySessionResponse(response)
       return true
     } catch (deleteError) {
@@ -959,7 +946,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
       void refreshSessionSnapshot(activeSessionId)
       return false
     }
-  }, [adapter, applySessionResponse, pushLocalError, refreshSessionSnapshot])
+  }, [sessionAdapter, applySessionResponse, pushLocalError, refreshSessionSnapshot])
 
   const respondToToolApproval: UseChatHelpers<UIMessage>["addToolApprovalResponse"] = useCallback(async ({ id, approved, reason }) => {
     const activeSessionId = sessionRef.current?.id
@@ -1031,14 +1018,14 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     sessionRevisionRef.current++
     const results = adapter
       ? await Promise.allSettled([adapter.cancelSession(activeSessionId)])
-      : await Promise.allSettled([chat.stop(), cancelAISession(activeSessionId)])
+      : await Promise.allSettled([chat.stop(), sessionAdapter.cancelSession(activeSessionId)])
     await refreshSessionSnapshot(activeSessionId)
 
     const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected")
     if (failure) {
       pushLocalError(toErrorMessage(failure.reason))
     }
-  }, [adapter, chat, pushLocalError, refreshSessionSnapshot, stopRecovery])
+  }, [sessionAdapter, adapter, chat, pushLocalError, refreshSessionSnapshot, stopRecovery])
 
   const detachSession = useCallback((targetSessionId?: string) => {
     if (targetSessionId && sessionRef.current?.id !== targetSessionId) return
@@ -1067,9 +1054,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     }
 
     try {
-      const response = adapter
-        ? await adapter.getSession(targetSessionId)
-        : await getAISession(targetSessionId)
+      const response = await sessionAdapter.getSession(targetSessionId)
       const targetSession = response.session
       if (
         targetSession.messages.length > 0
@@ -1079,11 +1064,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
         return false
       }
 
-      if (adapter) {
-        await adapter.deleteSession(targetSessionId)
-      } else {
-        await deleteAISession(targetSessionId)
-      }
+      await sessionAdapter.deleteSession(targetSessionId)
       if (sessionRef.current?.id === targetSessionId) {
         detachSession()
       }
@@ -1091,7 +1072,7 @@ export function useAgentSession(adapter?: AgentSessionAdapter) {
     } catch {
       return false
     }
-  }, [adapter, detachSession])
+  }, [sessionAdapter, detachSession])
 
   const tasks = useMemo(
     () => [...(session?.tasks || [])].sort(compareTaskExecutionOrder),

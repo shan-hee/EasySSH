@@ -28,7 +28,7 @@ export function AISessionSidebar({
   creating: boolean
   createDisabled: boolean
   configuration: ReactNode
-  listSessions?: typeof listAISessions
+  listSessions: typeof listAISessions
   t: TFunction<"aiAssistant">
 }) {
   const navigation = useAISidebarNavigation()

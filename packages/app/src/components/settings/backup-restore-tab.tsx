@@ -1,13 +1,13 @@
 import { InstanceBackupPanel, webInstanceBackupAdapter, type InstanceBackupAdapter } from "./instance-backup-panel"
 
 export function BackupRestoreTab({
-  adapter = webInstanceBackupAdapter,
+  adapter,
   showHeader = true,
 }: {
-  adapter?: InstanceBackupAdapter
+  adapter: InstanceBackupAdapter
   /** The settings page already titles the section; standalone hosts keep the panel heading. */
   showHeader?: boolean
-} = {}) {
+}) {
   return (
     <div className="min-w-0 p-4">
       <InstanceBackupPanel adapter={adapter} showHeader={showHeader} />
@@ -16,5 +16,5 @@ export function BackupRestoreTab({
 }
 
 export function SettingsBackupTab() {
-  return <BackupRestoreTab showHeader={false} />
+  return <BackupRestoreTab adapter={webInstanceBackupAdapter} showHeader={false} />
 }

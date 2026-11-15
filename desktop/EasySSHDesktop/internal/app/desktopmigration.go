@@ -38,6 +38,24 @@ func configureDesktopDatabase(database *sql.DB) error {
 	return schema.Start(ctx, database, "sqlite")
 }
 
+// openDesktopDatabase gives a service its own single-connection handle to the
+// application database.
+func openDesktopDatabase() (*sql.DB, error) {
+	directory := desktopDataDir()
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create desktop data directory: %w", err)
+	}
+	database, err := sql.Open("sqlite", filepath.Join(directory, "easyssh-desktop.sqlite"))
+	if err != nil {
+		return nil, err
+	}
+	if err = configureDesktopDatabase(database); err != nil {
+		database.Close()
+		return nil, err
+	}
+	return database, nil
+}
+
 // upgradeDesktopDatabase brings an older database to the current schema when
 // the application starts. Every service opens the database through
 // configureDesktopDatabase, so nothing has used it yet.

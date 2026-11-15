@@ -932,6 +932,45 @@ func (e Kind) Valid() bool {
 	}
 }
 
+// Defines values for MonitorClientMessageType.
+const (
+	MonitorClientMessageTypePing MonitorClientMessageType = "ping"
+)
+
+// Valid indicates whether the value is a known member of the MonitorClientMessageType enum.
+func (e MonitorClientMessageType) Valid() bool {
+	switch e {
+	case MonitorClientMessageTypePing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MonitorServerMessageType.
+const (
+	MonitorServerMessageTypeError             MonitorServerMessageType = "error"
+	MonitorServerMessageTypeHandshakeComplete MonitorServerMessageType = "handshake_complete"
+	MonitorServerMessageTypePong              MonitorServerMessageType = "pong"
+	MonitorServerMessageTypeReady             MonitorServerMessageType = "ready"
+)
+
+// Valid indicates whether the value is a known member of the MonitorServerMessageType enum.
+func (e MonitorServerMessageType) Valid() bool {
+	switch e {
+	case MonitorServerMessageTypeError:
+		return true
+	case MonitorServerMessageTypeHandshakeComplete:
+		return true
+	case MonitorServerMessageTypePong:
+		return true
+	case MonitorServerMessageTypeReady:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RDPConfigSecurity.
 const (
 	Nla RDPConfigSecurity = "nla"
@@ -1091,6 +1130,60 @@ func (e RuntimeProfile) Valid() bool {
 	case RuntimeProfileDesktop:
 		return true
 	case RuntimeProfileWeb:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SFTPAuthClientMessageType.
+const (
+	SFTPAuthClientMessageTypeAuthResponse    SFTPAuthClientMessageType = "auth_response"
+	SFTPAuthClientMessageTypeAuthStart       SFTPAuthClientMessageType = "auth_start"
+	SFTPAuthClientMessageTypeHostKeyResponse SFTPAuthClientMessageType = "host_key_response"
+	SFTPAuthClientMessageTypePing            SFTPAuthClientMessageType = "ping"
+)
+
+// Valid indicates whether the value is a known member of the SFTPAuthClientMessageType enum.
+func (e SFTPAuthClientMessageType) Valid() bool {
+	switch e {
+	case SFTPAuthClientMessageTypeAuthResponse:
+		return true
+	case SFTPAuthClientMessageTypeAuthStart:
+		return true
+	case SFTPAuthClientMessageTypeHostKeyResponse:
+		return true
+	case SFTPAuthClientMessageTypePing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SFTPAuthServerMessageType.
+const (
+	SFTPAuthServerMessageTypeAuthPrompt    SFTPAuthServerMessageType = "auth_prompt"
+	SFTPAuthServerMessageTypeAuthenticated SFTPAuthServerMessageType = "authenticated"
+	SFTPAuthServerMessageTypeError         SFTPAuthServerMessageType = "error"
+	SFTPAuthServerMessageTypeHostKeyPrompt SFTPAuthServerMessageType = "host_key_prompt"
+	SFTPAuthServerMessageTypePong          SFTPAuthServerMessageType = "pong"
+	SFTPAuthServerMessageTypeStatus        SFTPAuthServerMessageType = "status"
+)
+
+// Valid indicates whether the value is a known member of the SFTPAuthServerMessageType enum.
+func (e SFTPAuthServerMessageType) Valid() bool {
+	switch e {
+	case SFTPAuthServerMessageTypeAuthPrompt:
+		return true
+	case SFTPAuthServerMessageTypeAuthenticated:
+		return true
+	case SFTPAuthServerMessageTypeError:
+		return true
+	case SFTPAuthServerMessageTypeHostKeyPrompt:
+		return true
+	case SFTPAuthServerMessageTypePong:
+		return true
+	case SFTPAuthServerMessageTypeStatus:
 		return true
 	default:
 		return false
@@ -1451,6 +1544,75 @@ func (e TaskTriggerType) Valid() bool {
 	case TaskTriggerScheduled:
 		return true
 	case TaskTriggerSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TerminalClientMessageType.
+const (
+	TerminalClientMessageTypeAuthResponse        TerminalClientMessageType = "auth_response"
+	TerminalClientMessageTypeFetchCompletionData TerminalClientMessageType = "fetch_completion_data"
+	TerminalClientMessageTypeHostKeyResponse     TerminalClientMessageType = "host_key_response"
+	TerminalClientMessageTypeInput               TerminalClientMessageType = "input"
+	TerminalClientMessageTypePing                TerminalClientMessageType = "ping"
+	TerminalClientMessageTypeResize              TerminalClientMessageType = "resize"
+)
+
+// Valid indicates whether the value is a known member of the TerminalClientMessageType enum.
+func (e TerminalClientMessageType) Valid() bool {
+	switch e {
+	case TerminalClientMessageTypeAuthResponse:
+		return true
+	case TerminalClientMessageTypeFetchCompletionData:
+		return true
+	case TerminalClientMessageTypeHostKeyResponse:
+		return true
+	case TerminalClientMessageTypeInput:
+		return true
+	case TerminalClientMessageTypePing:
+		return true
+	case TerminalClientMessageTypeResize:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TerminalServerMessageType.
+const (
+	TerminalServerMessageTypeAuthPrompt        TerminalServerMessageType = "auth_prompt"
+	TerminalServerMessageTypeClosed            TerminalServerMessageType = "closed"
+	TerminalServerMessageTypeCompletionData    TerminalServerMessageType = "completion_data"
+	TerminalServerMessageTypeConnected         TerminalServerMessageType = "connected"
+	TerminalServerMessageTypeError             TerminalServerMessageType = "error"
+	TerminalServerMessageTypeHandshakeComplete TerminalServerMessageType = "handshake_complete"
+	TerminalServerMessageTypeHostKeyPrompt     TerminalServerMessageType = "host_key_prompt"
+	TerminalServerMessageTypeOutput            TerminalServerMessageType = "output"
+	TerminalServerMessageTypePong              TerminalServerMessageType = "pong"
+)
+
+// Valid indicates whether the value is a known member of the TerminalServerMessageType enum.
+func (e TerminalServerMessageType) Valid() bool {
+	switch e {
+	case TerminalServerMessageTypeAuthPrompt:
+		return true
+	case TerminalServerMessageTypeClosed:
+		return true
+	case TerminalServerMessageTypeCompletionData:
+		return true
+	case TerminalServerMessageTypeConnected:
+		return true
+	case TerminalServerMessageTypeError:
+		return true
+	case TerminalServerMessageTypeHandshakeComplete:
+		return true
+	case TerminalServerMessageTypeHostKeyPrompt:
+		return true
+	case TerminalServerMessageTypeOutput:
+		return true
+	case TerminalServerMessageTypePong:
 		return true
 	default:
 		return false
@@ -2854,10 +3016,10 @@ type ActivityWorkSummary struct {
 
 // Actor 执行归属信息，不构成授权凭据；本机所有者 ID 不要求 UUID。所有者后台自动任务的 session_id 为空，不创建登录会话；访客和设备必须关联真实会话。
 type Actor struct {
-	GrantID   string `json:"grant_id,omitempty"`
-	ID        string `json:"id"`
-	Kind      Kind   `json:"kind"`
-	SessionID string `json:"session_id"`
+	GrantID   string `gorm:"not null" json:"grant_id,omitempty"`
+	ID        string `gorm:"not null" json:"id"`
+	Kind      Kind   `gorm:"not null" json:"kind"`
+	SessionID string `gorm:"not null" json:"session_id"`
 }
 
 // ApproveAccessHandoffInput defines model for ApproveAccessHandoffInput.
@@ -3937,6 +4099,48 @@ type MessageResponse struct {
 	Message string `json:"message"`
 }
 
+// MonitorClientMessageType defines model for MonitorClientMessageType.
+type MonitorClientMessageType string
+
+// MonitorError defines model for MonitorError.
+type MonitorError struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+}
+
+// MonitorHandshake defines model for MonitorHandshake.
+type MonitorHandshake struct {
+	Status string `json:"status"`
+	Type   string `json:"type"`
+}
+
+// MonitorPing defines model for MonitorPing.
+type MonitorPing struct {
+	TS   int64  `json:"ts,omitempty"`
+	Type string `json:"type"`
+}
+
+// MonitorPong defines model for MonitorPong.
+type MonitorPong struct {
+	ServerRecvTS int64  `json:"serverRecvTs"`
+	ServerSendTS int64  `json:"serverSendTs"`
+	TS           int64  `json:"ts"`
+	Type         string `json:"type"`
+}
+
+// MonitorReady defines model for MonitorReady.
+type MonitorReady struct {
+	Type string `json:"type"`
+}
+
+// MonitorServerMessage Top-level JSON control frames. Metrics remain binary protobuf SystemMetrics, not terminal data envelopes.
+type MonitorServerMessage struct {
+	union json.RawMessage
+}
+
+// MonitorServerMessageType defines model for MonitorServerMessageType.
+type MonitorServerMessageType string
+
 // MonitoringCPUSummary defines model for MonitoringCPUSummary.
 type MonitoringCPUSummary struct {
 	Cores        int       `json:"cores"`
@@ -4315,6 +4519,49 @@ type RuntimePrincipal struct {
 // RuntimeProfile defines model for RuntimeProfile.
 type RuntimeProfile string
 
+// SFTPAuthClientMessage defines model for SFTPAuthClientMessage.
+type SFTPAuthClientMessage struct {
+	union json.RawMessage
+}
+
+// SFTPAuthClientMessageType defines model for SFTPAuthClientMessageType.
+type SFTPAuthClientMessageType string
+
+// SFTPAuthServerMessage defines model for SFTPAuthServerMessage.
+type SFTPAuthServerMessage struct {
+	union json.RawMessage
+}
+
+// SFTPAuthServerMessageType defines model for SFTPAuthServerMessageType.
+type SFTPAuthServerMessageType string
+
+// SFTPAuthStart defines model for SFTPAuthStart.
+type SFTPAuthStart struct {
+	// AuthMethod 按指定顺序尝试密码、密钥和交互式认证因子。
+	AuthMethod           string `json:"auth_method,omitempty"`
+	Password             string `json:"password,omitempty"`
+	PrivateKey           string `json:"private_key,omitempty"`
+	PrivateKeyPassphrase string `json:"private_key_passphrase,omitempty"`
+	Secret               string `json:"secret,omitempty"`
+}
+
+// SFTPAuthStartMessage defines model for SFTPAuthStartMessage.
+type SFTPAuthStartMessage struct {
+	Data *SFTPAuthStart `json:"data,omitempty"`
+	Type string         `json:"type"`
+}
+
+// SFTPAuthStatus defines model for SFTPAuthStatus.
+type SFTPAuthStatus struct {
+	Status string `json:"status"`
+}
+
+// SFTPAuthStatusMessage defines model for SFTPAuthStatusMessage.
+type SFTPAuthStatusMessage struct {
+	Data SFTPAuthStatus `json:"data"`
+	Type string         `json:"type"`
+}
+
 // SFTPAuthenticateRequest 所有者一次性建连凭据，不保存到服务器配置；交互式认证使用 auth/ws。
 type SFTPAuthenticateRequest struct {
 	// AuthMethod 按指定顺序尝试密码、密钥和交互式认证因子。
@@ -4328,6 +4575,12 @@ type SFTPAuthenticateRequest struct {
 // SFTPAuthenticateResult defines model for SFTPAuthenticateResult.
 type SFTPAuthenticateResult struct {
 	Success bool `json:"success"`
+}
+
+// SFTPAuthenticatedMessage defines model for SFTPAuthenticatedMessage.
+type SFTPAuthenticatedMessage struct {
+	Data SFTPAuthStatus `json:"data"`
+	Type string         `json:"type"`
 }
 
 // SFTPBatchDeleteRequest 同步删除普通文件；目录必须使用 delete-paths。
@@ -5305,6 +5558,260 @@ type TaskStatistics struct {
 
 // TaskTriggerType defines model for TaskTriggerType.
 type TaskTriggerType string
+
+// TerminalAuthPrompt Go emitters omit empty strings and zero counters, including attempts_remaining=0. Wails includes its counters even when zero.
+type TerminalAuthPrompt struct {
+	Attempt           int `json:"attempt,omitempty"`
+	AttemptsRemaining int `json:"attempts_remaining,omitempty"`
+
+	// AuthMethod 按指定顺序尝试密码、密钥和交互式认证因子。
+	AuthMethod  string                   `json:"auth_method,omitempty"`
+	Instruction string                   `json:"instruction,omitempty"`
+	Kind        string                   `json:"kind,omitempty"`
+	MaxAttempts int                      `json:"max_attempts,omitempty"`
+	Name        string                   `json:"name,omitempty"`
+	Prompts     []TerminalAuthPromptItem `json:"prompts"`
+	RequestID   string                   `json:"request_id"`
+}
+
+// TerminalAuthPromptItem defines model for TerminalAuthPromptItem.
+type TerminalAuthPromptItem struct {
+	Echo bool   `json:"echo"`
+	Text string `json:"text"`
+}
+
+// TerminalAuthResponse Passphrase fields are optional reader extensions. Desktop gateway prefers camelCase then snake_case then answers[0]; server continues to use answers[0]. Web sends snake_case; Wails passphrase prompt resolves from answers[0].
+type TerminalAuthResponse struct {
+	Answers []string `json:"answers"`
+
+	// AuthMethod 按指定顺序尝试密码、密钥和交互式认证因子。
+	AuthMethod                string `json:"auth_method,omitempty"`
+	Cancelled                 bool   `json:"cancelled,omitempty"`
+	Password                  string `json:"password,omitempty"`
+	PrivateKeyPassphrase      string `json:"privateKeyPassphrase,omitempty"`
+	PrivateKey                string `json:"private_key,omitempty"`
+	PrivateKeyPassphraseSnake string `json:"private_key_passphrase,omitempty"`
+	RequestID                 string `json:"request_id"`
+}
+
+// TerminalClientMessage defines model for TerminalClientMessage.
+type TerminalClientMessage struct {
+	union json.RawMessage
+}
+
+// TerminalClientMessageAuthResponse defines model for TerminalClientMessageAuthResponse.
+type TerminalClientMessageAuthResponse struct {
+	// Data Passphrase fields are optional reader extensions. Desktop gateway prefers camelCase then snake_case then answers[0]; server continues to use answers[0]. Web sends snake_case; Wails passphrase prompt resolves from answers[0].
+	Data TerminalAuthResponse `json:"data"`
+	Type string               `json:"type"`
+}
+
+// TerminalClientMessageFetchCompletionData defines model for TerminalClientMessageFetchCompletionData.
+type TerminalClientMessageFetchCompletionData struct {
+	Data *TerminalFetchCompletionData `json:"data,omitempty"`
+	Type string                       `json:"type"`
+}
+
+// TerminalClientMessageHostKeyResponse defines model for TerminalClientMessageHostKeyResponse.
+type TerminalClientMessageHostKeyResponse struct {
+	Data TerminalHostKeyResponse `json:"data"`
+	Type string                  `json:"type"`
+}
+
+// TerminalClientMessageInput defines model for TerminalClientMessageInput.
+type TerminalClientMessageInput struct {
+	Data TerminalInput `json:"data"`
+	Type string        `json:"type"`
+}
+
+// TerminalClientMessagePing defines model for TerminalClientMessagePing.
+type TerminalClientMessagePing struct {
+	Data *TerminalPing `json:"data,omitempty"`
+	Type string        `json:"type"`
+}
+
+// TerminalClientMessageResize defines model for TerminalClientMessageResize.
+type TerminalClientMessageResize struct {
+	Data TerminalResize `json:"data"`
+	Type string         `json:"type"`
+}
+
+// TerminalClientMessageType defines model for TerminalClientMessageType.
+type TerminalClientMessageType string
+
+// TerminalCompletionData defines model for TerminalCompletionData.
+type TerminalCompletionData struct {
+	History   []string                   `json:"history"`
+	Scripts   []TerminalCompletionScript `json:"scripts"`
+	Timestamp int64                      `json:"timestamp"`
+}
+
+// TerminalCompletionScript defines model for TerminalCompletionScript.
+type TerminalCompletionScript struct {
+	Content     string   `json:"content"`
+	Description string   `json:"description"`
+	Executions  int      `json:"executions"`
+	Name        string   `json:"name"`
+	Tags        []string `json:"tags"`
+}
+
+// TerminalConnected defines model for TerminalConnected.
+type TerminalConnected struct {
+	SessionID string `json:"session_id"`
+}
+
+// TerminalEnvelope JSON envelope for terminal and SFTP authentication. Binary terminal frames are raw bytes. Server closed sends data:null; desktop gateway omits data. Wails handshake_complete and connected also omit data. Unknown types remain ignored by receivers.
+type TerminalEnvelope struct {
+	Data json.RawMessage `json:"data,omitempty"`
+	Type string          `json:"type"`
+}
+
+// TerminalError defines model for TerminalError.
+type TerminalError struct {
+	Details interface{} `json:"details,omitempty"`
+	Error   string      `json:"error"`
+	Message string      `json:"message"`
+}
+
+// TerminalFetchCompletionData defines model for TerminalFetchCompletionData.
+type TerminalFetchCompletionData struct {
+	IncludeHistory *bool `json:"includeHistory,omitempty"`
+	IncludeScripts *bool `json:"includeScripts,omitempty"`
+}
+
+// TerminalHandshake defines model for TerminalHandshake.
+type TerminalHandshake struct {
+	Status string `json:"status"`
+}
+
+// TerminalHostKeyDetails defines model for TerminalHostKeyDetails.
+type TerminalHostKeyDetails struct {
+	ExpectedKey     string `json:"expected_key"`
+	ExpectedKeyType string `json:"expected_key_type"`
+	Host            string `json:"host"`
+	Message         string `json:"message"`
+	Port            int    `json:"port"`
+	ReceivedKey     string `json:"received_key"`
+	ReceivedKeyType string `json:"received_key_type"`
+}
+
+// TerminalHostKeyPrompt defines model for TerminalHostKeyPrompt.
+type TerminalHostKeyPrompt struct {
+	ExpectedKey     string `json:"expected_key"`
+	ExpectedKeyType string `json:"expected_key_type"`
+	Host            string `json:"host"`
+	Message         string `json:"message"`
+	Port            int    `json:"port"`
+	ReceivedKey     string `json:"received_key"`
+	ReceivedKeyType string `json:"received_key_type"`
+	RequestID       string `json:"request_id"`
+}
+
+// TerminalHostKeyResponse defines model for TerminalHostKeyResponse.
+type TerminalHostKeyResponse struct {
+	Accepted    bool   `json:"accepted"`
+	Fingerprint string `json:"fingerprint"`
+	RequestID   string `json:"request_id"`
+}
+
+// TerminalInput defines model for TerminalInput.
+type TerminalInput struct {
+	Data string `json:"data"`
+}
+
+// TerminalOutput defines model for TerminalOutput.
+type TerminalOutput struct {
+	Data string `json:"data"`
+
+	// Type Output stream name, conventionally stdout or stderr.
+	Type string `json:"type"`
+}
+
+// TerminalPing defines model for TerminalPing.
+type TerminalPing struct {
+	ID string `json:"id,omitempty"`
+	TS int64  `json:"ts,omitempty"`
+}
+
+// TerminalPong Terminal/server SFTP pongs always include id, ts and server timestamps, even when empty/zero. SSH latency is included only after measurement. Desktop SFTP echoes the ping data unchanged; Wails echoes ping fields and adds timestamps. Optional fields describe this union without changing emitters.
+type TerminalPong struct {
+	ID                   *string `json:"id,omitempty"`
+	ServerRecvTS         *int64  `json:"serverRecvTs,omitempty"`
+	ServerSendTS         *int64  `json:"serverSendTs,omitempty"`
+	SSHLatencyMeasuredAt *int64  `json:"sshLatencyMeasuredAt,omitempty"`
+	SSHLatencyMs         *int64  `json:"sshLatencyMs,omitempty"`
+	TS                   *int64  `json:"ts,omitempty"`
+}
+
+// TerminalResize defines model for TerminalResize.
+type TerminalResize struct {
+	Cols int `json:"cols"`
+	Rows int `json:"rows"`
+}
+
+// TerminalServerMessage defines model for TerminalServerMessage.
+type TerminalServerMessage struct {
+	union json.RawMessage
+}
+
+// TerminalServerMessageAuthPrompt defines model for TerminalServerMessageAuthPrompt.
+type TerminalServerMessageAuthPrompt struct {
+	// Data Go emitters omit empty strings and zero counters, including attempts_remaining=0. Wails includes its counters even when zero.
+	Data TerminalAuthPrompt `json:"data"`
+	Type string             `json:"type"`
+}
+
+// TerminalServerMessageClosed defines model for TerminalServerMessageClosed.
+type TerminalServerMessageClosed struct {
+	Data interface{} `json:"data,omitempty"`
+	Type string      `json:"type"`
+}
+
+// TerminalServerMessageCompletionData defines model for TerminalServerMessageCompletionData.
+type TerminalServerMessageCompletionData struct {
+	Data TerminalCompletionData `json:"data"`
+	Type string                 `json:"type"`
+}
+
+// TerminalServerMessageConnected defines model for TerminalServerMessageConnected.
+type TerminalServerMessageConnected struct {
+	Data *TerminalConnected `json:"data,omitempty"`
+	Type string             `json:"type"`
+}
+
+// TerminalServerMessageError defines model for TerminalServerMessageError.
+type TerminalServerMessageError struct {
+	Data TerminalError `json:"data"`
+	Type string        `json:"type"`
+}
+
+// TerminalServerMessageHandshakeComplete defines model for TerminalServerMessageHandshakeComplete.
+type TerminalServerMessageHandshakeComplete struct {
+	Data *TerminalHandshake `json:"data,omitempty"`
+	Type string             `json:"type"`
+}
+
+// TerminalServerMessageHostKeyPrompt defines model for TerminalServerMessageHostKeyPrompt.
+type TerminalServerMessageHostKeyPrompt struct {
+	Data TerminalHostKeyPrompt `json:"data"`
+	Type string                `json:"type"`
+}
+
+// TerminalServerMessageOutput defines model for TerminalServerMessageOutput.
+type TerminalServerMessageOutput struct {
+	Data TerminalOutput `json:"data"`
+	Type string         `json:"type"`
+}
+
+// TerminalServerMessagePong defines model for TerminalServerMessagePong.
+type TerminalServerMessagePong struct {
+	// Data Terminal/server SFTP pongs always include id, ts and server timestamps, even when empty/zero. SSH latency is included only after measurement. Desktop SFTP echoes the ping data unchanged; Wails echoes ping fields and adds timestamps. Optional fields describe this union without changing emitters.
+	Data *TerminalPong `json:"data,omitempty"`
+	Type string        `json:"type"`
+}
+
+// TerminalServerMessageType defines model for TerminalServerMessageType.
+type TerminalServerMessageType string
 
 // ToggleScheduledTaskRequest defines model for ToggleScheduledTaskRequest.
 type ToggleScheduledTaskRequest struct {
@@ -11399,6 +11906,810 @@ func (t AIUIMessagePart) MarshalJSON() ([]byte, error) {
 }
 
 func (t *AIUIMessagePart) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsMonitorHandshake returns the union data inside the MonitorServerMessage as a MonitorHandshake
+func (t MonitorServerMessage) AsMonitorHandshake() (MonitorHandshake, error) {
+	var body MonitorHandshake
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMonitorHandshake overwrites any union data inside the MonitorServerMessage as the provided MonitorHandshake
+func (t *MonitorServerMessage) FromMonitorHandshake(v MonitorHandshake) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMonitorHandshake performs a merge with any union data inside the MonitorServerMessage, using the provided MonitorHandshake
+func (t *MonitorServerMessage) MergeMonitorHandshake(v MonitorHandshake) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMonitorReady returns the union data inside the MonitorServerMessage as a MonitorReady
+func (t MonitorServerMessage) AsMonitorReady() (MonitorReady, error) {
+	var body MonitorReady
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMonitorReady overwrites any union data inside the MonitorServerMessage as the provided MonitorReady
+func (t *MonitorServerMessage) FromMonitorReady(v MonitorReady) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMonitorReady performs a merge with any union data inside the MonitorServerMessage, using the provided MonitorReady
+func (t *MonitorServerMessage) MergeMonitorReady(v MonitorReady) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMonitorPong returns the union data inside the MonitorServerMessage as a MonitorPong
+func (t MonitorServerMessage) AsMonitorPong() (MonitorPong, error) {
+	var body MonitorPong
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMonitorPong overwrites any union data inside the MonitorServerMessage as the provided MonitorPong
+func (t *MonitorServerMessage) FromMonitorPong(v MonitorPong) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMonitorPong performs a merge with any union data inside the MonitorServerMessage, using the provided MonitorPong
+func (t *MonitorServerMessage) MergeMonitorPong(v MonitorPong) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMonitorError returns the union data inside the MonitorServerMessage as a MonitorError
+func (t MonitorServerMessage) AsMonitorError() (MonitorError, error) {
+	var body MonitorError
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMonitorError overwrites any union data inside the MonitorServerMessage as the provided MonitorError
+func (t *MonitorServerMessage) FromMonitorError(v MonitorError) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMonitorError performs a merge with any union data inside the MonitorServerMessage, using the provided MonitorError
+func (t *MonitorServerMessage) MergeMonitorError(v MonitorError) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t MonitorServerMessage) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *MonitorServerMessage) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsSFTPAuthStartMessage returns the union data inside the SFTPAuthClientMessage as a SFTPAuthStartMessage
+func (t SFTPAuthClientMessage) AsSFTPAuthStartMessage() (SFTPAuthStartMessage, error) {
+	var body SFTPAuthStartMessage
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSFTPAuthStartMessage overwrites any union data inside the SFTPAuthClientMessage as the provided SFTPAuthStartMessage
+func (t *SFTPAuthClientMessage) FromSFTPAuthStartMessage(v SFTPAuthStartMessage) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSFTPAuthStartMessage performs a merge with any union data inside the SFTPAuthClientMessage, using the provided SFTPAuthStartMessage
+func (t *SFTPAuthClientMessage) MergeSFTPAuthStartMessage(v SFTPAuthStartMessage) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalClientMessagePing returns the union data inside the SFTPAuthClientMessage as a TerminalClientMessagePing
+func (t SFTPAuthClientMessage) AsTerminalClientMessagePing() (TerminalClientMessagePing, error) {
+	var body TerminalClientMessagePing
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalClientMessagePing overwrites any union data inside the SFTPAuthClientMessage as the provided TerminalClientMessagePing
+func (t *SFTPAuthClientMessage) FromTerminalClientMessagePing(v TerminalClientMessagePing) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalClientMessagePing performs a merge with any union data inside the SFTPAuthClientMessage, using the provided TerminalClientMessagePing
+func (t *SFTPAuthClientMessage) MergeTerminalClientMessagePing(v TerminalClientMessagePing) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalClientMessageAuthResponse returns the union data inside the SFTPAuthClientMessage as a TerminalClientMessageAuthResponse
+func (t SFTPAuthClientMessage) AsTerminalClientMessageAuthResponse() (TerminalClientMessageAuthResponse, error) {
+	var body TerminalClientMessageAuthResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalClientMessageAuthResponse overwrites any union data inside the SFTPAuthClientMessage as the provided TerminalClientMessageAuthResponse
+func (t *SFTPAuthClientMessage) FromTerminalClientMessageAuthResponse(v TerminalClientMessageAuthResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalClientMessageAuthResponse performs a merge with any union data inside the SFTPAuthClientMessage, using the provided TerminalClientMessageAuthResponse
+func (t *SFTPAuthClientMessage) MergeTerminalClientMessageAuthResponse(v TerminalClientMessageAuthResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalClientMessageHostKeyResponse returns the union data inside the SFTPAuthClientMessage as a TerminalClientMessageHostKeyResponse
+func (t SFTPAuthClientMessage) AsTerminalClientMessageHostKeyResponse() (TerminalClientMessageHostKeyResponse, error) {
+	var body TerminalClientMessageHostKeyResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalClientMessageHostKeyResponse overwrites any union data inside the SFTPAuthClientMessage as the provided TerminalClientMessageHostKeyResponse
+func (t *SFTPAuthClientMessage) FromTerminalClientMessageHostKeyResponse(v TerminalClientMessageHostKeyResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalClientMessageHostKeyResponse performs a merge with any union data inside the SFTPAuthClientMessage, using the provided TerminalClientMessageHostKeyResponse
+func (t *SFTPAuthClientMessage) MergeTerminalClientMessageHostKeyResponse(v TerminalClientMessageHostKeyResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SFTPAuthClientMessage) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SFTPAuthClientMessage) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsSFTPAuthStatusMessage returns the union data inside the SFTPAuthServerMessage as a SFTPAuthStatusMessage
+func (t SFTPAuthServerMessage) AsSFTPAuthStatusMessage() (SFTPAuthStatusMessage, error) {
+	var body SFTPAuthStatusMessage
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSFTPAuthStatusMessage overwrites any union data inside the SFTPAuthServerMessage as the provided SFTPAuthStatusMessage
+func (t *SFTPAuthServerMessage) FromSFTPAuthStatusMessage(v SFTPAuthStatusMessage) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSFTPAuthStatusMessage performs a merge with any union data inside the SFTPAuthServerMessage, using the provided SFTPAuthStatusMessage
+func (t *SFTPAuthServerMessage) MergeSFTPAuthStatusMessage(v SFTPAuthStatusMessage) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsSFTPAuthenticatedMessage returns the union data inside the SFTPAuthServerMessage as a SFTPAuthenticatedMessage
+func (t SFTPAuthServerMessage) AsSFTPAuthenticatedMessage() (SFTPAuthenticatedMessage, error) {
+	var body SFTPAuthenticatedMessage
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromSFTPAuthenticatedMessage overwrites any union data inside the SFTPAuthServerMessage as the provided SFTPAuthenticatedMessage
+func (t *SFTPAuthServerMessage) FromSFTPAuthenticatedMessage(v SFTPAuthenticatedMessage) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeSFTPAuthenticatedMessage performs a merge with any union data inside the SFTPAuthServerMessage, using the provided SFTPAuthenticatedMessage
+func (t *SFTPAuthServerMessage) MergeSFTPAuthenticatedMessage(v SFTPAuthenticatedMessage) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageAuthPrompt returns the union data inside the SFTPAuthServerMessage as a TerminalServerMessageAuthPrompt
+func (t SFTPAuthServerMessage) AsTerminalServerMessageAuthPrompt() (TerminalServerMessageAuthPrompt, error) {
+	var body TerminalServerMessageAuthPrompt
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageAuthPrompt overwrites any union data inside the SFTPAuthServerMessage as the provided TerminalServerMessageAuthPrompt
+func (t *SFTPAuthServerMessage) FromTerminalServerMessageAuthPrompt(v TerminalServerMessageAuthPrompt) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageAuthPrompt performs a merge with any union data inside the SFTPAuthServerMessage, using the provided TerminalServerMessageAuthPrompt
+func (t *SFTPAuthServerMessage) MergeTerminalServerMessageAuthPrompt(v TerminalServerMessageAuthPrompt) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageHostKeyPrompt returns the union data inside the SFTPAuthServerMessage as a TerminalServerMessageHostKeyPrompt
+func (t SFTPAuthServerMessage) AsTerminalServerMessageHostKeyPrompt() (TerminalServerMessageHostKeyPrompt, error) {
+	var body TerminalServerMessageHostKeyPrompt
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageHostKeyPrompt overwrites any union data inside the SFTPAuthServerMessage as the provided TerminalServerMessageHostKeyPrompt
+func (t *SFTPAuthServerMessage) FromTerminalServerMessageHostKeyPrompt(v TerminalServerMessageHostKeyPrompt) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageHostKeyPrompt performs a merge with any union data inside the SFTPAuthServerMessage, using the provided TerminalServerMessageHostKeyPrompt
+func (t *SFTPAuthServerMessage) MergeTerminalServerMessageHostKeyPrompt(v TerminalServerMessageHostKeyPrompt) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessagePong returns the union data inside the SFTPAuthServerMessage as a TerminalServerMessagePong
+func (t SFTPAuthServerMessage) AsTerminalServerMessagePong() (TerminalServerMessagePong, error) {
+	var body TerminalServerMessagePong
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessagePong overwrites any union data inside the SFTPAuthServerMessage as the provided TerminalServerMessagePong
+func (t *SFTPAuthServerMessage) FromTerminalServerMessagePong(v TerminalServerMessagePong) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessagePong performs a merge with any union data inside the SFTPAuthServerMessage, using the provided TerminalServerMessagePong
+func (t *SFTPAuthServerMessage) MergeTerminalServerMessagePong(v TerminalServerMessagePong) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageError returns the union data inside the SFTPAuthServerMessage as a TerminalServerMessageError
+func (t SFTPAuthServerMessage) AsTerminalServerMessageError() (TerminalServerMessageError, error) {
+	var body TerminalServerMessageError
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageError overwrites any union data inside the SFTPAuthServerMessage as the provided TerminalServerMessageError
+func (t *SFTPAuthServerMessage) FromTerminalServerMessageError(v TerminalServerMessageError) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageError performs a merge with any union data inside the SFTPAuthServerMessage, using the provided TerminalServerMessageError
+func (t *SFTPAuthServerMessage) MergeTerminalServerMessageError(v TerminalServerMessageError) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SFTPAuthServerMessage) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SFTPAuthServerMessage) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTerminalClientMessageInput returns the union data inside the TerminalClientMessage as a TerminalClientMessageInput
+func (t TerminalClientMessage) AsTerminalClientMessageInput() (TerminalClientMessageInput, error) {
+	var body TerminalClientMessageInput
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalClientMessageInput overwrites any union data inside the TerminalClientMessage as the provided TerminalClientMessageInput
+func (t *TerminalClientMessage) FromTerminalClientMessageInput(v TerminalClientMessageInput) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalClientMessageInput performs a merge with any union data inside the TerminalClientMessage, using the provided TerminalClientMessageInput
+func (t *TerminalClientMessage) MergeTerminalClientMessageInput(v TerminalClientMessageInput) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalClientMessageResize returns the union data inside the TerminalClientMessage as a TerminalClientMessageResize
+func (t TerminalClientMessage) AsTerminalClientMessageResize() (TerminalClientMessageResize, error) {
+	var body TerminalClientMessageResize
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalClientMessageResize overwrites any union data inside the TerminalClientMessage as the provided TerminalClientMessageResize
+func (t *TerminalClientMessage) FromTerminalClientMessageResize(v TerminalClientMessageResize) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalClientMessageResize performs a merge with any union data inside the TerminalClientMessage, using the provided TerminalClientMessageResize
+func (t *TerminalClientMessage) MergeTerminalClientMessageResize(v TerminalClientMessageResize) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalClientMessagePing returns the union data inside the TerminalClientMessage as a TerminalClientMessagePing
+func (t TerminalClientMessage) AsTerminalClientMessagePing() (TerminalClientMessagePing, error) {
+	var body TerminalClientMessagePing
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalClientMessagePing overwrites any union data inside the TerminalClientMessage as the provided TerminalClientMessagePing
+func (t *TerminalClientMessage) FromTerminalClientMessagePing(v TerminalClientMessagePing) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalClientMessagePing performs a merge with any union data inside the TerminalClientMessage, using the provided TerminalClientMessagePing
+func (t *TerminalClientMessage) MergeTerminalClientMessagePing(v TerminalClientMessagePing) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalClientMessageAuthResponse returns the union data inside the TerminalClientMessage as a TerminalClientMessageAuthResponse
+func (t TerminalClientMessage) AsTerminalClientMessageAuthResponse() (TerminalClientMessageAuthResponse, error) {
+	var body TerminalClientMessageAuthResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalClientMessageAuthResponse overwrites any union data inside the TerminalClientMessage as the provided TerminalClientMessageAuthResponse
+func (t *TerminalClientMessage) FromTerminalClientMessageAuthResponse(v TerminalClientMessageAuthResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalClientMessageAuthResponse performs a merge with any union data inside the TerminalClientMessage, using the provided TerminalClientMessageAuthResponse
+func (t *TerminalClientMessage) MergeTerminalClientMessageAuthResponse(v TerminalClientMessageAuthResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalClientMessageHostKeyResponse returns the union data inside the TerminalClientMessage as a TerminalClientMessageHostKeyResponse
+func (t TerminalClientMessage) AsTerminalClientMessageHostKeyResponse() (TerminalClientMessageHostKeyResponse, error) {
+	var body TerminalClientMessageHostKeyResponse
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalClientMessageHostKeyResponse overwrites any union data inside the TerminalClientMessage as the provided TerminalClientMessageHostKeyResponse
+func (t *TerminalClientMessage) FromTerminalClientMessageHostKeyResponse(v TerminalClientMessageHostKeyResponse) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalClientMessageHostKeyResponse performs a merge with any union data inside the TerminalClientMessage, using the provided TerminalClientMessageHostKeyResponse
+func (t *TerminalClientMessage) MergeTerminalClientMessageHostKeyResponse(v TerminalClientMessageHostKeyResponse) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalClientMessageFetchCompletionData returns the union data inside the TerminalClientMessage as a TerminalClientMessageFetchCompletionData
+func (t TerminalClientMessage) AsTerminalClientMessageFetchCompletionData() (TerminalClientMessageFetchCompletionData, error) {
+	var body TerminalClientMessageFetchCompletionData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalClientMessageFetchCompletionData overwrites any union data inside the TerminalClientMessage as the provided TerminalClientMessageFetchCompletionData
+func (t *TerminalClientMessage) FromTerminalClientMessageFetchCompletionData(v TerminalClientMessageFetchCompletionData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalClientMessageFetchCompletionData performs a merge with any union data inside the TerminalClientMessage, using the provided TerminalClientMessageFetchCompletionData
+func (t *TerminalClientMessage) MergeTerminalClientMessageFetchCompletionData(v TerminalClientMessageFetchCompletionData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TerminalClientMessage) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TerminalClientMessage) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsTerminalServerMessageAuthPrompt returns the union data inside the TerminalServerMessage as a TerminalServerMessageAuthPrompt
+func (t TerminalServerMessage) AsTerminalServerMessageAuthPrompt() (TerminalServerMessageAuthPrompt, error) {
+	var body TerminalServerMessageAuthPrompt
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageAuthPrompt overwrites any union data inside the TerminalServerMessage as the provided TerminalServerMessageAuthPrompt
+func (t *TerminalServerMessage) FromTerminalServerMessageAuthPrompt(v TerminalServerMessageAuthPrompt) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageAuthPrompt performs a merge with any union data inside the TerminalServerMessage, using the provided TerminalServerMessageAuthPrompt
+func (t *TerminalServerMessage) MergeTerminalServerMessageAuthPrompt(v TerminalServerMessageAuthPrompt) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageHostKeyPrompt returns the union data inside the TerminalServerMessage as a TerminalServerMessageHostKeyPrompt
+func (t TerminalServerMessage) AsTerminalServerMessageHostKeyPrompt() (TerminalServerMessageHostKeyPrompt, error) {
+	var body TerminalServerMessageHostKeyPrompt
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageHostKeyPrompt overwrites any union data inside the TerminalServerMessage as the provided TerminalServerMessageHostKeyPrompt
+func (t *TerminalServerMessage) FromTerminalServerMessageHostKeyPrompt(v TerminalServerMessageHostKeyPrompt) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageHostKeyPrompt performs a merge with any union data inside the TerminalServerMessage, using the provided TerminalServerMessageHostKeyPrompt
+func (t *TerminalServerMessage) MergeTerminalServerMessageHostKeyPrompt(v TerminalServerMessageHostKeyPrompt) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessagePong returns the union data inside the TerminalServerMessage as a TerminalServerMessagePong
+func (t TerminalServerMessage) AsTerminalServerMessagePong() (TerminalServerMessagePong, error) {
+	var body TerminalServerMessagePong
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessagePong overwrites any union data inside the TerminalServerMessage as the provided TerminalServerMessagePong
+func (t *TerminalServerMessage) FromTerminalServerMessagePong(v TerminalServerMessagePong) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessagePong performs a merge with any union data inside the TerminalServerMessage, using the provided TerminalServerMessagePong
+func (t *TerminalServerMessage) MergeTerminalServerMessagePong(v TerminalServerMessagePong) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageHandshakeComplete returns the union data inside the TerminalServerMessage as a TerminalServerMessageHandshakeComplete
+func (t TerminalServerMessage) AsTerminalServerMessageHandshakeComplete() (TerminalServerMessageHandshakeComplete, error) {
+	var body TerminalServerMessageHandshakeComplete
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageHandshakeComplete overwrites any union data inside the TerminalServerMessage as the provided TerminalServerMessageHandshakeComplete
+func (t *TerminalServerMessage) FromTerminalServerMessageHandshakeComplete(v TerminalServerMessageHandshakeComplete) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageHandshakeComplete performs a merge with any union data inside the TerminalServerMessage, using the provided TerminalServerMessageHandshakeComplete
+func (t *TerminalServerMessage) MergeTerminalServerMessageHandshakeComplete(v TerminalServerMessageHandshakeComplete) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageConnected returns the union data inside the TerminalServerMessage as a TerminalServerMessageConnected
+func (t TerminalServerMessage) AsTerminalServerMessageConnected() (TerminalServerMessageConnected, error) {
+	var body TerminalServerMessageConnected
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageConnected overwrites any union data inside the TerminalServerMessage as the provided TerminalServerMessageConnected
+func (t *TerminalServerMessage) FromTerminalServerMessageConnected(v TerminalServerMessageConnected) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageConnected performs a merge with any union data inside the TerminalServerMessage, using the provided TerminalServerMessageConnected
+func (t *TerminalServerMessage) MergeTerminalServerMessageConnected(v TerminalServerMessageConnected) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageClosed returns the union data inside the TerminalServerMessage as a TerminalServerMessageClosed
+func (t TerminalServerMessage) AsTerminalServerMessageClosed() (TerminalServerMessageClosed, error) {
+	var body TerminalServerMessageClosed
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageClosed overwrites any union data inside the TerminalServerMessage as the provided TerminalServerMessageClosed
+func (t *TerminalServerMessage) FromTerminalServerMessageClosed(v TerminalServerMessageClosed) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageClosed performs a merge with any union data inside the TerminalServerMessage, using the provided TerminalServerMessageClosed
+func (t *TerminalServerMessage) MergeTerminalServerMessageClosed(v TerminalServerMessageClosed) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageCompletionData returns the union data inside the TerminalServerMessage as a TerminalServerMessageCompletionData
+func (t TerminalServerMessage) AsTerminalServerMessageCompletionData() (TerminalServerMessageCompletionData, error) {
+	var body TerminalServerMessageCompletionData
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageCompletionData overwrites any union data inside the TerminalServerMessage as the provided TerminalServerMessageCompletionData
+func (t *TerminalServerMessage) FromTerminalServerMessageCompletionData(v TerminalServerMessageCompletionData) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageCompletionData performs a merge with any union data inside the TerminalServerMessage, using the provided TerminalServerMessageCompletionData
+func (t *TerminalServerMessage) MergeTerminalServerMessageCompletionData(v TerminalServerMessageCompletionData) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageError returns the union data inside the TerminalServerMessage as a TerminalServerMessageError
+func (t TerminalServerMessage) AsTerminalServerMessageError() (TerminalServerMessageError, error) {
+	var body TerminalServerMessageError
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageError overwrites any union data inside the TerminalServerMessage as the provided TerminalServerMessageError
+func (t *TerminalServerMessage) FromTerminalServerMessageError(v TerminalServerMessageError) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageError performs a merge with any union data inside the TerminalServerMessage, using the provided TerminalServerMessageError
+func (t *TerminalServerMessage) MergeTerminalServerMessageError(v TerminalServerMessageError) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTerminalServerMessageOutput returns the union data inside the TerminalServerMessage as a TerminalServerMessageOutput
+func (t TerminalServerMessage) AsTerminalServerMessageOutput() (TerminalServerMessageOutput, error) {
+	var body TerminalServerMessageOutput
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTerminalServerMessageOutput overwrites any union data inside the TerminalServerMessage as the provided TerminalServerMessageOutput
+func (t *TerminalServerMessage) FromTerminalServerMessageOutput(v TerminalServerMessageOutput) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTerminalServerMessageOutput performs a merge with any union data inside the TerminalServerMessage, using the provided TerminalServerMessageOutput
+func (t *TerminalServerMessage) MergeTerminalServerMessageOutput(v TerminalServerMessageOutput) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t TerminalServerMessage) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *TerminalServerMessage) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

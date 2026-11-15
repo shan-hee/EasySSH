@@ -1,0 +1,144 @@
+name: CI
+
+# 每次推送与 PR 的质量关卡；发版流程通过 workflow_call 复用同一份定义
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: 🧩 前端
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v5
+
+      - name: 🔧 设置 pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          package_json_file: package.json
+
+      - name: 🔧 设置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: 🔧 安装前端工作区依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 🧱 检查前端导入边界
+        run: pnpm check:boundaries
+
+      - name: 🔎 类型检查
+        run: pnpm typecheck
+
+      - name: 🧹 Lint
+        run: pnpm lint
+
+      - name: 🧪 运行前端测试
+        run: pnpm test
+
+  go:
+    name: 🐹 Go (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [shared, server]
+    # An empty image disables the service for the shared matrix entry.
+    services:
+      postgres:
+        image: ${{ matrix.module == 'server' && 'postgres:18' || '' }}
+        env:
+          POSTGRES_USER: easyssh_test
+          POSTGRES_PASSWORD: easyssh_test
+          POSTGRES_DB: easyssh_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U easyssh_test -d easyssh_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      mysql:
+        image: ${{ matrix.module == 'server' && 'mysql:9.7' || '' }}
+        env:
+          MYSQL_ROOT_PASSWORD: easyssh_test
+          MYSQL_ROOT_HOST: '%'
+          MYSQL_DATABASE: easyssh_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -peasyssh_test --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v5
+
+      - name: 🔧 设置 Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ${{ matrix.module }}/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            shared/go.sum
+
+      - name: 🔎 go vet
+        run: go vet ./...
+
+      - name: 🧪 go test
+        env:
+          EASYSSH_TEST_POSTGRES_DSN: ${{ matrix.module == 'server' && 'postgres://easyssh_test:easyssh_test@127.0.0.1:5432/easyssh_test?sslmode=disable' || '' }}
+          EASYSSH_TEST_MYSQL_DSN: ${{ matrix.module == 'server' && 'root:easyssh_test@tcp(127.0.0.1:3306)/easyssh_test?charset=utf8mb4&parseTime=true' || '' }}
+        run: go test ./...
+
+  desktop-go:
+    name: 🐹 Go (desktop)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop/EasySSHDesktop
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v5
+
+      # Linux 下 Wails 运行时通过 CGO 链接 GTK4 / WebKitGTK
+      - name: 🔧 安装 Linux 系统依赖
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: 🔧 设置 Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: desktop/EasySSHDesktop/go.mod
+          cache-dependency-path: |
+            desktop/EasySSHDesktop/go.sum
+            shared/go.sum
+
+      # 根包嵌入 frontend/dist 构建产物，这里只检查 internal 下的应用代码
+      - name: 🔎 go vet
+        run: go vet ./internal/...
+
+      - name: 🧪 go test
+        run: go test ./internal/...

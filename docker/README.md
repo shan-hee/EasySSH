@@ -2,7 +2,7 @@
 
 ## 架构说明
 
-EasySSH 采用纯 CSR 架构：前端静态文件由 Go 后端托管，默认一个容器即可运行。数据库默认使用 SQLite，数据文件挂载到宿主机；需要更高并发或多实例部署时，可切换到外部 PostgreSQL/MySQL。
+EasySSH 采用纯 CSR 架构：前端静态文件由 Go 后端托管，默认一个容器即可运行。数据库默认使用 SQLite，数据文件挂载到宿主机；需要更高并发时，可切换到外部 PostgreSQL/MySQL。同一数据库只能由一个 EasySSH 进程使用。
 
 ```
 ┌─────────────────────────────────────┐
@@ -44,7 +44,7 @@ http://localhost:8520
 
 默认 Compose 已内置 production + SQLite 配置，不需要创建 `.env`。首次启动会把随机部署根密钥写入挂载的 `/app/data/easyssh-root.key`，数据库和根密钥随 `docker/data/` 一起持久化。
 
-只有切换外部数据库时才需要设置 `DB_DRIVER` 和 `DB_DSN`；外部数据库多实例还必须显式提供相同的 `ENCRYPTION_KEY`。OAuth、CSRF 和 2FA 备份码使用 HKDF 派生的独立子密钥。EasySSH 自身登录使用固定内部 PKCE 标识，不需要配置部署域名。对外 OAuth/OIDC Provider 的公开地址和开关都在“系统设置 → 身份认证”维护，默认关闭。
+只有切换外部数据库时才需要设置 `DB_DRIVER` 和 `DB_DSN`；根密钥仍默认生成到数据目录，也可用 `ENCRYPTION_KEY` 显式指定。2FA 备份码使用 HKDF 派生的独立子密钥。
 
 服务器位置与登录位置通过 `https://ipwho.is` 查询，无需挂载位置库或配置 API Key；容器需能访问该 HTTPS 服务。成功结果按 IP 缓存 24 小时，内网地址不发送到第三方。
 
@@ -137,10 +137,10 @@ docker exec -it easyssh sh
 
 ## 安全建议
 
-- 不要删除或泄露数据目录中的 `easyssh-root.key`；外部数据库多实例必须显式共享同一 `ENCRYPTION_KEY`。对外 OAuth/OIDC Provider 默认关闭；首次配置公开 HTTPS 地址后重启，再从“身份认证”开启。
+- 不要删除或泄露数据目录中的 `easyssh-root.key`；使用外部数据库时同样要持久化它，或用 `ENCRYPTION_KEY` 显式指定。
 - 默认 Cookie `auto` 模式同时适配本地 HTTP 与反向代理后的 HTTPS；只有特殊跨子域场景才需要在“Web 与部署”中修改。
-- 默认 SQLite 适合单实例部署；多实例或高并发场景建议使用 PostgreSQL/MySQL。
-- OAuth 授权记录、登录挑战和一次性 ticket 均持久化到数据库；接口限流计数仍是进程内状态，应用重启后会清空。
+- 高并发场景建议使用 PostgreSQL/MySQL；任何数据库都只支持单个 EasySSH 进程。
+- 登录会话和一次性 ticket 均持久化到数据库；接口限流计数仍是进程内状态，应用重启后会清空。
 
 ## 版本号管理
 

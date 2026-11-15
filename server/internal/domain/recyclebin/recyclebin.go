@@ -29,7 +29,7 @@ var ErrNotFound = errors.New("recycle bin entry not found")
 var ErrExists = errors.New("a record with this ID already exists")
 
 type Entry struct {
-	ID         uuid.UUID `gorm:"type:char(36);primaryKey" json:"id"`
+	ID         uuid.UUID `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	Kind       string    `gorm:"size:20;not null;index:idx_recycle_bin_resource,priority:1" json:"kind"`
 	ResourceID string    `gorm:"size:36;not null;index:idx_recycle_bin_resource,priority:2" json:"resource_id"`
 	Name       string    `gorm:"size:255;not null" json:"name"`

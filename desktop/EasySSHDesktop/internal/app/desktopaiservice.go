@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"github.com/easyssh/shared/protocol"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -21,6 +20,7 @@ import (
 	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/aiprovider"
 	"github.com/easyssh/shared/aitooloutput"
+	"github.com/easyssh/shared/aitools"
 	"github.com/easyssh/shared/aiwire"
 	"github.com/easyssh/shared/aiworkspace"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -291,7 +291,7 @@ type desktopAIToolSpec struct {
 	Parameters      map[string]interface{}
 	Dangerous       bool
 	ConfirmStrategy desktopAIConfirmStrategy
-	SupportedModes  []DesktopAIPermissionMode
+	SupportedModes  []string
 }
 
 type desktopAIToolResult struct {
@@ -523,7 +523,7 @@ func (s *DesktopAIService) ProbeAIModels(input protocol.AIModelsProbeInput) (pro
 
 func (s *DesktopAIService) GetLatestSession(scope *DesktopAISessionScope) (*DesktopAICreateSessionResponse, error) {
 	params := DesktopAIListSessionsParams{Page: 1, Limit: 1}
-	if normalizedScope := normalizeDesktopAISessionScope(scope); normalizedScope != nil {
+	if normalizedScope := desktopAIScopeFromShared(aipermission.NormalizeScopePointer(desktopAISharedScope(scope))); normalizedScope != nil {
 		params.ScopeKind = normalizedScope.Kind
 		params.TerminalSessionID = normalizedScope.TerminalSessionID
 		params.ServerID = normalizedScope.ServerID
@@ -589,7 +589,7 @@ func (s *DesktopAIService) CreateSession(input DesktopAICreateSessionInput) (Des
 		CustomTitle:    false,
 		Model:          model,
 		PermissionMode: permissionMode,
-		Scope:          normalizeDesktopAISessionScope(input.Scope),
+		Scope:          desktopAIScopeFromShared(aipermission.NormalizeScopePointer(desktopAISharedScope(input.Scope))),
 		Status:         DesktopAISessionIdle,
 		Messages:       []DesktopAIMessageView{},
 		Tasks:          []DesktopAITaskView{},
@@ -688,7 +688,7 @@ func (s *DesktopAIService) SendMessage(ctx context.Context, input DesktopAISendM
 	if input.Scope != nil {
 		if strings.EqualFold(strings.TrimSpace(input.Scope.Kind), "global") {
 			record.Scope = nil
-		} else if scope := normalizeDesktopAISessionScope(input.Scope); scope != nil {
+		} else if scope := desktopAIScopeFromShared(aipermission.NormalizeScopePointer(desktopAISharedScope(input.Scope))); scope != nil {
 			record.Scope = scope
 		}
 	}
@@ -790,8 +790,8 @@ func (s *DesktopAIService) completeDesktopAITurnWithContext(requestContext conte
 		}
 		assistantMessage := DesktopAIMessageView{
 			ID: assistantMessageID, Role: "assistant", Content: strings.TrimSpace(turnResult.Content), ExternalContent: desktopAIHasExternalContent(record),
-			Reasoning: strings.TrimSpace(turnResult.Reasoning), Usage: desktopAIUsage(&turnResult.Usage),
-			ProviderMetadata: desktopAIProviderMetadata(&turnResult.Metadata), CreatedAt: assistantStartedAt,
+			Reasoning: strings.TrimSpace(turnResult.Reasoning), Usage: (*DesktopAIUsage)(&turnResult.Usage),
+			ProviderMetadata: (*DesktopAIProviderMetadata)(&turnResult.Metadata), CreatedAt: assistantStartedAt,
 		}
 		record.Messages = append(record.Messages, assistantMessage)
 		record.UpdatedAt = completedAt
@@ -916,11 +916,14 @@ func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input Desk
 			return DesktopAICreateSessionResponse{}, err
 		}
 		task := record.Tasks[taskIndex]
-		if spec, ok := desktopAIToolSpecByName(record.PermissionMode, record.Scope, task.ToolName); ok {
-			if message := desktopAIValidateServerReference(record, spec, task.Arguments); message != "" {
-				s.sessionMu.Unlock()
-				return DesktopAICreateSessionResponse{}, errors.New(message)
-			}
+		spec, ok := desktopAIToolSpecByName(record.PermissionMode, record.Scope, task.ToolName)
+		if !ok {
+			s.sessionMu.Unlock()
+			return DesktopAICreateSessionResponse{}, fmt.Errorf("当前权限不允许执行工具: %s", task.ToolName)
+		}
+		if message := aitools.ValidateServerReference(desktopAISharedScope(record.Scope), spec.Parameters, aichatui.LatestServerReferences(toAichatUIMessages(record.Messages)), task.Arguments); message != "" {
+			s.sessionMu.Unlock()
+			return DesktopAICreateSessionResponse{}, errors.New(message)
 		}
 	}
 
@@ -966,7 +969,7 @@ func (s *DesktopAIService) RespondToToolApproval(ctx context.Context, input Desk
 		record.Tasks[taskIndex].UpdatedAt = now
 	} else {
 		if spec, ok := desktopAIToolSpecByName(record.PermissionMode, record.Scope, taskName); ok {
-			taskArguments = desktopAIEnforceScopedArguments(record.Scope, spec, taskArguments)
+			taskArguments = aitools.EnforceScopedArguments(desktopAISharedScope(record.Scope), spec.Parameters, taskArguments)
 			record.Tasks[taskIndex].Arguments = taskArguments
 		}
 		record.Tasks[taskIndex].Status = DesktopAITaskRunning
@@ -1342,7 +1345,7 @@ func (s *DesktopAIService) RegenerateMessage(ctx context.Context, input DesktopA
 	if input.Scope != nil {
 		if strings.EqualFold(strings.TrimSpace(input.Scope.Kind), "global") {
 			record.Scope = nil
-		} else if scope := normalizeDesktopAISessionScope(input.Scope); scope != nil {
+		} else if scope := desktopAIScopeFromShared(aipermission.NormalizeScopePointer(desktopAISharedScope(input.Scope))); scope != nil {
 			record.Scope = scope
 		}
 	}
@@ -1523,19 +1526,8 @@ func (s *DesktopAIService) database() (*sql.DB, error) {
 		return s.db, nil
 	}
 
-	dataDir := desktopDataDir()
-	if err := os.MkdirAll(dataDir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create desktop data directory: %w", err)
-	}
-
-	dbPath := filepath.Join(dataDir, "easyssh-desktop.sqlite")
-	database, err := sql.Open("sqlite", dbPath)
+	database, err := openDesktopDatabase()
 	if err != nil {
-		return nil, err
-	}
-
-	if err := configureDesktopDatabase(database); err != nil {
-		database.Close()
 		return nil, err
 	}
 
@@ -1722,7 +1714,7 @@ func desktopAIProviderMessages(record desktopAISessionRecord, contextText string
 	tools := desktopAIVisibleToolSpecs(record.PermissionMode, record.Scope)
 	result := []aiprovider.Message{{
 		Role:    "system",
-		Content: desktopAIToolSystemPrompt(record.PermissionMode, tools, record.Scope),
+		Content: aitools.SystemPrompt("你是 EasySSH Desktop 的本地服务器管理助手，可以帮助个人用户管理和操作本机保存的 SSH 服务器。", string(record.PermissionMode), desktopAIProviderToolSpecs(tools), desktopAISharedScope(record.Scope)),
 	}}
 	contextText = strings.TrimSpace(contextText)
 
@@ -1845,9 +1837,9 @@ func (s *DesktopAIService) materializeDesktopAITasks(ctx context.Context, record
 	autoTaskIDs := make([]string, 0, len(toolCalls))
 	pendingConfirm := false
 	for _, toolCall := range toolCalls {
-		toolCall = desktopAIScopeToolCall(record.Scope, toolCall)
-		args := desktopAIDecodeArguments(toolCall.Arguments)
 		spec, ok := desktopAIToolSpecByName(record.PermissionMode, record.Scope, toolCall.Name)
+		toolCall = aitools.ScopeToolCall(desktopAISharedScope(record.Scope), toolCall, spec.Parameters)
+		args := aitools.DecodeArguments(toolCall.Arguments)
 		now := time.Now().UTC().Format(desktopAITimeLayout)
 		taskID := newDesktopAIID("ai-task")
 		task := DesktopAITaskView{
@@ -1856,7 +1848,7 @@ func (s *DesktopAIService) materializeDesktopAITasks(ctx context.Context, record
 			ToolCallID:           desktopAIFirstNonEmpty(toolCall.ID, taskID),
 			ToolName:             toolCall.Name,
 			ToolDisplayName:      desktopAIFirstNonEmpty(spec.DisplayName, toolCall.Name),
-			Summary:              desktopAISummarizeTask(toolCall.Name, args),
+			Summary:              aitools.SummarizeTask(toolCall.Name, args),
 			Status:               DesktopAITaskQueued,
 			Dangerous:            spec.Dangerous,
 			RequiresConfirmation: desktopAIRequiresConfirmation(record.PermissionMode, spec),
@@ -1882,7 +1874,7 @@ func (s *DesktopAIService) materializeDesktopAITasks(ctx context.Context, record
 			tasks = append(tasks, task)
 			continue
 		}
-		if message := desktopAIValidateServerReference(record, spec, args); message != "" {
+		if message := aitools.ValidateServerReference(desktopAISharedScope(record.Scope), spec.Parameters, aichatui.LatestServerReferences(toAichatUIMessages(record.Messages)), args); message != "" {
 			task.Status = DesktopAITaskFailed
 			task.Error = message
 			task.Result = message
@@ -1956,7 +1948,7 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 		s.emitAITaskSnapshot(record, record.Tasks[taskIndex])
 		return record, nil
 	}
-	if message := desktopAIValidateServerReference(record, spec, record.Tasks[taskIndex].Arguments); message != "" {
+	if message := aitools.ValidateServerReference(desktopAISharedScope(record.Scope), spec.Parameters, aichatui.LatestServerReferences(toAichatUIMessages(record.Messages)), record.Tasks[taskIndex].Arguments); message != "" {
 		record.Tasks[taskIndex].Status = DesktopAITaskFailed
 		record.Tasks[taskIndex].Error = message
 		record.Tasks[taskIndex].Result = message
@@ -1968,7 +1960,7 @@ func (s *DesktopAIService) executeDesktopAITask(ctx context.Context, record desk
 		s.emitAITaskSnapshot(record, record.Tasks[taskIndex])
 		return record, nil
 	}
-	record.Tasks[taskIndex].Arguments = desktopAIEnforceScopedArguments(record.Scope, spec, record.Tasks[taskIndex].Arguments)
+	record.Tasks[taskIndex].Arguments = aitools.EnforceScopedArguments(desktopAISharedScope(record.Scope), spec.Parameters, record.Tasks[taskIndex].Arguments)
 
 	record.Tasks[taskIndex].Status = DesktopAITaskRunning
 	record.Tasks[taskIndex].UpdatedAt = now
@@ -2172,8 +2164,10 @@ func (s *DesktopAIService) executeDesktopAIListDirectory(ctx context.Context, ar
 	}
 	serverID := desktopAIStringArg(args, "server_id")
 	remotePath := strings.TrimSpace(desktopAIStringArg(args, "path"))
-	if remotePath == "" || remotePath == "~" {
-		remotePath = "."
+	if remotePath == "" || remotePath == "~" || remotePath == "." {
+		// The desktop SFTP service resolves ~ against the login directory;
+		// its ordinary path normalization would turn . into /.
+		remotePath = "~"
 	}
 	if serverID == "" {
 		return desktopAIToolError("server_id is required"), nil
@@ -2182,27 +2176,16 @@ func (s *DesktopAIService) executeDesktopAIListDirectory(ctx context.Context, ar
 	if err != nil {
 		return desktopAIToolError("列出目录失败: " + err.Error()), nil
 	}
-	files := make([]map[string]any, 0, len(result.Files))
+	entries := make([]aitools.DirectoryEntry, 0, len(result.Files))
 	for _, file := range result.Files {
-		files = append(files, map[string]any{
-			"name":        file.Name,
-			"path":        file.Path,
-			"size":        file.Size,
-			"is_dir":      file.IsDir,
-			"is_link":     file.IsLink,
-			"permission":  file.Permission,
-			"modified_at": file.ModTime,
-			"link_target": file.LinkTarget,
+		entries = append(entries, aitools.DirectoryEntry{
+			Name: file.Name, Path: file.Path, Size: file.Size,
+			IsDir: file.IsDir, IsLink: file.IsLink, Permission: file.Permission,
+			ModifiedAt: file.ModTime, LinkTarget: file.LinkTarget,
 		})
 	}
-	payload := map[string]any{
-		"path":     result.Path,
-		"parent":   result.Parent,
-		"files":    files,
-		"total":    len(files),
-		"can_read": result.CanRead,
-	}
-	return desktopAIToolJSON("目录列表", payload), nil
+	return desktopAIToolResult{Content: aitools.DirectoryResult(result.Path, result.CanRead, entries,
+		desktopAIIntArg(args, "offset", 0), desktopAIIntArg(args, "limit", 100))}, nil
 }
 
 func (s *DesktopAIService) executeDesktopAIReadFile(ctx context.Context, args map[string]any) (desktopAIToolResult, error) {
@@ -2214,29 +2197,16 @@ func (s *DesktopAIService) executeDesktopAIReadFile(ctx context.Context, args ma
 	if serverID == "" || remotePath == "" {
 		return desktopAIToolError("server_id and path are required"), nil
 	}
-	maxLines := desktopAIIntArg(args, "max_lines", 100)
-	if maxLines <= 0 {
-		maxLines = 100
-	}
-	if maxLines > 500 {
-		maxLines = 500
-	}
 	content, err := s.sftpService.ReadFileContext(ctx, DesktopSFTPPathInput{ServerID: serverID, Path: remotePath})
 	if err != nil {
 		return desktopAIToolError("读取文件失败: " + err.Error()), nil
 	}
-	lines := strings.Split(aitooloutput.Sanitize(content), "\n")
-	truncated := false
-	if len(lines) > maxLines {
-		lines = lines[:maxLines]
-		truncated = true
+	output, outputErr := aitools.ReadFileResult(remotePath, content,
+		desktopAIIntArg(args, "start_line", 1), desktopAIIntArg(args, "max_lines", 100))
+	result := desktopAIToolResult{Content: output}
+	if outputErr != nil {
+		result.Content, result.IsError = outputErr.Error(), true
 	}
-	output := strings.Join(lines, "\n")
-	if truncated {
-		output += fmt.Sprintf("\n\n... (文件已截断，仅显示前 %d 行)", maxLines)
-	}
-	output = aitooloutput.Truncate(output, aitooloutput.StoredTextBytes)
-	result := desktopAIToolResult{Content: fmt.Sprintf("文件内容 (%s):\n```\n%s\n```", remotePath, output)}
 	if file, err := aiworkspace.NewFile(remotePath, content, "utf8"); err == nil {
 		file.Kind, file.Path, file.ServerID = "read", remotePath, serverID
 		result.Artifact = file
@@ -2399,33 +2369,6 @@ func buildDesktopAIWhere(params DesktopAIListSessionsParams) (string, []any) {
 	return strings.Join(clauses, " AND "), args
 }
 
-func normalizeDesktopAISessionScope(scope *DesktopAISessionScope) *DesktopAISessionScope {
-	if scope == nil {
-		return nil
-	}
-
-	normalized := &DesktopAISessionScope{
-		Kind:              strings.ToLower(strings.TrimSpace(scope.Kind)),
-		TerminalSessionID: strings.TrimSpace(scope.TerminalSessionID),
-		ServerID:          strings.TrimSpace(scope.ServerID),
-		ServerName:        strings.TrimSpace(scope.ServerName),
-		Host:              strings.TrimSpace(scope.Host),
-		Port:              scope.Port,
-		Username:          strings.TrimSpace(scope.Username),
-	}
-
-	switch normalized.Kind {
-	case "terminal":
-		return normalized
-	default:
-		if normalized.TerminalSessionID != "" || normalized.ServerID != "" {
-			normalized.Kind = "terminal"
-			return normalized
-		}
-		return nil
-	}
-}
-
 func (record desktopAISessionRecord) toView() DesktopAISessionView {
 	var title string
 	if record.CustomTitle {
@@ -2447,166 +2390,46 @@ func (record desktopAISessionRecord) toView() DesktopAISessionView {
 }
 
 func desktopAIAllToolSpecs() []desktopAIToolSpec {
-	return []desktopAIToolSpec{
-		{Name: aiworkspace.CreateTool, DisplayName: "生成文件", Description: aiworkspace.CreateDescription,
-			Parameters: aiworkspace.CreateParameters(), ConfirmStrategy: desktopAIConfirmNone,
-			SupportedModes: []DesktopAIPermissionMode{DesktopAIPermissionReadonly, DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged}},
+	specs := []desktopAIToolSpec{
+		{
+			Name: aiworkspace.CreateTool, DisplayName: "生成文件", Description: aiworkspace.CreateDescription,
+			Parameters: aiworkspace.CreateParameters(),
+		},
 		{
 			Name: aitooloutput.ReadResultTool, DisplayName: "查看执行结果", Description: aitooloutput.ReadResultDescription,
-			Parameters: aitooloutput.ReadResultParameters(), ConfirmStrategy: desktopAIConfirmNone,
-			SupportedModes: []DesktopAIPermissionMode{DesktopAIPermissionReadonly, DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
-		},
-		{
-			Name:            "list_servers",
-			DisplayName:     "列出服务器",
-			Description:     "列出本地保存的所有服务器。返回服务器列表，包含 ID、名称、主机地址、状态等信息。",
-			Parameters:      map[string]interface{}{"type": "object", "properties": map[string]interface{}{}, "required": []string{}},
-			ConfirmStrategy: desktopAIConfirmNone,
-			SupportedModes:  []DesktopAIPermissionMode{DesktopAIPermissionReadonly, DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
-		},
-		{
-			Name:        "get_server_info",
-			DisplayName: "获取服务器信息",
-			Description: "获取指定服务器的详细信息，包括主机地址、端口、用户名、状态、操作系统等。",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"server_id": map[string]interface{}{"type": "string", "description": "服务器 ID"},
-				},
-				"required": []string{"server_id"},
-			},
-			ConfirmStrategy: desktopAIConfirmNone,
-			SupportedModes:  []DesktopAIPermissionMode{DesktopAIPermissionReadonly, DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
-		},
-		{
-			Name:        "execute_command",
-			DisplayName: "执行命令",
-			Description: "在指定服务器上执行 Shell 命令。返回命令输出结果。",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"server_id": map[string]interface{}{"type": "string", "description": "要执行命令的服务器 ID"},
-					"command":   map[string]interface{}{"type": "string", "description": "要执行的 Shell 命令"},
-					"timeout":   map[string]interface{}{"type": "integer", "description": "命令执行超时时间（秒），默认 60，最大 300", "default": 60},
-				},
-				"required": []string{"server_id", "command"},
-			},
-			Dangerous:       true,
-			ConfirmStrategy: desktopAIConfirmUser,
-			SupportedModes:  []DesktopAIPermissionMode{DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
-		},
-		{
-			Name:        "list_directory",
-			DisplayName: "列出目录",
-			Description: "列出服务器上指定目录的内容，包括文件和子目录。",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"server_id": map[string]interface{}{"type": "string", "description": "服务器 ID"},
-					"path":      map[string]interface{}{"type": "string", "description": "目录路径，默认 /", "default": "/"},
-				},
-				"required": []string{"server_id"},
-			},
-			ConfirmStrategy: desktopAIConfirmNone,
-			SupportedModes:  []DesktopAIPermissionMode{DesktopAIPermissionReadonly, DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
-		},
-		{
-			Name:        "read_file",
-			DisplayName: "读取文件",
-			Description: "读取服务器上指定文本文件的内容。超大文件会拒绝读取，长内容会按行截断。",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"server_id": map[string]interface{}{"type": "string", "description": "服务器 ID"},
-					"path":      map[string]interface{}{"type": "string", "description": "文件路径"},
-					"max_lines": map[string]interface{}{"type": "integer", "description": "最大读取行数，默认 100，最大 500", "default": 100},
-				},
-				"required": []string{"server_id", "path"},
-			},
-			ConfirmStrategy: desktopAIConfirmNone,
-			SupportedModes:  []DesktopAIPermissionMode{DesktopAIPermissionReadonly, DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
-		},
-		{
-			Name:        "write_file",
-			DisplayName: "写入文件",
-			Description: "向服务器写入最多 2 MiB 的 UTF-8 文本。修改文件优先使用此工具：记录真实原文件和提议内容供用户查看对比，执行前核对原内容，变化时停止写入。会话文件使用 create_artifact。",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"server_id": map[string]interface{}{"type": "string", "description": "服务器 ID"},
-					"path":      map[string]interface{}{"type": "string", "description": "文件路径"},
-					"content":   map[string]interface{}{"type": "string", "description": "要写入的内容"},
-				},
-				"required": []string{"server_id", "path", "content"},
-			},
-			Dangerous:       true,
-			ConfirmStrategy: desktopAIConfirmUser,
-			SupportedModes:  []DesktopAIPermissionMode{DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
-		},
-		{
-			Name:        "create_directory",
-			DisplayName: "创建目录",
-			Description: "在服务器上创建目录。支持递归创建。",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"server_id": map[string]interface{}{"type": "string", "description": "服务器 ID"},
-					"path":      map[string]interface{}{"type": "string", "description": "目录路径"},
-				},
-				"required": []string{"server_id", "path"},
-			},
-			ConfirmStrategy: desktopAIConfirmNone,
-			SupportedModes:  []DesktopAIPermissionMode{DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
-		},
-		{
-			Name:        "delete_file",
-			DisplayName: "删除文件",
-			Description: "删除服务器上的文件或目录。目录会被递归删除。",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"server_id": map[string]interface{}{"type": "string", "description": "服务器 ID"},
-					"path":      map[string]interface{}{"type": "string", "description": "文件或目录路径"},
-				},
-				"required": []string{"server_id", "path"},
-			},
-			Dangerous:       true,
-			ConfirmStrategy: desktopAIConfirmUser,
-			SupportedModes:  []DesktopAIPermissionMode{DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
-		},
-		{
-			Name:        "get_system_info",
-			DisplayName: "系统信息",
-			Description: "获取服务器的系统信息，包括 CPU、内存、磁盘、网络和 Docker 概况。",
-			Parameters: map[string]interface{}{
-				"type": "object",
-				"properties": map[string]interface{}{
-					"server_id": map[string]interface{}{"type": "string", "description": "服务器 ID"},
-				},
-				"required": []string{"server_id"},
-			},
-			ConfirmStrategy: desktopAIConfirmNone,
-			SupportedModes:  []DesktopAIPermissionMode{DesktopAIPermissionReadonly, DesktopAIPermissionBalanced, DesktopAIPermissionPrivileged},
+			Parameters: aitooloutput.ReadResultParameters(),
 		},
 	}
+	for _, definition := range aitools.Definitions() {
+		specs = append(specs, desktopAIToolSpec{
+			Name: definition.Name, DisplayName: definition.DisplayName,
+			Description: definition.Description, Parameters: definition.Parameters,
+		})
+	}
+
+	for i := range specs {
+		policy := aipermission.PolicyFor(specs[i].Name)
+		specs[i].Dangerous, specs[i].ConfirmStrategy = policy.Dangerous, desktopAIConfirmNone
+		if policy.Confirm {
+			specs[i].ConfirmStrategy = desktopAIConfirmUser
+		}
+		specs[i].SupportedModes = policy.Modes()
+	}
+	return specs
 }
 
 func desktopAIVisibleToolSpecs(permission DesktopAIPermissionMode, scope *DesktopAISessionScope) []desktopAIToolSpec {
 	mode := normalizeDesktopAIPermission(permission)
-	normalizedScope := normalizeDesktopAISessionScope(scope)
 	result := make([]desktopAIToolSpec, 0)
 	for _, tool := range desktopAIAllToolSpecs() {
-		if !desktopAIToolSupportsMode(tool, mode) {
+		if !aipermission.SupportsMode(string(mode), tool.SupportedModes) {
 			continue
 		}
-		if normalizedScope != nil && normalizedScope.Kind == "terminal" && normalizedScope.ServerID != "" {
-			if tool.Name == "list_servers" {
-				continue
-			}
-			if desktopAIToolHasServerIDParameter(tool) {
-				tool.Parameters = desktopAIPinServerIDParameter(tool.Parameters, normalizedScope.ServerID)
-			}
+		parameters, visible := aitools.ScopedParameters(desktopAISharedScope(scope), tool.Name, tool.Parameters)
+		if !visible {
+			continue
 		}
+		tool.Parameters = parameters
 		result = append(result, tool)
 	}
 	return result
@@ -2619,52 +2442,6 @@ func desktopAIToolSpecByName(permission DesktopAIPermissionMode, scope *DesktopA
 		}
 	}
 	return desktopAIToolSpec{}, false
-}
-
-func desktopAIToolSupportsMode(tool desktopAIToolSpec, mode DesktopAIPermissionMode) bool {
-	if len(tool.SupportedModes) == 0 {
-		return true
-	}
-	for _, supported := range tool.SupportedModes {
-		if supported == mode {
-			return true
-		}
-	}
-	return false
-}
-
-func desktopAIToolHasServerIDParameter(tool desktopAIToolSpec) bool {
-	properties, ok := tool.Parameters["properties"].(map[string]interface{})
-	if !ok {
-		return false
-	}
-	_, ok = properties["server_id"]
-	return ok
-}
-
-func desktopAIPinServerIDParameter(parameters map[string]interface{}, serverID string) map[string]interface{} {
-	next := desktopAIShallowCopyMap(parameters)
-	properties, ok := next["properties"].(map[string]interface{})
-	if !ok {
-		return next
-	}
-	nextProperties := desktopAIShallowCopyMap(properties)
-	serverIDParam, _ := nextProperties["server_id"].(map[string]interface{})
-	nextServerIDParam := desktopAIShallowCopyMap(serverIDParam)
-	nextServerIDParam["const"] = serverID
-	nextServerIDParam["default"] = serverID
-	nextServerIDParam["description"] = "当前终端会话服务器 ID。必须使用该值，除非用户明确要求切换目标。"
-	nextProperties["server_id"] = nextServerIDParam
-	next["properties"] = nextProperties
-	return next
-}
-
-func desktopAIShallowCopyMap(input map[string]interface{}) map[string]interface{} {
-	next := make(map[string]interface{}, len(input))
-	for key, value := range input {
-		next[key] = value
-	}
-	return next
 }
 
 func (s *DesktopAIService) emitAISessionSnapshot(record desktopAISessionRecord) {
@@ -2707,85 +2484,50 @@ func (s *DesktopAIService) emitAISessionEvent(event DesktopAISessionEvent) {
 	}
 }
 
+// Wails scope fields have a different order from the generated protocol type.
+// Keep these adapters structural; normalization belongs to aipermission.
+func desktopAISharedScope(scope *DesktopAISessionScope) *protocol.AISessionScope {
+	if scope == nil {
+		return nil
+	}
+	return &protocol.AISessionScope{
+		Kind: scope.Kind, TerminalSessionID: scope.TerminalSessionID,
+		ServerID: scope.ServerID, ServerName: scope.ServerName,
+		Host: scope.Host, Port: scope.Port, Username: scope.Username,
+	}
+}
+
+func desktopAIScopeFromShared(scope *protocol.AISessionScope) *DesktopAISessionScope {
+	if scope == nil {
+		return nil
+	}
+	return &DesktopAISessionScope{
+		Kind: scope.Kind, TerminalSessionID: scope.TerminalSessionID,
+		ServerID: scope.ServerID, ServerName: scope.ServerName,
+		Host: scope.Host, Port: scope.Port, Username: scope.Username,
+	}
+}
+
 func toAichatUIMessages(messages []DesktopAIMessageView) []aichatui.MessageView {
 	result := make([]aichatui.MessageView, 0, len(messages))
 	for _, message := range messages {
-		attachments := make([]aichatui.AttachmentView, 0, len(message.Attachments))
-		for _, attachment := range message.Attachments {
-			attachments = append(attachments, aichatui.AttachmentView{
-				ID: attachment.ID, Name: attachment.Name, MediaType: attachment.MediaType, Data: attachment.Data, Size: attachment.Size,
-			})
-		}
+		attachments := aichatui.AttachmentViews(desktopAIProviderAttachments(message.Attachments))
 		result = append(result, aichatui.MessageView{
 			ID: message.ID, Role: message.Role, Content: message.Content, Reasoning: message.Reasoning, ServerReferences: message.ServerReferences, ExternalContent: message.ExternalContent,
-			Attachments: attachments, Usage: desktopAIUsageView(message.Usage),
-			ProviderMetadata: desktopAIProviderMetadataView(message.ProviderMetadata), CreatedAt: parseDesktopAITime(message.CreatedAt),
+			Attachments: attachments, Usage: aichatui.UsageFromProvider((*aiprovider.Usage)(message.Usage)),
+			ProviderMetadata: aichatui.MetadataFromProvider((*aiprovider.ProviderMetadata)(message.ProviderMetadata)), CreatedAt: parseDesktopAITime(message.CreatedAt),
 			StoppedAt: parseDesktopAIStoppedAt(message.StoppedAt),
 		})
 	}
 	return result
 }
 
-func desktopAIAttachmentViews(attachments []DesktopAIImageAttachment) []aichatui.AttachmentView {
-	result := make([]aichatui.AttachmentView, 0, len(attachments))
-	for _, attachment := range attachments {
-		result = append(result, aichatui.AttachmentView{
-			ID: attachment.ID, Name: attachment.Name, MediaType: attachment.MediaType, Data: attachment.Data, Size: attachment.Size,
-		})
-	}
-	return result
-}
-
-func desktopAIUsageView(usage *DesktopAIUsage) *aichatui.UsageView {
-	if usage == nil {
-		return nil
-	}
-	return &aichatui.UsageView{
-		InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens, CachedTokens: usage.CachedTokens,
-		CacheWriteTokens: usage.CacheWriteTokens, ReasoningTokens: usage.ReasoningTokens, TotalTokens: usage.TotalTokens,
-	}
-}
-
-func desktopAIProviderMetadataView(metadata *DesktopAIProviderMetadata) *aichatui.ProviderMetadata {
-	if metadata == nil {
-		return nil
-	}
-	return &aichatui.ProviderMetadata{
-		Provider: metadata.Provider, API: metadata.API, Endpoint: metadata.Endpoint, RequestID: metadata.RequestID,
-		ResponseID: metadata.ResponseID, Model: metadata.Model, FinishReason: metadata.FinishReason,
-		ServiceTier: metadata.ServiceTier, EstimatedCostMicros: metadata.EstimatedCostMicros, CostEstimateKind: metadata.CostEstimateKind,
-	}
-}
-
 func desktopAIProviderAttachments(attachments []DesktopAIImageAttachment) []aiprovider.Attachment {
 	result := make([]aiprovider.Attachment, 0, len(attachments))
 	for _, attachment := range attachments {
-		result = append(result, aiprovider.Attachment{
-			ID: attachment.ID, Name: attachment.Name, MediaType: attachment.MediaType, Data: attachment.Data, Size: attachment.Size,
-		})
+		result = append(result, aiprovider.Attachment{ID: attachment.ID, Name: attachment.Name, MediaType: attachment.MediaType, Data: attachment.Data, Size: attachment.Size})
 	}
 	return result
-}
-
-func desktopAIUsage(usage *aiprovider.Usage) *DesktopAIUsage {
-	if usage == nil {
-		return nil
-	}
-	return &DesktopAIUsage{
-		InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens, CachedTokens: usage.CachedTokens,
-		CacheWriteTokens: usage.CacheWriteTokens, ReasoningTokens: usage.ReasoningTokens, TotalTokens: usage.TotalTokens,
-	}
-}
-
-func desktopAIProviderMetadata(metadata *aiprovider.ProviderMetadata) *DesktopAIProviderMetadata {
-	if metadata == nil {
-		return nil
-	}
-	return &DesktopAIProviderMetadata{
-		Provider: metadata.Provider, API: metadata.API, Endpoint: metadata.Endpoint, RequestID: metadata.RequestID,
-		ResponseID: metadata.ResponseID, Model: metadata.Model, FinishReason: metadata.FinishReason,
-		ServiceTier: metadata.ServiceTier, EstimatedCostMicros: metadata.EstimatedCostMicros, CostEstimateKind: metadata.CostEstimateKind,
-	}
 }
 
 func toAichatUITasks(tasks []DesktopAITaskView) []aichatui.TaskView {
@@ -2824,10 +2566,6 @@ func parseDesktopAITime(value string) time.Time {
 	return time.Time{}
 }
 
-func desktopAISystemPrompt(permission DesktopAIPermissionMode) string {
-	return "You are EasySSH Desktop AI assistant. Help the user manage SSH servers, write scripts, analyze logs, and reason about terminal workflows. Be concise, practical, and ask for confirmation before suggesting destructive commands. Current permission rule: " + aipermission.Rule(string(permission))
-}
-
 func defaultDesktopAISessionTitle(messages []DesktopAIMessageView) string {
 	for _, message := range messages {
 		if message.Role == "user" && strings.TrimSpace(message.Content) != "" {
@@ -2839,21 +2577,6 @@ func defaultDesktopAISessionTitle(messages []DesktopAIMessageView) string {
 
 func normalizeDesktopAIPermission(permission DesktopAIPermissionMode) DesktopAIPermissionMode {
 	return DesktopAIPermissionMode(aipermission.NormalizeMode(string(permission)))
-}
-
-func decodeDesktopAIScope(value string) *DesktopAISessionScope {
-	value = strings.TrimSpace(value)
-	if value == "" || value == "{}" || value == "null" {
-		return nil
-	}
-	var scope DesktopAISessionScope
-	if err := json.Unmarshal([]byte(value), &scope); err != nil {
-		return nil
-	}
-	if scope.Kind == "" {
-		return nil
-	}
-	return normalizeDesktopAISessionScope(&scope)
 }
 
 func truncateDesktopAIMessages(messages []DesktopAIMessageView, end int) []DesktopAIMessageView {
@@ -2885,95 +2608,9 @@ func truncateDesktopAITasks(tasks []DesktopAITaskView, messages []DesktopAIMessa
 	return result
 }
 
-func desktopAIScopeToolCall(scope *DesktopAISessionScope, toolCall aiprovider.ToolCall) aiprovider.ToolCall {
-	normalizedScope := normalizeDesktopAISessionScope(scope)
-	if normalizedScope == nil || normalizedScope.Kind != "terminal" || normalizedScope.ServerID == "" {
-		return toolCall
-	}
-
-	args := desktopAIDecodeArguments(toolCall.Arguments)
-	if _, ok := args["server_id"]; !ok {
-		return toolCall
-	}
-	args["server_id"] = normalizedScope.ServerID
-	toolCall.Arguments = desktopAIEncodeArguments(args)
-	return toolCall
-}
-
-func desktopAIEnforceScopedArguments(scope *DesktopAISessionScope, spec desktopAIToolSpec, args map[string]any) map[string]any {
-	normalizedScope := normalizeDesktopAISessionScope(scope)
-	if normalizedScope == nil || normalizedScope.Kind != "terminal" || normalizedScope.ServerID == "" || !desktopAIToolHasServerIDParameter(spec) {
-		return args
-	}
-
-	next := make(map[string]any, len(args)+1)
-	for key, value := range args {
-		next[key] = value
-	}
-	next["server_id"] = normalizedScope.ServerID
-	return next
-}
-
-func desktopAIValidateServerReference(record desktopAISessionRecord, spec desktopAIToolSpec, args map[string]any) string {
-	if !desktopAIToolHasServerIDParameter(spec) {
-		return ""
-	}
-	var refs []aichatui.ServerReference
-	for index := len(record.Messages) - 1; index >= 0; index-- {
-		if record.Messages[index].Role == "user" {
-			refs = record.Messages[index].ServerReferences
-			break
-		}
-	}
-	if len(refs) <= 1 {
-		return ""
-	}
-	allowed := make(map[string]struct{}, len(refs))
-	for _, ref := range refs {
-		allowed[ref.ServerID] = struct{}{}
-	}
-	serverID := desktopAIStringArg(args, "server_id")
-	if serverID == "" {
-		return "多服务器引用时，工具必须明确提供正文中引用的 server_id。"
-	}
-	if _, ok := allowed[serverID]; !ok {
-		return fmt.Sprintf("工具目标 server_id=%s 不在本条消息引用的服务器范围内。请按正文中的 @服务器重新绑定目标。", serverID)
-	}
-	return ""
-}
-
 func desktopAIRequiresConfirmation(permission DesktopAIPermissionMode, spec desktopAIToolSpec) bool {
 	ordinary := spec.ConfirmStrategy == desktopAIConfirmUser
 	return aipermission.RequiresConfirmation(string(permission), ordinary)
-}
-
-func desktopAIDecodeArguments(raw json.RawMessage) map[string]any {
-	if len(raw) == 0 {
-		return map[string]any{}
-	}
-
-	var args map[string]any
-	if err := json.Unmarshal(raw, &args); err != nil {
-		return map[string]any{"_raw": string(raw)}
-	}
-	if args == nil {
-		return map[string]any{}
-	}
-	return args
-}
-
-func desktopAISummarizeTask(toolName string, args map[string]any) string {
-	for _, key := range []string{"command", "path", "server_id"} {
-		if value, ok := args[key]; ok {
-			text := fmt.Sprint(value)
-			runes := []rune(text)
-			if len(runes) > 48 {
-				text = string(runes[:48]) + "..."
-			}
-			return text
-		}
-	}
-	return toolName
 }
 
 func desktopAIFindTaskIndex(tasks []DesktopAITaskView, taskID string) int {
@@ -3118,79 +2755,6 @@ func desktopAIJSON(value any) string {
 		return fmt.Sprint(value)
 	}
 	return string(data)
-}
-
-func desktopAIToolSystemPrompt(permission DesktopAIPermissionMode, tools []desktopAIToolSpec, scope *DesktopAISessionScope) string {
-	var sb strings.Builder
-	sb.WriteString("你是 EasySSH Desktop 的本地服务器管理助手，可以帮助个人用户管理和操作本机保存的 SSH 服务器。\n\n")
-	sb.WriteString("重要规则：\n")
-	sb.WriteString("1. 当用户请求需要执行操作时，你应该直接调用相应工具，不要先用文字询问是否允许。\n")
-	sb.WriteString("2. 工具权限与危险操作确认由系统负责，你需要专注于理解需求、正确调用工具、基于结果给出结论。\n")
-	sb.WriteString("3. 如果需要多个步骤，请按顺序执行，并始终基于上一步结果推进。\n")
-	sb.WriteString("4. 获取工具结果后，必须引用关键数据给出结论，不要只给模板化建议。\n")
-	sb.WriteString("5. 不要重复粘贴大段原始输出，优先提炼关键发现与下一步行动。\n")
-	sb.WriteString("6. 当前权限规则：")
-	sb.WriteString(aipermission.Rule(string(normalizeDesktopAIPermission(permission))))
-	normalizedScope := normalizeDesktopAISessionScope(scope)
-	if normalizedScope != nil && normalizedScope.Kind == "terminal" {
-		sb.WriteString("\n")
-		sb.WriteString("7. 当前会话范围：你正在嵌入一个终端页签中，默认面向当前终端连接的服务器。")
-		if normalizedScope.ServerID != "" {
-			sb.WriteString("除非用户明确要求切换目标，否则工具调用必须使用当前服务器 server_id=")
-			sb.WriteString(normalizedScope.ServerID)
-			sb.WriteString("。")
-		} else {
-			sb.WriteString("如果缺少当前服务器 ID，请先说明无法定位目标服务器。")
-		}
-	}
-	sb.WriteString("\n\n")
-	if normalizedScope != nil && normalizedScope.Kind == "terminal" {
-		sb.WriteString("当前终端上下文：\n")
-		sb.WriteString(desktopAIFormatTerminalScope(normalizedScope))
-		sb.WriteString("\n\n")
-	}
-	sb.WriteString("本会话可用工具：\n")
-	for _, tool := range tools {
-		sb.WriteString("- ")
-		sb.WriteString(tool.Name)
-		sb.WriteString(": ")
-		sb.WriteString(tool.Description)
-		sb.WriteString("\n")
-	}
-	return sb.String()
-}
-
-func desktopAIFormatTerminalScope(scope *DesktopAISessionScope) string {
-	if scope == nil {
-		return "- 未提供当前终端目标信息"
-	}
-	lines := make([]string, 0, 4)
-	if scope.TerminalSessionID != "" {
-		lines = append(lines, "- terminal_session_id: "+scope.TerminalSessionID)
-	}
-	if scope.ServerID != "" {
-		lines = append(lines, "- server_id: "+scope.ServerID)
-	}
-	if scope.ServerName != "" {
-		lines = append(lines, "- server_name: "+scope.ServerName)
-	}
-	if scope.Username != "" || scope.Host != "" || scope.Port > 0 {
-		target := scope.Username
-		if scope.Host != "" {
-			if target != "" {
-				target += "@"
-			}
-			target += scope.Host
-		}
-		if scope.Port > 0 {
-			target += fmt.Sprintf(":%d", scope.Port)
-		}
-		lines = append(lines, "- connection: "+target)
-	}
-	if len(lines) == 0 {
-		return "- 未提供当前终端目标信息"
-	}
-	return strings.Join(lines, "\n")
 }
 
 func desktopAIFirstNonEmpty(values ...string) string {

@@ -13,7 +13,7 @@ type BatchTask struct {
 	Actor         protocol.Actor    `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
 	ScriptVersion string            `gorm:"size:64" json:"script_version,omitempty"`
 	Parameters    map[string]string `gorm:"serializer:json;type:text" json:"parameters"`
-	ID            uuid.UUID         `gorm:"type:char(36);primary_key" json:"id"`
+	ID            uuid.UUID         `gorm:"type:char(36);primary_key;not null" json:"id"`
 	TaskName      string            `gorm:"type:varchar(100);not null" json:"task_name"`
 	TaskType      string            `gorm:"type:varchar(20);not null" json:"task_type"` // command/script
 	Content       string            `gorm:"type:text" json:"content"`                   // 命令内容或文件路径

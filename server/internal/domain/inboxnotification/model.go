@@ -9,7 +9,7 @@ import (
 )
 
 type Notification struct {
-	ID         uuid.UUID  `gorm:"type:char(36);primaryKey" json:"id"`
+	ID         uuid.UUID  `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	OwnerID    uuid.UUID  `gorm:"type:char(36);not null;index:idx_inbox_owner_time,priority:1" json:"owner_id"`
 	EventType  string     `gorm:"size:60;not null" json:"event_type"`
 	Severity   string     `gorm:"size:20;not null;index" json:"severity"`

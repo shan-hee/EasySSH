@@ -132,7 +132,7 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
   }
 
   // 凭据、刷新与账户锁定等认证失效处理由平台传输负责
-  const res = await openapiTransportFetch(url, init)
+  const res = await authenticatedFetch(url, init)
 
   if (!res.ok) {
     const contentType = res.headers.get("content-type") || ""
@@ -159,19 +159,6 @@ async function apiFetchInternal<T>(path: string, options: Omit<ApiFetchOptions, 
     return await res.json() as T
   }
   return (await res.text()) as unknown as T
-}
-
-/**
- * openapi-fetch 的底层传输。
- *
- * 只委托平台传输附加凭据，不解析或改写 JSON 响应形状；响应体必须按
- * shared/openapi.yaml 中声明的结构由 openapi-fetch 处理。
- */
-export function openapiTransportFetch(
-  input: RequestInfo | URL,
-  init: RequestInit = {},
-): Promise<Response> {
-  return getPlatformTransport().fetch(input, init)
 }
 
 /**

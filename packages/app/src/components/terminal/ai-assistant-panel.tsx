@@ -3,7 +3,6 @@ import { AgentPermissionSelector } from "@/components/ai-agent/agent-permission-
 import type { AgentServerReference } from "@/lib/ai-agent-types"
 import { AssistantRuntimeProvider } from "@assistant-ui/react"
 import { Suspense, useState, useRef, useEffect, useCallback, useMemo, type CSSProperties, type ChangeEvent, type ClipboardEvent } from "react"
-import { Link } from "react-router-dom"
 import {
   Loader2,
   Settings2,
@@ -34,17 +33,11 @@ import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
 import { useSetAgentComposerDraft, useSessionDraftState } from "@/hooks/use-agent-composer-draft"
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAISessionHistory } from "@/hooks/use-ai-session-history"
-import {
-  deleteAISession as deleteAISessionAPI,
-  listAISessions as listAISessionsAPI,
-  renameAISession as renameAISessionAPI,
-  type AgentSessionScope,
-} from "@/lib/api/ai-agent"
+import type { AgentSessionScope } from "@/lib/api/ai-agent"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { cn } from "@/lib/utils"
 import type { TerminalSession } from "./types"
 import { TerminalAIContextPicker } from "./terminal-ai-context-picker"
-import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { PageLoading } from "@/components/page-loading"
 import { PanelPositionControl } from "./panel-position-control"
 import type { TerminalPanelPosition } from "@/stores/tab-ui-store"
@@ -60,7 +53,7 @@ interface AiAssistantPanelProps {
   isOpen: boolean
   onClose: () => void
   terminalSession: TerminalSession
-  adapters?: AIAssistantWorkspaceAdapters
+  adapters: AIAssistantWorkspaceAdapters
   backgroundColor?: string
 }
 
@@ -124,23 +117,6 @@ function removeStoredTerminalAISessionId(terminalSessionId: string, aiSessionId?
   }
 }
 
-function assertDesktopAIAdapters(layout: string | undefined, adapters?: AIAssistantWorkspaceAdapters) {
-  if (layout !== "desktop") {
-    return
-  }
-
-  if (
-    !adapters?.aiConfig ||
-    !adapters.aiSettings ||
-    !adapters.aiSession ||
-    !adapters.listAISessions ||
-    !adapters.renameAISession ||
-    !adapters.deleteAISession
-  ) {
-    throw new Error("Desktop terminal AI requires local AI session and settings adapters")
-  }
-}
-
 export function AiAssistantPanel({
   position,
   onPositionChange,
@@ -153,12 +129,9 @@ export function AiAssistantPanel({
 }: AiAssistantPanelProps) {
   const { t: tAI } = useTranslation("aiAssistant")
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
-  const workspace = useOptionalSshWorkspace()
-  const canUseWebSettingsFallback = workspace?.layout !== "desktop"
-  assertDesktopAIAdapters(workspace?.layout, adapters)
   const controller = useAIAssistantController({
-    aiConfigAdapter: adapters?.aiConfig,
-    aiSessionAdapter: adapters?.aiSession,
+    aiConfigAdapter: adapters.aiConfig,
+    aiSessionAdapter: adapters.aiSession,
     includeAutoModel: true,
   })
   const {
@@ -199,9 +172,9 @@ export function AiAssistantPanel({
     detachSession,
     discardSessionIfEmpty,
   } = agentSession
-  const listSessions = adapters?.listAISessions ?? listAISessionsAPI
-  const renameSession = adapters?.renameAISession ?? renameAISessionAPI
-  const deleteSession = adapters?.deleteAISession ?? deleteAISessionAPI
+  const listSessions = adapters.listAISessions
+  const renameSession = adapters.renameAISession
+  const deleteSession = adapters.deleteAISession
 
   const setInput = useSetAgentComposerDraft(agentSession.runtime)
   const attachmentLimitNotice = useCallback(() => {
@@ -747,7 +720,7 @@ export function AiAssistantPanel({
 
   return (
     <AssistantRuntimeProvider runtime={agentSession.runtime}>
-    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} messages={session?.messages} scope={session?.scope} active={isOpen} loadFile={adapters?.aiSession?.getTaskFile} saveFile={adapters?.aiSession?.saveTaskFile}>
+    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} messages={session?.messages} scope={session?.scope} active={isOpen} loadFile={adapters.aiSession.getTaskFile} saveFile={adapters.aiSession.saveTaskFile}>
     <aside
       data-terminal-panel
       role="complementary"
@@ -879,7 +852,7 @@ export function AiAssistantPanel({
                     <Loader2 className="size-3.5 animate-spin" />
                     <span>{tAI("checkingConfig")}</span>
                   </div>
-                ) : adapters?.aiSettings ? (
+                ) : adapters.aiSettings ? (
                   <AIAssistantConfigPopover
                     open={configOpen}
                     onOpenChange={setConfigOpen}
@@ -897,19 +870,6 @@ export function AiAssistantPanel({
                       </Button>
                     }
                   />
-                ) : canUseWebSettingsFallback ? (
-                  <Button
-                    asChild
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
-                  >
-                    <Link to="/dashboard/settings?tab=ai">
-                      <Settings2 className="size-3.5" />
-                      <span>{tAI("configureAI")}</span>
-                    </Link>
-                  </Button>
                 ) : null}
               </AgentComposerTools>
 

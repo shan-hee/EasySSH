@@ -3,9 +3,10 @@ package registry
 import (
 	"context"
 	"encoding/json"
-	"slices"
+	"github.com/easyssh/shared/aiprovider"
 	"sort"
 
+	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/aiworkspace"
 )
 
@@ -16,11 +17,7 @@ const (
 	ConfirmUser ConfirmStrategy = "user"
 )
 
-type ToolCall struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Arguments json.RawMessage `json:"arguments"`
-}
+type ToolCall = aiprovider.ToolCall
 
 type ExecutionResult struct {
 	CommandOutput string                    `json:"command_output,omitempty"`
@@ -102,7 +99,7 @@ func (r *ToolRegistry) VisibleForMode(mode string) []ToolSpec {
 		if !ok {
 			continue
 		}
-		if spec.SupportsMode(mode) {
+		if aipermission.SupportsMode(mode, spec.SupportedModes) {
 			result = append(result, spec)
 		}
 	}
@@ -117,9 +114,12 @@ func (r *ToolRegistry) PublicToolViews(mode string) []ToolSpec {
 	return visible
 }
 
-func (s ToolSpec) SupportsMode(mode string) bool {
-	if len(s.SupportedModes) == 0 {
-		return true
+// WithPolicy applies the permission policy both hosts share for this tool.
+func (s ToolSpec) WithPolicy() ToolSpec {
+	policy := aipermission.PolicyFor(s.Name)
+	s.Dangerous, s.SupportedModes, s.ConfirmStrategy = policy.Dangerous, policy.Modes(), ConfirmNone
+	if policy.Confirm {
+		s.ConfirmStrategy = ConfirmUser
 	}
-	return slices.Contains(s.SupportedModes, mode)
+	return s
 }

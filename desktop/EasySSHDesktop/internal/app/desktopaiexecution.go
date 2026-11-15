@@ -11,6 +11,7 @@ import (
 
 	"github.com/easyssh/shared/activitystats"
 	"github.com/easyssh/shared/aichatui"
+	"github.com/easyssh/shared/aipermission"
 	"github.com/google/uuid"
 )
 
@@ -38,13 +39,7 @@ func scanDesktopAIExecution(row interface{ Scan(...any) error }) (desktopAIExecu
 func desktopAIExecutionID(sessionID, taskID string) string {
 	return uuid.NewSHA1(uuid.NameSpaceOID, []byte("desktop_ai_tool_executions:"+sessionID+":"+taskID)).String()
 }
-func trackedDesktopAITool(name string) bool {
-	switch name {
-	case "execute_command", "write_file", "create_directory", "delete_file":
-		return true
-	}
-	return false
-}
+func trackedDesktopAITool(name string) bool { return aipermission.ChangesRemoteState(name) }
 func desktopAIExecutionTerminal(status DesktopAITaskStatus) bool {
 	switch status {
 	case DesktopAITaskSucceeded, DesktopAITaskFailed, DesktopAITaskUnknown, DesktopAITaskCancelled:

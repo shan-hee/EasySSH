@@ -41,7 +41,7 @@ type TaskRun struct {
 	WorkStartedAt time.Time  `gorm:"not null;index" json:"work_started_at"`
 
 	Actor             protocol.Actor `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
-	ID                uuid.UUID      `gorm:"type:char(36);primaryKey" json:"id"`
+	ID                uuid.UUID      `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	DefinitionVersion string         `gorm:"size:36" json:"definition_version,omitempty"`
 	DefinitionID      *uuid.UUID     `gorm:"type:char(36);index" json:"definition_id,omitempty"`
 	RetryOfID         *uuid.UUID     `gorm:"type:char(36);index" json:"retry_of_id,omitempty"`
@@ -120,7 +120,7 @@ type TaskEvent struct {
 	ContentID     *uuid.UUID `gorm:"type:char(36);index" json:"-"`
 	ContentSize   int64      `gorm:"not null;default:0" json:"-"`
 	ContentSHA256 string     `gorm:"size:64;not null;default:''" json:"-"`
-	ID            uint       `gorm:"primaryKey;index:idx_task_events_run_cursor,priority:2" json:"id"`
+	ID            uint       `gorm:"primaryKey;index:idx_task_events_run_cursor,priority:2;not null" json:"id"`
 	TaskRunID     uuid.UUID  `gorm:"type:char(36);not null;index:idx_task_events_run_cursor,priority:1" json:"task_run_id"`
 	Level         string     `gorm:"size:20;not null;default:'info'" json:"level"`
 	Message       string     `gorm:"type:text;not null" json:"message"`

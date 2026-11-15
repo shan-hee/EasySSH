@@ -10,14 +10,14 @@ import (
 // Labels use their canonical, case-sensitive name as a natural key. Replacing
 // one server's labels never renames a label on another server or sync space.
 type Tag struct {
-	Name string `gorm:"size:100;primaryKey"`
+	Name string `gorm:"size:100;primaryKey;not null"`
 }
 
 func (Tag) TableName() string { return "tags" }
 
 type ServerTag struct {
-	ServerID uuid.UUID `gorm:"type:char(36);primaryKey"`
-	TagName  string    `gorm:"size:100;primaryKey;index:idx_server_tags_name"`
+	ServerID uuid.UUID `gorm:"type:char(36);primaryKey;not null"`
+	TagName  string    `gorm:"size:100;primaryKey;index:idx_server_tags_name;not null"`
 	Tag      Tag       `gorm:"foreignKey:TagName;references:Name;constraint:OnDelete:RESTRICT"`
 }
 

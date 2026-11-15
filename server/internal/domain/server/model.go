@@ -56,7 +56,7 @@ type Server struct {
 	JumpServerID       *uuid.UUID   `gorm:"type:char(36);index" json:"jump_server_id,omitempty"`
 	Auth               ServerAuth   `gorm:"foreignKey:ServerID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
 	ConnectionRevision int64        `gorm:"not null;default:1" json:"connection_revision"`
-	ID                 uuid.UUID    `gorm:"type:char(36);primary_key" json:"id"`
+	ID                 uuid.UUID    `gorm:"type:char(36);primary_key;not null" json:"id"`
 	Name               string       `gorm:"size:100" json:"name"`
 	Host               string       `gorm:"not null;size:255" json:"host"`
 	Port               int          `gorm:"not null;default:22;check:port BETWEEN 1 AND 65535" json:"port"`
@@ -225,7 +225,7 @@ func (s *Server) UpdateStatus(status ServerStatus) {
 }
 
 type ServerAuth struct {
-	ServerID   uuid.UUID      `gorm:"type:char(36);primaryKey" json:"-"`
+	ServerID   uuid.UUID      `gorm:"type:char(36);primaryKey;not null" json:"-"`
 	AuthMethod AuthMethod     `gorm:"type:varchar(64);not null" json:"auth_method"`
 	Password   string         `gorm:"type:text" json:"-"` // 加密存储，不在 JSON 中返回
 	SSHKeyID   *uuid.UUID     `gorm:"index" json:"ssh_key_id"`

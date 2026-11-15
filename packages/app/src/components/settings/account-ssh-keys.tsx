@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { useClientAuth } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/contexts/system-config-context"
 
-import * as sshKeysApi from "@/lib/api/ssh-keys"
+import type * as sshKeysApi from "@/lib/api/ssh-keys"
 import { getEffectiveLocale, getEffectiveTimezone, formatInTimezone } from "@/utils/datetime"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 
@@ -30,12 +30,7 @@ type SSHKeyManagerApi = sshKeysApi.SSHKeyApi & {
   generate?: typeof sshKeysApi.generateSSHKey
 }
 
-const webSSHKeyManagerApi: SSHKeyManagerApi = {
-  ...sshKeysApi.sshKeyApi,
-  generate: sshKeysApi.generateSSHKey,
-}
-
-export function AccountSSHKeys({ api = webSSHKeyManagerApi }: { api?: SSHKeyManagerApi }) {
+export function AccountSSHKeys({ api }: { api: SSHKeyManagerApi }) {
 const { t: tAccount } = useTranslation("accountSettings")
 const { t: tServers } = useTranslation("servers")
 const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()

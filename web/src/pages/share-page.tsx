@@ -1,3 +1,7 @@
+import { webAIAssistantAdapters } from "@easyssh/app/pages/dashboard/web-ai-adapters"
+import { dockerApi } from "@easyssh/app/lib/api/docker"
+import { serversApi } from "@easyssh/app/lib/api/servers"
+import { taskCenterApi } from "@easyssh/app/lib/api/task-center"
 import { apiFetch } from "@easyssh/app/lib/api-client"
 import { useEffect, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
@@ -55,7 +59,7 @@ export default function SharePage() {
   const adapters = useMemo(
     () =>
       createWorkspaceAdapters({
-        apiClient: { sftp: sftpApi },
+        apiClient: { sftp: sftpApi, docker: dockerApi },
         authTicketProvider: workspaceAccessTicketProvider,
         i18n: createWorkspaceI18nAdapter({ common, terminal, sftp }),
         notifier: createWorkspaceNotifierAdapter(toast),
@@ -90,6 +94,9 @@ export default function SharePage() {
               }}
               context={context}
               adapters={adapters}
+              aiAdapters={webAIAssistantAdapters}
+              tasks={taskCenterApi}
+              loadServer={serversApi.getById}
               refresh={async () => {
                 const c = await accessSession.refresh()
                 setContext(c)

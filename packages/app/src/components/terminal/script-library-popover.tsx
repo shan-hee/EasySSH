@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { toast } from "@/components/ui/sonner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { scriptsApi } from "@/lib/api/scripts"
 import { queryKeys } from "@/lib/query-keys"
 import type { Script } from "@/lib/script-types"
 import { cn } from "@/lib/utils"
@@ -30,10 +29,10 @@ export function ScriptLibraryPopover({
   const { t } = useTranslation("terminal")
   const workspace = useOptionalSshWorkspace()
   const workspaceScripts = workspace?.adapters.apiClient?.scripts
-  if (workspace?.layout === "desktop" && !workspaceScripts) {
-    throw new Error("Desktop script library requires a desktop scripts api adapter")
+  if (!workspaceScripts) {
+    throw new Error("Script library requires a scripts api adapter")
   }
-  const client = workspaceScripts ?? scriptsApi
+  const client = workspaceScripts
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [selectedId, setSelectedId] = useState<string | null>(null)

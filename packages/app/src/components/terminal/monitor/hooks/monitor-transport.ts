@@ -1,3 +1,4 @@
+import type { components } from "@/generated/openapi"
 import { createStreamTicket } from '@/lib/access-ticket'
 import { toast } from '@/components/ui/sonner'
 import i18n from 'i18next'
@@ -303,7 +304,7 @@ const startWebSocket = async (transport: MonitorTransport, generation: number) =
 
       if (typeof event.data !== 'string') return
       try {
-        const message = JSON.parse(event.data)
+        const message = JSON.parse(event.data) as components["schemas"]["MonitorServerMessage"]
         if (message?.type === 'error') {
           reportError(transport, new Error(message.message || i18n.t('terminal:monitorConnectionFailed')))
           console.error(

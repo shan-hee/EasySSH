@@ -82,11 +82,11 @@ func TestTerminalRejectsConnectionWhenIntentCannotBeSaved(t *testing.T) {
 	}
 	defer conn.Close()
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-	var message Message
+	var message protocol.TerminalEnvelope
 	if err := conn.ReadJSON(&message); err != nil {
 		t.Fatal(err)
 	}
-	if message.Type != "error" || !strings.Contains(string(message.Data), "connection_record_unavailable") {
+	if message.Type != string(protocol.TerminalServerMessageTypeError) || !strings.Contains(string(message.Data), "connection_record_unavailable") {
 		t.Fatalf("connection admitted without saved intent: %+v", message)
 	}
 }

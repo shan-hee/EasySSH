@@ -349,57 +349,18 @@ func (w *folderWriter) create(remote string, body io.Reader, size int64) error {
 }
 
 // Replacement keeps an existing file's permissions, like single-file uploads.
-func (w *folderWriter) replace(remote string, body io.Reader, size int64) (err error) {
-	mode := folderFileMode
-	info, err := w.client.Lstat(remote)
-	if err == nil {
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("upload entry exists and is not a regular file: %s", remote)
+func (w *folderWriter) replace(remote string, body io.Reader, size int64) error {
+	_, err := WriteAtomic(w.ctx, w.client, remote, AtomicWrite{Mode: folderFileMode, Replace: true, Check: w.check}, func(file *sftp.File) error {
+		// A short body must fail before the temporary file replaces the target.
+		written, err := io.Copy(file, body)
+		if err != nil {
+			return err
 		}
-		mode = info.Mode().Perm()
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	temporary := path.Join(path.Dir(remote), ".easyssh-upload-"+uuid.NewString())
-	file, err := w.client.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
-	if err != nil {
-		return err
-	}
-	committed := false
-	defer func() {
-		_ = file.Close()
-		if !committed {
-			if removeErr := w.client.Remove(temporary); removeErr != nil && !os.IsNotExist(removeErr) {
-				err = errors.Join(err, fmt.Errorf("temporary file cleanup failed (%s): %w", temporary, removeErr))
-			}
+		if written != size {
+			return io.ErrUnexpectedEOF
 		}
-	}()
-	if err := file.Chmod(0600); err != nil {
-		return err
-	}
-	// A short body must fail before the temporary file replaces the target.
-	written, err := io.Copy(file, body)
-	if err != nil {
-		return err
-	}
-	if written != size {
-		return io.ErrUnexpectedEOF
-	}
-	if err := file.Chmod(mode); err != nil {
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	if err := w.check(); err != nil {
-		return err
-	}
-	if _, supported := w.client.HasExtension("posix-rename@openssh.com"); supported {
-		err = MutationError(w.client.PosixRename(temporary, remote))
-	} else {
-		err = MutationError(w.client.Rename(temporary, remote))
-	}
-	committed = err == nil || errors.Is(err, ErrMutationOutcomeUnknown)
+		return nil
+	})
 	return err
 }
 

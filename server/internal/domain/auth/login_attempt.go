@@ -8,7 +8,7 @@ import (
 
 // LoginAttempt 登录尝试记录（用于审计和检测分布式攻击）
 type LoginAttempt struct {
-	ID         uint      `gorm:"primarykey" json:"id"`
+	ID         uint      `gorm:"primarykey;not null" json:"id"`
 	Email      string    `gorm:"size:100;index:idx_attempt_email_time,priority:1" json:"email"`  // 尝试登录的邮箱
 	IPAddress  string    `gorm:"size:45;index:idx_attempt_ip_time,priority:1" json:"ip_address"` // 来源 IP
 	UserAgent  string    `gorm:"type:text" json:"user_agent"`                                    // User-Agent

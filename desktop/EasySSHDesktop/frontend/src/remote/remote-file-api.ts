@@ -1,7 +1,7 @@
 import { sftpApi } from "@easyssh/app/lib/api/sftp"
 import { withServerConnection } from "@easyssh/app/lib/api/connections"
 import type { SshWorkspaceApiClient } from "@easyssh/app/lib/session/workspace"
-import type { TerminalAuthPrompt } from "@easyssh/app/lib/websocket-terminal"
+import type { components } from "@easyssh/app/generated/openapi"
 import * as Remote from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopremoteworkspaceservice"
 import { readRemoteStream, decodeRemoteBytes } from "./remote-stream"
 
@@ -22,12 +22,9 @@ export const remoteFileApi: NonNullable<SshWorkspaceApiClient["sftp"]> = {
           (frame) => {
             if (frame.encoding !== "event.json")
               throw new Error("Unexpected file authentication frame")
-            const event = JSON.parse(
+            const event: components["schemas"]["SFTPAuthServerMessage"] = JSON.parse(
               new TextDecoder().decode(decodeRemoteBytes(frame.data)),
-            ) as {
-              type?: string
-              data?: TerminalAuthPrompt & { message?: string; error?: string }
-            }
+            )
             if (event.type === "authenticated") {
               settled = true
               stop()

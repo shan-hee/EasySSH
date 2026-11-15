@@ -21,7 +21,7 @@ var ErrNotReady = errors.New("content is not sealed")
 var ErrNotFound = errors.New("content not found")
 
 type Record struct {
-	ID         uuid.UUID       `gorm:"type:char(36);primaryKey"`
+	ID         uuid.UUID       `gorm:"type:char(36);primaryKey;not null"`
 	Actor      protocol.Actor  `gorm:"embedded;embeddedPrefix:actor_"`
 	SourceType string          `gorm:"size:30;not null;index:idx_content_source,priority:1"`
 	SourceID   uuid.UUID       `gorm:"type:char(36);not null;index:idx_content_source,priority:2"`

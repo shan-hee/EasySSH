@@ -24,7 +24,7 @@ import { ImageList } from './components/ImageList'
 import { DockerOverview } from './components/DockerOverview'
 import { cn } from '@/lib/utils'
 import { useOptionalSshWorkspace } from '@/components/ssh-workspace/ssh-workspace'
-import { dockerApi, type DockerApiClient } from '@/lib/api/docker'
+import type { DockerApiClient } from '@/lib/api/docker'
 import type {
   DockerContainer,
   DockerImage,
@@ -71,10 +71,10 @@ export function DockerPopover({ serverId, sessionId, isConnected, embedded = fal
   const { t } = useTranslation('terminal')
   const workspace = useOptionalSshWorkspace()
   const workspaceDockerClient = workspace?.adapters.apiClient?.docker
-  if (workspace?.layout === "desktop" && !workspaceDockerClient) {
-    throw new Error("Desktop DockerPopover requires a desktop docker api adapter")
+  if (!workspaceDockerClient) {
+    throw new Error("DockerPopover requires a docker api adapter")
   }
-  const dockerClient = workspaceDockerClient ?? dockerApi
+  const dockerClient = workspaceDockerClient
   const [open, setOpen] = useState(false)
   const containersFetchSeqRef = useRef(0)
   const containersFetchInFlightRef = useRef(false)

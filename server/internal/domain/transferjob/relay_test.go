@@ -120,7 +120,7 @@ func TestRelaySuffixAndCommitDoNotOverwrite(t *testing.T) {
 	if err != nil || string(body) != "concurrent" {
 		t.Fatalf("concurrent file changed: %q %v", body, err)
 	}
-	leftovers, err := filepath.Glob(filepath.Join(root, ".easyssh-transfer-*"))
+	leftovers, err := filepath.Glob(filepath.Join(root, ".easyssh-upload-*"))
 	if err != nil || len(leftovers) != 0 {
 		t.Fatalf("temporary files retained: %v %v", leftovers, err)
 	}

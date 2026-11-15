@@ -22,10 +22,9 @@ import { MonitorWebSocketProvider } from "@/components/terminal/monitor/contexts
 import { DockerPopover } from "@/components/terminal/docker"
 import { AIWorkspace } from "@/workbench/ai-workspace"
 import { TaskCenterView } from "@/components/task-center/task-center-view"
-import { taskCenterApi, type TaskCenterApi } from "@/lib/api/task-center"
+import type { TaskCenterApi } from "@/lib/api/task-center"
 import { useTerminalSettingsStore } from "@/stores/terminal-settings-store"
 import { useTerminalStore } from "@/stores/terminal-store"
-import { serversApi } from "@/lib/api/servers"
 import type { Server } from "@/lib/server-types"
 import type { AccessContext, AccessResource } from "@/lib/api/grants"
 import type { SshWorkspaceAdapters } from "@/lib/session/workspace"
@@ -42,8 +41,8 @@ export function AccessWorkspace({
   adapters,
   refresh,
   aiAdapters,
-  tasks = taskCenterApi,
-  loadServer = serversApi.getById,
+  tasks,
+  loadServer,
   desktop = false,
   header,
   fileActions,
@@ -53,8 +52,8 @@ export function AccessWorkspace({
   adapters: SshWorkspaceAdapters
   refresh: () => Promise<void>
   aiAdapters?: AIAssistantWorkspaceAdapters
-  tasks?: TaskCenterApi
-  loadServer?: (id: string) => Promise<Server>
+  tasks: TaskCenterApi
+  loadServer: (id: string) => Promise<Server>
   desktop?: boolean
   header?: ReactNode
   fileActions?: (resource: AccessResource, path: string) => ReactNode
@@ -101,7 +100,7 @@ export function AccessWorkspace({
     }),
     [tasks],
   )
-  const canAI = context.resources.some(
+  const canAI = !!aiAdapters && context.resources.some(
     (r) => !r.paused && r.actions.includes("ai.use"),
   )
   const canActivity = context.resources.some(
@@ -422,7 +421,7 @@ export function AccessWorkspace({
                   ),
                 }]
               }),
-              ...(canAI ? [{
+              ...(canAI && aiAdapters ? [{
                 id: "ai",
                 className: "flex-col",
                 content: <AIWorkspace active={activeView === "ai"} hidePageHeader canConfigure={false} adapters={aiAdapters} />,

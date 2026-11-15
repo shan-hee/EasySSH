@@ -455,7 +455,7 @@ export function useTerminalCompletionController({
   }, [effectiveCompletionEnabled, providerSessionEnabled, providerRemoteHistoryEnabled, providerScriptEnabled, providerPathEnabled])
 
   const handleCompletionData = useCallback((data: CompletionDataResponse) => {
-    if (effectiveCompletionEnabled && providerRemoteHistoryEnabled) remoteHistoryProviderRef.current?.loadHistory(data.history, data.timestamp)
+    if (effectiveCompletionEnabled && providerRemoteHistoryEnabled) remoteHistoryProviderRef.current?.loadHistory(data.history ?? [], data.timestamp)
     if (effectiveCompletionEnabled && providerScriptEnabled) scriptProviderRef.current?.loadScripts(data.scripts)
     completionEngineRef.current?.clearCache()
   }, [effectiveCompletionEnabled, providerRemoteHistoryEnabled, providerScriptEnabled])

@@ -11,7 +11,7 @@ import (
 
 // ScheduledTask 定时任务模型
 type ScheduledTask struct {
-	ID             uuid.UUID      `gorm:"type:char(36);primary_key" json:"id"`
+	ID             uuid.UUID      `gorm:"type:char(36);primary_key;not null" json:"id"`
 	OwnerID        uuid.UUID      `gorm:"type:char(36);not null;index" json:"owner_id"`
 	TaskName       string         `gorm:"type:varchar(100);not null" json:"task_name"`
 	TaskType       string         `gorm:"type:varchar(40);not null" json:"task_type"` // command/script/sftp_upload/sftp_download
@@ -21,7 +21,7 @@ type ScheduledTask struct {
 	ServerIDs      []string       `gorm:"type:text;serializer:json" json:"server_ids"`
 	CronExpression string         `gorm:"type:varchar(100);not null" json:"cron_expression"`
 	Timezone       string         `gorm:"type:varchar(50);default:'UTC'" json:"timezone"`
-	Enabled        bool           `gorm:"not null" json:"enabled"`
+	Enabled        bool           `json:"enabled"`
 	LastRunAt      *time.Time     `json:"last_run_at,omitempty"`
 	NextRunAt      *time.Time     `json:"next_run_at,omitempty"`
 	RunCount       int            `gorm:"default:0" json:"run_count"`

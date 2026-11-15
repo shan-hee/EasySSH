@@ -158,6 +158,743 @@ components:
     NoContent:
       description: 操作成功，无响应体
   schemas:
+    TerminalClientMessageType:
+      type: string
+      enum:
+      - input
+      - resize
+      - ping
+      - auth_response
+      - host_key_response
+      - fetch_completion_data
+      x-enum-varnames:
+      - TerminalClientMessageTypeInput
+      - TerminalClientMessageTypeResize
+      - TerminalClientMessageTypePing
+      - TerminalClientMessageTypeAuthResponse
+      - TerminalClientMessageTypeHostKeyResponse
+      - TerminalClientMessageTypeFetchCompletionData
+    TerminalServerMessageType:
+      type: string
+      enum:
+      - auth_prompt
+      - host_key_prompt
+      - pong
+      - handshake_complete
+      - connected
+      - closed
+      - completion_data
+      - error
+      - output
+      x-enum-varnames:
+      - TerminalServerMessageTypeAuthPrompt
+      - TerminalServerMessageTypeHostKeyPrompt
+      - TerminalServerMessageTypePong
+      - TerminalServerMessageTypeHandshakeComplete
+      - TerminalServerMessageTypeConnected
+      - TerminalServerMessageTypeClosed
+      - TerminalServerMessageTypeCompletionData
+      - TerminalServerMessageTypeError
+      - TerminalServerMessageTypeOutput
+    SFTPAuthClientMessageType:
+      type: string
+      enum:
+      - auth_start
+      - ping
+      - auth_response
+      - host_key_response
+      x-enum-varnames:
+      - SFTPAuthClientMessageTypeAuthStart
+      - SFTPAuthClientMessageTypePing
+      - SFTPAuthClientMessageTypeAuthResponse
+      - SFTPAuthClientMessageTypeHostKeyResponse
+    SFTPAuthServerMessageType:
+      type: string
+      enum:
+      - status
+      - authenticated
+      - auth_prompt
+      - host_key_prompt
+      - pong
+      - error
+      x-enum-varnames:
+      - SFTPAuthServerMessageTypeStatus
+      - SFTPAuthServerMessageTypeAuthenticated
+      - SFTPAuthServerMessageTypeAuthPrompt
+      - SFTPAuthServerMessageTypeHostKeyPrompt
+      - SFTPAuthServerMessageTypePong
+      - SFTPAuthServerMessageTypeError
+    MonitorClientMessageType:
+      type: string
+      enum:
+      - ping
+      x-enum-varnames:
+      - MonitorClientMessageTypePing
+    MonitorServerMessageType:
+      type: string
+      enum:
+      - handshake_complete
+      - ready
+      - pong
+      - error
+      x-enum-varnames:
+      - MonitorServerMessageTypeHandshakeComplete
+      - MonitorServerMessageTypeReady
+      - MonitorServerMessageTypePong
+      - MonitorServerMessageTypeError
+    TerminalEnvelope:
+      type: object
+      description: JSON envelope for terminal and SFTP authentication. Binary terminal frames are raw bytes. Server
+        closed sends data:null; desktop gateway omits data. Wails handshake_complete and connected also omit data. Unknown
+        types remain ignored by receivers.
+      required:
+      - type
+      properties:
+        type:
+          x-go-type: string
+          anyOf:
+          - $ref: '#/components/schemas/TerminalClientMessageType'
+          - $ref: '#/components/schemas/TerminalServerMessageType'
+          - $ref: '#/components/schemas/SFTPAuthClientMessageType'
+          - $ref: '#/components/schemas/SFTPAuthServerMessageType'
+        data:
+          x-go-type: json.RawMessage
+          x-go-type-skip-optional-pointer: true
+    TerminalInput:
+      type: object
+      required:
+      - data
+      properties:
+        data:
+          type: string
+    TerminalResize:
+      type: object
+      required:
+      - cols
+      - rows
+      properties:
+        cols:
+          type: integer
+        rows:
+          type: integer
+    TerminalPing:
+      type: object
+      properties:
+        id:
+          type: string
+          x-go-type-skip-optional-pointer: true
+          x-go-name: ID
+        ts:
+          type: integer
+          format: int64
+          x-go-type-skip-optional-pointer: true
+    TerminalPong:
+      type: object
+      description: Terminal/server SFTP pongs always include id, ts and server timestamps, even when empty/zero. SSH
+        latency is included only after measurement. Desktop SFTP echoes the ping data unchanged; Wails echoes ping fields
+        and adds timestamps. Optional fields describe this union without changing emitters.
+      properties:
+        id:
+          type: string
+          x-go-name: ID
+        ts:
+          type: integer
+          format: int64
+        serverRecvTs:
+          type: integer
+          format: int64
+        serverSendTs:
+          type: integer
+          format: int64
+        sshLatencyMs:
+          type: integer
+          format: int64
+        sshLatencyMeasuredAt:
+          type: integer
+          format: int64
+    TerminalAuthPromptItem:
+      type: object
+      required:
+      - text
+      - echo
+      properties:
+        text:
+          type: string
+        echo:
+          type: boolean
+    TerminalAuthPrompt:
+      type: object
+      description: Go emitters omit empty strings and zero counters, including attempts_remaining=0. Wails includes
+        its counters even when zero.
+      required:
+      - request_id
+      - prompts
+      properties:
+        request_id:
+          type: string
+        kind:
+          type: string
+          x-go-type-skip-optional-pointer: true
+        name:
+          type: string
+          x-go-type-skip-optional-pointer: true
+        instruction:
+          type: string
+          x-go-type-skip-optional-pointer: true
+        prompts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TerminalAuthPromptItem'
+        auth_method:
+          $ref: '#/components/schemas/ServerAuthMethod'
+          x-go-type: string
+          x-go-type-skip-optional-pointer: true
+        attempt:
+          type: integer
+          x-go-type-skip-optional-pointer: true
+        max_attempts:
+          type: integer
+          x-go-type-skip-optional-pointer: true
+        attempts_remaining:
+          type: integer
+          x-go-type-skip-optional-pointer: true
+    TerminalAuthResponse:
+      type: object
+      description: Passphrase fields are optional reader extensions. Desktop gateway prefers camelCase then snake_case
+        then answers[0]; server continues to use answers[0]. Web sends snake_case; Wails passphrase prompt resolves
+        from answers[0].
+      required:
+      - request_id
+      - answers
+      properties:
+        request_id:
+          type: string
+        answers:
+          type: array
+          items:
+            type: string
+        cancelled:
+          type: boolean
+          x-go-type-skip-optional-pointer: true
+        auth_method:
+          $ref: '#/components/schemas/ServerAuthMethod'
+          x-go-type: string
+          x-go-type-skip-optional-pointer: true
+        password:
+          type: string
+          x-go-type-skip-optional-pointer: true
+        private_key:
+          type: string
+          x-go-type-skip-optional-pointer: true
+        privateKeyPassphrase:
+          type: string
+          x-go-type-skip-optional-pointer: true
+          x-go-name: PrivateKeyPassphrase
+        private_key_passphrase:
+          type: string
+          x-go-type-skip-optional-pointer: true
+          x-go-name: PrivateKeyPassphraseSnake
+    TerminalHostKeyDetails:
+      type: object
+      required:
+      - host
+      - port
+      - expected_key
+      - received_key
+      - expected_key_type
+      - received_key_type
+      - message
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        expected_key:
+          type: string
+        received_key:
+          type: string
+        expected_key_type:
+          type: string
+        received_key_type:
+          type: string
+        message:
+          type: string
+    TerminalHostKeyPrompt:
+      allOf:
+      - $ref: '#/components/schemas/TerminalHostKeyDetails'
+      - type: object
+        required:
+        - request_id
+        properties:
+          request_id:
+            type: string
+    TerminalHostKeyResponse:
+      type: object
+      required:
+      - request_id
+      - accepted
+      properties:
+        request_id:
+          type: string
+        accepted:
+          type: boolean
+        fingerprint:
+          type: string
+          x-go-type-skip-optional-pointer: true
+          x-omitempty: false
+    TerminalOutput:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          description: Output stream name, conventionally stdout or stderr.
+        data:
+          type: string
+    TerminalError:
+      type: object
+      required:
+      - error
+      - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          x-go-type: interface{}
+          x-go-type-skip-optional-pointer: true
+    TerminalFetchCompletionData:
+      type: object
+      properties:
+        includeHistory:
+          type: boolean
+        includeScripts:
+          type: boolean
+    TerminalCompletionScript:
+      type: object
+      required:
+      - name
+      - content
+      - description
+      - executions
+      - tags
+      properties:
+        name:
+          type: string
+        content:
+          type: string
+        description:
+          type: string
+        executions:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+          nullable: true
+          x-go-type-skip-optional-pointer: true
+    TerminalCompletionData:
+      type: object
+      required:
+      - history
+      - scripts
+      - timestamp
+      properties:
+        history:
+          type: array
+          items:
+            type: string
+          nullable: true
+          x-go-type-skip-optional-pointer: true
+        scripts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TerminalCompletionScript'
+        timestamp:
+          type: integer
+          format: int64
+    TerminalHandshake:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+    TerminalConnected:
+      type: object
+      required:
+      - session_id
+      properties:
+        session_id:
+          type: string
+    SFTPAuthStart:
+      type: object
+      properties:
+        auth_method:
+          $ref: '#/components/schemas/ServerAuthMethod'
+          x-go-type: string
+          x-go-type-skip-optional-pointer: true
+        password:
+          type: string
+          x-go-type-skip-optional-pointer: true
+        private_key:
+          type: string
+          x-go-type-skip-optional-pointer: true
+        secret:
+          type: string
+          x-go-type-skip-optional-pointer: true
+        private_key_passphrase:
+          type: string
+          x-go-type-skip-optional-pointer: true
+    SFTPAuthStatus:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+    TerminalClientMessageInput:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - input
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalInput'
+    TerminalClientMessageResize:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - resize
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalResize'
+    TerminalClientMessagePing:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - ping
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalPing'
+    TerminalClientMessageAuthResponse:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - auth_response
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalAuthResponse'
+    TerminalClientMessageHostKeyResponse:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - host_key_response
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalHostKeyResponse'
+    TerminalClientMessageFetchCompletionData:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - fetch_completion_data
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalFetchCompletionData'
+    TerminalClientMessage:
+      oneOf:
+      - $ref: '#/components/schemas/TerminalClientMessageInput'
+      - $ref: '#/components/schemas/TerminalClientMessageResize'
+      - $ref: '#/components/schemas/TerminalClientMessagePing'
+      - $ref: '#/components/schemas/TerminalClientMessageAuthResponse'
+      - $ref: '#/components/schemas/TerminalClientMessageHostKeyResponse'
+      - $ref: '#/components/schemas/TerminalClientMessageFetchCompletionData'
+    TerminalServerMessageAuthPrompt:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - auth_prompt
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalAuthPrompt'
+    TerminalServerMessageHostKeyPrompt:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - host_key_prompt
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalHostKeyPrompt'
+    TerminalServerMessagePong:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - pong
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalPong'
+    TerminalServerMessageHandshakeComplete:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - handshake_complete
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalHandshake'
+    TerminalServerMessageConnected:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - connected
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalConnected'
+    TerminalServerMessageClosed:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - closed
+          x-go-type: string
+        data:
+          nullable: true
+          enum:
+          - null
+    TerminalServerMessageCompletionData:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - completion_data
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalCompletionData'
+    TerminalServerMessageError:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - error
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalError'
+    TerminalServerMessageOutput:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - output
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/TerminalOutput'
+    TerminalServerMessage:
+      oneOf:
+      - $ref: '#/components/schemas/TerminalServerMessageAuthPrompt'
+      - $ref: '#/components/schemas/TerminalServerMessageHostKeyPrompt'
+      - $ref: '#/components/schemas/TerminalServerMessagePong'
+      - $ref: '#/components/schemas/TerminalServerMessageHandshakeComplete'
+      - $ref: '#/components/schemas/TerminalServerMessageConnected'
+      - $ref: '#/components/schemas/TerminalServerMessageClosed'
+      - $ref: '#/components/schemas/TerminalServerMessageCompletionData'
+      - $ref: '#/components/schemas/TerminalServerMessageError'
+      - $ref: '#/components/schemas/TerminalServerMessageOutput'
+    SFTPAuthClientMessage:
+      oneOf:
+      - $ref: '#/components/schemas/SFTPAuthStartMessage'
+      - $ref: '#/components/schemas/TerminalClientMessagePing'
+      - $ref: '#/components/schemas/TerminalClientMessageAuthResponse'
+      - $ref: '#/components/schemas/TerminalClientMessageHostKeyResponse'
+    SFTPAuthStartMessage:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - auth_start
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/SFTPAuthStart'
+    SFTPAuthStatusMessage:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - status
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/SFTPAuthStatus'
+    SFTPAuthenticatedMessage:
+      type: object
+      required:
+      - type
+      - data
+      properties:
+        type:
+          type: string
+          enum:
+          - authenticated
+          x-go-type: string
+        data:
+          $ref: '#/components/schemas/SFTPAuthStatus'
+    SFTPAuthServerMessage:
+      oneOf:
+      - $ref: '#/components/schemas/SFTPAuthStatusMessage'
+      - $ref: '#/components/schemas/SFTPAuthenticatedMessage'
+      - $ref: '#/components/schemas/TerminalServerMessageAuthPrompt'
+      - $ref: '#/components/schemas/TerminalServerMessageHostKeyPrompt'
+      - $ref: '#/components/schemas/TerminalServerMessagePong'
+      - $ref: '#/components/schemas/TerminalServerMessageError'
+    MonitorPing:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          $ref: '#/components/schemas/MonitorClientMessageType'
+          x-go-type: string
+        ts:
+          type: integer
+          format: int64
+          x-go-type-skip-optional-pointer: true
+    MonitorHandshake:
+      type: object
+      required:
+      - type
+      - status
+      properties:
+        type:
+          type: string
+          enum:
+          - handshake_complete
+          x-go-type: string
+        status:
+          type: string
+    MonitorReady:
+      type: object
+      required:
+      - type
+      properties:
+        type:
+          type: string
+          enum:
+          - ready
+          x-go-type: string
+    MonitorPong:
+      type: object
+      required:
+      - type
+      - ts
+      - serverRecvTs
+      - serverSendTs
+      properties:
+        type:
+          type: string
+          enum:
+          - pong
+          x-go-type: string
+        ts:
+          type: integer
+          format: int64
+        serverRecvTs:
+          type: integer
+          format: int64
+        serverSendTs:
+          type: integer
+          format: int64
+    MonitorError:
+      type: object
+      required:
+      - type
+      - message
+      properties:
+        type:
+          type: string
+          enum:
+          - error
+          x-go-type: string
+        message:
+          type: string
+    MonitorServerMessage:
+      oneOf:
+      - $ref: '#/components/schemas/MonitorHandshake'
+      - $ref: '#/components/schemas/MonitorReady'
+      - $ref: '#/components/schemas/MonitorPong'
+      - $ref: '#/components/schemas/MonitorError'
+      description: Top-level JSON control frames. Metrics remain binary protobuf SystemMetrics, not terminal data envelopes.
     ChatConnection:
       type: object
       required:
@@ -528,13 +1265,21 @@ components:
       properties:
         kind:
           $ref: '#/components/schemas/Kind'
+          x-oapi-codegen-extra-tags:
+            gorm: not null
         id:
           type: string
+          x-oapi-codegen-extra-tags:
+            gorm: not null
         session_id:
           type: string
+          x-oapi-codegen-extra-tags:
+            gorm: not null
         grant_id:
           type: string
           x-go-type-skip-optional-pointer: true
+          x-oapi-codegen-extra-tags:
+            gorm: not null
       description: 执行归属信息，不构成授权凭据；本机所有者 ID 不要求 UUID。所有者后台自动任务的 session_id 为空，不创建登录会话；访客和设备必须关联真实会话。
     ConnectionMode:
       type: string

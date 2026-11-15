@@ -2,9 +2,9 @@ package runtime
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/easyssh/shared/aitools"
 	"github.com/easyssh/shared/protocol"
 	"slices"
 	"sort"
@@ -162,7 +162,7 @@ func (m *Manager) CreateSession(ctx context.Context, input CreateSessionInput) (
 		actor:          actor,
 		model:          strings.TrimSpace(input.Model),
 		permissionMode: normalizePermissionMode(input.PermissionMode),
-		scope:          normalizeSessionScope(input.Scope),
+		scope:          aipermission.NormalizeScope(input.Scope),
 		status:         SessionStatusIdle,
 		createdAt:      now,
 		updatedAt:      now,
@@ -210,7 +210,7 @@ func (m *Manager) ListSessions(ctx context.Context, query string, limit, offset 
 	if err != nil {
 		return nil, 0, err
 	}
-	filterScope := normalizeSessionScopeFromVariadic(scope)
+	filterScope := aipermission.NormalizeScope(scope...)
 	query = aichatui.NormalizeSessionSearch(query)
 	if len(query) > aichatui.MaxSessionSearchBytes {
 		return nil, 0, aichatui.ErrSessionSearchTooLong
@@ -228,7 +228,7 @@ func (m *Manager) ListSessions(ctx context.Context, query string, limit, offset 
 		if !sameConversationActor(s.actor, actor) {
 			continue
 		}
-		if !sessionMatchesScope(s, filterScope) {
+		if !aipermission.ScopeMatches(s.scope, filterScope) {
 			continue
 		}
 		snapshot := m.snapshotForPersistenceLocked(s)
@@ -635,7 +635,7 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, sessionID stri
 	model := strings.TrimSpace(input.Model)
 	contextText := strings.TrimSpace(input.Context)
 	permissionMode := strings.TrimSpace(input.PermissionMode)
-	scope := normalizeSessionScope(input.Scope)
+	scope := aipermission.NormalizeScope(input.Scope)
 
 	refs, err := m.resolveServerReferences(ctx, input.ServerReferences)
 	if err != nil {
@@ -669,7 +669,7 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, sessionID stri
 	proposed := append([]provider.Message(nil), s.messages...)
 	proposed = append(proposed, provider.Message{Role: "user", Content: aichatui.ContentWithServerReferences(content, refs), Attachments: input.Attachments})
 	visible := append([]MessageView(nil), s.messageViews...)
-	visible = append(visible, MessageView{ID: input.MessageID, Role: "user", Content: content, ServerReferences: refs, Attachments: attachmentViews(input.Attachments)})
+	visible = append(visible, MessageView{ID: input.MessageID, Role: "user", Content: content, ServerReferences: refs, Attachments: aichatui.AttachmentViews(input.Attachments)})
 	if err := m.validateHistoryAdmissionLocked(s, proposed, visible, false, input); err != nil {
 		m.mu.Unlock()
 		return err
@@ -706,7 +706,7 @@ func (m *Manager) SendUserMessageWithOptions(ctx context.Context, sessionID stri
 		ExternalContent:  contextText != "",
 		Role:             "user",
 		Content:          content,
-		Attachments:      attachmentViews(input.Attachments),
+		Attachments:      aichatui.AttachmentViews(input.Attachments),
 		ServerReferences: refs,
 		CreatedAt:        now,
 	})
@@ -750,7 +750,7 @@ func (m *Manager) RegenerateAfterUserMessage(ctx context.Context, sessionID, mes
 	model := strings.TrimSpace(input.Model)
 	contextText := strings.TrimSpace(input.Context)
 	permissionMode := strings.TrimSpace(input.PermissionMode)
-	scope := normalizeSessionScope(input.Scope)
+	scope := aipermission.NormalizeScope(input.Scope)
 
 	s, err := m.getOrRestoreSession(ctx, sessionID)
 	if err != nil {
@@ -1141,7 +1141,7 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		}
 
 		tools := m.visibleToolsForSession(s)
-		systemPrompt := buildToolSystemPrompt(s.permissionMode, tools, s.scope)
+		systemPrompt := aitools.SystemPrompt("你是一个服务器管理助手，可以帮助用户管理和操作他们的服务器。", s.permissionMode, provider.SharedToolSpecs(tools), &s.scope)
 
 		m.mu.RLock()
 		if s.closed {
@@ -1440,7 +1440,11 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 		m.emitTaskEvent(s, EventTaskUpdated, view)
 		return
 	}
-	if message := validateTaskServerReference(s, task.spec, task.toolCall.Arguments); message != "" {
+	validation := aitools.ValidateServerReference(&s.scope, task.spec.Parameters, aichatui.LatestServerReferences(s.messageViews), aitools.DecodeArguments(task.toolCall.Arguments))
+	if _, visible := aitools.ScopedParameters(&s.scope, task.toolCall.Name, task.spec.Parameters); !visible || !aipermission.SupportsMode(s.permissionMode, task.spec.SupportedModes) {
+		validation = "当前权限不允许执行该工具"
+	}
+	if message := validation; message != "" {
 		task.view.Status = TaskStatusFailed
 		task.view.Error = message
 		task.view.Result = message
@@ -1455,6 +1459,8 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 		m.emitTaskEvent(s, EventTaskUpdated, view)
 		return
 	}
+	task.toolCall = aitools.ScopeToolCall(&s.scope, task.toolCall, task.spec.Parameters)
+	task.view.Arguments = aitools.DecodeArguments(task.toolCall.Arguments)
 	task.view.Status = TaskStatusRunning
 	task.view.UpdatedAt = time.Now()
 	s.updatedAt = task.view.UpdatedAt
@@ -1554,36 +1560,6 @@ func (m *Manager) executeTask(ctx context.Context, s *session, taskID string) {
 	m.emitTaskEvent(s, EventTaskUpdated, view)
 }
 
-func validateTaskServerReference(s *session, spec registry.ToolSpec, raw json.RawMessage) string {
-	if !hasServerIDParameter(spec) {
-		return ""
-	}
-	var refs []aichatui.ServerReference
-	for index := len(s.messageViews) - 1; index >= 0; index-- {
-		if s.messageViews[index].Role == "user" {
-			refs = s.messageViews[index].ServerReferences
-			break
-		}
-	}
-	if len(refs) <= 1 {
-		return ""
-	}
-	allowed := make(map[string]struct{}, len(refs))
-	for _, ref := range refs {
-		allowed[ref.ServerID] = struct{}{}
-	}
-	args := decodeArguments(raw)
-	serverID, ok := args["server_id"].(string)
-	serverID = strings.TrimSpace(serverID)
-	if !ok || strings.TrimSpace(serverID) == "" {
-		return "多服务器引用时，工具必须明确提供正文中引用的 server_id。"
-	}
-	if _, ok := allowed[serverID]; !ok {
-		return fmt.Sprintf("工具目标 server_id=%s 不在本条消息引用的服务器范围内。请按正文中的 @服务器重新绑定目标。", serverID)
-	}
-	return ""
-}
-
 func (m *Manager) rejectTask(s *session, taskID string, reason string) {
 	m.mu.Lock()
 	task, ok := s.tasks[taskID]
@@ -1650,10 +1626,10 @@ func (m *Manager) materializeTasks(ctx context.Context, s *session, assistantMes
 		if ctx.Err() != nil {
 			return nil, false
 		}
-		tc = scopeToolCall(s.scope, tc)
 		spec, ok := m.sessionToolSpec(s, tc.Name)
+		tc = aitools.ScopeToolCall(&s.scope, tc, spec.Parameters)
 		taskID := uuid.NewString()
-		args := decodeArguments(tc.Arguments)
+		args := aitools.DecodeArguments(tc.Arguments)
 		now := time.Now()
 
 		m.mu.RLock()
@@ -1665,7 +1641,7 @@ func (m *Manager) materializeTasks(ctx context.Context, s *session, assistantMes
 			ToolCallID:           tc.ID,
 			ToolName:             tc.Name,
 			ToolDisplayName:      coalesce(spec.DisplayName, tc.Name),
-			Summary:              summarizeTask(tc.Name, args),
+			Summary:              aitools.SummarizeTask(tc.Name, args),
 			Status:               TaskStatusQueued,
 			Dangerous:            spec.Dangerous,
 			RequiresConfirmation: requiresConfirmation,
@@ -1674,7 +1650,8 @@ func (m *Manager) materializeTasks(ctx context.Context, s *session, assistantMes
 			UpdatedAt:            now,
 		}
 
-		if ok && !spec.SupportsMode(s.permissionMode) {
+		_, visible := aitools.ScopedParameters(&s.scope, tc.Name, spec.Parameters)
+		if ok && (!visible || !aipermission.SupportsMode(s.permissionMode, spec.SupportedModes)) {
 			ok = false
 			view.Error = "当前权限不允许执行该工具"
 		}
@@ -1684,6 +1661,15 @@ func (m *Manager) materializeTasks(ctx context.Context, s *session, assistantMes
 		if growthErr != nil {
 			ok = false
 			view.Error = growthErr.Error()
+		}
+		if ok {
+			m.mu.RLock()
+			validation := aitools.ValidateServerReference(&s.scope, spec.Parameters, aichatui.LatestServerReferences(s.messageViews), args)
+			m.mu.RUnlock()
+			if validation != "" {
+				ok = false
+				view.Error = validation
+			}
 		}
 		var origin *ExecutionOrigin
 		if trackedExecutionTool(tc.Name) {
@@ -1695,16 +1681,7 @@ func (m *Manager) materializeTasks(ctx context.Context, s *session, assistantMes
 			}
 		}
 		if ok && spec.Prepare != nil {
-			m.mu.RLock()
-			validation := validateTaskServerReference(s, spec, tc.Arguments)
-			m.mu.RUnlock()
-			var file *aiworkspace.FileArtifact
-			var prepareErr error
-			if validation != "" {
-				prepareErr = errors.New(validation)
-			} else {
-				file, prepareErr = spec.Prepare(ctx, tc.Arguments)
-			}
+			file, prepareErr := spec.Prepare(ctx, tc.Arguments)
 			if prepareErr != nil {
 				ok = false
 				view.Error = prepareErr.Error()
@@ -2239,7 +2216,7 @@ func (m *Manager) restoreSnapshotLocked(ctx context.Context, snapshot *SessionSn
 		model:          snapshot.Model,
 		title:          snapshot.Title,
 		permissionMode: normalizePermissionMode(snapshot.PermissionMode),
-		scope:          normalizeSessionScope(snapshot.Scope),
+		scope:          aipermission.NormalizeScope(snapshot.Scope),
 		status:         snapshot.Status,
 		createdAt:      snapshot.CreatedAt,
 		updatedAt:      snapshot.UpdatedAt,
@@ -2406,41 +2383,16 @@ func (s *session) upsertAssistantMessage(messageID, content, reasoning string, u
 			if reasoning != "" {
 				s.messageViews[i].Reasoning = reasoning
 			}
-			s.messageViews[i].Usage = usageView(usage)
-			s.messageViews[i].ProviderMetadata = providerMetadataView(metadata)
+			s.messageViews[i].Usage = aichatui.UsageFromProvider(&usage)
+			s.messageViews[i].ProviderMetadata = aichatui.MetadataFromProvider(&metadata)
 			return
 		}
 	}
 
 	s.messageViews = append(s.messageViews, MessageView{
 		ID: messageID, Role: "assistant", Content: content, Reasoning: reasoning, ExternalContent: external,
-		Usage: usageView(usage), ProviderMetadata: providerMetadataView(metadata), CreatedAt: time.Now(),
+		Usage: aichatui.UsageFromProvider(&usage), ProviderMetadata: aichatui.MetadataFromProvider(&metadata), CreatedAt: time.Now(),
 	})
-}
-
-func attachmentViews(attachments []provider.Attachment) []aichatui.AttachmentView {
-	result := make([]aichatui.AttachmentView, 0, len(attachments))
-	for _, attachment := range attachments {
-		result = append(result, aichatui.AttachmentView{
-			ID: attachment.ID, Name: attachment.Name, MediaType: attachment.MediaType, Data: attachment.Data, Size: attachment.Size,
-		})
-	}
-	return result
-}
-
-func usageView(usage provider.Usage) *aichatui.UsageView {
-	return &aichatui.UsageView{
-		InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens, CachedTokens: usage.CachedTokens,
-		CacheWriteTokens: usage.CacheWriteTokens, ReasoningTokens: usage.ReasoningTokens, TotalTokens: usage.TotalTokens,
-	}
-}
-
-func providerMetadataView(metadata provider.ProviderMetadata) *aichatui.ProviderMetadata {
-	return &aichatui.ProviderMetadata{
-		Provider: metadata.Provider, API: metadata.API, Endpoint: metadata.Endpoint, RequestID: metadata.RequestID,
-		ResponseID: metadata.ResponseID, Model: metadata.Model, FinishReason: metadata.FinishReason,
-		ServiceTier: metadata.ServiceTier, EstimatedCostMicros: metadata.EstimatedCostMicros, CostEstimateKind: metadata.CostEstimateKind,
-	}
 }
 
 func (s *session) hasPendingConfirmation() bool {
@@ -2551,47 +2503,6 @@ func requiresUserConfirmation(permissionMode string, spec registry.ToolSpec) boo
 	return aipermission.RequiresConfirmation(permissionMode, ordinary)
 }
 
-func buildToolSystemPrompt(permissionMode string, allowedTools []registry.ToolSpec, scope SessionScope) string {
-	var sb strings.Builder
-	sb.WriteString("你是一个服务器管理助手，可以帮助用户管理和操作他们的服务器。\n\n")
-	sb.WriteString("重要规则：\n")
-	sb.WriteString("1. 当用户请求需要执行操作时，你应该直接调用相应工具，不要先用文字询问是否允许。\n")
-	sb.WriteString("2. 工具权限与危险操作确认由系统负责，你需要专注于理解需求、正确调用工具、基于结果给出结论。\n")
-	sb.WriteString("3. 如果需要多个步骤，请按顺序执行，并始终基于上一步结果推进。\n")
-	sb.WriteString("4. 获取工具结果后，必须先引用关键数据给出结论，不要只给模板化建议。\n")
-	sb.WriteString("5. 只有当前结果不足以支持结论时，才继续调用下一步工具。\n")
-	sb.WriteString("6. 不要重复粘贴大段原始输出，优先提炼关键发现与下一步行动。\n")
-	sb.WriteString("7. 当前权限规则：")
-	sb.WriteString(permissionRule(permissionMode))
-	if scope.Kind == "terminal" {
-		sb.WriteString("\n")
-		sb.WriteString("8. 当前会话范围：你正在嵌入一个终端页签中，默认面向当前终端连接的服务器。")
-		if scope.ServerID != "" {
-			sb.WriteString("除非用户明确要求切换目标，否则工具调用必须使用当前服务器 server_id=")
-			sb.WriteString(scope.ServerID)
-			sb.WriteString("。")
-		} else {
-			sb.WriteString("如果缺少当前服务器 ID，请先说明无法定位目标服务器。")
-		}
-	}
-	sb.WriteString("\n\n")
-	if scope.Kind == "terminal" {
-		sb.WriteString("当前终端上下文：\n")
-		sb.WriteString(formatTerminalScope(scope))
-		sb.WriteString("\n\n")
-	}
-	sb.WriteString("本会话可用工具：\n")
-	for _, tool := range allowedTools {
-		sb.WriteString("- ")
-		sb.WriteString(tool.Name)
-		sb.WriteString(": ")
-		sb.WriteString(tool.Description)
-		sb.WriteString("\n")
-	}
-
-	return sb.String()
-}
-
 func (m *Manager) visibleToolsForSession(s *session) []registry.ToolSpec {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -2603,198 +2514,16 @@ func (m *Manager) visibleToolsForSessionLocked(s *session) []registry.ToolSpec {
 	resultReader, _ := m.sessionToolSpec(s, aitooloutput.ReadResultTool)
 	artifactTool, _ := m.sessionToolSpec(s, aiworkspace.CreateTool)
 	tools = append(tools, resultReader, artifactTool)
-	scope := normalizeSessionScope(s.scope)
-	if scope.Kind != "terminal" || scope.ServerID == "" {
-		return tools
-	}
-
 	filtered := make([]registry.ToolSpec, 0, len(tools))
 	for _, tool := range tools {
-		if tool.Name == "list_servers" {
+		parameters, visible := aitools.ScopedParameters(&s.scope, tool.Name, tool.Parameters)
+		if !visible {
 			continue
 		}
-		if hasServerIDParameter(tool) {
-			tool.Parameters = pinServerIDParameter(tool.Parameters, scope.ServerID)
-		}
+		tool.Parameters = parameters
 		filtered = append(filtered, tool)
 	}
 	return filtered
-}
-
-func hasServerIDParameter(tool registry.ToolSpec) bool {
-	properties, ok := tool.Parameters["properties"].(map[string]interface{})
-	if !ok {
-		return false
-	}
-	_, ok = properties["server_id"]
-	return ok
-}
-
-func pinServerIDParameter(parameters map[string]interface{}, serverID string) map[string]interface{} {
-	next := shallowCopyMap(parameters)
-	properties, ok := next["properties"].(map[string]interface{})
-	if !ok {
-		return next
-	}
-
-	nextProperties := shallowCopyMap(properties)
-	serverIDParam, _ := nextProperties["server_id"].(map[string]interface{})
-	nextServerIDParam := shallowCopyMap(serverIDParam)
-	nextServerIDParam["const"] = serverID
-	nextServerIDParam["default"] = serverID
-	nextServerIDParam["description"] = "当前终端会话服务器 ID。必须使用该值，除非用户明确要求切换目标。"
-	nextProperties["server_id"] = nextServerIDParam
-	next["properties"] = nextProperties
-	return next
-}
-
-func shallowCopyMap(input map[string]interface{}) map[string]interface{} {
-	next := make(map[string]interface{}, len(input))
-	for key, value := range input {
-		next[key] = value
-	}
-	return next
-}
-
-func scopeToolCall(scope SessionScope, toolCall registry.ToolCall) registry.ToolCall {
-	scope = normalizeSessionScope(scope)
-	if scope.Kind != "terminal" || scope.ServerID == "" {
-		return toolCall
-	}
-
-	args := decodeArguments(toolCall.Arguments)
-	if _, ok := args["server_id"]; !ok {
-		return toolCall
-	}
-
-	args["server_id"] = scope.ServerID
-	encoded, err := json.Marshal(args)
-	if err != nil {
-		return toolCall
-	}
-	toolCall.Arguments = encoded
-	return toolCall
-}
-
-func normalizeSessionScope(scope SessionScope) SessionScope {
-	normalized := SessionScope{
-		Kind:              strings.ToLower(strings.TrimSpace(scope.Kind)),
-		TerminalSessionID: strings.TrimSpace(scope.TerminalSessionID),
-		ServerID:          strings.TrimSpace(scope.ServerID),
-		ServerName:        strings.TrimSpace(scope.ServerName),
-		Host:              strings.TrimSpace(scope.Host),
-		Port:              scope.Port,
-		Username:          strings.TrimSpace(scope.Username),
-	}
-
-	switch normalized.Kind {
-	case "terminal":
-		return normalized
-	default:
-		if normalized.TerminalSessionID != "" || normalized.ServerID != "" {
-			normalized.Kind = "terminal"
-			return normalized
-		}
-		return SessionScope{}
-	}
-}
-
-func normalizeSessionScopeFromVariadic(scopes []SessionScope) SessionScope {
-	if len(scopes) == 0 {
-		return SessionScope{}
-	}
-	return normalizeSessionScope(scopes[0])
-}
-
-func sessionMatchesScope(s *session, scope SessionScope) bool {
-	if scope.Kind == "" {
-		return true
-	}
-	return scopeMatches(s.scope, scope)
-}
-
-func scopeMatches(target, filter SessionScope) bool {
-	target = normalizeSessionScope(target)
-	filter = normalizeSessionScope(filter)
-	if filter.Kind == "" {
-		return true
-	}
-	if target.Kind != filter.Kind {
-		return false
-	}
-	if filter.TerminalSessionID != "" && target.TerminalSessionID != filter.TerminalSessionID {
-		return false
-	}
-	if filter.ServerID != "" && target.ServerID != filter.ServerID {
-		return false
-	}
-	return true
-}
-
-func formatTerminalScope(scope SessionScope) string {
-	var lines []string
-	if scope.TerminalSessionID != "" {
-		lines = append(lines, "- terminal_session_id: "+scope.TerminalSessionID)
-	}
-	if scope.ServerID != "" {
-		lines = append(lines, "- server_id: "+scope.ServerID)
-	}
-	if scope.ServerName != "" {
-		lines = append(lines, "- server_name: "+scope.ServerName)
-	}
-	if scope.Username != "" || scope.Host != "" || scope.Port > 0 {
-		target := scope.Username
-		if scope.Host != "" {
-			if target != "" {
-				target += "@"
-			}
-			target += scope.Host
-		}
-		if scope.Port > 0 {
-			target += fmt.Sprintf(":%d", scope.Port)
-		}
-		lines = append(lines, "- connection: "+target)
-	}
-	if len(lines) == 0 {
-		return "- 未提供当前终端目标信息"
-	}
-	return strings.Join(lines, "\n")
-}
-
-func permissionRule(mode string) string {
-	return aipermission.Rule(mode)
-}
-
-func decodeArguments(raw json.RawMessage) map[string]interface{} {
-	if len(raw) == 0 {
-		return nil
-	}
-
-	var args map[string]interface{}
-	if err := json.Unmarshal(raw, &args); err != nil {
-		return map[string]interface{}{
-			"_raw": string(raw),
-		}
-	}
-	return args
-}
-
-func summarizeTask(toolName string, args map[string]interface{}) string {
-	if len(args) == 0 {
-		return toolName
-	}
-
-	for _, key := range []string{"command", "path", "server_id"} {
-		if value, ok := args[key]; ok {
-			text := fmt.Sprint(value)
-			if len(text) > 48 {
-				text = text[:48] + "..."
-			}
-			return text
-		}
-	}
-
-	return toolName
 }
 
 func coalesce(value string, fallback string) string {

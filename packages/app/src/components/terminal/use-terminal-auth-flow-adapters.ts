@@ -2,8 +2,6 @@
 import { useMemo } from "react"
 import { toast } from "@/components/ui/sonner"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
-import { serversApi } from "@/lib/api"
-import { primaryCredentialMethod } from "@/lib/ssh-auth-methods"
 import type { TerminalAuthFlowAdapters } from "./use-terminal-auth-flow"
 
 export interface UseTerminalAuthFlowAdaptersOptions {
@@ -42,41 +40,9 @@ export function useTerminalAuthFlowAdapters({
     }
   }, [workspace?.adapters.apiClient?.terminal?.saveVerifiedCredential, workspace?.adapters.notifier])
 
-  const defaultAuthFlowAdapters = useMemo<TerminalAuthFlowAdapters>(() => ({
-    notifySuccess: toast.success,
-    notifyError: toast.error,
-    requestCredentialSave: ({ title, description, actionLabel, onConfirm }) => {
-      toast(title, {
-        description,
-        action: {
-          label: actionLabel,
-          onClick: onConfirm,
-        },
-      })
-    },
-      saveCredential: ({ serverId, authMethod, secret, password, privateKey, privateKeyPassphrase }) => {
-        const payload = {
-          auth_method: authMethod,
-          verified_connection_credential: true,
-          private_key_passphrase: privateKeyPassphrase,
-          ...(password !== undefined ? { password } : {}),
-          ...(privateKey !== undefined ? { private_key: privateKey } : {}),
-          ...(password === undefined && privateKey === undefined
-            ? primaryCredentialMethod(authMethod) === "key"
-              ? { private_key: secret }
-              : { password: secret }
-            : {}),
-        }
-
-      return serversApi.update(serverId, payload)
-    },
-  }), [])
-
-  if (workspace?.layout === "desktop" && !authFlowAdapters && !workspaceAuthFlowAdapters) {
-    throw new Error("Desktop terminal authentication requires local credential adapters")
-  }
-
   if (workspace?.capabilities.allowedActions) return { notifySuccess: toast.success, notifyError: toast.error }
 
-  return authFlowAdapters ?? workspaceAuthFlowAdapters ?? defaultAuthFlowAdapters
+  const adapters = authFlowAdapters ?? workspaceAuthFlowAdapters
+  if (!adapters) throw new Error("Terminal authentication requires credential adapters")
+  return adapters
 }

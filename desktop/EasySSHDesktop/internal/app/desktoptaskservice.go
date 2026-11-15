@@ -7,8 +7,6 @@ import (
 	"errors"
 	"github.com/easyssh/shared/protocol"
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -769,15 +767,8 @@ func (s *DesktopTaskService) database() (*sql.DB, error) {
 	if s.db != nil {
 		return s.db, nil
 	}
-	if err := os.MkdirAll(desktopDataDir(), 0o755); err != nil {
-		return nil, err
-	}
-	database, err := sql.Open("sqlite", filepath.Join(desktopDataDir(), "easyssh-desktop.sqlite"))
+	database, err := openDesktopDatabase()
 	if err != nil {
-		return nil, err
-	}
-	if err := configureDesktopDatabase(database); err != nil {
-		database.Close()
 		return nil, err
 	}
 	s.db = database

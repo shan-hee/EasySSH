@@ -122,6 +122,14 @@ func Hash(content string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// CheckExpectedHash checks the caller's last read before preparing a new preview.
+func CheckExpectedHash(content string, exists bool, expected string) error {
+	if expected != "" && (!exists || Hash(content) != expected) {
+		return fmt.Errorf("文件在读取后已变化或已被删除（当前 sha256=%s），本次修改未写入；请重新读取后再修改", Hash(content))
+	}
+	return nil
+}
+
 func PrepareWrite(serverID, filePath, before, after string, existed bool) (*FileArtifact, error) {
 	if len(before) > MaxFileBytes || !utf8.ValidString(before) || strings.ContainsRune(before, 0) {
 		return nil, errors.New("original file is not supported for text comparison")

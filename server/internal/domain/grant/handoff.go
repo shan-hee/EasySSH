@@ -17,12 +17,12 @@ import (
 // Handoff has no redirect URL and carries no share secret. The receiver binds a
 // verifier before the initiating browser explicitly approves that receiver.
 type Handoff struct {
-	ID              uuid.UUID  `gorm:"type:char(36);primaryKey" json:"id"`
+	ID              uuid.UUID  `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	SourceSessionID uuid.UUID  `gorm:"type:char(36);not null" json:"-"`
 	ReceiverHash    string     `gorm:"size:64;not null" json:"-"`
 	ReceiverName    string     `gorm:"size:100;not null" json:"receiver_name"`
-	CreatedAt       time.Time  `json:"created_at"`
-	ExpiresAt       time.Time  `json:"expires_at"`
+	CreatedAt       time.Time  `gorm:"not null" json:"created_at"`
+	ExpiresAt       time.Time  `gorm:"not null" json:"expires_at"`
 	ApprovedAt      *time.Time `json:"approved_at"`
 	ConsumedAt      *time.Time `json:"consumed_at"`
 }

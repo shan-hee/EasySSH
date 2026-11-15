@@ -9,7 +9,7 @@ import (
 // SSHHostKey represents a trusted SSH host key for server verification
 // Unknown and changed keys require explicit owner confirmation.
 type SSHHostKey struct {
-	ID          uint           `gorm:"primarykey" json:"id"`
+	ID          uint           `gorm:"primarykey;not null" json:"id"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
 	DeletedAt   gorm.DeletedAt `gorm:"index" json:"-"`
@@ -18,7 +18,7 @@ type SSHHostKey struct {
 	KeyType     string         `gorm:"type:varchar(50);not null;uniqueIndex:idx_host_port_type" json:"key_type"` // ssh-rsa, ecdsa-sha2-nistp256, ssh-ed25519
 	PublicKey   string         `gorm:"type:text;not null" json:"public_key"`                                     // Base64编码的公钥
 	Fingerprint string         `gorm:"type:varchar(100);not null;index" json:"fingerprint"`                      // SHA256指纹（同一服务器多地址可共享）
-	ConfirmedAt time.Time      `json:"confirmed_at"`
+	ConfirmedAt time.Time      `gorm:"not null" json:"confirmed_at"`
 	FirstSeen   time.Time      `gorm:"not null" json:"first_seen"`
 	LastSeen    time.Time      `gorm:"not null" json:"last_seen"`
 	TrustStatus string         `gorm:"type:varchar(20);not null;default:'trusted'" json:"trust_status"` // trusted, changed, revoked

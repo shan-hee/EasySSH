@@ -1,14 +1,13 @@
 import { keepPreviousData, queryOptions } from "@tanstack/react-query"
 
-import { scriptsApi } from "@/lib/api"
+import type { scriptsApi } from "@/lib/api"
 import { dashboardApi } from "@/lib/api/dashboard"
-import { logsApi } from "@/lib/api/logs"
+import type { logsApi } from "@/lib/api/logs"
 import {
   operationRecordsApi,
   type OperationRecordListParams,
 } from "@/lib/api/operation-records"
 import { settingsApi } from "@/lib/api/settings"
-import { taskCenterApi } from "@/lib/api/task-center"
 import type {
   TaskCenterApi,
   TaskRunListParams,
@@ -27,7 +26,7 @@ export function dashboardOverviewQueryOptions() {
 export function scriptsListQueryOptions(
   page = 1,
   pageSize = 20,
-  client: Pick<typeof scriptsApi, "list"> = scriptsApi,
+  client: Pick<typeof scriptsApi, "list">,
 ) {
   return queryOptions({
     queryKey: queryKeys.scripts.list(page, pageSize),
@@ -46,7 +45,7 @@ export const defaultAuditLogListParams: AuditLogListParams = {
 
 export function auditLogsQueryOptions(
   params: AuditLogListParams = defaultAuditLogListParams,
-  client: Pick<typeof logsApi, "list"> = logsApi,
+  client: Pick<typeof logsApi, "list">,
 ) {
   return queryOptions({
     queryKey: queryKeys.logs.audit(params),
@@ -94,7 +93,7 @@ export const defaultTaskCenterListParams: TaskRunListParams = {
 
 export function taskCenterRunsQueryOptions(
   params: TaskRunListParams = defaultTaskCenterListParams,
-  client: Pick<TaskCenterApi, "list"> = taskCenterApi,
+  client: Pick<TaskCenterApi, "list">,
 ) {
   return queryOptions({
     queryKey: queryKeys.taskCenter.runs(params),
@@ -105,7 +104,7 @@ export function taskCenterRunsQueryOptions(
 }
 
 export function taskCenterStatisticsQueryOptions(
-  client: Pick<TaskCenterApi, "statistics"> = taskCenterApi,
+  client: Pick<TaskCenterApi, "statistics">,
 ) {
   return queryOptions({
     queryKey: queryKeys.taskCenter.statistics,

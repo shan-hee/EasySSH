@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/easyssh/shared/aitools"
 	"github.com/easyssh/shared/protocol"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/easyssh/server/internal/domain/aichat/registry"
 	"github.com/easyssh/server/internal/domain/operationrecord"
 	"github.com/easyssh/shared/aichatui"
+	"github.com/easyssh/shared/aipermission"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -25,7 +27,7 @@ type ExecutionOrigin struct {
 }
 
 type ToolExecutionRecord struct {
-	ID          uuid.UUID      `gorm:"type:char(36);primaryKey"`
+	ID          uuid.UUID      `gorm:"type:char(36);primaryKey;not null"`
 	SessionID   string         `gorm:"type:char(36);not null;uniqueIndex:idx_ai_tool_identity,priority:1;index:idx_ai_tool_session_state,priority:1"`
 	TaskID      string         `gorm:"type:char(36);not null;uniqueIndex:idx_ai_tool_identity,priority:2"`
 	Actor       protocol.Actor `gorm:"embedded;embeddedPrefix:actor_"`
@@ -42,13 +44,7 @@ type ToolExecutionRecord struct {
 
 func (ToolExecutionRecord) TableName() string { return "ai_tool_executions" }
 
-func trackedExecutionTool(name string) bool {
-	switch name {
-	case "execute_command", "write_file", "create_directory", "delete_file":
-		return true
-	}
-	return false
-}
+func trackedExecutionTool(name string) bool { return aipermission.ChangesRemoteState(name) }
 
 func (m *Manager) executionOrigin(ctx context.Context, call registry.ToolCall) (*ExecutionOrigin, error) {
 	if !trackedExecutionTool(call.Name) {
@@ -58,7 +54,7 @@ func (m *Manager) executionOrigin(ctx context.Context, call registry.ToolCall) (
 	if !origin.Actor.Valid() {
 		return nil, access.ErrUnauthenticated
 	}
-	id, _ := decodeArguments(call.Arguments)["server_id"].(string)
+	id, _ := aitools.DecodeArguments(call.Arguments)["server_id"].(string)
 	refs, err := m.resolveServerReferences(ctx, []aichatui.ServerReference{{ServerID: strings.TrimSpace(id)}})
 	if err != nil {
 		return origin, err

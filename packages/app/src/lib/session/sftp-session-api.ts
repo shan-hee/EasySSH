@@ -1,4 +1,3 @@
-import { sftpApi } from "@/lib/api/sftp"
 import type { DiskUsageResponse, FileInfo } from "@/lib/sftp-types"
 import type {
   TerminalAuthMethod,
@@ -49,8 +48,6 @@ export interface SftpSessionApi extends SftpDirectoryApi, SftpOperationsApi, Fil
 
 export type SftpSessionApiAdapter = Partial<SftpSessionApi>
 
-export const defaultSftpSessionApi: SftpSessionApi = sftpApi
-
 const completeSftpSessionApiMethods = [
   "authenticate",
   "preAuthenticate",
@@ -90,21 +87,5 @@ export function assertCompleteSftpSessionApi(
 
   if (missingMethods.length > 0) {
     throw new Error(`${context} requires a complete SFTP api adapter: ${missingMethods.join(", ")}`)
-  }
-}
-
-export function createSftpSessionApi(adapter?: SftpSessionApiAdapter): SftpSessionApi {
-  if (!adapter) {
-    return defaultSftpSessionApi
-  }
-
-  // 只覆盖宿主实际提供的方法，未提供的沿用实例接口。
-  const definedAdapter = Object.fromEntries(
-    Object.entries(adapter).filter(([, value]) => value !== undefined),
-  ) as SftpSessionApiAdapter
-
-  return {
-    ...defaultSftpSessionApi,
-    ...definedAdapter,
   }
 }

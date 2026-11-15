@@ -20,7 +20,6 @@ import {
 } from "@/lib/session/sftp-operations";
 import {
   assertCompleteSftpSessionApi,
-  createSftpSessionApi,
   type SftpSessionApi,
   type SftpSessionApiAdapter,
 } from "@/lib/session/sftp-session-api";
@@ -73,7 +72,7 @@ export interface SftpSessionNotifier extends SftpOperationNotifier {
 }
 
 export interface UseSftpSessionOptions {
-  api?: SftpSessionApiAdapter;
+  api: SftpSessionApiAdapter;
   notifier?: SftpSessionNotifier;
   t?: TranslateFunction;
   fileTransferOptions?: UseFileTransferOptions;
@@ -123,15 +122,14 @@ export function useSftpSession(
     authMethod = "password",
     runWithCredentialRetry,
     onHistoryChange,
-  }: UseSftpSessionOptions = {}
+  }: UseSftpSessionOptions
 ) {
   const defaultTranslate: TranslateFunction = (key) => key;
   const tSftp = t ?? defaultTranslate;
   const sessionNotifier = notifier ?? defaultSessionNotifier;
-  const sessionApi = useMemo(() => {
-    const resolved = createSftpSessionApi(api);
-    assertCompleteSftpSessionApi(resolved, "SFTP session file transfer");
-    return resolved;
+  const sessionApi = useMemo<SftpSessionApi>(() => {
+    assertCompleteSftpSessionApi(api, "SFTP session file transfer");
+    return api;
   }, [api]);
   // 缓存随面板/连接身份销毁，避免不同凭据或产品适配器之间共享目录。
   const [directorySession, setDirectorySession] = useState(() => ({

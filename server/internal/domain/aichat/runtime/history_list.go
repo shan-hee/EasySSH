@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/protocol"
 	"strings"
 
@@ -32,7 +33,7 @@ func (s *gormSessionStore) List(ctx context.Context, actor protocol.Actor, query
 	if offset < 0 {
 		offset = 0
 	}
-	filter = normalizeSessionScope(filter)
+	filter = aipermission.NormalizeScope(filter)
 	var total int64
 	items := make([]SessionListItem, 0)
 	options := &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}

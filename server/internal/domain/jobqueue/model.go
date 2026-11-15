@@ -21,7 +21,7 @@ const (
 
 type Job struct {
 	Actor       protocol.Actor `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
-	ID          uuid.UUID      `gorm:"type:char(36);primaryKey" json:"id"`
+	ID          uuid.UUID      `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	Kind        string         `gorm:"size:80;not null;index" json:"kind"`
 	SourceType  string         `gorm:"size:80;not null;index:idx_job_queue_source,priority:1" json:"source_type"`
 	SourceID    string         `gorm:"size:191;not null;index:idx_job_queue_source,priority:2" json:"source_id"`

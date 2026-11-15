@@ -4,27 +4,27 @@ package chatbridge
 import "time"
 
 type Connection struct {
-	Provider string `json:"provider"`
-	AppID    string `json:"app_id,omitempty" gorm:"default:null"`
+	Provider string `gorm:"not null;uniqueIndex:idx_chat_connection_app,priority:1" json:"provider"`
+	AppID    string `json:"app_id,omitempty" gorm:"default:null;uniqueIndex:idx_chat_connection_app,priority:2"`
 	// TokenCipher holds the platform credential: a Telegram bot token or a
 	// Feishu app secret.
-	Revision       int64      `json:"-"`
+	Revision       int64      `gorm:"not null" json:"-"`
 	ID             string     `json:"id" gorm:"primaryKey"`
-	OwnerID        string     `json:"-"`
-	Name           string     `json:"name"`
-	TokenCipher    string     `json:"-"`
-	BotID          int64      `json:"-"`
-	BotUsername    string     `json:"bot_username"`
-	ServerIDsJSON  string     `json:"-"`
-	PermissionMode string     `json:"permission_mode"`
-	Enabled        bool       `json:"enabled"`
-	NextUpdateID   int64      `json:"-"`
-	BindCodeHash   string     `json:"-"`
+	OwnerID        string     `gorm:"not null" json:"-"`
+	Name           string     `gorm:"not null" json:"name"`
+	TokenCipher    string     `gorm:"not null" json:"-"`
+	BotID          int64      `gorm:"not null;uniqueIndex:idx_chat_connections_bot_id" json:"-"`
+	BotUsername    string     `gorm:"not null" json:"bot_username"`
+	ServerIDsJSON  string     `gorm:"not null" json:"-"`
+	PermissionMode string     `gorm:"not null" json:"permission_mode"`
+	Enabled        bool       `gorm:"not null" json:"enabled"`
+	NextUpdateID   int64      `gorm:"not null" json:"-"`
+	BindCodeHash   string     `gorm:"not null" json:"-"`
 	BindExpiresAt  *time.Time `json:"-"`
 	LastPollAt     *time.Time `json:"last_poll_at"`
-	LastError      string     `json:"last_error"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	LastError      string     `gorm:"not null" json:"last_error"`
+	CreatedAt      time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt      time.Time  `gorm:"not null" json:"updated_at"`
 }
 
 func (Connection) TableName() string { return "chat_connections" }
@@ -32,18 +32,18 @@ func (Connection) TableName() string { return "chat_connections" }
 // A binding watches at most its current Agent session; older sessions remain in
 // the AI assistant history and are no longer projected to the chat platform.
 type Binding struct {
-	ExternalUserID   string     `json:"external_user_id,omitempty"`
-	ExternalChatID   string     `json:"-"`
+	ExternalUserID   string     `gorm:"not null" json:"external_user_id,omitempty"`
+	ExternalChatID   string     `gorm:"not null" json:"-"`
 	ID               string     `json:"id" gorm:"primaryKey"`
-	ConnectionID     string     `json:"connection_id"`
-	UserID           int64      `json:"user_id,string"`
-	ChatID           int64      `json:"-"`
-	DisplayName      string     `json:"display_name"`
-	CurrentSessionID string     `json:"current_session_id"`
-	MessageCount     int        `json:"-"`
-	Watching         bool       `json:"-"`
+	ConnectionID     string     `gorm:"not null" json:"connection_id"`
+	UserID           int64      `gorm:"not null" json:"user_id,string"`
+	ChatID           int64      `gorm:"not null" json:"-"`
+	DisplayName      string     `gorm:"not null" json:"display_name"`
+	CurrentSessionID string     `gorm:"not null" json:"current_session_id"`
+	MessageCount     int        `gorm:"not null" json:"-"`
+	Watching         bool       `gorm:"not null" json:"-"`
 	RevokedAt        *time.Time `json:"revoked_at"`
-	CreatedAt        time.Time  `json:"created_at"`
+	CreatedAt        time.Time  `gorm:"not null" json:"created_at"`
 }
 
 func (Binding) TableName() string { return "chat_bindings" }
@@ -57,20 +57,20 @@ func (b Binding) chatAddress() any {
 
 // ReceivedEvent is claimed before dispatch; reconnects must never replay work.
 type ReceivedEvent struct {
-	ID           string `gorm:"primaryKey"`
-	ConnectionID string
-	CreatedAt    time.Time
+	ID           string    `gorm:"primaryKey"`
+	ConnectionID string    `gorm:"not null"`
+	CreatedAt    time.Time `gorm:"not null"`
 }
 
 func (ReceivedEvent) TableName() string { return "chat_received_events" }
 
 type Approval struct {
-	ID        string `gorm:"primaryKey"`
-	BindingID string
-	SessionID string
-	TaskID    string
-	Digest    string
-	ExpiresAt time.Time
+	ID        string    `gorm:"primaryKey"`
+	BindingID string    `gorm:"not null"`
+	SessionID string    `gorm:"not null;uniqueIndex:idx_chat_approvals_session_task,priority:1"`
+	TaskID    string    `gorm:"not null;uniqueIndex:idx_chat_approvals_session_task,priority:2"`
+	Digest    string    `gorm:"not null"`
+	ExpiresAt time.Time `gorm:"not null"`
 	UsedAt    *time.Time
 }
 

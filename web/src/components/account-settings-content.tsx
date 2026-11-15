@@ -1,3 +1,4 @@
+import { sshKeyApi, generateSSHKey } from "@easyssh/app/lib/api/ssh-keys"
 import { AccountSecurity } from "./settings/account-security"
 import { AccountDevices } from "./settings/account-devices"
 import { SyncPanel } from "@easyssh/app/components/settings/sync-panel"
@@ -132,7 +133,7 @@ return (<>
 {activeSection === "security" && <AccountSecurity />}
 {activeSection === "devices" && <AccountDevices />}
 {activeSection === "notifications" && <AccountNotifications />}
-{activeSection === "sshKeys" && <AccountSSHKeys />}
+{activeSection === "sshKeys" && <AccountSSHKeys api={{ ...sshKeyApi, generate: generateSSHKey }} />}
 {activeSection === "sync" && <SyncPanel adapter={webSyncAdapter} desktopMode={false} />}
 {activeSection === "about" && <AccountAbout />}
 </>}

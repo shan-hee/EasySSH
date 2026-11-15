@@ -8,7 +8,7 @@ import (
 
 // NotificationConfig 通知配置模型
 type NotificationConfig struct {
-	ID uint `gorm:"primarykey" json:"id"`
+	ID uint `gorm:"primarykey;not null" json:"id"`
 
 	// SMTP配置（JSON存储）
 	SMTPConfig string `gorm:"type:text" json:"smtp_config"` // JSON: SMTPConfig

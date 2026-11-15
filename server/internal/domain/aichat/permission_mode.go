@@ -41,19 +41,5 @@ func NormalizePermissionMode(raw string) PermissionMode {
 
 // IsToolAllowedInMode 判断指定权限模式是否允许执行工具
 func IsToolAllowedInMode(mode PermissionMode, toolName string) bool {
-	normalized := NormalizePermissionMode(string(mode))
-	switch normalized {
-	case PermissionModeReadOnly:
-		// 严格只读：禁止任何可能修改系统状态的工具
-		switch toolName {
-		case "execute_command", "write_file", "create_directory", "delete_file":
-			return false
-		default:
-			return true
-		}
-	case PermissionModeBalanced, PermissionModePrivileged:
-		return true
-	default:
-		return true
-	}
+	return aipermission.ToolAllowed(string(mode), toolName)
 }

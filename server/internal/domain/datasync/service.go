@@ -33,7 +33,7 @@ func (Document) GormDBDataType(db *gorm.DB, _ *schema.Field) string {
 
 type State struct {
 	Disabled  bool      `gorm:"not null;default:false"`
-	OwnerID   uuid.UUID `gorm:"type:char(36);primaryKey"`
+	OwnerID   uuid.UUID `gorm:"type:char(36);primaryKey;not null"`
 	Document  Document
 	Revision  uint64
 	UpdatedAt time.Time
@@ -44,7 +44,7 @@ func (State) TableName() string { return "sync_states" }
 type Device struct {
 	Revoked    bool                `gorm:"not null;default:false" json:"revoked"`
 	Scopes     syncdata.SyncScopes `gorm:"type:text;serializer:json" json:"scopes"`
-	ID         uuid.UUID           `gorm:"type:char(36);primaryKey" json:"id"`
+	ID         uuid.UUID           `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	OwnerID    uuid.UUID           `gorm:"type:char(36);index;not null" json:"-"`
 	Name       string              `gorm:"size:100;not null" json:"name"`
 	TokenHash  string              `gorm:"size:64;uniqueIndex;not null" json:"-"`
@@ -57,7 +57,7 @@ func (Device) TableName() string { return "owner_devices" }
 
 // Instance identifies a database independently of its public URL.
 type Instance struct {
-	ID   int       `gorm:"primaryKey"`
+	ID   int       `gorm:"primaryKey;not null"`
 	UUID uuid.UUID `gorm:"type:char(36);not null"`
 }
 
@@ -66,7 +66,7 @@ func (Instance) TableName() string { return "sync_instance" }
 // Authorization is a short-lived browser approval request. Only hashes of the
 // polling secret, browser code and eventual device credential are persisted.
 type Authorization struct {
-	ID             uuid.UUID `gorm:"type:char(36);primaryKey"`
+	ID             uuid.UUID `gorm:"type:char(36);primaryKey;not null"`
 	DeviceCodeHash string    `gorm:"size:64;uniqueIndex;not null"`
 	UserCodeHash   string    `gorm:"size:64;uniqueIndex;not null"`
 	TokenHash      string    `gorm:"size:64;not null"`

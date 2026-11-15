@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.10
 // 	protoc        v3.21.12
-// source: internal/proto/metrics.proto
+// source: metrics.proto
 
-package proto
+package monitorwire
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -37,7 +37,7 @@ type SystemInfo struct {
 
 func (x *SystemInfo) Reset() {
 	*x = SystemInfo{}
-	mi := &file_internal_proto_metrics_proto_msgTypes[0]
+	mi := &file_metrics_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -49,7 +49,7 @@ func (x *SystemInfo) String() string {
 func (*SystemInfo) ProtoMessage() {}
 
 func (x *SystemInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_metrics_proto_msgTypes[0]
+	mi := &file_metrics_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -62,7 +62,7 @@ func (x *SystemInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemInfo.ProtoReflect.Descriptor instead.
 func (*SystemInfo) Descriptor() ([]byte, []int) {
-	return file_internal_proto_metrics_proto_rawDescGZIP(), []int{0}
+	return file_metrics_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *SystemInfo) GetOs() string {
@@ -125,7 +125,7 @@ type CPUMetrics struct {
 
 func (x *CPUMetrics) Reset() {
 	*x = CPUMetrics{}
-	mi := &file_internal_proto_metrics_proto_msgTypes[1]
+	mi := &file_metrics_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -137,7 +137,7 @@ func (x *CPUMetrics) String() string {
 func (*CPUMetrics) ProtoMessage() {}
 
 func (x *CPUMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_metrics_proto_msgTypes[1]
+	mi := &file_metrics_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -150,7 +150,7 @@ func (x *CPUMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CPUMetrics.ProtoReflect.Descriptor instead.
 func (*CPUMetrics) Descriptor() ([]byte, []int) {
-	return file_internal_proto_metrics_proto_rawDescGZIP(), []int{1}
+	return file_metrics_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *CPUMetrics) GetUsagePercent() float64 {
@@ -180,7 +180,7 @@ type MemoryMetrics struct {
 
 func (x *MemoryMetrics) Reset() {
 	*x = MemoryMetrics{}
-	mi := &file_internal_proto_metrics_proto_msgTypes[2]
+	mi := &file_metrics_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -192,7 +192,7 @@ func (x *MemoryMetrics) String() string {
 func (*MemoryMetrics) ProtoMessage() {}
 
 func (x *MemoryMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_metrics_proto_msgTypes[2]
+	mi := &file_metrics_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -205,7 +205,7 @@ func (x *MemoryMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemoryMetrics.ProtoReflect.Descriptor instead.
 func (*MemoryMetrics) Descriptor() ([]byte, []int) {
-	return file_internal_proto_metrics_proto_rawDescGZIP(), []int{2}
+	return file_metrics_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *MemoryMetrics) GetRamUsedBytes() uint64 {
@@ -247,7 +247,7 @@ type NetworkMetrics struct {
 
 func (x *NetworkMetrics) Reset() {
 	*x = NetworkMetrics{}
-	mi := &file_internal_proto_metrics_proto_msgTypes[3]
+	mi := &file_metrics_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -259,7 +259,7 @@ func (x *NetworkMetrics) String() string {
 func (*NetworkMetrics) ProtoMessage() {}
 
 func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_metrics_proto_msgTypes[3]
+	mi := &file_metrics_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -272,7 +272,7 @@ func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkMetrics.ProtoReflect.Descriptor instead.
 func (*NetworkMetrics) Descriptor() ([]byte, []int) {
-	return file_internal_proto_metrics_proto_rawDescGZIP(), []int{3}
+	return file_metrics_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *NetworkMetrics) GetBytesRecvPerSec() uint64 {
@@ -301,7 +301,7 @@ type DiskMetrics struct {
 
 func (x *DiskMetrics) Reset() {
 	*x = DiskMetrics{}
-	mi := &file_internal_proto_metrics_proto_msgTypes[4]
+	mi := &file_metrics_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -313,7 +313,7 @@ func (x *DiskMetrics) String() string {
 func (*DiskMetrics) ProtoMessage() {}
 
 func (x *DiskMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_metrics_proto_msgTypes[4]
+	mi := &file_metrics_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -326,7 +326,7 @@ func (x *DiskMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskMetrics.ProtoReflect.Descriptor instead.
 func (*DiskMetrics) Descriptor() ([]byte, []int) {
-	return file_internal_proto_metrics_proto_rawDescGZIP(), []int{4}
+	return file_metrics_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DiskMetrics) GetMountPoint() string {
@@ -362,7 +362,7 @@ type DockerStats struct {
 
 func (x *DockerStats) Reset() {
 	*x = DockerStats{}
-	mi := &file_internal_proto_metrics_proto_msgTypes[5]
+	mi := &file_metrics_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -374,7 +374,7 @@ func (x *DockerStats) String() string {
 func (*DockerStats) ProtoMessage() {}
 
 func (x *DockerStats) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_metrics_proto_msgTypes[5]
+	mi := &file_metrics_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -387,7 +387,7 @@ func (x *DockerStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DockerStats.ProtoReflect.Descriptor instead.
 func (*DockerStats) Descriptor() ([]byte, []int) {
-	return file_internal_proto_metrics_proto_rawDescGZIP(), []int{5}
+	return file_metrics_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DockerStats) GetContainersRunning() uint32 {
@@ -429,7 +429,7 @@ type SystemMetrics struct {
 
 func (x *SystemMetrics) Reset() {
 	*x = SystemMetrics{}
-	mi := &file_internal_proto_metrics_proto_msgTypes[6]
+	mi := &file_metrics_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -441,7 +441,7 @@ func (x *SystemMetrics) String() string {
 func (*SystemMetrics) ProtoMessage() {}
 
 func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_metrics_proto_msgTypes[6]
+	mi := &file_metrics_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -454,7 +454,7 @@ func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemMetrics.ProtoReflect.Descriptor instead.
 func (*SystemMetrics) Descriptor() ([]byte, []int) {
-	return file_internal_proto_metrics_proto_rawDescGZIP(), []int{6}
+	return file_metrics_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *SystemMetrics) GetSystemInfo() *SystemInfo {
@@ -520,11 +520,11 @@ func (x *SystemMetrics) GetDocker() *DockerStats {
 	return nil
 }
 
-var File_internal_proto_metrics_proto protoreflect.FileDescriptor
+var File_metrics_proto protoreflect.FileDescriptor
 
-const file_internal_proto_metrics_proto_rawDesc = "" +
+const file_metrics_proto_rawDesc = "" +
 	"\n" +
-	"\x1cinternal/proto/metrics.proto\x12\amonitor\"\xc8\x01\n" +
+	"\rmetrics.proto\x12\amonitor\"\xc8\x01\n" +
 	"\n" +
 	"SystemInfo\x12\x0e\n" +
 	"\x02os\x18\x01 \x01(\tR\x02os\x12\x1a\n" +
@@ -568,22 +568,22 @@ const file_internal_proto_metrics_proto_rawDesc = "" +
 	"\ttimestamp\x18\x06 \x01(\x03R\ttimestamp\x12,\n" +
 	"\x12disk_total_percent\x18\a \x01(\x01R\x10diskTotalPercent\x12$\n" +
 	"\x0essh_latency_ms\x18\b \x01(\x03R\fsshLatencyMs\x12,\n" +
-	"\x06docker\x18\t \x01(\v2\x14.monitor.DockerStatsR\x06dockerB0Z.github.com/easyssh/server/internal/proto;protob\x06proto3"
+	"\x06docker\x18\t \x01(\v2\x14.monitor.DockerStatsR\x06dockerB3Z1github.com/easyssh/shared/monitorwire;monitorwireb\x06proto3"
 
 var (
-	file_internal_proto_metrics_proto_rawDescOnce sync.Once
-	file_internal_proto_metrics_proto_rawDescData []byte
+	file_metrics_proto_rawDescOnce sync.Once
+	file_metrics_proto_rawDescData []byte
 )
 
-func file_internal_proto_metrics_proto_rawDescGZIP() []byte {
-	file_internal_proto_metrics_proto_rawDescOnce.Do(func() {
-		file_internal_proto_metrics_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_internal_proto_metrics_proto_rawDesc), len(file_internal_proto_metrics_proto_rawDesc)))
+func file_metrics_proto_rawDescGZIP() []byte {
+	file_metrics_proto_rawDescOnce.Do(func() {
+		file_metrics_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_metrics_proto_rawDesc), len(file_metrics_proto_rawDesc)))
 	})
-	return file_internal_proto_metrics_proto_rawDescData
+	return file_metrics_proto_rawDescData
 }
 
-var file_internal_proto_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
-var file_internal_proto_metrics_proto_goTypes = []any{
+var file_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_metrics_proto_goTypes = []any{
 	(*SystemInfo)(nil),     // 0: monitor.SystemInfo
 	(*CPUMetrics)(nil),     // 1: monitor.CPUMetrics
 	(*MemoryMetrics)(nil),  // 2: monitor.MemoryMetrics
@@ -592,7 +592,7 @@ var file_internal_proto_metrics_proto_goTypes = []any{
 	(*DockerStats)(nil),    // 5: monitor.DockerStats
 	(*SystemMetrics)(nil),  // 6: monitor.SystemMetrics
 }
-var file_internal_proto_metrics_proto_depIdxs = []int32{
+var file_metrics_proto_depIdxs = []int32{
 	0, // 0: monitor.SystemMetrics.system_info:type_name -> monitor.SystemInfo
 	1, // 1: monitor.SystemMetrics.cpu:type_name -> monitor.CPUMetrics
 	2, // 2: monitor.SystemMetrics.memory:type_name -> monitor.MemoryMetrics
@@ -606,26 +606,26 @@ var file_internal_proto_metrics_proto_depIdxs = []int32{
 	0, // [0:6] is the sub-list for field type_name
 }
 
-func init() { file_internal_proto_metrics_proto_init() }
-func file_internal_proto_metrics_proto_init() {
-	if File_internal_proto_metrics_proto != nil {
+func init() { file_metrics_proto_init() }
+func file_metrics_proto_init() {
+	if File_metrics_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_proto_metrics_proto_rawDesc), len(file_internal_proto_metrics_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_metrics_proto_rawDesc), len(file_metrics_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_internal_proto_metrics_proto_goTypes,
-		DependencyIndexes: file_internal_proto_metrics_proto_depIdxs,
-		MessageInfos:      file_internal_proto_metrics_proto_msgTypes,
+		GoTypes:           file_metrics_proto_goTypes,
+		DependencyIndexes: file_metrics_proto_depIdxs,
+		MessageInfos:      file_metrics_proto_msgTypes,
 	}.Build()
-	File_internal_proto_metrics_proto = out.File
-	file_internal_proto_metrics_proto_goTypes = nil
-	file_internal_proto_metrics_proto_depIdxs = nil
+	File_metrics_proto = out.File
+	file_metrics_proto_goTypes = nil
+	file_metrics_proto_depIdxs = nil
 }

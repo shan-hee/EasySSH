@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package monitor;
 
-option go_package = "github.com/easyssh/server/internal/proto;proto";
+option go_package = "github.com/easyssh/shared/monitorwire;monitorwire";
 
 // 系统基础信息
 message SystemInfo {

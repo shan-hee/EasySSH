@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/easyssh/server/internal/access"
 	"github.com/easyssh/shared/protocol"
-	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/easyssh/server/internal/domain/sftp"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/shared/aitooloutput"
+	"github.com/easyssh/shared/aitools"
 	"github.com/easyssh/shared/aiworkspace"
 	sharedmonitoring "github.com/easyssh/shared/monitoring"
 	"github.com/easyssh/shared/secretcrypto"
@@ -385,10 +385,6 @@ func (s *ToolExecutorService) executeListDirectory(ctx context.Context, toolCall
 	if args.Path == "" || args.Path == "~" {
 		args.Path = "."
 	}
-	args.Offset = max(args.Offset, 0)
-	if args.Limit <= 0 {
-		args.Limit = 100
-	}
 
 	serverID, err := uuid.Parse(args.ServerID)
 	if err != nil {
@@ -414,46 +410,15 @@ func (s *ToolExecutorService) executeListDirectory(ctx context.Context, toolCall
 		return result, nil
 	}
 
-	// SFTP returns entries in server order; pages need a stable order.
-	slices.SortFunc(listing.Files, func(a, b *sftp.FileInfo) int { return strings.Compare(a.Name, b.Name) })
-	start := min(args.Offset, len(listing.Files))
-	end, size := start, 0
-	files := make([]map[string]interface{}, 0, min(args.Limit, len(listing.Files)-start))
-	// Stop at whole entries within the same output budget as read_file.
-	for ; end < len(listing.Files) && end-start < args.Limit; end++ {
-		f := listing.Files[end]
-		entry := map[string]interface{}{
-			"name":        f.Name,
-			"path":        f.Path,
-			"size":        f.Size,
-			"is_dir":      f.IsDir,
-			"is_link":     f.IsLink,
-			"permission":  f.Permission,
-			"modified_at": f.ModTime,
-			"link_target": f.LinkTarget,
-		}
-		// Measured as aiToolJSON renders it, two levels deep: the first line's
-		// indent and the trailing ",\n" are added separately.
-		rendered, _ := json.MarshalIndent(entry, "    ", "  ")
-		size += len(rendered) + 6
-		if size > aitooloutput.StoredTextBytes && end > start {
-			break
-		}
-		files = append(files, entry)
+	entries := make([]aitools.DirectoryEntry, 0, len(listing.Files))
+	for _, file := range listing.Files {
+		entries = append(entries, aitools.DirectoryEntry{
+			Name: file.Name, Path: file.Path, Size: file.Size,
+			IsDir: file.IsDir, IsLink: file.IsLink, Permission: file.Permission,
+			ModifiedAt: file.ModTime.Format(time.RFC3339Nano), LinkTarget: file.LinkTarget,
+		})
 	}
-
-	page := map[string]interface{}{
-		"path":     listing.Path,
-		"parent":   sftputil.ParentPath(listing.Path),
-		"files":    files,
-		"offset":   start,
-		"total":    len(listing.Files),
-		"can_read": listing.CanRead,
-	}
-	if end < len(listing.Files) {
-		page["next_offset"] = end
-	}
-	result.Content = aiToolJSON("目录列表", page)
+	result.Content = aitools.DirectoryResult(listing.Path, listing.CanRead, entries, args.Offset, args.Limit)
 	return result, nil
 }
 
@@ -471,12 +436,6 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, toolCall *Too
 		result.Content = fmt.Sprintf("参数解析失败: %v", err)
 		result.IsError = true
 		return result, nil
-	}
-
-	args.StartLine = max(args.StartLine, 1)
-	// No upper bound: the output byte budget below is the hard limit.
-	if args.MaxLines <= 0 {
-		args.MaxLines = 100
 	}
 
 	serverID, err := uuid.Parse(args.ServerID)
@@ -510,38 +469,10 @@ func (s *ToolExecutorService) executeReadFile(ctx context.Context, toolCall *Too
 		file.Kind, file.Path, file.ServerID = "read", args.Path, args.ServerID
 		result.Artifact = file
 	}
-	// The hash covers the raw file, so it matches write_file's expected_sha256 check.
-	hash := aiworkspace.Hash(content)
-	lines := strings.Split(strings.TrimSuffix(aitooloutput.Sanitize(content), "\n"), "\n")
-	if args.StartLine > len(lines) {
-		result.Content = fmt.Sprintf("文件 %s 共 %d 行，start_line=%d 超出范围 (sha256=%s)", args.Path, len(lines), args.StartLine, hash)
-		result.IsError = true
-		return result, nil
+	result.Content, err = aitools.ReadFileResult(args.Path, content, args.StartLine, args.MaxLines)
+	if err != nil {
+		result.Content, result.IsError = err.Error(), true
 	}
-	// Stop at whole lines within the output budget so the reported range is exact.
-	end := args.StartLine - 1
-	for size := 0; end < len(lines) && end-args.StartLine+1 < args.MaxLines; end++ {
-		lineBytes := len(lines[end])
-		if end > args.StartLine-1 {
-			lineBytes++ // separator between returned lines
-		}
-		if size+lineBytes > aitooloutput.StoredTextBytes {
-			if end == args.StartLine-1 {
-				result.Content = fmt.Sprintf("文件 %s 第 %d 行超过 %d 字节的单次输出限制，无法按整行返回；请使用有权限的命令按字节范围读取 (sha256=%s)", args.Path, args.StartLine, aitooloutput.StoredTextBytes, hash)
-				result.IsError = true
-				return result, nil
-			}
-			break
-		}
-		size += lineBytes
-	}
-	output := strings.Join(lines[args.StartLine-1:end], "\n")
-	next := ""
-	if end < len(lines) {
-		next = fmt.Sprintf("，继续读取请传 start_line=%d", end+1)
-	}
-
-	result.Content = fmt.Sprintf("文件内容 (%s，第 %d-%d 行，共 %d 行，sha256=%s%s):\n```\n%s\n```", args.Path, args.StartLine, end, len(lines), hash, next, output)
 	return result, nil
 }
 

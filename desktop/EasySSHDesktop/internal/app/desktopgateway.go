@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -52,73 +53,6 @@ type DesktopGateway struct {
 	token       string
 }
 
-type desktopGatewayMessage struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data,omitempty"`
-}
-
-type desktopGatewayResizeMessage struct {
-	Cols int `json:"cols"`
-	Rows int `json:"rows"`
-}
-
-type desktopGatewayPingMessage struct {
-	ID string `json:"id,omitempty"`
-	Ts int64  `json:"ts,omitempty"`
-}
-
-type desktopGatewayFetchCompletionDataMessage struct {
-	IncludeHistory *bool `json:"includeHistory,omitempty"`
-	IncludeScripts *bool `json:"includeScripts,omitempty"`
-}
-
-type desktopGatewaySFTPAuthStartMessage struct {
-	AuthMethod           DesktopServerAuthMethod `json:"auth_method,omitempty"`
-	Password             string                  `json:"password,omitempty"`
-	PrivateKey           string                  `json:"private_key,omitempty"`
-	Secret               string                  `json:"secret,omitempty"`
-	PrivateKeyPassphrase string                  `json:"private_key_passphrase,omitempty"`
-}
-
-type desktopGatewayAuthResponseMessage struct {
-	RequestID             string                  `json:"request_id"`
-	Answers               []string                `json:"answers"`
-	Cancelled             bool                    `json:"cancelled,omitempty"`
-	AuthMethod            DesktopServerAuthMethod `json:"auth_method,omitempty"`
-	Password              string                  `json:"password,omitempty"`
-	PrivateKey            string                  `json:"private_key,omitempty"`
-	PrivateKeyPassphrase  string                  `json:"privateKeyPassphrase,omitempty"`
-	PrivateKeyPassphrase2 string                  `json:"private_key_passphrase,omitempty"`
-}
-
-type desktopGatewayHostKeyResponseMessage struct {
-	RequestID   string `json:"request_id"`
-	Accepted    bool   `json:"accepted"`
-	Fingerprint string `json:"fingerprint"`
-}
-
-type desktopGatewayErrorMessage struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
-}
-
-type desktopGatewayAuthPromptItem struct {
-	Text string `json:"text"`
-	Echo bool   `json:"echo"`
-}
-
-type desktopGatewayAuthPromptMessage struct {
-	RequestID         string                         `json:"request_id"`
-	Kind              string                         `json:"kind,omitempty"`
-	Name              string                         `json:"name,omitempty"`
-	Instruction       string                         `json:"instruction,omitempty"`
-	Prompts           []desktopGatewayAuthPromptItem `json:"prompts"`
-	AuthMethod        DesktopServerAuthMethod        `json:"auth_method,omitempty"`
-	Attempt           int                            `json:"attempt,omitempty"`
-	MaxAttempts       int                            `json:"max_attempts,omitempty"`
-	AttemptsRemaining int                            `json:"attempts_remaining,omitempty"`
-}
-
 type desktopGatewayTerminalInitResult struct {
 	server     DesktopServer
 	client     *ssh.Client
@@ -134,8 +68,8 @@ type desktopGatewayTerminalRuntime struct {
 	conn       *websocket.Conn
 	writeMu    sync.Mutex
 	promptMu   sync.Mutex
-	prompts    map[string]chan desktopGatewayAuthResponseMessage
-	hostKeys   map[string]chan desktopGatewayHostKeyResponseMessage
+	prompts    map[string]chan protocol.TerminalAuthResponse
+	hostKeys   map[string]chan protocol.TerminalHostKeyResponse
 	serverName string
 	serverID   string
 
@@ -143,7 +77,7 @@ type desktopGatewayTerminalRuntime struct {
 	stdin         io.Writer
 	stdinMu       sync.Mutex
 	session       *ssh.Session
-	pendingResize *desktopGatewayResizeMessage
+	pendingResize *protocol.TerminalResize
 }
 
 func NewDesktopGateway(serverService *DesktopServerService, scriptService *DesktopScriptService, monitor *DesktopMonitorService, sftpService *DesktopSFTPService, activity *ActivityLogService) *DesktopGateway {
@@ -234,14 +168,19 @@ func (g *DesktopGateway) Info() DesktopGatewayInfo {
 	}
 }
 
+func desktopGatewayTokenMatches(provided, expected string) bool {
+	// ConstantTimeCompare considers two empty slices equal; empty tokens must never authenticate.
+	return provided != "" && expected != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
+}
+
 func (g *DesktopGateway) validateRequest(r *http.Request) bool {
-	if r.URL.Query().Get("ticket") == g.token {
+	if desktopGatewayTokenMatches(r.URL.Query().Get("ticket"), g.token) {
 		return true
 	}
-	if r.URL.Query().Get("token") == g.token {
+	if desktopGatewayTokenMatches(r.URL.Query().Get("token"), g.token) {
 		return true
 	}
-	if r.Header.Get("X-EasySSH-Desktop-Gateway-Token") == g.token {
+	if desktopGatewayTokenMatches(r.Header.Get("X-EasySSH-Desktop-Gateway-Token"), g.token) {
 		return true
 	}
 	return false
@@ -291,8 +230,8 @@ func (g *DesktopGateway) handleTerminal(w http.ResponseWriter, r *http.Request) 
 	defer cancel()
 	runtime := &desktopGatewayTerminalRuntime{
 		conn:     conn,
-		prompts:  map[string]chan desktopGatewayAuthResponseMessage{},
-		hostKeys: map[string]chan desktopGatewayHostKeyResponseMessage{},
+		prompts:  map[string]chan protocol.TerminalAuthResponse{},
+		hostKeys: map[string]chan protocol.TerminalHostKeyResponse{},
 		serverID: serverID,
 	}
 
@@ -357,28 +296,30 @@ func (g *DesktopGateway) handleTerminal(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	onPing := func(ping desktopGatewayPingMessage) {
+	onPing := func(ping protocol.TerminalPing) {
 		now := time.Now().UnixMilli()
-		response := map[string]any{
-			"id":           ping.ID,
-			"ts":           ping.Ts,
-			"serverRecvTs": now,
+		response := protocol.TerminalPong{
+			ID:           &ping.ID,
+			TS:           &ping.TS,
+			ServerRecvTS: &now,
 		}
 		if latency := sshLatencyMs.Load(); latency >= 0 {
-			response["sshLatencyMs"] = latency
-			response["sshLatencyMeasuredAt"] = sshLatencyMeasuredAt.Load()
+			response.SSHLatencyMs = &latency
+			measuredAt := sshLatencyMeasuredAt.Load()
+			response.SSHLatencyMeasuredAt = &measuredAt
 		}
-		response["serverSendTs"] = time.Now().UnixMilli()
+		sendTS := time.Now().UnixMilli()
+		response.ServerSendTS = &sendTS
 		data, _ := json.Marshal(response)
-		_ = runtime.writeJSON(ctx, desktopGatewayMessage{
-			Type: "pong",
+		_ = runtime.writeJSON(ctx, protocol.TerminalEnvelope{
+			Type: string(protocol.TerminalServerMessageTypePong),
 			Data: data,
 		})
 		refreshSSHLatency()
 	}
 
 	var completionInFlight atomic.Bool
-	onFetchCompletionData := func(options desktopGatewayFetchCompletionDataMessage) {
+	onFetchCompletionData := func(options protocol.TerminalFetchCompletionData) {
 		terminalClientMu.RLock()
 		client := terminalClient
 		terminalClientMu.RUnlock()
@@ -399,9 +340,10 @@ func (g *DesktopGateway) handleTerminal(w http.ResponseWriter, r *http.Request) 
 	defer cancelReader()
 	spawn(func() { runtime.readTerminalMessages(readerCtx, closeDone, onPing, onFetchCompletionData) })
 
-	if err := runtime.writeJSON(ctx, desktopGatewayMessage{
-		Type: "handshake_complete",
-		Data: json.RawMessage(`{"status":"connecting"}`),
+	handshakeData, _ := json.Marshal(protocol.TerminalHandshake{Status: "connecting"})
+	if err := runtime.writeJSON(ctx, protocol.TerminalEnvelope{
+		Type: string(protocol.TerminalServerMessageTypeHandshakeComplete),
+		Data: handshakeData,
 	}); err != nil {
 		return
 	}
@@ -447,9 +389,10 @@ func (g *DesktopGateway) handleTerminal(w http.ResponseWriter, r *http.Request) 
 
 	runtime.setTerminalIO(init.stdin, init.session)
 
-	if err := runtime.writeJSON(ctx, desktopGatewayMessage{
-		Type: "connected",
-		Data: json.RawMessage(fmt.Sprintf(`{"session_id":%q}`, observation.record.Item.SourceID)),
+	connectedData, _ := json.Marshal(protocol.TerminalConnected{SessionID: observation.record.Item.SourceID})
+	if err := runtime.writeJSON(ctx, protocol.TerminalEnvelope{
+		Type: string(protocol.TerminalServerMessageTypeConnected),
+		Data: connectedData,
 	}); err != nil {
 		return
 	}
@@ -486,7 +429,7 @@ func (g *DesktopGateway) handleTerminal(w http.ResponseWriter, r *http.Request) 
 		}
 	default:
 	}
-	_ = runtime.writeJSON(ctx, desktopGatewayMessage{Type: "closed"})
+	_ = runtime.writeJSON(ctx, protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeClosed)})
 }
 
 func (g *DesktopGateway) initializeTerminalSession(
@@ -736,8 +679,8 @@ func (g *DesktopGateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 		return conn.Write(writeCtx, websocket.MessageBinary, data)
 	}
 
-	_ = writeJSON(map[string]any{"type": "handshake_complete", "status": "connecting"})
-	_ = writeJSON(map[string]any{"type": "ready"})
+	_ = writeJSON(protocol.MonitorHandshake{Type: string(protocol.MonitorServerMessageTypeHandshakeComplete), Status: "connecting"})
+	_ = writeJSON(protocol.MonitorReady{Type: string(protocol.MonitorServerMessageTypeReady)})
 
 	done := make(chan struct{})
 	var closeOnce sync.Once
@@ -760,20 +703,17 @@ func (g *DesktopGateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 			if messageType != websocket.MessageText {
 				continue
 			}
-			var message struct {
-				Type string `json:"type"`
-				Ts   int64  `json:"ts,omitempty"`
-			}
+			var message protocol.MonitorPing
 			if err := json.Unmarshal(payload, &message); err != nil {
 				continue
 			}
-			if message.Type == "ping" {
+			if message.Type == string(protocol.MonitorClientMessageTypePing) {
 				serverRecvTs := time.Now().UnixMilli()
-				_ = writeJSON(map[string]any{
-					"type":         "pong",
-					"ts":           message.Ts,
-					"serverRecvTs": serverRecvTs,
-					"serverSendTs": time.Now().UnixMilli(),
+				_ = writeJSON(protocol.MonitorPong{
+					Type:         string(protocol.MonitorServerMessageTypePong),
+					TS:           message.TS,
+					ServerRecvTS: serverRecvTs,
+					ServerSendTS: time.Now().UnixMilli(),
 				})
 			}
 		}
@@ -790,10 +730,16 @@ func (g *DesktopGateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 			TimeoutMs: timeout,
 		})
 		if err != nil {
-			_ = writeJSON(map[string]any{"type": "error", "message": err.Error()})
+			_ = writeJSON(protocol.MonitorError{Type: string(protocol.MonitorServerMessageTypeError),
+				Message: err.Error()})
 			return
 		}
-		metrics := encodeDesktopMonitorSnapshotProto(snapshot, previousSnapshot)
+		metrics, err := encodeDesktopMonitorSnapshotProto(snapshot, previousSnapshot)
+		if err != nil {
+			_ = writeJSON(protocol.MonitorError{Type: string(protocol.MonitorServerMessageTypeError),
+				Message: err.Error()})
+			return
+		}
 		snapshotCopy := snapshot
 		previousSnapshot = &snapshotCopy
 
@@ -841,15 +787,15 @@ func (g *DesktopGateway) handleSFTPAuth(w http.ResponseWriter, r *http.Request) 
 	defer cancel()
 	runtime := &desktopGatewayTerminalRuntime{
 		conn:     conn,
-		prompts:  map[string]chan desktopGatewayAuthResponseMessage{},
-		hostKeys: map[string]chan desktopGatewayHostKeyResponseMessage{},
+		prompts:  map[string]chan protocol.TerminalAuthResponse{},
+		hostKeys: map[string]chan protocol.TerminalHostKeyResponse{},
 		serverID: serverID,
 	}
 
 	writeStatus := func(status string) {
-		data, _ := json.Marshal(map[string]string{"status": status})
-		_ = runtime.writeJSON(ctx, desktopGatewayMessage{
-			Type: "status",
+		data, _ := json.Marshal(protocol.SFTPAuthStatus{Status: status})
+		_ = runtime.writeJSON(ctx, protocol.TerminalEnvelope{
+			Type: string(protocol.SFTPAuthServerMessageTypeStatus),
 			Data: data,
 		})
 	}
@@ -858,12 +804,12 @@ func (g *DesktopGateway) handleSFTPAuth(w http.ResponseWriter, r *http.Request) 
 		if err != nil {
 			message = err.Error()
 		}
-		data, _ := json.Marshal(desktopGatewayErrorMessage{
+		data, _ := json.Marshal(protocol.TerminalError{
 			Error:   code,
 			Message: message,
 		})
-		_ = runtime.writeJSON(ctx, desktopGatewayMessage{
-			Type: "error",
+		_ = runtime.writeJSON(ctx, protocol.TerminalEnvelope{
+			Type: string(protocol.TerminalServerMessageTypeError),
 			Data: data,
 		})
 	}
@@ -888,7 +834,7 @@ func (g *DesktopGateway) handleSFTPAuth(w http.ResponseWriter, r *http.Request) 
 	defer func() { cancelAuth(); _ = conn.CloseNow(); <-readerDone }()
 	go func() { defer close(readerDone); runtime.readSFTPAuthMessages(authCtx, cancelAuth) }()
 
-	authMethod := normalizeDesktopGatewayAuthMethod(start.AuthMethod, server.AuthMethod)
+	authMethod := normalizeDesktopGatewayAuthMethod(DesktopServerAuthMethod(start.AuthMethod), server.AuthMethod)
 	credential := &DesktopSSHCredential{
 		AuthMethod:           authMethod,
 		Secret:               start.Secret,
@@ -921,9 +867,9 @@ func (g *DesktopGateway) handleSFTPAuth(w http.ResponseWriter, r *http.Request) 
 	}
 	g.serverService.setTemporaryCredential(serverID, revision, server.credentialDigest(), *credential)
 
-	data, _ := json.Marshal(map[string]string{"status": "authenticated"})
-	_ = runtime.writeJSON(ctx, desktopGatewayMessage{
-		Type: "authenticated",
+	data, _ := json.Marshal(protocol.SFTPAuthStatus{Status: "authenticated"})
+	_ = runtime.writeJSON(ctx, protocol.TerminalEnvelope{
+		Type: string(protocol.SFTPAuthServerMessageTypeAuthenticated),
 		Data: data,
 	})
 }
@@ -998,7 +944,7 @@ func (g *DesktopGateway) sendTerminalCompletionData(
 	ctx context.Context,
 	runtime *desktopGatewayTerminalRuntime,
 	client *ssh.Client,
-	options desktopGatewayFetchCompletionDataMessage,
+	options protocol.TerminalFetchCompletionData,
 ) {
 	includeHistory := true
 	if options.IncludeHistory != nil {
@@ -1019,7 +965,7 @@ func (g *DesktopGateway) sendTerminalCompletionData(
 		}
 	}
 
-	scripts := []map[string]any{}
+	scripts := []protocol.TerminalCompletionScript{}
 	if includeScripts && g.scriptService != nil {
 		result, err := g.scriptService.List(DesktopScriptListParams{
 			Page:  1,
@@ -1028,26 +974,26 @@ func (g *DesktopGateway) sendTerminalCompletionData(
 		if err != nil {
 			log.Printf("failed to load desktop completion scripts: %v", err)
 		} else {
-			scripts = make([]map[string]any, 0, len(result.Data))
+			scripts = make([]protocol.TerminalCompletionScript, 0, len(result.Data))
 			for _, script := range result.Data {
-				scripts = append(scripts, map[string]any{
-					"name":        script.Name,
-					"content":     script.Content,
-					"description": script.Description,
-					"executions":  script.Executions,
-					"tags":        script.Tags,
+				scripts = append(scripts, protocol.TerminalCompletionScript{
+					Name:        script.Name,
+					Content:     script.Content,
+					Description: script.Description,
+					Executions:  script.Executions,
+					Tags:        script.Tags,
 				})
 			}
 		}
 	}
 
-	data, _ := json.Marshal(map[string]any{
-		"history":   history,
-		"scripts":   scripts,
-		"timestamp": time.Now().UnixMilli(),
+	data, _ := json.Marshal(protocol.TerminalCompletionData{
+		History:   history,
+		Scripts:   scripts,
+		Timestamp: time.Now().UnixMilli(),
 	})
-	_ = runtime.writeJSON(ctx, desktopGatewayMessage{
-		Type: "completion_data",
+	_ = runtime.writeJSON(ctx, protocol.TerminalEnvelope{
+		Type: string(protocol.TerminalServerMessageTypeCompletionData),
 		Data: data,
 	})
 }
@@ -1073,12 +1019,12 @@ func (r *desktopGatewayTerminalRuntime) writeBinary(ctx context.Context, data []
 }
 
 func (r *desktopGatewayTerminalRuntime) sendError(ctx context.Context, code string, message string) {
-	data, _ := json.Marshal(desktopGatewayErrorMessage{
+	data, _ := json.Marshal(protocol.TerminalError{
 		Error:   code,
 		Message: message,
 	})
-	_ = r.writeJSON(ctx, desktopGatewayMessage{
-		Type: "error",
+	_ = r.writeJSON(ctx, protocol.TerminalEnvelope{
+		Type: string(protocol.TerminalServerMessageTypeError),
 		Data: data,
 	})
 }
@@ -1106,8 +1052,8 @@ func (r *desktopGatewayTerminalRuntime) copyTerminalOutput(ctx context.Context, 
 func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 	ctx context.Context,
 	closeDone func(),
-	onPing func(desktopGatewayPingMessage),
-	onFetchCompletionData func(desktopGatewayFetchCompletionDataMessage),
+	onPing func(protocol.TerminalPing),
+	onFetchCompletionData func(protocol.TerminalFetchCompletionData),
 ) {
 	for {
 		messageType, payload, err := r.conn.Read(ctx)
@@ -1125,21 +1071,19 @@ func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 				return
 			}
 		case websocket.MessageText:
-			var message desktopGatewayMessage
+			var message protocol.TerminalEnvelope
 			if err := json.Unmarshal(payload, &message); err != nil {
 				continue
 			}
 			switch message.Type {
-			case "resize":
-				var resize desktopGatewayResizeMessage
+			case string(protocol.TerminalClientMessageTypeResize):
+				var resize protocol.TerminalResize
 				if err := json.Unmarshal(message.Data, &resize); err != nil {
 					continue
 				}
 				r.resizeTerminal(resize.Cols, resize.Rows)
-			case "input":
-				var input struct {
-					Data string `json:"data"`
-				}
+			case string(protocol.TerminalClientMessageTypeInput):
+				var input protocol.TerminalInput
 				if err := json.Unmarshal(message.Data, &input); err != nil {
 					continue
 				}
@@ -1150,26 +1094,26 @@ func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 					closeDone()
 					return
 				}
-			case "ping":
-				var ping desktopGatewayPingMessage
+			case string(protocol.TerminalClientMessageTypePing):
+				var ping protocol.TerminalPing
 				if len(message.Data) > 0 {
 					_ = json.Unmarshal(message.Data, &ping)
 				}
 				onPing(ping)
-			case "auth_response":
-				var response desktopGatewayAuthResponseMessage
+			case string(protocol.TerminalClientMessageTypeAuthResponse):
+				var response protocol.TerminalAuthResponse
 				if err := json.Unmarshal(message.Data, &response); err != nil {
 					continue
 				}
 				r.resolvePrompt(response)
-			case "host_key_response":
-				var response desktopGatewayHostKeyResponseMessage
+			case string(protocol.TerminalClientMessageTypeHostKeyResponse):
+				var response protocol.TerminalHostKeyResponse
 				if err := json.Unmarshal(message.Data, &response); err != nil {
 					continue
 				}
 				r.resolveHostKeyPrompt(response)
-			case "fetch_completion_data":
-				var options desktopGatewayFetchCompletionDataMessage
+			case string(protocol.TerminalClientMessageTypeFetchCompletionData):
+				var options protocol.TerminalFetchCompletionData
 				if len(message.Data) > 0 {
 					_ = json.Unmarshal(message.Data, &options)
 				}
@@ -1179,31 +1123,31 @@ func (r *desktopGatewayTerminalRuntime) readTerminalMessages(
 	}
 }
 
-func (r *desktopGatewayTerminalRuntime) readSFTPAuthStart(ctx context.Context) (desktopGatewaySFTPAuthStartMessage, error) {
+func (r *desktopGatewayTerminalRuntime) readSFTPAuthStart(ctx context.Context) (protocol.SFTPAuthStart, error) {
 	for {
 		messageType, payload, err := r.conn.Read(ctx)
 		if err != nil {
-			return desktopGatewaySFTPAuthStartMessage{}, err
+			return protocol.SFTPAuthStart{}, err
 		}
 		if messageType != websocket.MessageText {
 			continue
 		}
 
-		var message desktopGatewayMessage
+		var message protocol.TerminalEnvelope
 		if err := json.Unmarshal(payload, &message); err != nil {
 			continue
 		}
 		switch message.Type {
-		case "ping":
-			_ = r.writeJSON(ctx, desktopGatewayMessage{
-				Type: "pong",
+		case string(protocol.TerminalClientMessageTypePing):
+			_ = r.writeJSON(ctx, protocol.TerminalEnvelope{
+				Type: string(protocol.TerminalServerMessageTypePong),
 				Data: message.Data,
 			})
-		case "auth_start":
-			var start desktopGatewaySFTPAuthStartMessage
+		case string(protocol.SFTPAuthClientMessageTypeAuthStart):
+			var start protocol.SFTPAuthStart
 			if len(message.Data) > 0 {
 				if err := json.Unmarshal(message.Data, &start); err != nil {
-					return desktopGatewaySFTPAuthStartMessage{}, err
+					return protocol.SFTPAuthStart{}, err
 				}
 			}
 			return start, nil
@@ -1223,24 +1167,24 @@ func (r *desktopGatewayTerminalRuntime) readSFTPAuthMessages(ctx context.Context
 			continue
 		}
 
-		var message desktopGatewayMessage
+		var message protocol.TerminalEnvelope
 		if err := json.Unmarshal(payload, &message); err != nil {
 			continue
 		}
 		switch message.Type {
-		case "ping":
-			_ = r.writeJSON(ctx, desktopGatewayMessage{
-				Type: "pong",
+		case string(protocol.TerminalClientMessageTypePing):
+			_ = r.writeJSON(ctx, protocol.TerminalEnvelope{
+				Type: string(protocol.TerminalServerMessageTypePong),
 				Data: message.Data,
 			})
-		case "auth_response":
-			var response desktopGatewayAuthResponseMessage
+		case string(protocol.TerminalClientMessageTypeAuthResponse):
+			var response protocol.TerminalAuthResponse
 			if err := json.Unmarshal(message.Data, &response); err != nil {
 				continue
 			}
 			r.resolvePrompt(response)
-		case "host_key_response":
-			var response desktopGatewayHostKeyResponseMessage
+		case string(protocol.TerminalClientMessageTypeHostKeyResponse):
+			var response protocol.TerminalHostKeyResponse
 			if err := json.Unmarshal(message.Data, &response); err != nil {
 				continue
 			}
@@ -1250,7 +1194,7 @@ func (r *desktopGatewayTerminalRuntime) readSFTPAuthMessages(ctx context.Context
 }
 
 func (r *desktopGatewayTerminalRuntime) setTerminalIO(stdin io.Writer, session *ssh.Session) {
-	var pending *desktopGatewayResizeMessage
+	var pending *protocol.TerminalResize
 
 	r.terminalMu.Lock()
 	r.stdin = stdin
@@ -1296,7 +1240,7 @@ func (r *desktopGatewayTerminalRuntime) resizeTerminal(cols int, rows int) {
 	r.terminalMu.Lock()
 	session := r.session
 	if session == nil {
-		r.pendingResize = &desktopGatewayResizeMessage{Cols: cols, Rows: rows}
+		r.pendingResize = &protocol.TerminalResize{Cols: cols, Rows: rows}
 		r.terminalMu.Unlock()
 		return
 	}
@@ -1321,7 +1265,7 @@ func (r *desktopGatewayTerminalRuntime) writeTerminalInput(payload []byte) error
 	return err
 }
 
-func (r *desktopGatewayTerminalRuntime) registerPrompt(ch chan desktopGatewayAuthResponseMessage) string {
+func (r *desktopGatewayTerminalRuntime) registerPrompt(ch chan protocol.TerminalAuthResponse) string {
 	id := fmt.Sprintf("desktop-terminal-auth-%d", time.Now().UnixNano())
 	r.promptMu.Lock()
 	r.prompts[id] = ch
@@ -1335,7 +1279,7 @@ func (r *desktopGatewayTerminalRuntime) unregisterPrompt(id string) {
 	r.promptMu.Unlock()
 }
 
-func (r *desktopGatewayTerminalRuntime) resolvePrompt(response desktopGatewayAuthResponseMessage) {
+func (r *desktopGatewayTerminalRuntime) resolvePrompt(response protocol.TerminalAuthResponse) {
 	r.promptMu.Lock()
 	ch := r.prompts[response.RequestID]
 	r.promptMu.Unlock()
@@ -1348,7 +1292,7 @@ func (r *desktopGatewayTerminalRuntime) resolvePrompt(response desktopGatewayAut
 	}
 }
 
-func (r *desktopGatewayTerminalRuntime) registerHostKeyPrompt(ch chan desktopGatewayHostKeyResponseMessage) string {
+func (r *desktopGatewayTerminalRuntime) registerHostKeyPrompt(ch chan protocol.TerminalHostKeyResponse) string {
 	id := fmt.Sprintf("desktop-terminal-host-key-%d", time.Now().UnixNano())
 	r.promptMu.Lock()
 	r.hostKeys[id] = ch
@@ -1362,7 +1306,7 @@ func (r *desktopGatewayTerminalRuntime) unregisterHostKeyPrompt(id string) {
 	r.promptMu.Unlock()
 }
 
-func (r *desktopGatewayTerminalRuntime) resolveHostKeyPrompt(response desktopGatewayHostKeyResponseMessage) {
+func (r *desktopGatewayTerminalRuntime) resolveHostKeyPrompt(response protocol.TerminalHostKeyResponse) {
 	r.promptMu.Lock()
 	ch := r.hostKeys[response.RequestID]
 	r.promptMu.Unlock()
@@ -1381,46 +1325,46 @@ func (r *desktopGatewayTerminalRuntime) requestCredential(
 	attempt int,
 	maxAttempts int,
 ) (*DesktopSSHCredential, error) {
-	ch := make(chan desktopGatewayAuthResponseMessage, 1)
+	ch := make(chan protocol.TerminalAuthResponse, 1)
 	id := r.registerPrompt(ch)
 	defer r.unregisterPrompt(id)
 
 	authMethod = normalizeDesktopGatewayAuthMethod(authMethod, DesktopServerAuthPassword)
 	factors, _ := authMethod.AuthFactors()
-	prompts := make([]desktopGatewayAuthPromptItem, 0, len(factors))
+	prompts := make([]protocol.TerminalAuthPromptItem, 0, len(factors))
 	for _, factor := range factors {
 		switch factor {
 		case DesktopServerAuthFactorPassword:
-			prompts = append(prompts, desktopGatewayAuthPromptItem{
+			prompts = append(prompts, protocol.TerminalAuthPromptItem{
 				Text: "Password",
 				Echo: false,
 			})
 		case DesktopServerAuthFactorKey:
-			prompts = append(prompts, desktopGatewayAuthPromptItem{
+			prompts = append(prompts, protocol.TerminalAuthPromptItem{
 				Text: "Private key",
 				Echo: false,
 			})
 		}
 	}
 	if len(prompts) == 0 {
-		prompts = append(prompts, desktopGatewayAuthPromptItem{
+		prompts = append(prompts, protocol.TerminalAuthPromptItem{
 			Text: "Password",
 			Echo: false,
 		})
 	}
 
-	prompt := desktopGatewayAuthPromptMessage{
+	prompt := protocol.TerminalAuthPrompt{
 		RequestID:         id,
 		Kind:              "credential_retry",
 		Name:              r.serverName,
 		Prompts:           prompts,
-		AuthMethod:        authMethod,
+		AuthMethod:        string(authMethod),
 		Attempt:           attempt,
 		MaxAttempts:       maxAttempts,
 		AttemptsRemaining: maxAttempts - attempt,
 	}
 	data, _ := json.Marshal(prompt)
-	if err := r.writeJSON(ctx, desktopGatewayMessage{Type: "auth_prompt", Data: data}); err != nil {
+	if err := r.writeJSON(ctx, protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeAuthPrompt), Data: data}); err != nil {
 		return nil, err
 	}
 
@@ -1429,7 +1373,7 @@ func (r *desktopGatewayTerminalRuntime) requestCredential(
 		if response.Cancelled {
 			return nil, errors.New("auth_cancelled")
 		}
-		nextMethod := normalizeDesktopGatewayAuthMethod(response.AuthMethod, authMethod)
+		nextMethod := normalizeDesktopGatewayAuthMethod(DesktopServerAuthMethod(response.AuthMethod), authMethod)
 		password, privateKey := desktopGatewayCredentialValues(nextMethod, response)
 
 		return &DesktopSSHCredential{
@@ -1449,23 +1393,23 @@ func (r *desktopGatewayTerminalRuntime) keyboardInteractiveChallenge(ctx context
 			return []string{}, nil
 		}
 
-		ch := make(chan desktopGatewayAuthResponseMessage, 1)
+		ch := make(chan protocol.TerminalAuthResponse, 1)
 		id := r.registerPrompt(ch)
 		defer r.unregisterPrompt(id)
 
-		prompts := make([]desktopGatewayAuthPromptItem, len(questions))
+		prompts := make([]protocol.TerminalAuthPromptItem, len(questions))
 		for index, question := range questions {
 			echo := false
 			if index < len(echos) {
 				echo = echos[index]
 			}
-			prompts[index] = desktopGatewayAuthPromptItem{
+			prompts[index] = protocol.TerminalAuthPromptItem{
 				Text: question,
 				Echo: echo,
 			}
 		}
 
-		prompt := desktopGatewayAuthPromptMessage{
+		prompt := protocol.TerminalAuthPrompt{
 			RequestID:   id,
 			Kind:        "keyboard_interactive",
 			Name:        name,
@@ -1473,7 +1417,7 @@ func (r *desktopGatewayTerminalRuntime) keyboardInteractiveChallenge(ctx context
 			Prompts:     prompts,
 		}
 		data, _ := json.Marshal(prompt)
-		if err := r.writeJSON(ctx, desktopGatewayMessage{Type: "auth_prompt", Data: data}); err != nil {
+		if err := r.writeJSON(ctx, protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeAuthPrompt), Data: data}); err != nil {
 			return nil, err
 		}
 
@@ -1492,19 +1436,22 @@ func (r *desktopGatewayTerminalRuntime) keyboardInteractiveChallenge(ctx context
 }
 
 func (r *desktopGatewayTerminalRuntime) requestHostKeyApproval(ctx context.Context, details *DesktopHostKeyVerificationError) (bool, error) {
-	ch := make(chan desktopGatewayHostKeyResponseMessage, 1)
+	ch := make(chan protocol.TerminalHostKeyResponse, 1)
 	id := r.registerHostKeyPrompt(ch)
 	defer r.unregisterHostKeyPrompt(id)
 
-	payload := struct {
-		RequestID string `json:"request_id"`
-		*DesktopHostKeyVerificationError
-	}{
-		RequestID:                       id,
-		DesktopHostKeyVerificationError: details,
+	payload := protocol.TerminalHostKeyPrompt{
+		RequestID:       id,
+		Host:            details.Host,
+		Port:            details.Port,
+		ExpectedKey:     details.ExpectedKey,
+		ReceivedKey:     details.ReceivedKey,
+		ExpectedKeyType: details.ExpectedKeyType,
+		ReceivedKeyType: details.ReceivedKeyType,
+		Message:         details.Message,
 	}
 	data, _ := json.Marshal(payload)
-	if err := r.writeJSON(ctx, desktopGatewayMessage{Type: "host_key_prompt", Data: data}); err != nil {
+	if err := r.writeJSON(ctx, protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeHostKeyPrompt), Data: data}); err != nil {
 		return false, err
 	}
 
@@ -1527,25 +1474,25 @@ func (r *desktopGatewayTerminalRuntime) requestHostKeyApproval(ctx context.Conte
 }
 
 func (r *desktopGatewayTerminalRuntime) requestPrivateKeyPassphrase(ctx context.Context, attempt int, maxAttempts int) (string, error) {
-	ch := make(chan desktopGatewayAuthResponseMessage, 1)
+	ch := make(chan protocol.TerminalAuthResponse, 1)
 	id := r.registerPrompt(ch)
 	defer r.unregisterPrompt(id)
 
-	prompt := desktopGatewayAuthPromptMessage{
+	prompt := protocol.TerminalAuthPrompt{
 		RequestID: id,
 		Kind:      "private_key_passphrase",
 		Name:      r.serverName,
-		Prompts: []desktopGatewayAuthPromptItem{{
+		Prompts: []protocol.TerminalAuthPromptItem{{
 			Text: "Private key passphrase",
 			Echo: false,
 		}},
-		AuthMethod:        DesktopServerAuthKey,
+		AuthMethod:        string(DesktopServerAuthKey),
 		Attempt:           attempt,
 		MaxAttempts:       maxAttempts,
 		AttemptsRemaining: maxAttempts - attempt,
 	}
 	data, _ := json.Marshal(prompt)
-	if err := r.writeJSON(ctx, desktopGatewayMessage{Type: "auth_prompt", Data: data}); err != nil {
+	if err := r.writeJSON(ctx, protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeAuthPrompt), Data: data}); err != nil {
 		return "", err
 	}
 
@@ -1557,8 +1504,8 @@ func (r *desktopGatewayTerminalRuntime) requestPrivateKeyPassphrase(ctx context.
 		if response.PrivateKeyPassphrase != "" {
 			return response.PrivateKeyPassphrase, nil
 		}
-		if response.PrivateKeyPassphrase2 != "" {
-			return response.PrivateKeyPassphrase2, nil
+		if response.PrivateKeyPassphraseSnake != "" {
+			return response.PrivateKeyPassphraseSnake, nil
 		}
 		return firstString(response.Answers), nil
 	case <-ctx.Done():
@@ -1748,7 +1695,7 @@ func normalizeDesktopGatewayAuthMethod(method DesktopServerAuthMethod, fallback 
 	return fallback
 }
 
-func desktopGatewayCredentialValues(method DesktopServerAuthMethod, response desktopGatewayAuthResponseMessage) (string, string) {
+func desktopGatewayCredentialValues(method DesktopServerAuthMethod, response protocol.TerminalAuthResponse) (string, string) {
 	password := response.Password
 	privateKey := response.PrivateKey
 

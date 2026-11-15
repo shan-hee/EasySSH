@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { sftpApi } from '@/lib/api/sftp';
 import { getOptionalPlatformTransport } from '@/contracts/platform-transport';
 import { usePlatformCredentials } from '@/hooks/use-platform-credentials';
 import type { TransferJob } from '@/lib/transfer-job-types';
@@ -17,7 +16,7 @@ export type { TransferTask }
 export type { FileTransferSftpApi }
 
 export interface UseFileTransferOptions {
-  api?: FileTransferSftpApi;
+  api: FileTransferSftpApi;
   uploadLimiter?: TransferConcurrencyLimiter;
   /** 页面刷新后由本实例接管的未结束任务；不提供则不恢复。 */
   restore?: (job: TransferJob) => boolean;
@@ -28,10 +27,10 @@ export interface UseFileTransferOptions {
  * React 只负责状态持有和登录态触发，传输流程由 session transfer controller 承接。
  */
 export function useFileTransfer({
-  api = sftpApi,
+  api,
   uploadLimiter: providedUploadLimiter,
   restore,
-}: UseFileTransferOptions = {}) {
+}: UseFileTransferOptions) {
   // 未注入平台传输即桌面本机工作区，传输由本机服务提供，无需等待登录凭据。
   const transportReady = usePlatformCredentials() || getOptionalPlatformTransport() === null;
   const restoreRef = useRef(restore);

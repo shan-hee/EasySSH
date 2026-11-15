@@ -60,7 +60,7 @@ type OperationRecord struct {
 
 	Resources []ResourceSnapshot `gorm:"-" json:"resources,omitempty"`
 	Actor     protocol.Actor     `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
-	ID        uuid.UUID          `gorm:"type:char(36);primary_key" json:"id"`
+	ID        uuid.UUID          `gorm:"type:char(36);primary_key;not null" json:"id"`
 
 	Username string     `gorm:"size:50" json:"username"`
 	Type     RecordType `gorm:"type:varchar(30);not null;index:idx_operation_type_time,priority:1" json:"type"`
@@ -174,9 +174,9 @@ type Statistics = protocol.ActivityRecordStatistics
 // server must not erase its historical attribution.
 type ResourceSnapshot = protocol.ActivityResourceSnapshot
 type Resource struct {
-	RecordID uuid.UUID `gorm:"type:char(36);primaryKey" json:"-"`
-	ServerID uuid.UUID `gorm:"type:char(36);primaryKey" json:"server_id"`
-	Name     string    `gorm:"size:120" json:"name"`
+	RecordID uuid.UUID `gorm:"type:char(36);primaryKey;not null" json:"-"`
+	ServerID uuid.UUID `gorm:"type:char(36);primaryKey;not null" json:"server_id"`
+	Name     string    `gorm:"size:120;not null" json:"name"`
 }
 
 func (Resource) TableName() string { return "operation_resources" }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/easyssh/shared/aipermission"
 	"path/filepath"
 	"testing"
 )
@@ -21,7 +22,7 @@ func TestDesktopAISessionPaginationAndScope(t *testing.T) {
 	for i := 0; i < 70; i++ {
 		stamp := fmt.Sprintf("2026-10-03T00:%02d:%02dZ", i/60, i%60)
 		scope := fmt.Sprintf(`{"kind":"terminal","terminal_session_id":"terminal-%d","server_id":"server-1"}`, i%2)
-		err := service.saveSessionRaw(context.Background(), desktopAISessionRecord{ID: fmt.Sprintf("session-%02d", i), ConfigSpaceID: "local", Title: "Stored title", CustomTitle: true, Scope: decodeDesktopAIScope(scope), Status: DesktopAISessionIdle, Messages: []DesktopAIMessageView{{ID: "user", Role: "user", Content: "needle"}, {ID: "reply", Role: "assistant", Content: "answer"}}, Tasks: []DesktopAITaskView{{ID: "task-1"}}, CreatedAt: stamp, UpdatedAt: stamp})
+		err := service.saveSessionRaw(context.Background(), desktopAISessionRecord{ID: fmt.Sprintf("session-%02d", i), ConfigSpaceID: "local", Title: "Stored title", CustomTitle: true, Scope: desktopAIScopeFromShared(aipermission.DecodeScope(scope)), Status: DesktopAISessionIdle, Messages: []DesktopAIMessageView{{ID: "user", Role: "user", Content: "needle"}, {ID: "reply", Role: "assistant", Content: "answer"}}, Tasks: []DesktopAITaskView{{ID: "task-1"}}, CreatedAt: stamp, UpdatedAt: stamp})
 		if err != nil {
 			t.Fatal(err)
 		}

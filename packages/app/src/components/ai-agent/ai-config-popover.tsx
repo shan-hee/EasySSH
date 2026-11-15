@@ -12,15 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SettingsPanel, SettingsPanelToggle } from "@/components/assistant-ui/elements/settings-panel"
 import { toast } from "@/components/ui/sonner"
 import { PageLoading } from "@/components/page-loading"
-import {
-  aiConfigApi,
-  type AIConfig,
-  type AIConfigInput,
-  type AIModelsProbeInput,
-  type AIModelsProbeResult,
+import type {
+  AIConfig,
+  AIConfigInput,
+  AIModelsProbeInput,
+  AIModelsProbeResult,
 } from "@/lib/api/ai-config"
 
-/** 宿主提供的 AI 服务配置读写；未提供时使用实例的所有者接口。 */
 export interface AIAssistantConfigAdapter {
   queryKey?: unknown[]
   getConfig: () => Promise<AIConfig>
@@ -33,7 +31,7 @@ interface AIAssistantConfigPopoverProps {
   onOpenChange: (open: boolean) => void
   trigger: ReactNode
   onSaved?: () => void
-  adapter?: AIAssistantConfigAdapter
+  adapter: AIAssistantConfigAdapter
   side?: "bottom" | "right"
 }
 
@@ -122,7 +120,7 @@ export function AIAssistantConfigPopover({
   const loadConfig = useCallback(async () => {
     setLoading(true)
     try {
-      const nextConfig = await (adapter?.getConfig ?? aiConfigApi.get)()
+      const nextConfig = await adapter.getConfig()
       setConfig(nextConfig)
       setForm(toForm(nextConfig))
     } catch (error: unknown) {
@@ -154,7 +152,7 @@ export function AIAssistantConfigPopover({
     setSaving(true)
     try {
       const apiKey = form.api_key.trim()
-      const saved = await (adapter?.saveConfig ?? aiConfigApi.save)({
+      const saved = await adapter.saveConfig({
         enabled: form.enabled,
         provider: form.provider,
         endpoint: form.endpoint.trim(),
@@ -164,7 +162,7 @@ export function AIAssistantConfigPopover({
       setConfig(saved)
       setForm(toForm(saved))
       toast.success(t("aiConfigSaveSuccess"))
-      await queryClient.invalidateQueries({ queryKey: adapter?.queryKey ?? ["aiConfig"] })
+      await queryClient.invalidateQueries({ queryKey: adapter.queryKey ?? ["aiConfig"] })
       onSaved?.()
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, t("aiConfigSaveFailed")))
@@ -178,7 +176,7 @@ export function AIAssistantConfigPopover({
     setProbingModels(true)
     try {
       const apiKey = form.api_key.trim()
-      const response = await (adapter?.probeModels ?? aiConfigApi.probeModels)({
+      const response = await adapter.probeModels({
         provider: form.provider,
         endpoint: form.endpoint.trim(),
         ...(apiKey ? { api_key: apiKey } : {})

@@ -10,7 +10,7 @@ import (
 
 // SecurityConfig 安全配置模型
 type SecurityConfig struct {
-	ID uint `gorm:"primarykey" json:"id"`
+	ID uint `gorm:"primarykey;not null" json:"id"`
 
 	// 会话管理
 	SessionTimeout  int  `gorm:"not null;default:30" json:"session_timeout"`  // 所有者会话空闲超时（分钟）；有效 Cookie 认证请求续期

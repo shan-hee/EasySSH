@@ -5,7 +5,7 @@
 
 import { getWebSocketUrl } from "@/lib/api-client"
 import { createStreamTicket } from "@/lib/access-ticket"
-import type { AuthMethod } from "@/lib/server-types"
+import type { components } from "@/generated/openapi"
 import type {
   TerminalConnectionPhase,
   TerminalWebSocketAuthTicketProvider,
@@ -33,19 +33,9 @@ export interface TerminalConnectionError extends Error {
   details?: unknown
 }
 
-export interface TerminalHostKeyDetails {
-  host: string
-  port: number
-  expected_key: string
-  received_key: string
-  expected_key_type: string
-  received_key_type: string
-  message?: string
-}
+export type TerminalHostKeyDetails = components["schemas"]["TerminalHostKeyDetails"]
 
-export interface TerminalHostKeyPrompt extends TerminalHostKeyDetails {
-  request_id: string
-}
+export type TerminalHostKeyPrompt = components["schemas"]["TerminalHostKeyPrompt"]
 
 export type TerminalHostKeyResponder = (
   accepted: boolean,
@@ -75,24 +65,13 @@ export interface TerminalWebSocketOptions {
   WebSocketCtor?: TerminalWebSocketConstructor
 }
 
-export interface TerminalAuthPromptItem {
-  text: string
-  echo: boolean
-}
+export type TerminalAuthPromptItem = components["schemas"]["TerminalAuthPromptItem"]
 
-export type TerminalAuthMethod = AuthMethod
+export type TerminalAuthMethod = components["schemas"]["ServerAuthMethod"]
+type TerminalClientMessage = components["schemas"]["TerminalClientMessage"]
+type TerminalServerMessage = components["schemas"]["TerminalServerMessage"]
 
-export interface TerminalAuthPrompt {
-  request_id: string
-  kind?: "keyboard_interactive" | "credential_retry" | "private_key_passphrase" | string
-  name?: string
-  instruction?: string
-  prompts: TerminalAuthPromptItem[]
-  auth_method?: TerminalAuthMethod
-  attempt?: number
-  max_attempts?: number
-  attempts_remaining?: number
-}
+export type TerminalAuthPrompt = components["schemas"]["TerminalAuthPrompt"]
 
 export type TerminalAuthPromptResponder = (
   answers: string[] | TerminalAuthResponsePayload,
@@ -119,14 +98,7 @@ export interface TerminalLatencyData {
   terminalSshLatencyMeasuredAt?: number
 }
 
-interface PongMessageData {
-  id?: string
-  ts?: number
-  serverRecvTs?: number
-  serverSendTs?: number
-  sshLatencyMs?: number
-  sshLatencyMeasuredAt?: number
-}
+type PongMessageData = components["schemas"]["TerminalPong"]
 
 function createTerminalConnectionError(
   message: string,
@@ -176,24 +148,11 @@ const defaultCreateTerminalWebSocketUrl: TerminalWebSocketUrlResolver = ({
 }
 
 // 补全数据响应接口
-export interface CompletionDataResponse {
-  history: string[]
-  scripts: ScriptItem[]
-  timestamp: number
-}
+export type CompletionDataResponse = components["schemas"]["TerminalCompletionData"]
 
-export interface CompletionFetchOptions {
-  includeHistory?: boolean
-  includeScripts?: boolean
-}
+export type CompletionFetchOptions = components["schemas"]["TerminalFetchCompletionData"]
 
-export interface ScriptItem {
-  name: string
-  content: string
-  description: string
-  executions: number
-  tags: string[]
-}
+export type ScriptItem = components["schemas"]["TerminalCompletionScript"]
 
 export class TerminalWebSocket {
   private ws: WebSocket | null = null
@@ -370,7 +329,7 @@ export class TerminalWebSocket {
         } else if (typeof event.data === "string") {
           // JSON 控制消息
           try {
-            const message = JSON.parse(event.data)
+            const message = JSON.parse(event.data) as TerminalServerMessage
             this.handleControlMessage(message)
           } catch (error) {
             console.error("[TerminalWS] 解析消息失败:", error)
@@ -473,7 +432,7 @@ export class TerminalWebSocket {
     this.rows = rows
 
     try {
-      const message = {
+      const message: TerminalClientMessage = {
         type: "resize",
         data: { cols, rows }
       }
@@ -497,7 +456,7 @@ export class TerminalWebSocket {
         includeHistory: options.includeHistory ?? true,
         includeScripts: options.includeScripts ?? true,
       }
-      const message = {
+      const message: TerminalClientMessage = {
         type: "fetch_completion_data",
         data,
       }
@@ -528,7 +487,7 @@ export class TerminalWebSocket {
         this.setPhase("closed")
       }
 
-      const payload: TerminalAuthResponsePayload & { authMethod?: TerminalAuthMethod } = Array.isArray(answersOrPayload)
+      const payload: TerminalAuthResponsePayload & { answers: string[] } = Array.isArray(answersOrPayload)
         ? { answers: answersOrPayload, authMethod }
         : {
             answers: answersOrPayload.answers ?? [],
@@ -538,7 +497,7 @@ export class TerminalWebSocket {
             privateKeyPassphrase: answersOrPayload.privateKeyPassphrase,
           }
 
-      const message = {
+      const message: TerminalClientMessage = {
         type: "auth_response",
         data: {
           request_id: requestId,
@@ -577,7 +536,7 @@ export class TerminalWebSocket {
     }
 
     try {
-      const message = {
+      const message: TerminalClientMessage = {
         type: "host_key_response",
         data: {
           request_id: requestId,
@@ -675,7 +634,7 @@ export class TerminalWebSocket {
   /**
    * 处理控制消息
    */
-  private handleControlMessage(message: { type: string; data?: unknown }): void {
+  private handleControlMessage(message: TerminalServerMessage): void {
     switch (message.type) {
       case "handshake_complete":
         // WebSocket握手完成，SSH连接正在建立
@@ -707,13 +666,13 @@ export class TerminalWebSocket {
       case "completion_data":
         // 补全数据响应
         if (this.onCompletionData && message.data) {
-          this.onCompletionData(message.data as CompletionDataResponse)
+          this.onCompletionData(message.data)
         }
         break
       case "auth_prompt":
         if (message.data && typeof message.data === "object") {
           this.setPhase("authenticating")
-          const prompt = message.data as TerminalAuthPrompt
+          const prompt = message.data
           const respond: TerminalAuthPromptResponder = (answersOrPayload, cancelled = false, authMethod) => {
             this.sendAuthResponse(prompt.request_id, answersOrPayload, cancelled, authMethod)
           }
@@ -728,7 +687,7 @@ export class TerminalWebSocket {
       case "host_key_prompt":
         if (message.data && typeof message.data === "object") {
           this.setPhase("authenticating")
-          const prompt = message.data as TerminalHostKeyPrompt
+          const prompt = message.data
           const respond: TerminalHostKeyResponder = (accepted, fingerprint) => {
             this.sendHostKeyResponse(prompt.request_id, accepted, fingerprint)
           }
@@ -800,7 +759,7 @@ export class TerminalWebSocket {
         this.onDisconnected?.()
         break
       case "pong":
-        this.handlePong(message.data as PongMessageData | undefined)
+        this.handlePong(message.data)
         break
       default:
         console.warn("[TerminalWS] 未知消息类型:", message.type)
@@ -847,7 +806,7 @@ export class TerminalWebSocket {
       this.prunePendingPings(startedAt)
       const id = `${Date.now()}-${++this.pingSeq}`
       this.pendingPings.set(id, startedAt)
-      const message = {
+      const message: TerminalClientMessage = {
         type: "ping",
         data: {
           id,

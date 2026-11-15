@@ -78,7 +78,7 @@ function readStoredViewMode(defaultViewMode: ViewMode): ViewMode {
 interface ServerConnectionConfigsProps {
  onConnect?: (server: Server) => void
  defaultViewMode?: ViewMode
- serverApi?: ServerConnectionConfigsApi
+ serverApi: ServerConnectionConfigsApi
  ready?: boolean
  toolbarActions?: ReactNode
 }
@@ -373,7 +373,7 @@ function SortableServerItem({
 export function ServerConnectionConfigs({
  onConnect,
  defaultViewMode = "list",
- serverApi = defaultServerConnectionConfigsApi,
+ serverApi,
  ready: externalReady,
  toolbarActions,
 }: ServerConnectionConfigsProps) {

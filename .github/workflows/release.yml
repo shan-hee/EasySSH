@@ -49,52 +49,13 @@ jobs:
       - name: 🧪 发布版本脚本回归检查
         run: node --test scripts/release-version.test.mjs
 
-  # 2. 发版前自动化测试
+  # 2. 发版前自动化测试（与日常 CI 同一份定义）
   test:
     name: 🧪 自动化测试
     needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: 📥 检出代码
-        uses: actions/checkout@v5
-
-      - name: 🔧 设置 pnpm
-        uses: pnpm/action-setup@v5
-        with:
-          package_json_file: package.json
-
-      - name: 🔧 设置 Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: 🔧 安装前端工作区依赖
-        run: pnpm install --frozen-lockfile
-
-      - name: 🧱 检查前端导入边界
-        run: pnpm check:boundaries
-
-      - name: 🧪 运行前端测试
-        run: pnpm test
-
-      - name: 🔧 设置 Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: server/go.mod
-          cache-dependency-path: |
-            server/go.sum
-            shared/go.sum
-
-      - name: 🧪 运行 Shared 测试
-        working-directory: shared
-        run: go test ./...
-
-      - name: 🧪 运行 Server 测试
-        working-directory: server
-        run: make test
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
 
   # 3. 构建并推送 Docker 镜像（内部含逐架构 Trivy 安全关卡）
   docker:

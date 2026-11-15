@@ -32,14 +32,6 @@ type SFTPAuthHandler struct {
 	hostKeyService *sshhostkey.Service
 }
 
-type sftpAuthRequest struct {
-	AuthMethod           server.AuthMethod `json:"auth_method,omitempty"`
-	Password             string            `json:"password,omitempty"`
-	PrivateKey           string            `json:"private_key,omitempty"`
-	Secret               string            `json:"secret,omitempty"`
-	PrivateKeyPassphrase string            `json:"private_key_passphrase,omitempty"`
-}
-
 // NewSFTPAuthHandler creates an interactive SFTP authentication handler.
 func NewSFTPAuthHandler(pool *sftpDomain.Pool, serverService server.Service, hostKeyService *sshhostkey.Service) *SFTPAuthHandler {
 	return &SFTPAuthHandler{
@@ -77,17 +69,17 @@ func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
 	}
 
 	writeStatus := func(status string) {
-		payload, _ := json.Marshal(map[string]string{"status": status})
-		if err := safeWriteJSON(Message{Type: "status", Data: payload}); err != nil {
+		payload, _ := json.Marshal(protocol.SFTPAuthStatus{Status: status})
+		if err := safeWriteJSON(protocol.TerminalEnvelope{Type: string(protocol.SFTPAuthServerMessageTypeStatus), Data: payload}); err != nil {
 			log.Printf("[SFTPAuthWS] failed to send status: %v", err)
 		}
 	}
 	writeError := func(code string, err error) {
-		payload, _ := json.Marshal(map[string]string{
-			"error":   code,
-			"message": err.Error(),
+		payload, _ := json.Marshal(protocol.TerminalError{
+			Error:   code,
+			Message: err.Error(),
 		})
-		if writeErr := safeWriteJSON(Message{Type: "error", Data: payload}); writeErr != nil {
+		if writeErr := safeWriteJSON(protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeError), Data: payload}); writeErr != nil {
 			log.Printf("[SFTPAuthWS] failed to send error: %v", writeErr)
 		}
 	}
@@ -114,7 +106,7 @@ func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
 	}
 
 	credential := sftpDomain.Credential{
-		AuthMethod:           req.AuthMethod,
+		AuthMethod:           server.AuthMethod(req.AuthMethod),
 		Secret:               req.Secret,
 		Password:             req.Password,
 		PrivateKey:           req.PrivateKey,
@@ -143,8 +135,8 @@ func (h *SFTPAuthHandler) HandleAuthWebSocket(c *gin.Context) {
 	}
 	client.Release()
 
-	payload, _ := json.Marshal(map[string]string{"status": "authenticated"})
-	if err := safeWriteJSON(Message{Type: "authenticated", Data: payload}); err != nil {
+	payload, _ := json.Marshal(protocol.SFTPAuthStatus{Status: "authenticated"})
+	if err := safeWriteJSON(protocol.TerminalEnvelope{Type: string(protocol.SFTPAuthServerMessageTypeAuthenticated), Data: payload}); err != nil {
 		log.Printf("[SFTPAuthWS] failed to send authenticated: %v", err)
 	}
 }
@@ -194,41 +186,41 @@ func (h *SFTPAuthHandler) hostKeyCallback(ctx context.Context, scope access.Scop
 	)
 }
 
-func (h *SFTPAuthHandler) readInitialAuthRequest(conn *websocket.Conn, writeJSON func(interface{}) error) (sftpAuthRequest, error) {
+func (h *SFTPAuthHandler) readInitialAuthRequest(conn *websocket.Conn, writeJSON func(interface{}) error) (protocol.SFTPAuthStart, error) {
 	defer func() {
 		_ = conn.SetReadDeadline(time.Time{})
 	}()
 
 	for {
 		if err := conn.SetReadDeadline(time.Now().Add(terminalSSHAuthChallengeTimeout)); err != nil {
-			return sftpAuthRequest{}, fmt.Errorf("failed to set authentication request timeout: %w", err)
+			return protocol.SFTPAuthStart{}, fmt.Errorf("failed to set authentication request timeout: %w", err)
 		}
 
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
-			return sftpAuthRequest{}, fmt.Errorf("failed to read authentication request: %w", err)
+			return protocol.SFTPAuthStart{}, fmt.Errorf("failed to read authentication request: %w", err)
 		}
 		if messageType != websocket.TextMessage {
 			continue
 		}
 
-		var msg Message
+		var msg protocol.TerminalEnvelope
 		if err := json.Unmarshal(message, &msg); err != nil {
 			log.Printf("[SFTPAuthWS] failed to parse message: %v", err)
 			continue
 		}
-		if msg.Type == "ping" {
+		if msg.Type == string(protocol.TerminalClientMessageTypePing) {
 			writeTerminalPong(writeJSON, msg.Data)
 			continue
 		}
-		if msg.Type != "auth_start" {
+		if msg.Type != string(protocol.SFTPAuthClientMessageTypeAuthStart) {
 			continue
 		}
 
-		var req sftpAuthRequest
+		var req protocol.SFTPAuthStart
 		if len(msg.Data) > 0 {
 			if err := json.Unmarshal(msg.Data, &req); err != nil {
-				return sftpAuthRequest{}, fmt.Errorf("failed to parse authentication request: %w", err)
+				return protocol.SFTPAuthStart{}, fmt.Errorf("failed to parse authentication request: %w", err)
 			}
 		}
 		return req, nil

@@ -29,8 +29,8 @@ type sessionItemRecord struct {
 
 type AIMessageRecord struct {
 	ContentID   *uuid.UUID `gorm:"type:char(36);index:idx_ai_messages_content"`
-	SessionID   string     `gorm:"type:char(36);primaryKey;index:idx_ai_messages_order,priority:1"`
-	ItemID      string     `gorm:"type:varchar(256);primaryKey"`
+	SessionID   string     `gorm:"type:char(36);primaryKey;index:idx_ai_messages_order,priority:1;not null"`
+	ItemID      string     `gorm:"type:varchar(256);primaryKey;not null"`
 	Position    int        `gorm:"not null;index:idx_ai_messages_order,priority:2"`
 	Payload     jsonText   `gorm:"type:text;not null"`
 	ContentHash string     `gorm:"type:char(64);not null"`
@@ -40,8 +40,8 @@ func (AIMessageRecord) TableName() string { return "ai_messages" }
 
 type AIModelMessageRecord struct {
 	ContentID   *uuid.UUID `gorm:"type:char(36);index:idx_ai_model_messages_content"`
-	SessionID   string     `gorm:"type:char(36);primaryKey;index:idx_ai_model_messages_order,priority:1"`
-	ItemID      string     `gorm:"type:varchar(256);primaryKey"`
+	SessionID   string     `gorm:"type:char(36);primaryKey;index:idx_ai_model_messages_order,priority:1;not null"`
+	ItemID      string     `gorm:"type:varchar(256);primaryKey;not null"`
 	Position    int        `gorm:"not null;index:idx_ai_model_messages_order,priority:2"`
 	Payload     jsonText   `gorm:"type:text;not null"`
 	ContentHash string     `gorm:"type:char(64);not null"`
@@ -54,8 +54,8 @@ type AISessionTaskRecord struct {
 	PublicPayload     jsonText   `gorm:"type:text;not null"`
 	PublicContentID   *uuid.UUID `gorm:"type:char(36);index:idx_ai_session_tasks_public_content"`
 	ContentID         *uuid.UUID `gorm:"type:char(36);index:idx_ai_session_tasks_content"`
-	SessionID         string     `gorm:"type:char(36);primaryKey;index:idx_ai_session_tasks_order,priority:1"`
-	ItemID            string     `gorm:"type:varchar(256);primaryKey"`
+	SessionID         string     `gorm:"type:char(36);primaryKey;index:idx_ai_session_tasks_order,priority:1;not null"`
+	ItemID            string     `gorm:"type:varchar(256);primaryKey;not null"`
 	Position          int        `gorm:"not null;index:idx_ai_session_tasks_order,priority:2"`
 	Payload           jsonText   `gorm:"type:text;not null"`
 	ContentHash       string     `gorm:"type:char(64);not null"`

@@ -12,7 +12,7 @@ import (
 )
 
 type Alias struct {
-	AliasID     uuid.UUID `gorm:"type:char(36);primaryKey"`
+	AliasID     uuid.UUID `gorm:"type:char(36);primaryKey;not null"`
 	CanonicalID uuid.UUID `gorm:"type:char(36);not null"`
 	Fingerprint string    `gorm:"size:100;not null"`
 }

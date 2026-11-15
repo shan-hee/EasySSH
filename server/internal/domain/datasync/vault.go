@@ -20,9 +20,9 @@ import (
 )
 
 type VaultDocument struct {
-	OwnerID     uuid.UUID `gorm:"type:char(36);primaryKey"`
-	Kind        string    `gorm:"size:20;primaryKey"`
-	ResourceID  string    `gorm:"size:36;primaryKey"`
+	OwnerID     uuid.UUID `gorm:"type:char(36);primaryKey;not null"`
+	Kind        string    `gorm:"size:20;primaryKey;not null"`
+	ResourceID  string    `gorm:"size:36;primaryKey;not null"`
 	Document    Document
 	CurrentRef  string                   `gorm:"size:36"`
 	AppliedRef  string                   `gorm:"size:36"`
@@ -35,8 +35,8 @@ type VaultDocument struct {
 func (VaultDocument) TableName() string { return "sync_vault_documents" }
 
 type VaultObject struct {
-	OwnerID    uuid.UUID `gorm:"type:char(36);primaryKey"`
-	ID         string    `gorm:"size:64;primaryKey"`
+	OwnerID    uuid.UUID `gorm:"type:char(36);primaryKey;not null"`
+	ID         string    `gorm:"size:64;primaryKey;not null"`
 	Kind       string    `gorm:"size:20;not null"`
 	ResourceID string    `gorm:"size:36;not null"`
 	Ciphertext Document

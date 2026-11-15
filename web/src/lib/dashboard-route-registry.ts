@@ -1,3 +1,6 @@
+import { scriptsApi } from "@easyssh/app/lib/api/scripts"
+import { logsApi } from "@easyssh/app/lib/api/logs"
+import { taskCenterApi } from "@easyssh/app/lib/api/task-center"
 import type { ComponentType } from "react"
 import type { QueryClient } from "@tanstack/react-query"
 import { getSettingsSection } from "@easyssh/app/lib/settings-section-registry"
@@ -64,7 +67,7 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
       return queryClient.ensureQueryData({ ...auditLogsQueryOptions({
         ...defaultAuditLogListParams,
         action,
-      }), revalidateIfStale: true })
+      }, logsApi), revalidateIfStale: true })
     },
   },
   {
@@ -87,8 +90,8 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
     url: "/dashboard/scripts",
     namespaces: ["scripts"],
     path: "scripts",
-    load: () => import("@easyssh/app/components/dashboard/scripts/scripts-page"),
-    loadData: (queryClient) => queryClient.ensureQueryData({ ...scriptsListQueryOptions(), revalidateIfStale: true }),
+    load: () => import("@easyssh/app/pages/dashboard/scripts-page"),
+    loadData: (queryClient) => queryClient.ensureQueryData({ ...scriptsListQueryOptions(undefined, undefined, scriptsApi), revalidateIfStale: true }),
   },
   {
     url: "/dashboard/tasks",
@@ -97,8 +100,8 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
     load: () => import("@easyssh/app/pages/dashboard/task-center-page"),
     loadData: async (queryClient) => {
       await Promise.all([
-        queryClient.ensureQueryData({ ...taskCenterRunsQueryOptions(), revalidateIfStale: true }),
-        queryClient.ensureQueryData({ ...taskCenterStatisticsQueryOptions(), revalidateIfStale: true }),
+        queryClient.ensureQueryData({ ...taskCenterRunsQueryOptions(undefined, taskCenterApi), revalidateIfStale: true }),
+        queryClient.ensureQueryData({ ...taskCenterStatisticsQueryOptions(taskCenterApi), revalidateIfStale: true }),
       ])
     },
   },

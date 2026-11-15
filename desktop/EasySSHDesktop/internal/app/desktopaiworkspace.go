@@ -82,9 +82,16 @@ func (s *DesktopAIService) prepareDesktopWrite(ctx context.Context, args map[str
 	if !ok || serverID == "" || filePath == "" {
 		return nil, errors.New("server_id, path and string content are required")
 	}
+	expectedHash, ok := args["expected_sha256"].(string)
+	if args["expected_sha256"] != nil && !ok {
+		return nil, errors.New("expected_sha256 must be a string")
+	}
 	before, err := s.sftpService.ReadFileContext(ctx, DesktopSFTPPathInput{ServerID: serverID, Path: filePath})
 	existed := !errors.Is(err, os.ErrNotExist)
 	if err != nil && existed {
+		return nil, err
+	}
+	if err := aiworkspace.CheckExpectedHash(before, existed, expectedHash); err != nil {
 		return nil, err
 	}
 	return aiworkspace.PrepareWrite(serverID, filePath, before, content, existed)

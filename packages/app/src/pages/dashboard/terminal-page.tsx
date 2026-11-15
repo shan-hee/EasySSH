@@ -1,3 +1,8 @@
+import { webAIAssistantAdapters, webAISettingsAdapter } from "./web-ai-adapters"
+import { dockerApi } from "@/lib/api/docker"
+import { scriptsApi } from "@/lib/api/scripts"
+import { systemInfoApi } from "@/lib/api/system-info"
+
 import { useEffect, useMemo, useRef } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "@/components/ui/sonner"
@@ -46,6 +51,9 @@ function TerminalPageContent() {
   const workspaceAdapters = useMemo(() => createWorkspaceAdapters({
     apiClient: {
       sftp: sftpApi,
+      docker: dockerApi,
+      scripts: scriptsApi,
+      systemInfo: systemInfoApi,
       terminal: {
           saveVerifiedCredential: ({ serverId, authMethod, secret, password, privateKey, privateKeyPassphrase }) => {
             const payload = {
@@ -163,6 +171,7 @@ function TerminalPageContent() {
     >
       <div className="flex min-h-0 flex-1 flex-col min-w-0 overflow-hidden">
         <Workbench enableVnc enableRdp
+          aiAssistantAdapters={{ ...webAIAssistantAdapters, aiSettings: webAISettingsAdapter }}
           workbench={workbench}
           serverApi={defaultServerConnectionConfigsApi}
           serversReady={ready}

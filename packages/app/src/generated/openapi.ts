@@ -3687,6 +3687,262 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        TerminalClientMessageType: "input" | "resize" | "ping" | "auth_response" | "host_key_response" | "fetch_completion_data";
+        /** @enum {string} */
+        TerminalServerMessageType: "auth_prompt" | "host_key_prompt" | "pong" | "handshake_complete" | "connected" | "closed" | "completion_data" | "error" | "output";
+        /** @enum {string} */
+        SFTPAuthClientMessageType: "auth_start" | "ping" | "auth_response" | "host_key_response";
+        /** @enum {string} */
+        SFTPAuthServerMessageType: "status" | "authenticated" | "auth_prompt" | "host_key_prompt" | "pong" | "error";
+        /** @enum {string} */
+        MonitorClientMessageType: "ping";
+        /** @enum {string} */
+        MonitorServerMessageType: "handshake_complete" | "ready" | "pong" | "error";
+        /** @description JSON envelope for terminal and SFTP authentication. Binary terminal frames are raw bytes. Server closed sends data:null; desktop gateway omits data. Wails handshake_complete and connected also omit data. Unknown types remain ignored by receivers. */
+        TerminalEnvelope: {
+            type: components["schemas"]["TerminalClientMessageType"] | components["schemas"]["TerminalServerMessageType"] | components["schemas"]["SFTPAuthClientMessageType"] | components["schemas"]["SFTPAuthServerMessageType"];
+            data?: unknown;
+        };
+        TerminalInput: {
+            data: string;
+        };
+        TerminalResize: {
+            cols: number;
+            rows: number;
+        };
+        TerminalPing: {
+            id?: string;
+            /** Format: int64 */
+            ts?: number;
+        };
+        /** @description Terminal/server SFTP pongs always include id, ts and server timestamps, even when empty/zero. SSH latency is included only after measurement. Desktop SFTP echoes the ping data unchanged; Wails echoes ping fields and adds timestamps. Optional fields describe this union without changing emitters. */
+        TerminalPong: {
+            id?: string;
+            /** Format: int64 */
+            ts?: number;
+            /** Format: int64 */
+            serverRecvTs?: number;
+            /** Format: int64 */
+            serverSendTs?: number;
+            /** Format: int64 */
+            sshLatencyMs?: number;
+            /** Format: int64 */
+            sshLatencyMeasuredAt?: number;
+        };
+        TerminalAuthPromptItem: {
+            text: string;
+            echo: boolean;
+        };
+        /** @description Go emitters omit empty strings and zero counters, including attempts_remaining=0. Wails includes its counters even when zero. */
+        TerminalAuthPrompt: {
+            request_id: string;
+            kind?: string;
+            name?: string;
+            instruction?: string;
+            prompts: components["schemas"]["TerminalAuthPromptItem"][];
+            auth_method?: components["schemas"]["ServerAuthMethod"];
+            attempt?: number;
+            max_attempts?: number;
+            attempts_remaining?: number;
+        };
+        /** @description Passphrase fields are optional reader extensions. Desktop gateway prefers camelCase then snake_case then answers[0]; server continues to use answers[0]. Web sends snake_case; Wails passphrase prompt resolves from answers[0]. */
+        TerminalAuthResponse: {
+            request_id: string;
+            answers: string[];
+            cancelled?: boolean;
+            auth_method?: components["schemas"]["ServerAuthMethod"];
+            password?: string;
+            private_key?: string;
+            privateKeyPassphrase?: string;
+            private_key_passphrase?: string;
+        };
+        TerminalHostKeyDetails: {
+            host: string;
+            port: number;
+            expected_key: string;
+            received_key: string;
+            expected_key_type: string;
+            received_key_type: string;
+            message: string;
+        };
+        TerminalHostKeyPrompt: components["schemas"]["TerminalHostKeyDetails"] & {
+            request_id: string;
+        };
+        TerminalHostKeyResponse: {
+            request_id: string;
+            accepted: boolean;
+            fingerprint?: string;
+        };
+        TerminalOutput: {
+            /** @description Output stream name, conventionally stdout or stderr. */
+            type: string;
+            data: string;
+        };
+        TerminalError: {
+            error: string;
+            message: string;
+            details?: unknown;
+        };
+        TerminalFetchCompletionData: {
+            includeHistory?: boolean;
+            includeScripts?: boolean;
+        };
+        TerminalCompletionScript: {
+            name: string;
+            content: string;
+            description: string;
+            executions: number;
+            tags: string[] | null;
+        };
+        TerminalCompletionData: {
+            history: string[] | null;
+            scripts: components["schemas"]["TerminalCompletionScript"][];
+            /** Format: int64 */
+            timestamp: number;
+        };
+        TerminalHandshake: {
+            status: string;
+        };
+        TerminalConnected: {
+            session_id: string;
+        };
+        SFTPAuthStart: {
+            auth_method?: components["schemas"]["ServerAuthMethod"];
+            password?: string;
+            private_key?: string;
+            secret?: string;
+            private_key_passphrase?: string;
+        };
+        SFTPAuthStatus: {
+            status: string;
+        };
+        TerminalClientMessageInput: {
+            /** @enum {string} */
+            type: "input";
+            data: components["schemas"]["TerminalInput"];
+        };
+        TerminalClientMessageResize: {
+            /** @enum {string} */
+            type: "resize";
+            data: components["schemas"]["TerminalResize"];
+        };
+        TerminalClientMessagePing: {
+            /** @enum {string} */
+            type: "ping";
+            data?: components["schemas"]["TerminalPing"];
+        };
+        TerminalClientMessageAuthResponse: {
+            /** @enum {string} */
+            type: "auth_response";
+            data: components["schemas"]["TerminalAuthResponse"];
+        };
+        TerminalClientMessageHostKeyResponse: {
+            /** @enum {string} */
+            type: "host_key_response";
+            data: components["schemas"]["TerminalHostKeyResponse"];
+        };
+        TerminalClientMessageFetchCompletionData: {
+            /** @enum {string} */
+            type: "fetch_completion_data";
+            data?: components["schemas"]["TerminalFetchCompletionData"];
+        };
+        TerminalClientMessage: components["schemas"]["TerminalClientMessageInput"] | components["schemas"]["TerminalClientMessageResize"] | components["schemas"]["TerminalClientMessagePing"] | components["schemas"]["TerminalClientMessageAuthResponse"] | components["schemas"]["TerminalClientMessageHostKeyResponse"] | components["schemas"]["TerminalClientMessageFetchCompletionData"];
+        TerminalServerMessageAuthPrompt: {
+            /** @enum {string} */
+            type: "auth_prompt";
+            data: components["schemas"]["TerminalAuthPrompt"];
+        };
+        TerminalServerMessageHostKeyPrompt: {
+            /** @enum {string} */
+            type: "host_key_prompt";
+            data: components["schemas"]["TerminalHostKeyPrompt"];
+        };
+        TerminalServerMessagePong: {
+            /** @enum {string} */
+            type: "pong";
+            data?: components["schemas"]["TerminalPong"];
+        };
+        TerminalServerMessageHandshakeComplete: {
+            /** @enum {string} */
+            type: "handshake_complete";
+            data?: components["schemas"]["TerminalHandshake"];
+        };
+        TerminalServerMessageConnected: {
+            /** @enum {string} */
+            type: "connected";
+            data?: components["schemas"]["TerminalConnected"];
+        };
+        TerminalServerMessageClosed: {
+            /** @enum {string} */
+            type: "closed";
+            /** @enum {unknown|null} */
+            data?: null;
+        };
+        TerminalServerMessageCompletionData: {
+            /** @enum {string} */
+            type: "completion_data";
+            data: components["schemas"]["TerminalCompletionData"];
+        };
+        TerminalServerMessageError: {
+            /** @enum {string} */
+            type: "error";
+            data: components["schemas"]["TerminalError"];
+        };
+        TerminalServerMessageOutput: {
+            /** @enum {string} */
+            type: "output";
+            data: components["schemas"]["TerminalOutput"];
+        };
+        TerminalServerMessage: components["schemas"]["TerminalServerMessageAuthPrompt"] | components["schemas"]["TerminalServerMessageHostKeyPrompt"] | components["schemas"]["TerminalServerMessagePong"] | components["schemas"]["TerminalServerMessageHandshakeComplete"] | components["schemas"]["TerminalServerMessageConnected"] | components["schemas"]["TerminalServerMessageClosed"] | components["schemas"]["TerminalServerMessageCompletionData"] | components["schemas"]["TerminalServerMessageError"] | components["schemas"]["TerminalServerMessageOutput"];
+        SFTPAuthClientMessage: components["schemas"]["SFTPAuthStartMessage"] | components["schemas"]["TerminalClientMessagePing"] | components["schemas"]["TerminalClientMessageAuthResponse"] | components["schemas"]["TerminalClientMessageHostKeyResponse"];
+        SFTPAuthStartMessage: {
+            /** @enum {string} */
+            type: "auth_start";
+            data?: components["schemas"]["SFTPAuthStart"];
+        };
+        SFTPAuthStatusMessage: {
+            /** @enum {string} */
+            type: "status";
+            data: components["schemas"]["SFTPAuthStatus"];
+        };
+        SFTPAuthenticatedMessage: {
+            /** @enum {string} */
+            type: "authenticated";
+            data: components["schemas"]["SFTPAuthStatus"];
+        };
+        SFTPAuthServerMessage: components["schemas"]["SFTPAuthStatusMessage"] | components["schemas"]["SFTPAuthenticatedMessage"] | components["schemas"]["TerminalServerMessageAuthPrompt"] | components["schemas"]["TerminalServerMessageHostKeyPrompt"] | components["schemas"]["TerminalServerMessagePong"] | components["schemas"]["TerminalServerMessageError"];
+        MonitorPing: {
+            type: components["schemas"]["MonitorClientMessageType"];
+            /** Format: int64 */
+            ts?: number;
+        };
+        MonitorHandshake: {
+            /** @enum {string} */
+            type: "handshake_complete";
+            status: string;
+        };
+        MonitorReady: {
+            /** @enum {string} */
+            type: "ready";
+        };
+        MonitorPong: {
+            /** @enum {string} */
+            type: "pong";
+            /** Format: int64 */
+            ts: number;
+            /** Format: int64 */
+            serverRecvTs: number;
+            /** Format: int64 */
+            serverSendTs: number;
+        };
+        MonitorError: {
+            /** @enum {string} */
+            type: "error";
+            message: string;
+        };
+        /** @description Top-level JSON control frames. Metrics remain binary protobuf SystemMetrics, not terminal data envelopes. */
+        MonitorServerMessage: components["schemas"]["MonitorHandshake"] | components["schemas"]["MonitorReady"] | components["schemas"]["MonitorPong"] | components["schemas"]["MonitorError"];
         ChatConnection: {
             /**
              * @description Chat platform. Existing connections use telegram.

@@ -11,7 +11,7 @@ const ProtocolVersion = int(protocol.AccessVersion)
 
 type Grant struct {
 	Purpose         string     `gorm:"size:16;not null;default:share" json:"purpose"`
-	ID              uuid.UUID  `gorm:"type:char(36);primaryKey" json:"id"`
+	ID              uuid.UUID  `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	PublicID        string     `gorm:"size:64;not null;uniqueIndex" json:"public_id"`
 	SecretHash      string     `gorm:"size:64;not null" json:"-"`
 	Name            string     `gorm:"size:100;not null" json:"name"`
@@ -27,15 +27,15 @@ type Grant struct {
 	UploadedBytes   int64      `gorm:"not null" json:"uploaded_bytes"`
 	DownloadedBytes int64      `gorm:"not null" json:"downloaded_bytes"`
 	AIRequests      int64      `gorm:"not null" json:"ai_requests"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	CreatedAt       time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt       time.Time  `gorm:"not null" json:"updated_at"`
 }
 
 func (Grant) TableName() string { return "grants" }
 
 type Resource struct {
-	GrantID                    uuid.UUID         `gorm:"type:char(36);primaryKey" json:"-"`
-	ServerID                   uuid.UUID         `gorm:"type:char(36);primaryKey" json:"server_id"`
+	GrantID                    uuid.UUID         `gorm:"type:char(36);primaryKey;not null" json:"-"`
+	ServerID                   uuid.UUID         `gorm:"type:char(36);primaryKey;not null" json:"server_id"`
 	Actions                    []protocol.Action `gorm:"serializer:json;type:text;not null" json:"actions"`
 	ApprovedConnectionRevision int64             `gorm:"not null" json:"approved_connection_revision"`
 	AllowInteractive           bool              `gorm:"not null" json:"allow_interactive"`
@@ -44,9 +44,9 @@ type Resource struct {
 func (Resource) TableName() string { return "grant_resources" }
 
 type ScriptScope struct {
-	GrantID    uuid.UUID                              `gorm:"type:char(36);primaryKey" json:"-"`
-	ServerID   uuid.UUID                              `gorm:"type:char(36);primaryKey" json:"server_id"`
-	ScriptID   uuid.UUID                              `gorm:"type:char(36);primaryKey" json:"script_id"`
+	GrantID    uuid.UUID                              `gorm:"type:char(36);primaryKey;not null" json:"-"`
+	ServerID   uuid.UUID                              `gorm:"type:char(36);primaryKey;not null" json:"server_id"`
+	ScriptID   uuid.UUID                              `gorm:"type:char(36);primaryKey;not null" json:"script_id"`
 	Version    string                                 `gorm:"size:64;not null" json:"version"`
 	Parameters map[string]protocol.GrantParameterRule `gorm:"serializer:json;type:text;not null" json:"parameters"`
 }
@@ -54,25 +54,25 @@ type ScriptScope struct {
 func (ScriptScope) TableName() string { return "grant_script_scopes" }
 
 type BrowserContainer struct {
-	ID        uuid.UUID `gorm:"type:char(36);primaryKey"`
+	ID        uuid.UUID `gorm:"type:char(36);primaryKey;not null"`
 	TokenHash string    `gorm:"size:64;not null;uniqueIndex"`
 	CSRFHash  string    `gorm:"size:64;not null"`
-	CreatedAt time.Time
-	ExpiresAt time.Time
+	CreatedAt time.Time `gorm:"not null"`
+	ExpiresAt time.Time `gorm:"not null"`
 }
 
 func (BrowserContainer) TableName() string { return "access_containers" }
 
 type Session struct {
-	ID           uuid.UUID  `gorm:"type:char(36);primaryKey" json:"id"`
+	ID           uuid.UUID  `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	GrantID      uuid.UUID  `gorm:"type:char(36);not null;index" json:"grant_id"`
 	GrantVersion int64      `gorm:"not null" json:"grant_version"`
 	ClientKind   string     `gorm:"size:16;not null" json:"client_kind"`
 	TokenHash    *string    `gorm:"size:64;uniqueIndex" json:"-"`
 	ContainerID  *uuid.UUID `gorm:"type:char(36);index" json:"-"`
-	CreatedAt    time.Time  `json:"created_at"`
-	LastSeenAt   time.Time  `json:"last_seen_at"`
-	ExpiresAt    time.Time  `json:"expires_at"`
+	CreatedAt    time.Time  `gorm:"not null" json:"created_at"`
+	LastSeenAt   time.Time  `gorm:"not null" json:"last_seen_at"`
+	ExpiresAt    time.Time  `gorm:"not null" json:"expires_at"`
 	RevokedAt    *time.Time `json:"revoked_at"`
 }
 

@@ -212,7 +212,7 @@ export function createWorkspaceSettingsAdapter({
 }
 
 export interface CreateWorkspaceAdaptersOptions {
-  apiClient?: SshWorkspaceApiClient
+  apiClient: SshWorkspaceApiClient
   authTicketProvider?: SshWorkspaceAuthTicketProvider
   i18n: SshWorkspaceI18n
   notifier: SshWorkspaceNotifier

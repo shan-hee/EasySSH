@@ -12,7 +12,7 @@ import (
 // Script 脚本模型
 type Script struct {
 	Version     string    `gorm:"type:char(64);not null" json:"version"`
-	ID          uuid.UUID `gorm:"type:char(36);primary_key" json:"id"`
+	ID          uuid.UUID `gorm:"type:char(36);primary_key;not null" json:"id"`
 	Name        string    `gorm:"type:varchar(100);not null" json:"name"`
 	Description string    `gorm:"type:text" json:"description"`
 	Content     string    `gorm:"type:text;not null" json:"content"`

@@ -1,16 +1,11 @@
+import type { components } from "@/generated/openapi"
 import type { CompletionProvider, CompletionContext, CompletionItem } from "../types"
 import { matchesCommandWithPrefix } from "../utils"
 
 /**
  * 脚本项接口（来自服务器）
  */
-export interface ScriptItem {
-  name: string        // 脚本名称（用于显示）
-  content: string     // 脚本内容（实际命令，用于补全匹配）
-  description: string
-  executions: number
-  tags: string[]
-}
+export type ScriptItem = components["schemas"]["TerminalCompletionScript"]
 
 /**
  * ScriptProvider - 脚本库补全提供者

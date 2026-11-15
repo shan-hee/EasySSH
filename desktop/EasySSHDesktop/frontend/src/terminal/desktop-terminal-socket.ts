@@ -1,3 +1,4 @@
+import type { components } from "@easyssh/app/generated/openapi"
 import { Events } from "@wailsio/runtime"
 import type { AuthMethod, TerminalWebSocketConstructor } from "@easyssh/app/desktop"
 import {
@@ -26,10 +27,9 @@ interface DesktopTerminalClosedPayload {
   reason?: string
 }
 
-interface DesktopFetchCompletionData {
-  includeHistory?: boolean
-  includeScripts?: boolean
-}
+type DesktopFetchCompletionData = components["schemas"]["TerminalFetchCompletionData"]
+type TerminalClientMessage = components["schemas"]["TerminalClientMessage"]
+type TerminalServerMessage = components["schemas"]["TerminalServerMessage"]
 
 type DesktopAuthMethod = AuthMethod
 
@@ -222,24 +222,27 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
 
     private handleControlMessage(raw: string) {
       try {
-        const message = JSON.parse(raw) as { type?: string; data?: unknown }
+        const message = JSON.parse(raw) as TerminalClientMessage
         if (message.type === "ping") {
           const now = Date.now()
           const data = message.data && typeof message.data === "object"
-            ? message.data as Record<string, unknown>
+            ? message.data
             : {}
-          this.emitControl("pong", {
-            ...data,
-            ...this.sshLatency,
-            serverRecvTs: now,
-            serverSendTs: Date.now(),
+          this.emitControl({
+            type: "pong",
+            data: {
+              ...data,
+              ...this.sshLatency,
+              serverRecvTs: now,
+              serverSendTs: Date.now(),
+            },
           })
           void this.refreshSshLatency()
           return
         }
         if (message.type === "resize") {
-          const data = message.data && typeof message.data === "object"
-            ? message.data as { cols?: number; rows?: number }
+          const data: Partial<components["schemas"]["TerminalResize"]> = message.data && typeof message.data === "object"
+            ? message.data
             : {}
           void DesktopTerminalService.Resize({
             clientId: this.clientId,
@@ -250,7 +253,7 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
         }
         if (message.type === "fetch_completion_data") {
           const data = message.data && typeof message.data === "object"
-            ? message.data as DesktopFetchCompletionData
+            ? message.data
             : {}
           window.setTimeout(() => {
             void this.fetchCompletionData(data)
@@ -258,16 +261,8 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
           return
         }
         if (message.type === "auth_response") {
-          const data = message.data && typeof message.data === "object"
-            ? message.data as {
-              request_id?: string
-              answers?: string[]
-              cancelled?: boolean
-              auth_method?: DesktopAuthMethod
-              password?: string
-              private_key?: string
-              private_key_passphrase?: string
-            }
+          const data: Partial<components["schemas"]["TerminalAuthResponse"]> = message.data && typeof message.data === "object"
+            ? message.data
             : {}
           if (this.pendingAuthPrompt && data.request_id === this.pendingAuthPrompt.requestId) {
             const pending = this.pendingAuthPrompt
@@ -307,15 +302,18 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
           requestId,
           resolve,
         }
-        this.emitControl("auth_prompt", {
-          request_id: requestId,
-          kind: "credential_retry",
-          prompts: prompts.length > 0 ? prompts : [{ text: "Password", echo: false }],
-          auth_method: authMethod,
-          attempt,
-          max_attempts: desktopTerminalAuthMaxAttempts,
-          attempts_remaining: desktopTerminalAuthMaxAttempts - attempt,
-          name: serverName,
+        this.emitControl({
+          type: "auth_prompt",
+          data: {
+            request_id: requestId,
+            kind: "credential_retry",
+            prompts: prompts.length > 0 ? prompts : [{ text: "Password", echo: false }],
+            auth_method: authMethod,
+            attempt,
+            max_attempts: desktopTerminalAuthMaxAttempts,
+            attempts_remaining: desktopTerminalAuthMaxAttempts - attempt,
+            name: serverName,
+          },
         })
       })
     }
@@ -328,18 +326,21 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
           requestId,
           resolve: (credential) => resolve(credential?.secret ?? null),
         }
-        this.emitControl("auth_prompt", {
-          request_id: requestId,
-          kind: "private_key_passphrase",
-          prompts: [{
-            text: "Private key passphrase",
-            echo: false,
-          }],
-          auth_method: "key",
-          attempt,
-          max_attempts: desktopTerminalAuthMaxAttempts,
-          attempts_remaining: desktopTerminalAuthMaxAttempts - attempt,
-          name: serverName,
+        this.emitControl({
+          type: "auth_prompt",
+          data: {
+            request_id: requestId,
+            kind: "private_key_passphrase",
+            prompts: [{
+              text: "Private key passphrase",
+              echo: false,
+            }],
+            auth_method: "key",
+            attempt,
+            max_attempts: desktopTerminalAuthMaxAttempts,
+            attempts_remaining: desktopTerminalAuthMaxAttempts - attempt,
+            name: serverName,
+          },
         })
       })
     }
@@ -360,13 +361,7 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
 
     private async fetchCompletionData(options: DesktopFetchCompletionData) {
       let history: string[] = []
-      let scripts: {
-        name: string
-        content: string
-        description: string
-        executions: number
-        tags: string[]
-      }[] = []
+      let scripts: components["schemas"]["TerminalCompletionScript"][] = []
 
       if (options.includeHistory !== false) {
         try {
@@ -392,10 +387,13 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
         }
       }
 
-      this.emitControl("completion_data", {
-        history,
-        scripts,
-        timestamp: Date.now(),
+      this.emitControl({
+        type: "completion_data",
+        data: {
+          history,
+          scripts,
+          timestamp: Date.now(),
+        },
       })
     }
 
@@ -521,7 +519,7 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
 
       this.readyState = DesktopTerminalSocket.OPEN
       this.emitOpen()
-      this.emitControl("handshake_complete")
+      this.emitControl({ type: "handshake_complete" })
 
       try {
         const connected = await this.connectWithCredentialRetry()
@@ -529,14 +527,17 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
 
         if (this.destroyed) return
 
-        this.emitControl("connected")
+        this.emitControl({ type: "connected" })
         void this.refreshSshLatency()
       } catch (error) {
         const message = getDesktopErrorMessage(error)
         const errorCode = getDesktopTerminalAuthErrorCode(error)
-        this.emitControl("error", {
-          error: errorCode,
-          message,
+        this.emitControl({
+          type: "error",
+          data: {
+            error: errorCode,
+            message,
+          },
         })
         this.close(1011, message)
       }
@@ -548,14 +549,17 @@ export function createDesktopTerminalSocket(): TerminalWebSocketConstructor {
       this.dispatchEvent(event)
     }
 
-    private emitControl(type: string, data?: unknown) {
-      this.emitMessage(JSON.stringify({ type, data }))
+    private emitControl(message: TerminalServerMessage) {
+      this.emitMessage(JSON.stringify(message))
     }
 
     private emitError(message: string) {
-      this.emitControl("error", {
-        error: "terminal_io_failed",
-        message,
+      this.emitControl({
+        type: "error",
+        data: {
+          error: "terminal_io_failed",
+          message,
+        },
       })
     }
 

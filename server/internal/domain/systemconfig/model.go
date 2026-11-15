@@ -8,7 +8,7 @@ import (
 
 // SystemConfig 系统配置模型
 type SystemConfig struct {
-	ID uint `gorm:"primarykey" json:"id"`
+	ID uint `gorm:"primarykey;not null" json:"id"`
 
 	// 基本信息
 	SystemName    string `gorm:"size:100;not null;default:'EasySSH'" json:"system_name"`

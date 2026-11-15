@@ -9,7 +9,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
-import { systemInfoApi } from "@/lib/api/system-info"
 import type { SystemInfoKind } from "@/lib/system-info"
 import { cn } from "@/lib/utils"
 import { toast } from "@/components/ui/sonner"
@@ -78,8 +77,8 @@ export function SystemToolsPopover({ kind, serverId, sessionLabel, canExecute, o
   const { t } = useTranslation("terminal")
   const workspace = useOptionalSshWorkspace()
   const adapter = workspace?.adapters.apiClient?.systemInfo
-  if (workspace?.layout === "desktop" && !adapter) throw new Error("Desktop system tools require a systemInfo adapter")
-  const client = adapter ?? systemInfoApi
+  if (!adapter) throw new Error("System tools require a systemInfo adapter")
+  const client = adapter
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState("")
   const searchRef = useRef<HTMLInputElement>(null)

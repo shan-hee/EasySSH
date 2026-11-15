@@ -24,7 +24,7 @@ import {
  DialogTitle,
 } from "@/components/ui/dialog"
 import { ArrowLeft, Plus, X, RefreshCw, Search, Check, Terminal, Server as ServerIcon, FileText, Tag, User, Play } from "lucide-react"
-import { scriptsApi, serversApi, batchTasksApi, type Script, type Server } from "@/lib/api"
+import type { scriptsApi, serversApi, batchTasksApi, Script, Server } from "@/lib/api"
 import { Checkbox } from "@/components/ui/checkbox"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -41,13 +41,13 @@ import { queryKeys } from "@/lib/query-keys"
 import { scriptsListQueryOptions } from "@/lib/dashboard-query-options"
 
 export interface ScriptsPageAdapters {
- scripts?: Pick<typeof scriptsApi, "list" | "create" | "update" | "delete">
- servers?: Pick<typeof serversApi, "list">
- batchTasks?: Pick<typeof batchTasksApi, "create" | "start">
+ scripts: Pick<typeof scriptsApi, "list" | "create" | "update" | "delete">
+ servers: Pick<typeof serversApi, "list">
+ batchTasks: Pick<typeof batchTasksApi, "create" | "start">
 }
 
 export interface ScriptsPageProps {
- adapters?: ScriptsPageAdapters
+ adapters: ScriptsPageAdapters
  hidePageHeader?: boolean
  desktopMode?: boolean
  onReturnToTerminal?: () => void
@@ -64,19 +64,15 @@ export default function ScriptsPage({
  ready: readyOverride,
  executionRedirectPath = "/dashboard/operation-logs?type=execution",
  onExecutionStarted,
-}: ScriptsPageProps = {}) {
- if (desktopMode && (!adapters?.scripts || !adapters.servers || !adapters.batchTasks)) {
-  throw new Error("Desktop scripts page requires desktop script, server, and batch task adapters")
- }
-
+}: ScriptsPageProps) {
  const { t } = useTranslation("scripts")
  const navigate = useNavigate()
  const queryClient = useQueryClient()
  const { ready: authReady } = useAuthReady()
  const ready = readyOverride ?? authReady
- const scriptsClient = adapters?.scripts ?? scriptsApi
- const serversClient = adapters?.servers ?? serversApi
- const batchTasksClient = adapters?.batchTasks ?? batchTasksApi
+ const scriptsClient = adapters.scripts
+ const serversClient = adapters.servers
+ const batchTasksClient = adapters.batchTasks
  const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
  const [isDialogOpen, setIsDialogOpen] = useState(false)
  const [editingScriptId, setEditingScriptId] = useState<string | null>(null)

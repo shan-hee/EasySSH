@@ -55,100 +55,12 @@ func NewTerminalHandler(serverService server.Service, serverRepo server.Reposito
 	}
 }
 
-// Message WebSocket 消息
-type Message struct {
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
-}
-
-// MessageType 定义消息类型常量
 const (
-	MessageTypeText                 = 1 // 文本消息（JSON）
-	MessageTypeBinary               = 2 // 二进制消息（原始输出）
 	terminalSSHLatencyProbeInterval = 15 * time.Second
 	terminalSSHAuthChallengeTimeout = 2 * time.Minute
 	terminalSSHInitTimeout          = 5 * time.Minute
 	terminalSSHAuthRetryMaxAttempts = 3
 )
-
-// InputMessage 输入消息
-type InputMessage struct {
-	Data string `json:"data"`
-}
-
-// ResizeMessage 调整大小消息
-type ResizeMessage struct {
-	Cols int `json:"cols"`
-	Rows int `json:"rows"`
-}
-
-// PingMessage 心跳/延迟探测消息
-type PingMessage struct {
-	ID string `json:"id,omitempty"`
-	Ts int64  `json:"ts,omitempty"`
-}
-
-// AuthPromptItem SSH keyboard-interactive 单个提示项
-type AuthPromptItem struct {
-	Text string `json:"text"`
-	Echo bool   `json:"echo"`
-}
-
-// AuthPromptMessage SSH keyboard-interactive 验证提示
-type AuthPromptMessage struct {
-	RequestID         string            `json:"request_id"`
-	Kind              string            `json:"kind,omitempty"`
-	Name              string            `json:"name,omitempty"`
-	Instruction       string            `json:"instruction,omitempty"`
-	Prompts           []AuthPromptItem  `json:"prompts"`
-	AuthMethod        server.AuthMethod `json:"auth_method,omitempty"`
-	Attempt           int               `json:"attempt,omitempty"`
-	MaxAttempts       int               `json:"max_attempts,omitempty"`
-	AttemptsRemaining int               `json:"attempts_remaining,omitempty"`
-}
-
-// AuthResponseMessage SSH keyboard-interactive 验证响应
-type AuthResponseMessage struct {
-	RequestID  string            `json:"request_id"`
-	Answers    []string          `json:"answers"`
-	Cancelled  bool              `json:"cancelled,omitempty"`
-	AuthMethod server.AuthMethod `json:"auth_method,omitempty"`
-	Password   string            `json:"password,omitempty"`
-	PrivateKey string            `json:"private_key,omitempty"`
-}
-
-// HostKeyResponseMessage SSH 主机密钥变更确认响应
-type HostKeyResponseMessage struct {
-	RequestID   string `json:"request_id"`
-	Accepted    bool   `json:"accepted"`
-	Fingerprint string `json:"fingerprint"`
-}
-
-// OutputMessage 输出消息
-type OutputMessage struct {
-	Type string `json:"type"` // stdout, stderr
-	Data string `json:"data"`
-}
-
-// ErrorMessage 错误消息
-type ErrorMessage struct {
-	Error   string      `json:"error"`
-	Message string      `json:"message"`
-	Details interface{} `json:"details,omitempty"`
-}
-
-// FetchCompletionDataMessage 获取补全数据请求
-type FetchCompletionDataMessage struct {
-	IncludeHistory *bool `json:"includeHistory,omitempty"` // 是否拉取服务器历史
-	IncludeScripts *bool `json:"includeScripts,omitempty"` // 是否拉取脚本库
-}
-
-// CompletionDataResponse 补全数据响应
-type CompletionDataResponse struct {
-	History   []string                `json:"history"`
-	Scripts   []completion.ScriptItem `json:"scripts"`
-	Timestamp int64                   `json:"timestamp"`
-}
 
 type terminalCredentialRetry struct {
 	AuthMethod           server.AuthMethod
@@ -170,26 +82,26 @@ func newTerminalKeyboardInteractiveChallenge(conn *websocket.Conn, writeJSON fun
 		}
 
 		requestID := uuid.NewString()
-		prompts := make([]AuthPromptItem, len(questions))
+		prompts := make([]protocol.TerminalAuthPromptItem, len(questions))
 		for i, question := range questions {
 			echo := false
 			if i < len(echos) {
 				echo = echos[i]
 			}
-			prompts[i] = AuthPromptItem{
+			prompts[i] = protocol.TerminalAuthPromptItem{
 				Text: question,
 				Echo: echo,
 			}
 		}
 
-		payload, _ := json.Marshal(AuthPromptMessage{
+		payload, _ := json.Marshal(protocol.TerminalAuthPrompt{
 			RequestID:   requestID,
 			Kind:        "keyboard_interactive",
 			Name:        name,
 			Instruction: instruction,
 			Prompts:     prompts,
 		})
-		if err := writeJSON(Message{Type: "auth_prompt", Data: payload}); err != nil {
+		if err := writeJSON(protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeAuthPrompt), Data: payload}); err != nil {
 			return nil, fmt.Errorf("failed to send authentication prompt: %w", err)
 		}
 
@@ -301,7 +213,7 @@ func classifyTerminalInitError(err error) terminalErrorInfo {
 }
 
 func writeTerminalPong(writeJSON func(interface{}) error, data json.RawMessage) {
-	var ping PingMessage
+	var ping protocol.TerminalPing
 	if len(data) > 0 {
 		if err := json.Unmarshal(data, &ping); err != nil {
 			log.Printf("Error parsing ping: %v", err)
@@ -309,50 +221,51 @@ func writeTerminalPong(writeJSON func(interface{}) error, data json.RawMessage) 
 	}
 
 	now := time.Now().UnixMilli()
-	resp := map[string]any{
-		"id":           ping.ID,
-		"ts":           ping.Ts,
-		"serverRecvTs": now,
-		"serverSendTs": time.Now().UnixMilli(),
+	sendTS := time.Now().UnixMilli()
+	resp := protocol.TerminalPong{
+		ID:           &ping.ID,
+		TS:           &ping.TS,
+		ServerRecvTS: &now,
+		ServerSendTS: &sendTS,
 	}
 	respData, _ := json.Marshal(resp)
-	if err := writeJSON(Message{Type: "pong", Data: json.RawMessage(respData)}); err != nil {
+	if err := writeJSON(protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypePong), Data: json.RawMessage(respData)}); err != nil {
 		log.Printf("Error sending pong during SSH initialization: %v", err)
 	}
 }
 
-func readTerminalAuthResponse(conn *websocket.Conn, writeJSON func(interface{}) error, requestID string) (AuthResponseMessage, error) {
+func readTerminalAuthResponse(conn *websocket.Conn, writeJSON func(interface{}) error, requestID string) (protocol.TerminalAuthResponse, error) {
 	defer func() {
 		_ = conn.SetReadDeadline(time.Time{})
 	}()
 
 	for {
 		if err := conn.SetReadDeadline(time.Now().Add(terminalSSHAuthChallengeTimeout)); err != nil {
-			return AuthResponseMessage{}, fmt.Errorf("failed to set authentication response timeout: %w", err)
+			return protocol.TerminalAuthResponse{}, fmt.Errorf("failed to set authentication response timeout: %w", err)
 		}
 
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
-			return AuthResponseMessage{}, fmt.Errorf("failed to read authentication response: %w", err)
+			return protocol.TerminalAuthResponse{}, fmt.Errorf("failed to read authentication response: %w", err)
 		}
 		if messageType != websocket.TextMessage {
 			continue
 		}
 
-		var msg Message
+		var msg protocol.TerminalEnvelope
 		if err := json.Unmarshal(message, &msg); err != nil {
 			log.Printf("Error parsing authentication response message: %v", err)
 			continue
 		}
-		if msg.Type == "ping" {
+		if msg.Type == string(protocol.TerminalClientMessageTypePing) {
 			writeTerminalPong(writeJSON, msg.Data)
 			continue
 		}
-		if msg.Type != "auth_response" {
+		if msg.Type != string(protocol.TerminalClientMessageTypeAuthResponse) {
 			continue
 		}
 
-		var response AuthResponseMessage
+		var response protocol.TerminalAuthResponse
 		if err := json.Unmarshal(msg.Data, &response); err != nil {
 			log.Printf("Error parsing authentication response payload: %v", err)
 			continue
@@ -371,27 +284,27 @@ func newTerminalCredentialRetryPrompt(conn *websocket.Conn, writeJSON func(inter
 	if !authMethod.IsValid() {
 		authMethod = server.AuthMethodPassword
 	}
-	prompts := make([]AuthPromptItem, 0, 2)
+	prompts := make([]protocol.TerminalAuthPromptItem, 0, 2)
 	factors, _ := authMethod.AuthFactors()
 	for _, factor := range factors {
 		switch factor {
 		case server.AuthFactorPassword:
-			prompts = append(prompts, AuthPromptItem{Text: "Password", Echo: false})
+			prompts = append(prompts, protocol.TerminalAuthPromptItem{Text: "Password", Echo: false})
 		case server.AuthFactorKey:
-			prompts = append(prompts, AuthPromptItem{Text: "Private key", Echo: false})
+			prompts = append(prompts, protocol.TerminalAuthPromptItem{Text: "Private key", Echo: false})
 		}
 	}
 
-	payload, _ := json.Marshal(AuthPromptMessage{
+	payload, _ := json.Marshal(protocol.TerminalAuthPrompt{
 		RequestID:         requestID,
 		Kind:              "credential_retry",
 		Prompts:           prompts,
-		AuthMethod:        authMethod,
+		AuthMethod:        string(authMethod),
 		Attempt:           attempt,
 		MaxAttempts:       maxAttempts,
 		AttemptsRemaining: maxAttempts - attempt,
 	})
-	if err := writeJSON(Message{Type: "auth_prompt", Data: payload}); err != nil {
+	if err := writeJSON(protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeAuthPrompt), Data: payload}); err != nil {
 		return nil, fmt.Errorf("failed to send credential retry prompt: %w", err)
 	}
 
@@ -403,7 +316,7 @@ func newTerminalCredentialRetryPrompt(conn *websocket.Conn, writeJSON func(inter
 		return nil, fmt.Errorf("authentication cancelled by user")
 	}
 
-	authMethod = response.AuthMethod
+	authMethod = server.AuthMethod(response.AuthMethod)
 	if authMethod == "" {
 		authMethod = srv.Auth.AuthMethod
 	}
@@ -461,16 +374,16 @@ func newTerminalCredentialRetryPrompt(conn *websocket.Conn, writeJSON func(inter
 func newTerminalPrivateKeyPassphrasePrompt(conn *websocket.Conn, writeJSON func(interface{}) error, attempt, maxAttempts int) (string, error) {
 	requestID := uuid.NewString()
 
-	payload, _ := json.Marshal(AuthPromptMessage{
+	payload, _ := json.Marshal(protocol.TerminalAuthPrompt{
 		RequestID:         requestID,
 		Kind:              "private_key_passphrase",
-		Prompts:           []AuthPromptItem{{Text: "Private key passphrase", Echo: false}},
-		AuthMethod:        server.AuthMethodKey,
+		Prompts:           []protocol.TerminalAuthPromptItem{{Text: "Private key passphrase", Echo: false}},
+		AuthMethod:        string(server.AuthMethodKey),
 		Attempt:           attempt,
 		MaxAttempts:       maxAttempts,
 		AttemptsRemaining: maxAttempts - attempt,
 	})
-	if err := writeJSON(Message{Type: "auth_prompt", Data: payload}); err != nil {
+	if err := writeJSON(protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeAuthPrompt), Data: payload}); err != nil {
 		return "", fmt.Errorf("failed to send private key passphrase prompt: %w", err)
 	}
 
@@ -488,38 +401,38 @@ func newTerminalPrivateKeyPassphrasePrompt(conn *websocket.Conn, writeJSON func(
 	return response.Answers[0], nil
 }
 
-func readTerminalHostKeyResponse(conn *websocket.Conn, writeJSON func(interface{}) error, requestID string) (HostKeyResponseMessage, error) {
+func readTerminalHostKeyResponse(conn *websocket.Conn, writeJSON func(interface{}) error, requestID string) (protocol.TerminalHostKeyResponse, error) {
 	defer func() {
 		_ = conn.SetReadDeadline(time.Time{})
 	}()
 
 	for {
 		if err := conn.SetReadDeadline(time.Now().Add(terminalSSHAuthChallengeTimeout)); err != nil {
-			return HostKeyResponseMessage{}, fmt.Errorf("failed to set host key response timeout: %w", err)
+			return protocol.TerminalHostKeyResponse{}, fmt.Errorf("failed to set host key response timeout: %w", err)
 		}
 
 		messageType, message, err := conn.ReadMessage()
 		if err != nil {
-			return HostKeyResponseMessage{}, fmt.Errorf("failed to read host key response: %w", err)
+			return protocol.TerminalHostKeyResponse{}, fmt.Errorf("failed to read host key response: %w", err)
 		}
 		if messageType != websocket.TextMessage {
 			continue
 		}
 
-		var msg Message
+		var msg protocol.TerminalEnvelope
 		if err := json.Unmarshal(message, &msg); err != nil {
 			log.Printf("Error parsing host key response message: %v", err)
 			continue
 		}
-		if msg.Type == "ping" {
+		if msg.Type == string(protocol.TerminalClientMessageTypePing) {
 			writeTerminalPong(writeJSON, msg.Data)
 			continue
 		}
-		if msg.Type != "host_key_response" {
+		if msg.Type != string(protocol.TerminalClientMessageTypeHostKeyResponse) {
 			continue
 		}
 
-		var response HostKeyResponseMessage
+		var response protocol.TerminalHostKeyResponse
 		if err := json.Unmarshal(msg.Data, &response); err != nil {
 			log.Printf("Error parsing host key response payload: %v", err)
 			continue
@@ -535,15 +448,18 @@ func readTerminalHostKeyResponse(conn *websocket.Conn, writeJSON func(interface{
 func newTerminalHostKeyPrompt(conn *websocket.Conn, writeJSON func(interface{}) error, details *sshhostkey.HostKeyVerificationError) (bool, error) {
 	requestID := uuid.NewString()
 
-	payload := struct {
-		RequestID string `json:"request_id"`
-		*sshhostkey.HostKeyVerificationError
-	}{
-		RequestID:                requestID,
-		HostKeyVerificationError: details,
+	payload := protocol.TerminalHostKeyPrompt{
+		RequestID:       requestID,
+		Host:            details.Host,
+		Port:            details.Port,
+		ExpectedKey:     details.ExpectedKey,
+		ReceivedKey:     details.ReceivedKey,
+		ExpectedKeyType: details.ExpectedKeyType,
+		ReceivedKeyType: details.ReceivedKeyType,
+		Message:         details.Message,
 	}
 	payloadData, _ := json.Marshal(payload)
-	if err := writeJSON(Message{Type: "host_key_prompt", Data: payloadData}); err != nil {
+	if err := writeJSON(protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeHostKeyPrompt), Data: payloadData}); err != nil {
 		return false, fmt.Errorf("failed to send host key prompt: %w", err)
 	}
 
@@ -686,15 +602,15 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 		activityMu.Lock()
 		activity.ErrorMessage = errorCode + ": " + message
 		activityMu.Unlock()
-		errMsg := ErrorMessage{
+		errMsg := protocol.TerminalError{
 			Error:   errorCode,
 			Message: message,
 			Details: details,
 		}
 		errData, _ := json.Marshal(errMsg)
 
-		if err := safeWriteJSON(Message{
-			Type: "error",
+		if err := safeWriteJSON(protocol.TerminalEnvelope{
+			Type: string(protocol.TerminalServerMessageTypeError),
 			Data: errData,
 		}); err != nil {
 			log.Printf("Error sending error message: %v", err)
@@ -705,9 +621,10 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	}
 
 	// 立即发送握手完成消息
-	if err := safeWriteJSON(Message{
-		Type: "handshake_complete",
-		Data: json.RawMessage(`{"status":"connecting"}`),
+	handshakeData, _ := json.Marshal(protocol.TerminalHandshake{Status: "connecting"})
+	if err := safeWriteJSON(protocol.TerminalEnvelope{
+		Type: string(protocol.TerminalServerMessageTypeHandshakeComplete),
+		Data: handshakeData,
 	}); err != nil {
 		log.Printf("Error sending handshake_complete: %v", err)
 		return
@@ -1026,9 +943,10 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 	defer stopSessionCancel()
 
 	// 发送连接成功消息
-	if err := safeWriteJSON(Message{
-		Type: "connected",
-		Data: json.RawMessage(fmt.Sprintf(`{"session_id":"%s"}`, session.ID)),
+	connectedData, _ := json.Marshal(protocol.TerminalConnected{SessionID: session.ID})
+	if err := safeWriteJSON(protocol.TerminalEnvelope{
+		Type: string(protocol.TerminalServerMessageTypeConnected),
+		Data: connectedData,
 	}); err != nil {
 		log.Printf("Error sending connected message: %v", err)
 		return
@@ -1164,15 +1082,15 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 			switch messageType {
 			case websocket.TextMessage:
 				// JSON 格式的控制消息
-				var msg Message
+				var msg protocol.TerminalEnvelope
 				if err := json.Unmarshal(message, &msg); err != nil {
 					log.Printf("Error parsing message: %v", err)
 					continue
 				}
 
 				switch msg.Type {
-				case "input":
-					var input InputMessage
+				case string(protocol.TerminalClientMessageTypeInput):
+					var input protocol.TerminalInput
 					if err := json.Unmarshal(msg.Data, &input); err != nil {
 						log.Printf("Error parsing input: %v", err)
 						continue
@@ -1183,8 +1101,8 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						return
 					}
 
-				case "resize":
-					var resize ResizeMessage
+				case string(protocol.TerminalClientMessageTypeResize):
+					var resize protocol.TerminalResize
 					if err := json.Unmarshal(msg.Data, &resize); err != nil {
 						log.Printf("Error parsing resize: %v", err)
 						continue
@@ -1193,8 +1111,8 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						log.Printf("Error resizing terminal: %v", err)
 					}
 
-				case "ping":
-					var ping PingMessage
+				case string(protocol.TerminalClientMessageTypePing):
+					var ping protocol.TerminalPing
 					if len(msg.Data) > 0 {
 						if err := json.Unmarshal(msg.Data, &ping); err != nil {
 							log.Printf("Error parsing ping: %v", err)
@@ -1202,27 +1120,29 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 					}
 
 					now := time.Now().UnixMilli()
-					resp := map[string]any{
-						"id":           ping.ID,
-						"ts":           ping.Ts,
-						"serverRecvTs": now,
+					resp := protocol.TerminalPong{
+						ID:           &ping.ID,
+						TS:           &ping.TS,
+						ServerRecvTS: &now,
 					}
 					if latency := sshLatencyMs.Load(); latency >= 0 {
-						resp["sshLatencyMs"] = latency
-						resp["sshLatencyMeasuredAt"] = sshLatencyMeasuredAt.Load()
+						resp.SSHLatencyMs = &latency
+						measuredAt := sshLatencyMeasuredAt.Load()
+						resp.SSHLatencyMeasuredAt = &measuredAt
 					}
 
 					// 使用安全写入。这里不等待 SSH 探测完成，避免污染 WebSocket RTT。
-					resp["serverSendTs"] = time.Now().UnixMilli()
+					sendTS := time.Now().UnixMilli()
+					resp.ServerSendTS = &sendTS
 					respData, _ := json.Marshal(resp)
-					if err := safeWriteJSON(Message{Type: "pong", Data: json.RawMessage(respData)}); err != nil {
+					if err := safeWriteJSON(protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypePong), Data: json.RawMessage(respData)}); err != nil {
 						log.Printf("Error sending pong: %v", err)
 					}
 					refreshSSHLatency()
 
-				case "fetch_completion_data":
+				case string(protocol.TerminalClientMessageTypeFetchCompletionData):
 					// 处理补全数据请求
-					var fetchReq FetchCompletionDataMessage
+					var fetchReq protocol.TerminalFetchCompletionData
 					if err := json.Unmarshal(msg.Data, &fetchReq); err != nil {
 						log.Printf("Error parsing fetch_completion_data: %v", err)
 						continue
@@ -1262,13 +1182,13 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						if err != nil {
 							log.Printf("Failed to fetch completion data: %v", err)
 							// 使用安全写入发送错误
-							errMsg := ErrorMessage{
+							errMsg := protocol.TerminalError{
 								Error:   "completion_fetch_failed",
 								Message: err.Error(),
 							}
 							errData, _ := json.Marshal(errMsg)
-							if writeErr := safeWriteJSON(Message{
-								Type: "error",
+							if writeErr := safeWriteJSON(protocol.TerminalEnvelope{
+								Type: string(protocol.TerminalServerMessageTypeError),
 								Data: errData,
 							}); writeErr != nil {
 								log.Printf("Error sending error message: %v", writeErr)
@@ -1280,15 +1200,28 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 						completionData.Timestamp = time.Now().UnixMilli()
 
 						// 发送补全数据
-						responseData, _ := json.Marshal(CompletionDataResponse{
+						var scripts []protocol.TerminalCompletionScript
+						if completionData.Scripts != nil {
+							scripts = make([]protocol.TerminalCompletionScript, len(completionData.Scripts))
+							for i, script := range completionData.Scripts {
+								scripts[i] = protocol.TerminalCompletionScript{
+									Name:        script.Name,
+									Content:     script.Content,
+									Description: script.Description,
+									Executions:  script.Executions,
+									Tags:        script.Tags,
+								}
+							}
+						}
+						responseData, _ := json.Marshal(protocol.TerminalCompletionData{
 							History:   completionData.History,
-							Scripts:   completionData.Scripts,
+							Scripts:   scripts,
 							Timestamp: completionData.Timestamp,
 						})
 
 						// 使用安全写入
-						if err := safeWriteJSON(Message{
-							Type: "completion_data",
+						if err := safeWriteJSON(protocol.TerminalEnvelope{
+							Type: string(protocol.TerminalServerMessageTypeCompletionData),
 							Data: responseData,
 						}); err != nil {
 							log.Printf("Error sending completion data: %v", err)
@@ -1317,7 +1250,8 @@ func (h *TerminalHandler) HandleSSH(c *gin.Context) {
 
 	// 尝试发送关闭消息（如果连接已关闭则静默忽略）
 	wsConn.SetWriteDeadline(time.Now().Add(time.Second))
-	_ = safeWriteJSON(Message{Type: "closed"})
+	// The server historically sends explicit null; the desktop gateway omits data.
+	_ = safeWriteJSON(protocol.TerminalEnvelope{Type: string(protocol.TerminalServerMessageTypeClosed), Data: json.RawMessage("null")})
 }
 
 type terminalOperationRecord struct {
@@ -1389,7 +1323,7 @@ func (h *TerminalHandler) upsertTerminalOperationRecord(ctx context.Context, inp
 }
 
 // sendMessage 发送消息
-func (h *TerminalHandler) sendMessage(conn *websocket.Conn, msg Message) {
+func (h *TerminalHandler) sendMessage(conn *websocket.Conn, msg protocol.TerminalEnvelope) {
 	if err := conn.WriteJSON(msg); err != nil {
 		log.Printf("Error sending message: %v", err)
 	}
@@ -1397,28 +1331,28 @@ func (h *TerminalHandler) sendMessage(conn *websocket.Conn, msg Message) {
 
 // sendOutput 发送输出
 func (h *TerminalHandler) sendOutput(conn *websocket.Conn, outputType, data string) {
-	output := OutputMessage{
+	output := protocol.TerminalOutput{
 		Type: outputType,
 		Data: data,
 	}
 	outputData, _ := json.Marshal(output)
 
-	h.sendMessage(conn, Message{
-		Type: "output",
+	h.sendMessage(conn, protocol.TerminalEnvelope{
+		Type: string(protocol.TerminalServerMessageTypeOutput),
 		Data: outputData,
 	})
 }
 
 // sendError 发送错误
 func (h *TerminalHandler) sendError(conn *websocket.Conn, errorCode, message string) {
-	errMsg := ErrorMessage{
+	errMsg := protocol.TerminalError{
 		Error:   errorCode,
 		Message: message,
 	}
 	errData, _ := json.Marshal(errMsg)
 
-	h.sendMessage(conn, Message{
-		Type: "error",
+	h.sendMessage(conn, protocol.TerminalEnvelope{
+		Type: string(protocol.TerminalServerMessageTypeError),
 		Data: errData,
 	})
 

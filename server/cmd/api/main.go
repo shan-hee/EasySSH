@@ -112,7 +112,6 @@ func main() {
 	}
 
 	runtimeInfo := platform.NewRuntimeInfo(platform.RuntimeOptions{
-		Profile: platform.ProfileFromEnvironment(),
 		DataDir: maintenanceDataDir(cfg),
 		Version: readAppVersion(),
 	})

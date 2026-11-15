@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/easyssh/server/internal/proto"
+	pb "github.com/easyssh/shared/monitorwire"
 )
 
 // MetricsSubscriber 指标订阅者接口

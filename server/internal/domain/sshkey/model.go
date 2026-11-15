@@ -11,7 +11,7 @@ import (
 
 // SSHKey represents an SSH key pair owned by the instance
 type SSHKey struct {
-	ID                 uuid.UUID `gorm:"type:char(36);primaryKey" json:"id"`
+	ID                 uuid.UUID `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 	Name               string    `gorm:"type:varchar(100);not null" json:"name"`

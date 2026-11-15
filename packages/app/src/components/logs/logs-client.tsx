@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/sonner"
 import { getErrorMessage } from "@/lib/error-utils"
-import { serversApi } from "@/lib/api/servers"
 import type {
   AuditLog,
   AuditLogListParams,
@@ -65,8 +64,8 @@ interface LogsClientProps {
   desktopMode?: boolean
   /** 渲染在说明行上方的统计概览，与表格共用同一内容画布与滚动容器；参数为表格当前生效的服务器筛选。 */
   overview?: (context: { server: { id: string; name: string } | null }) => React.ReactNode
-  /** 服务器筛选的数据源，默认使用 Web 接口；桌面端传入本地适配器。 */
-  servers?: LogServersApi
+  /** 服务器筛选的数据源。 */
+  servers: LogServersApi
   api: {
     list: (params?: AuditLogListParams) => Promise<{
       logs: AuditLogSummary[]
@@ -214,7 +213,7 @@ function filtersToParams(filters: LogFilterValues): Pick<AuditLogListParams, "ty
   }
 }
 
-export function LogsClient({ defaultAction, desktopMode = false, overview, servers = serversApi, api }: LogsClientProps) {
+export function LogsClient({ defaultAction, desktopMode = false, overview, servers, api }: LogsClientProps) {
   const { ready } = useAuthReady()
   const { t } = useTranslation("logsAudit")
   const [page, setPage] = React.useState(1)

@@ -48,7 +48,7 @@
 
 ## 服务端启动自动迁移
 
-服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前服务端 schema 为 7；从 schema 1 升级时先执行 `00002_remove_csrf_trusted_origins.sql`，删除废弃的 `security_config.csrf_trusted_origins` 列和旧来源列表，再执行 `00003_remove_public_url.sql`，删除 `system_config.public_url` 列和原来保存的固定公开地址，然后执行 `00004_add_automation_token_cipher.sql`，为 `automation_tokens` 新增可空的 `token_cipher` 列，最后执行 `00005_reset_sync_documents.sql`，清空 `sync_states.document` 以及 `sync_vault_documents` 的 `document` 和 `conflicts`；schema 2 从第二项开始，依此类推。协议 6 的同步文档与此前的 Automerge 文档互不兼容，清空后丢失的只有同步历史和未解决的冲突；服务器、脚本、凭据及其引用的载荷对象不变，设备授权和数据加入关系也保留。清空文档等同于换了一条同步时间线：各设备升级后无需重新授权或重新加入数据，下一次同步自动重新对齐（见下文“恢复与同步时间线”）。之后的 `00006_add_data_retention.sql` 为 `system_config` 新增 `task_retention_days` 和 `log_retention_days` 两列，默认 90 天；`00007_add_recycle_bin.sql` 新增 `recycle_bin` 表和 `system_config.deleted_retention_days`（默认 30 天），先把此前软删除的脚本转入回收站（从升级时间重新计算保留期），禁用引用这些脚本的计划任务，再移除原表中的软删除记录和 `scripts.deleted_at` 列。分享授权、密钥及其他系统配置不变，分享链接改用当前访问地址；已有访问令牌继续可用，其加密副本为空，轮转后才能查看。旧字段迁移的回滚只恢复空字段；同步协议切换必须通过完整的升级前恢复点回退，不能原地回滚。SQLite/PostgreSQL 在事务内迁移；MySQL DDL 隐式提交，中断时按下文恢复流程处理。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
+服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前服务端 schema 为 8；从 schema 1 升级时先执行 `00002_remove_csrf_trusted_origins.sql`，删除废弃的 `security_config.csrf_trusted_origins` 列和旧来源列表，再执行 `00003_remove_public_url.sql`，删除 `system_config.public_url` 列和原来保存的固定公开地址，然后执行 `00004_add_automation_token_cipher.sql`，为 `automation_tokens` 新增可空的 `token_cipher` 列，最后执行 `00005_reset_sync_documents.sql`，清空 `sync_states.document` 以及 `sync_vault_documents` 的 `document` 和 `conflicts`；schema 2 从第二项开始，依此类推。协议 6 的同步文档与此前的 Automerge 文档互不兼容，清空后丢失的只有同步历史和未解决的冲突；服务器、脚本、凭据及其引用的载荷对象不变，设备授权和数据加入关系也保留。清空文档等同于换了一条同步时间线：各设备升级后无需重新授权或重新加入数据，下一次同步自动重新对齐（见下文“恢复与同步时间线”）。之后的 `00006_add_data_retention.sql` 为 `system_config` 新增 `task_retention_days` 和 `log_retention_days` 两列，默认 90 天；`00007_add_recycle_bin.sql` 新增 `recycle_bin` 表和 `system_config.deleted_retention_days`（默认 30 天），先把此前软删除的脚本转入回收站（从升级时间重新计算保留期），禁用引用这些脚本的计划任务，再移除原表中的软删除记录和 `scripts.deleted_at` 列。`00008_require_operation_record_actors.sql` 将 `operation_records` 的 `actor_kind`、`actor_id`、`actor_session_id`、`actor_grant_id` 中已有的 NULL 回填为空字符串，再设为 NOT NULL；保留各方言现有类型、长度和默认值（SQLite 为 TEXT，PostgreSQL/MySQL 为 varchar(36)，四列均不新增默认值），迁移完成后父、子表业务行全部保留。分享授权、密钥及其他系统配置不变，分享链接改用当前访问地址；已有访问令牌继续可用，其加密副本为空，轮转后才能查看。旧字段迁移的回滚只恢复空字段；同步协议切换必须通过完整的升级前恢复点回退，不能原地回滚。SQLite/PostgreSQL 在事务内迁移；MySQL DDL 隐式提交，中断时按下文恢复流程处理。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
 
 | 数据库状态 | 行为 |
 | --- | --- |
@@ -78,6 +78,8 @@
 
 SQLite 历史外键异常不会被擅自修复或直接忽略。迁移记录保存按逻辑主键、引用值、父表和约束生成的异常摘要及重复次数，升级后出现新增异常就阻止业务启动。使用逻辑主键避免 `VACUUM INTO` 重排行号造成误判；`WITHOUT ROWID` 表若存在历史异常，需先人工修复。对当前部署此前发现的历史异常，升级仅记录基线，不修改异常业务行。完整实例备份原有的严格校验策略不变。
 
+00008 的 SQLite Up 和 Down 都在 Goose 的单个事务内重建 `operation_records`：先将父表以及 `operation_resources` 子表的数据暂存到临时表，再清空已暂存的子行、删除旧父表、按原名创建目标表、恢复全部父行和索引，最后恢复子行并移除临时表。整个过程保持外键开启，不重命名旧父表，子表外键仍引用 `operation_records(id)`；任何步骤失败都会回滚本次迁移。PostgreSQL 在事务内回填并修改列约束。MySQL 使用 `NO TRANSACTION`：先通过临时用途的存储过程 `__easyssh_migration_00008_fill_actors` 在独立事务中执行四次幂等 UPDATE，异常处理器会 ROLLBACK 并重新抛出错误；删除过程后，再用单条 ALTER TABLE 的四个 MODIFY 收紧约束。DDL 和 Goose 版本记录不属于回填事务，不能将整个迁移视作可回滚事务；恢复流程见下文。
+
 ### 中断与失败处理
 
 每个数据库的数据目录保存 `.easyssh-migration-<数据库标识摘要>.json`，包含源/目标版本、脚本摘要、恢复点校验和、阶段和时间。完成后的报告另存于恢复点旁的 `.age.json`。状态写入通过临时文件、刷盘和原子替换完成。不得在未确认数据库状态时删除或手动改写这份记录，也不要修改已经发布的版本化 SQL。
@@ -89,6 +91,8 @@ MySQL DDL 隐式提交。持久化记录显示已开始迁移、但尚未达到�
 ```sh
 ./easyssh-api maintenance schema-upgrade --resume
 ```
+
+00008 的 UPDATE 只处理 NULL，MODIFY 保留原有类型和默认值，重复执行不再改变已处理的数据；过程创建前的 DROP PROCEDURE IF EXISTS 会清理本次迁移遗留的同名过程。但 SQL 可重跑不等于允许自动恢复：如果 Goose 仍记录 schema 7，而部分或全部四列已经 NOT NULL，`CheckUpgradeSource` 会拒绝该状态。应停机核对，将四列约束恢复为 schema 7 的可空定义（空字符串无需改回 NULL）后，再用 `--resume` 继续；若 Goose 已记录 schema 8，则需核对四列全部非空并完成原有待校验流程，不要把结构改回 7。Down 的 MODIFY 同样可重复执行，但程序不会自动回滚或自动重试回滚；若无法确认状态，使用升级前恢复点恢复到新的目标库。
 
 `--resume` 仍检查结构、脚本摘要、恢复点和凭据，不会强行跳过已有的未记录表/字段。若状态无法确认，应提取升级前恢复点并恢复到新目标。普通 `maintenance schema-upgrade` 使用同一套备份及校验流程，不能绕过上述保护。所有维护命令须指向实际活动数据库与根密钥；使用启动器切换过副本的部署，要以启动器选择记录中的目标为准，不能默认 `.env` 仍指向活动实例。
 
@@ -330,7 +334,7 @@ EasySSHDesktop maintenance schema-rollback --file /backup/before-rollback.age --
 
 桌面端 schema 2 的 `00002_reset_sync_documents.sql` 清空 `desktop_sync_spaces.document` 以及 `desktop_sync_vault` 的 `document` 和 `conflicts`，把 `desktop_sync_vault.current_ref` 重置为本机实际应用的版本，并删除已废弃的 `desktop_sync_spaces.remote_heads` 和 `desktop_sync_vault.heads` 列（同步游标改存在文档内）。设备绑定、数据加入关系和本地业务数据保留，升级后的第一次同步自动重新对齐。这是桌面端的第一个增量迁移，schema 1 的数据库在新版本首次启动时自动升级。
 
-当前服务端有 schema 1 → 2 → 3 → 4 → 5 → 6 → 7 增量迁移，桌面端有 schema 1 → 2 → 3（`00003_add_recycle_bin.sql` 新增 `desktop_recycle_bin` 表）。`schema-rollback` 每次仅退一版，不能回退到初始化基线之前。服务端 schema 5 与桌面端 schema 2（均为 `reset_sync_documents`）的 Down 同样清空同步文档，因为旧程序读不了协议 6 的文档；桌面端的 Down 另外恢复空的 `desktop_sync_spaces.remote_heads` 和 `desktop_sync_vault.heads` 列。被清空的 Automerge 历史只存在于升级前的备份中。服务端 schema 4 的 Down 删除 `token_cipher`；schema 3 的 Down 只恢复空的 `public_url`；schema 2 的 Down 只恢复空的 CSRF Origin 字段，旧值均需从升级前备份恢复。
+当前服务端有 schema 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 增量迁移，桌面端有 schema 1 → 2 → 3（`00003_add_recycle_bin.sql` 新增 `desktop_recycle_bin` 表）。`schema-rollback` 每次仅退一版，不能回退到初始化基线之前。服务端 schema 8 的 Down 恢复四个操作者列为可空，SQLite 同样通过事务内暂存和重建保留父、子表数据；已回填的空字符串不会还原为 NULL，无法恢复原来 NULL 与空字符串的区别。服务端 schema 5 与桌面端 schema 2（均为 `reset_sync_documents`）的 Down 同样清空同步文档，因为旧程序读不了协议 6 的文档；桌面端的 Down 另外恢复空的 `desktop_sync_spaces.remote_heads` 和 `desktop_sync_vault.heads` 列。被清空的 Automerge 历史只存在于升级前的备份中。服务端 schema 4 的 Down 删除 `token_cipher`；schema 3 的 Down 只恢复空的 `public_url`；schema 2 的 Down 只恢复空的 CSRF Origin 字段，旧值均需从升级前备份恢复。
 
 ## 数据保留
 

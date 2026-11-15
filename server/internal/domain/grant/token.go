@@ -27,9 +27,9 @@ type AutomationToken struct {
 	GrantID      uuid.UUID  `gorm:"type:char(36);not null" json:"grant_id"`
 	GrantVersion int64      `gorm:"not null" json:"-"`
 	TokenHash    string     `gorm:"size:64;uniqueIndex;not null" json:"-"`
-	CreatedAt    time.Time  `json:"created_at"`
-	LastSeenAt   time.Time  `json:"last_used_at"`
-	ExpiresAt    time.Time  `json:"expires_at"`
+	CreatedAt    time.Time  `gorm:"not null" json:"created_at"`
+	LastSeenAt   time.Time  `gorm:"not null" json:"last_used_at"`
+	ExpiresAt    time.Time  `gorm:"not null" json:"expires_at"`
 	RevokedAt    *time.Time `json:"revoked_at"`
 	// Encrypted with the instance key, like saved server credentials, so the
 	// owner can view the token again. Authentication still uses only the hash.

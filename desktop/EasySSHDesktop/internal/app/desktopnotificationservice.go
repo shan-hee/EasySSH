@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -69,16 +67,8 @@ func (s *DesktopNotificationService) database() (*sql.DB, error) {
 	if s.db != nil {
 		return s.db, nil
 	}
-	directory := desktopDataDir()
-	if err := os.MkdirAll(directory, 0o755); err != nil {
-		return nil, err
-	}
-	db, err := sql.Open("sqlite", filepath.Join(directory, "easyssh-desktop.sqlite"))
+	db, err := openDesktopDatabase()
 	if err != nil {
-		return nil, err
-	}
-	if err = configureDesktopDatabase(db); err != nil {
-		db.Close()
 		return nil, err
 	}
 	s.db = db

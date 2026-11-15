@@ -29,15 +29,15 @@ import { AgentModelSelector } from "@/components/ai-agent/agent-model-selector"
 import { EmptyState, EmptyStateGreeting } from "@/components/assistant-ui/elements/empty-state"
 import { ServerReferencePicker } from "./server-reference-picker"
 import type { AgentServerReference } from "@/lib/ai-agent-types"
-import type { AgentSessionAdapter } from "@/hooks/use-agent-session"
+import type { AgentSessionAdapter, StreamingAgentSessionAdapter } from "@/hooks/use-agent-session"
 import type { AIConfigAdapter } from "@/hooks/use-ai-config"
 import { useSetAgentComposerDraft, useSessionDraftState } from "@/hooks/use-agent-composer-draft"
 import { useAIAssistantController } from "@/hooks/use-ai-assistant-controller"
 import { useAuthReady } from "@/hooks/use-auth-ready"
 import { getDefaultAISessionTitle, useAISessionHistory } from "@/hooks/use-ai-session-history"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
-import { serversApi, type Server as ManagedServer } from "@/lib/api"
-import { deleteAISession, listAISessions, renameAISession, type AgentSessionScope } from "@/lib/api/ai-agent"
+import type { Server as ManagedServer } from "@/lib/api"
+import type { deleteAISession, listAISessions, renameAISession, AgentSessionScope } from "@/lib/api/ai-agent"
 import type { AIAssistantConfigAdapter } from "@/components/ai-agent/ai-config-popover"
 import type { ServerListResponse } from "@/lib/api/servers"
 import { mergeServerReferences, parseServerReferenceText } from "@/lib/ai-agent/server-mentions"
@@ -50,10 +50,10 @@ import { useTranslation } from "react-i18next"
 const conversationColumnClass = "mx-auto w-[min(50rem,calc(100cqw-2rem))] @min-[30rem]:w-[min(50rem,calc(100cqw-6rem))] max-w-none"
 
 export interface AIAssistantWorkspaceAdapters {
-  aiConfig?: AIConfigAdapter
+  aiConfig: AIConfigAdapter
   aiSettings?: AIAssistantConfigAdapter
-  aiSession?: AgentSessionAdapter
-  servers?: {
+  aiSession: AgentSessionAdapter | StreamingAgentSessionAdapter
+  servers: {
     list: (params?: {
       page?: number
       limit?: number
@@ -61,9 +61,9 @@ export interface AIAssistantWorkspaceAdapters {
       search?: string
     }) => Promise<ServerListResponse>
   }
-  listAISessions?: typeof listAISessions
-  renameAISession?: typeof renameAISession
-  deleteAISession?: typeof deleteAISession
+  listAISessions: typeof listAISessions
+  renameAISession: typeof renameAISession
+  deleteAISession: typeof deleteAISession
 }
 
 export interface AIAssistantWorkspaceViewProps {
@@ -76,7 +76,7 @@ export interface AIAssistantWorkspaceViewProps {
   active?: boolean
   hidePageHeader?: boolean
   onReturnToTerminal?: () => void
-  adapters?: AIAssistantWorkspaceAdapters
+  adapters: AIAssistantWorkspaceAdapters
 }
 
 export function AIAssistantWorkspaceView({
@@ -95,8 +95,8 @@ export function AIAssistantWorkspaceView({
   const { ready } = useAuthReady()
   const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
   const controller = useAIAssistantController({
-    aiConfigAdapter: adapters?.aiConfig,
-    aiSessionAdapter: adapters?.aiSession,
+    aiConfigAdapter: adapters.aiConfig,
+    aiSessionAdapter: adapters.aiSession,
   })
   const {
     config: { isLoading, isConfigured, models, refetch: refetchAIConfig },
@@ -178,9 +178,9 @@ export function AIAssistantWorkspaceView({
   const history = useAISessionHistory({
     enabled: ready,
     visible: Boolean(sidebar) && active,
-    listSessions: adapters?.listAISessions ?? listAISessions,
-    renameSession: adapters?.renameAISession ?? renameAISession,
-    deleteSession: adapters?.deleteAISession ?? deleteAISession,
+    listSessions: adapters.listAISessions,
+    renameSession: adapters.renameAISession,
+    deleteSession: adapters.deleteAISession,
     loadErrorMessage: t("sessionListLoadFailed"),
     renameErrorMessage: t("renameSessionFailed"),
     deleteErrorMessage: t("deleteSessionFailed"),
@@ -206,14 +206,14 @@ export function AIAssistantWorkspaceView({
     setServersLoading(true)
 
     try {
-      const servers = await loadAllServers(adapters?.servers?.list ?? serversApi.list)
+      const servers = await loadAllServers(adapters.servers.list)
       setAvailableServers(sortReferencedServers(servers))
     } catch {
       toast.error(t("toastLoadServersFailed"))
     } finally {
       setServersLoading(false)
     }
-  }, [active, adapters?.servers, ready, t])
+  }, [active, adapters.servers, ready, t])
 
   useEffect(() => {
     void loadServers()
@@ -545,12 +545,12 @@ export function AIAssistantWorkspaceView({
     />
   )
 
-  const configuration = canConfigure && (
+  const configuration = canConfigure && adapters.aiSettings && (
     <AIAssistantConfigPopover
         side={sidebar ? "right" : "bottom"}
         open={configOpen}
         onOpenChange={setConfigOpen}
-        adapter={adapters?.aiSettings}
+        adapter={adapters.aiSettings}
         onSaved={() => {
           void refetchAIConfig()
         }}
@@ -587,7 +587,7 @@ export function AIAssistantWorkspaceView({
   )
   return (
     <AssistantRuntimeProvider runtime={agentSession.runtime}>
-    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} servers={availableServers} messages={session?.messages} scope={session?.scope} active={active} loadFile={adapters?.aiSession?.getTaskFile} saveFile={adapters?.aiSession?.saveTaskFile}>
+    <AgentWorkspaceProvider sessionId={sessionId} tasks={agentSession.tasks} servers={availableServers} messages={session?.messages} scope={session?.scope} active={active} loadFile={adapters.aiSession.getTaskFile} saveFile={adapters.aiSession.saveTaskFile}>
     {sidebar && active && <AISidebarContent>
       <AssistantRuntimeProvider runtime={agentSession.runtime}>
       <AISessionSidebar
@@ -595,7 +595,7 @@ export function AIAssistantWorkspaceView({
         onCreate={handleCreateNewSession} onRestore={handleRestoreSession} onDelete={handleDeleteSession}
         creating={sessionCreating} createDisabled={createSessionDisabled}
         configuration={configuration} t={t}
-        listSessions={adapters?.listAISessions}
+        listSessions={adapters.listAISessions}
       />
       </AssistantRuntimeProvider>
     </AISidebarContent>}

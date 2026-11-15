@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"github.com/easyssh/shared/aitools"
 	"strings"
 
 	"github.com/easyssh/shared/aichatui"
@@ -19,11 +20,11 @@ func (m *Manager) validateHistoryAdmissionLocked(s *session, messages []provider
 	}
 	if strings.EqualFold(input.Scope.Kind, "global") {
 		candidate.scope = SessionScope{}
-	} else if scope := normalizeSessionScope(input.Scope); scope.Kind != "" {
+	} else if scope := aipermission.NormalizeScope(input.Scope); scope.Kind != "" {
 		candidate.scope = scope
 	}
 	tools := m.visibleToolsForSessionLocked(candidate)
-	prompt := buildToolSystemPrompt(candidate.permissionMode, tools, candidate.scope)
+	prompt := aitools.SystemPrompt("你是一个服务器管理助手，可以帮助用户管理和操作他们的服务器。", candidate.permissionMode, provider.SharedToolSpecs(tools), &candidate.scope)
 	proposed := make([]provider.Message, 0, len(messages)+1)
 	proposed = append(proposed, provider.Message{Role: "system", Content: prompt})
 	proposed = append(proposed, messages...)

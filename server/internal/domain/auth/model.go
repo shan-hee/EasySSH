@@ -23,7 +23,7 @@ type Owner struct {
 	Slot                      int        `gorm:"not null;uniqueIndex;check:slot = 1" json:"-"`
 	PendingTwoFactorSecret    string     `gorm:"type:text" json:"-"`
 	PendingTwoFactorExpiresAt *time.Time `json:"-"`
-	ID                        uuid.UUID  `gorm:"type:char(36);primary_key" json:"id"`
+	ID                        uuid.UUID  `gorm:"type:char(36);primary_key;not null" json:"id"`
 	Username                  string     `gorm:"not null;size:50" json:"username"` // 允许重复，用户可修改
 	Email                     string     `gorm:"uniqueIndex;not null;size:100" json:"email"`
 	Password                  string     `gorm:"not null;size:255" json:"-"` // bcrypt hash，不在 JSON 中返回

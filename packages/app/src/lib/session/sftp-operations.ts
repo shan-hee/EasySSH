@@ -1,6 +1,5 @@
 import { toast } from "sonner"
 import { openWorkspaceTask } from "@/lib/workspace-task-navigation"
-import { sftpApi } from "@/lib/api/sftp"
 import { getErrorMessage } from "@/lib/error-utils"
 import type { BatchDeleteResponse, FileInfo, SftpDeletePathsResult } from "@/lib/sftp-types"
 import { joinSftpRemotePath, sftpRemoteBaseName } from "@/lib/sftp-file-utils"
@@ -97,7 +96,7 @@ export interface DeleteOperationConfig<T extends { name: string }> {
   t: TranslateFunction
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
-  api?: SftpOperationsApi
+  api: SftpOperationsApi
 }
 
 export async function performDelete<T extends { name: string }>({
@@ -108,7 +107,7 @@ export async function performDelete<T extends { name: string }>({
   t,
   notifier,
   setFiles,
-  api = sftpApi,
+  api,
 }: DeleteOperationConfig<T>): Promise<void> {
   const fullPath = joinSftpRemotePath(currentPath, fileName)
 
@@ -142,7 +141,7 @@ export interface CreateFolderOperationConfig<T extends { name: string }> {
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
   convertFileInfo: (info: FileInfo) => T
-  api?: SftpOperationsApi
+  api: SftpOperationsApi
 }
 
 export async function performCreateFolder<T extends { name: string }>({
@@ -153,7 +152,7 @@ export async function performCreateFolder<T extends { name: string }>({
   notifier,
   setFiles,
   convertFileInfo,
-  api = sftpApi,
+  api,
 }: CreateFolderOperationConfig<T>): Promise<void> {
   const fullPath = joinSftpRemotePath(currentPath, name)
 
@@ -184,7 +183,7 @@ export interface CreateFileOperationConfig<T extends { name: string }> {
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
   convertFileInfo: (info: FileInfo) => T
-  api?: SftpOperationsApi
+  api: SftpOperationsApi
 }
 
 export async function performCreateFile<T extends { name: string }>({
@@ -195,7 +194,7 @@ export async function performCreateFile<T extends { name: string }>({
   notifier,
   setFiles,
   convertFileInfo,
-  api = sftpApi,
+  api,
 }: CreateFileOperationConfig<T>): Promise<void> {
   const fullPath = joinSftpRemotePath(currentPath, name)
 
@@ -226,7 +225,7 @@ export interface RenameOperationConfig<T extends { name: string }> {
   t: TranslateFunction
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
-  api?: SftpOperationsApi
+  api: SftpOperationsApi
 }
 
 export async function performRename<T extends { name: string }>({
@@ -237,7 +236,7 @@ export async function performRename<T extends { name: string }>({
   t,
   notifier,
   setFiles,
-  api = sftpApi,
+  api,
 }: RenameOperationConfig<T>): Promise<void> {
   const oldPath = joinSftpRemotePath(currentPath, oldName)
   const newPath = joinSftpRemotePath(currentPath, newName)
@@ -276,7 +275,7 @@ export interface SaveFileOperationConfig<T extends { name: string }> {
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
   convertFileInfo: (info: FileInfo) => T
-  api?: SftpOperationsApi
+  api: SftpOperationsApi
 }
 
 export async function performSaveFile<T extends { name: string }>({
@@ -288,7 +287,7 @@ export async function performSaveFile<T extends { name: string }>({
   notifier,
   setFiles,
   convertFileInfo,
-  api = sftpApi,
+  api,
 }: SaveFileOperationConfig<T>): Promise<void> {
   const fullPath = joinSftpRemotePath(currentPath, fileName)
 
@@ -319,7 +318,7 @@ export interface BatchDeleteOperationConfig<T extends { name: string }> {
   t: TranslateFunction
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
-  api?: SftpOperationsApi
+  api: SftpOperationsApi
 }
 
 export interface BatchDeleteResult {
@@ -338,7 +337,7 @@ export async function performBatchDelete<T extends { name: string }>({
   t,
   notifier,
   setFiles,
-  api = sftpApi,
+  api,
 }: BatchDeleteOperationConfig<T>): Promise<BatchDeleteResult> {
   const fullPaths = fileNames.map((fileName) => joinSftpRemotePath(currentPath, fileName))
 

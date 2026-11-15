@@ -1,3 +1,4 @@
+import type { components } from "@/generated/openapi"
 import type { OptionalServerConnectionInfo, ServerConnectionInfo } from "./types"
 import type { AuthMethod } from "@/lib/server-types"
 import type { SystemInfoApi } from "@/lib/system-info"
@@ -152,33 +153,11 @@ export interface WorkspaceSftpCredentialRequest extends WorkspaceTerminalCredent
   privateKeyPassphrase?: string
 }
 
-export interface WorkspaceSftpAuthPromptItem {
-  text: string
-  echo: boolean
-}
+export type WorkspaceSftpAuthPromptItem = components["schemas"]["TerminalAuthPromptItem"]
 
-export interface WorkspaceSftpAuthPrompt {
-  request_id: string
-  kind?: "keyboard_interactive" | "credential_retry" | "private_key_passphrase" | string
-  name?: string
-  instruction?: string
-  prompts: WorkspaceSftpAuthPromptItem[]
-  auth_method?: WorkspaceAuthMethod
-  attempt?: number
-  max_attempts?: number
-  attempts_remaining?: number
-}
+export type WorkspaceSftpAuthPrompt = components["schemas"]["TerminalAuthPrompt"]
 
-export interface WorkspaceSftpHostKeyPrompt {
-  request_id: string
-  host: string
-  port: number
-  expected_key: string
-  received_key: string
-  expected_key_type: string
-  received_key_type: string
-  message?: string
-}
+export type WorkspaceSftpHostKeyPrompt = components["schemas"]["TerminalHostKeyPrompt"]
 
 export interface WorkspaceSftpAuthResponsePayload {
   answers?: string[]
@@ -402,7 +381,7 @@ export interface SshWorkspaceApiClient {
   scripts?: {
     list: (params?: ListScriptsParams) => Promise<ListScriptsResponse>
   }
-  sftp?: Partial<FileTransferSftpApi> & {
+  sftp: Partial<FileTransferSftpApi> & {
     listDirectory: (serverId: string, path?: string, signal?: AbortSignal) => Promise<DirectoryListResponse>
     authenticate?: (
       serverId: string,
@@ -672,7 +651,7 @@ export interface SshWorkspaceSessionStoreAdapter {
 }
 
 export interface SshWorkspaceAdapters {
-  apiClient?: SshWorkspaceApiClient
+  apiClient: SshWorkspaceApiClient
   authTicketProvider?: SshWorkspaceAuthTicketProvider
   i18n: SshWorkspaceI18n
   notifier: SshWorkspaceNotifier

@@ -16,7 +16,6 @@ import (
 	"github.com/easyssh/server/internal/domain/server"
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
 	"github.com/easyssh/shared/sftputil"
-	"github.com/google/uuid"
 	"github.com/pkg/sftp"
 )
 
@@ -220,34 +219,23 @@ func (c *Client) UploadFileWithProgressWithContext(ctx context.Context, localRea
 	if err := access.Current(ctx).Check(ctx, req); err != nil {
 		return err
 	}
-	remotePath = sftputil.NormalizePath(remotePath)
-	temporary := remotePath + ".easyssh-" + uuid.NewString()
-	file, err := c.sftpClient.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = file.Close(); _ = c.sftpClient.Remove(temporary) }()
-	if err := c.sftpClient.Chmod(temporary, 0600); err != nil {
-		return err
-	}
 	stop := sftputil.CloseOnCancel(ctx, c.CloseSFTP)
 	defer stop()
-	metered, finish := access.MeterWriter(ctx, req, file)
-	defer finish()
-	writer := &progressWriter{writer: metered, onProgress: onProgress}
-	_, err = io.Copy(writer, &ctxReader{ctx: ctx, reader: localReader})
-	writer.report()
-	err = errors.Join(err, finish())
-	if err != nil {
-		return fmt.Errorf("failed to upload file: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	if err := access.Current(ctx).Check(ctx, req); err != nil {
-		return err
-	}
-	return c.commitReplacement(temporary, remotePath, 0600)
+	_, err := sftputil.WriteAtomic(ctx, c.sftpClient, sftputil.NormalizePath(remotePath), sftputil.AtomicWrite{
+		Mode:    0600,
+		Replace: true,
+		Check:   func() error { return access.Current(ctx).Check(ctx, req) },
+	}, func(file *sftp.File) error {
+		metered, finish := access.MeterWriter(ctx, req, file)
+		writer := &progressWriter{writer: metered, onProgress: onProgress}
+		_, err := io.Copy(writer, &ctxReader{ctx: ctx, reader: localReader})
+		writer.report()
+		if err = errors.Join(err, finish()); err != nil {
+			return fmt.Errorf("failed to upload file: %w", err)
+		}
+		return nil
+	})
+	return err
 }
 
 // ctxReader 在每次读取前检查上下文是否已取消
@@ -457,53 +445,16 @@ func (c *Client) WriteFile(path string, data []byte, perm os.FileMode) error {
 	if err := access.Current(c.ctx).Check(c.ctx, req); err != nil {
 		return err
 	}
-	path = sftputil.NormalizePath(path)
-	temporary := path + ".easyssh-" + uuid.NewString()
-	file, err := c.sftpClient.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = file.Close(); _ = c.sftpClient.Remove(temporary) }()
-	if err := c.sftpClient.Chmod(temporary, 0600); err != nil {
-		return err
-	}
-	metered, finish := access.MeterWriter(c.ctx, req, file)
-	defer finish()
-	_, copyErr := io.Copy(metered, bytes.NewReader(data))
-	if err := errors.Join(copyErr, finish()); err != nil {
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	if err := access.Current(c.ctx).Check(c.ctx, req); err != nil {
-		return err
-	}
-	return c.commitReplacement(temporary, path, perm)
-}
-
-// commitReplacement keeps the existing target's permissions, including 0000.
-// Replacing links or special files is deliberately rejected.
-func (c *Client) commitReplacement(temporary, target string, newMode os.FileMode) error {
-	info, err := c.sftpClient.Lstat(target)
-	setMode := newMode != 0
-	if err == nil {
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("target is not a regular file")
-		}
-		newMode, setMode = info.Mode().Perm(), true
-	} else if !os.IsNotExist(err) {
-		return err
-	}
-	if setMode {
-		if err := c.sftpClient.Chmod(temporary, newMode.Perm()); err != nil {
-			return err
-		}
-	}
-	if _, supported := c.sftpClient.HasExtension("posix-rename@openssh.com"); supported {
-		return sftputil.MutationError(c.sftpClient.PosixRename(temporary, target))
-	}
-	return sftputil.MutationError(c.sftpClient.Rename(temporary, target))
+	_, err := sftputil.WriteAtomic(c.ctx, c.sftpClient, sftputil.NormalizePath(path), sftputil.AtomicWrite{
+		Mode:    perm,
+		Replace: true,
+		Check:   func() error { return access.Current(c.ctx).Check(c.ctx, req) },
+	}, func(file *sftp.File) error {
+		metered, finish := access.MeterWriter(c.ctx, req, file)
+		_, err := io.Copy(metered, bytes.NewReader(data))
+		return errors.Join(err, finish())
+	})
+	return err
 }
 
 // Exists 检查文件或目录是否存在

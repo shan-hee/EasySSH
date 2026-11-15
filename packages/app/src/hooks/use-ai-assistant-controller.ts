@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 
 import type { AIConfigAdapter } from "@/hooks/use-ai-config"
 import { useAIConfig } from "@/hooks/use-ai-config"
-import type { AgentSessionAdapter } from "@/hooks/use-agent-session"
+import type { AgentSessionAdapter, StreamingAgentSessionAdapter } from "@/hooks/use-agent-session"
 import { useAgentSession } from "@/hooks/use-agent-session"
 import type { PermissionMode } from "@/lib/api/ai-agent"
 import { getAgentToolActivity } from "@/lib/ai-agent/timeline-utils"
@@ -12,8 +12,8 @@ export function useAIAssistantController({
   aiSessionAdapter,
   includeAutoModel = false,
 }: {
-  aiConfigAdapter?: AIConfigAdapter
-  aiSessionAdapter?: AgentSessionAdapter
+  aiConfigAdapter: AIConfigAdapter
+  aiSessionAdapter: AgentSessionAdapter | StreamingAgentSessionAdapter
   includeAutoModel?: boolean
 }) {
   const config = useAIConfig(aiConfigAdapter)

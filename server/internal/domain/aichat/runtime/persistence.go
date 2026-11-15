@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/protocol"
 	"time"
 
@@ -32,7 +33,7 @@ type AISessionRecord struct {
 	ScopeKind              string         `gorm:"type:varchar(16);not null" json:"-"`
 	ScopeServerID          string         `gorm:"type:varchar(80);not null" json:"-"`
 	ScopeTerminalSessionID string         `gorm:"type:varchar(80);not null" json:"-"`
-	ID                     string         `gorm:"type:char(36);primaryKey" json:"id"`
+	ID                     string         `gorm:"type:char(36);primaryKey;not null" json:"id"`
 	Actor                  protocol.Actor `gorm:"embedded;embeddedPrefix:actor_" json:"actor"`
 	Model                  string         `gorm:"type:text" json:"model"`
 	Title                  string         `gorm:"type:text" json:"title"`
@@ -270,7 +271,7 @@ func (s *gormSessionStore) Delete(ctx context.Context, actor protocol.Actor, ses
 }
 
 func (snapshot SessionSnapshot) toRecord() (AISessionRecord, error) {
-	scope := normalizeSessionScope(snapshot.Scope)
+	scope := aipermission.NormalizeScope(snapshot.Scope)
 	scopeJSON, err := json.Marshal(scope)
 	if err != nil {
 		return AISessionRecord{}, err

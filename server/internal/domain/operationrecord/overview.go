@@ -33,7 +33,7 @@ type OverviewRequest struct {
 
 type Coverage struct {
 	ID           string     `gorm:"primaryKey;size:20" json:"-"`
-	StartedAt    time.Time  `json:"started_at"`
+	StartedAt    time.Time  `gorm:"not null" json:"started_at"`
 	PrunedBefore *time.Time `json:"pruned_before,omitempty"`
 }
 

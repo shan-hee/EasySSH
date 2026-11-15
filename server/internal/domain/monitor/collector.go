@@ -10,8 +10,8 @@ import (
 	"time"
 
 	sshDomain "github.com/easyssh/server/internal/domain/ssh"
-	pb "github.com/easyssh/server/internal/proto"
 	"github.com/easyssh/shared/monitoring"
+	pb "github.com/easyssh/shared/monitorwire"
 	"google.golang.org/protobuf/proto"
 )
 

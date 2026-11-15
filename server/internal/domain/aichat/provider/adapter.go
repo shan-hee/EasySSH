@@ -78,7 +78,7 @@ func toSharedTurnRequest(req TurnRequest) aiprovider.TurnRequest {
 		ReasoningEffort: req.ReasoningEffort,
 		Messages:        toSharedMessages(req.Messages),
 		Model:           req.Model,
-		Tools:           toSharedToolSpecs(req.Tools),
+		Tools:           SharedToolSpecs(req.Tools),
 	}
 }
 
@@ -114,7 +114,7 @@ func toSharedToolCalls(toolCalls []registry.ToolCall) []aiprovider.ToolCall {
 	return result
 }
 
-func toSharedToolSpecs(tools []registry.ToolSpec) []aiprovider.ToolSpec {
+func SharedToolSpecs(tools []registry.ToolSpec) []aiprovider.ToolSpec {
 	if len(tools) == 0 {
 		return nil
 	}

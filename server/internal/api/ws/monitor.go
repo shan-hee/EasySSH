@@ -13,7 +13,7 @@ import (
 
 	"github.com/easyssh/server/internal/domain/monitor"
 	"github.com/easyssh/server/internal/domain/server"
-	pb "github.com/easyssh/server/internal/proto"
+	pb "github.com/easyssh/shared/monitorwire"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -46,7 +46,8 @@ func (s *wsSubscriber) OnError(err error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	_ = s.conn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-	_ = s.conn.WriteJSON(map[string]string{"type": "error", "message": err.Error()})
+	_ = s.conn.WriteJSON(protocol.MonitorError{Type: string(protocol.MonitorServerMessageTypeError),
+		Message: err.Error()})
 	_ = s.conn.Close()
 }
 
@@ -162,7 +163,7 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 	defer stopSocketCancel()
 
 	// 发送握手完成消息
-	handshakeMsg := map[string]string{"type": "handshake_complete", "status": "connecting"}
+	handshakeMsg := protocol.MonitorHandshake{Type: string(protocol.MonitorServerMessageTypeHandshakeComplete), Status: "connecting"}
 	if data, err := json.Marshal(handshakeMsg); err == nil {
 		_ = wsConn.SetWriteDeadline(time.Now().Add(wsWriteWait))
 		_ = wsConn.WriteMessage(websocket.TextMessage, data)
@@ -171,11 +172,12 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 	pooledConn, err := h.connectionPool.GetOrCreate(c.Request.Context(), serverID, protocol.MonitorRead)
 	if err != nil {
 		_ = wsConn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-		_ = wsConn.WriteJSON(map[string]string{"type": "error", "message": err.Error()})
+		_ = wsConn.WriteJSON(protocol.MonitorError{Type: string(protocol.MonitorServerMessageTypeError),
+			Message: err.Error()})
 		return
 	}
 	_ = wsConn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-	_ = wsConn.WriteJSON(map[string]string{"type": "ready"})
+	_ = wsConn.WriteJSON(protocol.MonitorReady{Type: string(protocol.MonitorServerMessageTypeReady)})
 
 	// 确保在函数退出时释放连接
 	defer func() {
@@ -222,12 +224,6 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 
 	// 监听客户端消息（处理 ping/close）
 	go func() {
-		// 通用消息结构
-		type wsMsg struct {
-			Type string `json:"type"`
-			Ts   int64  `json:"ts,omitempty"`
-		}
-
 		for {
 			msgType, payload, err := wsConn.ReadMessage()
 			if err != nil {
@@ -240,23 +236,23 @@ func (h *MonitorHandler) HandleMonitor(c *gin.Context) {
 
 			// 仅在 TextMessage 时尝试解析
 			if msgType == websocket.TextMessage {
-				var m wsMsg
+				var m protocol.MonitorPing
 				if err := json.Unmarshal(payload, &m); err != nil {
 					continue
 				}
 
 				switch m.Type {
-				case "ping":
+				case string(protocol.MonitorClientMessageTypePing):
 					// 处理 ping 消息
 					serverRecvTs := time.Now().UnixMilli()
-					resp := map[string]any{
-						"type":         "pong",
-						"ts":           m.Ts,
-						"serverRecvTs": serverRecvTs,
+					resp := protocol.MonitorPong{
+						Type:         string(protocol.MonitorServerMessageTypePong),
+						TS:           m.TS,
+						ServerRecvTS: serverRecvTs,
 					}
 					writeMu.Lock()
 					_ = wsConn.SetWriteDeadline(time.Now().Add(wsWriteWait))
-					resp["serverSendTs"] = time.Now().UnixMilli()
+					resp.ServerSendTS = time.Now().UnixMilli()
 					b, _ := json.Marshal(resp)
 					_ = wsConn.WriteMessage(websocket.TextMessage, b)
 					writeMu.Unlock()
