@@ -493,12 +493,12 @@ func restoreInstance(ctx context.Context, stage, into, targetDSN string, manifes
 		return tx.Error
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"chat_approvals", "chat_bindings", "auth_tickets", "access_handoffs", "automation_tokens", "access_sessions", "access_containers", "owner_sessions", "totp_replays", "known_login_devices", "sync_authorizations", "owner_devices"} {
+	for _, table := range []string{"chat_approvals", "chat_bindings", "chat_bind_requests", "auth_tickets", "access_handoffs", "automation_tokens", "access_sessions", "access_containers", "owner_sessions", "totp_replays", "known_login_devices", "sync_authorizations", "owner_devices"} {
 		if err = tx.Exec("DELETE FROM " + table).Error; err != nil {
 			return err
 		}
 	}
-	if err = tx.Exec("UPDATE chat_connections SET enabled = false, revision = revision + 1, bind_code_hash = '', bind_expires_at = NULL, last_error = '', last_poll_at = NULL").Error; err != nil {
+	if err = tx.Exec("UPDATE chat_connections SET enabled = false, revision = revision + 1, last_error = '', last_poll_at = NULL").Error; err != nil {
 		return err
 	}
 	// The restored sync versions no longer continue what devices have seen.

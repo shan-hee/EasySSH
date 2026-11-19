@@ -1,46 +1,45 @@
 {
-  "title": "Chat connections",
-  "create": "Add connection",
-  "edit": "Edit connection",
-  "webOnly": "Manage chat connections on the web server.",
-  "loadFailed": "Unable to load. Please retry.",
+  "title": "Agent access",
+  "create": "Add access",
+  "edit": "Edit access",
+  "webOnly": "Manage Agent access from the web server.",
+  "loadFailed": "Failed to load. Please try again.",
   "retry": "Retry",
   "empty": "Bring the Agent to your chat app",
-  "emptyHelp": "Create a Telegram bot or a Feishu app, choose the servers it may access, then bind your account with a one-time code.",
-  "serverCount": "{count} authorized servers",
+  "emptyHelp": "Connect a Telegram bot or a Feishu app and choose the servers it may access. When someone messages the bot, approve them here to get started.",
   "setupHelp": {
-    "telegram": "Receives private messages through Telegram Bot API long polling; no public callback URL is needed. The server must reach Telegram.",
-    "feishu": "Receives direct messages and group @mentions over a Feishu long connection. No public callback URL is needed. The server must reach open.feishu.cn."
+    "telegram": "Receives private messages through Telegram Bot API long polling; no public callback URL is needed. The server must be able to reach Telegram.",
+    "feishu": "Receives private messages and group @mentions over a Feishu long connection; no public callback URL is needed. The server must be able to reach open.feishu.cn."
   },
-  "name": "Connection name",
-  "namePlaceholder": "For example: Personal operations assistant",
-  "keepToken": "Leave blank to keep the current token",
-  "tokenHelp": "Credentials are encrypted and never returned to the browser. Create a dedicated bot with Telegram BotFather.",
+  "sections": {
+    "bot": "Bot",
+    "access": "Access",
+    "agent": "Agent"
+  },
+  "name": "Name",
+  "namePlaceholder": "e.g. Personal ops assistant",
+  "keepToken": "Leave empty to keep the current token",
+  "tokenHelp": "Open BotFather in Telegram, send /newbot, and paste the token it returns here. Credentials are encrypted and never sent back to the browser.",
+  "openBotFather": "Open BotFather",
   "permissionMode": "Permission mode",
   "servers": "Allowed servers",
-  "serversHelp": "Only the selected servers are accessible, up to 100. Bound accounts inherit this scope.",
+  "serversHelp": "Up to 100. Approved accounts can access only these servers.",
   "noServers": "Add a server in the console first.",
-  "enabled": "Enable connection",
-  "editStopsWork": "Saving configuration stops existing tasks and invalidates pending approval buttons.",
+  "enabled": "Enabled",
+  "editStopsWork": "Saving stops running tasks for this access and invalidates pending approval buttons.",
   "save": "Save",
   "saving": "Verifying and saving…",
-  "saveFailed": "Unable to save",
+  "saveFailed": "Save failed",
   "actionFailed": "Action failed",
   "delete": "Delete",
-  "deleteConfirm": "Deleting this connection stops its tasks and removes bindings and delivery records. Agent conversation history is retained.",
-  "bindings": "Account bindings",
-  "generateCode": "Create binding link",
-  "bindingHelp": "The binding code is valid for 10 minutes and works once; generating a new one invalidates the old. Whoever holds the code gets this connection's server access, so only use it in your own private chat with the bot.",
-  "codeExpired": "This binding code has expired. Create a new one.",
-  "codeExpires": "Expires at {time}. Invalidated after use.",
-  "copyCode": "Copy binding command",
-  "openTelegram": "Bind in Telegram",
+  "deleteConfirm": "Deleting stops its tasks and removes bindings, requests and delivery records. Agent session history is kept.",
+  "bindings": "Bound accounts",
   "noBindings": "No accounts are bound yet.",
   "revoked": "Revoked",
   "bound": "Bound",
   "revoke": "Revoke",
-  "revokeConfirm": "Revoking this account stops its tasks, invalidates unused approvals, and discards pending replies to this account.",
-  "openSession": "Open conversation",
+  "revokeConfirm": "Revoking stops this account's tasks, invalidates unused approvals, and stops pending results from being delivered to it.",
+  "openSession": "Open session",
   "connectionStatus": {
     "disabled": "Disabled",
     "connecting": "Connecting",
@@ -49,21 +48,39 @@
   },
   "modes": {
     "readonly": "Read-only analysis",
-    "balanced": "Approval required"
+    "balanced": "Approve operations"
   },
   "modeHelp": {
-    "readonly": "Read server information, monitoring data and files. Shell commands and write operations are disabled.",
-    "balanced": "Queries are allowed. Commands and file changes use the existing Agent approval flow."
+    "readonly": "Allows viewing server information, monitoring and files. Shell commands and writes are blocked.",
+    "balanced": "Allows queries; commands and file changes send approval buttons in the chat."
   },
-  "connection": "Chat connection",
-  "manage": "Manage connection",
-  "noSessions": "No sessions yet. After binding an account, message the bot in the chat app to start.",
-  "selectSession": "Select a session to see the bot's conversation in the chat app.",
+  "systemPrompt": "System prompt",
+  "systemPromptPlaceholder": "e.g. You are the team's on-call assistant; keep answers short. For website issues, check the nginx logs on @web-01 first.",
+  "systemPromptHelp": "Type @ to reference a server selected above. Changes apply from the next message.",
+  "systemPromptCount": "{count} / 4000",
+  "mentionEmpty": "Select servers above first",
+  "mentionNoMatch": "No matching servers",
+  "connection": "Access",
+  "manage": "Manage access",
+  "requests": "Pending approval",
+  "approve": "Approve",
+  "ignore": "Ignore",
+  "requestHint": "Once approved, this account can use the servers allowed for this access. Approve only accounts you recognize.",
+  "approved": "Approved. The account has been notified.",
+  "inviteTitle": "Send the bot a message",
+  "inviteHelp": {
+    "telegram": "Open the bot and tap Start. The request appears here; approve it to start chatting.",
+    "feishu": "Send the bot any message in Feishu, or @mention it in a group. The request appears here; approve it to start chatting."
+  },
+  "openTelegram": "Open Telegram bot",
+  "openFeishu": "Open Feishu bot",
+  "waitingRequest": "Waiting for a request…",
+  "selectSession": "Select a session to see the bot's conversation as it appears in the chat app.",
   "unnamed": "Unnamed account",
-  "transcriptHint": "Rebuilt from what the bot sent; instant acknowledgements are omitted",
+  "transcriptHint": "Rebuilt from what the bot actually sent; instant receipts such as \"Received\" are omitted",
   "sessionStatus": {
     "running": "Running…",
-    "waiting_confirmation": "Awaiting approval"
+    "waiting_confirmation": "Waiting for approval"
   },
   "resizeSidebar": "Resize session list",
   "back": "Back to sessions",
@@ -73,8 +90,12 @@
     "feishu": "Feishu"
   },
   "keepSecret": "Leave empty to keep the current App Secret",
-  "feishuHelp": "Enable the Feishu bot and subscribe to im.message.receive_v1 and card.action.trigger over a long connection. Groups need im:message.group_at_msg:readonly; attachments need im:message:readonly. Publish the version, then enter the App ID and App Secret.",
-  "feishuConsole": "Feishu Open Platform",
-  "feishuBindHint": "Send the binding command only in a direct message to the bot. For a group, send @bot /groupid in the group, then append the group ID to the binding command. Everyone in the group can see replies.",
-  "openFeishu": "Open the Feishu bot"
+  "feishuConsole": "Open Feishu Open Platform",
+  "feishuSteps": {
+    "create": "Create a custom app and add the Bot capability",
+    "scopes": "In Permissions, choose Batch import and paste the scope list",
+    "events": "In Events & Callbacks, choose long connection and add the event and callback",
+    "publish": "Create and publish a version, then enter the App ID and App Secret below"
+  },
+  "copyScopes": "Copy scopes"
 }

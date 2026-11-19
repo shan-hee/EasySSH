@@ -523,6 +523,7 @@ func main() {
 	aiRuntimeManager.SetSessionStore(runtime.NewGormSessionStore(database, contentService))
 	aiSessionHandler := rest.NewAISessionHandler(aiRuntimeManager)
 	chatConnectionService := chatbridge.NewService(database, encryptor, aiRuntimeManager, accessRuntime)
+	aiRuntimeManager.SetInstructionsSource(chatConnectionService.SessionInstructions)
 	chatConnectionHandler := rest.NewChatConnectionHandler(chatConnectionService)
 	// Docker 处理器（复用监控连接池）
 	dockerService := docker.NewService(monitorConnectionPool, taskCenterService, taskCenterRepo)
@@ -999,7 +1000,8 @@ func main() {
 			chatConnections.PUT("/:id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Save)
 			chatConnections.DELETE("/:id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Delete)
 			chatConnections.PATCH("/:id/enabled", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.SetEnabled)
-			chatConnections.POST("/:id/bind-code", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.BindCode)
+			chatConnections.POST("/:id/requests/:request_id/approve", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.ApproveRequest)
+			chatConnections.DELETE("/:id/requests/:request_id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.IgnoreRequest)
 			chatConnections.DELETE("/:id/bindings/:binding_id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Revoke)
 			chatConnections.GET("/:id/sessions", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Sessions)
 			chatConnections.GET("/:id/sessions/:session_id", middleware.OwnerRoute(protocol.OwnerManage, ""), chatConnectionHandler.Transcript)

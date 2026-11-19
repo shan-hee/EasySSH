@@ -48,7 +48,7 @@ WebSocket 入口必须消费绑定端点、资源与访问主体的一次性 tic
 
 访客首次兑换及携带访客 Cookie 的写请求要求 `Origin` 与请求的对外来源一致，并拒绝 `Sec-Fetch-Site: cross-site`；后续写请求继续校验 CSRF Token。对外来源从请求 Host 和 TLS 推导；只有连接对端在现有可信代理列表内，才读取 `X-Forwarded-Proto` 和 `X-Forwarded-Host`。反向代理必须覆盖客户端传入的这些头，并保留外部 Host（含非默认端口），或通过 `X-Forwarded-Host` 传递。CORS 同步识别该对外来源，无需为同源分享额外配置固定域名。
 
-## 飞书聊天接入（后端）
+## 飞书 Agent 接入（后端）
 
 飞书复用 `/chat-connections` 的管理、启停、绑定、会话和审批接口，使用企业自建应用及官方 SDK 长连接，无需公网 Webhook。创建连接的请求体示例：
 
@@ -60,29 +60,30 @@ WebSocket 入口必须消费绑定端点、资源与访问主体的一次性 tic
   "app_secret": "your_application_secret",
   "server_ids": ["实际服务器 UUID"],
   "permission_mode": "balanced",
+  "system_prompt": "你是值班助手。网站问题先查 :server[web-01]{name=实际服务器 UUID} 的 nginx 日志。",
   "enabled": true
 }
 ```
 
-以上请求发送到 `POST /api/v1/chat-connections`，使用现有 Owner 登录和 CSRF 机制。`app_secret` 仅写入，按连接 ID 加密保存；更新时留空保留原密钥。创建时省略 `provider` 仍使用 Telegram，更新时省略则保留原平台。已有连接不能切换平台或飞书 App ID，应新建连接。Telegram 的 `token`、返回字段和绑定链接继续有效。
+以上请求发送到 `POST /api/v1/chat-connections`，使用现有 Owner 登录和 CSRF 机制。`app_secret` 仅写入，按连接 ID 加密保存；更新时留空保留原密钥。创建时省略 `provider` 仍使用 Telegram，更新时省略则保留原平台。已有连接不能切换平台或飞书 App ID，应新建连接。`system_prompt` 最多 4000 字，作为受信指令追加在 Agent 内置规则之后，下一条消息起生效；`:server[标签]{name=服务器 ID}` 引用的服务器必须在 `server_ids` 内，运行时按绑定的访问范围解析。
 
 飞书开放平台的配置步骤：
 
 1. 创建企业自建应用，启用机器人能力，并确保使用者处于应用可用范围。
-2. 申请接收机器人单聊消息权限 `im:message.p2p_msg:readonly` 和发送机器人消息权限 `im:message:send_as_bot`。需要群聊时，额外申请 `im:message.group_at_msg:readonly`，发布应用版本并将机器人加入目标群；无需读取群内所有消息。
+2. 申请接收机器人单聊消息权限 `im:message.p2p_msg:readonly` 和发送机器人消息权限 `im:message:send_as_bot`。需要群聊时，额外申请 `im:message.group_at_msg:readonly`，发布应用版本并将机器人加入目标群；无需读取群内所有消息。`contact:user.base:readonly` 和 `im:chat:readonly` 用于在接入申请中显示用户名和群名，未开通时显示 open_id / 群 ID。网页创建表单提供可直接批量导入的权限 JSON。
 3. 在“事件与回调”中选择长连接，订阅 `im.message.receive_v1`。需要审批按钮时，同时配置卡片回调 `card.action.trigger` 的长连接接收。后端启用连接后会建立连接；若控制台要求先检测连接，可先保存并启用后端配置，再完成订阅。
-4. 调用 `POST /api/v1/chat-connections/{id}/bind-code`，打开返回的 `url` 进入机器人私聊，发送返回的 `command`（`/bind <code>`）。飞书打开机器人链接不会自动携带绑定码；绑定码有效期为 10 分钟且只能使用一次。
-5. 要绑定群聊，在目标群发送 `@机器人 /groupid`，再在机器人**私聊**中发送 `/bind <新的一次性绑定码> <群 ID>`。群绑定与私聊绑定独立，不需要先绑定私聊；不要把绑定码发到群里。
+4. 未绑定的账号给机器人发任意消息，或在群里 @机器人，即产生一条接入申请（`GET /api/v1/chat-connections/{id}` 的 `requests`）。同一账号与聊天只保留一条，24 小时无新消息后过期，每个连接最多 20 条待处理。
+5. Owner 调用 `POST /api/v1/chat-connections/{id}/requests/{request_id}/approve` 批准，机器人会在原聊天中通知对方；`DELETE /api/v1/chat-connections/{id}/requests/{request_id}` 忽略且不回复。群申请批准后绑定的是“该成员 + 该群”，与私聊绑定独立。
 6. 私聊直接提问；群内每次提问或使用 `/help`、`/new`、`/status`、`/stop` 都需 @ 此机器人。会话按连接、成员和聊天隔离，群内回复及审批卡片对全群可见，只有发起任务的绑定成员可审批。绑定可分别撤销。`readonly` 限制只读，`balanced` 的执行操作需通过卡片审批，审批有效期为 10 分钟。
 7. 收取用户发的附件、读取被回复的消息，需另开通 `im:message:readonly`（或已获等效权限），发布飞书应用版本。私聊直接发图片、图文或文本文件；群内可在图文中 @ 机器人，或回复目标附件并 @ 它提问。仅获取本条及同一聊天中直接引用的附件，不扫描历史。无法读取引用时，请直接发送附件。附件会交给当前配置的 AI 服务分析，不要发送不宜共享的内容。
 
 图片支持 JPEG、PNG、GIF、WebP，需配置支持图片输入的模型。每条最多 10 张、每张 16 MiB；一次模型请求中的图片（含历史）合计不超过 32 MiB。需要继续发大图时可先 `/new`。文本附件支持 UTF-8 的 TXT、LOG、MD、CSV、JSON/JSONL、YAML、XML、INI、CONF，每个只读取前 64 KiB，超出会标记截断。未接入 PDF、Office 或压缩包解析。这些是对话输入限制，不改变跨设备同步对象的独立大小限制。
 
-飞书身份保存在 `external_user_id`（用户 open_id）中；原有 `user_id` 字段保留，飞书绑定的该值为 `"0"`。显示名称暂使用 open_id，无需申请额外的通讯录读取权限。`last_poll_at` 在飞书连接上表示最近的在线心跳。
+飞书身份保存在 `external_user_id`（用户 open_id）中；原有 `user_id` 字段保留，飞书绑定的该值为 `"0"`。显示名称在申请时尽力读取用户名和群名，失败时使用 open_id / 群 ID。`last_poll_at` 在飞书连接上表示最近的在线心跳。
 
 回复使用飞书消息卡片，第一段结果替换本次提问的“已收到，正在处理。”，长回复继续分段发送。临时提示消息 ID 与发送队列仍保存在内存中，进程重启后新产生的结果会另发消息。长连接重连及事件重发通过数据库去重；事件在调用 Agent 前记录，崩溃可能丢失尚未处理的消息，但不会重放已记录的事件。飞书出站消息重试复用发送 UUID，降低网络重试造成的重复消息。
 
-生产升级与回滚见 [备份与迁移](backup-and-migrations.md)。本次仅提供后端接口，现有前端未增加飞书配置入口。
+生产升级与回滚见 [备份与迁移](backup-and-migrations.md)。网页「Agent 接入」页面提供飞书配置向导、申请批准和系统提示词编辑。
 
 ## 认证与授权
 

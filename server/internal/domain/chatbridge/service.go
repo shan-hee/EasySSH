@@ -2,16 +2,13 @@ package chatbridge
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -120,8 +117,11 @@ func (s *Service) Detail(ctx context.Context, id string) (Detail, error) {
 	if err != nil {
 		return Detail{}, err
 	}
-	d := Detail{Connection: v, Bindings: []Binding{}}
-	err = s.db.WithContext(ctx).Where("connection_id = ?", id).Order("created_at DESC").Find(&d.Bindings).Error
+	d := Detail{Connection: v, Bindings: []Binding{}, Requests: []BindRequest{}}
+	if err := s.db.WithContext(ctx).Where("connection_id = ?", id).Order("created_at DESC").Find(&d.Bindings).Error; err != nil {
+		return Detail{}, err
+	}
+	err = s.db.WithContext(ctx).Where("connection_id = ? AND updated_at > ?", id, time.Now().UTC().Add(-requestTTL)).Order("updated_at DESC").Find(&d.Requests).Error
 	return d, err
 }
 
@@ -146,6 +146,9 @@ func (s *Service) Save(ctx context.Context, id string, input ConnectionInput) (C
 		if parsed, err := uuid.Parse(serverID); err != nil || parsed.String() != serverID {
 			return ConnectionView{}, invalid("服务器 ID 无效")
 		}
+	}
+	if input.SystemPrompt, err = validatePrompt(input.SystemPrompt, input.ServerIDs); err != nil {
+		return ConnectionView{}, err
 	}
 	var count int64
 	if err := s.db.WithContext(ctx).Table("servers").Where("id IN ?", input.ServerIDs).Count(&count).Error; err != nil {
@@ -198,7 +201,7 @@ func (s *Service) Save(ctx context.Context, id string, input ConnectionInput) (C
 		c.ID, c.OwnerID, c.CreatedAt = uuid.NewString(), ownerID, time.Now().UTC()
 		c.Revision = 1
 	}
-	c.Name, c.ServerIDsJSON, c.PermissionMode, c.Enabled = input.Name, string(encoded), input.PermissionMode, input.Enabled
+	c.Name, c.ServerIDsJSON, c.PermissionMode, c.Enabled, c.SystemPrompt = input.Name, string(encoded), input.PermissionMode, input.Enabled, input.SystemPrompt
 	c.Provider, c.AppID = input.Provider, input.AppID
 	c.BotID, c.BotUsername, c.UpdatedAt = bot.id, bot.name, time.Now().UTC()
 	c.LastError = ""
@@ -209,10 +212,10 @@ func (s *Service) Save(ctx context.Context, id string, input ConnectionInput) (C
 	if id == "" {
 		err = s.db.WithContext(ctx).Create(&c).Error
 	} else {
-		// Keep the polling cursor; invalidate outstanding links when permissions change.
+		// Keep the polling cursor; the revision bump stops work started under the old settings.
 		result := s.db.WithContext(ctx).Model(&Connection{}).Where("id = ? AND owner_id = ?", id, ownerID).Updates(map[string]any{
-			"name": c.Name, "token_cipher": c.TokenCipher, "bot_username": c.BotUsername, "server_ids_json": c.ServerIDsJSON,
-			"permission_mode": c.PermissionMode, "enabled": c.Enabled, "updated_at": c.UpdatedAt, "last_error": "", "bind_code_hash": "", "bind_expires_at": nil, "revision": gorm.Expr("revision + 1"), "last_poll_at": nil,
+			"name": c.Name, "token_cipher": c.TokenCipher, "bot_username": c.BotUsername, "server_ids_json": c.ServerIDsJSON, "system_prompt": c.SystemPrompt,
+			"permission_mode": c.PermissionMode, "enabled": c.Enabled, "updated_at": c.UpdatedAt, "last_error": "", "revision": gorm.Expr("revision + 1"), "last_poll_at": nil,
 		})
 		err = result.Error
 		if err == nil && result.RowsAffected == 0 {
@@ -290,7 +293,7 @@ func (s *Service) SetEnabled(ctx context.Context, id string, enabled bool) error
 	if enabled && c.Enabled {
 		return nil
 	}
-	if err := s.db.WithContext(ctx).Model(&c).Updates(map[string]any{"enabled": enabled, "last_error": "", "bind_code_hash": "", "bind_expires_at": nil, "revision": gorm.Expr("revision + 1"), "last_poll_at": nil}).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&c).Updates(map[string]any{"enabled": enabled, "last_error": "", "revision": gorm.Expr("revision + 1"), "last_poll_at": nil}).Error; err != nil {
 		return err
 	}
 	if !enabled {
@@ -359,28 +362,59 @@ func (s *Service) Revoke(ctx context.Context, connectionID, bindingID string) er
 	return s.cancelBinding(ctx, b)
 }
 
-func (s *Service) CreateBindCode(ctx context.Context, id string) (BindCode, error) {
+// ApproveRequest binds the requesting account and tells it in the chat.
+func (s *Service) ApproveRequest(ctx context.Context, connectionID, requestID string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	c, err := s.connection(ctx, id)
+	var calls []outgoing
+	var c Connection
+	defer func() {
+		s.enqueue(c, calls)
+		s.mu.Unlock()
+	}()
+	c, err := s.connection(ctx, connectionID)
 	if err != nil {
-		return BindCode{}, err
+		return err
 	}
 	if !c.Enabled {
-		return BindCode{}, invalid("请先启用连接")
+		return invalid("请先启用连接")
 	}
-	secret := make([]byte, 24)
-	if _, err := rand.Read(secret); err != nil {
-		return BindCode{}, err
+	var bound []outgoing
+	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var r BindRequest
+		if err := tx.Where("id = ? AND connection_id = ? AND updated_at > ?", requestID, connectionID, time.Now().UTC().Add(-requestTTL)).First(&r).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&r).Error; err != nil {
+			return err
+		}
+		m := incomingMessage{group: r.IsGroup, userID: r.UserID, chatID: r.ChatID, externalUserID: r.ExternalUserID, externalChatID: r.ExternalChatID}
+		var existing int64
+		if err := bindingQuery(tx.Model(&Binding{}), c, m).Count(&existing).Error; err != nil || existing != 0 {
+			return err
+		}
+		b := Binding{ID: uuid.NewString(), ConnectionID: c.ID, UserID: r.UserID, ChatID: r.ChatID, ExternalUserID: r.ExternalUserID, ExternalChatID: r.ExternalChatID, DisplayName: r.DisplayName, CreatedAt: time.Now().UTC()}
+		if err := tx.Create(&b).Error; err != nil {
+			return err
+		}
+		answer := "已通过接入申请。直接发送问题即可与 EasySSH Agent 对话，用 /help 查看命令。"
+		if r.IsGroup {
+			answer = "已通过本群接入申请。在群内 @机器人 提问即可；回复和审批卡片对全群可见，只有申请人能审批自己的任务。"
+		}
+		bound = reply(b.chatAddress(), answer, nil)
+		return nil
+	})
+	if err == nil {
+		calls = bound
 	}
-	code := base64.RawURLEncoding.EncodeToString(secret)
-	expires := time.Now().UTC().Add(10 * time.Minute)
-	err = s.db.WithContext(ctx).Model(&c).Updates(map[string]any{"bind_code_hash": hash(code), "bind_expires_at": expires}).Error
-	link := "https://t.me/" + c.BotUsername + "?start=bind_" + code
-	if c.Provider == ProviderFeishu {
-		link = "https://applink.feishu.cn/client/bot/open?appId=" + url.QueryEscape(c.AppID)
+	return err
+}
+
+// IgnoreRequest drops a request without replying; the account may ask again.
+func (s *Service) IgnoreRequest(ctx context.Context, connectionID, requestID string) error {
+	if _, err := s.connection(ctx, connectionID); err != nil {
+		return err
 	}
-	return BindCode{Code: code, URL: link, Command: "/bind " + code, ExpiresAt: expires}, err
+	return s.db.WithContext(ctx).Where("id = ? AND connection_id = ?", requestID, connectionID).Delete(&BindRequest{}).Error
 }
 
 func hash(value string) string {

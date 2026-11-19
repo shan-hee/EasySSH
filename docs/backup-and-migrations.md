@@ -16,9 +16,9 @@
 
 命令由已构建的程序提供，不依赖 HTTP 服务是否能够启动。
 
-## Telegram 聊天接入
+## Agent 接入（Telegram）
 
-导航中的「开放与自动化 → 聊天接入」独立管理 Telegram 机器人，模型配置沿用现有 AI 设置。创建连接时填写专用机器人的 Bot Token，选择服务器和权限模式；随后生成一次性绑定链接，在机器人私聊中绑定账号。链接有效期 10 分钟，重新生成会使旧链接失效。持有链接的账号会获得该连接配置的服务器权限。
+导航中的「开放与自动化 → Agent 接入」独立管理 Telegram 机器人和飞书应用，模型配置沿用现有 AI 设置。创建时填写机器人凭据，选择服务器、权限模式，可选填写系统提示词（输入 @ 引用已选服务器）。之后任何人给机器人发消息都会在页面上出现接入申请，Owner 点击批准后该账号才获得此接入配置的服务器权限；不再使用绑定码。
 
 Telegram 支持私聊文字、连续会话、`/new`、`/stop`、`/status`、`/help` 及任务审批。只读模式禁止 Shell 命令和文件变更；需审批模式沿用 Agent 的工具执行和外部上下文审批规则。审批与绑定身份、任务、操作内容及文件快照哈希关联，10 分钟后过期。Telegram 不接收群聊或附件；飞书支持图片和文本附件。网页的连接详情可打开每个绑定账号的当前 Agent 会话，历史会话在 AI 助手中查看。
 
@@ -26,13 +26,13 @@ Telegram 支持私聊文字、连续会话、`/new`、`/stop`、`/status`、`/he
 
 收到消息后先提交轮询位置再交给 Agent：服务中断最多丢失一条消息，但不会重放可能已经改动服务器的操作。回复只在内存中排队，发送失败会短暂重试；重启或 Telegram 长时间不可达时回复可能丢失，结果以网页中的会话为准。
 
-聊天接入初始化直接创建 `chat_connections`、`chat_bindings`、`chat_approvals` 和 `chat_received_events`，包含当前投递状态、审批和飞书标识字段。已废弃的会话映射表及收发队列表不再创建。
+Agent 接入初始化直接创建 `chat_connections`、`chat_bindings`、`chat_approvals` 和 `chat_received_events`（schema 10 起另有 `chat_bind_requests`），包含当前投递状态、审批和飞书标识字段。已废弃的会话映射表及收发队列表不再创建。
 
-停用连接、变更配置或解除绑定会撤销旧执行上下文并请求停止相关任务。停止不能撤销已在远端完成的操作。完整备份恢复后，聊天连接默认停用，绑定和审批会被清除，必须重新启用并绑定；不会从旧备份恢复已有的聊天访问权限。
+停用连接、变更配置或解除绑定会撤销旧执行上下文并请求停止相关任务。停止不能撤销已在远端完成的操作。完整备份恢复后，聊天连接默认停用，绑定、接入申请和审批会被清除，必须重新启用并绑定；不会从旧备份恢复已有的聊天访问权限。
 
 ## 飞书长连接
 
-飞书后端使用企业自建应用的长连接，接收私聊文字、群内 @ 机器人的文字和审批卡片回调，不需要公网入站地址。群聊绑定复用已有的成员与聊天 ID 字段，无需迁移已有私聊绑定。需能访问 `open.feishu.cn` 及飞书返回的 WebSocket 服务地址。机器人权限、绑定步骤和接口配置见 [API 文档](API.md#飞书聊天接入后端)。
+飞书后端使用企业自建应用的长连接，接收私聊文字、群内 @ 机器人的文字和审批卡片回调，不需要公网入站地址。群聊绑定复用已有的成员与聊天 ID 字段，无需迁移已有私聊绑定。需能访问 `open.feishu.cn` 及飞书返回的 WebSocket 服务地址。机器人权限、绑定步骤和接口配置见 [API 文档](API.md#飞书-agent-接入后端)。
 
 初始化基线包含 `provider` / `app_id`、绑定的 `external_user_id` / `external_chat_id` 和事件去重表。Telegram Token 与飞书 App Secret 使用加密的 `token_cipher`；Telegram 使用数值机器人身份，飞书以 `(provider, app_id)` 唯一标识应用。重复事件不再次分发，记录保留 7 天，随连接删除而清理。完整备份恢复后的连接默认停用，需重新启用并绑定。
 
@@ -48,7 +48,7 @@ Telegram 支持私聊文字、连续会话、`/new`、`/stop`、`/status`、`/he
 
 ## 服务端启动自动迁移
 
-服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前服务端 schema 为 9；从 schema 1 升级时先执行 `00002_remove_csrf_trusted_origins.sql`，删除废弃的 `security_config.csrf_trusted_origins` 列和旧来源列表，再执行 `00003_remove_public_url.sql`，删除 `system_config.public_url` 列和原来保存的固定公开地址，然后执行 `00004_add_automation_token_cipher.sql`，为 `automation_tokens` 新增可空的 `token_cipher` 列，最后执行 `00005_reset_sync_documents.sql`，清空 `sync_states.document` 以及 `sync_vault_documents` 的 `document` 和 `conflicts`；schema 2 从第二项开始，依此类推。协议 6 的同步文档与此前的 Automerge 文档互不兼容，清空后丢失的只有同步历史和未解决的冲突；服务器、脚本、凭据及其引用的载荷对象不变，设备授权和数据加入关系也保留。清空文档等同于换了一条同步时间线：各设备升级后无需重新授权或重新加入数据，下一次同步自动重新对齐（见下文“恢复与同步时间线”）。之后的 `00006_add_data_retention.sql` 为 `system_config` 新增 `task_retention_days` 和 `log_retention_days` 两列，默认 90 天；`00007_add_recycle_bin.sql` 新增 `recycle_bin` 表和 `system_config.deleted_retention_days`（默认 30 天），先把此前软删除的脚本转入回收站（从升级时间重新计算保留期），禁用引用这些脚本的计划任务，再移除原表中的软删除记录和 `scripts.deleted_at` 列。`00008_require_operation_record_actors.sql` 将 `operation_records` 的 `actor_kind`、`actor_id`、`actor_session_id`、`actor_grant_id` 中已有的 NULL 回填为空字符串，再设为 NOT NULL；保留各方言现有类型、长度和默认值（SQLite 为 TEXT，PostgreSQL/MySQL 为 varchar(36)，四列均不新增默认值），迁移完成后父、子表业务行全部保留。分享授权、密钥及其他系统配置不变，分享链接改用当前访问地址；已有访问令牌继续可用，其加密副本为空，轮转后才能查看。旧字段迁移的回滚只恢复空字段；同步协议切换必须通过完整的升级前恢复点回退，不能原地回滚。SQLite/PostgreSQL 在事务内迁移；MySQL DDL 隐式提交，中断时按下文恢复流程处理。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
+服务端默认启用 `EASYSSH_AUTO_MIGRATE=on`。更新程序并重新启动时，在现有文件锁和数据库会话锁内读取 Goose 版本；旧实例必须先停止，HTTP 和后台任务均在迁移及校验通过后才启动。当前服务端 schema 为 10；从 schema 1 升级时先执行 `00002_remove_csrf_trusted_origins.sql`，删除废弃的 `security_config.csrf_trusted_origins` 列和旧来源列表，再执行 `00003_remove_public_url.sql`，删除 `system_config.public_url` 列和原来保存的固定公开地址，然后执行 `00004_add_automation_token_cipher.sql`，为 `automation_tokens` 新增可空的 `token_cipher` 列，最后执行 `00005_reset_sync_documents.sql`，清空 `sync_states.document` 以及 `sync_vault_documents` 的 `document` 和 `conflicts`；schema 2 从第二项开始，依此类推。协议 6 的同步文档与此前的 Automerge 文档互不兼容，清空后丢失的只有同步历史和未解决的冲突；服务器、脚本、凭据及其引用的载荷对象不变，设备授权和数据加入关系也保留。清空文档等同于换了一条同步时间线：各设备升级后无需重新授权或重新加入数据，下一次同步自动重新对齐（见下文“恢复与同步时间线”）。之后的 `00006_add_data_retention.sql` 为 `system_config` 新增 `task_retention_days` 和 `log_retention_days` 两列，默认 90 天；`00007_add_recycle_bin.sql` 新增 `recycle_bin` 表和 `system_config.deleted_retention_days`（默认 30 天），先把此前软删除的脚本转入回收站（从升级时间重新计算保留期），禁用引用这些脚本的计划任务，再移除原表中的软删除记录和 `scripts.deleted_at` 列。`00008_require_operation_record_actors.sql` 将 `operation_records` 的 `actor_kind`、`actor_id`、`actor_session_id`、`actor_grant_id` 中已有的 NULL 回填为空字符串，再设为 NOT NULL；保留各方言现有类型、长度和默认值（SQLite 为 TEXT，PostgreSQL/MySQL 为 varchar(36)，四列均不新增默认值），迁移完成后父、子表业务行全部保留。分享授权、密钥及其他系统配置不变，分享链接改用当前访问地址；已有访问令牌继续可用，其加密副本为空，轮转后才能查看。旧字段迁移的回滚只恢复空字段；同步协议切换必须通过完整的升级前恢复点回退，不能原地回滚。SQLite/PostgreSQL 在事务内迁移；MySQL DDL 隐式提交，中断时按下文恢复流程处理。`00010_add_chat_agent_settings.sql` 新增 `chat_bind_requests` 表（聊天账号的待批准接入申请）和可空的 `chat_connections.system_prompt` 列；`bind_code_hash`、`bind_expires_at` 两列不再使用但保留，回滚只删除新表与新列，已有绑定不变。不使用 GORM AutoMigrate，不自动下载新程序，桌面端独立管理自己的版本。
 
 | 数据库状态 | 行为 |
 | --- | --- |

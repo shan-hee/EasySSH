@@ -183,9 +183,16 @@ func (s *Service) receiveFeishu(ctx context.Context, c Connection, message incom
 	if err != nil || !claimed {
 		return err
 	}
+	var binding Binding
+	err = bindingQuery(s.db.WithContext(ctx), c, message).First(&binding).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	// Platform I/O stays outside s.mu, as with attachment downloads.
+	if err != nil && message.callbackID == "" {
+		message.displayName = s.feishuDisplayName(ctx, c, message)
+	}
 	if media := message.media; media != nil {
-		var binding Binding
-		err := bindingQuery(s.db.WithContext(ctx), c, message).First(&binding).Error
 		if err == nil {
 			boundCtx, err := s.bindingContext(ctx, c, binding)
 			if err != nil {
@@ -197,8 +204,6 @@ func (s *Service) receiveFeishu(ctx context.Context, c Connection, message incom
 				media.err = s.loadFeishuMedia(downloadCtx, c, message.externalChatID, media)
 				cancel()
 			}
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
 		}
 	}
 	s.mu.Lock()

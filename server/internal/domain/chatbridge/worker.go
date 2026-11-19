@@ -209,7 +209,11 @@ func (s *Service) dispatch(ctx context.Context, c Connection, update telegramUpd
 	if m == nil {
 		return nil, nil
 	}
-	message := incomingMessage{userID: user.ID, chatID: m.Chat.ID, displayName: user.FirstName, text: m.Text, requestID: fmt.Sprint(update.UpdateID)}
+	name := user.FirstName
+	if user.Username != "" {
+		name += " @" + user.Username
+	}
+	message := incomingMessage{userID: user.ID, chatID: m.Chat.ID, displayName: strings.TrimSpace(name), text: m.Text, requestID: fmt.Sprint(update.UpdateID)}
 	if update.Callback != nil {
 		message.callbackID, message.callbackData = update.Callback.ID, update.Callback.Data
 	}
@@ -242,44 +246,14 @@ func bindingQuery(db *gorm.DB, c Connection, m incomingMessage) *gorm.DB {
 
 func (s *Service) dispatchMessage(ctx context.Context, c Connection, m incomingMessage) ([]outgoing, error) {
 	text := strings.TrimSpace(m.text)
-	if m.group && text == "/groupid" {
-		return reply(m.chatAddress(), "本群 ID："+m.externalChatID+"。请在机器人私聊中发送 /bind <绑定码> "+m.externalChatID+"。绑定后，你的任务结果和审批卡片对全群可见。", nil), nil
-	}
-	if m.callbackID == "" && (strings.HasPrefix(text, "/start bind_") || strings.HasPrefix(text, "/bind ")) {
-		code := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(text, "/start bind_"), "/bind "))
-		target := m
-		if c.Provider == ProviderFeishu {
-			fields := strings.Fields(code)
-			if m.group {
-				if len(fields) > 0 {
-					err := s.db.WithContext(ctx).Model(&Connection{}).Where("id = ? AND bind_code_hash = ?", c.ID, hash(fields[0])).Updates(map[string]any{"bind_code_hash": "", "bind_expires_at": nil}).Error
-					if err != nil {
-						return nil, err
-					}
-				}
-				return reply(m.chatAddress(), "不要在群里发送绑定码。请重新生成绑定码，并在机器人私聊中完成绑定。", nil), nil
-			}
-			if len(fields) == 2 && feishuChatPattern.MatchString(fields[1]) {
-				code, target.externalChatID = fields[0], fields[1]
-				target.group = true
-				target.displayName = "群 " + fields[1] + " · " + m.externalUserID
-			} else if len(fields) != 1 {
-				return reply(m.chatAddress(), "用法：/bind <绑定码> [群 ID]。在目标群 @机器人 /groupid 获取群 ID。", nil), nil
-			}
-		}
-		answer, err := s.bind(ctx, c, target, code)
-		return reply(m.chatAddress(), answer, nil), err
-	}
 	var b Binding
 	err := bindingQuery(s.db.WithContext(ctx), c, m).First(&b).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		if m.group {
-			return reply(m.chatAddress(), "你尚未绑定此群。请在机器人私聊中发送 /bind <绑定码> "+m.externalChatID+"。绑定后的回复和审批卡片对全群可见。", nil), nil
-		}
-		if c.Provider == ProviderFeishu && m.callbackID != "" {
+		if m.callbackID != "" {
 			return nil, nil
 		}
-		return reply(m.chatAddress(), "请先在 EasySSH 生成绑定码，并在机器人私聊中发送 /bind <绑定码> 完成绑定。", nil), nil
+		answer, err := s.request(ctx, c, m, text)
+		return reply(m.chatAddress(), answer, nil), err
 	}
 	if err != nil {
 		return nil, err
@@ -308,7 +282,7 @@ func (s *Service) dispatchMessage(ctx context.Context, c Connection, m incomingM
 	case "/start", "/help":
 		answer = "发送文字即可与 EasySSH Agent 对话。\n/new 新建会话\n/stop 停止当前任务\n/status 查看状态\n/help 使用说明\n需要执行的操作会显示审批按钮，有效期 10 分钟。"
 		if c.Provider == ProviderFeishu {
-			answer += "\n支持图片和 UTF-8 文本附件。群内请在图文消息中 @机器人，或回复目标附件并 @机器人。发送 /groupid 可查看当前群 ID。"
+			answer += "\n支持图片和 UTF-8 文本附件。群内请在图文消息中 @机器人，或回复目标附件并 @机器人。"
 		}
 	case "/new":
 		if b.CurrentSessionID != "" {
@@ -399,35 +373,39 @@ func (s *Service) ask(ctx, boundCtx context.Context, c Connection, b *Binding, t
 	return calls, nil
 }
 
-func (s *Service) bind(ctx context.Context, c Connection, m incomingMessage, code string) (string, error) {
-	answer := ""
+const (
+	requestTTL  = 24 * time.Hour
+	maxRequests = 20
+)
+
+// request records an unbound account's access request for the owner to
+// approve on the web page. Repeated messages refresh the same request.
+func (s *Service) request(ctx context.Context, c Connection, m incomingMessage, text string) (string, error) {
+	answer := "已提交接入申请，请等待管理员在 EasySSH「Agent 接入」页面批准。"
+	if m.group {
+		answer = "已提交本群的接入申请，请等待管理员在 EasySSH「Agent 接入」页面批准。批准后回复对全群可见。"
+	}
+	now := time.Now().UTC()
+	preview := truncate(strings.Join(strings.Fields(text), " "), 100)
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&Connection{}).Where("id = ? AND enabled = ? AND bind_code_hash = ? AND bind_expires_at > ?", c.ID, true, hash(code), time.Now().UTC()).Updates(map[string]any{"bind_code_hash": "", "bind_expires_at": nil})
-		if result.Error != nil {
+		if err := tx.Where("connection_id = ? AND updated_at <= ?", c.ID, now.Add(-requestTTL)).Delete(&BindRequest{}).Error; err != nil {
+			return err
+		}
+		subject := tx.Model(&BindRequest{}).Where("connection_id = ? AND user_id = ? AND external_user_id = ? AND external_chat_id = ?", c.ID, m.userID, m.externalUserID, m.externalChatID)
+		result := subject.Updates(map[string]any{"display_name": truncate(m.displayName, 100), "message": preview, "updated_at": now})
+		if result.Error != nil || result.RowsAffected != 0 {
 			return result.Error
 		}
-		if result.RowsAffected == 0 {
-			answer = "绑定码无效或已过期，请在 EasySSH 中重新生成。"
-			return nil
-		}
-		var existing Binding
-		err := bindingQuery(tx, c, m).First(&existing).Error
-		if err == nil {
-			answer = "此账号已绑定，可以直接发送问题。"
-			return nil
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
+		var count int64
+		if err := tx.Model(&BindRequest{}).Where("connection_id = ?", c.ID).Count(&count).Error; err != nil {
 			return err
 		}
-		b := Binding{ID: uuid.NewString(), ConnectionID: c.ID, UserID: m.userID, ChatID: m.chatID, ExternalUserID: m.externalUserID, ExternalChatID: m.externalChatID, DisplayName: truncate(m.displayName, 100), CreatedAt: time.Now().UTC()}
-		if err := tx.Create(&b).Error; err != nil {
-			return err
+		if count >= maxRequests {
+			answer = "待处理的接入申请过多，请联系管理员先处理已有申请。"
+			return nil
 		}
-		answer = "绑定成功。你可以直接与 EasySSH Agent 对话，用 /help 查看命令。"
-		if m.group {
-			answer = "群聊绑定成功。请回到群 " + m.externalChatID + "，@机器人 发送文字。回复和审批卡片对全群可见，只有你能审批自己的任务。"
-		}
-		return nil
+		return tx.Create(&BindRequest{ID: uuid.NewString(), ConnectionID: c.ID, UserID: m.userID, ChatID: m.chatID, ExternalUserID: m.externalUserID, ExternalChatID: m.externalChatID,
+			IsGroup: m.group, DisplayName: truncate(m.displayName, 100), Message: preview, CreatedAt: now, UpdatedAt: now}).Error
 	})
 	return answer, err
 }

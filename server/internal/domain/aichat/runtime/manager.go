@@ -51,6 +51,7 @@ type TurnRunner interface {
 
 type Manager struct {
 	serverReferenceResolver func(context.Context, []aichatui.ServerReference) ([]aichatui.ServerReference, error)
+	instructionsSource      func(context.Context, string) (Instructions, error)
 	resolver                ConfigResolver
 	factory                 TurnRunner
 	registry                *registry.ToolRegistry
@@ -1105,6 +1106,11 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		m.failSessionTurn(s, "server_reference_unavailable", err.Error(), runID)
 		return
 	}
+	instructions, err := m.runInstructions(ctx, s.id)
+	if err != nil {
+		m.failSessionTurn(s, "instructions_unavailable", "会话指令不可用："+err.Error(), runID)
+		return
+	}
 
 	for turn := 0; ; turn++ {
 		if turn >= aiprovider.MaxAutomaticTurns {
@@ -1141,7 +1147,7 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		}
 
 		tools := m.visibleToolsForSession(s)
-		systemPrompt := aitools.SystemPrompt("你是一个服务器管理助手，可以帮助用户管理和操作他们的服务器。", s.permissionMode, provider.SharedToolSpecs(tools), &s.scope)
+		systemPrompt := aitools.SystemPrompt("你是一个服务器管理助手，可以帮助用户管理和操作他们的服务器。", s.permissionMode, provider.SharedToolSpecs(tools), &s.scope) + instructions
 
 		m.mu.RLock()
 		if s.closed {

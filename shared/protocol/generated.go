@@ -3247,14 +3247,20 @@ type CSRFToken struct {
 	CSRFToken string `json:"csrf_token"`
 }
 
-// ChatBindCode defines model for ChatBindCode.
-type ChatBindCode struct {
-	Code string `json:"code"`
+// ChatBindRequest An unbound chat account asking for access; approving it creates a binding. Expires after 24 hours without new messages.
+type ChatBindRequest struct {
+	// Account Telegram user ID or Feishu open_id.
+	Account     string    `json:"account"`
+	CreatedAt   time.Time `json:"created_at"`
+	DisplayName string    `json:"display_name"`
+	ID          string    `json:"id"`
 
-	// Command Send this /bind command in the bot private chat. Required for Feishu; Telegram also supports the returned deep link.
-	Command   *string   `json:"command,omitempty"`
-	ExpiresAt time.Time `json:"expires_at"`
-	URL       string    `json:"url"`
+	// IsGroup Feishu group request; replies after approval are visible to the whole group.
+	IsGroup bool `json:"is_group"`
+
+	// Message Preview of the latest message from the account.
+	Message   string    `json:"message"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ChatBinding defines model for ChatBinding.
@@ -3288,7 +3294,10 @@ type ChatConnection struct {
 	Provider  ChatConnectionProvider `json:"provider"`
 	ServerIds []string               `json:"server_ids"`
 	Status    ChatConnectionStatus   `json:"status"`
-	UpdatedAt time.Time              `json:"updated_at"`
+
+	// SystemPrompt Owner-written Agent instructions. Server mentions are stored as :server[label]{name=server_id} tokens.
+	SystemPrompt string    `json:"system_prompt"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // ChatConnectionPermissionMode defines model for ChatConnection.PermissionMode.
@@ -3302,8 +3311,9 @@ type ChatConnectionStatus string
 
 // ChatConnectionDetail defines model for ChatConnectionDetail.
 type ChatConnectionDetail struct {
-	Bindings   []ChatBinding  `json:"bindings"`
-	Connection ChatConnection `json:"connection"`
+	Bindings   []ChatBinding     `json:"bindings"`
+	Connection ChatConnection    `json:"connection"`
+	Requests   []ChatBindRequest `json:"requests"`
 }
 
 // ChatConnectionEnabled defines model for ChatConnectionEnabled.
@@ -3325,6 +3335,9 @@ type ChatConnectionInput struct {
 	// Provider Defaults to telegram on creation; omitted on update preserves the platform. Cannot change an existing connection's platform.
 	Provider  *ChatConnectionInputProvider `json:"provider,omitempty"`
 	ServerIds []string                     `json:"server_ids"`
+
+	// SystemPrompt Appended to the Agent system prompt, at most 4000 characters. Mention tokens :server[label]{name=server_id} must reference server_ids.
+	SystemPrompt *string `json:"system_prompt,omitempty"`
 
 	// Token Required when creating a Telegram connection; empty preserves the existing token on update. Not used for Feishu.
 	Token *string `json:"token,omitempty"`

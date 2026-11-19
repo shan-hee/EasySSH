@@ -24,9 +24,9 @@ func (h *ChatConnectionHandler) respond(c *gin.Context, value any, err error) {
 	}
 	switch {
 	case errors.Is(err, access.ErrForbidden), errors.Is(err, access.ErrUnauthenticated), errors.Is(err, access.ErrRevoked):
-		RespondError(c, http.StatusForbidden, "forbidden", "无权管理聊天接入")
+		RespondError(c, http.StatusForbidden, "forbidden", "无权管理 Agent 接入")
 	case errors.Is(err, gorm.ErrRecordNotFound):
-		RespondError(c, http.StatusNotFound, "not_found", "聊天连接、绑定或会话不存在")
+		RespondError(c, http.StatusNotFound, "not_found", "连接、绑定、申请或会话不存在")
 	case errors.Is(err, chatbridge.ErrInvalid):
 		RespondError(c, http.StatusBadRequest, "validation_error", strings.TrimPrefix(err.Error(), chatbridge.ErrInvalid.Error()+": "))
 	default:
@@ -36,7 +36,7 @@ func (h *ChatConnectionHandler) respond(c *gin.Context, value any, err error) {
 		} else if strings.HasPrefix(err.Error(), "飞书") {
 			RespondError(c, http.StatusBadGateway, "feishu_error", err.Error())
 		} else {
-			RespondError(c, http.StatusInternalServerError, "chat_connection_error", "聊天接入操作失败，请检查服务状态")
+			RespondError(c, http.StatusInternalServerError, "chat_connection_error", "Agent 接入操作失败，请检查服务状态")
 		}
 	}
 }
@@ -72,9 +72,11 @@ func (h *ChatConnectionHandler) SetEnabled(c *gin.Context) {
 func (h *ChatConnectionHandler) Delete(c *gin.Context) {
 	h.respond(c, nil, h.service.Delete(c.Request.Context(), c.Param("id")))
 }
-func (h *ChatConnectionHandler) BindCode(c *gin.Context) {
-	value, err := h.service.CreateBindCode(c.Request.Context(), c.Param("id"))
-	h.respond(c, value, err)
+func (h *ChatConnectionHandler) ApproveRequest(c *gin.Context) {
+	h.respond(c, nil, h.service.ApproveRequest(c.Request.Context(), c.Param("id"), c.Param("request_id")))
+}
+func (h *ChatConnectionHandler) IgnoreRequest(c *gin.Context) {
+	h.respond(c, nil, h.service.IgnoreRequest(c.Request.Context(), c.Param("id"), c.Param("request_id")))
 }
 func (h *ChatConnectionHandler) Revoke(c *gin.Context) {
 	h.respond(c, nil, h.service.Revoke(c.Request.Context(), c.Param("id"), c.Param("binding_id")))

@@ -1,30 +1,39 @@
 // Package chatbridge connects bound bot conversations to the existing AI runtime.
 package chatbridge
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 type Connection struct {
 	Provider string `gorm:"not null;uniqueIndex:idx_chat_connection_app,priority:1" json:"provider"`
 	AppID    string `json:"app_id,omitempty" gorm:"default:null;uniqueIndex:idx_chat_connection_app,priority:2"`
 	// TokenCipher holds the platform credential: a Telegram bot token or a
 	// Feishu app secret.
-	Revision       int64      `gorm:"not null" json:"-"`
-	ID             string     `json:"id" gorm:"primaryKey"`
-	OwnerID        string     `gorm:"not null" json:"-"`
-	Name           string     `gorm:"not null" json:"name"`
-	TokenCipher    string     `gorm:"not null" json:"-"`
-	BotID          int64      `gorm:"not null;uniqueIndex:idx_chat_connections_bot_id" json:"-"`
-	BotUsername    string     `gorm:"not null" json:"bot_username"`
-	ServerIDsJSON  string     `gorm:"not null" json:"-"`
-	PermissionMode string     `gorm:"not null" json:"permission_mode"`
-	Enabled        bool       `gorm:"not null" json:"enabled"`
-	NextUpdateID   int64      `gorm:"not null" json:"-"`
-	BindCodeHash   string     `gorm:"not null" json:"-"`
-	BindExpiresAt  *time.Time `json:"-"`
-	LastPollAt     *time.Time `json:"last_poll_at"`
-	LastError      string     `gorm:"not null" json:"last_error"`
-	CreatedAt      time.Time  `gorm:"not null" json:"created_at"`
-	UpdatedAt      time.Time  `gorm:"not null" json:"updated_at"`
+	Revision       int64  `gorm:"not null" json:"-"`
+	ID             string `json:"id" gorm:"primaryKey"`
+	OwnerID        string `gorm:"not null" json:"-"`
+	Name           string `gorm:"not null" json:"name"`
+	TokenCipher    string `gorm:"not null" json:"-"`
+	BotID          int64  `gorm:"not null;uniqueIndex:idx_chat_connections_bot_id" json:"-"`
+	BotUsername    string `gorm:"not null" json:"bot_username"`
+	ServerIDsJSON  string `gorm:"not null" json:"-"`
+	PermissionMode string `gorm:"not null" json:"permission_mode"`
+	Enabled        bool   `gorm:"not null" json:"enabled"`
+	NextUpdateID   int64  `gorm:"not null" json:"-"`
+	// Unused since schema 10, when bind requests replaced binding codes. The
+	// columns remain so that release can be rolled back without DDL.
+	BindCodeHash  string     `gorm:"not null" json:"-"`
+	BindExpiresAt *time.Time `json:"-"`
+	// SystemPrompt may embed :server[label]{name=id} references to servers in
+	// ServerIDsJSON. NULL and empty both mean no prompt.
+	SystemPrompt string     `json:"system_prompt"`
+	LastPollAt   *time.Time `json:"last_poll_at"`
+	LastError    string     `gorm:"not null" json:"last_error"`
+	CreatedAt    time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt    time.Time  `gorm:"not null" json:"updated_at"`
 }
 
 func (Connection) TableName() string { return "chat_connections" }
@@ -47,6 +56,38 @@ type Binding struct {
 }
 
 func (Binding) TableName() string { return "chat_bindings" }
+
+// BindRequest is an unbound chat account asking for access. Only the owner's
+// approval on the web page turns it into a Binding; requests expire after a day.
+type BindRequest struct {
+	ID             string    `json:"id" gorm:"primaryKey"`
+	ConnectionID   string    `gorm:"not null;uniqueIndex:idx_chat_bind_request_subject,priority:1" json:"-"`
+	UserID         int64     `gorm:"not null;default:0;uniqueIndex:idx_chat_bind_request_subject,priority:2" json:"-"`
+	ChatID         int64     `gorm:"not null;default:0" json:"-"`
+	ExternalUserID string    `gorm:"not null;default:'';uniqueIndex:idx_chat_bind_request_subject,priority:3" json:"-"`
+	ExternalChatID string    `gorm:"not null;default:'';uniqueIndex:idx_chat_bind_request_subject,priority:4" json:"-"`
+	IsGroup        bool      `gorm:"not null;default:false" json:"is_group"`
+	DisplayName    string    `gorm:"not null" json:"display_name"`
+	Message        string    `gorm:"not null" json:"message"`
+	CreatedAt      time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt      time.Time `gorm:"not null" json:"updated_at"`
+}
+
+func (BindRequest) TableName() string { return "chat_bind_requests" }
+
+// Account is the platform identity in a request, shown so the owner can tell
+// requests apart; Telegram user IDs and Feishu open_ids are both stable.
+func (r BindRequest) MarshalJSON() ([]byte, error) {
+	type plain BindRequest
+	account := r.ExternalUserID
+	if account == "" {
+		account = fmt.Sprint(r.UserID)
+	}
+	return json.Marshal(struct {
+		plain
+		Account string `json:"account"`
+	}{plain(r), account})
+}
 
 func (b Binding) chatAddress() any {
 	if b.ExternalChatID != "" {
@@ -84,6 +125,7 @@ type ConnectionInput struct {
 	Token          string   `json:"token"`
 	ServerIDs      []string `json:"server_ids"`
 	PermissionMode string   `json:"permission_mode"`
+	SystemPrompt   string   `json:"system_prompt"`
 	Enabled        bool     `json:"enabled"`
 }
 
@@ -96,13 +138,7 @@ type ConnectionView struct {
 type Detail struct {
 	Connection ConnectionView `json:"connection"`
 	Bindings   []Binding      `json:"bindings"`
-}
-
-type BindCode struct {
-	Command   string    `json:"command"`
-	Code      string    `json:"code"`
-	URL       string    `json:"url"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Requests   []BindRequest  `json:"requests"`
 }
 
 // Session is an Agent session started from a binding. The session itself lives

@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/easyssh/server/internal/access"
+	"github.com/easyssh/server/internal/testutil"
+	"github.com/easyssh/shared/protocol"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
@@ -26,46 +29,76 @@ func TestFeishuGroupMention(t *testing.T) {
 	}
 }
 
-func TestFeishuGroupBindingIsolation(t *testing.T) {
+type ownerAuthority struct{ testutil.AccessPolicy }
+
+func (ownerAuthority) Authorize(context.Context, protocol.Actor, access.Requirement) error {
+	return nil
+}
+
+func TestGroupRequestApprovalIsolation(t *testing.T) {
 	database, err := gorm.Open(sqlite.Open("file:"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.AutoMigrate(&Connection{}, &Binding{}); err != nil {
+	if err := database.AutoMigrate(&Connection{}, &Binding{}, &BindRequest{}); err != nil {
 		t.Fatal(err)
 	}
-	service := &Service{db: database}
-	expires := time.Now().UTC().Add(time.Minute)
-	connection := Connection{ID: "connection", Provider: ProviderFeishu, Enabled: true, BindCodeHash: hash("secret"), BindExpiresAt: &expires}
+	ownerID := uuid.NewString()
+	scope, err := access.NewScope(protocol.Actor{Kind: protocol.Owner, ID: ownerID, SessionID: uuid.NewString()}, time.Now().Add(time.Hour), ownerAuthority{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := access.WithScope(context.Background(), scope)
+	service := &Service{db: database, replies: make(chan delivery, 4)}
+	connection := Connection{ID: "connection", OwnerID: ownerID, Provider: ProviderFeishu, Enabled: true}
 	if err := database.Create(&connection).Error; err != nil {
 		t.Fatal(err)
 	}
-	group := incomingMessage{group: true, externalUserID: "member", externalChatID: "oc_group", text: "/bind secret"}
-	if _, err := service.dispatchMessage(context.Background(), connection, group); err != nil {
+	group := incomingMessage{group: true, externalUserID: "member", externalChatID: "oc_group", displayName: "群 运维 · 成员", text: "hi"}
+	for _, text := range []string{"hi", "still there?"} {
+		group.text = text
+		if calls, err := service.dispatchMessage(ctx, connection, group); err != nil || len(calls) != 1 || calls[0].payload["chat_id"] != group.externalChatID {
+			t.Fatalf("unbound message should be acknowledged in place: %v, %v", calls, err)
+		}
+	}
+	var requests []BindRequest
+	if err := database.Find(&requests).Error; err != nil || len(requests) != 1 || requests[0].Message != "still there?" || !requests[0].IsGroup {
+		t.Fatalf("repeated messages should refresh one group request: %+v, %v", requests, err)
+	}
+	if err := bindingQuery(database, connection, group).First(&Binding{}).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("a request must not bind before approval: %v", err)
+	}
+	if err := service.ApproveRequest(ctx, connection.ID, requests[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	var stored Connection
-	if err := database.First(&stored, "id = ?", connection.ID).Error; err != nil || stored.BindCodeHash != "" {
-		t.Fatalf("exposed code was not invalidated: %v", err)
+	if notice := <-service.replies; len(notice.calls) != 1 || notice.calls[0].payload["chat_id"] != group.externalChatID {
+		t.Fatalf("approval notice should go to the requesting chat: %+v", notice)
 	}
-	var binding Binding
-	if err := bindingQuery(database, connection, group).First(&binding).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
-		t.Fatalf("public command must not create a binding: %v", err)
-	}
-	if err := database.Model(&connection).Updates(map[string]any{"bind_code_hash": hash("new"), "bind_expires_at": expires}).Error; err != nil {
+	if err := bindingQuery(database, connection, group).First(&Binding{}).Error; err != nil {
 		t.Fatal(err)
 	}
-	direct := incomingMessage{externalUserID: "member", externalChatID: "oc_direct", text: "/bind new oc_group"}
-	calls, err := service.dispatchMessage(context.Background(), connection, direct)
-	if err != nil || len(calls) != 1 || calls[0].payload["chat_id"] != direct.externalChatID {
-		t.Fatalf("binding receipt should be private: %v, %v", calls, err)
+	if err := database.First(&BindRequest{}).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Fatalf("approved request should be removed: %v", err)
 	}
-	if err := bindingQuery(database, connection, group).First(&binding).Error; err != nil {
-		t.Fatal(err)
-	}
-	for _, other := range []incomingMessage{direct, {externalUserID: "member", externalChatID: "oc_other"}, {externalUserID: "other", externalChatID: "oc_group"}} {
+	for _, other := range []incomingMessage{{externalUserID: "member", externalChatID: "oc_direct"}, {externalUserID: "other", externalChatID: "oc_group"}} {
 		if err := bindingQuery(database, connection, other).First(&Binding{}).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
 			t.Fatalf("binding leaked outside the member/chat pair: %v", err)
 		}
+	}
+}
+
+func TestSystemPromptServerReferences(t *testing.T) {
+	allowed := "8f14e45f-ceea-467f-a0a8-4f0c9a8d7e11"
+	prompt := "优先检查 :server[web%20%E4%B8%BB%E6%9C%BA]{name=" + allowed + "} 的 nginx"
+	stored, err := validatePrompt(prompt, []string{allowed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, refs, err := parsePrompt(stored)
+	if err != nil || text != "优先检查 @web 主机 的 nginx" || len(refs) != 1 || refs[0].ServerID != allowed || refs[0].Offset != 5 {
+		t.Fatalf("unexpected parse: %q %+v %v", text, refs, err)
+	}
+	if _, err := validatePrompt(prompt, []string{uuid.NewString()}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a server outside the connection scope must be rejected: %v", err)
 	}
 }

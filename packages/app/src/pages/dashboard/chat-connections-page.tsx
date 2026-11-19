@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState, type CSSProperties, type FormEve
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
-import { ArrowLeft, ExternalLink, MessageCircle, Plus, Settings2, Trash2 } from "lucide-react"
+import { ArrowLeft, BotMessageSquare, Check, ExternalLink, Plus, Settings2, Trash2, Users, X } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
@@ -14,7 +14,8 @@ import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
-import { chatConnectionsApi, type ChatBindCode, type ChatConnection, type ChatConnectionInput, type ChatSession } from "@/lib/api/chat-connections"
+import { chatConnectionsApi, type ChatBindRequest, type ChatConnection, type ChatConnectionInput, type ChatSession } from "@/lib/api/chat-connections"
+import { SystemPromptEditor, systemPromptValid } from "@/components/chat-connections/system-prompt-editor"
 import { serversApi } from "@/lib/api/servers"
 import { ServerScopePicker } from "@/components/servers/server-scope-picker"
 import { getErrorMessage } from "@/lib/error-utils"
@@ -39,6 +40,8 @@ export default function ChatConnectionsPage() {
   const connections = useQuery({ queryKey: queryKeys.chatConnections.list, queryFn: chatConnectionsApi.list, enabled: web, refetchInterval: 5000 })
   const connection = connections.data?.find(item => item.id === connectionId) ?? connections.data?.[0]
   const sessions = useQuery({ queryKey: queryKeys.chatConnections.sessions(connection?.id ?? ""), queryFn: () => chatConnectionsApi.sessions(connection!.id), enabled: !!connection, refetchInterval: 5000 })
+  const detail = useQuery({ queryKey: queryKeys.chatConnections.detail(connection?.id ?? ""), queryFn: () => chatConnectionsApi.detail(connection!.id), enabled: !!connection, refetchInterval: 5000 })
+  const requests = detail.data?.requests ?? []
   const session = sessions.data?.find(item => item.id === sessionId) ?? sessions.data?.[0]
   const managed = connections.data?.find(item => item.id === managing)
   const refresh = async () => { await queryClient.invalidateQueries({ queryKey: queryKeys.chatConnections.root }) }
@@ -48,7 +51,7 @@ export default function ChatConnectionsPage() {
     <DashboardPageContent className="min-h-0">
       {connections.isPending && <PageLoading />}
       {connections.isError && <div role="alert" className="flex items-center gap-3 text-sm text-destructive">{t("loadFailed")}<Button variant="outline" size="sm" onClick={() => void connections.refetch()}>{t("retry")}</Button></div>}
-      {connections.data?.length === 0 && <section className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-10 text-center"><MessageCircle className="size-7 text-muted-foreground" /><p className="text-sm font-medium">{t("empty")}</p><p className="max-w-md text-sm text-muted-foreground">{t("emptyHelp")}</p><Button variant="outline" size="sm" onClick={() => setEditor("new")}>{t("create")}</Button></section>}
+      {connections.data?.length === 0 && <section className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-10 text-center"><BotMessageSquare className="size-7 text-muted-foreground" /><p className="text-sm font-medium">{t("empty")}</p><p className="max-w-md text-sm text-muted-foreground">{t("emptyHelp")}</p><Button variant="outline" size="sm" onClick={() => setEditor("new")}>{t("create")}</Button></section>}
       {connection && <div ref={sidebar.container} className="flex min-h-0 flex-1 overflow-hidden rounded-lg border bg-card" style={{ "--chat-sidebar": `${sidebar.width}px` } as CSSProperties}>
         <aside className={cn("relative w-full shrink-0 flex-col border-r md:flex md:w-[var(--chat-sidebar)]", mobileChat ? "hidden" : "flex")}>
           <div className="space-y-1.5 border-b p-3">
@@ -69,8 +72,9 @@ export default function ChatConnectionsPage() {
             <p className="truncate px-1 text-xs text-muted-foreground">{botLabel(connection)} · {t(`connectionStatus.${connection.status}`)}</p>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
+            {requests.length > 0 && <BindRequests connection={connection} requests={requests} />}
             {sessions.isPending && <PageLoading className="min-h-0 py-8" />}
-            {sessions.data?.length === 0 && <div className="space-y-3 p-4 text-sm text-muted-foreground"><p>{t("noSessions")}</p><Button size="sm" variant="outline" onClick={() => setManaging(connection.id)}>{t("generateCode")}</Button></div>}
+            {sessions.data?.length === 0 && requests.length === 0 && <Invite connection={connection} />}
             {sessions.data?.map(item => <button type="button" key={item.id} onClick={() => { setSessionId(item.id); setMobileChat(true) }}
               className={cn("flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/60", item.id === session?.id && "bg-muted")}>
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sky-500/15 text-sm font-medium text-sky-700 dark:text-sky-300">{initial(item.display_name)}</span>
@@ -153,6 +157,53 @@ function useSidebarWidth() {
 type Provider = ChatConnection["provider"]
 // Feishu reports the application name; Telegram reports the bot's @username.
 const botLabel = (connection: ChatConnection) => connection.provider === "feishu" ? connection.bot_username : `@${connection.bot_username}`
+const botLink = (connection: ChatConnection) => connection.provider === "feishu"
+  ? `https://applink.feishu.cn/client/bot/open?appId=${encodeURIComponent(connection.app_id ?? "")}`
+  : `https://t.me/${encodeURIComponent(connection.bot_username)}`
+
+// Anyone who messages the bot shows up here; only the owner's click binds them.
+function BindRequests({ connection, requests }: { connection: ChatConnection; requests: ChatBindRequest[] }) {
+  const { t } = useTranslation("chatConnections")
+  const queryClient = useQueryClient()
+  const [busy, setBusy] = useState<string | null>(null)
+  const act = async (request: ChatBindRequest, approve: boolean) => {
+    setBusy(request.id)
+    try {
+      await (approve ? chatConnectionsApi.approve : chatConnectionsApi.ignore)(connection.id, request.id)
+      if (approve) toast.success(t("approved"))
+      await queryClient.invalidateQueries({ queryKey: queryKeys.chatConnections.root })
+    } catch (error) { toast.error(getErrorMessage(error, t("actionFailed"))) } finally { setBusy(null) }
+  }
+  return <section className="space-y-2 border-b bg-amber-500/5 p-3">
+    <h3 className="text-xs font-medium text-amber-700 dark:text-amber-300" title={t("requestHint")}>{t("requests")} · {requests.length}</h3>
+    {requests.map(request => <div key={request.id} className="space-y-2 rounded-md border bg-card p-2.5">
+      <div className="flex items-start gap-2">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-sm font-medium text-amber-700 dark:text-amber-300">{request.is_group ? <Users className="size-4" /> : initial(request.display_name)}</span>
+        <div className="min-w-0 flex-1">
+          <p className="flex items-baseline justify-between gap-2"><span className="truncate text-sm font-medium" title={request.display_name}>{request.display_name}</span><time className="shrink-0 text-[11px] text-muted-foreground">{shortTime(request.updated_at)}</time></p>
+          <p className="truncate font-mono text-[11px] text-muted-foreground" title={request.account}>{request.account}</p>
+          {request.message && <p className="mt-1 line-clamp-2 break-words text-xs">{request.message}</p>}
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" className="h-7 flex-1" disabled={busy !== null} onClick={() => void act(request, true)}><Check className="size-3.5" />{t("approve")}</Button>
+        <Button size="sm" variant="ghost" className="h-7" disabled={busy !== null} onClick={() => void act(request, false)}><X className="size-3.5" />{t("ignore")}</Button>
+      </div>
+    </div>)}
+  </section>
+}
+
+function Invite({ connection }: { connection: ChatConnection }) {
+  const { t } = useTranslation("chatConnections")
+  return <div className="space-y-3 p-4">
+    <p className="text-sm font-medium">{t("inviteTitle")}</p>
+    <p className="text-xs text-muted-foreground">{t(`inviteHelp.${connection.provider}`)}</p>
+    <Button size="sm" className="w-full" asChild>
+      <a href={botLink(connection)} target="_blank" rel="noreferrer">{t(connection.provider === "feishu" ? "openFeishu" : "openTelegram")}<ExternalLink className="size-3.5" /></a>
+    </Button>
+    <p className="flex items-center justify-center gap-2 text-xs text-muted-foreground"><span className="size-1.5 animate-pulse rounded-full bg-primary" />{t("waitingRequest")}</p>
+  </div>
+}
 
 const busyStatuses = new Set(["running", "waiting_confirmation"])
 const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
@@ -233,6 +284,32 @@ function ChatTranscript({ connection, session, onBack }: { connection: ChatConne
   </section>
 }
 
+const FEISHU_SCOPES = JSON.stringify({ scopes: { tenant: ["im:message.p2p_msg:readonly", "im:message.group_at_msg:readonly", "im:message:readonly", "im:message:send_as_bot", "contact:user.base:readonly", "im:chat:readonly"], user: [] } }, null, 2)
+
+function FeishuSteps() {
+  const { t } = useTranslation("chatConnections")
+  const steps: [string, ReactNode][] = [
+    ["create", <a key="console" href="https://open.feishu.cn/app" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs underline">{t("feishuConsole")}<ExternalLink className="size-3" /></a>],
+    ["scopes", <CopyChip key="scopes" value={FEISHU_SCOPES} label={t("copyScopes")} />],
+    ["events", <span key="events" className="flex flex-wrap gap-1.5"><CopyChip value="im.message.receive_v1" label="im.message.receive_v1" /><CopyChip value="card.action.trigger" label="card.action.trigger" /></span>],
+    ["publish", null],
+  ]
+  return <ol className="space-y-2.5 rounded-lg border bg-muted/30 p-3">
+    {steps.map(([key, action], index) => <li key={key} className="flex gap-2.5 text-sm">
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-medium text-primary">{index + 1}</span>
+      <div className="min-w-0 flex-1 space-y-1.5"><p>{t(`feishuSteps.${key}`)}</p>{action}</div>
+    </li>)}
+  </ol>
+}
+
+function CopyChip({ value, label }: { value: string; label: string }) {
+  return <span className="inline-flex max-w-full items-center gap-1 rounded-md border bg-background pl-2 font-mono text-xs"><span className="truncate">{label}</span><CopyButton value={value} label={label} className="size-6" /></span>
+}
+
+function FormSection({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="space-y-4"><h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>{children}</section>
+}
+
 function ConnectionForm({ connection, onSaved }: { connection?: ChatConnection; onSaved: (value: ChatConnection) => Promise<void> }) {
   const { t } = useTranslation("chatConnections")
   const [provider, setProvider] = useState<Provider>(connection?.provider ?? "telegram")
@@ -241,11 +318,13 @@ function ConnectionForm({ connection, onSaved }: { connection?: ChatConnection; 
   const [appId, setAppId] = useState(connection?.app_id ?? "")
   const [mode, setMode] = useState<ChatConnectionInput["permission_mode"]>(connection?.permission_mode ?? "readonly")
   const [serverIds, setServerIds] = useState<string[]>(connection?.server_ids ?? [])
+  const [systemPrompt, setSystemPrompt] = useState(connection?.system_prompt ?? "")
   const [enabled, setEnabled] = useState(connection?.enabled ?? true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const sources = useQuery({ queryKey: queryKeys.chatConnections.servers, queryFn: () => loadAllServers(params => serversApi.list(params)) })
   const selectedServerIds = serverIds.filter(id => sources.data?.some(server => server.id === id))
+  const selectedServers = sources.data?.filter(server => selectedServerIds.includes(server.id)) ?? []
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     if (busy) return
@@ -253,36 +332,47 @@ function ConnectionForm({ connection, onSaved }: { connection?: ChatConnection; 
     try {
       // Each platform accepts only its own credential fields.
       const credentials = provider === "feishu" ? { app_id: appId.trim(), app_secret: token.trim() } : { token: token.trim() }
-      const value = await chatConnectionsApi.save(connection?.id, { provider, name: name.trim(), ...credentials, permission_mode: mode, server_ids: selectedServerIds, enabled })
+      const value = await chatConnectionsApi.save(connection?.id, { provider, name: name.trim(), ...credentials, permission_mode: mode, server_ids: selectedServerIds, system_prompt: systemPrompt, enabled })
       setToken("")
       await onSaved(value)
     } catch (error) { setError(getErrorMessage(error, t("saveFailed"))) } finally { setBusy(false) }
   }
-  const valid = !!name.trim() && new TextEncoder().encode(name.trim()).length <= 100 && (!!connection || (!!token.trim() && (provider === "telegram" || !!appId.trim()))) && selectedServerIds.length > 0 && selectedServerIds.length <= 100 && sources.isSuccess
+  const valid = !!name.trim() && new TextEncoder().encode(name.trim()).length <= 100 && (!!connection || (!!token.trim() && (provider === "telegram" || !!appId.trim()))) && selectedServerIds.length > 0 && selectedServerIds.length <= 100 && sources.isSuccess && systemPromptValid(systemPrompt, selectedServerIds)
   return <form className="flex min-h-0 flex-1 flex-col" onSubmit={event => void submit(event)}>
     <DialogHeader className="shrink-0 border-b p-6 pr-12"><DialogTitle>{connection ? t("edit") : t("create")}</DialogTitle><DialogDescription>{t(`setupHelp.${provider}`)}</DialogDescription></DialogHeader>
-    <fieldset disabled={busy} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5">
-      {!connection && <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("platform")}>
-        {(["telegram", "feishu"] as const).map(item => <button key={item} type="button" role="radio" aria-checked={provider === item} onClick={() => { setProvider(item); setToken("") }}
-          className={cn("rounded-lg border px-3 py-2 text-sm transition-colors", provider === item ? "border-primary bg-primary/5 font-medium" : "hover:bg-muted/50")}>{t(`providers.${item}`)}</button>)}
-      </div>}
-      <div className="space-y-2"><Label htmlFor="chat-name">{t("name")}</Label><Input id="chat-name" value={name} onChange={event => setName(event.target.value)} required maxLength={100} placeholder={t("namePlaceholder")} /></div>
-      {provider === "telegram"
-        ? <div className="space-y-2"><Label htmlFor="chat-token">Bot Token</Label><Input id="chat-token" type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} required={!connection} placeholder={connection ? t("keepToken") : "123456:…"} /><p className="text-xs text-muted-foreground">{t("tokenHelp")} <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="underline">@BotFather</a></p></div>
-        : <div className="space-y-2">
-          <div className="grid gap-3 sm:grid-cols-2">
+    <fieldset disabled={busy} className="min-h-0 flex-1 space-y-8 overflow-y-auto px-6 py-5">
+      <FormSection title={t("sections.bot")}>
+        {!connection && <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("platform")}>
+          {(["telegram", "feishu"] as const).map(item => <button key={item} type="button" role="radio" aria-checked={provider === item} onClick={() => { setProvider(item); setToken("") }}
+            className={cn("rounded-lg border px-3 py-2 text-sm transition-colors", provider === item ? "border-primary bg-primary/5 font-medium" : "hover:bg-muted/50")}>{t(`providers.${item}`)}</button>)}
+        </div>}
+        {provider === "feishu" && !connection && <FeishuSteps />}
+        <div className="space-y-2"><Label htmlFor="chat-name">{t("name")}</Label><Input id="chat-name" value={name} onChange={event => setName(event.target.value)} required maxLength={100} placeholder={t("namePlaceholder")} /></div>
+        {provider === "telegram"
+          ? <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2"><Label htmlFor="chat-token">Bot Token</Label><a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs underline">{t("openBotFather")}<ExternalLink className="size-3" /></a></div>
+            <Input id="chat-token" type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} required={!connection} placeholder={connection ? t("keepToken") : "123456:…"} />
+            <p className="text-xs text-muted-foreground">{t("tokenHelp")}</p>
+          </div>
+          : <div className="grid gap-3 sm:grid-cols-2">
             {/* The application identifies the connection; switching apps needs a new connection. */}
             <div className="space-y-2"><Label htmlFor="chat-app-id">App ID</Label><Input id="chat-app-id" value={appId} onChange={event => setAppId(event.target.value)} required disabled={!!connection} placeholder="cli_…" /></div>
             <div className="space-y-2"><Label htmlFor="chat-app-secret">App Secret</Label><Input id="chat-app-secret" type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} required={!connection} placeholder={connection ? t("keepSecret") : ""} /></div>
-          </div>
-          <p className="text-xs text-muted-foreground">{t("feishuHelp")} <a href="https://open.feishu.cn/app" target="_blank" rel="noreferrer" className="underline">{t("feishuConsole")}</a></p>
-        </div>}
-      <div className="space-y-2"><Label htmlFor="chat-mode">{t("permissionMode")}</Label><Select value={mode} onValueChange={value => setMode(value as ChatConnectionInput["permission_mode"])}><SelectTrigger id="chat-mode"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="readonly">{t("modes.readonly")}</SelectItem><SelectItem value="balanced">{t("modes.balanced")}</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">{t(`modeHelp.${mode}`)}</p></div>
-      <div className="space-y-2"><Label>{t("servers")}</Label><p className="text-xs text-muted-foreground">{t("serversHelp")}</p>
-        {sources.isError && <div role="alert" className="text-sm text-destructive">{t("loadFailed")}<Button type="button" variant="link" size="sm" onClick={() => void sources.refetch()}>{t("retry")}</Button></div>}
-        {sources.isSuccess && !sources.data.length ? <p className="text-sm text-muted-foreground">{t("noServers")}</p>
-          : <ServerScopePicker servers={sources.data ?? []} value={selectedServerIds} loading={sources.isPending} disabled={busy || !sources.isSuccess} onChange={setServerIds} />}
-      </div>
+          </div>}
+      </FormSection>
+      <FormSection title={t("sections.access")}>
+        <div className="space-y-2"><Label>{t("servers")}</Label><p className="text-xs text-muted-foreground">{t("serversHelp")}</p>
+          {sources.isError && <div role="alert" className="text-sm text-destructive">{t("loadFailed")}<Button type="button" variant="link" size="sm" onClick={() => void sources.refetch()}>{t("retry")}</Button></div>}
+          {sources.isSuccess && !sources.data.length ? <p className="text-sm text-muted-foreground">{t("noServers")}</p>
+            : <ServerScopePicker servers={sources.data ?? []} value={selectedServerIds} loading={sources.isPending} disabled={busy || !sources.isSuccess} onChange={setServerIds} />}
+        </div>
+        <div className="space-y-2"><Label htmlFor="chat-mode">{t("permissionMode")}</Label><Select value={mode} onValueChange={value => setMode(value as ChatConnectionInput["permission_mode"])}><SelectTrigger id="chat-mode"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="readonly">{t("modes.readonly")}</SelectItem><SelectItem value="balanced">{t("modes.balanced")}</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">{t(`modeHelp.${mode}`)}</p></div>
+      </FormSection>
+      <FormSection title={t("sections.agent")}>
+        <div className="space-y-2"><Label htmlFor="chat-prompt">{t("systemPrompt")}</Label>
+          <SystemPromptEditor id="chat-prompt" value={systemPrompt} servers={selectedServers} disabled={busy} onChange={setSystemPrompt} />
+        </div>
+      </FormSection>
       <label className="flex items-center justify-between gap-3 text-sm"><span>{t("enabled")}</span><Switch checked={enabled} onCheckedChange={setEnabled} /></label>
       {connection && <p className="text-xs text-muted-foreground">{t("editStopsWork")}</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
@@ -296,7 +386,6 @@ function ConnectionDetail({ id, onEdit, onDeleted }: { id: string; onEdit: (conn
   const queryClient = useQueryClient()
   const { confirm, confirmDialog } = useConfirmDialog()
   const [busy, setBusy] = useState(false)
-  const [bindCode, setBindCode] = useState<ChatBindCode | null>(null)
   const detail = useQuery({ queryKey: queryKeys.chatConnections.detail(id), queryFn: () => chatConnectionsApi.detail(id), refetchInterval: 5000 })
   const run = async (action: () => Promise<unknown>) => {
     if (busy) return
@@ -308,20 +397,17 @@ function ConnectionDetail({ id, onEdit, onDeleted }: { id: string; onEdit: (conn
   if (detail.isPending) return <PageLoading className="min-h-0 py-10" />
   if (detail.isError) return <div role="alert" className="rounded-lg border p-4 text-sm text-destructive">{t("loadFailed")}<Button variant="outline" size="sm" onClick={() => void detail.refetch()}>{t("retry")}</Button></div>
   const { connection, bindings } = detail.data
-  const codeExpired = !!bindCode && Date.parse(bindCode.expires_at) <= Date.now()
   return <div className="min-w-0 space-y-4">
     <section className="space-y-3 rounded-lg border bg-card p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="mr-auto flex items-center gap-2 text-sm"><Switch checked={connection.enabled} disabled={busy} onCheckedChange={enabled => void run(async () => { await chatConnectionsApi.setEnabled(id, enabled); setBindCode(null) })} />{t("enabled")}</label>
+        <label className="mr-auto flex items-center gap-2 text-sm"><Switch checked={connection.enabled} disabled={busy} onCheckedChange={enabled => void run(() => chatConnectionsApi.setEnabled(id, enabled))} />{t("enabled")}</label>
         <Button size="sm" variant="outline" disabled={busy} onClick={() => onEdit(connection)}><Settings2 className="size-4" />{t("edit")}</Button>
         <Button size="sm" variant="ghost" className="text-destructive" disabled={busy} onClick={() => void run(async () => { if (await confirm({ description: t("deleteConfirm"), variant: "destructive" })) { await chatConnectionsApi.remove(id); onDeleted() } })}><Trash2 className="size-4" />{t("delete")}</Button>
       </div>
       {connection.last_error && <p role="alert" className="text-sm text-destructive">{connection.last_error}</p>}
     </section>
     <section className="space-y-3 rounded-lg border bg-card p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold">{t("bindings")}</h3><Button size="sm" variant="outline" disabled={busy || !connection.enabled} onClick={() => void run(async () => setBindCode(await chatConnectionsApi.bindCode(id)))}>{t("generateCode")}</Button></div>
-      <p className="text-xs text-muted-foreground">{t("bindingHelp")}</p>
-      {bindCode && connection.enabled && <div className="space-y-2 rounded-md bg-muted p-3"><p className="text-xs">{codeExpired ? t("codeExpired") : t("codeExpires", { time: new Date(bindCode.expires_at).toLocaleTimeString() })}</p>{!codeExpired && <><div className="flex items-center gap-2"><code className="min-w-0 flex-1 break-all text-xs">{bindCode.command ?? `/bind ${bindCode.code}`}</code><CopyButton value={bindCode.command ?? `/bind ${bindCode.code}`} label={t("copyCode")} /></div>{connection.provider === "feishu" && <p className="text-xs text-muted-foreground">{t("feishuBindHint")}</p>}<a className="inline-flex items-center gap-1 text-sm underline" href={bindCode.url} target="_blank" rel="noreferrer">{t(connection.provider === "feishu" ? "openFeishu" : "openTelegram")}<ExternalLink className="size-3" /></a></>}</div>}
+      <h3 className="text-sm font-semibold">{t("bindings")}</h3>
       {bindings.length === 0 && <p className="text-sm text-muted-foreground">{t("noBindings")}</p>}
       {bindings.map(binding => <div key={binding.id} className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
         <div><p className="text-sm">{binding.display_name || binding.user_id}</p><p className="text-xs text-muted-foreground">ID: {binding.external_user_id || binding.user_id} · {binding.revoked_at ? t("revoked") : t("bound")}</p></div>

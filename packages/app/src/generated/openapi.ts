@@ -58,7 +58,7 @@ export interface paths {
         patch: operations["setChatConnectionEnabled"];
         trace?: never;
     };
-    "/chat-connections/{id}/bind-code": {
+    "/chat-connections/{id}/requests/{request_id}/approve": {
         parameters: {
             query?: never;
             header?: never;
@@ -67,9 +67,26 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Issue a single-use binding code valid for ten minutes */
-        post: operations["createChatBindCode"];
+        /** Bind the requesting chat account and notify it */
+        post: operations["approveChatBindRequest"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat-connections/{id}/requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Drop an access request without replying */
+        delete: operations["ignoreChatBindRequest"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3963,6 +3980,8 @@ export interface components {
             /** Format: date-time */
             last_poll_at: string | null;
             last_error: string;
+            /** @description Owner-written Agent instructions. Server mentions are stored as :server[label]{name=server_id} tokens. */
+            system_prompt: string;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
@@ -3984,6 +4003,8 @@ export interface components {
             server_ids: string[];
             /** @enum {string} */
             permission_mode: "readonly" | "balanced";
+            /** @description Appended to the Agent system prompt, at most 4000 characters. Mention tokens :server[label]{name=server_id} must reference server_ids. */
+            system_prompt?: string;
             enabled: boolean;
         };
         ChatBinding: {
@@ -4002,14 +4023,22 @@ export interface components {
         ChatConnectionDetail: {
             connection: components["schemas"]["ChatConnection"];
             bindings: components["schemas"]["ChatBinding"][];
+            requests: components["schemas"]["ChatBindRequest"][];
         };
-        ChatBindCode: {
-            /** @description Send this /bind command in the bot private chat. Required for Feishu; Telegram also supports the returned deep link. */
-            command?: string;
-            code: string;
-            url: string;
+        /** @description An unbound chat account asking for access; approving it creates a binding. Expires after 24 hours without new messages. */
+        ChatBindRequest: {
+            id: string;
+            /** @description Telegram user ID or Feishu open_id. */
+            account: string;
+            display_name: string;
+            /** @description Feishu group request; replies after approval are visible to the whole group. */
+            is_group: boolean;
+            /** @description Preview of the latest message from the account. */
+            message: string;
             /** Format: date-time */
-            expires_at: string;
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         ChatSession: {
             id: string;
@@ -7767,12 +7796,13 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
-    createChatBindCode: {
+    approveChatBindRequest: {
         parameters: {
             query?: never;
             header?: never;
             path: {
                 id: string;
+                request_id: string;
             };
             cookie?: never;
         };
@@ -7783,9 +7813,29 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["ChatBindCode"];
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    ignoreChatBindRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

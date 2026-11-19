@@ -1,8 +1,8 @@
 import type { LucideIcon } from "lucide-react"
 import {
   Bot,
+  BotMessageSquare,
   Plug,
-  MessageCircle,
   ListChecks,
   FileText,
   Monitor,
@@ -84,7 +84,7 @@ const automation: NavigationItemDefinition[] = [
   {
     titleKey: "chatConnections",
     url: "/dashboard/chat-connections",
-    icon: MessageCircle,
+    icon: BotMessageSquare,
     profiles: ["web"],
     requiredCapabilities: ["settings", "ai"],
   },

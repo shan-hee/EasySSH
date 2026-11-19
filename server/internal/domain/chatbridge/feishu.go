@@ -20,7 +20,6 @@ import (
 const feishuAPI = "https://open.feishu.cn/open-apis"
 
 var feishuAppPattern = regexp.MustCompile(`^cli_[A-Za-z0-9]{8,64}$`)
-var feishuChatPattern = regexp.MustCompile(`^oc_[A-Za-z0-9_-]{1,64}$`)
 
 type feishuError struct {
 	Code   int
@@ -208,4 +207,38 @@ func (s *Service) sendFeishu(ctx context.Context, c Connection, token string, ca
 			return nil, err
 		}
 	}
+}
+
+// feishuDisplayName names a requesting account for the owner. Names need the
+// contact:user.base:readonly and im:chat:readonly scopes; without them the
+// stable open_id / chat_id is shown instead.
+func (s *Service) feishuDisplayName(ctx context.Context, c Connection, m incomingMessage) string {
+	user, chat := m.externalUserID, m.externalChatID
+	token, err := s.feishuToken(ctx, c)
+	if err == nil {
+		var result struct {
+			Data struct {
+				User struct {
+					Name string `json:"name"`
+				} `json:"user"`
+			} `json:"data"`
+		}
+		if s.feishuRequest(ctx, http.MethodGet, "/contact/v3/users/"+url.PathEscape(user)+"?user_id_type=open_id", token, nil, &result) == nil && result.Data.User.Name != "" {
+			user = result.Data.User.Name
+		}
+	}
+	if !m.group {
+		return user
+	}
+	if err == nil {
+		var result struct {
+			Data struct {
+				Name string `json:"name"`
+			} `json:"data"`
+		}
+		if s.feishuRequest(ctx, http.MethodGet, "/im/v1/chats/"+url.PathEscape(chat), token, nil, &result) == nil && result.Data.Name != "" {
+			chat = result.Data.Name
+		}
+	}
+	return "群 " + chat + " · " + user
 }

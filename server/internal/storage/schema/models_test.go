@@ -54,6 +54,7 @@ var models = []any{
 	&batchtask.BatchTask{},
 	&chatbridge.Approval{},
 	&chatbridge.Binding{},
+	&chatbridge.BindRequest{},
 	&chatbridge.Connection{},
 	&chatbridge.ReceivedEvent{},
 	&content.Record{},

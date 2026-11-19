@@ -908,6 +908,7 @@ components:
       - status
       - last_poll_at
       - last_error
+      - system_prompt
       - created_at
       - updated_at
       properties:
@@ -950,6 +951,9 @@ components:
           nullable: true
         last_error:
           type: string
+        system_prompt:
+          type: string
+          description: Owner-written Agent instructions. Server mentions are stored as :server[label]{name=server_id} tokens.
         created_at:
           type: string
           format: date-time
@@ -999,6 +1003,9 @@ components:
           - readonly
           - balanced
           x-enum-varnames: [ChatInputReadonly, ChatInputBalanced]
+        system_prompt:
+          type: string
+          description: Appended to the Agent system prompt, at most 4000 characters. Mention tokens :server[label]{name=server_id} must reference server_ids.
         enabled:
           type: boolean
     ChatBinding:
@@ -1037,6 +1044,7 @@ components:
       required:
       - connection
       - bindings
+      - requests
       properties:
         connection:
           $ref: '#/components/schemas/ChatConnection'
@@ -1044,21 +1052,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ChatBinding'
-    ChatBindCode:
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatBindRequest'
+    ChatBindRequest:
       type: object
-      required:
-      - code
-      - url
-      - expires_at
+      description: An unbound chat account asking for access; approving it creates a binding. Expires after 24 hours without new messages.
+      required: [id, account, display_name, is_group, message, created_at, updated_at]
       properties:
-        command:
+        id:
           type: string
-          description: Send this /bind command in the bot private chat. Required for Feishu; Telegram also supports the returned deep link.
-        code:
+        account:
           type: string
-        url:
+          description: Telegram user ID or Feishu open_id.
+        display_name:
           type: string
-        expires_at:
+        is_group:
+          type: boolean
+          description: Feishu group request; replies after approval are visible to the whole group.
+        message:
+          type: string
+          description: Preview of the latest message from the account.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
           type: string
           format: date-time
     ChatSession:
@@ -9739,10 +9758,10 @@ paths:
         required: true
         schema:
           type: string
-  /chat-connections/{id}/bind-code:
+  /chat-connections/{id}/requests/{request_id}/approve:
     post:
-      operationId: createChatBindCode
-      summary: Issue a single-use binding code valid for ten minutes
+      operationId: approveChatBindRequest
+      summary: Bind the requesting chat account and notify it
       tags:
       - ai
       security:
@@ -9750,14 +9769,39 @@ paths:
       responses:
         '200':
           description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ChatBindCode'
         default:
           $ref: '#/components/responses/Error'
       parameters:
       - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: request_id
+        in: path
+        required: true
+        schema:
+          type: string
+  /chat-connections/{id}/requests/{request_id}:
+    delete:
+      operationId: ignoreChatBindRequest
+      summary: Drop an access request without replying
+      tags:
+      - ai
+      security:
+      - ownerCookie: []
+      responses:
+        '200':
+          description: Success
+        default:
+          $ref: '#/components/responses/Error'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: request_id
         in: path
         required: true
         schema:
