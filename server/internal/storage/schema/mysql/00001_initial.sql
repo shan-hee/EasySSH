@@ -1064,14 +1064,14 @@ CREATE TABLE `operation_resources` (
  `name` varchar(120) NOT NULL,
  PRIMARY KEY (`record_id`, `server_id`),
  FOREIGN KEY (`record_id`) REFERENCES `operation_records` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+);
 CREATE INDEX `idx_operation_resources_server` ON `operation_resources` (`server_id`);
 
 CREATE TABLE `activity_coverage` (
  `id` varchar(20) PRIMARY KEY,
  `started_at` datetime(3) NOT NULL,
  `pruned_before` datetime(3)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+);
 
 CREATE INDEX `idx_transfer_actor_time` ON `transfer_jobs` (`actor_kind`, `actor_session_id`, `created_at`);
 

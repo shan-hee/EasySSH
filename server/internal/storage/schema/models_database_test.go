@@ -104,7 +104,7 @@ func newSchemaDatabase(t *testing.T, ctx context.Context, driver string) *sql.DB
 			}
 			return sql.OpenDB(connector), nil
 		}
-		create = "CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4"
+		create = "CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"
 		drop = "DROP DATABASE `" + name + "`"
 	default:
 		t.Fatalf("unsupported test dialect %q", driver)

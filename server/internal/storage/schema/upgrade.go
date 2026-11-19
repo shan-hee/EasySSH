@@ -165,7 +165,30 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 	if strings.ToLower(kind) != "varchar" || nullable != "NO" || defaultValue != "share" {
 		return fmt.Errorf("grants.purpose does not match schema %d", version)
 	}
-	return checkOperationActorNullability(ctx, db, driver, version)
+	if err := checkOperationActorNullability(ctx, db, driver, version); err != nil {
+		return err
+	}
+	if driver == "mysql" && version >= 9 {
+		var columns int
+		err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM information_schema.tables t
+			JOIN information_schema.columns c USING (table_schema, table_name)
+			WHERE t.table_schema = DATABASE() AND t.engine = 'InnoDB' AND t.table_collation = 'utf8mb4_bin'
+			AND EXISTS (SELECT 1 FROM information_schema.key_column_usage k JOIN information_schema.referential_constraints r
+				USING (constraint_schema, table_name, constraint_name)
+				WHERE k.table_schema = DATABASE() AND k.table_name = 'operation_resources' AND k.column_name = 'record_id'
+				AND k.referenced_table_schema = DATABASE() AND k.referenced_table_name = 'operation_records'
+				AND k.referenced_column_name = 'id' AND r.delete_rule = 'CASCADE')
+			AND c.collation_name = 'utf8mb4_bin' AND (
+				(t.table_name = 'operation_resources' AND c.column_name IN ('record_id','server_id','name')) OR
+				(t.table_name = 'activity_coverage' AND c.column_name = 'id'))`).Scan(&columns)
+		if err != nil {
+			return err
+		}
+		if columns != 4 {
+			return fmt.Errorf("schema %d requires InnoDB and utf8mb4_bin on operation_resources and activity_coverage, including their character columns, and a cascading record_id foreign key", version)
+		}
+	}
+	return nil
 }
 
 // Version 8 changes constraints, not column presence. Check them separately so

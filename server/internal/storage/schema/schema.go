@@ -7,6 +7,7 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
+	"strings"
 
 	"github.com/easyssh/shared/dbmigration"
 	"github.com/pressly/goose/v3"
@@ -15,7 +16,7 @@ import (
 //go:embed */*.sql
 var scripts embed.FS
 
-const Version int64 = 8
+const Version int64 = 9
 
 const BaselineVersion int64 = 1
 
@@ -33,10 +34,6 @@ func Definition(driver string) (dbmigration.Definition, error) {
 }
 
 func Start(ctx context.Context, db *sql.DB, driver string) error {
-	definition, err := Definition(driver)
-	if err != nil {
-		return err
-	}
 	version, err := dbmigration.Version(ctx, db, driver)
 	if err != nil {
 		return err
@@ -44,13 +41,29 @@ func Start(ctx context.Context, db *sql.DB, driver string) error {
 	if version >= BaselineVersion && version < Version {
 		return fmt.Errorf("database schema %d requires an explicit upgrade: stop the server, back up with the matching executable, then run maintenance schema-upgrade", version)
 	}
-	if err := dbmigration.Start(ctx, db, driver, definition); err != nil {
-		return err
+	if version == 0 {
+		if err := Initialize(ctx, db, driver); err != nil {
+			return err
+		}
+	}
+	if version > Version {
+		return fmt.Errorf("database schema %d is newer than supported schema %d", version, Version)
 	}
 	return CheckUpgradeSource(ctx, db, driver, Version)
 }
 
 func Initialize(ctx context.Context, db *sql.DB, driver string) error {
+	if driver == "mysql" {
+		var collation, engine string
+		err := db.QueryRowContext(ctx, `SELECT default_collation_name, @@session.default_storage_engine
+			FROM information_schema.schemata WHERE schema_name = DATABASE()`).Scan(&collation, &engine)
+		if err != nil {
+			return err
+		}
+		if collation != "utf8mb4_bin" || !strings.EqualFold(engine, "InnoDB") {
+			return fmt.Errorf("MySQL baseline requires an empty database with CHARACTER SET utf8mb4 COLLATE utf8mb4_bin and default_storage_engine=InnoDB; got collation=%s, engine=%s", collation, engine)
+		}
+	}
 	definition, err := Definition(driver)
 	if err != nil {
 		return err
