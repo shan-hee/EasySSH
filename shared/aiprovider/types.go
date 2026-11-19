@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	MaxImageAttachments = 5
-	MaxImageBytes       = 8 * 1024 * 1024
-	MaxImageTotalBytes  = 20 * 1024 * 1024
+	MaxImageAttachments = 10
+	MaxImageBytes       = 16 << 20
+	MaxImageTotalBytes  = 32 << 20
 )
 
 type Pricing struct {
@@ -81,10 +81,9 @@ func validateAttachments(attachments []Attachment) (int64, error) {
 			return 0, fmt.Errorf("图片 %s 超出 %d MB 限制", attachment.Name, MaxImageBytes/(1024*1024))
 		}
 		total += decodedSize
-	}
-
-	if total > MaxImageTotalBytes {
-		return 0, fmt.Errorf("图片总大小超出 %d MB 限制", MaxImageTotalBytes/(1024*1024))
+		if total > MaxImageTotalBytes {
+			return 0, fmt.Errorf("图片总大小超出 %d MiB 限制", MaxImageTotalBytes>>20)
+		}
 	}
 	return total, nil
 }

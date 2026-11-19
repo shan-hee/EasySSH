@@ -2,9 +2,10 @@ package chatbridge
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log"
+	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -32,6 +33,23 @@ func feishuString(value *string) string {
 	return *value
 }
 
+var feishuMentionKey = regexp.MustCompile(`@_user_[0-9]+`)
+
+func feishuGroupText(text string, mentions []*larkim.MentionEvent, botID string) (string, bool) {
+	keys := make(map[string]bool)
+	for _, mention := range mentions {
+		if botID != "" && mention != nil && mention.Id != nil && feishuString(mention.Id.OpenId) == botID && feishuString(mention.Key) != "" {
+			keys[*mention.Key] = true
+		}
+	}
+	return feishuMentionKey.ReplaceAllStringFunc(text, func(key string) string {
+		if keys[key] {
+			return ""
+		}
+		return key
+	}), len(keys) != 0
+}
+
 func (s *Service) feishuHealth(ctx context.Context, c Connection, online bool, message string) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -48,6 +66,12 @@ func (s *Service) listenFeishu(ctx context.Context, c Connection) {
 	secret, err := s.token(c)
 	if err != nil {
 		s.feishuHealth(ctx, c, false, "飞书应用凭据无法解密")
+		wait(ctx, 5*time.Second)
+		return
+	}
+	bot, err := s.inspectFeishuBot(ctx, c.AppID, secret)
+	if err != nil {
+		s.feishuHealth(ctx, c, false, "无法获取飞书机器人身份，请检查应用凭据和网络")
 		wait(ctx, 5*time.Second)
 		return
 	}
@@ -74,19 +98,26 @@ func (s *Service) listenFeishu(ctx context.Context, c Connection) {
 			return nil
 		}
 		sender, message := event.Event.Sender, event.Event.Message
-		if sender.SenderId == nil || feishuString(sender.SenderType) != "user" || feishuString(message.ChatType) != "p2p" {
+		chatType := feishuString(message.ChatType)
+		if sender.SenderId == nil || feishuString(sender.SenderType) != "user" || (chatType != "p2p" && chatType != "group") {
 			return nil
 		}
-		var content struct {
-			Text string `json:"text"`
-		}
-		if feishuString(message.MessageType) == "text" {
-			if err := json.Unmarshal([]byte(feishuString(message.Content)), &content); err != nil {
-				return errors.New("飞书消息内容格式无效")
+		messageID := feishuString(message.MessageId)
+		text, resources, parseErr := feishuContent(feishuString(message.MessageType), feishuString(message.Content), messageID)
+		if chatType == "group" {
+			var mentioned bool
+			text, mentioned = feishuGroupText(text, message.Mentions, bot.OpenID)
+			if !mentioned {
+				return nil
 			}
 		}
 		userID := feishuString(sender.SenderId.OpenId)
-		return submit(incomingMessage{externalUserID: userID, externalChatID: feishuString(message.ChatId), displayName: userID, text: content.Text, requestID: feishuString(message.MessageId)})
+		incoming := incomingMessage{group: chatType == "group", externalUserID: userID, externalChatID: feishuString(message.ChatId), displayName: userID, text: text, requestID: messageID}
+		parentID := feishuString(message.ParentId)
+		if !strings.HasPrefix(strings.TrimSpace(text), "/") && (parentID != "" || len(resources) != 0 || parseErr != nil) {
+			incoming.media = &feishuMedia{parentID: parentID, resources: resources, err: parseErr}
+		}
+		return submit(incoming)
 	})
 	handler.OnP2CardActionTrigger(func(_ context.Context, event *callback.CardActionTriggerEvent) (*callback.CardActionTriggerResponse, error) {
 		if event == nil || event.EventV2Base == nil || event.EventV2Base.Header == nil || event.EventV2Base.Header.AppID != c.AppID || event.Event == nil {
@@ -148,32 +179,64 @@ func (s *Service) listenFeishu(ctx context.Context, c Connection) {
 }
 
 func (s *Service) receiveFeishu(ctx context.Context, c Connection, message incomingMessage) error {
+	claimed, err := s.claimFeishu(ctx, c, message.requestID)
+	if err != nil || !claimed {
+		return err
+	}
+	if media := message.media; media != nil {
+		var binding Binding
+		err := bindingQuery(s.db.WithContext(ctx), c, message).First(&binding).Error
+		if err == nil {
+			boundCtx, err := s.bindingContext(ctx, c, binding)
+			if err != nil {
+				return nil
+			}
+			media.bindingID = binding.ID
+			if media.err == nil {
+				downloadCtx, cancel := context.WithTimeout(boundCtx, time.Minute)
+				media.err = s.loadFeishuMedia(downloadCtx, c, message.externalChatID, media)
+				cancel()
+			}
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var current Connection
-	err := s.db.WithContext(ctx).Where("id = ? AND enabled = ? AND revision = ? AND provider = ?", c.ID, true, c.Revision, ProviderFeishu).First(&current).Error
+	err = s.db.WithContext(ctx).Where("id = ? AND enabled = ? AND revision = ? AND provider = ?", c.ID, true, c.Revision, ProviderFeishu).First(&current).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	event := ReceivedEvent{ID: stableID(c.ID + ":feishu:" + message.requestID), ConnectionID: c.ID, CreatedAt: time.Now().UTC()}
+	calls, err := s.dispatchMessage(ctx, current, message)
+	s.enqueue(current, calls)
+	return err
+}
+
+func (s *Service) claimFeishu(ctx context.Context, c Connection, requestID string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var active int64
+	if err := s.db.WithContext(ctx).Model(&Connection{}).Where("id = ? AND enabled = ? AND revision = ?", c.ID, true, c.Revision).Count(&active).Error; err != nil || active == 0 {
+		return false, err
+	}
+	event := ReceivedEvent{ID: stableID(c.ID + ":feishu:" + requestID), ConnectionID: c.ID, CreatedAt: time.Now().UTC()}
 	var count int64
 	if err := s.db.WithContext(ctx).Model(&ReceivedEvent{}).Where("id = ?", event.ID).Count(&count).Error; err != nil {
-		return err
+		return false, err
 	}
 	if count != 0 {
-		return nil
+		return false, nil
 	}
 	// s.mu serializes claims; the primary key also rejects a competing insert.
 	// Do not infer a new claim from MySQL's configurable affected-row semantics.
 	if err := s.db.WithContext(ctx).Create(&event).Error; err != nil {
-		return err
+		return false, err
 	}
 	// Like Telegram's offset, the claim commits before dispatch. A crash may
 	// lose a reply, but a duplicate can never replay a server-changing operation.
-	calls, err := s.dispatchMessage(ctx, current, message)
-	s.enqueue(current, calls)
-	return err
+	return true, nil
 }

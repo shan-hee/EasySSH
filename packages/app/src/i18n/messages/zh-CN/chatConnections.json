@@ -10,7 +10,7 @@
   "serverCount": "已授权 {count} 台服务器",
   "setupHelp": {
     "telegram": "使用 Telegram Bot API 长轮询接收私聊消息，无需公网回调地址。服务端需要能访问 Telegram。",
-    "feishu": "通过飞书长连接接收单聊消息，无需公网回调地址。服务端需要能访问 open.feishu.cn。"
+    "feishu": "通过飞书长连接接收私聊和群内 @ 机器人的消息，无需公网回调地址。服务端需要能访问 open.feishu.cn。"
   },
   "name": "连接名称",
   "namePlaceholder": "例如：个人运维助手",
@@ -73,8 +73,8 @@
     "feishu": "飞书"
   },
   "keepSecret": "留空保留现有 App Secret",
-  "feishuHelp": "在飞书开放平台创建企业自建应用并开启机器人能力；事件与回调选择“使用长连接接收”，订阅接收消息（im.message.receive_v1）和卡片回传交互（card.action.trigger），发布应用版本后填写 App ID 与 App Secret。凭据加密保存，不会返回浏览器。",
+  "feishuHelp": "启用飞书应用机器人，通过长连接订阅 im.message.receive_v1 和 card.action.trigger。群聊需 im:message.group_at_msg:readonly，读取附件需 im:message:readonly。发布版本后填写 App ID 和 App Secret。",
   "feishuConsole": "飞书开放平台",
-  "feishuBindHint": "打开机器人单聊，发送上面的命令完成绑定。",
+  "feishuBindHint": "只在机器人私聊中发送绑定命令。要绑定群聊，先在群内 @机器人 /groupid，再把群 ID 加到命令末尾。群内回复对全群可见。",
   "openFeishu": "打开飞书机器人"
 }

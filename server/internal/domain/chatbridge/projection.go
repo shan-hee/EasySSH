@@ -126,6 +126,7 @@ func (s *Service) projectBinding(ctx context.Context, c Connection, b Binding) (
 	send := func(text string, keyboard *telegramKeyboard) {
 		replies := reply(b.chatAddress(), text, keyboard)
 		if len(replies) > 0 {
+			replies[0].bindingID = b.ID
 			replies[0].resultRequestID = requestID
 		}
 		calls = append(calls, replies...)

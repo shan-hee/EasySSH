@@ -1,8 +1,8 @@
-export const MAX_COMPOSER_ATTACHMENTS = 5
+export const MAX_COMPOSER_ATTACHMENTS = 10
 export const ATTACHMENT_TEXT_READ_LIMIT = 64 * 1024
 export const ATTACHMENT_TEXT_PREVIEW_LIMIT = 12_000
-export const ATTACHMENT_IMAGE_SIZE_LIMIT = 8 * 1024 * 1024
-export const ATTACHMENT_TOTAL_SIZE_LIMIT = 16 * 1024 * 1024
+export const ATTACHMENT_IMAGE_SIZE_LIMIT = 16 * 1024 * 1024
+export const ATTACHMENT_TOTAL_SIZE_LIMIT = 32 * 1024 * 1024
 
 export type AgentImageAttachment = {
   id: string

@@ -222,7 +222,7 @@
   "notConfigured": "未配置",
   "attachFile": "添加附件",
   "attachmentLimitHint": "最多支持添加 {count} 个附件",
-  "attachmentTotalSizeHint": "附件总大小不能超过 16 MB",
+  "attachmentTotalSizeHint": "附件总大小不能超过 32 MiB",
   "attachmentInlineTruncated": "已截断",
   "attachmentReadFailed": "读取附件失败：{file}",
   "attachmentContextHeader": "【附件】以下是用户附带的文件内容或元数据：",

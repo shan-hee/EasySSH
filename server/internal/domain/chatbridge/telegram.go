@@ -142,6 +142,7 @@ func (s *Service) inspectBot(ctx context.Context, token string) (telegramUser, e
 // outgoing is a chat operation prepared under s.mu and delivered after release.
 // Feishu translates these operations into card creation/updates at delivery.
 type outgoing struct {
+	bindingID       string
 	method          string
 	payload         map[string]any
 	statusSessionID string
@@ -188,17 +189,13 @@ func (s *Service) enqueue(c Connection, calls []outgoing) {
 // outage drops them; the web UI stays the source of truth for Agent results.
 // A single sender keeps replies in the order they were produced.
 func (s *Service) sendReplies(ctx context.Context) {
-	type address struct {
-		connectionID string
-		chatID       any
-	}
 	type statusMessages struct {
 		sessionID  string
 		messageIDs map[string]any
 	}
 	// Only this goroutine owns message IDs. Queue order ensures each status is
 	// sent before its result; request IDs distinguish consecutive questions.
-	statuses := make(map[address]statusMessages)
+	statuses := make(map[string]statusMessages)
 	for {
 		select {
 		case <-ctx.Done():
@@ -216,8 +213,7 @@ func (s *Service) sendReplies(ctx context.Context) {
 				continue
 			}
 			for _, call := range d.calls {
-				chatID := call.payload["chat_id"]
-				key := address{connectionID: d.connection.ID, chatID: chatID}
+				key := call.bindingID
 				if call.statusRequestID != "" {
 					pending := statuses[key]
 					if pending.sessionID != call.statusSessionID {

@@ -10,7 +10,7 @@
   "serverCount": "{count} authorized servers",
   "setupHelp": {
     "telegram": "Receives private messages through Telegram Bot API long polling; no public callback URL is needed. The server must reach Telegram.",
-    "feishu": "Receives private messages through a Feishu long connection; no public callback URL is needed. The server must reach open.feishu.cn."
+    "feishu": "Receives direct messages and group @mentions over a Feishu long connection. No public callback URL is needed. The server must reach open.feishu.cn."
   },
   "name": "Connection name",
   "namePlaceholder": "For example: Personal operations assistant",
@@ -73,8 +73,8 @@
     "feishu": "Feishu"
   },
   "keepSecret": "Leave empty to keep the current App Secret",
-  "feishuHelp": "Create a custom app on the Feishu Open Platform with the bot capability. Under events and callbacks choose long connection, subscribe to message receive (im.message.receive_v1) and card action (card.action.trigger), publish a version, then enter the App ID and App Secret. Credentials are stored encrypted and never returned to the browser.",
+  "feishuHelp": "Enable the Feishu bot and subscribe to im.message.receive_v1 and card.action.trigger over a long connection. Groups need im:message.group_at_msg:readonly; attachments need im:message:readonly. Publish the version, then enter the App ID and App Secret.",
   "feishuConsole": "Feishu Open Platform",
-  "feishuBindHint": "Open the bot's private chat and send the command above to bind.",
+  "feishuBindHint": "Send the binding command only in a direct message to the bot. For a group, send @bot /groupid in the group, then append the group ID to the binding command. Everyone in the group can see replies.",
   "openFeishu": "Open the Feishu bot"
 }

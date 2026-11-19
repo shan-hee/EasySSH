@@ -1,4 +1,4 @@
-// Package chatbridge connects private bot conversations to the existing AI runtime.
+// Package chatbridge connects bound bot conversations to the existing AI runtime.
 package chatbridge
 
 import "time"

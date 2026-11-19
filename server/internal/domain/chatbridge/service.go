@@ -257,11 +257,11 @@ func (s *Service) verify(ctx context.Context, input *ConnectionInput, existing C
 		if existing.ID != "" && input.AppID != existing.AppID {
 			return botIdentity{}, invalid("更换飞书应用请新建连接")
 		}
-		name, err := s.inspectFeishuBot(ctx, input.AppID, secret)
+		bot, err := s.inspectFeishuBot(ctx, input.AppID, secret)
 		// bot_id stays a unique NOT NULL column from schema 8. Feishu's identity is
 		// the unique (provider, app_id); a negative hash never collides with Telegram.
 		digest := sha256.Sum256([]byte("feishu:" + input.AppID))
-		return botIdentity{id: -int64(binary.BigEndian.Uint64(digest[:8])>>1) - 1, name: name, secret: secret}, err
+		return botIdentity{id: -int64(binary.BigEndian.Uint64(digest[:8])>>1) - 1, name: truncate(bot.AppName, 90), secret: secret}, err
 	}
 	if input.AppID != "" || input.AppSecret != "" {
 		return botIdentity{}, invalid("Telegram 连接不接受飞书应用凭据")

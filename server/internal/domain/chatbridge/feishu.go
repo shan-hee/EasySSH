@@ -20,6 +20,7 @@ import (
 const feishuAPI = "https://open.feishu.cn/open-apis"
 
 var feishuAppPattern = regexp.MustCompile(`^cli_[A-Za-z0-9]{8,64}$`)
+var feishuChatPattern = regexp.MustCompile(`^oc_[A-Za-z0-9_-]{1,64}$`)
 
 type feishuError struct {
 	Code   int
@@ -120,30 +121,32 @@ func (s *Service) feishuToken(ctx context.Context, c Connection) (string, error)
 	return token.Token, nil
 }
 
-func (s *Service) inspectFeishuBot(ctx context.Context, appID, secret string) (string, error) {
+type feishuBot struct {
+	AppName string `json:"app_name"`
+	OpenID  string `json:"open_id"`
+}
+
+func (s *Service) inspectFeishuBot(ctx context.Context, appID, secret string) (feishuBot, error) {
 	if !feishuAppPattern.MatchString(appID) {
-		return "", invalid("飞书 App ID 格式无效")
+		return feishuBot{}, invalid("飞书 App ID 格式无效")
 	}
 	if secret == "" || len(secret) > 1024 {
-		return "", invalid("请提供有效的飞书 App Secret")
+		return feishuBot{}, invalid("请提供有效的飞书 App Secret")
 	}
 	token, err := s.requestFeishuToken(ctx, appID, secret)
 	if err != nil {
-		return "", err
+		return feishuBot{}, err
 	}
 	var result struct {
-		Bot struct {
-			AppName string `json:"app_name"`
-			OpenID  string `json:"open_id"`
-		} `json:"bot"`
+		Bot feishuBot `json:"bot"`
 	}
 	if err := s.feishuRequest(ctx, http.MethodGet, "/bot/v3/info", token.Token, nil, &result); err != nil {
-		return "", err
+		return feishuBot{}, err
 	}
 	if result.Bot.OpenID == "" || result.Bot.AppName == "" {
-		return "", invalid("飞书应用尚未启用机器人能力或机器人信息无效")
+		return feishuBot{}, invalid("飞书应用尚未启用机器人能力或机器人信息无效")
 	}
-	return truncate(result.Bot.AppName, 90), nil
+	return result.Bot, nil
 }
 
 func feishuCard(call outgoing) string {

@@ -222,7 +222,7 @@
   "notConfigured": "Not Configured",
   "attachFile": "Attach file",
   "attachmentLimitHint": "Up to {count} attachments",
-  "attachmentTotalSizeHint": "Total attachment size cannot exceed 16 MB",
+  "attachmentTotalSizeHint": "Total attachment size cannot exceed 32 MiB",
   "attachmentInlineTruncated": "Truncated",
   "attachmentReadFailed": "Failed to read attachment: {file}",
   "attachmentContextHeader": "[Attachments] Below are the file contents or metadata provided by the user:",

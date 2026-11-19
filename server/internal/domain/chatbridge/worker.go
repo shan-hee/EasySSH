@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/easyssh/server/internal/domain/aichat/runtime"
+	"github.com/easyssh/shared/aiprovider"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -216,6 +217,8 @@ func (s *Service) dispatch(ctx context.Context, c Connection, update telegramUpd
 }
 
 type incomingMessage struct {
+	media                          *feishuMedia
+	group                          bool
 	userID, chatID                 int64
 	externalUserID, externalChatID string
 	displayName, text, requestID   string
@@ -232,21 +235,50 @@ func (m incomingMessage) chatAddress() any {
 func bindingQuery(db *gorm.DB, c Connection, m incomingMessage) *gorm.DB {
 	query := db.Where("connection_id = ? AND revoked_at IS NULL", c.ID)
 	if c.Provider == ProviderFeishu {
-		return query.Where("external_user_id = ?", m.externalUserID)
+		return query.Where("external_user_id = ? AND external_chat_id = ?", m.externalUserID, m.externalChatID)
 	}
 	return query.Where("user_id = ?", m.userID)
 }
 
 func (s *Service) dispatchMessage(ctx context.Context, c Connection, m incomingMessage) ([]outgoing, error) {
 	text := strings.TrimSpace(m.text)
+	if m.group && text == "/groupid" {
+		return reply(m.chatAddress(), "本群 ID："+m.externalChatID+"。请在机器人私聊中发送 /bind <绑定码> "+m.externalChatID+"。绑定后，你的任务结果和审批卡片对全群可见。", nil), nil
+	}
 	if m.callbackID == "" && (strings.HasPrefix(text, "/start bind_") || strings.HasPrefix(text, "/bind ")) {
 		code := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(text, "/start bind_"), "/bind "))
-		answer, err := s.bind(ctx, c, m, code)
+		target := m
+		if c.Provider == ProviderFeishu {
+			fields := strings.Fields(code)
+			if m.group {
+				if len(fields) > 0 {
+					err := s.db.WithContext(ctx).Model(&Connection{}).Where("id = ? AND bind_code_hash = ?", c.ID, hash(fields[0])).Updates(map[string]any{"bind_code_hash": "", "bind_expires_at": nil}).Error
+					if err != nil {
+						return nil, err
+					}
+				}
+				return reply(m.chatAddress(), "不要在群里发送绑定码。请重新生成绑定码，并在机器人私聊中完成绑定。", nil), nil
+			}
+			if len(fields) == 2 && feishuChatPattern.MatchString(fields[1]) {
+				code, target.externalChatID = fields[0], fields[1]
+				target.group = true
+				target.displayName = "群 " + fields[1] + " · " + m.externalUserID
+			} else if len(fields) != 1 {
+				return reply(m.chatAddress(), "用法：/bind <绑定码> [群 ID]。在目标群 @机器人 /groupid 获取群 ID。", nil), nil
+			}
+		}
+		answer, err := s.bind(ctx, c, target, code)
 		return reply(m.chatAddress(), answer, nil), err
 	}
 	var b Binding
 	err := bindingQuery(s.db.WithContext(ctx), c, m).First(&b).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if m.group {
+			return reply(m.chatAddress(), "你尚未绑定此群。请在机器人私聊中发送 /bind <绑定码> "+m.externalChatID+"。绑定后的回复和审批卡片对全群可见。", nil), nil
+		}
+		if c.Provider == ProviderFeishu && m.callbackID != "" {
+			return nil, nil
+		}
 		return reply(m.chatAddress(), "请先在 EasySSH 生成绑定码，并在机器人私聊中发送 /bind <绑定码> 完成绑定。", nil), nil
 	}
 	if err != nil {
@@ -274,7 +306,10 @@ func (s *Service) dispatchMessage(ctx context.Context, c Connection, m incomingM
 	answer := ""
 	switch text {
 	case "/start", "/help":
-		answer = "直接发送文字即可与 EasySSH Agent 对话。\n/new 新建会话\n/stop 停止当前任务\n/status 查看状态\n/help 使用说明\n当前仅支持私聊文字。需要执行的操作会显示审批按钮，有效期 10 分钟。"
+		answer = "发送文字即可与 EasySSH Agent 对话。\n/new 新建会话\n/stop 停止当前任务\n/status 查看状态\n/help 使用说明\n需要执行的操作会显示审批按钮，有效期 10 分钟。"
+		if c.Provider == ProviderFeishu {
+			answer += "\n支持图片和 UTF-8 文本附件。群内请在图文消息中 @机器人，或回复目标附件并 @机器人。发送 /groupid 可查看当前群 ID。"
+		}
 	case "/new":
 		if b.CurrentSessionID != "" {
 			if err := s.agent.CancelSession(boundCtx, b.CurrentSessionID); err != nil && !errors.Is(err, runtime.ErrSessionNotFound) && !errors.Is(err, runtime.ErrSessionClosed) {
@@ -304,14 +339,30 @@ func (s *Service) dispatchMessage(ctx context.Context, c Connection, m incomingM
 			answer = "会话状态：" + statusLabel(view.Status) + "\n会话 ID：" + view.ID
 		}
 	default:
-		return s.ask(ctx, boundCtx, c, &b, text, m.requestID)
+		return s.ask(ctx, boundCtx, c, &b, text, m)
 	}
 	return reply(b.chatAddress(), answer, nil), nil
 }
 
-func (s *Service) ask(ctx, boundCtx context.Context, c Connection, b *Binding, text, requestID string) ([]outgoing, error) {
+func (s *Service) ask(ctx, boundCtx context.Context, c Connection, b *Binding, text string, m incomingMessage) ([]outgoing, error) {
+	var images []runtime.Attachment
+	if media := m.media; media != nil {
+		if media.bindingID != b.ID {
+			return nil, nil
+		}
+		if media.err != nil {
+			return reply(b.chatAddress(), media.err.Error(), nil), nil
+		}
+		images = media.images
+		if text == "" && (len(images) != 0 || len(media.excerpts) != 0) {
+			text = "请分析本条消息中的附件。"
+		}
+	}
 	switch {
 	case text == "":
+		if c.Provider == ProviderFeishu {
+			return reply(b.chatAddress(), "请发送文字、图片或 UTF-8 文本文件。群内也可回复附件并 @机器人 提问。", nil), nil
+		}
 		return reply(b.chatAddress(), "当前仅支持文字消息，请用文字描述问题。", nil), nil
 	case len([]rune(text)) > 8000:
 		return reply(b.chatAddress(), "消息过长，请拆分为较短的问题。", nil), nil
@@ -329,12 +380,20 @@ func (s *Service) ask(ctx, boundCtx context.Context, c Connection, b *Binding, t
 		return nil, err
 	}
 	// Stable per incoming message; the offset or event claim prevents replay.
-	messageID := stableID(c.ID + ":" + requestID)
-	err := s.agent.SendUserMessageWithOptions(boundCtx, b.CurrentSessionID, runtime.SendUserMessageInput{Content: text, Context: "消息来源：已绑定的 " + platformName(c) + " 私聊。", MessageID: messageID, PermissionMode: c.PermissionMode})
+	messageID := stableID(c.ID + ":" + m.requestID)
+	source := "消息来源：已绑定的 " + platformName(c) + " 私聊。"
+	if m.group {
+		source = "消息来源：飞书群聊。回复对群内所有成员可见。"
+	}
+	if m.media != nil && len(m.media.excerpts) != 0 {
+		source += "\n\n" + strings.Join(m.media.excerpts, "\n\n")
+	}
+	err := s.agent.SendUserMessageWithOptions(boundCtx, b.CurrentSessionID, runtime.SendUserMessageInput{Content: text, Attachments: images, Context: source, MessageID: messageID, PermissionMode: c.PermissionMode})
 	if err != nil {
 		return reply(b.chatAddress(), userError(err), nil), nil
 	}
 	calls := reply(b.chatAddress(), "已收到，正在处理。", nil)
+	calls[0].bindingID = b.ID
 	calls[0].statusSessionID = b.CurrentSessionID
 	calls[0].statusRequestID = messageID
 	return calls, nil
@@ -365,6 +424,9 @@ func (s *Service) bind(ctx context.Context, c Connection, m incomingMessage, cod
 			return err
 		}
 		answer = "绑定成功。你可以直接与 EasySSH Agent 对话，用 /help 查看命令。"
+		if m.group {
+			answer = "群聊绑定成功。请回到群 " + m.externalChatID + "，@机器人 发送文字。回复和审批卡片对全群可见，只有你能审批自己的任务。"
+		}
 		return nil
 	})
 	return answer, err
@@ -393,6 +455,10 @@ func (s *Service) newConversation(ctx context.Context, c Connection, b *Binding)
 }
 
 func userError(err error) string {
+	var limit *aiprovider.ProviderError
+	if errors.As(err, &limit) && (limit.Code == "invalid_attachment" || limit.Code == "ai_context_limit" || limit.Code == "ai_history_limit") {
+		return limit.Message + "。可用 /new 新建会话后重试。"
+	}
 	switch {
 	case errors.Is(err, runtime.ErrSessionBusy):
 		return "当前任务仍在运行，请等待，或使用 /stop 请求停止。"
