@@ -87,7 +87,7 @@ command_exists() {
 
 # 检查必需的工具
 if ! command_exists go; then
-    echo -e "${RED}❌ 错误: Go 未安装，请先安装 Go 1.26.10+${NC}"
+    echo -e "${RED}❌ 错误: Go 未安装，请安装 Go 1.26.11+（1.27 系列需 1.27.4+）${NC}"
     exit 1
 fi
 
@@ -95,8 +95,9 @@ fi
 GO_VERSION=$(cd server && go env GOVERSION 2>/dev/null) || GO_VERSION=""
 if [[ ! "$GO_VERSION" =~ ^go([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] ||
    (( BASH_REMATCH[1] < 1 || (BASH_REMATCH[1] == 1 &&
-      (BASH_REMATCH[2] < 26 || (BASH_REMATCH[2] == 26 && BASH_REMATCH[3] < 10))) )); then
-    echo -e "${RED}❌ 错误: 当前 Go 工具链不可用或版本过低，请安装 Go 1.26.10+${NC}"
+      (BASH_REMATCH[2] < 26 || (BASH_REMATCH[2] == 26 && BASH_REMATCH[3] < 11) ||
+       (BASH_REMATCH[2] == 27 && BASH_REMATCH[3] < 4))) )); then
+    echo -e "${RED}❌ 错误: 当前 Go 工具链不可用或版本过低，请安装 Go 1.26.11+（1.27 系列需 1.27.4+）${NC}"
     exit 1
 fi
 
