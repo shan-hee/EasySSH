@@ -76,6 +76,22 @@ func TestObservedAIHistoryCanBeSavedButCannotGrowThroughNewTurns(t *testing.T) {
 	require.Equal(t, output, saved.MessageViews[0].Content)
 }
 
+func TestRequestHistoryReplacesOnlySummarizedTurns(t *testing.T) {
+	history := []provider.Message{
+		{Role: "assistant", Content: "preface"},
+		{Role: "user", Content: "first question"},
+		{Role: "assistant", Content: "first answer"},
+		{Role: "user", Content: "second question"},
+	}
+	conversation := &session{}
+	request := conversation.requestHistory("prompt", history)
+	require.Equal(t, history, request[1:])
+	conversation.contextSummary, conversation.contextSummaryTurns = "first turn summary", 1
+	request = conversation.requestHistory("prompt", history)
+	require.Contains(t, request[0].Content, conversation.contextSummary)
+	require.Equal(t, history[3:], request[1:])
+}
+
 func TestHistoryTaskLimitRejectsNewInputButAllowsEarlierEdit(t *testing.T) {
 	m, store, ctx, s := newPersistenceFixture(t)
 	m.mu.Lock()

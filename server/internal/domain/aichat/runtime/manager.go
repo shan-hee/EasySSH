@@ -1177,7 +1177,7 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		}
 		reasoningEffort := s.reasoningEffort
 		contextText := strings.TrimSpace(s.pendingContext)
-		reqMessages := s.requestHistory(systemPrompt)
+		reqMessages := s.requestHistory(systemPrompt, s.messages)
 		if contextText != "" {
 			reqMessages = append(reqMessages, provider.Message{Role: "user", Content: aipermission.ExternalContext(contextText)})
 		}

@@ -1,12 +1,12 @@
 package runtime
 
 import (
-	"github.com/easyssh/shared/aitools"
 	"strings"
 
 	"github.com/easyssh/shared/aichatui"
 	"github.com/easyssh/shared/aipermission"
 	"github.com/easyssh/shared/aiprovider"
+	"github.com/easyssh/shared/aitools"
 
 	"github.com/easyssh/server/internal/domain/aichat/provider"
 )
@@ -28,14 +28,9 @@ func (m *Manager) validateHistoryAdmissionLocked(s *session, messages []provider
 	// Appending keeps the summary valid, so admission checks what will be sent.
 	// Edits may invalidate it and are checked against the full history.
 	if !truncate {
-		if s.contextSummary != "" {
-			prompt += "\n\n" + s.contextSummary
-		}
-		messages = messages[userStart(messages, s.contextSummaryTurns+1):]
+		candidate.contextSummary, candidate.contextSummaryTurns = s.contextSummary, s.contextSummaryTurns
 	}
-	proposed := make([]provider.Message, 0, len(messages)+1)
-	proposed = append(proposed, provider.Message{Role: "system", Content: prompt})
-	proposed = append(proposed, messages...)
+	proposed := candidate.requestHistory(prompt, messages)
 	if contextText := strings.TrimSpace(input.Context); contextText != "" {
 		proposed = append(proposed, provider.Message{Role: "user", Content: aipermission.ExternalContext(contextText)})
 	}

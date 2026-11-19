@@ -61,14 +61,15 @@ func estimateTokens(messages []provider.Message) int {
 	return total
 }
 
-// userStart returns the index of the n-th user message (1-based); n beyond the
-// count yields len(messages).
-func userStart(messages []provider.Message, n int) int {
+func historyStartAfterTurns(messages []provider.Message, covered int) int {
+	if covered == 0 {
+		return 0
+	}
 	seen := 0
 	for index, message := range messages {
 		if message.Role == "user" {
 			seen++
-			if seen == n {
+			if seen == covered+1 {
 				return index
 			}
 		}
@@ -88,11 +89,11 @@ func countUsers(messages []provider.Message) int {
 
 // requestHistory is what the model sees: the summary joins the system prompt,
 // followed by the turns it does not cover. Caller holds m.mu.
-func (s *session) requestHistory(systemPrompt string) []provider.Message {
+func (s *session) requestHistory(systemPrompt string, history []provider.Message) []provider.Message {
 	if s.contextSummary != "" {
 		systemPrompt += "\n\n较早的对话已压缩为以下摘要，请结合摘要和后续原文继续：\n" + s.contextSummary
+		history = history[historyStartAfterTurns(history, s.contextSummaryTurns):]
 	}
-	history := s.messages[userStart(s.messages, s.contextSummaryTurns+1):]
 	messages := make([]provider.Message, 0, len(history)+2)
 	messages = append(messages, provider.Message{Role: "system", Content: systemPrompt})
 	return append(messages, history...)
@@ -113,13 +114,13 @@ func (m *Manager) compactIfNeeded(ctx context.Context, s *session, runID string,
 		return true
 	}
 	m.mu.RLock()
-	request := s.requestHistory(systemPrompt)
+	request := s.requestHistory(systemPrompt, s.messages)
 	tokens := max(estimateTokens(request), s.lastInputTokens)
 	previous, covered := s.contextSummary, s.contextSummaryTurns
 	target := countUsers(s.messages) - max(settings.KeepTurns, 1)
 	var compressed []provider.Message
 	if target > covered {
-		compressed = append(compressed, s.messages[userStart(s.messages, covered+1):userStart(s.messages, target+1)]...)
+		compressed = append(compressed, s.messages[historyStartAfterTurns(s.messages, covered):historyStartAfterTurns(s.messages, target)]...)
 	}
 	m.mu.RUnlock()
 	if tokens*100 < settings.ContextWindow*settings.ThresholdPercent || len(compressed) == 0 {
