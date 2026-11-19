@@ -24,5 +24,13 @@
   "probeModelsSuccess": "探测成功，获取到 {count} 个模型",
   "probeModelsFailed": "探测可用模型失败",
   "noDetectedModels": "未探测到可用模型，请手动输入",
-  "fieldProviderPlaceholder": "选择提供商"
+  "fieldProviderPlaceholder": "选择提供商",
+  "compactionLabel": "自动压缩上下文",
+  "compactionDesc": "对话接近模型上下文上限时，把较早的轮次压缩为摘要再发送。完整历史仍保留，压缩会额外调用一次模型。",
+  "contextWindowLabel": "上下文窗口（K tokens）",
+  "contextWindowDesc": "所用模型可接受的上下文长度，如 128、200、1000",
+  "thresholdLabel": "触发阈值（%）",
+  "thresholdDesc": "请求达到窗口的该比例时压缩",
+  "keepTurnsLabel": "保留最近轮数",
+  "keepTurnsDesc": "最近几轮对话始终原文发送"
 }

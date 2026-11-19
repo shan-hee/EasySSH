@@ -46,6 +46,8 @@ type AISessionRecord struct {
 	Preview                string         `gorm:"type:text;not null" json:"-"`
 	MessageCount           int            `gorm:"not null;default:0" json:"-"`
 	TaskCount              int            `gorm:"not null;default:0" json:"-"`
+	ContextSummary         string         `gorm:"type:text" json:"-"`
+	ContextSummaryTurns    int            `gorm:"not null;default:0" json:"-"`
 	CreatedAt              time.Time      `gorm:"not null" json:"created_at"`
 	UpdatedAt              time.Time      `gorm:"not null;index:idx_ai_sessions_actor_updated" json:"updated_at"`
 	DeletedAt              gorm.DeletedAt `gorm:"index" json:"-"`
@@ -113,6 +115,9 @@ type SessionSnapshot struct {
 	MessageViews   []MessageView      `json:"message_views"`
 	Tasks          []PersistedTask    `json:"tasks"`
 	TaskOrder      []string           `json:"task_order"`
+	// Server-local derived state; synced copies start without a summary.
+	ContextSummary string `json:"-"`
+	SummaryTurns   int    `json:"-"`
 }
 
 type PersistedTask struct {
@@ -152,6 +157,7 @@ func (s *gormSessionStore) Save(ctx context.Context, snapshot SessionSnapshot) e
 		updated := exactActorQuery(tx.Model(&AISessionRecord{}), record.Actor).Where("id=? AND updated_at<=?", record.ID, record.UpdatedAt).Updates(map[string]any{
 			"scope_json": record.ScopeJSON, "scope_kind": record.ScopeKind, "scope_server_id": record.ScopeServerID, "scope_terminal_session_id": record.ScopeTerminalSessionID, "model": record.Model, "title": record.Title, "permission_mode": record.PermissionMode, "status": record.Status, "updated_at": record.UpdatedAt,
 			"list_title": record.ListTitle, "title_folded": record.TitleFolded, "search_text": record.SearchText, "search_folded": record.SearchFolded, "preview": record.Preview, "message_count": record.MessageCount, "task_count": record.TaskCount,
+			"context_summary": record.ContextSummary, "context_summary_turns": record.ContextSummaryTurns,
 		})
 		if updated.Error != nil {
 			return updated.Error
@@ -287,6 +293,7 @@ func (snapshot SessionSnapshot) toRecord() (AISessionRecord, error) {
 		Status:         string(snapshot.Status),
 		CreatedAt:      snapshot.CreatedAt,
 		UpdatedAt:      snapshot.UpdatedAt,
+		ContextSummary: snapshot.ContextSummary, ContextSummaryTurns: snapshot.SummaryTurns,
 	}
 	record.UpdateListIndex(snapshot.MessageViews, len(snapshot.Tasks))
 	return record, nil
@@ -302,6 +309,7 @@ func (record AISessionRecord) toSnapshot() (*SessionSnapshot, error) {
 		Status:         SessionStatus(record.Status),
 		CreatedAt:      record.CreatedAt,
 		UpdatedAt:      record.UpdatedAt,
+		ContextSummary: record.ContextSummary, SummaryTurns: record.ContextSummaryTurns,
 	}
 
 	if err := json.Unmarshal(record.ScopeJSON, &snapshot.Scope); err != nil {

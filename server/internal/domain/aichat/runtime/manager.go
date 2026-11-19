@@ -52,6 +52,7 @@ type TurnRunner interface {
 type Manager struct {
 	serverReferenceResolver func(context.Context, []aichatui.ServerReference) ([]aichatui.ServerReference, error)
 	instructionsSource      func(context.Context, string) (Instructions, error)
+	compactionSettings      func(context.Context) (CompactionSettings, error)
 	resolver                ConfigResolver
 	factory                 TurnRunner
 	registry                *registry.ToolRegistry
@@ -91,8 +92,13 @@ type session struct {
 	messages       []provider.Message
 	messageViews   []MessageView
 	pendingContext string
-	tasks          map[string]*taskState
-	taskOrder      []string
+	// contextSummary replaces the first contextSummaryTurns user turns in model
+	// requests; lastInputTokens is the provider's count for the latest request.
+	contextSummary      string
+	contextSummaryTurns int
+	lastInputTokens     int
+	tasks               map[string]*taskState
+	taskOrder           []string
 
 	subscribers map[string]chan Event
 
@@ -1154,14 +1160,24 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 			m.mu.RUnlock()
 			return
 		}
+		m.mu.RUnlock()
+		charge := func() error {
+			if scope.IsOwner() {
+				return nil
+			}
+			return scope.Charge(ctx, aiRequirement, 1)
+		}
+		if !m.compactIfNeeded(ctx, s, runID, config, model, systemPrompt, charge) {
+			return
+		}
+		m.mu.RLock()
+		if s.closed {
+			m.mu.RUnlock()
+			return
+		}
 		reasoningEffort := s.reasoningEffort
 		contextText := strings.TrimSpace(s.pendingContext)
-		reqMessages := make([]provider.Message, 0, len(s.messages)+1)
-		reqMessages = append(reqMessages, provider.Message{
-			Role:    "system",
-			Content: systemPrompt,
-		})
-		reqMessages = append(reqMessages, s.messages...)
+		reqMessages := s.requestHistory(systemPrompt)
 		if contextText != "" {
 			reqMessages = append(reqMessages, provider.Message{Role: "user", Content: aipermission.ExternalContext(contextText)})
 		}
@@ -1175,11 +1191,9 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 		}
 		s.streamingMessageID = assistantMessageID
 		m.mu.Unlock()
-		if !scope.IsOwner() {
-			if err := scope.Charge(ctx, aiRequirement, 1); err != nil {
-				m.failSessionTurn(s, "ai_quota_unavailable", err.Error(), runID)
-				return
-			}
+		if err := charge(); err != nil {
+			m.failSessionTurn(s, "ai_quota_unavailable", err.Error(), runID)
+			return
 		}
 		result, err := m.factory.StreamTurn(ctx, config, provider.TurnRequest{
 			ReasoningEffort: reasoningEffort,
@@ -1236,6 +1250,9 @@ func (m *Manager) runSessionWithContext(sessionID string, ctx context.Context, c
 			return
 		}
 
+		m.mu.Lock()
+		s.lastInputTokens = int(result.Usage.InputTokens)
+		m.mu.Unlock()
 		if !m.finalizeAssistantTurn(s, assistantMessageID, result) {
 			m.completeTurn(s, false, runID)
 			return
@@ -2231,6 +2248,9 @@ func (m *Manager) restoreSnapshotLocked(ctx context.Context, snapshot *SessionSn
 		tasks:          make(map[string]*taskState),
 		taskOrder:      append([]string(nil), snapshot.TaskOrder...),
 		subscribers:    make(map[string]chan Event),
+
+		contextSummary:      snapshot.ContextSummary,
+		contextSummaryTurns: snapshot.SummaryTurns,
 	}
 
 	for _, persistedTask := range snapshot.Tasks {
@@ -2314,6 +2334,8 @@ func (m *Manager) snapshotForPersistenceLocked(s *session) SessionSnapshot {
 		UpdatedAt:      s.updatedAt,
 		Messages:       append([]provider.Message(nil), s.messages...),
 		MessageViews:   append([]MessageView(nil), s.messageViews...),
+		ContextSummary: s.contextSummary,
+		SummaryTurns:   s.contextSummaryTurns,
 		Tasks:          tasks,
 		TaskOrder:      append([]string(nil), s.taskOrder...),
 	}
@@ -2453,6 +2475,7 @@ func (s *session) updateProviderMessageContentForVisibleMessage(visibleMessageCo
 			userCount++
 		}
 	}
+	s.invalidateSummaryFrom(userCount)
 	seen := 0
 	for index := range s.messages {
 		if s.messages[index].Role != "user" {
@@ -2481,6 +2504,12 @@ func (s *session) truncateProviderMessagesAfterVisibleMessage(visibleMessageCoun
 		}
 	}
 	endsAtUser := len(kept) > 0 && kept[len(kept)-1].Role == "user"
+	// Keeping a user turn but dropping its replies also changes what was summarized.
+	if endsAtUser {
+		s.invalidateSummaryFrom(userCount)
+	} else {
+		s.invalidateSummaryFrom(userCount + 1)
+	}
 	seen := 0
 	end := len(s.messages)
 	for index, message := range s.messages {

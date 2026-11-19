@@ -148,6 +148,8 @@ type outgoing struct {
 	statusSessionID string
 	statusRequestID string
 	resultRequestID string
+	// progressRequestID edits that request's status message; dropped if none.
+	progressRequestID string
 }
 
 type delivery struct {
@@ -214,6 +216,14 @@ func (s *Service) sendReplies(ctx context.Context) {
 			}
 			for _, call := range d.calls {
 				key := call.bindingID
+				if call.progressRequestID != "" {
+					pending := statuses[key]
+					if messageID, ok := pending.messageIDs[call.progressRequestID]; ok && pending.sessionID == call.statusSessionID {
+						call.payload["message_id"] = messageID
+						_, _ = s.deliverCall(ctx, d.connection, token, call)
+					}
+					continue
+				}
 				if call.statusRequestID != "" {
 					pending := statuses[key]
 					if pending.sessionID != call.statusSessionID {

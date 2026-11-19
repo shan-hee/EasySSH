@@ -2108,6 +2108,23 @@ export interface paths {
         patch: operations["patchSettingsSystemScheduledTasks"];
         trace?: never;
     };
+    "/settings/system/ai-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getSettingsSystemAIContext"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** 更新上下文压缩设置，下一次模型请求时生效 */
+        patch: operations["patchSettingsSystemAIContext"];
+        trace?: never;
+    };
     "/settings/system/retention": {
         parameters: {
             query?: never;
@@ -5054,6 +5071,15 @@ export interface components {
         };
         ScheduledTaskConfig: {
             job_queue_max_concurrency: number;
+        };
+        /** @description 服务端 AI 会话的上下文压缩。请求达到窗口的阈值百分比时，把最近若干轮之前的历史压缩为摘要；完整历史仍保留。仅服务端，不同步到桌面端。 */
+        AIContextConfig: {
+            compaction_enabled: boolean;
+            /** @description 模型可接受的上下文 tokens。 */
+            context_window: number;
+            threshold_percent: number;
+            /** @description 始终原文发送的最近用户轮数。 */
+            keep_turns: number;
         };
         /** @description 已结束记录的保留天数。0 表示永久保留；各端各自保存，互不同步。 */
         RetentionConfig: {
@@ -11829,6 +11855,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ScheduledTaskConfigResponse"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getSettingsSystemAIContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 当前上下文压缩设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIContextConfig"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    patchSettingsSystemAIContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIContextConfig"];
+            };
+        };
+        responses: {
+            /** @description 更新后的设置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIContextConfig"];
                 };
             };
             default: components["responses"]["Error"];

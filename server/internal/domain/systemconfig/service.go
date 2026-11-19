@@ -18,6 +18,7 @@ type Service interface {
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
 	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
 	SaveRetention(ctx context.Context, config *SystemConfig) error
+	SaveAIContext(ctx context.Context, config *SystemConfig) error
 }
 
 type service struct {
@@ -68,6 +69,28 @@ func (s *service) SaveScheduledTasks(ctx context.Context, config *SystemConfig) 
 		return errors.New("job queue max concurrency must be between 1 and 16")
 	}
 	return s.repo.SaveScheduledTasks(ctx, config)
+}
+
+const (
+	DefaultAIContextWindow       = 128000
+	DefaultAICompactionThreshold = 80
+	DefaultAICompactionKeepTurns = 4
+)
+
+func (s *service) SaveAIContext(ctx context.Context, config *SystemConfig) error {
+	if config == nil {
+		return errors.New("AI context configuration is required")
+	}
+	if config.AIContextWindow < 4000 || config.AIContextWindow > 10000000 {
+		return errors.New("上下文窗口须在 4,000–10,000,000 tokens 之间")
+	}
+	if config.AICompactionThreshold < 50 || config.AICompactionThreshold > 95 {
+		return errors.New("压缩阈值须在 50%–95% 之间")
+	}
+	if config.AICompactionKeepTurns < 1 || config.AICompactionKeepTurns > 20 {
+		return errors.New("保留轮数须在 1–20 之间")
+	}
+	return s.repo.SaveAIContext(ctx, config)
 }
 
 func (s *service) SaveRetention(ctx context.Context, config *SystemConfig) error {

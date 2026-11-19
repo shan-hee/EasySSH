@@ -492,6 +492,7 @@ func main() {
 	securityHandler := rest.NewSecurityHandler(securityService)
 	systemConfigHandler := rest.NewSystemConfigHandler(systemConfigService, jobQueue, transferLimiter, transferJobService)
 	retentionHandler := rest.NewRetentionHandler(systemConfigService, retentionService, recycleBinService)
+	aiContextHandler := rest.NewAIContextHandler(systemConfigService)
 	notificationConfigHandler := rest.NewNotificationConfigHandler(notificationConfigService)
 	aiConfigHandler := rest.NewAIConfigHandler(aiConfigService)
 	aiRuntimeConfigHandler := rest.NewAIRuntimeConfigHandler(aichat.NewConfigResolver(aiConfigService))
@@ -524,6 +525,13 @@ func main() {
 	aiSessionHandler := rest.NewAISessionHandler(aiRuntimeManager)
 	chatConnectionService := chatbridge.NewService(database, encryptor, aiRuntimeManager, accessRuntime)
 	aiRuntimeManager.SetInstructionsSource(chatConnectionService.SessionInstructions)
+	aiRuntimeManager.SetCompactionSettings(func(ctx context.Context) (runtime.CompactionSettings, error) {
+		config, err := systemConfigService.Get(ctx)
+		if err != nil {
+			return runtime.CompactionSettings{}, err
+		}
+		return runtime.CompactionSettings{Enabled: config.AICompactionEnabled, ContextWindow: config.AIContextWindow, ThresholdPercent: config.AICompactionThreshold, KeepTurns: config.AICompactionKeepTurns}, nil
+	})
 	chatConnectionHandler := rest.NewChatConnectionHandler(chatConnectionService)
 	// Docker 处理器（复用监控连接池）
 	dockerService := docker.NewService(monitorConnectionPool, taskCenterService, taskCenterRepo)
@@ -936,6 +944,8 @@ func main() {
 			settingsGroup.PATCH("/system/file-transfer", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.PatchFileTransferConfig)
 			settingsGroup.GET("/system/scheduled-tasks", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.GetScheduledTaskConfig)
 			settingsGroup.PATCH("/system/scheduled-tasks", middleware.OwnerRoute(protocol.OwnerManage, ""), systemConfigHandler.PatchScheduledTaskConfig)
+			settingsGroup.GET("/system/ai-context", middleware.OwnerRoute(protocol.OwnerManage, ""), aiContextHandler.Get)
+			settingsGroup.PATCH("/system/ai-context", middleware.OwnerRoute(protocol.OwnerManage, ""), aiContextHandler.Patch)
 			settingsGroup.GET("/system/retention", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.Get)
 			settingsGroup.PATCH("/system/retention", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.Patch)
 			settingsGroup.POST("/system/retention/run", middleware.OwnerRoute(protocol.OwnerManage, ""), retentionHandler.Run)

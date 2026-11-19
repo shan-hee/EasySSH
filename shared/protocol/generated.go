@@ -1897,6 +1897,18 @@ type AIConfigValue struct {
 	Provider string `json:"provider"`
 }
 
+// AIContextConfig 服务端 AI 会话的上下文压缩。请求达到窗口的阈值百分比时，把最近若干轮之前的历史压缩为摘要；完整历史仍保留。仅服务端，不同步到桌面端。
+type AIContextConfig struct {
+	CompactionEnabled bool `json:"compaction_enabled"`
+
+	// ContextWindow 模型可接受的上下文 tokens。
+	ContextWindow int `json:"context_window"`
+
+	// KeepTurns 始终原文发送的最近用户轮数。
+	KeepTurns        int `json:"keep_turns"`
+	ThresholdPercent int `json:"threshold_percent"`
+}
+
 // AIFileArtifact defines model for AIFileArtifact.
 type AIFileArtifact struct {
 	// BaselineHash 修改前文本的 SHA-256，用于写入前核对。
@@ -7014,6 +7026,9 @@ type PostSettingsSMTPJSONRequestBody = SMTPConfigUpdate
 
 // PostSettingsSMTPTestJSONRequestBody defines body for PostSettingsSMTPTest for application/json ContentType.
 type PostSettingsSMTPTestJSONRequestBody = SMTPConfigUpdate
+
+// PatchSettingsSystemAIContextJSONRequestBody defines body for PatchSettingsSystemAIContext for application/json ContentType.
+type PatchSettingsSystemAIContextJSONRequestBody = AIContextConfig
 
 // PatchSettingsSystemBasicJSONRequestBody defines body for PatchSettingsSystemBasic for application/json ContentType.
 type PatchSettingsSystemBasicJSONRequestBody = SystemBasicUpdate

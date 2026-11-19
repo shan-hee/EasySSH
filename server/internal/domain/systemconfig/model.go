@@ -48,6 +48,12 @@ type SystemConfig struct {
 	// 回收站中已删除数据的保留天数
 	DeletedRetentionDays int `gorm:"not null;default:30" json:"deleted_retention_days"`
 
+	// AI 上下文压缩：请求达到窗口的阈值百分比时，把最近 N 轮之前的历史压缩为摘要。
+	AICompactionEnabled   bool `gorm:"not null;default:true" json:"ai_compaction_enabled"`
+	AIContextWindow       int  `gorm:"not null;default:128000" json:"ai_context_window"`
+	AICompactionThreshold int  `gorm:"not null;default:80" json:"ai_compaction_threshold"`
+	AICompactionKeepTurns int  `gorm:"not null;default:4" json:"ai_compaction_keep_turns"`
+
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

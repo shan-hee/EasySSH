@@ -7,6 +7,7 @@ import type { components } from "@/generated/openapi"
  */
 export type WebhookMethod = "POST" | "GET"
 export type RetentionConfig = components["schemas"]["RetentionConfig"]
+export type AIContextConfig = components["schemas"]["AIContextConfig"]
 export type NotificationConfigView = components["schemas"]["NotificationConfigView"]
 export type NotificationConfigUpdate = components["schemas"]["NotificationConfigUpdate"]
 export type SMTPConfigUpdate = components["schemas"]["SMTPConfigUpdate"]
@@ -216,6 +217,9 @@ export const settingsApi = {
       body: config,
     })
   },
+
+  getAIContextSettings: () => apiFetch<AIContextConfig>("/settings/system/ai-context", { method: "GET" }),
+  saveAIContextSettings: (config: AIContextConfig) => apiFetch<AIContextConfig>("/settings/system/ai-context", { method: "PATCH", body: config }),
 
   async getRetentionSettings(): Promise<RetentionConfig> {
     return apiFetch<RetentionConfig>("/settings/system/retention", { method: "GET" })

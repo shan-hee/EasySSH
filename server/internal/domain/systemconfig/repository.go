@@ -25,6 +25,7 @@ type Repository interface {
 	SaveFileTransfer(ctx context.Context, config *SystemConfig) error
 	SaveScheduledTasks(ctx context.Context, config *SystemConfig) error
 	SaveRetention(ctx context.Context, config *SystemConfig) error
+	SaveAIContext(ctx context.Context, config *SystemConfig) error
 }
 
 type repository struct {
@@ -64,6 +65,10 @@ func (r *repository) Get(ctx context.Context) (*SystemConfig, error) {
 				TaskRetentionDays:          retention.DefaultDays,
 				LogRetentionDays:           retention.DefaultDays,
 				DeletedRetentionDays:       retention.DefaultDeletedDays,
+				AICompactionEnabled:        true,
+				AIContextWindow:            DefaultAIContextWindow,
+				AICompactionThreshold:      DefaultAICompactionThreshold,
+				AICompactionKeepTurns:      DefaultAICompactionKeepTurns,
 				SFTPMaxIdleTimeSeconds:     120,
 				SFTPCleanupIntervalSeconds: 30,
 				SFTPConnTimeoutSeconds:     10,
@@ -153,6 +158,15 @@ func (r *repository) SaveFileTransfer(ctx context.Context, config *SystemConfig)
 func (r *repository) SaveScheduledTasks(ctx context.Context, config *SystemConfig) error {
 	return r.update(ctx, map[string]any{
 		"job_queue_max_concurrency": config.JobQueueMaxConcurrency,
+	})
+}
+
+func (r *repository) SaveAIContext(ctx context.Context, config *SystemConfig) error {
+	return r.update(ctx, map[string]any{
+		"ai_compaction_enabled":    config.AICompactionEnabled,
+		"ai_context_window":        config.AIContextWindow,
+		"ai_compaction_threshold":  config.AICompactionThreshold,
+		"ai_compaction_keep_turns": config.AICompactionKeepTurns,
 	})
 }
 

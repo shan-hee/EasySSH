@@ -24,5 +24,13 @@
   "probeModelsSuccess": "Probe succeeded, found {count} models",
   "probeModelsFailed": "Failed to probe available models",
   "noDetectedModels": "No models detected, please input manually",
-  "fieldProviderPlaceholder": "Choose provider"
+  "fieldProviderPlaceholder": "Choose provider",
+  "compactionLabel": "Compact context automatically",
+  "compactionDesc": "When a conversation nears the model's context limit, earlier turns are sent as a summary. The full history is kept; compaction costs one extra model call.",
+  "contextWindowLabel": "Context window (K tokens)",
+  "contextWindowDesc": "Context length your model accepts, e.g. 128, 200, 1000",
+  "thresholdLabel": "Trigger threshold (%)",
+  "thresholdDesc": "Compact when a request reaches this share of the window",
+  "keepTurnsLabel": "Recent turns to keep",
+  "keepTurnsDesc": "The latest turns are always sent verbatim"
 }

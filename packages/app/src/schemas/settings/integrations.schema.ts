@@ -15,6 +15,16 @@ export const aiConfigSchema = z.object({
 
 export type AIConfigFormValues = z.infer<typeof aiConfigSchema>
 
+// 上下文压缩（仅 Web 服务端）；窗口以 K tokens 编辑
+export const aiContextSchema = z.object({
+  compaction_enabled: z.boolean(),
+  context_window_k: z.number().int().min(4).max(10000),
+  threshold_percent: z.number().int().min(50).max(95),
+  keep_turns: z.number().int().min(1).max(20),
+})
+
+export type AIContextFormValues = z.infer<typeof aiContextSchema>
+
 // SMTP配置 Schema
 const optionalUrl = (message: string) => z.string().url(message).or(z.literal(""))
 

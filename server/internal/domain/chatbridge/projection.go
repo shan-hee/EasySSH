@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -34,53 +35,63 @@ func (s *Service) taskDigest(ctx context.Context, sessionID string, task runtime
 	return hash(string(encoded)), nil
 }
 
-func (s *Service) confirm(ctx context.Context, b Binding, data string) error {
+// confirm returns the ID of the user message whose run the decision resumes.
+func (s *Service) confirm(ctx context.Context, b Binding, data string) (string, error) {
 	parts := strings.Split(data, ":")
 	if len(parts) != 2 || (parts[1] != "yes" && parts[1] != "no") {
-		return invalid("审批按钮无效")
+		return "", invalid("审批按钮无效")
 	}
 	var approval Approval
 	if err := s.db.WithContext(ctx).Where("id = ? AND binding_id = ? AND used_at IS NULL AND expires_at > ?", parts[0], b.ID, time.Now().UTC()).First(&approval).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return invalid("审批已处理或过期，请查看当前会话")
+			return "", invalid("审批已处理或过期，请查看当前会话")
 		}
-		return err
+		return "", err
 	}
 	if approval.SessionID != b.CurrentSessionID {
-		return invalid("此审批属于旧会话，已失效")
+		return "", invalid("此审批属于旧会话，已失效")
 	}
 	view, err := s.agent.GetSession(ctx, approval.SessionID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	matched := false
 	for _, task := range view.Tasks {
 		if task.ID == approval.TaskID && task.Status == runtime.TaskStatusWaitingConfirm {
 			digest, err := s.taskDigest(ctx, view.ID, task)
 			if err != nil {
-				return err
+				return "", err
 			}
 			matched = digest == approval.Digest
 			break
 		}
 	}
 	if !matched {
-		return invalid("任务状态或操作内容已变化，此审批已失效")
+		return "", invalid("任务状态或操作内容已变化，此审批已失效")
 	}
 	// Claim before execution. On a crash, projection rejects the still-pending
 	// task instead of guessing whether approval dispatch already succeeded.
 	result := s.db.WithContext(ctx).Model(&approval).Where("used_at IS NULL").Update("used_at", time.Now().UTC())
 	if result.Error != nil {
-		return result.Error
+		return "", result.Error
 	}
 	if result.RowsAffected != 1 {
-		return invalid("审批已处理")
+		return "", invalid("审批已处理")
 	}
 	decision := runtime.DecisionReject
 	if parts[1] == "yes" {
 		decision = runtime.DecisionConfirm
 	}
-	return s.agent.ConfirmTasks(ctx, approval.SessionID, []runtime.ConfirmTaskInput{{TaskID: approval.TaskID, Decision: decision}})
+	return lastRequestID(view.Messages), s.agent.ConfirmTasks(ctx, approval.SessionID, []runtime.ConfirmTaskInput{{TaskID: approval.TaskID, Decision: decision}})
+}
+
+func lastRequestID(messages []aichatui.MessageView) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			return messages[i].ID
+		}
+	}
+	return ""
 }
 
 // project forwards new results of watched sessions. State advances before the
@@ -118,9 +129,13 @@ func (s *Service) projectBinding(ctx context.Context, c Connection, b Binding) (
 	if errors.Is(err, runtime.ErrSessionNotFound) || errors.Is(err, runtime.ErrSessionClosed) {
 		return nil, s.db.WithContext(ctx).Model(&b).Update("watching", false).Error
 	}
-	if err != nil || view.Status == runtime.SessionStatusRunning {
+	if err != nil {
 		return nil, err
 	}
+	if view.Status == runtime.SessionStatusRunning {
+		return s.progressUpdate(ctx, b, view)
+	}
+	delete(s.progress, b.ID)
 	var calls []outgoing
 	requestID := ""
 	send := func(text string, keyboard *telegramKeyboard) {
@@ -232,4 +247,97 @@ func approvalText(sessionID string, task runtime.TaskView, approvalID string) (s
 		return "此操作的审批内容较长，请在 EasySSH 网页打开本会话，查看完整操作后审批。聊天审批将在 10 分钟后过期。\n会话 ID：" + sessionID, nil
 	}
 	return body, &telegramKeyboard{Buttons: [][]telegramButton{{{Text: "批准执行", Data: approvalID + ":yes"}, {Text: "拒绝", Data: approvalID + ":no"}}}}
+}
+
+const progressSteps = 6
+
+// progressUpdate edits the run's status message when its step list changes.
+// Called with s.mu held, once per projection tick; unchanged text sends nothing.
+func (s *Service) progressUpdate(ctx context.Context, b Binding, view *runtime.SessionView) ([]outgoing, error) {
+	requestID := lastRequestID(view.Messages)
+	text, err := s.progressText(ctx, view, requestID)
+	if err != nil || requestID == "" || s.progress[b.ID] == text {
+		return nil, err
+	}
+	if s.progress == nil {
+		s.progress = make(map[string]string)
+	}
+	s.progress[b.ID] = text
+	return []outgoing{{bindingID: b.ID, method: "editMessageText", statusSessionID: view.ID, progressRequestID: requestID,
+		payload: map[string]any{"chat_id": b.chatAddress(), "text": text, "link_preview_options": map[string]bool{"is_disabled": true}}}}, nil
+}
+
+func (s *Service) progressText(ctx context.Context, view *runtime.SessionView, requestID string) (string, error) {
+	var started time.Time
+	for _, message := range view.Messages {
+		if message.ID == requestID {
+			started = message.CreatedAt
+		}
+	}
+	var tasks []runtime.TaskView
+	serverIDs := []string{}
+	for _, task := range view.Tasks {
+		if task.CreatedAt.Before(started) {
+			continue
+		}
+		tasks = append(tasks, task)
+		if id, ok := task.Arguments["server_id"].(string); ok {
+			serverIDs = append(serverIDs, id)
+		}
+	}
+	names := map[string]string{}
+	if len(serverIDs) != 0 {
+		var rows []struct{ ID, Name, Host string }
+		if err := s.db.WithContext(ctx).Table("servers").Select("id, COALESCE(name, '') AS name, host").Where("id IN ?", serverIDs).Scan(&rows).Error; err != nil {
+			return "", err
+		}
+		for _, row := range rows {
+			names[row.ID] = row.Name
+			if strings.TrimSpace(row.Name) == "" {
+				names[row.ID] = row.Host
+			}
+		}
+	}
+	header := "正在思考…"
+	if len(tasks) != 0 {
+		header = fmt.Sprintf("正在处理…（第 %d 步", len(tasks))
+		if minutes := int(time.Since(started).Minutes()); minutes > 0 {
+			header += fmt.Sprintf(" · 已运行 %d 分钟", minutes)
+		}
+		header += "）"
+	} else if minutes := int(time.Since(started).Minutes()); minutes > 0 {
+		header = fmt.Sprintf("正在思考…（已运行 %d 分钟）", minutes)
+	}
+	lines := []string{header}
+	if hidden := len(tasks) - progressSteps; hidden > 0 {
+		lines = append(lines, fmt.Sprintf("…前 %d 步已完成", hidden))
+		tasks = tasks[hidden:]
+	}
+	for _, task := range tasks {
+		line := progressIcon(task.Status) + " " + task.ToolDisplayName
+		id, _ := task.Arguments["server_id"].(string)
+		if name := names[id]; name != "" {
+			line += " · " + name
+		}
+		if task.Summary != "" && task.Summary != id && task.Summary != task.ToolName {
+			line += " · " + task.Summary
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
+func progressIcon(status runtime.TaskStatus) string {
+	switch status {
+	case runtime.TaskStatusSucceeded:
+		return "✅"
+	case runtime.TaskStatusFailed, runtime.TaskStatusUnknown:
+		return "⚠️"
+	case runtime.TaskStatusCancelled:
+		return "⏹"
+	case runtime.TaskStatusWaitingConfirm:
+		return "⏸"
+	default:
+		return "⏳"
+	}
 }

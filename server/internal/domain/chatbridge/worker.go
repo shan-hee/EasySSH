@@ -116,12 +116,23 @@ func wait(ctx context.Context, delay time.Duration) bool {
 	}
 }
 
+var telegramCommands = []map[string]string{
+	{"command": "new", "description": "新建会话"},
+	{"command": "stop", "description": "停止当前任务"},
+	{"command": "status", "description": "查看会话状态"},
+	{"command": "help", "description": "使用说明"},
+}
+
 func (s *Service) poll(ctx context.Context, c Connection) {
 	credential, revision := c.TokenCipher, c.Revision
 	token, err := s.token(c)
 	if err != nil {
 		s.db.WithContext(ctx).Model(&Connection{}).Where("id = ?", c.ID).UpdateColumn("last_error", "机器人凭据无法解密")
 		return
+	}
+	// The menu beside the input box; a failure only costs the shortcut.
+	if err := s.telegram(ctx, token, "setMyCommands", map[string]any{"commands": telegramCommands}, nil); err != nil && ctx.Err() == nil {
+		log.Printf("chat telegram command menu for connection %s: %v", c.ID, err)
 	}
 	for ctx.Err() == nil {
 		var updates []telegramUpdate
@@ -267,15 +278,21 @@ func (s *Service) dispatchMessage(ctx context.Context, c Connection, m incomingM
 	}
 	if m.callbackID != "" {
 		answer := "已处理，请等待结果。"
-		if err := s.confirm(boundCtx, b, m.callbackData); err != nil {
+		requestID, err := s.confirm(boundCtx, b, m.callbackData)
+		if err != nil {
 			answer = userError(err)
+		}
+		// The acknowledgement becomes the progress message for the resumed run.
+		calls := reply(b.chatAddress(), answer, nil)
+		if err == nil && requestID != "" {
+			calls[0].bindingID, calls[0].statusSessionID, calls[0].statusRequestID = b.ID, b.CurrentSessionID, requestID
 		}
 		// Callback acknowledgements are ephemeral; failures never replay approvals.
 		if c.Provider == ProviderFeishu {
-			return reply(b.chatAddress(), answer, nil), nil
+			return calls, nil
 		}
 		ack := outgoing{method: "answerCallbackQuery", payload: map[string]any{"callback_query_id": m.callbackID, "text": answer}}
-		return append([]outgoing{ack}, reply(b.chatAddress(), answer, nil)...), nil
+		return append([]outgoing{ack}, calls...), nil
 	}
 	answer := ""
 	switch text {
@@ -311,6 +328,11 @@ func (s *Service) dispatchMessage(ctx context.Context, c Connection, m incomingM
 			answer = userError(err)
 		} else {
 			answer = "会话状态：" + statusLabel(view.Status) + "\n会话 ID：" + view.ID
+			if view.Status == runtime.SessionStatusRunning {
+				if progress, err := s.progressText(boundCtx, view, lastRequestID(view.Messages)); err == nil {
+					answer += "\n\n" + progress
+				}
+			}
 		}
 	default:
 		return s.ask(ctx, boundCtx, c, &b, text, m)

@@ -25,6 +25,14 @@ func (m *Manager) validateHistoryAdmissionLocked(s *session, messages []provider
 	}
 	tools := m.visibleToolsForSessionLocked(candidate)
 	prompt := aitools.SystemPrompt("你是一个服务器管理助手，可以帮助用户管理和操作他们的服务器。", candidate.permissionMode, provider.SharedToolSpecs(tools), &candidate.scope)
+	// Appending keeps the summary valid, so admission checks what will be sent.
+	// Edits may invalidate it and are checked against the full history.
+	if !truncate {
+		if s.contextSummary != "" {
+			prompt += "\n\n" + s.contextSummary
+		}
+		messages = messages[userStart(messages, s.contextSummaryTurns+1):]
+	}
 	proposed := make([]provider.Message, 0, len(messages)+1)
 	proposed = append(proposed, provider.Message{Role: "system", Content: prompt})
 	proposed = append(proposed, messages...)

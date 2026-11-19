@@ -43,6 +43,7 @@ type Service struct {
 	wg            sync.WaitGroup
 	feishuMu      sync.Mutex
 	feishuTokens  map[string]feishuAccessToken
+	progress      map[string]string // Last progress text per binding, guarded by mu.
 }
 
 func NewService(db *gorm.DB, encryptor *crypto.Encryptor, agent *runtime.Manager, accessRuntime *access.Runtime) *Service {

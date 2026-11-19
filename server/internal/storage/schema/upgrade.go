@@ -89,6 +89,7 @@ func CheckUpgradeSource(ctx context.Context, db *sql.DB, driver string, version 
 		{"system_config", "deleted_retention_days", version >= 7},
 		{"scripts", "deleted_at", version < 7},
 		{"chat_connections", "system_prompt", version >= 10},
+		{"ai_sessions", "context_summary", version >= 11},
 	} {
 		rows, err := db.QueryContext(ctx, "SELECT * FROM "+field.table+" WHERE 1=0")
 		if err != nil {
