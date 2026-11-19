@@ -51,6 +51,52 @@ jobs:
       - name: 🧪 运行前端测试
         run: pnpm test
 
+  contracts:
+    name: 📜 契约与迁移
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # 迁移不可变检查需要完整历史与版本标签
+      - name: 📥 检出代码
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 设置 Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            shared/go.sum
+
+      - name: 🔧 设置 pnpm
+        uses: pnpm/action-setup@v5
+        with:
+          package_json_file: package.json
+
+      - name: 🔧 设置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: 🔧 安装契约生成器依赖
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: 🔎 运行时路由与 OpenAPI 一致
+        run: node scripts/check-openapi-routes.mjs
+
+      - name: 🔎 生成的 Go/TS 与 OpenAPI 一致
+        run: bash scripts/check-openapi-generated.sh
+
+      - name: 🔎 迁移规则与已发布 SQL 不变
+        run: node scripts/release-version.mjs check
+
+      - name: 🧪 发版脚本测试
+        run: node --test scripts/release-version.test.mjs
+
   go:
     name: 🐹 Go (${{ matrix.module }})
     runs-on: ubuntu-latest

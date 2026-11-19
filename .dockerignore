@@ -15,7 +15,7 @@ README.md
 LICENSE
 CHANGELOG.md
 
-# Docker 镜像只需要 VERSION、根工作区配置、web、packages、tooling、server 和 shared；
+# Docker 镜像只需要根工作区配置、web、packages、tooling、server 和 shared；
 # 桌面前端只保留包清单，用于按根锁文件安装 Web 依赖
 desktop/
 !desktop/EasySSHDesktop/frontend/package.json

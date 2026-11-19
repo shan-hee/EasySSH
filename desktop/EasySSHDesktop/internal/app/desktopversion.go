@@ -1,3 +1,5 @@
 package app
 
-const desktopBundledVersion = "2.0.22"
+// desktopBundledVersion is injected by the Taskfile build from the vX.Y.Z tag:
+// -ldflags "-X github.com/easyssh/easyssh-desktop/internal/app.desktopBundledVersion=...".
+var desktopBundledVersion = "dev"

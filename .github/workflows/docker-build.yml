@@ -2,7 +2,7 @@ name: Build EasySSH Docker Image
 
 # Docker 镜像构建：
 #   - 正式发版由 release.yml (tag 触发) 调用本 workflow
-#   - workflow_dispatch 保留为紧急重建镜像的手动入口
+#   - workflow_dispatch 用于按已有标签紧急重建镜像
 on:
   workflow_call:
     inputs:
@@ -10,11 +10,6 @@ on:
         description: '镜像版本号 (不含 v 前缀)'
         required: true
         type: string
-      platforms:
-        description: '构建平台'
-        required: false
-        type: string
-        default: 'linux/amd64,linux/arm64'
       update-latest:
         description: '是否更新 latest 标签'
         required: false
@@ -28,26 +23,18 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version. Leave empty to read VERSION file.'
-        required: false
+        description: '已有标签的版本号 (x.y.z，不含 v 前缀)'
+        required: true
         type: string
       update-latest:
-        description: 'Update the Docker latest tag'
+        description: '是否更新 latest 标签'
         required: true
         type: boolean
-        default: true
-      platforms:
-        description: 'Docker build platforms'
-        required: true
-        type: choice
-        default: 'linux/amd64,linux/arm64'
-        options:
-          - 'linux/amd64,linux/arm64'
-          - 'linux/amd64'
-          - 'linux/arm64'
+        default: false
 
 env:
   DOCKER_IMAGE: shanhee/easyssh
+  TRIVY_VERSION: v0.76.2
 
 jobs:
   build:
@@ -62,39 +49,11 @@ jobs:
       actions: read
 
     steps:
+      # 始终构建标签对应的代码，保证镜像内容与版本号一致
       - name: 📥 检出代码
         uses: actions/checkout@v5
-
-      - name: 🔎 校验扫描平台
-        env:
-          PLATFORMS: ${{ inputs.platforms }}
-        run: |
-          case "$PLATFORMS" in
-            linux/amd64|linux/arm64|linux/amd64,linux/arm64) ;;
-            *)
-              echo "::error::构建平台必须为 linux/amd64、linux/arm64 或 linux/amd64,linux/arm64，确保每个发布架构都经过安全扫描"
-              exit 1
-              ;;
-          esac
-
-      - name: 📖 解析版本号
-        id: version
-        env:
-          VERSION_INPUT: ${{ inputs.version || '' }}
-        run: |
-          if [ -n "$VERSION_INPUT" ]; then
-            VERSION="$VERSION_INPUT"
-            echo "使用传入的版本号: $VERSION"
-          elif [ -f "VERSION" ]; then
-            VERSION=$(tr -d '[:space:]' < VERSION)
-            echo "使用 VERSION 文件中的版本号: $VERSION"
-          else
-            echo "::error::未提供版本号且 VERSION 文件不存在"
-            exit 1
-          fi
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "staging_image=${DOCKER_IMAGE}:build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+        with:
+          ref: refs/tags/v${{ inputs.version }}
 
       - name: Extract Docker metadata
         id: meta
@@ -102,11 +61,10 @@ jobs:
         with:
           images: ${{ env.DOCKER_IMAGE }}
           tags: |
-            type=raw,value=v${{ steps.version.outputs.version }}
-            type=raw,value=latest,enable=${{ inputs['update-latest'] }}
+            type=raw,value=v${{ inputs.version }}
+            type=raw,value=latest,enable=${{ inputs.update-latest }}
 
       - name: Setup QEMU
-        if: contains(inputs.platforms, 'arm64')
         uses: docker/setup-qemu-action@v4
 
       - name: Setup Docker Buildx
@@ -122,127 +80,65 @@ jobs:
           username: shanhee
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: 🏗️ 构建并推送待扫描镜像
+      # 只按摘要推送、不打标签；扫描通过后才挂上正式标签
+      - name: 🏗️ 构建并按摘要推送待扫描镜像
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
-          platforms: ${{ inputs.platforms }}
-          push: true
-          tags: ${{ steps.version.outputs.staging_image }}
+          platforms: linux/amd64,linux/arm64
+          build-args: EASYSSH_VERSION=${{ inputs.version }}
           labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.DOCKER_IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: mode=max
 
-      - name: 🔍 Trivy 扫描 amd64 (生成报告)
-        if: contains(inputs.platforms, 'linux/amd64')
-        uses: aquasecurity/trivy-action@master
-        env:
-          TRIVY_PLATFORM: linux/amd64
+      # 第三方扫描器与推送凭据同处一个 job，必须锁定到 commit 和二进制版本
+      - name: 🔧 安装 Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
-          image-ref: ${{ steps.version.outputs.staging_image }}@${{ steps.build.outputs.digest }}
-          format: 'sarif'
-          output: 'trivy-results-amd64.sarif'
-          severity: 'CRITICAL,HIGH'
-          limit-severities-for-sarif: true
-          ignore-unfixed: false
-          exit-code: '0'
+          version: ${{ env.TRIVY_VERSION }}
 
-      - name: Upload amd64 Trivy results to GitHub Security
-        if: contains(inputs.platforms, 'linux/amd64')
+      - name: 🔍 Trivy 扫描报告
+        env:
+          IMAGE: ${{ env.DOCKER_IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          for arch in amd64 arm64; do
+            trivy image --platform "linux/$arch" --severity CRITICAL,HIGH \
+              --format sarif --output "trivy-linux-$arch.sarif" "$IMAGE"
+          done
+
+      - name: 📤 上传 amd64 报告
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: 'trivy-results-amd64.sarif'
-          category: 'trivy-linux-amd64'
+          sarif_file: trivy-linux-amd64.sarif
+          category: trivy-linux-amd64
 
-      - name: 🚧 Trivy amd64 安全关卡
-        if: contains(inputs.platforms, 'linux/amd64')
-        uses: aquasecurity/trivy-action@master
-        env:
-          TRIVY_PLATFORM: linux/amd64
-        with:
-          image-ref: ${{ steps.version.outputs.staging_image }}@${{ steps.build.outputs.digest }}
-          format: 'table'
-          severity: 'CRITICAL'
-          ignore-unfixed: true
-          exit-code: '1'
-
-      - name: 🔍 Trivy 扫描 arm64 (生成报告)
-        if: contains(inputs.platforms, 'linux/arm64')
-        uses: aquasecurity/trivy-action@master
-        env:
-          TRIVY_PLATFORM: linux/arm64
-        with:
-          image-ref: ${{ steps.version.outputs.staging_image }}@${{ steps.build.outputs.digest }}
-          format: 'sarif'
-          output: 'trivy-results-arm64.sarif'
-          severity: 'CRITICAL,HIGH'
-          limit-severities-for-sarif: true
-          ignore-unfixed: false
-          exit-code: '0'
-
-      - name: Upload arm64 Trivy results to GitHub Security
-        if: contains(inputs.platforms, 'linux/arm64')
+      - name: 📤 上传 arm64 报告
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: 'trivy-results-arm64.sarif'
-          category: 'trivy-linux-arm64'
+          sarif_file: trivy-linux-arm64.sarif
+          category: trivy-linux-arm64
 
-      - name: 🚧 Trivy arm64 安全关卡
-        if: contains(inputs.platforms, 'linux/arm64')
-        uses: aquasecurity/trivy-action@master
+      - name: 🚧 Trivy 安全关卡 (可修复的 CRITICAL)
         env:
-          TRIVY_PLATFORM: linux/arm64
-        with:
-          image-ref: ${{ steps.version.outputs.staging_image }}@${{ steps.build.outputs.digest }}
-          format: 'table'
-          severity: 'CRITICAL'
-          ignore-unfixed: true
-          exit-code: '1'
+          IMAGE: ${{ env.DOCKER_IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          for arch in amd64 arm64; do
+            trivy image --platform "linux/$arch" --severity CRITICAL --ignore-unfixed \
+              --exit-code 1 "$IMAGE"
+          done
 
-      - name: 🚀 提升已扫描镜像为正式标签
+      - name: 🚀 为已扫描镜像挂上正式标签
         env:
-          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ env.DOCKER_IMAGE }}@${{ steps.build.outputs.digest }}
           IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
-          STAGING_IMAGE: ${{ steps.version.outputs.staging_image }}
         run: |
           set -euo pipefail
-
           TAG_ARGS=()
           while IFS= read -r tag; do
-            if [ -n "$tag" ]; then
-              TAG_ARGS+=(--tag "$tag")
-            fi
+            [ -n "$tag" ] && TAG_ARGS+=(--tag "$tag")
           done <<< "$IMAGE_TAGS"
-
-          if [ ${#TAG_ARGS[@]} -eq 0 ]; then
-            echo "::error::未生成任何正式镜像标签"
-            exit 1
-          fi
-
-          docker buildx imagetools create \
-            "${TAG_ARGS[@]}" \
-            "${STAGING_IMAGE}@${IMAGE_DIGEST}"
-
-      - name: 📊 生成构建摘要
-        run: |
-          echo "## 🐳 EasySSH Docker 镜像构建成功" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**镜像标签:**" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "shanhee/easyssh:v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ inputs['update-latest'] }}" = "true" ]; then
-            echo "shanhee/easyssh:latest" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**支持架构:** ${{ inputs.platforms }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**镜像摘要:** \`${{ steps.build.outputs.digest }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### 🚀 快速启动" >> "$GITHUB_STEP_SUMMARY"
-          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
-          echo "docker pull shanhee/easyssh:v${{ steps.version.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          docker buildx imagetools create "${TAG_ARGS[@]}" "$IMAGE"

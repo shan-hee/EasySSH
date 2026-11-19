@@ -1,6 +1,5 @@
 import react from "@vitejs/plugin-react"
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { execFileSync } from "node:child_process"
 import { fileURLToPath, URL } from "node:url"
 import { defineConfig, loadEnv } from "vite"
 import { appSingletonDependencies, appSourceAliases } from "@easyssh/app/vite"
@@ -8,10 +7,11 @@ import { chunkOutput } from "@easyssh/frontend-tooling/code-splitting"
 import { precompress } from "./plugins/precompress.ts"
 
 const projectRoot = fileURLToPath(new URL("..", import.meta.url))
-const version = readFileSync(join(projectRoot, "VERSION"), "utf-8").trim()
-if (!version) {
-  throw new Error("VERSION 文件内容为空")
-}
+// 发布构建由 CI 从 vX.Y.Z 标签传入；本地取最近的版本标签。
+const version = (
+  process.env.EASYSSH_VERSION ||
+  execFileSync("git", ["describe", "--tags", "--abbrev=0"], { cwd: projectRoot, encoding: "utf-8" })
+).trim().replace(/^v/, "")
 
 const buildDate = new Date().toISOString()
 

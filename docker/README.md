@@ -96,9 +96,9 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 触发方式：
 
-- 推送 `v*` tag（推荐使用 `./scripts/bump-version.sh <version>`）触发发布流水线 `.github/workflows/release.yml`，依次执行版本校验、自动化测试、镜像构建（`linux/amd64` 和 `linux/arm64`，均通过 Trivy 安全关卡后发布）、Windows 桌面端构建（默认 amd64）和 GitHub Release 创建。两种镜像架构共用版本标签和 `latest`，Docker 根据主机架构自动选择。
-- 在 GitHub Actions 页面手动运行 `Build EasySSH Docker Image`，可指定版本号、是否更新 `latest`、构建平台（默认同时构建 `linux/amd64` 和 `linux/arm64`，也可选择单一架构；用于紧急重建镜像，不会创建 Release）。
-- 在 GitHub Actions 页面手动运行 `Build EasySSH Desktop`，可选择 Windows 架构（amd64 / arm64），产物以 artifact 形式上传。
+- 推送 `vX.Y.Z` 标签（推荐使用 `./scripts/release.sh vX.Y.Z`）触发发布流水线 `.github/workflows/release.yml`，依次执行版本校验、自动化测试、镜像构建（`linux/amd64` 和 `linux/arm64`，均通过 Trivy 安全关卡后发布）、Windows 桌面端构建（默认 amd64）和 GitHub Release 创建。两种镜像架构共用版本标签和 `latest`，Docker 根据主机架构自动选择。
+- 在 GitHub Actions 页面手动运行 `Build EasySSH Docker Image`，按已有标签的版本号重建镜像（同时构建 `linux/amd64` 和 `linux/arm64`，默认不更新 `latest`；不会创建 Release）。
+- 在 GitHub Actions 页面手动运行 `Build EasySSH Desktop`，按已有标签的版本号选择 Windows 架构（amd64 / arm64），产物以 artifact 形式上传。
 
 Docker 多架构构建时，前端在构建机原生架构上打包，各目标架构共用静态产物；Go 同样在原生架构上通过 `TARGETOS` / `TARGETARCH` 交叉编译。前后端构建独立执行，最终镜像直接从各自构建阶段复制产物，避免 ARM64 的前端打包和 Go 编译经过 QEMU。最终运行镜像按目标架构生成；同步合并在 Go 进程内执行，运行镜像不包含 Node.js。
 
@@ -144,10 +144,10 @@ docker exec -it easyssh sh
 
 ## 版本号管理
 
-项目使用根目录 `VERSION` 文件管理版本号，更新后会触发 GitHub Actions 构建新镜像。
+版本号只来自 `vX.Y.Z` 标签，仓库中不保存版本号；推送标签即触发构建与发布。
 
 ```bash
-./scripts/bump-version.sh 1.0.1
+./scripts/release.sh v1.0.1
 ```
 
 ## 许可证

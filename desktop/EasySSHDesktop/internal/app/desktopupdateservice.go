@@ -51,7 +51,7 @@ type DesktopUpdateService struct {
 
 func NewDesktopUpdateService() *DesktopUpdateService {
 	return &DesktopUpdateService{
-		current: readVersion(),
+		current: desktopBundledVersion,
 		status:  DesktopUpdateStatusIdle,
 	}
 }

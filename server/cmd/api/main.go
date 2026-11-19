@@ -1322,16 +1322,12 @@ func configureLogging(environment string) {
 	slog.SetLogLoggerLevel(level)
 }
 
+// appVersion is injected at build time from the vX.Y.Z tag: -ldflags "-X main.appVersion=...".
+var appVersion string
+
 func readAppVersion() string {
-	candidates := []string{"../VERSION", "VERSION"}
-	for _, candidate := range candidates {
-		content, err := os.ReadFile(candidate)
-		if err == nil {
-			version := strings.TrimSpace(string(content))
-			if version != "" {
-				return version
-			}
-		}
+	if version := strings.TrimPrefix(appVersion, "v"); version != "" {
+		return version
 	}
 	return "dev"
 }

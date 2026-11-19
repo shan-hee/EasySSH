@@ -42,7 +42,7 @@ func (s *DesktopService) RuntimeInfo() DesktopRuntimeInfo {
 
 	return DesktopRuntimeInfo{
 		Profile:  "desktop",
-		Version:  readVersion(),
+		Version:  desktopBundledVersion,
 		Platform: runtime.GOOS,
 		Arch:     runtime.GOARCH,
 		DataDir:  desktopDataDir(),
@@ -137,22 +137,6 @@ func (s *DesktopService) ClearUpdateFailureNotice() error {
 		return nil
 	}
 	return err
-}
-
-func readVersion() string {
-	for _, candidate := range []string{"../../VERSION", "../VERSION", "VERSION"} {
-		content, err := os.ReadFile(candidate)
-		if err != nil {
-			continue
-		}
-
-		version := strings.TrimSpace(string(content))
-		if version != "" {
-			return version
-		}
-	}
-
-	return desktopBundledVersion
 }
 
 func desktopDataDir() string {

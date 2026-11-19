@@ -28,31 +28,17 @@ jobs:
       - name: 📥 检出代码
         uses: actions/checkout@v5
 
-      - name: 🔍 Trivy 扫描依赖 (生成报告)
-        uses: aquasecurity/trivy-action@master
+      - name: 🔧 安装 Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          scanners: 'vuln'
-          format: 'sarif'
-          output: 'trivy-dependencies.sarif'
-          severity: 'CRITICAL,HIGH'
-          limit-severities-for-sarif: true
-          ignore-unfixed: false
-          exit-code: '0'
+          version: v0.76.2
+
+      # 报告包含尚无修复版本的漏洞；成功不代表没有漏洞，结果见 Security → Code scanning
+      - name: 🔍 Trivy 扫描依赖
+        run: trivy fs --scanners vuln --severity CRITICAL,HIGH --format sarif --output trivy-dependencies.sarif .
 
       - name: 📤 上传依赖报告到 GitHub Security
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-dependencies.sarif'
           category: 'trivy-dependencies'
-
-      - name: 📊 生成扫描摘要
-        run: |
-          {
-            echo '## 依赖安全报告已更新'
-            echo ''
-            echo '已扫描仓库中的依赖文件并上传 HIGH、CRITICAL 漏洞报告，包括尚无修复版本的漏洞。'
-            echo '本工作流负责报告更新，成功不代表没有漏洞；请查看 Security → Code scanning。'
-            echo '发布镜像仍须通过 docker-build.yml 中逐架构的漏洞门禁。'
-          } >> "$GITHUB_STEP_SUMMARY"

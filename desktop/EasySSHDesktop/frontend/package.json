@@ -1,7 +1,6 @@
 {
   "name": "easyssh-desktop-frontend",
   "private": true,
-  "version": "2.0.22",
   "type": "module",
   "scripts": {
     "dev": "vite",

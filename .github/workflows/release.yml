@@ -1,6 +1,6 @@
 name: Release
 
-# 发版唯一入口：推送 v* 标签
+# 发版唯一入口：推送 vX.Y.Z 标签（scripts/release.sh），版本号只来自标签
 # 流程：版本校验 → 自动化测试 → 镜像 (linux/amd64 + linux/arm64) + 桌面端 (Windows amd64) → 创建 GitHub Release
 # 需要其他桌面端架构时在 Actions 页面手动运行 desktop-build 并选择平台
 on:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  # 1. 校验 tag 与 VERSION 文件一致，保证版本号单一来源
+  # 1. 版本号只来自标签：校验格式、高于上一个发布版本，且已发布迁移未被改写
   validate:
     name: ✅ 版本校验
     runs-on: ubuntu-latest
@@ -24,30 +24,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 🔧 设置版本检查工具
+      - name: 🔧 设置 Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
 
-      - name: 🔎 校验 tag 与 VERSION 文件一致
+      - name: 🔎 校验版本标签
         id: version
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          FILE_VERSION=$(tr -d '[:space:]' < VERSION)
-
-          echo "Tag 版本: $TAG_VERSION"
-          echo "VERSION 文件版本: $FILE_VERSION"
-
-          if [ "$TAG_VERSION" != "$FILE_VERSION" ]; then
-            echo "::error::tag ($GITHUB_REF_NAME) 与 VERSION 文件 ($FILE_VERSION) 不一致。请先运行 ./scripts/bump-version.sh $TAG_VERSION 更新版本号后再打 tag。"
-            exit 1
-          fi
-
-          node scripts/release-version.mjs --release "$TAG_VERSION"
-          echo "version=$TAG_VERSION" >> $GITHUB_OUTPUT
-
-      - name: 🧪 发布版本脚本回归检查
-        run: node --test scripts/release-version.test.mjs
+          VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/release-version.mjs release "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   # 2. 发版前自动化测试（与日常 CI 同一份定义）
   test:
@@ -64,8 +51,6 @@ jobs:
     uses: ./.github/workflows/docker-build.yml
     with:
       version: ${{ needs.validate.outputs.version }}
-      platforms: 'linux/amd64,linux/arm64'
-      update-latest: true
     secrets: inherit
     permissions:
       contents: read
@@ -78,6 +63,7 @@ jobs:
     needs: [validate, test]
     uses: ./.github/workflows/desktop-build.yml
     with:
+      version: ${{ needs.validate.outputs.version }}
       arch: 'amd64'
     permissions:
       contents: read
@@ -143,20 +129,6 @@ jobs:
             echo "## 💻 桌面端"
             echo ""
             echo "Windows (amd64) 客户端见下方 Assets: \`EasySSH-windows-amd64-desktop.zip\`"
-            echo ""
-            echo "## 📦 快速部署"
-            echo ""
-            echo '```bash'
-            echo "# 下载 docker-compose.yml"
-            echo "wget https://raw.githubusercontent.com/shan-hee/EasySSH/$CURRENT_TAG/docker/docker-compose.yml"
-            echo ""
-            echo "# 按需修改配置后启动"
-            echo "docker compose up -d"
-            echo '```'
-            echo ""
-            echo "## 🔒 安全"
-            echo ""
-            echo "镜像已通过 Trivy 安全扫描（存在可修复的 CRITICAL 漏洞时会阻断发布）。详见 [Security](https://github.com/shan-hee/EasySSH/security) 标签页。"
             echo ""
             echo "---"
             echo ""
@@ -233,9 +205,6 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           body_path: release_notes.md
-          draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-          generate_release_notes: false
           files: |
             docker/docker-compose.yml
             .env.example
@@ -243,11 +212,3 @@ jobs:
             release-assets/release-manifest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 📊 生成摘要
-        run: |
-          echo "## ✅ Release 创建成功" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**版本:** \`${GITHUB_REF_NAME}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**查看 Release:** [点击这里](https://github.com/shan-hee/EasySSH/releases/tag/${GITHUB_REF_NAME})" >> $GITHUB_STEP_SUMMARY

@@ -25,12 +25,12 @@ COPY desktop/EasySSHDesktop/frontend/package.json ./desktop/EasySSHDesktop/front
 RUN --mount=type=cache,id=easyssh-pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts --store-dir=/pnpm/store --filter "easyssh-web..."
 
-# 复制源码并执行 Vite 静态构建
-COPY VERSION ./VERSION
+# 复制源码并执行 Vite 静态构建；版本号由 CI 从 vX.Y.Z 标签传入
 COPY tooling/frontend/ ./tooling/frontend/
 COPY packages/app/ ./packages/app/
 COPY web/ ./web/
-RUN pnpm --filter easyssh-web run build
+ARG EASYSSH_VERSION
+RUN test -n "$EASYSSH_VERSION" && EASYSSH_VERSION=$EASYSSH_VERSION pnpm --filter easyssh-web run build
 
 # Stage 2: 在构建机原生架构上交叉编译 Go，避免通过 QEMU 执行编译器
 FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine AS backend-builder
@@ -53,12 +53,14 @@ COPY server/ ./
 # BuildKit 根据目标平台提供 GOOS/GOARCH；CGO=0 支持跨架构构建
 ARG TARGETOS
 ARG TARGETARCH
+ARG EASYSSH_VERSION
 RUN --mount=type=cache,id=easyssh-go-mod,target=/go/pkg/mod \
     --mount=type=cache,id=easyssh-go-build,target=/root/.cache/go-build \
+    test -n "$EASYSSH_VERSION" && \
     CGO_ENABLED=0 \
     GOOS=$TARGETOS \
     GOARCH=$TARGETARCH \
-    go build -trimpath -buildvcs=false -ldflags="-s -w" -o easyssh-api ./cmd/api
+    go build -trimpath -buildvcs=false -ldflags="-s -w -X main.appVersion=$EASYSSH_VERSION" -o easyssh-api ./cmd/api
 
 # Stage 3: 运行时镜像
 FROM alpine:3.22
@@ -88,7 +90,6 @@ ENV TZ=Asia/Shanghai \
 # 复制后端二进制与前端静态资源
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./
 COPY --from=frontend-builder --chown=appuser:appuser /app/web/dist ./static
-COPY --from=frontend-builder --chown=appuser:appuser /app/VERSION ./VERSION
 
 USER appuser
 

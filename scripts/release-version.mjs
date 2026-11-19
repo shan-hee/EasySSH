@@ -1,3 +1,7 @@
+// 应用版本的唯一来源是 vX.Y.Z 标签；仓库内不保存版本号。
+//   check          校验迁移规则，并保证最近已发布标签的 SQL 未被改写（CI 每次推送）
+//   release x.y.z  在 check 基础上校验新版本高于既有标签（打标签前、标签流水线）
+//   stamp x.y.z    把版本写入桌面打包资产（仅在 CI 构建工作区执行，不提交）
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -35,11 +39,9 @@ function releaseTags() {
     .sort((a, b) => compare(b.slice(1), a.slice(1)))
 }
 
-function checkMigrations(schema, version, tags, prepare, includeCurrent) {
+function checkMigrations(schema, baseline) {
   const migrationRoot = schema.root
-  const latestFile = `${migrationRoot}/schema.go`
-  const source = read(latestFile)
-  const declared = Number(source.match(latestPattern)?.[1])
+  const declared = Number(read(`${migrationRoot}/schema.go`).match(latestPattern)?.[1])
   if (!Number.isSafeInteger(declared) || declared < 1) fail(`无法读取 ${schema.name} schema.Version`)
   let expected
   let expectedNames
@@ -70,9 +72,7 @@ function checkMigrations(schema, version, tags, prepare, includeCurrent) {
     expectedNames = names
   }
   const latest = expected.at(-1)
-  if (declared > latest) fail(`${schema.name} schema.Version=${declared}，不能降低数据库版本`)
-  if (!prepare && declared !== latest) fail(`${schema.name} schema.Version=${declared} 与最新迁移 ${latest} 不一致`)
-  const baseline = tags.find(tag => compare(tag.slice(1), version) < 0 || (includeCurrent && tag.slice(1) === version))
+  if (declared !== latest) fail(`${schema.name} schema.Version=${declared} 与最新迁移 ${latest} 不一致；请使用 scripts/new-migration.mjs 新增迁移`)
   if (baseline) {
     const files = git("ls-tree", "-r", "--name-only", baseline, "--", migrationRoot).split("\n").filter(name => name.endsWith(".sql"))
     for (const name of files) {
@@ -91,97 +91,47 @@ function checkMigrations(schema, version, tags, prepare, includeCurrent) {
       }
     }
   }
-  console.log(`${schema.name} 数据库：各方言迁移连续一致，版本 ${latest}；已发布 SQL 保持不变`)
-  return { latestFile, latest, source }
+  console.log(`${schema.name} 数据库：各方言迁移连续一致，版本 ${latest}${baseline ? `；${baseline} 已发布 SQL 保持不变` : ""}`)
 }
 
-// Validate every version source before making any writes. Replacing these fields
-// does not run npm lifecycle hooks, dependency installation, builds or migrations.
-function versionFiles(current, target) {
-  const files = new Map()
-  const update = (name, pattern, expected, replacement, count = 1) => {
+// 打包资产在仓库中保留 0.0.0 占位，发布构建前按标签写入；字段缺失或重复即失败。
+function stamp(target) {
+  const [major, minor, patch] = versionParts(target)
+  const fields = [
+    [`${desktop}/build/config.yml`, /^  version: "[^"]*"/gm, `  version: "${target}"`, 1],
+    [`${desktop}/build/windows/info.json`, /"(file_version|ProductVersion)"(\s*:\s*)"[^"]*"/g, (_, key, sep) => `"${key}"${sep}"${target}"`, 2],
+    [`${desktop}/build/windows/nsis/wails_tools.nsh`, /!define INFO_PRODUCTVERSION "[^"]*"/g, `!define INFO_PRODUCTVERSION "${target}"`, 1],
+    [`${desktop}/build/windows/msix/app_manifest.xml`, /\bVersion="[^"]*"/g, `Version="${major}.${minor}.${patch}.0"`, 1],
+    [`${desktop}/build/windows/msix/template.xml`, /\bVersion="[^"]*"/g, `Version="${major}.${minor}.${patch}.0"`, 1],
+    [`${desktop}/build/darwin/Info.plist`, /(<key>CFBundle(?:ShortVersionString|Version)<\/key>\s*<string>)[^<]*/g, `$1${target}`, 2],
+    [`${desktop}/build/darwin/Info.dev.plist`, /(<key>CFBundle(?:ShortVersionString|Version)<\/key>\s*<string>)[^<]*/g, `$1${target}`, 2],
+    [`${desktop}/build/linux/nfpm/nfpm.yaml`, /^version: "[^"]*"/gm, `version: "${target}"`, 1],
+  ]
+  const files = fields.map(([name, pattern, replacement, count]) => {
     const before = read(name)
-    const matches = [...before.matchAll(pattern)]
-    if (matches.length !== count || matches.some(match => match[1] !== expected)) fail(`${name} 的版本字段缺失、重复或与 VERSION 不一致`)
-    files.set(name, before.replace(pattern, (...args) => args[0].replace(args[1], replacement)))
-  }
-  files.set("VERSION", `${target}\n`)
-  for (const name of ["web/package.json", `${desktop}/frontend/package.json`]) {
-    const source = read(name)
-    if (JSON.parse(source).version !== current) fail(`${name} 的版本与 VERSION 不一致`)
-    files.set(name, source.replace(/("version"\s*:\s*")[^"]+("\s*,?)/, (_, prefix, suffix) => `${prefix}${target}${suffix}`))
-  }
-  for (const name of ["web/package-lock.json", `${desktop}/frontend/package-lock.json`]) {
-    if (!fs.existsSync(path.join(root, name))) continue
-    const json = JSON.parse(read(name))
-    if (json.version !== current || (json.packages?.[""] && json.packages[""].version !== current)) fail(`${name} 的根版本与 VERSION 不一致`)
-    json.version = target
-    if (json.packages?.[""]) json.packages[""].version = target
-    files.set(name, `${JSON.stringify(json, null, 2)}\n`)
-  }
-  update(`${desktop}/internal/app/desktopversion.go`, /^const desktopBundledVersion = "([^"]+)"/gm, current, target)
-  update(`${desktop}/build/config.yml`, /^  version: "([^"]+)"/gm, current, target)
-  update(`${desktop}/build/windows/info.json`, /"(?:file_version|ProductVersion)"\s*:\s*"([^"]+)"/g, current, target, 2)
-  for (const name of ["app_manifest.xml", "template.xml"]) update(`${desktop}/build/windows/msix/${name}`, /\bVersion="([^"]+)"/g, `${current}.0`, `${target}.0`)
-  for (const name of ["Info.plist", "Info.dev.plist"]) update(`${desktop}/build/darwin/${name}`, /<key>CFBundle(?:ShortVersionString|Version)<\/key>\s*<string>([^<]+)<\/string>/g, current, target, 2)
-  update(`${desktop}/build/linux/nfpm/nfpm.yaml`, /^version: "([^"]+)"/gm, current, target)
-  // Keep generated comments and installer defaults in sync too.
-  const oldVersion = new RegExp(`(?<![\\d.])${current.replaceAll(".", "\\.")}(?!\\d)`, "g")
-  for (const name of git("ls-files", "--", `${desktop}/build`).split("\n")) {
-    if (!/\.(?:yml|yaml|json|xml|plist|nsi|nsh)$/.test(name)) continue
-    const before = read(name)
-    if (before.includes(current)) files.set(name, (files.get(name) ?? before).replace(oldVersion, target))
-  }
-  const readme = read("README.md")
-  files.set("README.md", readme.replace(/badge\/version-\d+\.\d+\.\d+-blue/g, `badge/version-${target}-blue`))
-  return files
-}
-
-function writeFiles(files) {
-  const originals = new Map([...files.keys()].map(name => [name, fs.readFileSync(path.join(root, name))]))
-  const changed = []
-  try {
-    for (const [name, content] of files) {
-      if (normalize(originals.get(name).toString("utf8")) === normalize(content)) continue
-      changed.push(name)
-      fs.writeFileSync(path.join(root, name), content)
-    }
-  } catch (error) {
-    const failures = []
-    for (const name of changed.reverse()) {
-      try { fs.writeFileSync(path.join(root, name), originals.get(name)) }
-      catch { failures.push(name) }
-    }
-    if (failures.length) fail(`${error.message}；回写失败，请检查：${failures.join(", ")}`)
-    throw error
-  }
-  console.log(`已更新 ${changed.length} 个版本文件；没有连接数据库、构建或执行迁移。`)
+    if ((before.match(pattern) ?? []).length !== count) fail(`${name} 的版本字段缺失或重复`)
+    return [name, before.replace(pattern, replacement)]
+  })
+  for (const [name, content] of files) fs.writeFileSync(path.join(root, name), content)
+  console.log(`已写入 ${files.length} 个桌面打包资产版本：${target}`)
 }
 
 try {
-  const [mode = "--check", requested, ...extra] = process.argv.slice(2)
-  if (!["--check", "--prepare", "--release"].includes(mode) || extra.length || (mode !== "--check" && !requested)) fail("用法：node scripts/release-version.mjs --check | --prepare x.y.z | --release x.y.z")
-  const current = read("VERSION").trim()
-  versionParts(current)
-  const target = requested ?? current
-  versionParts(target)
-  const tags = releaseTags()
-  if (mode === "--prepare") {
-    if (git("status", "--porcelain")) fail("发版前请先提交业务代码、迁移 SQL 和其他改动；工作区及暂存区必须干净，避免标签遗漏代码。")
-    if (compare(target, current) <= 0 || tags.some(tag => compare(tag.slice(1), target) >= 0)) fail("新版本必须高于当前 VERSION 和当前分支已有发布版本")
-    if (git("tag", "--list", `v${target}`)) fail(`标签 v${target} 已存在`)
-    // A release from detached HEAD cannot safely push the release commit.
-    if (!git("branch", "--show-current")) fail("请先切换到发布分支，不要在 detached HEAD 上更新版本")
-  } else if (current !== target) fail(`VERSION=${current} 与目标 ${target} 不一致`)
-  if (mode === "--release" && tags.some(tag => compare(tag.slice(1), target) > 0)) fail("目标版本低于当前分支已有发布版本，拒绝倒退发布")
-  const migrations = schemas.map(schema => checkMigrations(schema, target, tags, mode === "--prepare", mode === "--check"))
-  const files = versionFiles(current, target)
-  if (mode === "--prepare") {
-    for (const { latestFile, source, latest } of migrations) {
-      files.set(latestFile, source.replace(latestPattern, `const Version int64 = ${latest}`))
+  const [mode, requested, ...extra] = process.argv.slice(2)
+  if (!["check", "release", "stamp"].includes(mode) || extra.length || (mode === "check") !== (requested === undefined)) fail("用法：node scripts/release-version.mjs check | release x.y.z | stamp x.y.z")
+  if (mode === "stamp") stamp(requested)
+  else {
+    let tags = releaseTags()
+    if (mode === "release") {
+      versionParts(requested)
+      const tag = `v${requested}`
+      // 标签流水线中新标签已指向 HEAD；本地打标签前它还不存在。
+      if (git("tag", "--list", tag) && git("rev-list", "-n", "1", tag) !== git("rev-parse", "HEAD")) fail(`标签 ${tag} 已存在且不指向当前提交`)
+      tags = tags.filter(name => name !== tag)
+      if (tags.length && compare(requested, tags[0].slice(1)) <= 0) fail(`新版本 ${requested} 必须高于已发布版本 ${tags[0].slice(1)}`)
     }
-    writeFiles(files)
-  } else console.log(`应用版本一致：${current}；数据库版本：${migrations.map(({ latestFile, latest }) => `${latestFile}=${latest}`).join(", ")}`)
+    for (const schema of schemas) checkMigrations(schema, tags[0])
+  }
 } catch (error) {
   console.error(`版本检查失败：${error.message}`)
   process.exitCode = 1

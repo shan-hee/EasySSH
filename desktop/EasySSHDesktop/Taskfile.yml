@@ -4,6 +4,10 @@ vars:
   APP_NAME: "EasySSH"
   BIN_DIR: "bin"
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9345}}'
+  # 发布构建由 CI 从 vX.Y.Z 标签传入 EASYSSH_VERSION；本地取最近的版本标签
+  VERSION:
+    sh: 'v="${EASYSSH_VERSION:-$(git describe --tags --abbrev=0)}"; echo "${v#v}"'
+  VERSION_LDFLAG: '-X github.com/easyssh/easyssh-desktop/internal/app.desktopBundledVersion={{.VERSION}}'
 
 includes:
   common: ./build/Taskfile.yml

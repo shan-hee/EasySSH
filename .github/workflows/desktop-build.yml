@@ -2,10 +2,14 @@ name: Build EasySSH Desktop
 
 # 桌面端构建（Wails v3, Windows 交叉编译）：
 #   - 由 release.yml (tag 触发) 调用，默认构建 Windows amd64
-#   - workflow_dispatch 可手动选择架构，产物以 artifact 形式上传
+#   - workflow_dispatch 可按已有标签手动选择架构，产物以 artifact 形式上传
 on:
   workflow_call:
     inputs:
+      version:
+        description: '版本号 (不含 v 前缀)'
+        required: true
+        type: string
       arch:
         description: 'Windows 架构 (amd64 / arm64)'
         required: false
@@ -14,6 +18,10 @@ on:
 
   workflow_dispatch:
     inputs:
+      version:
+        description: '已有标签的版本号 (x.y.z，不含 v 前缀)'
+        required: true
+        type: string
       arch:
         description: 'Windows 架构'
         required: true
@@ -27,12 +35,22 @@ jobs:
   build:
     name: 💻 Windows ${{ inputs.arch }}
     runs-on: ubuntu-latest
+    env:
+      EASYSSH_VERSION: ${{ inputs.version }}
     defaults:
       run:
         working-directory: desktop/EasySSHDesktop
     steps:
+      # 始终构建标签对应的代码，保证产物内容与版本号一致
       - name: 📥 检出代码
         uses: actions/checkout@v5
+        with:
+          ref: refs/tags/v${{ inputs.version }}
+
+      # 仓库中打包资产为 0.0.0 占位，只在构建工作区写入版本
+      - name: 🏷️ 写入打包资产版本
+        working-directory: .
+        run: node scripts/release-version.mjs stamp "$EASYSSH_VERSION"
 
       # wails3 generate bindings 按宿主 (Linux) 平台分析 Go 代码，需要 gtk/webkit 头文件，
       # 即使最终构建目标是 Windows
@@ -91,9 +109,3 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
-
-      - name: 📊 生成构建摘要
-        run: |
-          echo "## 💻 EasySSH Desktop 构建成功" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **平台:** Windows (${{ inputs.arch }})" >> $GITHUB_STEP_SUMMARY
