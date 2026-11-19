@@ -1,52 +1,7 @@
 import { create } from 'zustand'
+import type { WorkspaceMonitorMetrics } from '@/lib/session/workspace'
 
-export interface MonitorMetrics {
-  systemInfo: {
-    os: string
-    hostname: string
-    cpuModel: string
-    arch: string
-    loadAvg: string
-    uptimeSeconds: number
-    cpuCores: number
-  }
-  cpu: {
-    usage: number
-    cores: number
-  }
-  memory: {
-    total: number
-    used: number
-    free: number
-    usagePercent: number
-    swapUsed: number
-    swapTotal: number
-  }
-  disk: {
-    total: number
-    used: number
-    free: number
-    usagePercent: number
-  }
-  disks: Array<{
-    mountPoint: string
-    usedBytes: number
-    totalBytes: number
-  }>
-  network: {
-    bytesIn: number
-    bytesOut: number
-    packetsIn: number
-    packetsOut: number
-  }
-  timestamp: number
-  sshLatencyMs: number
-  docker?: {
-    containersRunning: number
-    containersTotal: number
-    dockerInstalled: boolean
-  }
-}
+export type MonitorMetrics = WorkspaceMonitorMetrics
 
 type SubscriberCallback = (metrics: MonitorMetrics) => void
 

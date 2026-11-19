@@ -116,11 +116,14 @@ func (x *SystemInfo) GetCpuCores() uint32 {
 
 // CPU 指标
 type CPUMetrics struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	UsagePercent  float64                `protobuf:"fixed64,1,opt,name=usage_percent,json=usagePercent,proto3" json:"usage_percent,omitempty"` // CPU 使用率 0-100
-	CoreCount     uint32                 `protobuf:"varint,2,opt,name=core_count,json=coreCount,proto3" json:"core_count,omitempty"`           // 核心数
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	UsagePercent     float64                `protobuf:"fixed64,1,opt,name=usage_percent,json=usagePercent,proto3" json:"usage_percent,omitempty"`                      // CPU 使用率 0-100（100 - idle，含 iowait 与 steal）
+	CoreCount        uint32                 `protobuf:"varint,2,opt,name=core_count,json=coreCount,proto3" json:"core_count,omitempty"`                                // 核心数
+	IowaitPercent    float64                `protobuf:"fixed64,3,opt,name=iowait_percent,json=iowaitPercent,proto3" json:"iowait_percent,omitempty"`                   // 等待磁盘 IO 的占比
+	StealPercent     float64                `protobuf:"fixed64,4,opt,name=steal_percent,json=stealPercent,proto3" json:"steal_percent,omitempty"`                      // 被宿主机占用的占比
+	CoreUsagePercent []float64              `protobuf:"fixed64,5,rep,packed,name=core_usage_percent,json=coreUsagePercent,proto3" json:"core_usage_percent,omitempty"` // 每个核心的使用率，按核心编号排序
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CPUMetrics) Reset() {
@@ -167,13 +170,35 @@ func (x *CPUMetrics) GetCoreCount() uint32 {
 	return 0
 }
 
+func (x *CPUMetrics) GetIowaitPercent() float64 {
+	if x != nil {
+		return x.IowaitPercent
+	}
+	return 0
+}
+
+func (x *CPUMetrics) GetStealPercent() float64 {
+	if x != nil {
+		return x.StealPercent
+	}
+	return 0
+}
+
+func (x *CPUMetrics) GetCoreUsagePercent() []float64 {
+	if x != nil {
+		return x.CoreUsagePercent
+	}
+	return nil
+}
+
 // 内存指标
 type MemoryMetrics struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
-	RamUsedBytes   uint64                 `protobuf:"varint,1,opt,name=ram_used_bytes,json=ramUsedBytes,proto3" json:"ram_used_bytes,omitempty"`       // RAM 已使用字节数
+	RamUsedBytes   uint64                 `protobuf:"varint,1,opt,name=ram_used_bytes,json=ramUsedBytes,proto3" json:"ram_used_bytes,omitempty"`       // RAM 已使用字节数（MemTotal - MemAvailable）
 	RamTotalBytes  uint64                 `protobuf:"varint,2,opt,name=ram_total_bytes,json=ramTotalBytes,proto3" json:"ram_total_bytes,omitempty"`    // RAM 总字节数
 	SwapUsedBytes  uint64                 `protobuf:"varint,3,opt,name=swap_used_bytes,json=swapUsedBytes,proto3" json:"swap_used_bytes,omitempty"`    // Swap 已使用字节数
 	SwapTotalBytes uint64                 `protobuf:"varint,4,opt,name=swap_total_bytes,json=swapTotalBytes,proto3" json:"swap_total_bytes,omitempty"` // Swap 总字节数
+	RamCacheBytes  uint64                 `protobuf:"varint,5,opt,name=ram_cache_bytes,json=ramCacheBytes,proto3" json:"ram_cache_bytes,omitempty"`    // 可回收的缓存（不计入已使用）
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -236,18 +261,88 @@ func (x *MemoryMetrics) GetSwapTotalBytes() uint64 {
 	return 0
 }
 
-// 网络指标
-type NetworkMetrics struct {
+func (x *MemoryMetrics) GetRamCacheBytes() uint64 {
+	if x != nil {
+		return x.RamCacheBytes
+	}
+	return 0
+}
+
+// 单个网卡速率
+type NetworkInterfaceMetrics struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
-	BytesRecvPerSec uint64                 `protobuf:"varint,1,opt,name=bytes_recv_per_sec,json=bytesRecvPerSec,proto3" json:"bytes_recv_per_sec,omitempty"` // 接收速率 字节/秒
-	BytesSentPerSec uint64                 `protobuf:"varint,2,opt,name=bytes_sent_per_sec,json=bytesSentPerSec,proto3" json:"bytes_sent_per_sec,omitempty"` // 发送速率 字节/秒
+	Name            string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	BytesRecvPerSec uint64                 `protobuf:"varint,2,opt,name=bytes_recv_per_sec,json=bytesRecvPerSec,proto3" json:"bytes_recv_per_sec,omitempty"`
+	BytesSentPerSec uint64                 `protobuf:"varint,3,opt,name=bytes_sent_per_sec,json=bytesSentPerSec,proto3" json:"bytes_sent_per_sec,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
 
+func (x *NetworkInterfaceMetrics) Reset() {
+	*x = NetworkInterfaceMetrics{}
+	mi := &file_metrics_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NetworkInterfaceMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NetworkInterfaceMetrics) ProtoMessage() {}
+
+func (x *NetworkInterfaceMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_metrics_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NetworkInterfaceMetrics.ProtoReflect.Descriptor instead.
+func (*NetworkInterfaceMetrics) Descriptor() ([]byte, []int) {
+	return file_metrics_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *NetworkInterfaceMetrics) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *NetworkInterfaceMetrics) GetBytesRecvPerSec() uint64 {
+	if x != nil {
+		return x.BytesRecvPerSec
+	}
+	return 0
+}
+
+func (x *NetworkInterfaceMetrics) GetBytesSentPerSec() uint64 {
+	if x != nil {
+		return x.BytesSentPerSec
+	}
+	return 0
+}
+
+// 网络指标：只统计物理网卡和默认路由网卡，避免容器网桥、veth 重复计数
+type NetworkMetrics struct {
+	state            protoimpl.MessageState     `protogen:"open.v1"`
+	BytesRecvPerSec  uint64                     `protobuf:"varint,1,opt,name=bytes_recv_per_sec,json=bytesRecvPerSec,proto3" json:"bytes_recv_per_sec,omitempty"` // 接收速率 字节/秒
+	BytesSentPerSec  uint64                     `protobuf:"varint,2,opt,name=bytes_sent_per_sec,json=bytesSentPerSec,proto3" json:"bytes_sent_per_sec,omitempty"` // 发送速率 字节/秒
+	Interfaces       []*NetworkInterfaceMetrics `protobuf:"bytes,3,rep,name=interfaces,proto3" json:"interfaces,omitempty"`                                       // 默认路由网卡在前，其余按名称排序
+	DefaultInterface string                     `protobuf:"bytes,4,opt,name=default_interface,json=defaultInterface,proto3" json:"default_interface,omitempty"`   // 默认路由所在网卡
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
 func (x *NetworkMetrics) Reset() {
 	*x = NetworkMetrics{}
-	mi := &file_metrics_proto_msgTypes[3]
+	mi := &file_metrics_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -259,7 +354,7 @@ func (x *NetworkMetrics) String() string {
 func (*NetworkMetrics) ProtoMessage() {}
 
 func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_metrics_proto_msgTypes[3]
+	mi := &file_metrics_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -272,7 +367,7 @@ func (x *NetworkMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NetworkMetrics.ProtoReflect.Descriptor instead.
 func (*NetworkMetrics) Descriptor() ([]byte, []int) {
-	return file_metrics_proto_rawDescGZIP(), []int{3}
+	return file_metrics_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *NetworkMetrics) GetBytesRecvPerSec() uint64 {
@@ -289,19 +384,37 @@ func (x *NetworkMetrics) GetBytesSentPerSec() uint64 {
 	return 0
 }
 
-// 单个磁盘指标
+func (x *NetworkMetrics) GetInterfaces() []*NetworkInterfaceMetrics {
+	if x != nil {
+		return x.Interfaces
+	}
+	return nil
+}
+
+func (x *NetworkMetrics) GetDefaultInterface() string {
+	if x != nil {
+		return x.DefaultInterface
+	}
+	return ""
+}
+
+// 单个磁盘指标（同一设备的多个挂载点只保留路径最短的一个）
 type DiskMetrics struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	MountPoint    string                 `protobuf:"bytes,1,opt,name=mount_point,json=mountPoint,proto3" json:"mount_point,omitempty"`  // 挂载点 "/" 或 "/home"
-	UsedBytes     uint64                 `protobuf:"varint,2,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`    // 已使用字节数
-	TotalBytes    uint64                 `protobuf:"varint,3,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"` // 总字节数
+	MountPoint    string                 `protobuf:"bytes,1,opt,name=mount_point,json=mountPoint,proto3" json:"mount_point,omitempty"`     // 挂载点 "/" 或 "/home"
+	UsedBytes     uint64                 `protobuf:"varint,2,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`       // 已使用字节数
+	TotalBytes    uint64                 `protobuf:"varint,3,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`    // 总字节数
+	Device        string                 `protobuf:"bytes,4,opt,name=device,proto3" json:"device,omitempty"`                               // 设备 "/dev/sda1"
+	FsType        string                 `protobuf:"bytes,5,opt,name=fs_type,json=fsType,proto3" json:"fs_type,omitempty"`                 // 文件系统类型 "ext4"
+	InodesUsed    uint64                 `protobuf:"varint,6,opt,name=inodes_used,json=inodesUsed,proto3" json:"inodes_used,omitempty"`    // 已用 inode，文件系统不支持时为 0
+	InodesTotal   uint64                 `protobuf:"varint,7,opt,name=inodes_total,json=inodesTotal,proto3" json:"inodes_total,omitempty"` // inode 总数
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DiskMetrics) Reset() {
 	*x = DiskMetrics{}
-	mi := &file_metrics_proto_msgTypes[4]
+	mi := &file_metrics_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -313,7 +426,7 @@ func (x *DiskMetrics) String() string {
 func (*DiskMetrics) ProtoMessage() {}
 
 func (x *DiskMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_metrics_proto_msgTypes[4]
+	mi := &file_metrics_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -326,7 +439,7 @@ func (x *DiskMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskMetrics.ProtoReflect.Descriptor instead.
 func (*DiskMetrics) Descriptor() ([]byte, []int) {
-	return file_metrics_proto_rawDescGZIP(), []int{4}
+	return file_metrics_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *DiskMetrics) GetMountPoint() string {
@@ -350,6 +463,34 @@ func (x *DiskMetrics) GetTotalBytes() uint64 {
 	return 0
 }
 
+func (x *DiskMetrics) GetDevice() string {
+	if x != nil {
+		return x.Device
+	}
+	return ""
+}
+
+func (x *DiskMetrics) GetFsType() string {
+	if x != nil {
+		return x.FsType
+	}
+	return ""
+}
+
+func (x *DiskMetrics) GetInodesUsed() uint64 {
+	if x != nil {
+		return x.InodesUsed
+	}
+	return 0
+}
+
+func (x *DiskMetrics) GetInodesTotal() uint64 {
+	if x != nil {
+		return x.InodesTotal
+	}
+	return 0
+}
+
 // Docker 容器统计（轻量级，仅用于工具栏显示）
 type DockerStats struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
@@ -362,7 +503,7 @@ type DockerStats struct {
 
 func (x *DockerStats) Reset() {
 	*x = DockerStats{}
-	mi := &file_metrics_proto_msgTypes[5]
+	mi := &file_metrics_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -374,7 +515,7 @@ func (x *DockerStats) String() string {
 func (*DockerStats) ProtoMessage() {}
 
 func (x *DockerStats) ProtoReflect() protoreflect.Message {
-	mi := &file_metrics_proto_msgTypes[5]
+	mi := &file_metrics_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -387,7 +528,7 @@ func (x *DockerStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DockerStats.ProtoReflect.Descriptor instead.
 func (*DockerStats) Descriptor() ([]byte, []int) {
-	return file_metrics_proto_rawDescGZIP(), []int{5}
+	return file_metrics_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DockerStats) GetContainersRunning() uint32 {
@@ -429,7 +570,7 @@ type SystemMetrics struct {
 
 func (x *SystemMetrics) Reset() {
 	*x = SystemMetrics{}
-	mi := &file_metrics_proto_msgTypes[6]
+	mi := &file_metrics_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -441,7 +582,7 @@ func (x *SystemMetrics) String() string {
 func (*SystemMetrics) ProtoMessage() {}
 
 func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_metrics_proto_msgTypes[6]
+	mi := &file_metrics_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -454,7 +595,7 @@ func (x *SystemMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemMetrics.ProtoReflect.Descriptor instead.
 func (*SystemMetrics) Descriptor() ([]byte, []int) {
-	return file_metrics_proto_rawDescGZIP(), []int{6}
+	return file_metrics_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *SystemMetrics) GetSystemInfo() *SystemInfo {
@@ -533,27 +674,44 @@ const file_metrics_proto_rawDesc = "" +
 	"\x04arch\x18\x04 \x01(\tR\x04arch\x12\x19\n" +
 	"\bload_avg\x18\x05 \x01(\tR\aloadAvg\x12%\n" +
 	"\x0euptime_seconds\x18\x06 \x01(\x04R\ruptimeSeconds\x12\x1b\n" +
-	"\tcpu_cores\x18\a \x01(\rR\bcpuCores\"P\n" +
+	"\tcpu_cores\x18\a \x01(\rR\bcpuCores\"\xca\x01\n" +
 	"\n" +
 	"CPUMetrics\x12#\n" +
 	"\rusage_percent\x18\x01 \x01(\x01R\fusagePercent\x12\x1d\n" +
 	"\n" +
-	"core_count\x18\x02 \x01(\rR\tcoreCount\"\xaf\x01\n" +
+	"core_count\x18\x02 \x01(\rR\tcoreCount\x12%\n" +
+	"\x0eiowait_percent\x18\x03 \x01(\x01R\riowaitPercent\x12#\n" +
+	"\rsteal_percent\x18\x04 \x01(\x01R\fstealPercent\x12,\n" +
+	"\x12core_usage_percent\x18\x05 \x03(\x01R\x10coreUsagePercent\"\xd7\x01\n" +
 	"\rMemoryMetrics\x12$\n" +
 	"\x0eram_used_bytes\x18\x01 \x01(\x04R\framUsedBytes\x12&\n" +
 	"\x0fram_total_bytes\x18\x02 \x01(\x04R\rramTotalBytes\x12&\n" +
 	"\x0fswap_used_bytes\x18\x03 \x01(\x04R\rswapUsedBytes\x12(\n" +
-	"\x10swap_total_bytes\x18\x04 \x01(\x04R\x0eswapTotalBytes\"j\n" +
+	"\x10swap_total_bytes\x18\x04 \x01(\x04R\x0eswapTotalBytes\x12&\n" +
+	"\x0fram_cache_bytes\x18\x05 \x01(\x04R\rramCacheBytes\"\x87\x01\n" +
+	"\x17NetworkInterfaceMetrics\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12+\n" +
+	"\x12bytes_recv_per_sec\x18\x02 \x01(\x04R\x0fbytesRecvPerSec\x12+\n" +
+	"\x12bytes_sent_per_sec\x18\x03 \x01(\x04R\x0fbytesSentPerSec\"\xd9\x01\n" +
 	"\x0eNetworkMetrics\x12+\n" +
 	"\x12bytes_recv_per_sec\x18\x01 \x01(\x04R\x0fbytesRecvPerSec\x12+\n" +
-	"\x12bytes_sent_per_sec\x18\x02 \x01(\x04R\x0fbytesSentPerSec\"n\n" +
+	"\x12bytes_sent_per_sec\x18\x02 \x01(\x04R\x0fbytesSentPerSec\x12@\n" +
+	"\n" +
+	"interfaces\x18\x03 \x03(\v2 .monitor.NetworkInterfaceMetricsR\n" +
+	"interfaces\x12+\n" +
+	"\x11default_interface\x18\x04 \x01(\tR\x10defaultInterface\"\xe3\x01\n" +
 	"\vDiskMetrics\x12\x1f\n" +
 	"\vmount_point\x18\x01 \x01(\tR\n" +
 	"mountPoint\x12\x1d\n" +
 	"\n" +
 	"used_bytes\x18\x02 \x01(\x04R\tusedBytes\x12\x1f\n" +
 	"\vtotal_bytes\x18\x03 \x01(\x04R\n" +
-	"totalBytes\"\x92\x01\n" +
+	"totalBytes\x12\x16\n" +
+	"\x06device\x18\x04 \x01(\tR\x06device\x12\x17\n" +
+	"\afs_type\x18\x05 \x01(\tR\x06fsType\x12\x1f\n" +
+	"\vinodes_used\x18\x06 \x01(\x04R\n" +
+	"inodesUsed\x12!\n" +
+	"\finodes_total\x18\a \x01(\x04R\vinodesTotal\"\x92\x01\n" +
 	"\vDockerStats\x12-\n" +
 	"\x12containers_running\x18\x01 \x01(\rR\x11containersRunning\x12)\n" +
 	"\x10containers_total\x18\x02 \x01(\rR\x0fcontainersTotal\x12)\n" +
@@ -582,28 +740,30 @@ func file_metrics_proto_rawDescGZIP() []byte {
 	return file_metrics_proto_rawDescData
 }
 
-var file_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_metrics_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_metrics_proto_goTypes = []any{
-	(*SystemInfo)(nil),     // 0: monitor.SystemInfo
-	(*CPUMetrics)(nil),     // 1: monitor.CPUMetrics
-	(*MemoryMetrics)(nil),  // 2: monitor.MemoryMetrics
-	(*NetworkMetrics)(nil), // 3: monitor.NetworkMetrics
-	(*DiskMetrics)(nil),    // 4: monitor.DiskMetrics
-	(*DockerStats)(nil),    // 5: monitor.DockerStats
-	(*SystemMetrics)(nil),  // 6: monitor.SystemMetrics
+	(*SystemInfo)(nil),              // 0: monitor.SystemInfo
+	(*CPUMetrics)(nil),              // 1: monitor.CPUMetrics
+	(*MemoryMetrics)(nil),           // 2: monitor.MemoryMetrics
+	(*NetworkInterfaceMetrics)(nil), // 3: monitor.NetworkInterfaceMetrics
+	(*NetworkMetrics)(nil),          // 4: monitor.NetworkMetrics
+	(*DiskMetrics)(nil),             // 5: monitor.DiskMetrics
+	(*DockerStats)(nil),             // 6: monitor.DockerStats
+	(*SystemMetrics)(nil),           // 7: monitor.SystemMetrics
 }
 var file_metrics_proto_depIdxs = []int32{
-	0, // 0: monitor.SystemMetrics.system_info:type_name -> monitor.SystemInfo
-	1, // 1: monitor.SystemMetrics.cpu:type_name -> monitor.CPUMetrics
-	2, // 2: monitor.SystemMetrics.memory:type_name -> monitor.MemoryMetrics
-	3, // 3: monitor.SystemMetrics.network:type_name -> monitor.NetworkMetrics
-	4, // 4: monitor.SystemMetrics.disks:type_name -> monitor.DiskMetrics
-	5, // 5: monitor.SystemMetrics.docker:type_name -> monitor.DockerStats
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	3, // 0: monitor.NetworkMetrics.interfaces:type_name -> monitor.NetworkInterfaceMetrics
+	0, // 1: monitor.SystemMetrics.system_info:type_name -> monitor.SystemInfo
+	1, // 2: monitor.SystemMetrics.cpu:type_name -> monitor.CPUMetrics
+	2, // 3: monitor.SystemMetrics.memory:type_name -> monitor.MemoryMetrics
+	4, // 4: monitor.SystemMetrics.network:type_name -> monitor.NetworkMetrics
+	5, // 5: monitor.SystemMetrics.disks:type_name -> monitor.DiskMetrics
+	6, // 6: monitor.SystemMetrics.docker:type_name -> monitor.DockerStats
+	7, // [7:7] is the sub-list for method output_type
+	7, // [7:7] is the sub-list for method input_type
+	7, // [7:7] is the sub-list for extension type_name
+	7, // [7:7] is the sub-list for extension extendee
+	0, // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_metrics_proto_init() }
@@ -617,7 +777,7 @@ func file_metrics_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_metrics_proto_rawDesc), len(file_metrics_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

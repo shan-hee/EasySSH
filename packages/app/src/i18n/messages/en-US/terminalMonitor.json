@@ -1,8 +1,6 @@
 {
   "cpuLabel": "CPU",
   "networkLabel": "Network",
-  "tooltipTimeLabel": "Time",
-  "tooltipMetricLabel": "CPU",
   "waitingData": "Waiting for data...",
   "systemInfoTitle": "System info",
   "copyTooltip": "Click to copy: {value}",
@@ -13,10 +11,14 @@
   "labelUptime": "Uptime",
   "memoryLabel": "Memory",
   "diskLabel": "Disk",
-  "downloadLabel": "Download",
-  "uploadLabel": "Upload",
   "diskTooltipTotal": "Total",
   "diskTooltipUsed": "Used",
   "diskTooltipFree": "Free",
-  "memoryTooltipUsed": "Used:"
+  "cpuWaitLabel": "Wait",
+  "cpuIowaitLabel": "IO wait",
+  "cpuStealLabel": "Steal",
+  "memoryAppLabel": "Apps",
+  "memoryCacheLabel": "Cache",
+  "cpuPeakCoreLabel": "Busiest core",
+  "networkTotalLabel": "Total"
 }

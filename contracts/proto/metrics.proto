@@ -17,29 +17,46 @@ message SystemInfo {
 
 // CPU 指标
 message CPUMetrics {
-  double usage_percent = 1;   // CPU 使用率 0-100
+  double usage_percent = 1;   // CPU 使用率 0-100（100 - idle，含 iowait 与 steal）
   uint32 core_count = 2;      // 核心数
+  double iowait_percent = 3;  // 等待磁盘 IO 的占比
+  double steal_percent = 4;   // 被宿主机占用的占比
+  repeated double core_usage_percent = 5; // 每个核心的使用率，按核心编号排序
 }
 
 // 内存指标
 message MemoryMetrics {
-  uint64 ram_used_bytes = 1;  // RAM 已使用字节数
+  uint64 ram_used_bytes = 1;  // RAM 已使用字节数（MemTotal - MemAvailable）
   uint64 ram_total_bytes = 2; // RAM 总字节数
   uint64 swap_used_bytes = 3; // Swap 已使用字节数
   uint64 swap_total_bytes = 4;// Swap 总字节数
+  uint64 ram_cache_bytes = 5; // 可回收的缓存（不计入已使用）
 }
 
-// 网络指标
+// 单个网卡速率
+message NetworkInterfaceMetrics {
+  string name = 1;
+  uint64 bytes_recv_per_sec = 2;
+  uint64 bytes_sent_per_sec = 3;
+}
+
+// 网络指标：只统计物理网卡和默认路由网卡，避免容器网桥、veth 重复计数
 message NetworkMetrics {
   uint64 bytes_recv_per_sec = 1; // 接收速率 字节/秒
   uint64 bytes_sent_per_sec = 2; // 发送速率 字节/秒
+  repeated NetworkInterfaceMetrics interfaces = 3; // 默认路由网卡在前，其余按名称排序
+  string default_interface = 4;  // 默认路由所在网卡
 }
 
-// 单个磁盘指标
+// 单个磁盘指标（同一设备的多个挂载点只保留路径最短的一个）
 message DiskMetrics {
   string mount_point = 1;     // 挂载点 "/" 或 "/home"
   uint64 used_bytes = 2;      // 已使用字节数
   uint64 total_bytes = 3;     // 总字节数
+  string device = 4;          // 设备 "/dev/sda1"
+  string fs_type = 5;         // 文件系统类型 "ext4"
+  uint64 inodes_used = 6;     // 已用 inode，文件系统不支持时为 0
+  uint64 inodes_total = 7;    // inode 总数
 }
 
 // Docker 容器统计（轻量级，仅用于工具栏显示）

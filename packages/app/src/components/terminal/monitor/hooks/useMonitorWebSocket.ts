@@ -3,10 +3,7 @@ import type {
   WorkspaceMonitorApi,
   WorkspaceMonitorMetrics,
 } from '@/lib/session/workspace'
-import {
-  useMonitorStore,
-  type MonitorMetrics as StoreMonitorMetrics,
-} from '@/stores/monitor-store'
+import { useMonitorStore } from '@/stores/monitor-store'
 import { acquireMonitorTransport } from './monitor-transport'
 
 export type MonitorMetrics = WorkspaceMonitorMetrics
@@ -19,37 +16,6 @@ interface UseMonitorWebSocketOptions {
 }
 
 const METRICS_HISTORY_LIMIT = 20
-
-const toHookMetrics = (metrics: StoreMonitorMetrics): MonitorMetrics => ({
-  systemInfo: {
-    os: metrics.systemInfo.os,
-    hostname: metrics.systemInfo.hostname,
-    cpuModel: metrics.systemInfo.cpuModel,
-    arch: metrics.systemInfo.arch,
-    loadAvg: metrics.systemInfo.loadAvg,
-    uptimeSeconds: metrics.systemInfo.uptimeSeconds,
-    cpuCores: metrics.systemInfo.cpuCores,
-  },
-  cpu: {
-    usagePercent: metrics.cpu.usage,
-    coreCount: metrics.cpu.cores,
-  },
-  memory: {
-    ramUsedBytes: metrics.memory.used,
-    ramTotalBytes: metrics.memory.total,
-    swapUsedBytes: metrics.memory.swapUsed,
-    swapTotalBytes: metrics.memory.swapTotal,
-  },
-  network: {
-    bytesRecvPerSec: metrics.network.bytesIn,
-    bytesSentPerSec: metrics.network.bytesOut,
-  },
-  disks: metrics.disks,
-  diskTotalPercent: metrics.disk.usagePercent,
-  sshLatencyMs: metrics.sshLatencyMs,
-  timestamp: metrics.timestamp,
-  docker: metrics.docker,
-})
 
 const appendMetricSample = (
   history: MonitorMetrics[],
@@ -64,14 +30,11 @@ const appendMetricSample = (
 }
 
 const getInitialSnapshot = (serverId: string) => {
-  const metrics = serverId
-    ? useMonitorStore.getState().getMetrics(serverId)
-    : undefined
-  const hookMetrics = metrics ? toHookMetrics(metrics) : null
+  const metrics = (serverId ? useMonitorStore.getState().getMetrics(serverId) : undefined) ?? null
 
   return {
-    metrics: hookMetrics,
-    history: hookMetrics ? [hookMetrics] : [],
+    metrics,
+    history: metrics ? [metrics] : [],
   }
 }
 
@@ -107,8 +70,7 @@ export function useMonitorWebSocket({
   useEffect(() => {
     if (!enabled || !serverId) return
 
-    const receiveMetrics = (nextStoreMetrics: StoreMonitorMetrics) => {
-      const nextMetrics = toHookMetrics(nextStoreMetrics)
+    const receiveMetrics = (nextMetrics: MonitorMetrics) => {
       setMetrics(nextMetrics)
       metricsHistoryRef.current = appendMetricSample(
         metricsHistoryRef.current,

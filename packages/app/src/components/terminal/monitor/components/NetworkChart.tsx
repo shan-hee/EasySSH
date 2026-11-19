@@ -2,20 +2,21 @@
 import React from 'react';
 import { useTranslation } from "react-i18next"
 import type { EChartsOption } from "echarts";
-import type { MonitorPanelDensity, NetworkData } from '../types/metrics';
+import type { MonitorPanelDensity, NetworkData, NetworkInterfaceData } from '../types/metrics';
 import { EChartsView } from "@/components/ui/echarts-view";
 import { cn } from "@/lib/utils";
-import { useEchartsColors, type ChartConfig } from "@/lib/echarts-theme";
-import { MONITOR_COLORS } from "../constants/colors";
 import { useMonitorChartTheme } from "../hooks/useMonitorChartTheme";
 
 interface NetworkChartProps {
   data: NetworkData[];
-  currentDownload: number;
-  currentUpload: number;
+  current: { download: number; upload: number };
+  interfaces: NetworkInterfaceData[];
+  interfaceHistory: Record<string, NetworkData[]>;
   density?: MonitorPanelDensity;
   chartHeight?: number;
 }
+
+type Speed = { download: number; upload: number };
 
 /**
  * 格式化速率 (自动转换单位)
@@ -27,84 +28,54 @@ function formatSpeed(kbps: number): string {
   return `${kbps.toFixed(0)}KB/s`;
 }
 
-/**
- * 图表配置（颜色由主题提供，标签使用 i18n）
- */
-const chartConfig = {
-  download: {
-    label: "download",
-    color: MONITOR_COLORS.network.download,
-  },
-  upload: {
-    label: "upload",
-    color: MONITOR_COLORS.network.upload,
-  },
-} satisfies ChartConfig;
+const formatYAxisTick = (value: number): string => {
+  if (value === 0) return '0';
+  if (value >= 1024) return `${(value / 1024).toFixed(0)}M`;
+  return `${value}K`;
+};
 
-/**
- * 网络流量图表组件
- * 使用 ECharts 双折线图显示上行和下行流量
- * 图表高度由监控面板密度控制
- */
-const MiniNetworkChart: React.FC<Pick<
-  NetworkChartProps,
-  "currentDownload" | "currentUpload"
->> = ({ currentDownload, currentUpload }) => {
-  const { t } = useTranslation("terminalMonitor");
-  const colors = useEchartsColors(chartConfig);
+// 只有一张网卡时标题直接用网卡名，多张时标题用"网络"、数值为合计。
+const titleOf = (interfaces: NetworkInterfaceData[], fallback: string) =>
+  interfaces.length === 1 ? interfaces[0].name : fallback;
+
+const Speeds: React.FC<{ speed: Speed; className?: string }> = ({ speed, className }) => {
   const chartTheme = useMonitorChartTheme();
-  const downloadColor = colors.download || chartTheme.download;
-  const uploadColor = colors.upload || chartTheme.upload;
-
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between items-center h-6">
-        <span className="text-xs font-semibold">{t("networkLabel")}</span>
-      </div>
-      <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono tabular-nums">
-        <div className="min-w-0 rounded bg-muted/45 px-2 py-1" style={{ color: downloadColor }}>
-          <span className="truncate">↓ {formatSpeed(currentDownload)}</span>
-        </div>
-        <div className="min-w-0 rounded bg-muted/45 px-2 py-1" style={{ color: uploadColor }}>
-          <span className="truncate">↑ {formatSpeed(currentUpload)}</span>
-        </div>
-      </div>
+    <div className={cn("flex items-center gap-2 font-mono font-semibold tabular-nums", className)}>
+      <span style={{ color: chartTheme.download }}>↓ {formatSpeed(speed.download)}</span>
+      <span style={{ color: chartTheme.upload }}>↑ {formatSpeed(speed.upload)}</span>
     </div>
   );
 };
 
+const MiniNetworkChart: React.FC<Pick<NetworkChartProps, "interfaces" | "current">> = ({ interfaces, current }) => {
+  const { t } = useTranslation("terminalMonitor");
+
+  return (
+    <div className="flex justify-between items-center h-6 gap-2">
+      <span className="min-w-0 truncate text-xs font-semibold">{titleOf(interfaces, t("networkLabel"))}</span>
+      <Speeds speed={current} className="text-[11px]" />
+    </div>
+  );
+};
+
+/**
+ * 合计流量面积图（下行、上行各一层）；悬浮列出该时刻每张网卡的流量
+ */
 const FullNetworkChart: React.FC<NetworkChartProps> = ({
   data,
-  currentDownload,
-  currentUpload,
+  current,
+  interfaces,
+  interfaceHistory,
   density = "full",
   chartHeight,
 }) => {
   const { t } = useTranslation("terminalMonitor");
-  // 转换数据格式为图表需要的格式
-  const chartData = React.useMemo(
-    () =>
-      data.map((item) => ({
-        time: item.time.slice(3, 8), // 只显示时间部分
-        download: item.download,
-        upload: item.upload,
-      })),
-    [data]
-  );
-
-  const colors = useEchartsColors(chartConfig);
   const chartTheme = useMonitorChartTheme();
-  const downloadColor = colors.download || chartTheme.download;
-  const uploadColor = colors.upload || chartTheme.upload;
-  const resolvedChartHeight = chartHeight ?? (density === "compact" ? 72 : 106);
-
-  // 计算Y轴的最大值用于显示刻度
-  // 找出实际数据的最大值
-  const dataMax = chartData.length > 0
-    ? Math.max(...chartData.map(d => Math.max(d.download, d.upload)))
-    : 0;
+  const resolvedChartHeight = chartHeight ?? (density === "compact" ? 64 : 96);
 
   // 为 Y 轴添加一些上方留白（增加 20%），最小值为 1（避免除零）
+  const dataMax = data.length > 0 ? Math.max(...data.map((d) => Math.max(d.download, d.upload))) : 0;
   const targetMaxValue = Math.max(Math.ceil(dataMax * 1.2), 1);
   const [maxValue, setMaxValue] = React.useState(targetMaxValue);
 
@@ -112,102 +83,64 @@ const FullNetworkChart: React.FC<NetworkChartProps> = ({
   React.useEffect(() => {
     setMaxValue((prev) => {
       if (targetMaxValue >= prev) return targetMaxValue;
-      const next = Math.max(
-        targetMaxValue,
-        prev - Math.max(1, Math.ceil((prev - targetMaxValue) * 0.25))
-      );
-      return next;
+      return Math.max(targetMaxValue, prev - Math.max(1, Math.ceil((prev - targetMaxValue) * 0.25)));
     });
   }, [targetMaxValue, data]);
 
-  const yAxisTicks = [
-    0,
-    Math.round(maxValue * 0.33),
-    Math.round(maxValue * 0.66),
-    Math.round(maxValue)
-  ];
-
-  // 格式化 Y 轴刻度标签
-  const formatYAxisTick = (value: number): string => {
-    if (value === 0) return '0';
-    if (value >= 1024) return `${(value / 1024).toFixed(0)}M`;
-    return `${value}K`;
-  };
+  const yAxisTicks = [0, Math.round(maxValue * 0.33), Math.round(maxValue * 0.66), Math.round(maxValue)];
 
   const option: EChartsOption = React.useMemo(() => {
-    const times = chartData.map((item) => item.time);
-    const downloadValues = chartData.map((item) => item.download);
-    const uploadValues = chartData.map((item) => item.upload);
+    const area = (color: string, values: number[]) => ({
+      type: "line" as const,
+      smooth: true,
+      smoothMonotone: "x" as const,
+      showSymbol: false,
+      lineStyle: { width: 1.5, color },
+      areaStyle: { opacity: 0.22, color },
+      emphasis: { disabled: true },
+      data: values,
+    });
+    const speedCell = (value: number, color: string, arrow: string) =>
+      `<span style="color:${color};font-family:var(--font-jetbrains-mono),ui-monospace;font-weight:600;text-align:right;">${arrow} ${formatSpeed(value)}</span>`;
+    const row = (label: string, speed: Speed, strong = false) => `
+      <span style="${strong ? "font-weight:600;" : ""}">${label}</span>
+      ${speedCell(speed.download, chartTheme.download, "↓")}
+      ${speedCell(speed.upload, chartTheme.upload, "↑")}`;
 
     return {
-      color: [downloadColor, uploadColor],
       animation: true,
       animationDuration: 220,
       animationEasing: "cubicOut",
-      // 快速变化数据使用更快的动画
       animationDurationUpdate: 150,
       animationEasingUpdate: "cubicOut",
-      grid: {
-        left: 28,
-        right: 8,
-        top: 8,
-        bottom: 16,
-      },
-      legend: {
-        show: false,
-      },
+      grid: { left: 28, right: 8, top: 8, bottom: 16 },
       tooltip: {
         trigger: "axis",
-        axisPointer: {
-          // 恢复为简单的直线指示，不使用十字准星
-          type: "line",
-        },
+        axisPointer: { type: "line", animation: false },
         borderRadius: 6,
         padding: 8,
         backgroundColor: chartTheme.tooltipBackground,
         borderColor: chartTheme.tooltipBorder,
         borderWidth: 1,
-        textStyle: {
-          fontSize: 11,
-          color: chartTheme.tooltipText,
-        },
+        textStyle: { fontSize: 11, color: chartTheme.tooltipText },
         formatter: (params) => {
-          const list = (Array.isArray(params) ? params : [params]) as Array<{
-            axisValue?: string;
-            data?: number | { value?: number };
-            seriesName?: string;
-            color?: string;
-            value?: number;
-          }>;
-          const label = list[0]?.axisValue ?? "";
-          const lines = list
-            .map((p) => {
-              const value =
-                typeof p.data === "number"
-                  ? p.data
-                  : typeof p.value === "number"
-                  ? p.value
-                  : p.data?.value ?? 0;
-              const name =
-                p.seriesName === "download"
-                  ? t("downloadLabel")
-                  : t("uploadLabel");
-              const color = p.color || (p.seriesName === "download" ? downloadColor : uploadColor);
-              return `
-                <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
-                  <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:${color};"></span>
-                  <span>${name}:</span>
-                  <span style="font-family:var(--font-jetbrains-mono),ui-monospace;font-weight:600;">
-                    ${formatSpeed(value)}
-                  </span>
-                </div>
-              `;
-            })
-            .join("");
+          const first = (Array.isArray(params) ? params[0] : params) as { dataIndex?: number } | undefined;
+          const point = first?.dataIndex === undefined ? undefined : data[first.dataIndex];
+          if (!point) return "";
+          // 按时间戳对齐每张网卡的采样（网卡可能晚于合计出现）
+          const perInterface = interfaces.length > 1
+            ? interfaces
+              .map((iface) => ({ name: iface.name, row: interfaceHistory[iface.name]?.find((item) => item.timestamp === point.timestamp) }))
+              .filter((item): item is { name: string; row: NetworkData } => Boolean(item.row))
+            : [];
           return `
             <div style="font-size:11px;color:${chartTheme.tooltipText};">
-              <div style="margin-bottom:4px;">${t("tooltipTimeLabel")}: ${label}</div>
-              ${lines}
+              <div style="margin-bottom:4px;">${point.time}</div>
+              <div style="display:grid;grid-template-columns:auto auto auto;column-gap:10px;row-gap:2px;">
+                ${perInterface.length > 0
+                  ? row(t("networkTotalLabel"), point, true) + perInterface.map((item) => row(item.name, item.row)).join("")
+                  : row(titleOf(interfaces, t("networkLabel")), point)}
+              </div>
             </div>
           `;
         },
@@ -215,13 +148,10 @@ const FullNetworkChart: React.FC<NetworkChartProps> = ({
       xAxis: {
         type: "category",
         boundaryGap: false,
-        data: times,
+        data: data.map((item) => item.time.slice(3, 8)),
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: {
-          color: chartTheme.axisLabel,
-          fontSize: 10,
-        },
+        axisLabel: { color: chartTheme.axisLabel, fontSize: 10 },
       },
       yAxis: {
         type: "value",
@@ -230,89 +160,23 @@ const FullNetworkChart: React.FC<NetworkChartProps> = ({
         axisLine: { show: false },
         axisTick: { show: false },
         axisLabel: { show: false },
-        splitLine: {
-          show: true,
-          lineStyle: {
-            color: chartTheme.gridLine,
-            type: "dashed",
-          },
-        },
+        splitLine: { show: true, lineStyle: { color: chartTheme.gridLine, type: "dashed" } },
       },
       series: [
-        {
-          name: t("downloadLabel"),
-          type: "line",
-          smooth: true,
-          smoothMonotone: "x",
-          showSymbol: false,
-          symbol: "circle",
-          symbolSize: 3,
-          lineStyle: {
-            width: 2.2,
-            color: downloadColor,
-          },
-          // 悬浮时仅在当前点显示小圆点，线条保持原有颜色
-          emphasis: {
-            focus: "none",
-            scale: false,
-            lineStyle: {
-              width: 2.2,
-              color: downloadColor,
-            },
-            itemStyle: {
-              borderWidth: 2,
-              borderColor: downloadColor,
-              // 填充用背景色，形成「空心圆」效果
-              color: chartTheme.pointFill,
-            },
-          },
-          data: downloadValues,
-        },
-        {
-          name: t("uploadLabel"),
-          type: "line",
-          smooth: true,
-          smoothMonotone: "x",
-          showSymbol: false,
-          symbol: "circle",
-          symbolSize: 3,
-          lineStyle: {
-            width: 2.2,
-            color: uploadColor,
-          },
-          emphasis: {
-            focus: "none",
-            scale: false,
-            lineStyle: {
-              width: 2.2,
-              color: uploadColor,
-            },
-            itemStyle: {
-              borderWidth: 2,
-              borderColor: uploadColor,
-              color: chartTheme.pointFill,
-            },
-          },
-          data: uploadValues,
-        },
+        area(chartTheme.download, data.map((item) => item.download)),
+        area(chartTheme.upload, data.map((item) => item.upload)),
       ],
     };
-  }, [chartData, downloadColor, uploadColor, maxValue, t, chartTheme]);
+  }, [data, interfaces, interfaceHistory, maxValue, t, chartTheme]);
 
   return (
     <div className="space-y-1">
-      {/* 标题栏 - 高度 28px */}
-      <div className={cn("flex justify-between items-center", density === "compact" ? "h-6" : "h-7")}>
-        <span className="text-xs font-semibold">{t("networkLabel")}</span>
-        <div className="text-xs font-mono font-semibold tabular-nums flex items-center gap-2">
-          <span style={{ color: downloadColor }}>↓ {formatSpeed(currentDownload)}</span>
-          <span style={{ color: uploadColor }}>↑ {formatSpeed(currentUpload)}</span>
-        </div>
+      <div className={cn("flex items-center justify-between gap-2", density === "full" ? "h-7" : "h-6")}>
+        <span className="min-w-0 truncate text-xs font-semibold">{titleOf(interfaces, t("networkLabel"))}</span>
+        <Speeds speed={current} className="text-xs" />
       </div>
 
-      {/* 图表区域 - 高度由监控面板密度控制 */}
       <div className="w-full relative" style={{ height: resolvedChartHeight }}>
-        {/* 内嵌 Y 轴标签 */}
         <div className="absolute left-1 top-2 bottom-4 flex flex-col justify-between text-[9px] text-muted-foreground/70 pointer-events-none z-10">
           {[...yAxisTicks].reverse().map((value, idx) => (
             <span key={idx} className="leading-none">
@@ -321,18 +185,12 @@ const FullNetworkChart: React.FC<NetworkChartProps> = ({
           ))}
         </div>
 
-        {/* 当数据为空时显示提示 */}
-        {chartData.length === 0 ? (
+        {data.length === 0 ? (
           <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
             {t("waitingData")}
           </div>
         ) : (
-          <EChartsView
-            className="h-full w-full"
-            option={option}
-            notMerge={false}
-            lazyUpdate
-          />
+          <EChartsView className="h-full w-full" option={option} notMerge={false} lazyUpdate />
         )}
       </div>
     </div>
@@ -341,12 +199,7 @@ const FullNetworkChart: React.FC<NetworkChartProps> = ({
 
 export const NetworkChart: React.FC<NetworkChartProps> = React.memo((props) => (
   props.density === "mini"
-    ? (
-      <MiniNetworkChart
-        currentDownload={props.currentDownload}
-        currentUpload={props.currentUpload}
-      />
-    )
+    ? <MiniNetworkChart interfaces={props.interfaces} current={props.current} />
     : <FullNetworkChart {...props} />
 ));
 

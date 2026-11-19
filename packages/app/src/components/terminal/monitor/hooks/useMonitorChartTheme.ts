@@ -6,11 +6,14 @@ import { colorToHex, hexToRgb } from "@/lib/color-utils";
 
 type MonitorChartTheme = {
   cpu: string;
+  cpuWait: string;
+  cpuOther: string;
   ram: string;
+  ramCache: string;
   swap: string;
   download: string;
   upload: string;
-  diskPalette: string[];
+  disk: string;
   freeSegment: string;
   freeSegmentStrong: string;
   axisLabel: string;
@@ -25,12 +28,15 @@ type MonitorChartTheme = {
 };
 
 const DEFAULT_MONITOR_CHART_THEME: MonitorChartTheme = {
-  cpu: "#3f6ee8",
+  cpu: "#9b5de5",
+  cpuWait: "#d9467a",
+  cpuOther: "rgba(100, 116, 139, 0.45)",
   ram: "#d8891f",
+  ramCache: "rgba(216, 137, 31, 0.4)",
   swap: "#d9467a",
   download: "#3f6ee8",
   upload: "#24966c",
-  diskPalette: ["#24966c", "#9b5de5", "#3f6ee8", "#d8891f", "#d9467a"],
+  disk: "#24966c",
   freeSegment: "rgba(100, 116, 139, 0.18)",
   freeSegmentStrong: "rgba(100, 116, 139, 0.24)",
   axisLabel: "rgba(100, 116, 139, 0.9)",
@@ -64,20 +70,18 @@ function readMonitorChartTheme(): MonitorChartTheme {
   const popover = cssColor(style, "--popover", DEFAULT_MONITOR_CHART_THEME.tooltipBackground);
   const popoverForeground = cssColor(style, "--popover-foreground", DEFAULT_MONITOR_CHART_THEME.tooltipText);
   const mutedForeground = cssColor(style, "--muted-foreground", "#64748b");
+  const ram = cssColor(style, "--chart-3", DEFAULT_MONITOR_CHART_THEME.ram);
 
   return {
-    cpu: cssColor(style, "--chart-1", DEFAULT_MONITOR_CHART_THEME.cpu),
-    ram: cssColor(style, "--chart-3", DEFAULT_MONITOR_CHART_THEME.ram),
+    cpu: cssColor(style, "--chart-4", DEFAULT_MONITOR_CHART_THEME.cpu),
+    cpuWait: cssColor(style, "--chart-5", DEFAULT_MONITOR_CHART_THEME.cpuWait),
+    cpuOther: alpha(mutedForeground, 0.45),
+    ram,
+    ramCache: alpha(ram, 0.4),
     swap: cssColor(style, "--chart-5", DEFAULT_MONITOR_CHART_THEME.swap),
     download: cssColor(style, "--chart-1", DEFAULT_MONITOR_CHART_THEME.download),
     upload: cssColor(style, "--chart-2", DEFAULT_MONITOR_CHART_THEME.upload),
-    diskPalette: [
-      cssColor(style, "--chart-2", DEFAULT_MONITOR_CHART_THEME.diskPalette[0]),
-      cssColor(style, "--chart-4", DEFAULT_MONITOR_CHART_THEME.diskPalette[1]),
-      cssColor(style, "--chart-1", DEFAULT_MONITOR_CHART_THEME.diskPalette[2]),
-      cssColor(style, "--chart-3", DEFAULT_MONITOR_CHART_THEME.diskPalette[3]),
-      cssColor(style, "--chart-5", DEFAULT_MONITOR_CHART_THEME.diskPalette[4]),
-    ],
+    disk: cssColor(style, "--chart-2", DEFAULT_MONITOR_CHART_THEME.disk),
     freeSegment: alpha(mutedForeground, 0.18),
     freeSegmentStrong: alpha(mutedForeground, 0.24),
     axisLabel: alpha(mutedForeground, 0.9),

@@ -144,6 +144,15 @@ export namespace monitor {
 
         /** CPUMetrics coreCount */
         coreCount?: (number|null);
+
+        /** CPUMetrics iowaitPercent */
+        iowaitPercent?: (number|null);
+
+        /** CPUMetrics stealPercent */
+        stealPercent?: (number|null);
+
+        /** CPUMetrics coreUsagePercent */
+        coreUsagePercent?: (number[]|null);
     }
 
     /** Represents a CPUMetrics. */
@@ -160,6 +169,15 @@ export namespace monitor {
 
         /** CPUMetrics coreCount. */
         public coreCount: number;
+
+        /** CPUMetrics iowaitPercent. */
+        public iowaitPercent: number;
+
+        /** CPUMetrics stealPercent. */
+        public stealPercent: number;
+
+        /** CPUMetrics coreUsagePercent. */
+        public coreUsagePercent: number[];
 
         /**
          * Creates a new CPUMetrics instance using the specified properties.
@@ -253,6 +271,9 @@ export namespace monitor {
 
         /** MemoryMetrics swapTotalBytes */
         swapTotalBytes?: (number|Long|null);
+
+        /** MemoryMetrics ramCacheBytes */
+        ramCacheBytes?: (number|Long|null);
     }
 
     /** Represents a MemoryMetrics. */
@@ -275,6 +296,9 @@ export namespace monitor {
 
         /** MemoryMetrics swapTotalBytes. */
         public swapTotalBytes: (number|Long);
+
+        /** MemoryMetrics ramCacheBytes. */
+        public ramCacheBytes: (number|Long);
 
         /**
          * Creates a new MemoryMetrics instance using the specified properties.
@@ -354,6 +378,115 @@ export namespace monitor {
         public static getTypeUrl(typeUrlPrefix?: string): string;
     }
 
+    /** Properties of a NetworkInterfaceMetrics. */
+    interface INetworkInterfaceMetrics {
+
+        /** NetworkInterfaceMetrics name */
+        name?: (string|null);
+
+        /** NetworkInterfaceMetrics bytesRecvPerSec */
+        bytesRecvPerSec?: (number|Long|null);
+
+        /** NetworkInterfaceMetrics bytesSentPerSec */
+        bytesSentPerSec?: (number|Long|null);
+    }
+
+    /** Represents a NetworkInterfaceMetrics. */
+    class NetworkInterfaceMetrics implements INetworkInterfaceMetrics {
+
+        /**
+         * Constructs a new NetworkInterfaceMetrics.
+         * @param [properties] Properties to set
+         */
+        constructor(properties?: monitor.INetworkInterfaceMetrics);
+
+        /** NetworkInterfaceMetrics name. */
+        public name: string;
+
+        /** NetworkInterfaceMetrics bytesRecvPerSec. */
+        public bytesRecvPerSec: (number|Long);
+
+        /** NetworkInterfaceMetrics bytesSentPerSec. */
+        public bytesSentPerSec: (number|Long);
+
+        /**
+         * Creates a new NetworkInterfaceMetrics instance using the specified properties.
+         * @param [properties] Properties to set
+         * @returns NetworkInterfaceMetrics instance
+         */
+        public static create(properties?: monitor.INetworkInterfaceMetrics): monitor.NetworkInterfaceMetrics;
+
+        /**
+         * Encodes the specified NetworkInterfaceMetrics message. Does not implicitly {@link monitor.NetworkInterfaceMetrics.verify|verify} messages.
+         * @param message NetworkInterfaceMetrics message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encode(message: monitor.INetworkInterfaceMetrics, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Encodes the specified NetworkInterfaceMetrics message, length delimited. Does not implicitly {@link monitor.NetworkInterfaceMetrics.verify|verify} messages.
+         * @param message NetworkInterfaceMetrics message or plain object to encode
+         * @param [writer] Writer to encode to
+         * @returns Writer
+         */
+        public static encodeDelimited(message: monitor.INetworkInterfaceMetrics, writer?: $protobuf.Writer): $protobuf.Writer;
+
+        /**
+         * Decodes a NetworkInterfaceMetrics message from the specified reader or buffer.
+         * @param reader Reader or buffer to decode from
+         * @param [length] Message length if known beforehand
+         * @returns NetworkInterfaceMetrics
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decode(reader: ($protobuf.Reader|Uint8Array), length?: number): monitor.NetworkInterfaceMetrics;
+
+        /**
+         * Decodes a NetworkInterfaceMetrics message from the specified reader or buffer, length delimited.
+         * @param reader Reader or buffer to decode from
+         * @returns NetworkInterfaceMetrics
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        public static decodeDelimited(reader: ($protobuf.Reader|Uint8Array)): monitor.NetworkInterfaceMetrics;
+
+        /**
+         * Verifies a NetworkInterfaceMetrics message.
+         * @param message Plain object to verify
+         * @returns `null` if valid, otherwise the reason why it is not
+         */
+        public static verify(message: { [k: string]: any }): (string|null);
+
+        /**
+         * Creates a NetworkInterfaceMetrics message from a plain object. Also converts values to their respective internal types.
+         * @param object Plain object
+         * @returns NetworkInterfaceMetrics
+         */
+        public static fromObject(object: { [k: string]: any }): monitor.NetworkInterfaceMetrics;
+
+        /**
+         * Creates a plain object from a NetworkInterfaceMetrics message. Also converts values to other types if specified.
+         * @param message NetworkInterfaceMetrics
+         * @param [options] Conversion options
+         * @returns Plain object
+         */
+        public static toObject(message: monitor.NetworkInterfaceMetrics, options?: $protobuf.IConversionOptions): { [k: string]: any };
+
+        /**
+         * Converts this NetworkInterfaceMetrics to JSON.
+         * @returns JSON object
+         */
+        public toJSON(): { [k: string]: any };
+
+        /**
+         * Gets the default type url for NetworkInterfaceMetrics
+         * @param [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns The default type url
+         */
+        public static getTypeUrl(typeUrlPrefix?: string): string;
+    }
+
     /** Properties of a NetworkMetrics. */
     interface INetworkMetrics {
 
@@ -362,6 +495,12 @@ export namespace monitor {
 
         /** NetworkMetrics bytesSentPerSec */
         bytesSentPerSec?: (number|Long|null);
+
+        /** NetworkMetrics interfaces */
+        interfaces?: (monitor.INetworkInterfaceMetrics[]|null);
+
+        /** NetworkMetrics defaultInterface */
+        defaultInterface?: (string|null);
     }
 
     /** Represents a NetworkMetrics. */
@@ -378,6 +517,12 @@ export namespace monitor {
 
         /** NetworkMetrics bytesSentPerSec. */
         public bytesSentPerSec: (number|Long);
+
+        /** NetworkMetrics interfaces. */
+        public interfaces: monitor.INetworkInterfaceMetrics[];
+
+        /** NetworkMetrics defaultInterface. */
+        public defaultInterface: string;
 
         /**
          * Creates a new NetworkMetrics instance using the specified properties.
@@ -468,6 +613,18 @@ export namespace monitor {
 
         /** DiskMetrics totalBytes */
         totalBytes?: (number|Long|null);
+
+        /** DiskMetrics device */
+        device?: (string|null);
+
+        /** DiskMetrics fsType */
+        fsType?: (string|null);
+
+        /** DiskMetrics inodesUsed */
+        inodesUsed?: (number|Long|null);
+
+        /** DiskMetrics inodesTotal */
+        inodesTotal?: (number|Long|null);
     }
 
     /** Represents a DiskMetrics. */
@@ -487,6 +644,18 @@ export namespace monitor {
 
         /** DiskMetrics totalBytes. */
         public totalBytes: (number|Long);
+
+        /** DiskMetrics device. */
+        public device: string;
+
+        /** DiskMetrics fsType. */
+        public fsType: string;
+
+        /** DiskMetrics inodesUsed. */
+        public inodesUsed: (number|Long);
+
+        /** DiskMetrics inodesTotal. */
+        public inodesTotal: (number|Long);
 
         /**
          * Creates a new DiskMetrics instance using the specified properties.

@@ -1,8 +1,6 @@
 {
   "cpuLabel": "CPU",
   "networkLabel": "网络",
-  "tooltipTimeLabel": "时间",
-  "tooltipMetricLabel": "CPU",
   "waitingData": "等待数据...",
   "systemInfoTitle": "系统信息",
   "copyTooltip": "点击复制: {value}",
@@ -13,10 +11,14 @@
   "labelUptime": "运行",
   "memoryLabel": "内存",
   "diskLabel": "磁盘",
-  "downloadLabel": "下载",
-  "uploadLabel": "上传",
   "diskTooltipTotal": "总容量",
   "diskTooltipUsed": "已使用",
   "diskTooltipFree": "剩余",
-  "memoryTooltipUsed": "已用:"
+  "cpuWaitLabel": "等待",
+  "cpuIowaitLabel": "IO 等待",
+  "cpuStealLabel": "宿主占用",
+  "memoryAppLabel": "应用",
+  "memoryCacheLabel": "缓存",
+  "cpuPeakCoreLabel": "最高的核心",
+  "networkTotalLabel": "合计"
 }

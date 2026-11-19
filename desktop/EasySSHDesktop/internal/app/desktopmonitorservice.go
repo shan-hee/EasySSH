@@ -66,6 +66,12 @@ type DesktopMonitorSnapshot struct {
 	SSHLatency  int64                     `json:"sshLatencyMs"`
 	Timestamp   int64                     `json:"timestamp"`
 	CollectedAt string                    `json:"collectedAt"`
+}
+
+// desktopMonitorSample 是一次采集的原始结果；网关用它配合 monitoring.Sampler 计算速率。
+type desktopMonitorSample struct {
+	metrics     monitoring.MetricsSnapshot
+	latencyMs   int64
 	collectedAt time.Time
 }
 
@@ -85,13 +91,21 @@ func (s *DesktopMonitorService) Collect(input DesktopMonitorCollectInput) (Deskt
 }
 
 func (s *DesktopMonitorService) CollectContext(ctx context.Context, input DesktopMonitorCollectInput) (DesktopMonitorSnapshot, error) {
+	sample, err := s.collect(ctx, input)
+	if err != nil {
+		return DesktopMonitorSnapshot{}, err
+	}
+	return newDesktopMonitorSnapshot(sample), nil
+}
+
+func (s *DesktopMonitorService) collect(ctx context.Context, input DesktopMonitorCollectInput) (desktopMonitorSample, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
 	serverID := strings.TrimSpace(input.ServerID)
 	if serverID == "" {
-		return DesktopMonitorSnapshot{}, errors.New("server id is required")
+		return desktopMonitorSample{}, errors.New("server id is required")
 	}
 
 	timeoutMs := input.TimeoutMs
@@ -104,18 +118,18 @@ func (s *DesktopMonitorService) CollectContext(ctx context.Context, input Deskto
 
 	ctx, finish, err := s.beginOperation(ctx)
 	if err != nil {
-		return DesktopMonitorSnapshot{}, err
+		return desktopMonitorSample{}, err
 	}
 	defer finish()
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
 	defer cancel()
 	server, err := s.serverService.getByIDRaw(serverID)
 	if err != nil {
-		return DesktopMonitorSnapshot{}, err
+		return desktopMonitorSample{}, err
 	}
 	client, release, err := s.acquireConnection(ctx, server)
 	if err != nil {
-		return DesktopMonitorSnapshot{}, err
+		return desktopMonitorSample{}, err
 	}
 	defer release()
 	command := monitoring.BuildMetricsScript(monitoring.MetricsScriptOptions{
@@ -125,30 +139,22 @@ func (s *DesktopMonitorService) CollectContext(ctx context.Context, input Deskto
 	started := time.Now()
 	output, err := sshutil.CommandOutput(ctx, client, command, 128<<10)
 	if err != nil {
-		return DesktopMonitorSnapshot{}, err
+		return desktopMonitorSample{}, err
 	}
-	snapshot, err := parseDesktopMonitorSnapshot(string(output))
-	if err != nil {
-		return DesktopMonitorSnapshot{}, err
+	sample := desktopMonitorSample{
+		metrics:     monitoring.ParseMetricsOutput(string(output)),
+		latencyMs:   time.Since(started).Milliseconds(),
+		collectedAt: time.Now().UTC(),
 	}
-
-	completedAt := time.Now().UTC()
-	snapshot.SSHLatency = time.Since(started).Milliseconds()
-	snapshot.Timestamp = completedAt.Unix()
-	snapshot.CollectedAt = completedAt.Format(time.RFC3339Nano)
-	snapshot.collectedAt = completedAt
-	if snapshot.Disks == nil {
-		snapshot.Disks = []DesktopMonitorDiskInfo{}
-	}
-	if err := s.serverService.updateOSIfEmpty(serverID, snapshot.SystemInfo.OS); err != nil {
+	if err := s.serverService.updateOSIfEmpty(serverID, sample.metrics.SystemInfo.OS); err != nil {
 		desktopLogPrintf("failed to update desktop server OS from monitor: %v", err)
 	}
 
-	return snapshot, nil
+	return sample, nil
 }
 
-func parseDesktopMonitorSnapshot(output string) (DesktopMonitorSnapshot, error) {
-	metrics := monitoring.ParseMetricsOutput(output)
+func newDesktopMonitorSnapshot(sample desktopMonitorSample) DesktopMonitorSnapshot {
+	metrics := sample.metrics
 
 	disks := make([]DesktopMonitorDiskInfo, 0, len(metrics.Disks))
 	for _, disk := range metrics.Disks {
@@ -170,7 +176,8 @@ func parseDesktopMonitorSnapshot(output string) (DesktopMonitorSnapshot, error) 
 			CPUCores:      int(metrics.SystemInfo.CPUCores),
 		},
 		CPU: DesktopMonitorCPUInfo{
-			IdleTicks:  metrics.CPU.IdleTotal(),
+			// 与 monitoring.Sampler 一致：使用率 = 100 - idle，iowait 计入使用。
+			IdleTicks:  metrics.CPU.Idle,
 			TotalTicks: metrics.CPU.Total(),
 			CoreCount:  int(metrics.SystemInfo.CPUCores),
 		},
@@ -190,5 +197,8 @@ func parseDesktopMonitorSnapshot(output string) (DesktopMonitorSnapshot, error) 
 			ContainersTotal:   int(metrics.Docker.ContainersTotal),
 			DockerInstalled:   metrics.Docker.DockerInstalled,
 		},
-	}, nil
+		SSHLatency:  sample.latencyMs,
+		Timestamp:   sample.collectedAt.Unix(),
+		CollectedAt: sample.collectedAt.Format(time.RFC3339Nano),
+	}
 }

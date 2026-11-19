@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/easyssh/shared/monitoring"
 	"github.com/easyssh/shared/sftputil"
 	"github.com/easyssh/shared/sshutil"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -722,10 +723,10 @@ func (g *DesktopGateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	var previousSnapshot *DesktopMonitorSnapshot
+	var sampler monitoring.Sampler
 	sendSnapshot := func() {
 		timeout := maxInt(15000, int(interval.Milliseconds())+10000)
-		snapshot, err := g.monitor.CollectContext(ctx, DesktopMonitorCollectInput{
+		sample, err := g.monitor.collect(ctx, DesktopMonitorCollectInput{
 			ServerID:  serverID,
 			TimeoutMs: timeout,
 		})
@@ -734,14 +735,12 @@ func (g *DesktopGateway) handleMonitor(w http.ResponseWriter, r *http.Request) {
 				Message: err.Error()})
 			return
 		}
-		metrics, err := encodeDesktopMonitorSnapshotProto(snapshot, previousSnapshot)
+		metrics, err := encodeDesktopMonitorProto(sample, &sampler)
 		if err != nil {
 			_ = writeJSON(protocol.MonitorError{Type: string(protocol.MonitorServerMessageTypeError),
 				Message: err.Error()})
 			return
 		}
-		snapshotCopy := snapshot
-		previousSnapshot = &snapshotCopy
 
 		_ = writeBinary(metrics)
 	}
@@ -1511,63 +1510,6 @@ func (r *desktopGatewayTerminalRuntime) requestPrivateKeyPassphrase(ctx context.
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
-}
-
-func calculateDesktopGatewayCPUUsage(snapshot DesktopMonitorSnapshot, previous *DesktopMonitorSnapshot) float64 {
-	if previous == nil {
-		return clampDesktopGatewayPercent(snapshot.CPU.UsagePercent)
-	}
-
-	idleDelta := float64(snapshot.CPU.IdleTicks) - float64(previous.CPU.IdleTicks)
-	totalDelta := float64(snapshot.CPU.TotalTicks) - float64(previous.CPU.TotalTicks)
-	if totalDelta <= 0 || idleDelta < 0 {
-		return clampDesktopGatewayPercent(snapshot.CPU.UsagePercent)
-	}
-
-	return clampDesktopGatewayPercent((1 - idleDelta/totalDelta) * 100)
-}
-
-type desktopGatewayNetworkRate struct {
-	bytesRecvPerSec uint64
-	bytesSentPerSec uint64
-}
-
-func calculateDesktopGatewayNetworkRate(snapshot DesktopMonitorSnapshot, previous *DesktopMonitorSnapshot) desktopGatewayNetworkRate {
-	if previous == nil {
-		return desktopGatewayNetworkRate{}
-	}
-
-	elapsedSeconds := snapshot.collectedAt.Sub(previous.collectedAt).Seconds()
-	if elapsedSeconds <= 0 {
-		elapsedSeconds = float64(snapshot.Timestamp - previous.Timestamp)
-	}
-	if elapsedSeconds <= 0 {
-		elapsedSeconds = 1
-	}
-
-	recvDelta := safeUint64Delta(snapshot.Network.BytesRecvTotal, previous.Network.BytesRecvTotal)
-	sentDelta := safeUint64Delta(snapshot.Network.BytesSentTotal, previous.Network.BytesSentTotal)
-	return desktopGatewayNetworkRate{
-		bytesRecvPerSec: uint64(float64(recvDelta) / elapsedSeconds),
-		bytesSentPerSec: uint64(float64(sentDelta) / elapsedSeconds),
-	}
-}
-
-func safeUint64Delta(current uint64, previous uint64) uint64 {
-	if current < previous {
-		return 0
-	}
-	return current - previous
-}
-
-func clampDesktopGatewayPercent(value float64) float64 {
-	if value < 0 {
-		return 0
-	}
-	if value > 100 {
-		return 100
-	}
-	return value
 }
 
 func measureDesktopSSHLatency(ctx context.Context, client *ssh.Client) (time.Duration, error) {

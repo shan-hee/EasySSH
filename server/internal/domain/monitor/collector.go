@@ -27,9 +27,7 @@ type Collector struct {
 	cancel           context.CancelFunc
 	serverID         string
 	client           *sshDomain.Client // SSH 客户端（直接使用）
-	prevCPU          *monitoring.CPUStat
-	prevNet          map[string]monitoring.NetStat
-	prevTime         time.Time
+	sampler          monitoring.Sampler
 	sshLatencyMs     int64 // SSH 命令延迟（毫秒）
 	staticSystemInfo *pb.SystemInfo
 	dockerMu         sync.RWMutex
@@ -41,13 +39,7 @@ type Collector struct {
 // NewCollector 创建采集器（使用 SSH Client）
 func NewCollector(ctx context.Context, serverID string, client *sshDomain.Client) *Collector {
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
-	now := time.Now()
-	return &Collector{
-		ctx: ctx, cancel: cancel, serverID: serverID, client: client,
-		prevCPU:  nil,
-		prevNet:  make(map[string]monitoring.NetStat),
-		prevTime: now,
-	}
+	return &Collector{ctx: ctx, cancel: cancel, serverID: serverID, client: client}
 }
 
 func (c *Collector) Close() { c.cancel() }
@@ -91,16 +83,10 @@ func (c *Collector) Collect() (*pb.SystemMetrics, error) {
 	coreLatencyMs := c.sshLatencyMs
 
 	parsed := monitoring.ParseMetricsOutput(output)
+	now := time.Now()
 
-	metrics := &pb.SystemMetrics{
-		Timestamp: time.Now().Unix(),
-	}
-
-	metrics.Cpu = c.buildCPUMetrics(parsed.CPU)
-	metrics.Memory = buildMemoryMetrics(parsed.Memory)
-	metrics.Network = c.buildNetworkMetrics(parsed.Network)
-	metrics.Disks = buildDiskMetrics(parsed.Disks)
-	metrics.DiskTotalPercent = c.calculateTotalDiskPercent(metrics.Disks)
+	metrics := c.sampler.Sample(parsed, now)
+	metrics.Timestamp = now.Unix()
 	metrics.SystemInfo = c.buildSystemInfo(parsed.SystemInfo)
 	metrics.Cpu.CoreCount = metrics.SystemInfo.CpuCores
 
@@ -112,83 +98,6 @@ func (c *Collector) Collect() (*pb.SystemMetrics, error) {
 	metrics.SshLatencyMs = coreLatencyMs
 
 	return metrics, nil
-}
-
-func (c *Collector) buildCPUMetrics(curr monitoring.CPUStat) *pb.CPUMetrics {
-	var usage float64
-	if c.prevCPU != nil {
-		usage = c.calculateCPUUsage(c.prevCPU, &curr)
-	}
-
-	c.prevCPU = &curr
-
-	return &pb.CPUMetrics{
-		UsagePercent: usage,
-	}
-}
-
-// calculateCPUUsage 计算 CPU 使用率
-func (c *Collector) calculateCPUUsage(prev, curr *monitoring.CPUStat) float64 {
-	prevTotal := prev.Total()
-	currTotal := curr.Total()
-
-	totalDelta := monitoring.SubtractUint64(currTotal, prevTotal)
-	idleDelta := monitoring.SubtractUint64(curr.IdleTotal(), prev.IdleTotal())
-
-	if totalDelta == 0 {
-		return 0.0
-	}
-
-	return (1.0 - float64(idleDelta)/float64(totalDelta)) * 100.0
-}
-
-func buildMemoryMetrics(memory monitoring.MemoryMetrics) *pb.MemoryMetrics {
-	return &pb.MemoryMetrics{
-		RamUsedBytes:   memory.RAMUsedBytes,
-		RamTotalBytes:  memory.RAMTotalBytes,
-		SwapUsedBytes:  memory.SwapUsedBytes,
-		SwapTotalBytes: memory.SwapTotalBytes,
-	}
-}
-
-func (c *Collector) buildNetworkMetrics(network monitoring.NetworkMetrics) *pb.NetworkMetrics {
-	// 计算总速率
-	var totalRx, totalTx uint64
-	now := time.Now()
-
-	if len(c.prevNet) > 0 {
-		duration := now.Sub(c.prevTime).Seconds()
-
-		for iface, curr := range network.Interfaces {
-			if prev, ok := c.prevNet[iface]; ok && duration > 0 {
-				rxDelta := monitoring.SubtractUint64(curr.RxBytes, prev.RxBytes)
-				txDelta := monitoring.SubtractUint64(curr.TxBytes, prev.TxBytes)
-
-				totalRx += uint64(float64(rxDelta) / duration)
-				totalTx += uint64(float64(txDelta) / duration)
-			}
-		}
-	}
-
-	c.prevNet = network.Interfaces
-	c.prevTime = now
-
-	return &pb.NetworkMetrics{
-		BytesRecvPerSec: totalRx,
-		BytesSentPerSec: totalTx,
-	}
-}
-
-func buildDiskMetrics(disks []monitoring.DiskMetrics) []*pb.DiskMetrics {
-	pbDisks := make([]*pb.DiskMetrics, 0, len(disks))
-	for _, disk := range disks {
-		pbDisks = append(pbDisks, &pb.DiskMetrics{
-			MountPoint: disk.MountPoint,
-			TotalBytes: disk.TotalBytes,
-			UsedBytes:  disk.UsedBytes,
-		})
-	}
-	return pbDisks
 }
 
 func (c *Collector) buildSystemInfo(info monitoring.SystemInfo) *pb.SystemInfo {
@@ -216,25 +125,6 @@ func (c *Collector) buildSystemInfo(info monitoring.SystemInfo) *pb.SystemInfo {
 		UptimeSeconds: info.UptimeSeconds,
 		CpuCores:      staticInfo.CpuCores,
 	}
-}
-
-// calculateTotalDiskPercent 计算磁盘总使用率
-func (c *Collector) calculateTotalDiskPercent(disks []*pb.DiskMetrics) float64 {
-	if len(disks) == 0 {
-		return 0.0
-	}
-
-	var totalUsed, totalSize uint64
-	for _, disk := range disks {
-		totalUsed += disk.UsedBytes
-		totalSize += disk.TotalBytes
-	}
-
-	if totalSize == 0 {
-		return 0.0
-	}
-
-	return (float64(totalUsed) / float64(totalSize)) * 100.0
 }
 
 func (c *Collector) getDockerStats() *pb.DockerStats {

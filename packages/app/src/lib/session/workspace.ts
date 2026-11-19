@@ -191,21 +191,35 @@ export interface WorkspaceMonitorMetrics {
   cpu: {
     usagePercent: number
     coreCount: number
+    iowaitPercent: number
+    stealPercent: number
+    coreUsagePercent: number[]
   }
   memory: {
     ramUsedBytes: number
     ramTotalBytes: number
+    ramCacheBytes: number
     swapUsedBytes: number
     swapTotalBytes: number
   }
   network: {
     bytesRecvPerSec: number
     bytesSentPerSec: number
+    defaultInterface: string
+    interfaces: Array<{
+      name: string
+      bytesRecvPerSec: number
+      bytesSentPerSec: number
+    }>
   }
   disks: Array<{
     mountPoint: string
     usedBytes: number
     totalBytes: number
+    device: string
+    fsType: string
+    inodesUsed: number
+    inodesTotal: number
   }>
   diskTotalPercent: number
   sshLatencyMs: number

@@ -15,31 +15,39 @@ LC_ALL=C
 export LC_ALL
 
 echo "=== CPU ==="
-awk '/^cpu / { print; exit }' /proc/stat
+awk '/^cpu/ { print }' /proc/stat
 
 echo "=== MEMORY ==="
-awk '/^(MemTotal|MemFree|MemAvailable|Buffers|Cached|SwapTotal|SwapFree):/ { print }' /proc/meminfo
+awk '/^(MemTotal|MemFree|MemAvailable|Buffers|Cached|SReclaimable|SwapTotal|SwapFree):/ { print }' /proc/meminfo
 
 echo "=== NETWORK ==="
 awk 'NR > 2 { print }' /proc/net/dev
 
-echo "=== DISK ==="
-df_output=""
-if command -v timeout >/dev/null 2>&1; then
-  df_output=$(timeout 1s df -P -B1 -l --total \
-    -x tmpfs -x devtmpfs -x squashfs -x overlay -x aufs 2>/dev/null | tail -n 1)
-else
-  df_output=$(df -P -B1 -l --total \
-    -x tmpfs -x devtmpfs -x squashfs -x overlay -x aufs 2>/dev/null | tail -n 1)
-fi
-if [ -z "$df_output" ] || [ "$(printf '%s\n' "$df_output" | awk '{ print NF }')" -lt 6 ]; then
+echo "=== NETROUTE ==="
+awk 'NR > 1 && $2 == "00000000" { print $1; exit }' /proc/net/route 2>/dev/null
+
+echo "=== NETVIRT ==="
+ls /sys/devices/virtual/net 2>/dev/null
+
+monitor_df() {
   if command -v timeout >/dev/null 2>&1; then
-    df_output=$(timeout 1s sh -c 'df -kP -l 2>/dev/null || df -kP 2>/dev/null' | awk 'NR > 1 && $2 ~ /^[0-9]+$/ { total += $2; used += $3 } END { if (total > 0) printf "total %.0f %.0f %.0f 0%% -", total * 1024, used * 1024, (total - used) * 1024 }')
+    timeout 1s df "$@" 2>/dev/null
   else
-    df_output=$( (df -kP -l 2>/dev/null || df -kP 2>/dev/null) | awk 'NR > 1 && $2 ~ /^[0-9]+$/ { total += $2; used += $3 } END { if (total > 0) printf "total %.0f %.0f %.0f 0%% -", total * 1024, used * 1024, (total - used) * 1024 }')
+    df "$@" 2>/dev/null
   fi
+}
+
+# 每行：设备 类型 总字节 已用 可用 使用率 挂载点（挂载点可能含空格，放在最后）
+echo "=== DISK ==="
+disk_output=$(monitor_df -P -B1 -T -l -x tmpfs -x devtmpfs -x squashfs -x overlay -x aufs | awk 'NR > 1')
+if [ -z "$disk_output" ]; then
+  disk_output=$( (monitor_df -kP -l || monitor_df -kP) | awk 'NR > 1 && $2 ~ /^[0-9]+$/ { m = $6; for (i = 7; i <= NF; i++) m = m " " $i; printf "%s - %.0f %.0f %.0f %s %s\n", $1, $2 * 1024, $3 * 1024, $4 * 1024, $5, m }')
 fi
-printf '%s\n' "$df_output"
+printf '%s\n' "$disk_output"
+
+# 每行：inode 总数 已用 挂载点
+echo "=== INODE ==="
+monitor_df -P -i -l -x tmpfs -x devtmpfs -x squashfs -x overlay -x aufs | awk 'NR > 1 && $2 ~ /^[0-9]+$/ { m = $6; for (i = 7; i <= NF; i++) m = m " " $i; print $2, $3, m }'
 
 echo "=== LOAD ==="
 cat /proc/loadavg

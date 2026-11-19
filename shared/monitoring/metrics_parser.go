@@ -2,6 +2,7 @@ package monitoring
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -16,22 +17,21 @@ type SystemInfo struct {
 	CPUCores      uint32
 }
 
+// CPUStat 是 /proc/stat 中一行 cpu 的累计节拍。guest 时间已包含在 user/nice 中，不单独累加。
 type CPUStat struct {
-	User      uint64
-	Nice      uint64
-	System    uint64
-	Idle      uint64
-	IOWait    uint64
-	IRQ       uint64
-	SoftIRQ   uint64
-	Steal     uint64
-	Guest     uint64
-	GuestNice uint64
+	User    uint64
+	Nice    uint64
+	System  uint64
+	Idle    uint64
+	IOWait  uint64
+	IRQ     uint64
+	SoftIRQ uint64
+	Steal   uint64
 }
 
 func (c CPUStat) Total() uint64 {
 	return c.User + c.Nice + c.System + c.Idle + c.IOWait +
-		c.IRQ + c.SoftIRQ + c.Steal + c.Guest + c.GuestNice
+		c.IRQ + c.SoftIRQ + c.Steal
 }
 
 func (c CPUStat) IdleTotal() uint64 {
@@ -41,6 +41,7 @@ func (c CPUStat) IdleTotal() uint64 {
 type MemoryMetrics struct {
 	RAMUsedBytes   uint64
 	RAMTotalBytes  uint64
+	RAMCacheBytes  uint64
 	SwapUsedBytes  uint64
 	SwapTotalBytes uint64
 }
@@ -50,16 +51,22 @@ type NetStat struct {
 	TxBytes uint64
 }
 
+// NetworkMetrics 只包含物理网卡和默认路由网卡；容器网桥、veth 等虚拟网卡会重复计数同一份流量。
 type NetworkMetrics struct {
-	Interfaces     map[string]NetStat
-	BytesRecvTotal uint64
-	BytesSentTotal uint64
+	Interfaces       map[string]NetStat
+	DefaultInterface string
+	BytesRecvTotal   uint64
+	BytesSentTotal   uint64
 }
 
 type DiskMetrics struct {
-	MountPoint string
-	UsedBytes  uint64
-	TotalBytes uint64
+	MountPoint  string
+	Device      string
+	FSType      string
+	UsedBytes   uint64
+	TotalBytes  uint64
+	InodesUsed  uint64
+	InodesTotal uint64
 }
 
 type DockerStats struct {
@@ -71,6 +78,7 @@ type DockerStats struct {
 type MetricsSnapshot struct {
 	SystemInfo SystemInfo
 	CPU        CPUStat
+	CPUCores   []CPUStat
 	Memory     MemoryMetrics
 	Network    NetworkMetrics
 	Disks      []DiskMetrics
@@ -79,13 +87,15 @@ type MetricsSnapshot struct {
 
 func ParseMetricsOutput(output string) MetricsSnapshot {
 	sections := parseSections(output)
+	cpu, cores := parseCPU(sections["CPU"])
 
 	return MetricsSnapshot{
 		SystemInfo: parseSystemInfo(sections["SYSINFO"], sections["LOAD"], sections["UPTIME"]),
-		CPU:        parseCPU(sections["CPU"]),
+		CPU:        cpu,
+		CPUCores:   cores,
 		Memory:     parseMemory(sections["MEMORY"]),
-		Network:    parseNetwork(sections["NETWORK"]),
-		Disks:      parseDisk(sections["DISK"]),
+		Network:    parseNetwork(sections["NETWORK"], sections["NETROUTE"], sections["NETVIRT"]),
+		Disks:      parseDisk(sections["DISK"], sections["INODE"]),
 		Docker:     parseDocker(sections["DOCKER"]),
 	}
 }
@@ -122,29 +132,35 @@ func parseSections(output string) map[string]string {
 	return sections
 }
 
-func parseCPU(data string) CPUStat {
-	fields := strings.Fields(data)
-	if len(fields) < 9 {
-		return CPUStat{}
+// parseCPU 返回合计行和按出现顺序（即核心编号）排列的每核心数据。
+func parseCPU(data string) (CPUStat, []CPUStat) {
+	var total CPUStat
+	cores := []CPUStat{}
+
+	for _, line := range strings.Split(data, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 9 || !strings.HasPrefix(fields[0], "cpu") {
+			continue
+		}
+
+		stat := CPUStat{
+			User:    parseUint64(fields[1]),
+			Nice:    parseUint64(fields[2]),
+			System:  parseUint64(fields[3]),
+			Idle:    parseUint64(fields[4]),
+			IOWait:  parseUint64(fields[5]),
+			IRQ:     parseUint64(fields[6]),
+			SoftIRQ: parseUint64(fields[7]),
+			Steal:   parseUint64(fields[8]),
+		}
+		if fields[0] == "cpu" {
+			total = stat
+		} else {
+			cores = append(cores, stat)
+		}
 	}
 
-	stat := CPUStat{
-		User:    parseUint64(fields[1]),
-		Nice:    parseUint64(fields[2]),
-		System:  parseUint64(fields[3]),
-		Idle:    parseUint64(fields[4]),
-		IOWait:  parseUint64(fields[5]),
-		IRQ:     parseUint64(fields[6]),
-		SoftIRQ: parseUint64(fields[7]),
-		Steal:   parseUint64(fields[8]),
-	}
-
-	if len(fields) >= 11 {
-		stat.Guest = parseUint64(fields[9])
-		stat.GuestNice = parseUint64(fields[10])
-	}
-
-	return stat
+	return total, cores
 }
 
 func parseMemory(data string) MemoryMetrics {
@@ -159,25 +175,33 @@ func parseMemory(data string) MemoryMetrics {
 	}
 
 	ramTotal := memData["MemTotal"]
-	ramUsed := uint64(0)
-	if available, ok := memData["MemAvailable"]; ok {
-		ramUsed = SubtractUint64(ramTotal, available)
-	} else {
-		reclaimable := memData["MemFree"] + memData["Buffers"] + memData["Cached"]
-		ramUsed = SubtractUint64(ramTotal, reclaimable)
+	ramFree := memData["MemFree"]
+	available, ok := memData["MemAvailable"]
+	if !ok {
+		available = ramFree + memData["Buffers"] + memData["Cached"]
 	}
+	// 缓存只取 available 中超出 free 的部分，保证 已用 + 缓存 + 空闲 不超过总量。
+	cache := min(memData["Buffers"]+memData["Cached"]+memData["SReclaimable"], SubtractUint64(available, ramFree))
 	swapTotal := memData["SwapTotal"]
-	swapUsed := SubtractUint64(swapTotal, memData["SwapFree"])
 
 	return MemoryMetrics{
-		RAMUsedBytes:   ramUsed,
+		RAMUsedBytes:   SubtractUint64(ramTotal, available),
 		RAMTotalBytes:  ramTotal,
-		SwapUsedBytes:  swapUsed,
+		RAMCacheBytes:  cache,
+		SwapUsedBytes:  SubtractUint64(swapTotal, memData["SwapFree"]),
 		SwapTotalBytes: swapTotal,
 	}
 }
 
-func parseNetwork(data string) NetworkMetrics {
+// parseNetwork 统计物理网卡和默认路由网卡。容器、OpenVZ 内的唯一网卡本身是虚拟网卡，
+// 所以默认路由网卡始终计入；拿不到 /sys 虚拟网卡列表时退回统计全部非 lo 网卡。
+func parseNetwork(data, routeData, virtualData string) NetworkMetrics {
+	defaultIface := strings.TrimSpace(routeData)
+	virtual := make(map[string]bool)
+	for _, name := range strings.Fields(virtualData) {
+		virtual[name] = true
+	}
+
 	stats := make(map[string]NetStat)
 	var totalRx uint64
 	var totalTx uint64
@@ -189,7 +213,7 @@ func parseNetwork(data string) NetworkMetrics {
 		}
 
 		iface := strings.TrimSuffix(fields[0], ":")
-		if iface == "lo" {
+		if iface == "lo" || (virtual[iface] && iface != defaultIface) {
 			continue
 		}
 
@@ -203,40 +227,70 @@ func parseNetwork(data string) NetworkMetrics {
 	}
 
 	return NetworkMetrics{
-		Interfaces:     stats,
-		BytesRecvTotal: totalRx,
-		BytesSentTotal: totalTx,
+		Interfaces:       stats,
+		DefaultInterface: defaultIface,
+		BytesRecvTotal:   totalRx,
+		BytesSentTotal:   totalTx,
 	}
 }
 
-func parseDisk(data string) []DiskMetrics {
-	disks := []DiskMetrics{}
-
-	for _, line := range strings.Split(data, "\n") {
-		fields := strings.Fields(strings.TrimSpace(line))
-		if len(fields) < 6 {
+// parseDisk 解析脚本输出的 "设备 类型 总量 已用 可用 使用率 挂载点" 行，
+// 同一设备（bind mount、btrfs 子卷）只保留路径最短的挂载点，避免容量重复计算。
+func parseDisk(data, inodeData string) []DiskMetrics {
+	inodes := make(map[string][2]uint64)
+	for _, line := range strings.Split(inodeData, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
 			continue
 		}
-
-		fsName := fields[0]
-		total := parseUint64(fields[1])
-		used := parseUint64(fields[2])
-		mountPoint := fields[5]
-
-		if fsName == "total" || mountPoint == "-" {
-			mountPoint = "/"
-		}
-		if total < 100*1024*1024 {
-			continue
-		}
-
-		disks = append(disks, DiskMetrics{
-			MountPoint: mountPoint,
-			UsedBytes:  used,
-			TotalBytes: total,
-		})
+		inodes[strings.Join(fields[2:], " ")] = [2]uint64{parseUint64(fields[0]), parseUint64(fields[1])}
 	}
 
+	byDevice := make(map[string]int)
+	disks := []DiskMetrics{}
+	for _, line := range strings.Split(data, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 7 {
+			continue
+		}
+
+		device := fields[0]
+		total := parseUint64(fields[2])
+		if total < 100*1024*1024 || device == "tmpfs" || device == "devtmpfs" || device == "overlay" {
+			continue
+		}
+
+		mountPoint := strings.Join(fields[6:], " ")
+		fsType := fields[1]
+		if fsType == "-" {
+			fsType = ""
+		}
+		disk := DiskMetrics{
+			MountPoint:  mountPoint,
+			Device:      device,
+			FSType:      fsType,
+			UsedBytes:   parseUint64(fields[3]),
+			TotalBytes:  total,
+			InodesTotal: inodes[mountPoint][0],
+			InodesUsed:  inodes[mountPoint][1],
+		}
+
+		if index, ok := byDevice[device]; ok {
+			if len(mountPoint) < len(disks[index].MountPoint) {
+				disks[index] = disk
+			}
+			continue
+		}
+		byDevice[device] = len(disks)
+		disks = append(disks, disk)
+	}
+
+	sort.SliceStable(disks, func(i, j int) bool {
+		if disks[i].MountPoint == "/" || disks[j].MountPoint == "/" {
+			return disks[i].MountPoint == "/"
+		}
+		return disks[i].MountPoint < disks[j].MountPoint
+	})
 	return disks
 }
 

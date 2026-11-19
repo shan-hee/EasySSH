@@ -39,10 +39,15 @@ function mapDesktopMonitorSnapshot(
   snapshot: DesktopMonitorSnapshot,
   previous?: DesktopMonitorSnapshot,
 ): WorkspaceMonitorMetrics {
+  // 轮询只在桌面网关不可用时使用，只提供合计值；每核心、每网卡、inode 等明细由网关的 Sampler 计算。
   const disks = (snapshot.disks || []).map((disk) => ({
     mountPoint: disk.mountPoint || "-",
     usedBytes: toFiniteNumber(disk.usedBytes),
     totalBytes: toFiniteNumber(disk.totalBytes),
+    device: "",
+    fsType: "",
+    inodesUsed: 0,
+    inodesTotal: 0,
   }))
 
   const diskTotalBytes = disks.reduce((sum, disk) => sum + disk.totalBytes, 0)
@@ -62,14 +67,22 @@ function mapDesktopMonitorSnapshot(
     cpu: {
       usagePercent: calculateCpuUsage(snapshot, previous),
       coreCount: toFiniteNumber(snapshot.cpu?.coreCount) || toFiniteNumber(snapshot.systemInfo?.cpuCores),
+      iowaitPercent: 0,
+      stealPercent: 0,
+      coreUsagePercent: [],
     },
     memory: {
       ramUsedBytes: toFiniteNumber(snapshot.memory?.ramUsedBytes),
       ramTotalBytes: toFiniteNumber(snapshot.memory?.ramTotalBytes),
+      ramCacheBytes: 0,
       swapUsedBytes: toFiniteNumber(snapshot.memory?.swapUsedBytes),
       swapTotalBytes: toFiniteNumber(snapshot.memory?.swapTotalBytes),
     },
-    network: calculateNetworkRate(snapshot, previous),
+    network: {
+      ...calculateNetworkRate(snapshot, previous),
+      defaultInterface: "",
+      interfaces: [],
+    },
     disks,
     diskTotalPercent: diskTotalBytes > 0 ? (diskUsedBytes / diskTotalBytes) * 100 : 0,
     sshLatencyMs: toFiniteNumber(snapshot.sshLatencyMs),

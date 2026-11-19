@@ -383,6 +383,9 @@ export const monitor = $root.monitor = (() => {
          * @interface ICPUMetrics
          * @property {number|null} [usagePercent] CPUMetrics usagePercent
          * @property {number|null} [coreCount] CPUMetrics coreCount
+         * @property {number|null} [iowaitPercent] CPUMetrics iowaitPercent
+         * @property {number|null} [stealPercent] CPUMetrics stealPercent
+         * @property {Array.<number>|null} [coreUsagePercent] CPUMetrics coreUsagePercent
          */
 
         /**
@@ -394,6 +397,7 @@ export const monitor = $root.monitor = (() => {
          * @param {monitor.ICPUMetrics=} [properties] Properties to set
          */
         function CPUMetrics(properties) {
+            this.coreUsagePercent = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -415,6 +419,30 @@ export const monitor = $root.monitor = (() => {
          * @instance
          */
         CPUMetrics.prototype.coreCount = 0;
+
+        /**
+         * CPUMetrics iowaitPercent.
+         * @member {number} iowaitPercent
+         * @memberof monitor.CPUMetrics
+         * @instance
+         */
+        CPUMetrics.prototype.iowaitPercent = 0;
+
+        /**
+         * CPUMetrics stealPercent.
+         * @member {number} stealPercent
+         * @memberof monitor.CPUMetrics
+         * @instance
+         */
+        CPUMetrics.prototype.stealPercent = 0;
+
+        /**
+         * CPUMetrics coreUsagePercent.
+         * @member {Array.<number>} coreUsagePercent
+         * @memberof monitor.CPUMetrics
+         * @instance
+         */
+        CPUMetrics.prototype.coreUsagePercent = $util.emptyArray;
 
         /**
          * Creates a new CPUMetrics instance using the specified properties.
@@ -444,6 +472,16 @@ export const monitor = $root.monitor = (() => {
                 writer.uint32(/* id 1, wireType 1 =*/9).double(message.usagePercent);
             if (message.coreCount != null && Object.hasOwnProperty.call(message, "coreCount"))
                 writer.uint32(/* id 2, wireType 0 =*/16).uint32(message.coreCount);
+            if (message.iowaitPercent != null && Object.hasOwnProperty.call(message, "iowaitPercent"))
+                writer.uint32(/* id 3, wireType 1 =*/25).double(message.iowaitPercent);
+            if (message.stealPercent != null && Object.hasOwnProperty.call(message, "stealPercent"))
+                writer.uint32(/* id 4, wireType 1 =*/33).double(message.stealPercent);
+            if (message.coreUsagePercent != null && message.coreUsagePercent.length) {
+                writer.uint32(/* id 5, wireType 2 =*/42).fork();
+                for (let i = 0; i < message.coreUsagePercent.length; ++i)
+                    writer.double(message.coreUsagePercent[i]);
+                writer.ldelim();
+            }
             return writer;
         };
 
@@ -488,6 +526,25 @@ export const monitor = $root.monitor = (() => {
                         message.coreCount = reader.uint32();
                         break;
                     }
+                case 3: {
+                        message.iowaitPercent = reader.double();
+                        break;
+                    }
+                case 4: {
+                        message.stealPercent = reader.double();
+                        break;
+                    }
+                case 5: {
+                        if (!(message.coreUsagePercent && message.coreUsagePercent.length))
+                            message.coreUsagePercent = [];
+                        if ((tag & 7) === 2) {
+                            let end2 = reader.uint32() + reader.pos;
+                            while (reader.pos < end2)
+                                message.coreUsagePercent.push(reader.double());
+                        } else
+                            message.coreUsagePercent.push(reader.double());
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -529,6 +586,19 @@ export const monitor = $root.monitor = (() => {
             if (message.coreCount != null && message.hasOwnProperty("coreCount"))
                 if (!$util.isInteger(message.coreCount))
                     return "coreCount: integer expected";
+            if (message.iowaitPercent != null && message.hasOwnProperty("iowaitPercent"))
+                if (typeof message.iowaitPercent !== "number")
+                    return "iowaitPercent: number expected";
+            if (message.stealPercent != null && message.hasOwnProperty("stealPercent"))
+                if (typeof message.stealPercent !== "number")
+                    return "stealPercent: number expected";
+            if (message.coreUsagePercent != null && message.hasOwnProperty("coreUsagePercent")) {
+                if (!Array.isArray(message.coreUsagePercent))
+                    return "coreUsagePercent: array expected";
+                for (let i = 0; i < message.coreUsagePercent.length; ++i)
+                    if (typeof message.coreUsagePercent[i] !== "number")
+                        return "coreUsagePercent: number[] expected";
+            }
             return null;
         };
 
@@ -548,6 +618,17 @@ export const monitor = $root.monitor = (() => {
                 message.usagePercent = Number(object.usagePercent);
             if (object.coreCount != null)
                 message.coreCount = object.coreCount >>> 0;
+            if (object.iowaitPercent != null)
+                message.iowaitPercent = Number(object.iowaitPercent);
+            if (object.stealPercent != null)
+                message.stealPercent = Number(object.stealPercent);
+            if (object.coreUsagePercent) {
+                if (!Array.isArray(object.coreUsagePercent))
+                    throw TypeError(".monitor.CPUMetrics.coreUsagePercent: array expected");
+                message.coreUsagePercent = [];
+                for (let i = 0; i < object.coreUsagePercent.length; ++i)
+                    message.coreUsagePercent[i] = Number(object.coreUsagePercent[i]);
+            }
             return message;
         };
 
@@ -564,14 +645,27 @@ export const monitor = $root.monitor = (() => {
             if (!options)
                 options = {};
             let object = {};
+            if (options.arrays || options.defaults)
+                object.coreUsagePercent = [];
             if (options.defaults) {
                 object.usagePercent = 0;
                 object.coreCount = 0;
+                object.iowaitPercent = 0;
+                object.stealPercent = 0;
             }
             if (message.usagePercent != null && message.hasOwnProperty("usagePercent"))
                 object.usagePercent = options.json && !isFinite(message.usagePercent) ? String(message.usagePercent) : message.usagePercent;
             if (message.coreCount != null && message.hasOwnProperty("coreCount"))
                 object.coreCount = message.coreCount;
+            if (message.iowaitPercent != null && message.hasOwnProperty("iowaitPercent"))
+                object.iowaitPercent = options.json && !isFinite(message.iowaitPercent) ? String(message.iowaitPercent) : message.iowaitPercent;
+            if (message.stealPercent != null && message.hasOwnProperty("stealPercent"))
+                object.stealPercent = options.json && !isFinite(message.stealPercent) ? String(message.stealPercent) : message.stealPercent;
+            if (message.coreUsagePercent && message.coreUsagePercent.length) {
+                object.coreUsagePercent = [];
+                for (let j = 0; j < message.coreUsagePercent.length; ++j)
+                    object.coreUsagePercent[j] = options.json && !isFinite(message.coreUsagePercent[j]) ? String(message.coreUsagePercent[j]) : message.coreUsagePercent[j];
+            }
             return object;
         };
 
@@ -614,6 +708,7 @@ export const monitor = $root.monitor = (() => {
          * @property {number|Long|null} [ramTotalBytes] MemoryMetrics ramTotalBytes
          * @property {number|Long|null} [swapUsedBytes] MemoryMetrics swapUsedBytes
          * @property {number|Long|null} [swapTotalBytes] MemoryMetrics swapTotalBytes
+         * @property {number|Long|null} [ramCacheBytes] MemoryMetrics ramCacheBytes
          */
 
         /**
@@ -664,6 +759,14 @@ export const monitor = $root.monitor = (() => {
         MemoryMetrics.prototype.swapTotalBytes = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
 
         /**
+         * MemoryMetrics ramCacheBytes.
+         * @member {number|Long} ramCacheBytes
+         * @memberof monitor.MemoryMetrics
+         * @instance
+         */
+        MemoryMetrics.prototype.ramCacheBytes = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+        /**
          * Creates a new MemoryMetrics instance using the specified properties.
          * @function create
          * @memberof monitor.MemoryMetrics
@@ -695,6 +798,8 @@ export const monitor = $root.monitor = (() => {
                 writer.uint32(/* id 3, wireType 0 =*/24).uint64(message.swapUsedBytes);
             if (message.swapTotalBytes != null && Object.hasOwnProperty.call(message, "swapTotalBytes"))
                 writer.uint32(/* id 4, wireType 0 =*/32).uint64(message.swapTotalBytes);
+            if (message.ramCacheBytes != null && Object.hasOwnProperty.call(message, "ramCacheBytes"))
+                writer.uint32(/* id 5, wireType 0 =*/40).uint64(message.ramCacheBytes);
             return writer;
         };
 
@@ -747,6 +852,10 @@ export const monitor = $root.monitor = (() => {
                         message.swapTotalBytes = reader.uint64();
                         break;
                     }
+                case 5: {
+                        message.ramCacheBytes = reader.uint64();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -794,6 +903,9 @@ export const monitor = $root.monitor = (() => {
             if (message.swapTotalBytes != null && message.hasOwnProperty("swapTotalBytes"))
                 if (!$util.isInteger(message.swapTotalBytes) && !(message.swapTotalBytes && $util.isInteger(message.swapTotalBytes.low) && $util.isInteger(message.swapTotalBytes.high)))
                     return "swapTotalBytes: integer|Long expected";
+            if (message.ramCacheBytes != null && message.hasOwnProperty("ramCacheBytes"))
+                if (!$util.isInteger(message.ramCacheBytes) && !(message.ramCacheBytes && $util.isInteger(message.ramCacheBytes.low) && $util.isInteger(message.ramCacheBytes.high)))
+                    return "ramCacheBytes: integer|Long expected";
             return null;
         };
 
@@ -845,6 +957,15 @@ export const monitor = $root.monitor = (() => {
                     message.swapTotalBytes = object.swapTotalBytes;
                 else if (typeof object.swapTotalBytes === "object")
                     message.swapTotalBytes = new $util.LongBits(object.swapTotalBytes.low >>> 0, object.swapTotalBytes.high >>> 0).toNumber(true);
+            if (object.ramCacheBytes != null)
+                if ($util.Long)
+                    (message.ramCacheBytes = $util.Long.fromValue(object.ramCacheBytes)).unsigned = true;
+                else if (typeof object.ramCacheBytes === "string")
+                    message.ramCacheBytes = parseInt(object.ramCacheBytes, 10);
+                else if (typeof object.ramCacheBytes === "number")
+                    message.ramCacheBytes = object.ramCacheBytes;
+                else if (typeof object.ramCacheBytes === "object")
+                    message.ramCacheBytes = new $util.LongBits(object.ramCacheBytes.low >>> 0, object.ramCacheBytes.high >>> 0).toNumber(true);
             return message;
         };
 
@@ -882,6 +1003,11 @@ export const monitor = $root.monitor = (() => {
                     object.swapTotalBytes = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
                 } else
                     object.swapTotalBytes = options.longs === String ? "0" : 0;
+                if ($util.Long) {
+                    let long = new $util.Long(0, 0, true);
+                    object.ramCacheBytes = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
+                } else
+                    object.ramCacheBytes = options.longs === String ? "0" : 0;
             }
             if (message.ramUsedBytes != null && message.hasOwnProperty("ramUsedBytes"))
                 if (typeof message.ramUsedBytes === "number")
@@ -903,6 +1029,11 @@ export const monitor = $root.monitor = (() => {
                     object.swapTotalBytes = options.longs === String ? String(message.swapTotalBytes) : message.swapTotalBytes;
                 else
                     object.swapTotalBytes = options.longs === String ? $util.Long.prototype.toString.call(message.swapTotalBytes) : options.longs === Number ? new $util.LongBits(message.swapTotalBytes.low >>> 0, message.swapTotalBytes.high >>> 0).toNumber(true) : message.swapTotalBytes;
+            if (message.ramCacheBytes != null && message.hasOwnProperty("ramCacheBytes"))
+                if (typeof message.ramCacheBytes === "number")
+                    object.ramCacheBytes = options.longs === String ? String(message.ramCacheBytes) : message.ramCacheBytes;
+                else
+                    object.ramCacheBytes = options.longs === String ? $util.Long.prototype.toString.call(message.ramCacheBytes) : options.longs === Number ? new $util.LongBits(message.ramCacheBytes.low >>> 0, message.ramCacheBytes.high >>> 0).toNumber(true) : message.ramCacheBytes;
             return object;
         };
 
@@ -935,6 +1066,286 @@ export const monitor = $root.monitor = (() => {
         return MemoryMetrics;
     })();
 
+    monitor.NetworkInterfaceMetrics = (function() {
+
+        /**
+         * Properties of a NetworkInterfaceMetrics.
+         * @memberof monitor
+         * @interface INetworkInterfaceMetrics
+         * @property {string|null} [name] NetworkInterfaceMetrics name
+         * @property {number|Long|null} [bytesRecvPerSec] NetworkInterfaceMetrics bytesRecvPerSec
+         * @property {number|Long|null} [bytesSentPerSec] NetworkInterfaceMetrics bytesSentPerSec
+         */
+
+        /**
+         * Constructs a new NetworkInterfaceMetrics.
+         * @memberof monitor
+         * @classdesc Represents a NetworkInterfaceMetrics.
+         * @implements INetworkInterfaceMetrics
+         * @constructor
+         * @param {monitor.INetworkInterfaceMetrics=} [properties] Properties to set
+         */
+        function NetworkInterfaceMetrics(properties) {
+            if (properties)
+                for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
+                    if (properties[keys[i]] != null)
+                        this[keys[i]] = properties[keys[i]];
+        }
+
+        /**
+         * NetworkInterfaceMetrics name.
+         * @member {string} name
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @instance
+         */
+        NetworkInterfaceMetrics.prototype.name = "";
+
+        /**
+         * NetworkInterfaceMetrics bytesRecvPerSec.
+         * @member {number|Long} bytesRecvPerSec
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @instance
+         */
+        NetworkInterfaceMetrics.prototype.bytesRecvPerSec = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+        /**
+         * NetworkInterfaceMetrics bytesSentPerSec.
+         * @member {number|Long} bytesSentPerSec
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @instance
+         */
+        NetworkInterfaceMetrics.prototype.bytesSentPerSec = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+        /**
+         * Creates a new NetworkInterfaceMetrics instance using the specified properties.
+         * @function create
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @static
+         * @param {monitor.INetworkInterfaceMetrics=} [properties] Properties to set
+         * @returns {monitor.NetworkInterfaceMetrics} NetworkInterfaceMetrics instance
+         */
+        NetworkInterfaceMetrics.create = function create(properties) {
+            return new NetworkInterfaceMetrics(properties);
+        };
+
+        /**
+         * Encodes the specified NetworkInterfaceMetrics message. Does not implicitly {@link monitor.NetworkInterfaceMetrics.verify|verify} messages.
+         * @function encode
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @static
+         * @param {monitor.INetworkInterfaceMetrics} message NetworkInterfaceMetrics message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        NetworkInterfaceMetrics.encode = function encode(message, writer) {
+            if (!writer)
+                writer = $Writer.create();
+            if (message.name != null && Object.hasOwnProperty.call(message, "name"))
+                writer.uint32(/* id 1, wireType 2 =*/10).string(message.name);
+            if (message.bytesRecvPerSec != null && Object.hasOwnProperty.call(message, "bytesRecvPerSec"))
+                writer.uint32(/* id 2, wireType 0 =*/16).uint64(message.bytesRecvPerSec);
+            if (message.bytesSentPerSec != null && Object.hasOwnProperty.call(message, "bytesSentPerSec"))
+                writer.uint32(/* id 3, wireType 0 =*/24).uint64(message.bytesSentPerSec);
+            return writer;
+        };
+
+        /**
+         * Encodes the specified NetworkInterfaceMetrics message, length delimited. Does not implicitly {@link monitor.NetworkInterfaceMetrics.verify|verify} messages.
+         * @function encodeDelimited
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @static
+         * @param {monitor.INetworkInterfaceMetrics} message NetworkInterfaceMetrics message or plain object to encode
+         * @param {$protobuf.Writer} [writer] Writer to encode to
+         * @returns {$protobuf.Writer} Writer
+         */
+        NetworkInterfaceMetrics.encodeDelimited = function encodeDelimited(message, writer) {
+            return this.encode(message, writer).ldelim();
+        };
+
+        /**
+         * Decodes a NetworkInterfaceMetrics message from the specified reader or buffer.
+         * @function decode
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @param {number} [length] Message length if known beforehand
+         * @returns {monitor.NetworkInterfaceMetrics} NetworkInterfaceMetrics
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        NetworkInterfaceMetrics.decode = function decode(reader, length, error) {
+            if (!(reader instanceof $Reader))
+                reader = $Reader.create(reader);
+            let end = length === undefined ? reader.len : reader.pos + length, message = new $root.monitor.NetworkInterfaceMetrics();
+            while (reader.pos < end) {
+                let tag = reader.uint32();
+                if (tag === error)
+                    break;
+                switch (tag >>> 3) {
+                case 1: {
+                        message.name = reader.string();
+                        break;
+                    }
+                case 2: {
+                        message.bytesRecvPerSec = reader.uint64();
+                        break;
+                    }
+                case 3: {
+                        message.bytesSentPerSec = reader.uint64();
+                        break;
+                    }
+                default:
+                    reader.skipType(tag & 7);
+                    break;
+                }
+            }
+            return message;
+        };
+
+        /**
+         * Decodes a NetworkInterfaceMetrics message from the specified reader or buffer, length delimited.
+         * @function decodeDelimited
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @static
+         * @param {$protobuf.Reader|Uint8Array} reader Reader or buffer to decode from
+         * @returns {monitor.NetworkInterfaceMetrics} NetworkInterfaceMetrics
+         * @throws {Error} If the payload is not a reader or valid buffer
+         * @throws {$protobuf.util.ProtocolError} If required fields are missing
+         */
+        NetworkInterfaceMetrics.decodeDelimited = function decodeDelimited(reader) {
+            if (!(reader instanceof $Reader))
+                reader = new $Reader(reader);
+            return this.decode(reader, reader.uint32());
+        };
+
+        /**
+         * Verifies a NetworkInterfaceMetrics message.
+         * @function verify
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @static
+         * @param {Object.<string,*>} message Plain object to verify
+         * @returns {string|null} `null` if valid, otherwise the reason why it is not
+         */
+        NetworkInterfaceMetrics.verify = function verify(message) {
+            if (typeof message !== "object" || message === null)
+                return "object expected";
+            if (message.name != null && message.hasOwnProperty("name"))
+                if (!$util.isString(message.name))
+                    return "name: string expected";
+            if (message.bytesRecvPerSec != null && message.hasOwnProperty("bytesRecvPerSec"))
+                if (!$util.isInteger(message.bytesRecvPerSec) && !(message.bytesRecvPerSec && $util.isInteger(message.bytesRecvPerSec.low) && $util.isInteger(message.bytesRecvPerSec.high)))
+                    return "bytesRecvPerSec: integer|Long expected";
+            if (message.bytesSentPerSec != null && message.hasOwnProperty("bytesSentPerSec"))
+                if (!$util.isInteger(message.bytesSentPerSec) && !(message.bytesSentPerSec && $util.isInteger(message.bytesSentPerSec.low) && $util.isInteger(message.bytesSentPerSec.high)))
+                    return "bytesSentPerSec: integer|Long expected";
+            return null;
+        };
+
+        /**
+         * Creates a NetworkInterfaceMetrics message from a plain object. Also converts values to their respective internal types.
+         * @function fromObject
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @static
+         * @param {Object.<string,*>} object Plain object
+         * @returns {monitor.NetworkInterfaceMetrics} NetworkInterfaceMetrics
+         */
+        NetworkInterfaceMetrics.fromObject = function fromObject(object) {
+            if (object instanceof $root.monitor.NetworkInterfaceMetrics)
+                return object;
+            let message = new $root.monitor.NetworkInterfaceMetrics();
+            if (object.name != null)
+                message.name = String(object.name);
+            if (object.bytesRecvPerSec != null)
+                if ($util.Long)
+                    (message.bytesRecvPerSec = $util.Long.fromValue(object.bytesRecvPerSec)).unsigned = true;
+                else if (typeof object.bytesRecvPerSec === "string")
+                    message.bytesRecvPerSec = parseInt(object.bytesRecvPerSec, 10);
+                else if (typeof object.bytesRecvPerSec === "number")
+                    message.bytesRecvPerSec = object.bytesRecvPerSec;
+                else if (typeof object.bytesRecvPerSec === "object")
+                    message.bytesRecvPerSec = new $util.LongBits(object.bytesRecvPerSec.low >>> 0, object.bytesRecvPerSec.high >>> 0).toNumber(true);
+            if (object.bytesSentPerSec != null)
+                if ($util.Long)
+                    (message.bytesSentPerSec = $util.Long.fromValue(object.bytesSentPerSec)).unsigned = true;
+                else if (typeof object.bytesSentPerSec === "string")
+                    message.bytesSentPerSec = parseInt(object.bytesSentPerSec, 10);
+                else if (typeof object.bytesSentPerSec === "number")
+                    message.bytesSentPerSec = object.bytesSentPerSec;
+                else if (typeof object.bytesSentPerSec === "object")
+                    message.bytesSentPerSec = new $util.LongBits(object.bytesSentPerSec.low >>> 0, object.bytesSentPerSec.high >>> 0).toNumber(true);
+            return message;
+        };
+
+        /**
+         * Creates a plain object from a NetworkInterfaceMetrics message. Also converts values to other types if specified.
+         * @function toObject
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @static
+         * @param {monitor.NetworkInterfaceMetrics} message NetworkInterfaceMetrics
+         * @param {$protobuf.IConversionOptions} [options] Conversion options
+         * @returns {Object.<string,*>} Plain object
+         */
+        NetworkInterfaceMetrics.toObject = function toObject(message, options) {
+            if (!options)
+                options = {};
+            let object = {};
+            if (options.defaults) {
+                object.name = "";
+                if ($util.Long) {
+                    let long = new $util.Long(0, 0, true);
+                    object.bytesRecvPerSec = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
+                } else
+                    object.bytesRecvPerSec = options.longs === String ? "0" : 0;
+                if ($util.Long) {
+                    let long = new $util.Long(0, 0, true);
+                    object.bytesSentPerSec = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
+                } else
+                    object.bytesSentPerSec = options.longs === String ? "0" : 0;
+            }
+            if (message.name != null && message.hasOwnProperty("name"))
+                object.name = message.name;
+            if (message.bytesRecvPerSec != null && message.hasOwnProperty("bytesRecvPerSec"))
+                if (typeof message.bytesRecvPerSec === "number")
+                    object.bytesRecvPerSec = options.longs === String ? String(message.bytesRecvPerSec) : message.bytesRecvPerSec;
+                else
+                    object.bytesRecvPerSec = options.longs === String ? $util.Long.prototype.toString.call(message.bytesRecvPerSec) : options.longs === Number ? new $util.LongBits(message.bytesRecvPerSec.low >>> 0, message.bytesRecvPerSec.high >>> 0).toNumber(true) : message.bytesRecvPerSec;
+            if (message.bytesSentPerSec != null && message.hasOwnProperty("bytesSentPerSec"))
+                if (typeof message.bytesSentPerSec === "number")
+                    object.bytesSentPerSec = options.longs === String ? String(message.bytesSentPerSec) : message.bytesSentPerSec;
+                else
+                    object.bytesSentPerSec = options.longs === String ? $util.Long.prototype.toString.call(message.bytesSentPerSec) : options.longs === Number ? new $util.LongBits(message.bytesSentPerSec.low >>> 0, message.bytesSentPerSec.high >>> 0).toNumber(true) : message.bytesSentPerSec;
+            return object;
+        };
+
+        /**
+         * Converts this NetworkInterfaceMetrics to JSON.
+         * @function toJSON
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @instance
+         * @returns {Object.<string,*>} JSON object
+         */
+        NetworkInterfaceMetrics.prototype.toJSON = function toJSON() {
+            return this.constructor.toObject(this, $protobuf.util.toJSONOptions);
+        };
+
+        /**
+         * Gets the default type url for NetworkInterfaceMetrics
+         * @function getTypeUrl
+         * @memberof monitor.NetworkInterfaceMetrics
+         * @static
+         * @param {string} [typeUrlPrefix] your custom typeUrlPrefix(default "type.googleapis.com")
+         * @returns {string} The default type url
+         */
+        NetworkInterfaceMetrics.getTypeUrl = function getTypeUrl(typeUrlPrefix) {
+            if (typeUrlPrefix === undefined) {
+                typeUrlPrefix = "type.googleapis.com";
+            }
+            return typeUrlPrefix + "/monitor.NetworkInterfaceMetrics";
+        };
+
+        return NetworkInterfaceMetrics;
+    })();
+
     monitor.NetworkMetrics = (function() {
 
         /**
@@ -943,6 +1354,8 @@ export const monitor = $root.monitor = (() => {
          * @interface INetworkMetrics
          * @property {number|Long|null} [bytesRecvPerSec] NetworkMetrics bytesRecvPerSec
          * @property {number|Long|null} [bytesSentPerSec] NetworkMetrics bytesSentPerSec
+         * @property {Array.<monitor.INetworkInterfaceMetrics>|null} [interfaces] NetworkMetrics interfaces
+         * @property {string|null} [defaultInterface] NetworkMetrics defaultInterface
          */
 
         /**
@@ -954,6 +1367,7 @@ export const monitor = $root.monitor = (() => {
          * @param {monitor.INetworkMetrics=} [properties] Properties to set
          */
         function NetworkMetrics(properties) {
+            this.interfaces = [];
             if (properties)
                 for (let keys = Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null)
@@ -975,6 +1389,22 @@ export const monitor = $root.monitor = (() => {
          * @instance
          */
         NetworkMetrics.prototype.bytesSentPerSec = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+        /**
+         * NetworkMetrics interfaces.
+         * @member {Array.<monitor.INetworkInterfaceMetrics>} interfaces
+         * @memberof monitor.NetworkMetrics
+         * @instance
+         */
+        NetworkMetrics.prototype.interfaces = $util.emptyArray;
+
+        /**
+         * NetworkMetrics defaultInterface.
+         * @member {string} defaultInterface
+         * @memberof monitor.NetworkMetrics
+         * @instance
+         */
+        NetworkMetrics.prototype.defaultInterface = "";
 
         /**
          * Creates a new NetworkMetrics instance using the specified properties.
@@ -1004,6 +1434,11 @@ export const monitor = $root.monitor = (() => {
                 writer.uint32(/* id 1, wireType 0 =*/8).uint64(message.bytesRecvPerSec);
             if (message.bytesSentPerSec != null && Object.hasOwnProperty.call(message, "bytesSentPerSec"))
                 writer.uint32(/* id 2, wireType 0 =*/16).uint64(message.bytesSentPerSec);
+            if (message.interfaces != null && message.interfaces.length)
+                for (let i = 0; i < message.interfaces.length; ++i)
+                    $root.monitor.NetworkInterfaceMetrics.encode(message.interfaces[i], writer.uint32(/* id 3, wireType 2 =*/26).fork()).ldelim();
+            if (message.defaultInterface != null && Object.hasOwnProperty.call(message, "defaultInterface"))
+                writer.uint32(/* id 4, wireType 2 =*/34).string(message.defaultInterface);
             return writer;
         };
 
@@ -1048,6 +1483,16 @@ export const monitor = $root.monitor = (() => {
                         message.bytesSentPerSec = reader.uint64();
                         break;
                     }
+                case 3: {
+                        if (!(message.interfaces && message.interfaces.length))
+                            message.interfaces = [];
+                        message.interfaces.push($root.monitor.NetworkInterfaceMetrics.decode(reader, reader.uint32()));
+                        break;
+                    }
+                case 4: {
+                        message.defaultInterface = reader.string();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -1089,6 +1534,18 @@ export const monitor = $root.monitor = (() => {
             if (message.bytesSentPerSec != null && message.hasOwnProperty("bytesSentPerSec"))
                 if (!$util.isInteger(message.bytesSentPerSec) && !(message.bytesSentPerSec && $util.isInteger(message.bytesSentPerSec.low) && $util.isInteger(message.bytesSentPerSec.high)))
                     return "bytesSentPerSec: integer|Long expected";
+            if (message.interfaces != null && message.hasOwnProperty("interfaces")) {
+                if (!Array.isArray(message.interfaces))
+                    return "interfaces: array expected";
+                for (let i = 0; i < message.interfaces.length; ++i) {
+                    let error = $root.monitor.NetworkInterfaceMetrics.verify(message.interfaces[i]);
+                    if (error)
+                        return "interfaces." + error;
+                }
+            }
+            if (message.defaultInterface != null && message.hasOwnProperty("defaultInterface"))
+                if (!$util.isString(message.defaultInterface))
+                    return "defaultInterface: string expected";
             return null;
         };
 
@@ -1122,6 +1579,18 @@ export const monitor = $root.monitor = (() => {
                     message.bytesSentPerSec = object.bytesSentPerSec;
                 else if (typeof object.bytesSentPerSec === "object")
                     message.bytesSentPerSec = new $util.LongBits(object.bytesSentPerSec.low >>> 0, object.bytesSentPerSec.high >>> 0).toNumber(true);
+            if (object.interfaces) {
+                if (!Array.isArray(object.interfaces))
+                    throw TypeError(".monitor.NetworkMetrics.interfaces: array expected");
+                message.interfaces = [];
+                for (let i = 0; i < object.interfaces.length; ++i) {
+                    if (typeof object.interfaces[i] !== "object")
+                        throw TypeError(".monitor.NetworkMetrics.interfaces: object expected");
+                    message.interfaces[i] = $root.monitor.NetworkInterfaceMetrics.fromObject(object.interfaces[i]);
+                }
+            }
+            if (object.defaultInterface != null)
+                message.defaultInterface = String(object.defaultInterface);
             return message;
         };
 
@@ -1138,6 +1607,8 @@ export const monitor = $root.monitor = (() => {
             if (!options)
                 options = {};
             let object = {};
+            if (options.arrays || options.defaults)
+                object.interfaces = [];
             if (options.defaults) {
                 if ($util.Long) {
                     let long = new $util.Long(0, 0, true);
@@ -1149,6 +1620,7 @@ export const monitor = $root.monitor = (() => {
                     object.bytesSentPerSec = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
                 } else
                     object.bytesSentPerSec = options.longs === String ? "0" : 0;
+                object.defaultInterface = "";
             }
             if (message.bytesRecvPerSec != null && message.hasOwnProperty("bytesRecvPerSec"))
                 if (typeof message.bytesRecvPerSec === "number")
@@ -1160,6 +1632,13 @@ export const monitor = $root.monitor = (() => {
                     object.bytesSentPerSec = options.longs === String ? String(message.bytesSentPerSec) : message.bytesSentPerSec;
                 else
                     object.bytesSentPerSec = options.longs === String ? $util.Long.prototype.toString.call(message.bytesSentPerSec) : options.longs === Number ? new $util.LongBits(message.bytesSentPerSec.low >>> 0, message.bytesSentPerSec.high >>> 0).toNumber(true) : message.bytesSentPerSec;
+            if (message.interfaces && message.interfaces.length) {
+                object.interfaces = [];
+                for (let j = 0; j < message.interfaces.length; ++j)
+                    object.interfaces[j] = $root.monitor.NetworkInterfaceMetrics.toObject(message.interfaces[j], options);
+            }
+            if (message.defaultInterface != null && message.hasOwnProperty("defaultInterface"))
+                object.defaultInterface = message.defaultInterface;
             return object;
         };
 
@@ -1201,6 +1680,10 @@ export const monitor = $root.monitor = (() => {
          * @property {string|null} [mountPoint] DiskMetrics mountPoint
          * @property {number|Long|null} [usedBytes] DiskMetrics usedBytes
          * @property {number|Long|null} [totalBytes] DiskMetrics totalBytes
+         * @property {string|null} [device] DiskMetrics device
+         * @property {string|null} [fsType] DiskMetrics fsType
+         * @property {number|Long|null} [inodesUsed] DiskMetrics inodesUsed
+         * @property {number|Long|null} [inodesTotal] DiskMetrics inodesTotal
          */
 
         /**
@@ -1243,6 +1726,38 @@ export const monitor = $root.monitor = (() => {
         DiskMetrics.prototype.totalBytes = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
 
         /**
+         * DiskMetrics device.
+         * @member {string} device
+         * @memberof monitor.DiskMetrics
+         * @instance
+         */
+        DiskMetrics.prototype.device = "";
+
+        /**
+         * DiskMetrics fsType.
+         * @member {string} fsType
+         * @memberof monitor.DiskMetrics
+         * @instance
+         */
+        DiskMetrics.prototype.fsType = "";
+
+        /**
+         * DiskMetrics inodesUsed.
+         * @member {number|Long} inodesUsed
+         * @memberof monitor.DiskMetrics
+         * @instance
+         */
+        DiskMetrics.prototype.inodesUsed = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+        /**
+         * DiskMetrics inodesTotal.
+         * @member {number|Long} inodesTotal
+         * @memberof monitor.DiskMetrics
+         * @instance
+         */
+        DiskMetrics.prototype.inodesTotal = $util.Long ? $util.Long.fromBits(0,0,true) : 0;
+
+        /**
          * Creates a new DiskMetrics instance using the specified properties.
          * @function create
          * @memberof monitor.DiskMetrics
@@ -1272,6 +1787,14 @@ export const monitor = $root.monitor = (() => {
                 writer.uint32(/* id 2, wireType 0 =*/16).uint64(message.usedBytes);
             if (message.totalBytes != null && Object.hasOwnProperty.call(message, "totalBytes"))
                 writer.uint32(/* id 3, wireType 0 =*/24).uint64(message.totalBytes);
+            if (message.device != null && Object.hasOwnProperty.call(message, "device"))
+                writer.uint32(/* id 4, wireType 2 =*/34).string(message.device);
+            if (message.fsType != null && Object.hasOwnProperty.call(message, "fsType"))
+                writer.uint32(/* id 5, wireType 2 =*/42).string(message.fsType);
+            if (message.inodesUsed != null && Object.hasOwnProperty.call(message, "inodesUsed"))
+                writer.uint32(/* id 6, wireType 0 =*/48).uint64(message.inodesUsed);
+            if (message.inodesTotal != null && Object.hasOwnProperty.call(message, "inodesTotal"))
+                writer.uint32(/* id 7, wireType 0 =*/56).uint64(message.inodesTotal);
             return writer;
         };
 
@@ -1320,6 +1843,22 @@ export const monitor = $root.monitor = (() => {
                         message.totalBytes = reader.uint64();
                         break;
                     }
+                case 4: {
+                        message.device = reader.string();
+                        break;
+                    }
+                case 5: {
+                        message.fsType = reader.string();
+                        break;
+                    }
+                case 6: {
+                        message.inodesUsed = reader.uint64();
+                        break;
+                    }
+                case 7: {
+                        message.inodesTotal = reader.uint64();
+                        break;
+                    }
                 default:
                     reader.skipType(tag & 7);
                     break;
@@ -1364,6 +1903,18 @@ export const monitor = $root.monitor = (() => {
             if (message.totalBytes != null && message.hasOwnProperty("totalBytes"))
                 if (!$util.isInteger(message.totalBytes) && !(message.totalBytes && $util.isInteger(message.totalBytes.low) && $util.isInteger(message.totalBytes.high)))
                     return "totalBytes: integer|Long expected";
+            if (message.device != null && message.hasOwnProperty("device"))
+                if (!$util.isString(message.device))
+                    return "device: string expected";
+            if (message.fsType != null && message.hasOwnProperty("fsType"))
+                if (!$util.isString(message.fsType))
+                    return "fsType: string expected";
+            if (message.inodesUsed != null && message.hasOwnProperty("inodesUsed"))
+                if (!$util.isInteger(message.inodesUsed) && !(message.inodesUsed && $util.isInteger(message.inodesUsed.low) && $util.isInteger(message.inodesUsed.high)))
+                    return "inodesUsed: integer|Long expected";
+            if (message.inodesTotal != null && message.hasOwnProperty("inodesTotal"))
+                if (!$util.isInteger(message.inodesTotal) && !(message.inodesTotal && $util.isInteger(message.inodesTotal.low) && $util.isInteger(message.inodesTotal.high)))
+                    return "inodesTotal: integer|Long expected";
             return null;
         };
 
@@ -1399,6 +1950,28 @@ export const monitor = $root.monitor = (() => {
                     message.totalBytes = object.totalBytes;
                 else if (typeof object.totalBytes === "object")
                     message.totalBytes = new $util.LongBits(object.totalBytes.low >>> 0, object.totalBytes.high >>> 0).toNumber(true);
+            if (object.device != null)
+                message.device = String(object.device);
+            if (object.fsType != null)
+                message.fsType = String(object.fsType);
+            if (object.inodesUsed != null)
+                if ($util.Long)
+                    (message.inodesUsed = $util.Long.fromValue(object.inodesUsed)).unsigned = true;
+                else if (typeof object.inodesUsed === "string")
+                    message.inodesUsed = parseInt(object.inodesUsed, 10);
+                else if (typeof object.inodesUsed === "number")
+                    message.inodesUsed = object.inodesUsed;
+                else if (typeof object.inodesUsed === "object")
+                    message.inodesUsed = new $util.LongBits(object.inodesUsed.low >>> 0, object.inodesUsed.high >>> 0).toNumber(true);
+            if (object.inodesTotal != null)
+                if ($util.Long)
+                    (message.inodesTotal = $util.Long.fromValue(object.inodesTotal)).unsigned = true;
+                else if (typeof object.inodesTotal === "string")
+                    message.inodesTotal = parseInt(object.inodesTotal, 10);
+                else if (typeof object.inodesTotal === "number")
+                    message.inodesTotal = object.inodesTotal;
+                else if (typeof object.inodesTotal === "object")
+                    message.inodesTotal = new $util.LongBits(object.inodesTotal.low >>> 0, object.inodesTotal.high >>> 0).toNumber(true);
             return message;
         };
 
@@ -1427,6 +2000,18 @@ export const monitor = $root.monitor = (() => {
                     object.totalBytes = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
                 } else
                     object.totalBytes = options.longs === String ? "0" : 0;
+                object.device = "";
+                object.fsType = "";
+                if ($util.Long) {
+                    let long = new $util.Long(0, 0, true);
+                    object.inodesUsed = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
+                } else
+                    object.inodesUsed = options.longs === String ? "0" : 0;
+                if ($util.Long) {
+                    let long = new $util.Long(0, 0, true);
+                    object.inodesTotal = options.longs === String ? long.toString() : options.longs === Number ? long.toNumber() : long;
+                } else
+                    object.inodesTotal = options.longs === String ? "0" : 0;
             }
             if (message.mountPoint != null && message.hasOwnProperty("mountPoint"))
                 object.mountPoint = message.mountPoint;
@@ -1440,6 +2025,20 @@ export const monitor = $root.monitor = (() => {
                     object.totalBytes = options.longs === String ? String(message.totalBytes) : message.totalBytes;
                 else
                     object.totalBytes = options.longs === String ? $util.Long.prototype.toString.call(message.totalBytes) : options.longs === Number ? new $util.LongBits(message.totalBytes.low >>> 0, message.totalBytes.high >>> 0).toNumber(true) : message.totalBytes;
+            if (message.device != null && message.hasOwnProperty("device"))
+                object.device = message.device;
+            if (message.fsType != null && message.hasOwnProperty("fsType"))
+                object.fsType = message.fsType;
+            if (message.inodesUsed != null && message.hasOwnProperty("inodesUsed"))
+                if (typeof message.inodesUsed === "number")
+                    object.inodesUsed = options.longs === String ? String(message.inodesUsed) : message.inodesUsed;
+                else
+                    object.inodesUsed = options.longs === String ? $util.Long.prototype.toString.call(message.inodesUsed) : options.longs === Number ? new $util.LongBits(message.inodesUsed.low >>> 0, message.inodesUsed.high >>> 0).toNumber(true) : message.inodesUsed;
+            if (message.inodesTotal != null && message.hasOwnProperty("inodesTotal"))
+                if (typeof message.inodesTotal === "number")
+                    object.inodesTotal = options.longs === String ? String(message.inodesTotal) : message.inodesTotal;
+                else
+                    object.inodesTotal = options.longs === String ? $util.Long.prototype.toString.call(message.inodesTotal) : options.longs === Number ? new $util.LongBits(message.inodesTotal.low >>> 0, message.inodesTotal.high >>> 0).toNumber(true) : message.inodesTotal;
             return object;
         };
 

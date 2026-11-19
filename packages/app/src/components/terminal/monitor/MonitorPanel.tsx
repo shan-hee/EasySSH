@@ -22,34 +22,37 @@ const EMPTY_METRICS_HISTORY: MonitorMetrics[] = [];
 const COMPACT_HEIGHT_THRESHOLD = 700;
 // 这里读到的是终端内容区高度，不是桌面窗口外框高度；500px 能让 620px 桌面窗口落在 compact。
 const MINI_HEIGHT_THRESHOLD = 500;
+// 宽侧栏、手机横屏、平板：CPU | 内存，网卡 | 磁盘 两列排布。
+const TWO_COLUMN_WIDTH_THRESHOLD = 520;
 
+// 磁盘方格的高度随宽度变化，不在这里配置。
 const DENSITY_LAYOUT: Record<MonitorPanelDensity, {
   contentClassName: string;
+  gridClassName: string;
   cpuChartHeight: number;
   memoryChartHeight: number;
   networkChartHeight: number;
-  diskChartHeight: number;
 }> = {
   full: {
     contentClassName: "py-1.5 px-3 space-y-1.5",
-    cpuChartHeight: 106,
-    memoryChartHeight: 106,
-    networkChartHeight: 106,
-    diskChartHeight: 106,
+    gridClassName: "py-1.5 px-3 gap-x-4 gap-y-1.5",
+    cpuChartHeight: 96,
+    memoryChartHeight: 96,
+    networkChartHeight: 96,
   },
   compact: {
     contentClassName: "py-1.5 px-3 space-y-2",
+    gridClassName: "py-1.5 px-3 gap-x-4 gap-y-2",
     cpuChartHeight: 64,
-    memoryChartHeight: 74,
+    memoryChartHeight: 84,
     networkChartHeight: 64,
-    diskChartHeight: 62,
   },
   mini: {
     contentClassName: "py-2 px-3 space-y-3",
+    gridClassName: "py-2 px-3 gap-x-4 gap-y-3",
     cpuChartHeight: 0,
     memoryChartHeight: 0,
     networkChartHeight: 0,
-    diskChartHeight: 0,
   },
 };
 
@@ -69,7 +72,7 @@ interface MonitorPanelProps {
  * 性能优化：使用 useMonitoringData() 只订阅监控数据
  * 避免在延迟数据更新时不必要的重新渲染
  *
- * 宽度: 280px (固定宽度)
+ * 宽度: 跟随父容器，≥ 520px 时两列排布
  * 高度: 跟随父容器，按可用高度切换 full / compact / mini 三档
  */
 const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
@@ -79,7 +82,9 @@ const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
   headerActions,
 }) => {
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const [panelHeight, setPanelHeight] = useState<number | null>(null);
+  const [panelSize, setPanelSize] = useState<{ width: number; height: number } | null>(null);
+  const panelHeight = panelSize?.height ?? null;
+  const twoColumns = !horizontal && (panelSize?.width ?? 0) >= TWO_COLUMN_WIDTH_THRESHOLD;
   const { metrics, getMetricsHistory } = useMonitoringData();
   const frozenSnapshotRef = useRef<{
     metrics: typeof metrics;
@@ -118,9 +123,11 @@ const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
     const measure = () => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        const nextHeight = Math.round(node.getBoundingClientRect().height);
-        setPanelHeight((currentHeight) => (
-          currentHeight === nextHeight ? currentHeight : nextHeight
+        const rect = node.getBoundingClientRect();
+        const width = Math.round(rect.width);
+        const height = Math.round(rect.height);
+        setPanelSize((current) => (
+          current?.width === width && current.height === height ? current : { width, height }
         ));
       });
     };
@@ -153,16 +160,24 @@ const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
 
   const panelContent = useMemo(() => {
     if (!formattedMetrics) {
-      return <MonitorSkeleton density={density} headerActions={headerActions} />;
+      return (
+        <div className={cn(twoColumns && "col-span-2")}>
+          <MonitorSkeleton density={density} headerActions={headerActions} />
+        </div>
+      );
     }
 
     return (
       <>
-        <SystemInfo data={formattedMetrics.systemInfo} density={density} headerActions={headerActions} />
+        <div className={cn(twoColumns && "col-span-2")}>
+          <SystemInfo data={formattedMetrics.systemInfo} density={density} headerActions={headerActions} />
+        </div>
 
         <CPUChart
-          data={formattedMetrics.cpuHistory}
+          history={formattedMetrics.cpuHistory}
           currentUsage={formattedMetrics.currentCPU}
+          currentWait={formattedMetrics.currentCPUWait}
+          peakCore={formattedMetrics.peakCore}
           density={density}
           chartHeight={layout.cpuChartHeight}
         />
@@ -175,21 +190,17 @@ const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
 
         <NetworkChart
           data={formattedMetrics.networkHistory}
-          currentDownload={formattedMetrics.currentNetwork.download}
-          currentUpload={formattedMetrics.currentNetwork.upload}
+          current={formattedMetrics.currentNetwork}
+          interfaces={formattedMetrics.interfaces}
+          interfaceHistory={formattedMetrics.interfaceHistory}
           density={density}
           chartHeight={layout.networkChartHeight}
         />
 
-        <DiskUsage
-          data={formattedMetrics.disks}
-          totalPercent={formattedMetrics.diskTotalPercent}
-          density={density}
-          chartHeight={layout.diskChartHeight}
-        />
+        <DiskUsage data={formattedMetrics.disks} density={density} />
       </>
     );
-  }, [formattedMetrics, density, layout, headerActions]);
+  }, [formattedMetrics, density, layout, headerActions, twoColumns]);
 
   return (
     <div
@@ -203,7 +214,11 @@ const MonitorPanelComponent: React.FC<MonitorPanelProps> = ({
       <div
         className={cn(
           "h-full min-h-0 overflow-y-auto monitor-panel-scrollbar",
-          horizontal ? "grid grid-cols-[repeat(5,minmax(200px,1fr))] items-start gap-4 overflow-x-auto px-3 py-2" : layout.contentClassName
+          horizontal
+            ? "grid grid-cols-[repeat(5,minmax(200px,1fr))] items-start gap-4 overflow-x-auto px-3 py-2"
+            : twoColumns
+              ? cn("grid grid-cols-2 content-start items-start", layout.gridClassName)
+              : layout.contentClassName
         )}
       >
         {panelContent}

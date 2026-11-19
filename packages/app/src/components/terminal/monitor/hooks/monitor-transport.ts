@@ -9,10 +9,7 @@ import type {
   WorkspaceMonitorApi,
   WorkspaceMonitorMetrics,
 } from '@/lib/session/workspace'
-import {
-  useMonitorStore,
-  type MonitorMetrics as StoreMonitorMetrics,
-} from '@/stores/monitor-store'
+import { useMonitorStore } from '@/stores/monitor-store'
 
 interface MonitorTransportOptions {
   serverId: string
@@ -59,56 +56,6 @@ const isSameApi = (
   current?.WebSocketCtor === next?.WebSocketCtor
 )
 
-const toStoreMetrics = (metrics: WorkspaceMonitorMetrics): StoreMonitorMetrics => {
-  const ramTotal = metrics.memory.ramTotalBytes
-  const disks = metrics.disks
-
-  return {
-    systemInfo: {
-      os: metrics.systemInfo.os,
-      hostname: metrics.systemInfo.hostname,
-      cpuModel: metrics.systemInfo.cpuModel,
-      arch: metrics.systemInfo.arch,
-      loadAvg: metrics.systemInfo.loadAvg,
-      uptimeSeconds: metrics.systemInfo.uptimeSeconds,
-      cpuCores: metrics.systemInfo.cpuCores,
-    },
-    cpu: {
-      usage: metrics.cpu.usagePercent,
-      cores: metrics.cpu.coreCount,
-    },
-    memory: {
-      total: ramTotal,
-      used: metrics.memory.ramUsedBytes,
-      free: Math.max(0, ramTotal - metrics.memory.ramUsedBytes),
-      usagePercent: ramTotal > 0
-        ? (metrics.memory.ramUsedBytes / ramTotal) * 100
-        : 0,
-      swapUsed: metrics.memory.swapUsedBytes,
-      swapTotal: metrics.memory.swapTotalBytes,
-    },
-    disk: {
-      total: disks.reduce((total, disk) => total + disk.totalBytes, 0),
-      used: disks.reduce((total, disk) => total + disk.usedBytes, 0),
-      free: disks.reduce(
-        (total, disk) => total + Math.max(0, disk.totalBytes - disk.usedBytes),
-        0,
-      ),
-      usagePercent: metrics.diskTotalPercent,
-    },
-    disks,
-    network: {
-      bytesIn: metrics.network.bytesRecvPerSec,
-      bytesOut: metrics.network.bytesSentPerSec,
-      packetsIn: 0,
-      packetsOut: 0,
-    },
-    timestamp: metrics.timestamp,
-    sshLatencyMs: metrics.sshLatencyMs,
-    docker: metrics.docker,
-  }
-}
-
 const decodeMetrics = (data: ArrayBuffer): WorkspaceMonitorMetrics => {
   const metrics = monitor.SystemMetrics.decode(new Uint8Array(data))
 
@@ -125,21 +72,35 @@ const decodeMetrics = (data: ArrayBuffer): WorkspaceMonitorMetrics => {
     cpu: {
       usagePercent: metrics.cpu?.usagePercent || 0,
       coreCount: metrics.cpu?.coreCount || 0,
+      iowaitPercent: metrics.cpu?.iowaitPercent || 0,
+      stealPercent: metrics.cpu?.stealPercent || 0,
+      coreUsagePercent: metrics.cpu?.coreUsagePercent || [],
     },
     memory: {
       ramUsedBytes: Number(metrics.memory?.ramUsedBytes || 0),
       ramTotalBytes: Number(metrics.memory?.ramTotalBytes || 0),
+      ramCacheBytes: Number(metrics.memory?.ramCacheBytes || 0),
       swapUsedBytes: Number(metrics.memory?.swapUsedBytes || 0),
       swapTotalBytes: Number(metrics.memory?.swapTotalBytes || 0),
     },
     network: {
       bytesRecvPerSec: Number(metrics.network?.bytesRecvPerSec || 0),
       bytesSentPerSec: Number(metrics.network?.bytesSentPerSec || 0),
+      defaultInterface: metrics.network?.defaultInterface || '',
+      interfaces: (metrics.network?.interfaces || []).map((iface) => ({
+        name: iface.name || '',
+        bytesRecvPerSec: Number(iface.bytesRecvPerSec || 0),
+        bytesSentPerSec: Number(iface.bytesSentPerSec || 0),
+      })),
     },
     disks: (metrics.disks || []).map((disk) => ({
       mountPoint: disk.mountPoint || '',
       usedBytes: Number(disk.usedBytes || 0),
       totalBytes: Number(disk.totalBytes || 0),
+      device: disk.device || '',
+      fsType: disk.fsType || '',
+      inodesUsed: Number(disk.inodesUsed || 0),
+      inodesTotal: Number(disk.inodesTotal || 0),
     })),
     diskTotalPercent: metrics.diskTotalPercent || 0,
     sshLatencyMs: Number(metrics.sshLatencyMs || 0),
@@ -218,7 +179,7 @@ const startPolling = (transport: MonitorTransport, generation: number) => {
       transport.errorNotified = false
       useMonitorStore.getState().publishMetrics(
         transport.serverId,
-        toStoreMetrics(metrics),
+        metrics,
       )
     } catch (error) {
       if (isCurrentTransport(transport, generation)) {
@@ -292,7 +253,7 @@ const startWebSocket = async (transport: MonitorTransport, generation: number) =
         try {
           useMonitorStore.getState().publishMetrics(
             transport.serverId,
-            toStoreMetrics(decodeMetrics(event.data)),
+            decodeMetrics(event.data),
           )
           transport.reconnectAttempts = 0
           transport.errorNotified = false
