@@ -121,6 +121,7 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
   }
 
   const syncing = Boolean(status?.syncing)
+  const authorizedDevices = status?.devices?.filter(device => !device.revoked) ?? []
   const disabled = busy || syncing || Boolean(loadError)
   const error = actionError || loadError || status?.error || ""
   const stateLabel = !status ? t("syncLoading") : !status.connected ? t("syncDisconnected")
@@ -258,9 +259,9 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
       <Dialog open={!!editingDevice} onOpenChange={open => { if (!open) setEditingDevice(null) }}><DialogContent><DialogHeader><DialogTitle>{t("syncEditScopes")} · {editingDevice?.name}</DialogTitle></DialogHeader>{editingDevice && <><SyncScopeOptions value={editingDevice.scopes} disabled={disabled} onChange={scopes => setEditingDevice({ ...editingDevice, scopes })} /><Button disabled={disabled} onClick={() => void action(async () => { await adapter.updateDeviceScopes!(editingDevice.id, editingDevice.scopes); setEditingDevice(null) })}>{t("syncSaveScopes")}</Button></>}</DialogContent></Dialog>
       {!desktopMode && status && (
         <SettingsSection title={t("syncDevices")} icon={<Laptop className="size-5" />} className="rounded-xl border border-border bg-card/40 p-5">
-          {!status.devices?.length ? <p className="text-sm text-muted-foreground">{t("syncNoDevices")}</p> : (
+          {!authorizedDevices.length ? <p className="text-sm text-muted-foreground">{t("syncNoDevices")}</p> : (
             <ul className="divide-y">
-              {status.devices.map((device) => (
+              {authorizedDevices.map((device) => (
                 <li key={device.id} className="flex flex-wrap items-center gap-3 py-3">
                   <Laptop className="size-5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
@@ -270,9 +271,11 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
                     <p className="mt-1 text-xs text-muted-foreground">{t("syncLastTime")}: {device.last_used_at ? new Date(device.last_used_at).toLocaleString() : t("syncNever")} · {t("syncExpires")}: {new Date(device.expires_at).toLocaleDateString()}</p>
                   </div>
                   {adapter.updateDeviceScopes && <Button variant="outline" size="sm" disabled={disabled} onClick={() => setEditingDevice({ id: device.id, name: device.name, scopes: { ...device.scopes } })}>{t("syncEditScopes")}</Button>}
-                  <Button variant="ghost" size="sm" disabled={disabled} onClick={() => void action(async () => {
-                    if (await confirm({ description: t("syncRevokeConfirm"), variant: "destructive" })) await adapter.revokeDevice?.(device.id)
-                  })}>{t("syncRevoke")}</Button>
+                  {adapter.revokeDevice && <Button variant="ghost" size="sm" disabled={disabled} onClick={async () => {
+                    if (await confirm({ description: t("syncRevokeConfirm"), variant: "destructive" })) {
+                      await action(() => adapter.revokeDevice!(device.id), t("syncDeviceRevoked", { name: device.name }))
+                    }
+                  }}>{t("syncRevoke")}</Button>}
                 </li>
               ))}
             </ul>

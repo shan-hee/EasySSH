@@ -27,6 +27,7 @@
   "syncNoDevices": "No authorized devices. Enter this server address in the desktop app, then sign in and approve access.",
   "syncExpires": "Expires",
   "syncRevoke": "Revoke",
+  "syncDeviceRevoked": "Sync access revoked for {name}.",
   "syncRevokeConfirm": "This device will no longer be able to sync. Data already synced to the device will remain there. Continue?",
   "syncConflicts": "Changes to review",
   "syncConflictHint": "Conflicting fields keep their current local values until you choose a version. New records with unresolved conflicts are not added locally. You can save other conversation versions separately. Credential previews never display secrets.",

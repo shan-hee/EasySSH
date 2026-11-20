@@ -28,14 +28,7 @@ export class SyncResolutionError extends Error {
     super(message)
   }
 }
-export type SyncDevice = {
-  id: string
-  name: string
-  scopes: SyncScopes
-  created_at: string
-  expires_at: string
-  last_used_at: string | null
-}
+export type SyncDevice = components["schemas"]["SyncDevice"]
 export type SyncStatus = {
   account_name?: string
   can_sync?: boolean

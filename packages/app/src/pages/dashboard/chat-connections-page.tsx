@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { chatConnectionsApi, type ChatBindRequest, type ChatConnection, type ChatConnectionInput, type ChatSession } from "@/lib/api/chat-connections"
 import { SystemPromptEditor, systemPromptValid } from "@/components/chat-connections/system-prompt-editor"
@@ -95,8 +96,8 @@ export default function ChatConnectionsPage() {
       </div>}
     </DashboardPageContent>
     <Dialog open={managed !== undefined} onOpenChange={open => { if (!open) setManaging(null) }}>
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden sm:max-w-3xl">
-        <DialogHeader className="shrink-0 pr-8">
+      <DialogContent containerClassName="p-2 sm:p-4" className="flex max-h-[calc(100dvh-1rem)] min-w-0 max-w-full flex-col overflow-hidden p-4 sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:p-6">
+        <DialogHeader className="shrink-0 pr-8 text-left [overflow-wrap:anywhere]">
           <DialogTitle>{managed?.name ?? t("title")}</DialogTitle>
           <DialogDescription>{managed ? `${t(`providers.${managed.provider}`)} · ${botLabel(managed)} · ${t(`connectionStatus.${managed.status}`)}` : ""}</DialogDescription>
         </DialogHeader>
@@ -106,7 +107,7 @@ export default function ChatConnectionsPage() {
       </DialogContent>
     </Dialog>
     <Dialog open={editor !== null} onOpenChange={open => { if (!open) setEditor(null) }}>
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+      <DialogContent className="flex h-[min(680px,calc(100dvh-3rem))] w-[min(920px,calc(100vw-2rem))] min-w-0 max-w-none flex-col gap-0 overflow-hidden p-0">
         {editor !== null && <ConnectionForm key={editor === "new" ? "new" : editor.id} connection={editor === "new" ? undefined : editor} onSaved={async value => { setEditor(null); setConnectionId(value.id); await refresh() }} />}
       </DialogContent>
     </Dialog>
@@ -306,8 +307,8 @@ function CopyChip({ value, label }: { value: string; label: string }) {
   return <span className="inline-flex max-w-full items-center gap-1 rounded-md border bg-background pl-2 font-mono text-xs"><span className="truncate">{label}</span><CopyButton value={value} label={label} className="size-6" /></span>
 }
 
-function FormSection({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="space-y-4"><h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>{children}</section>
+function FormTab({ value, busy, children }: { value: string; busy: boolean; children: ReactNode }) {
+  return <TabsContent value={value} className="mt-4 min-h-0 overflow-y-auto pl-0.5 pr-1"><fieldset disabled={busy} className="min-w-0 space-y-4 px-1">{children}</fieldset></TabsContent>
 }
 
 function ConnectionForm({ connection, onSaved }: { connection?: ChatConnection; onSaved: (value: ChatConnection) => Promise<void> }) {
@@ -327,7 +328,7 @@ function ConnectionForm({ connection, onSaved }: { connection?: ChatConnection; 
   const selectedServers = sources.data?.filter(server => selectedServerIds.includes(server.id)) ?? []
   const submit = async (event: FormEvent) => {
     event.preventDefault()
-    if (busy) return
+    if (busy || !valid) return
     setBusy(true); setError("")
     try {
       // Each platform accepts only its own credential fields.
@@ -339,13 +340,17 @@ function ConnectionForm({ connection, onSaved }: { connection?: ChatConnection; 
   }
   const valid = !!name.trim() && new TextEncoder().encode(name.trim()).length <= 100 && (!!connection || (!!token.trim() && (provider === "telegram" || !!appId.trim()))) && selectedServerIds.length > 0 && selectedServerIds.length <= 100 && sources.isSuccess && systemPromptValid(systemPrompt, selectedServerIds)
   return <form className="flex min-h-0 flex-1 flex-col" onSubmit={event => void submit(event)}>
-    <DialogHeader className="shrink-0 border-b p-6 pr-12"><DialogTitle>{connection ? t("edit") : t("create")}</DialogTitle><DialogDescription>{t(`setupHelp.${provider}`)}</DialogDescription></DialogHeader>
-    <fieldset disabled={busy} className="min-h-0 flex-1 space-y-8 overflow-y-auto px-6 py-5">
-      <FormSection title={t("sections.bot")}>
+    <DialogHeader className="shrink-0 px-6 pt-6"><DialogTitle>{connection ? t("edit") : t("create")}</DialogTitle><DialogDescription className="sr-only">{t(`setupHelp.${provider}`)}</DialogDescription></DialogHeader>
+    <Tabs defaultValue="bot" className="min-h-0 flex-1 overflow-hidden px-6 pt-4">
+      <TabsList className="w-full shrink-0" aria-label={connection ? t("edit") : t("create")}>
+        {(["bot", "access", "agent"] as const).map(section => <TabsTrigger key={section} value={section}>{t(`sections.${section}`)}</TabsTrigger>)}
+      </TabsList>
+      <FormTab value="bot" busy={busy}>
         {!connection && <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("platform")}>
           {(["telegram", "feishu"] as const).map(item => <button key={item} type="button" role="radio" aria-checked={provider === item} onClick={() => { setProvider(item); setToken("") }}
             className={cn("rounded-lg border px-3 py-2 text-sm transition-colors", provider === item ? "border-primary bg-primary/5 font-medium" : "hover:bg-muted/50")}>{t(`providers.${item}`)}</button>)}
         </div>}
+        <p className="text-xs text-muted-foreground">{t(`setupHelp.${provider}`)}</p>
         {provider === "feishu" && !connection && <FeishuSteps />}
         <div className="space-y-2"><Label htmlFor="chat-name">{t("name")}</Label><Input id="chat-name" value={name} onChange={event => setName(event.target.value)} required maxLength={100} placeholder={t("namePlaceholder")} /></div>
         {provider === "telegram"
@@ -359,25 +364,28 @@ function ConnectionForm({ connection, onSaved }: { connection?: ChatConnection; 
             <div className="space-y-2"><Label htmlFor="chat-app-id">App ID</Label><Input id="chat-app-id" value={appId} onChange={event => setAppId(event.target.value)} required disabled={!!connection} placeholder="cli_…" /></div>
             <div className="space-y-2"><Label htmlFor="chat-app-secret">App Secret</Label><Input id="chat-app-secret" type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} required={!connection} placeholder={connection ? t("keepSecret") : ""} /></div>
           </div>}
-      </FormSection>
-      <FormSection title={t("sections.access")}>
+      </FormTab>
+      <FormTab value="access" busy={busy}>
         <div className="space-y-2"><Label>{t("servers")}</Label><p className="text-xs text-muted-foreground">{t("serversHelp")}</p>
           {sources.isError && <div role="alert" className="text-sm text-destructive">{t("loadFailed")}<Button type="button" variant="link" size="sm" onClick={() => void sources.refetch()}>{t("retry")}</Button></div>}
           {sources.isSuccess && !sources.data.length ? <p className="text-sm text-muted-foreground">{t("noServers")}</p>
             : <ServerScopePicker servers={sources.data ?? []} value={selectedServerIds} loading={sources.isPending} disabled={busy || !sources.isSuccess} onChange={setServerIds} />}
         </div>
         <div className="space-y-2"><Label htmlFor="chat-mode">{t("permissionMode")}</Label><Select value={mode} onValueChange={value => setMode(value as ChatConnectionInput["permission_mode"])}><SelectTrigger id="chat-mode"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="readonly">{t("modes.readonly")}</SelectItem><SelectItem value="balanced">{t("modes.balanced")}</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">{t(`modeHelp.${mode}`)}</p></div>
-      </FormSection>
-      <FormSection title={t("sections.agent")}>
+      </FormTab>
+      <FormTab value="agent" busy={busy}>
         <div className="space-y-2"><Label htmlFor="chat-prompt">{t("systemPrompt")}</Label>
           <SystemPromptEditor id="chat-prompt" value={systemPrompt} servers={selectedServers} disabled={busy} onChange={setSystemPrompt} />
         </div>
-      </FormSection>
-      <label className="flex items-center justify-between gap-3 text-sm"><span>{t("enabled")}</span><Switch checked={enabled} onCheckedChange={setEnabled} /></label>
-      {connection && <p className="text-xs text-muted-foreground">{t("editStopsWork")}</p>}
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    </fieldset>
-    <DialogFooter className="shrink-0 border-t p-4"><Button type="submit" disabled={busy || !valid}>{busy ? t("saving") : t("save")}</Button></DialogFooter>
+        <label className="flex items-center justify-between gap-3 rounded-lg border p-4 text-sm"><span>{t("enabled")}</span><Switch checked={enabled} onCheckedChange={setEnabled} /></label>
+      </FormTab>
+    </Tabs>
+    {connection && <p className="px-6 pt-2 text-xs text-muted-foreground">{t("editStopsWork")}</p>}
+    {error && <p role="alert" className="px-6 pt-2 text-sm text-destructive [overflow-wrap:anywhere]">{error}</p>}
+    <div className="flex shrink-0 justify-end gap-2 px-6 py-4">
+      <DialogClose asChild><Button type="button" variant="outline" disabled={busy}>{t("common:cancel")}</Button></DialogClose>
+      <Button type="submit" disabled={busy || !valid}>{busy ? t("saving") : t("save")}</Button>
+    </div>
   </form>
 }
 
@@ -404,14 +412,14 @@ function ConnectionDetail({ id, onEdit, onDeleted }: { id: string; onEdit: (conn
         <Button size="sm" variant="outline" disabled={busy} onClick={() => onEdit(connection)}><Settings2 className="size-4" />{t("edit")}</Button>
         <Button size="sm" variant="ghost" className="text-destructive" disabled={busy} onClick={() => void run(async () => { if (await confirm({ description: t("deleteConfirm"), variant: "destructive" })) { await chatConnectionsApi.remove(id); onDeleted() } })}><Trash2 className="size-4" />{t("delete")}</Button>
       </div>
-      {connection.last_error && <p role="alert" className="text-sm text-destructive">{connection.last_error}</p>}
+      {connection.last_error && <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">{connection.last_error}</p>}
     </section>
     <section className="space-y-3 rounded-lg border bg-card p-4">
       <h3 className="text-sm font-semibold">{t("bindings")}</h3>
       {bindings.length === 0 && <p className="text-sm text-muted-foreground">{t("noBindings")}</p>}
-      {bindings.map(binding => <div key={binding.id} className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-        <div><p className="text-sm">{binding.display_name || binding.user_id}</p><p className="text-xs text-muted-foreground">ID: {binding.external_user_id || binding.user_id} · {binding.revoked_at ? t("revoked") : t("bound")}</p></div>
-        <div className="flex gap-2">
+      {bindings.map(binding => <div key={binding.id} className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="min-w-0 [overflow-wrap:anywhere]"><p className="text-sm">{binding.display_name || binding.user_id}</p><p className="text-xs text-muted-foreground">ID: {binding.external_user_id || binding.user_id} · {binding.revoked_at ? t("revoked") : t("bound")}</p></div>
+        <div className="flex flex-wrap gap-2">
           {binding.current_session_id && <Button size="sm" variant="ghost" asChild><Link to={`/dashboard/ai-assistant?session=${encodeURIComponent(binding.current_session_id)}`}>{t("openSession")}<ExternalLink className="size-3" /></Link></Button>}
           {!binding.revoked_at && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { if (await confirm({ description: t("revokeConfirm"), variant: "destructive" })) await chatConnectionsApi.revoke(id, binding.id) })}>{t("revoke")}</Button>}
         </div>
