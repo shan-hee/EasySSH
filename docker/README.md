@@ -133,7 +133,7 @@ curl http://localhost:8520/api/v1/health
 docker exec -it easyssh sh
 ```
 
-如果应用无法写入 SQLite 文件，请检查 `docker/data/` 目录权限，或删除目录后让 Docker Compose 重新创建。
+容器以 root 启动，入口脚本把 `/app/data`、`/app/backups`、`/app/instance-state` 中非应用用户（uid 1001）的文件改为应用用户所有后降权运行，宿主机目录无需预先授权。若通过 `user:` 指定非 root 用户运行，入口脚本不修改属主，需自行保证挂载目录对该用户可写。
 
 ## 安全建议
 

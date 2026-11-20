@@ -20,6 +20,7 @@ CHANGELOG.md
 desktop/
 !desktop/EasySSHDesktop/frontend/package.json
 docker/
+!docker/entrypoint.sh
 scripts/
 
 # IDE 和编辑器

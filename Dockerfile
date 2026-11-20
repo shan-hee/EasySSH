@@ -68,9 +68,9 @@ FROM alpine:3.22
 WORKDIR /app
 
 # 运行时组件：证书与时区；健康检查使用 Alpine 自带的 BusyBox wget
-RUN apk --no-cache add ca-certificates tzdata postgresql-client mariadb-client tini
+RUN apk --no-cache add ca-certificates tzdata postgresql-client mariadb-client tini su-exec
 
-# 使用非 root 用户运行
+# 应用以非 root 用户运行；容器以 root 启动，由 entrypoint 修正挂载目录属主后降权
 ARG APP_UID=1001
 ARG APP_GID=1001
 RUN addgroup -S -g ${APP_GID} appuser \
@@ -90,8 +90,7 @@ ENV TZ=Asia/Shanghai \
 # 复制后端二进制与前端静态资源
 COPY --from=backend-builder --chown=appuser:appuser /app/server/easyssh-api ./
 COPY --from=frontend-builder --chown=appuser:appuser /app/web/dist ./static
-
-USER appuser
+COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 EXPOSE 8520
 
@@ -99,5 +98,5 @@ EXPOSE 8520
 HEALTHCHECK --interval=30s --timeout=3s --start-period=32m --retries=3 \
   CMD busybox wget -q -O /dev/null http://127.0.0.1:8520/api/v1/health || exit 1
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["./easyssh-api"]
