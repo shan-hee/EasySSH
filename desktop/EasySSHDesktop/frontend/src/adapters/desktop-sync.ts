@@ -49,6 +49,9 @@ function syncErrorMessage(error: unknown): string {
   if (message === "conversation is busy" || message === "AI is busy; retry after the current operation") {
     return "本地 AI 会话正在运行或等待确认，请处理该会话后重试同步"
   }
+  if (message === "Local data changed; refresh and retry" || message === "conflict has changed; refresh and retry") {
+    return "数据已发生变化，请根据最新的冲突重新选择版本"
+  }
   // The server rejects revoked or expired device tokens; retrying cannot help.
   if (message.startsWith("sync HTTP 401:")) return authExpiredMessage
   return message
@@ -278,6 +281,8 @@ export const desktopSyncAdapter: SyncAdapter = {
     if (active) await active.catch(() => {})
     try {
       await resolveChoices(choices)
+    } catch (error) {
+      throw new Error(syncErrorMessage(error))
     } finally {
       // Choices saved before a failure still need publishing and uploading.
       window.dispatchEvent(new Event("easyssh:sync-applied"))

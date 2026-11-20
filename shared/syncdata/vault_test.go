@@ -47,6 +47,42 @@ func TestVaultProvenanceDoesNotCreateVersionsOrLeakSecrets(t *testing.T) {
 	}
 }
 
+func TestCredentialKeyAliasesDoNotCreateVaultVersions(t *testing.T) {
+	makePayload := func(id string) VaultPayload {
+		return VaultPayload{Kind: "credential", Credential: &Credential{
+			Connection: JSON(Connection{Host: "example.test", Port: 22, Username: "user", AuthMethod: "key",
+				Key: &KeyReference{ID: id, Name: "shared key", PublicKey: "public", Fingerprint: "fingerprint"}}),
+			Password: "password",
+			Key: &KeyMaterial{ID: id, Name: "shared key", PublicKey: "public", Fingerprint: "fingerprint",
+				PrivateKey: "private", SavedPassphrase: "passphrase"},
+		}}
+	}
+	local := makePayload("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+	canonical := makePayload("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+	if !SameVaultValue(JSON(local), JSON(canonical)) || !SameVaultValue(JSON(canonical), JSON(local)) {
+		t.Fatal("canonicalizing a shared key created a credential change")
+	}
+	for _, tc := range []struct {
+		name   string
+		change func(*Credential)
+	}{
+		{"password", func(c *Credential) { c.Password = "changed" }},
+		{"private key", func(c *Credential) { c.Key.PrivateKey = "changed" }},
+		{"passphrase", func(c *Credential) { c.Key.SavedPassphrase = "changed" }},
+		{"public key", func(c *Credential) { c.Key.PublicKey = "changed" }},
+		{"fingerprint", func(c *Credential) { c.Key.Fingerprint = "changed" }},
+		{"connection", func(c *Credential) { c.Connection = strings.Replace(c.Connection, "example.test", "other.test", 1) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			changed := makePayload(canonical.Credential.Key.ID)
+			tc.change(changed.Credential)
+			if SameVaultValue(JSON(local), JSON(changed)) {
+				t.Fatal("key alias normalization hid a real credential change")
+			}
+		})
+	}
+}
+
 func TestConversationSyncKeepsUnknownAndDoesNotPretendRunningWorkWasCanceled(t *testing.T) {
 	c := Conversation{Tasks: []aichatui.TaskView{
 		{Status: aichatui.TaskStatusUnknown, Result: "unconfirmed effect"},

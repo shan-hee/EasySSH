@@ -305,6 +305,7 @@ func Summarize(p VaultPayload) VaultSummary {
 
 // Provenance describes a version; metadata-only timestamps must not create a
 // new secret version (e.g. a server's last-connected timestamp changing).
+// The same SSH key can have different IDs before its aliases are merged.
 func SameVaultValue(a, b string) bool {
 	if a == b {
 		return true
@@ -317,5 +318,19 @@ func SameVaultValue(a, b string) bool {
 	right.Source = ""
 	left.UpdatedAt = time.Time{}
 	right.UpdatedAt = time.Time{}
+	for _, payload := range []*VaultPayload{&left, &right} {
+		if payload.Kind != "credential" || payload.Credential == nil {
+			continue
+		}
+		credential := payload.Credential
+		if credential.Key != nil {
+			credential.Key.ID = ""
+		}
+		var connection Connection
+		if json.Unmarshal([]byte(credential.Connection), &connection) == nil && connection.Key != nil {
+			connection.Key.ID = ""
+			credential.Connection = JSON(connection)
+		}
+	}
 	return JSON(left) == JSON(right)
 }

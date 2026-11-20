@@ -22,8 +22,6 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
   const [editingDevice, setEditingDevice] = useState<{ id: string; name: string; scopes: SyncScopes } | null>(null)
   const [status, setStatus] = useState<SyncStatus | null>(null)
   const [loadError, setLoadError] = useState("")
-  const [actionError, setActionError] = useState("")
-  const [failedSync, setFailedSync] = useState(false)
   const [busy, setBusy] = useState(false)
   const [url, setUrl] = useState("")
   const [name, setName] = useState("")
@@ -31,6 +29,17 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
   const [candidates, setCandidates] = useState<SyncCandidate[]>([])
   const actionRunning = useRef(false)
   const refreshVersion = useRef(0)
+  const reportedError = useRef("")
+  const reportError = useCallback((message: string) => {
+    if (reportedError.current !== message) toast.error(message)
+    reportedError.current = message
+  }, [])
+
+  const error = loadError || status?.error || ""
+  useEffect(() => {
+    if (error) reportError(error)
+    else if (!actionRunning.current) reportedError.current = ""
+  }, [error, reportError])
 
   const refresh = useCallback(async () => {
     const version = ++refreshVersion.current
@@ -62,13 +71,6 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
 
   useEffect(() => () => { void adapter.cancelLogin?.().catch(() => {}) }, [adapter])
   useEffect(() => {
-    // A later background retry can recover a manually initiated sync failure.
-    if (failedSync && status && !status.syncing && !status.error && !loadError) {
-      setActionError("")
-      setFailedSync(false)
-    }
-  }, [failedSync, status, loadError])
-  useEffect(() => {
     if (!login) return
     let cancelled = false
     let timer: number
@@ -89,30 +91,27 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
         if (cancelled) return
         setLogin(null)
         await refresh()
-        setActionError(error instanceof Error ? error.message : String(error))
+        reportError(error instanceof Error ? error.message : String(error))
       }
     }
     timer = window.setTimeout(() => void poll(), 3000)
     return () => { cancelled = true; window.clearTimeout(timer) }
-  }, [login, adapter, refresh, t])
+  }, [login, adapter, refresh, reportError, t])
 
-  async function action(fn: () => Promise<void>, success?: string, isSync = false): Promise<boolean> {
+  async function action(fn: () => Promise<void>, success?: string): Promise<boolean> {
     if (actionRunning.current) return false
     actionRunning.current = true
     setBusy(true)
-    setActionError("")
-    setFailedSync(false)
+    reportedError.current = ""
     try {
       await fn()
       await refresh()
       if (success) toast.success(success)
       return true
     } catch (error) {
-      await refresh()
       const message = error instanceof Error ? error.message : String(error)
-      setActionError(message)
-      setFailedSync(isSync)
-      if (!isSync) toast.error(message)
+      reportError(message)
+      await refresh()
       return false
     } finally {
       actionRunning.current = false
@@ -123,7 +122,6 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
   const syncing = Boolean(status?.syncing)
   const authorizedDevices = status?.devices?.filter(device => !device.revoked) ?? []
   const disabled = busy || syncing || Boolean(loadError)
-  const error = actionError || loadError || status?.error || ""
   const stateLabel = !status ? t("syncLoading") : !status.connected ? t("syncDisconnected")
     : syncing ? t("syncRunning") : status.can_sync === false ? t("syncPermissionRequired")
       : !status.enabled ? t("syncPaused") : error || status.conflicts.length ? t("syncNeedsAttention")
@@ -137,7 +135,7 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
       const next = await adapter.status()
       if (next.conflicts.length) toast.info(t("syncConflictSummary", { count: next.conflicts.length }))
       else if (next.connected && next.enabled) toast.success(t("syncComplete"))
-    }, undefined, true)
+    })
   }
 
   return (
@@ -182,24 +180,19 @@ export function SyncPanel({ adapter, desktopMode }: { adapter: SyncAdapter; desk
         )}
         {!status && !error && <PageLoading className="min-h-0 py-6" />}
         {error && (
-          <div role="alert" className="space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
-            <p className="font-medium text-destructive">{t(actionError && !failedSync ? "syncActionFailed" : loadError ? "syncLoadFailed" : "syncExchangeFailed")}</p>
-            <p className="whitespace-pre-wrap break-words text-muted-foreground">{error}</p>
-            <div className="flex flex-wrap gap-2">
-              {loadError ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void refresh()}>{t("syncRefreshStatus")}</Button>
-                : status?.auth_expired && adapter.disconnect ? (
-                  // The old token is already invalid, so a failed remote revocation is expected.
-                  <Button size="sm" variant="outline" disabled={disabled} onClick={() => void action(async () => {
-                    const server = status.server_url ?? ""
-                    await adapter.disconnect!()
-                    setUrl(server)
-                  })}>{t("syncLoginAgain")}</Button>
-                )
-                : (!actionError || failedSync) && desktopMode && status?.connected && status.enabled && (
-                  <Button size="sm" variant="outline" disabled={disabled} onClick={() => void syncNow()}>{t("syncRetry")}</Button>
-                )}
-              {actionError && <Button size="sm" variant="ghost" onClick={() => setActionError("")}>{t("syncDismiss")}</Button>}
-            </div>
+          <div className="flex flex-wrap gap-2">
+            {loadError ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void refresh()}>{t("syncRefreshStatus")}</Button>
+              : status?.auth_expired && adapter.disconnect ? (
+                // The old token is already invalid, so a failed remote revocation is expected.
+                <Button size="sm" variant="outline" disabled={disabled} onClick={() => void action(async () => {
+                  const server = status.server_url ?? ""
+                  await adapter.disconnect!()
+                  setUrl(server)
+                })}>{t("syncLoginAgain")}</Button>
+              )
+              : desktopMode && status?.connected && status.enabled && (
+                <Button size="sm" variant="outline" disabled={disabled} onClick={() => void syncNow()}>{t("syncRetry")}</Button>
+              )}
           </div>
         )}
         {!desktopMode && <p className="text-sm leading-6 text-muted-foreground">{t(status?.can_sync === false ? "syncPermissionHint" : "syncWebLoginHint")}</p>}

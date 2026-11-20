@@ -195,6 +195,8 @@ func (s *DesktopSyncService) SynchronizeVault(kind, id string) (bool, error) {
 // them. Configuration choices share one document and one save, each vault
 // record is its own document.
 func (s *DesktopSyncService) ResolveConflicts(choices []syncengine.Resolution) error {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
 	var configuration, vault []syncengine.Resolution
 	for _, choice := range choices {
 		if strings.HasPrefix(choice.Key, "vault/") {
@@ -221,7 +223,7 @@ func (s *DesktopSyncService) ResolveConflicts(choices []syncengine.Resolution) e
 		}
 	}
 	for _, choice := range vault {
-		if err := s.ResolveVault(choice.Key, choice.Value, nil); err != nil {
+		if err := s.resolveVault(choice.Key, choice.Value, nil); err != nil {
 			return err
 		}
 	}
@@ -232,6 +234,12 @@ func (s *DesktopSyncService) ResolveConflicts(choices []syncengine.Resolution) e
 // the candidate set that was compared as equal; the choice is only made
 // automatically while those are still the candidates.
 func (s *DesktopSyncService) ResolveVault(key, value string, identical []string) error {
+	s.syncMu.Lock()
+	defer s.syncMu.Unlock()
+	return s.resolveVault(key, value, identical)
+}
+
+func (s *DesktopSyncService) resolveVault(key, value string, identical []string) error {
 	parts := strings.Split(key, "/")
 	if len(parts) != 3 || parts[0] != "vault" {
 		return errors.New("invalid vault conflict")
