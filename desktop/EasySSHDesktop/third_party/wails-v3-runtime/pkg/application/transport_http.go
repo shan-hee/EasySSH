@@ -21,6 +21,9 @@ import (
 // to prevent memory bloat from occasional large requests (e.g., images).
 const maxPooledBufferSize = 512 * 1024 // 512KB
 
+// Ordinary requests have the same payload ceiling as assembled chunked requests.
+const maxRuntimeBodyBytes = maxAssembledBytes
+
 var bufferPool = sync.Pool{
 	New: func() any {
 		return bytes.NewBuffer(make([]byte, 0, 4096))
@@ -54,8 +57,9 @@ type HTTPTransport struct {
 	logger           *slog.Logger
 	chunkMu          sync.Mutex
 	chunkStore       map[nativeCallKey]*pendingChunks
+	cleanupMu        sync.Mutex
 	stopCleanup      chan struct{}
-	stopOnce         sync.Once
+	cleanupDone      chan struct{}
 }
 
 func NewHTTPTransport(opts ...HTTPTransportOption) *HTTPTransport {
@@ -84,12 +88,24 @@ func HTTPTransportWithLogger(logger *slog.Logger) HTTPTransportOption {
 
 func (t *HTTPTransport) Start(ctx context.Context, processor *MessageProcessor) error {
 	t.messageProcessor = processor
-	t.stopCleanup = make(chan struct{})
-	go t.cleanupChunks(t.stopCleanup)
+
+	t.cleanupMu.Lock()
+	if t.stopCleanup != nil {
+		t.cleanupMu.Unlock()
+		return nil
+	}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	t.stopCleanup = stop
+	t.cleanupDone = done
+	t.cleanupMu.Unlock()
+
+	go t.cleanupChunks(stop, done)
 	return nil
 }
 
-func (t *HTTPTransport) cleanupChunks(stop <-chan struct{}) {
+func (t *HTTPTransport) cleanupChunks(stop <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -114,8 +130,18 @@ func (t *HTTPTransport) JSClient() []byte {
 }
 
 func (t *HTTPTransport) Stop() error {
-	if t.stopCleanup != nil {
-		t.stopOnce.Do(func() { close(t.stopCleanup) })
+	t.cleanupMu.Lock()
+	stop := t.stopCleanup
+	done := t.cleanupDone
+	if stop != nil {
+		close(stop)
+		t.stopCleanup = nil
+		t.cleanupDone = nil
+	}
+	t.cleanupMu.Unlock()
+
+	if done != nil {
+		<-done
 	}
 	return nil
 }
@@ -146,7 +172,10 @@ func (t *HTTPTransport) handleRuntimeRequest(rw http.ResponseWriter, r *http.Req
 		return
 	}
 	rw.Header().Set("Cache-Control", "no-store")
-	r.Body = http.MaxBytesReader(rw, r.Body, maxAssembledBytes)
+	if !checkRuntimeRequest(rw, r) {
+		return
+	}
+
 	// Chunked upload: JS splits large bodies into smaller pieces to work
 	// around WebView2's ~2MB request body delivery limit in WebResourceRequested.
 	if chunkID := r.Header.Get(chunkIDHeader); chunkID != "" {
@@ -162,7 +191,13 @@ func (t *HTTPTransport) handleRuntimeRequest(rw http.ResponseWriter, r *http.Req
 		}
 	}()
 
+	r.Body = http.MaxBytesReader(rw, r.Body, int64(maxRuntimeBodyBytes))
 	if _, err := io.Copy(buf, r.Body); err != nil {
+		var sizeErr *http.MaxBytesError
+		if errors.As(err, &sizeErr) {
+			http.Error(rw, "runtime request body exceeds "+strconv.FormatInt(sizeErr.Limit/(1024*1024), 10)+" MiB", http.StatusRequestEntityTooLarge)
+			return
+		}
 		t.httpError(rw, errs.WrapInvalidRuntimeCallErrorf(err, "Unable to read request body"))
 		return
 	}

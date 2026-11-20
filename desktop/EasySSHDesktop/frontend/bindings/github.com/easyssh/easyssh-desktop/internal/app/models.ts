@@ -32,9 +32,6 @@ import * as syncdata$0 from "../../../shared/syncdata/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as syncengine$0 from "../../../shared/syncengine/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../../time/models.js";
 
 export class DesktopAICreateSessionInput {
     "model"?: string;
@@ -705,9 +702,9 @@ export enum DesktopActivityLogStatus {
 export class DesktopActivityOverview {
     "connection_duration_is_lower_bound": boolean;
     "metric_version": string;
-    "as_of": time$0.Time;
-    "start": time$0.Time;
-    "end": time$0.Time;
+    "as_of": string;
+    "start": string;
+    "end": string;
     "timezone": string;
     "coverage": activitystats$0.OverviewCoverage;
     "volume": activitystats$0.WorkMetrics;
@@ -732,13 +729,13 @@ export class DesktopActivityOverview {
             this["metric_version"] = "";
         }
         if (!("as_of" in $$source)) {
-            this["as_of"] = null;
+            this["as_of"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("start" in $$source)) {
-            this["start"] = null;
+            this["start"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("end" in $$source)) {
-            this["end"] = null;
+            this["end"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("timezone" in $$source)) {
             this["timezone"] = "";
@@ -1345,7 +1342,7 @@ export class DesktopHandoffPending {
     "id": string;
     "origin": string;
     "confirmation": string;
-    "expires_at": time$0.Time;
+    "expires_at": string;
 
     /** Creates a new DesktopHandoffPending instance. */
     constructor($$source: Partial<DesktopHandoffPending> = {}) {
@@ -1359,7 +1356,7 @@ export class DesktopHandoffPending {
             this["confirmation"] = "";
         }
         if (!("expires_at" in $$source)) {
-            this["expires_at"] = null;
+            this["expires_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -1382,7 +1379,7 @@ export class DesktopIncomingLaunch {
     "id": string;
     "origin": string;
     "handoff_id": string;
-    "expires_at": time$0.Time;
+    "expires_at": string;
 
     /** Creates a new DesktopIncomingLaunch instance. */
     constructor($$source: Partial<DesktopIncomingLaunch> = {}) {
@@ -1396,7 +1393,7 @@ export class DesktopIncomingLaunch {
             this["handoff_id"] = "";
         }
         if (!("expires_at" in $$source)) {
-            this["expires_at"] = null;
+            this["expires_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -1859,7 +1856,7 @@ export class DesktopRemoteFileSelection {
     "id": string;
     "name": string;
     "size": number;
-    "expires_at": time$0.Time;
+    "expires_at": string;
 
     /**
      * Links and special files a folder selection leaves out.
@@ -1878,7 +1875,7 @@ export class DesktopRemoteFileSelection {
             this["size"] = 0;
         }
         if (!("expires_at" in $$source)) {
-            this["expires_at"] = null;
+            this["expires_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -2009,9 +2006,9 @@ export class DesktopRemoteTransfer {
      */
     "total": number;
     "error"?: string;
-    "created_at": time$0.Time;
-    "updated_at": time$0.Time;
-    "finished_at"?: time$0.Time | null;
+    "created_at": string;
+    "updated_at": string;
+    "finished_at"?: string | null;
 
     /** Creates a new DesktopRemoteTransfer instance. */
     constructor($$source: Partial<DesktopRemoteTransfer> = {}) {
@@ -2043,10 +2040,10 @@ export class DesktopRemoteTransfer {
             this["total"] = 0;
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -3171,7 +3168,7 @@ export class DesktopSyncChange {
 export class DesktopSyncLogin {
     "url": string;
     "code": string;
-    "expires_at": time$0.Time;
+    "expires_at": string;
 
     /** Creates a new DesktopSyncLogin instance. */
     constructor($$source: Partial<DesktopSyncLogin> = {}) {
@@ -3182,7 +3179,7 @@ export class DesktopSyncLogin {
             this["code"] = "";
         }
         if (!("expires_at" in $$source)) {
-            this["expires_at"] = null;
+            this["expires_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);

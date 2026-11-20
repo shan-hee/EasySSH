@@ -2,47 +2,34 @@
 
 package webview
 
+// CGO-free (purego) port of responsewriter_linux.go.
+
 import (
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 	"syscall"
-
-	"github.com/ebitengine/purego"
-)
-
-const (
-	gtk3 = "libgtk-3.so"
-	gtk4 = "libgtk-4.so"
 )
 
 var (
-	gtk     uintptr
-	webkit  uintptr
-	version int
+	webviewAssetErrorQuarkOnce sync.Once
+	webviewAssetErrorQuarkID   uint32
 )
 
-func init() {
-	var err error
-	// gtk, err = purego.Dlopen(gtk4, purego.RTLD_NOW|purego.RTLD_GLOBAL)
-	// if err == nil {
-	// 	version = 4
-	// 	return
-	// }
-	//	log.Println("Failed to open GTK4: Falling back to GTK3")
-	gtk, err = purego.Dlopen(gtk3, purego.RTLD_NOW|purego.RTLD_GLOBAL)
-	if err != nil {
-		panic(err)
-	}
-	version = 3
-
-	var webkit4 string = "libwebkit2gtk-4.1.so"
-	webkit, err = purego.Dlopen(webkit4, purego.RTLD_NOW|purego.RTLD_GLOBAL)
-	if err != nil {
-		panic(err)
-	}
+// webviewAssetErrorQuark returns a stable GError domain for asset-server
+// failures. The domain string is interned exactly once (sync.Once), the purego
+// equivalent of the cgo g_quark_from_static_string over a static string
+// literal, so it never leaks. Interning the per-request error message instead
+// (the previous behaviour) grew the global quark table unboundedly on
+// long-running apps, since GQuarks are never freed.
+func webviewAssetErrorQuark() uint32 {
+	webviewAssetErrorQuarkOnce.Do(func() {
+		webviewAssetErrorQuarkID = g_quark_from_string("wails-webview-assetserver")
+	})
+	return webviewAssetErrorQuarkID
 }
 
 type responseWriter struct {
@@ -52,37 +39,13 @@ type responseWriter struct {
 	wroteHeader bool
 	finished    bool
 	code        int
-	w           io.WriteCloser
-	wErr        error
-}
 
-func (rw *responseWriter) Code() int {
-	return rw.code
-}
-
-func (rw *responseWriter) Header() http.Header {
-	if rw.header == nil {
-		rw.header = http.Header{}
-	}
-	return rw.header
-}
-
-func (rw *responseWriter) Write(buf []byte) (int, error) {
-	if rw.finished {
-		return 0, errResponseFinished
-	}
-
-	rw.WriteHeader(http.StatusOK)
-	if rw.wErr != nil {
-		return 0, rw.wErr
-	}
-	return rw.w.Write(buf)
+	w    io.WriteCloser
+	wErr error
 }
 
 func (rw *responseWriter) WriteHeader(code int) {
 	rw.code = code
-
-	// TODO? Is this ever called? I don't think so!
 	if rw.wroteHeader || rw.finished {
 		return
 	}
@@ -94,9 +57,7 @@ func (rw *responseWriter) WriteHeader(code int) {
 			contentLength = pLen
 		}
 	}
-	// We can't use os.Pipe here, because that returns files with a finalizer for closing the FD. But the control over the
-	// read FD is given to the InputStream and will be closed there.
-	// Furthermore we especially don't want to have the FD_CLOEXEC
+
 	rFD, w, err := pipe()
 	if err != nil {
 		rw.finishWithError(http.StatusInternalServerError, fmt.Errorf("unable to open pipe: %s", err))
@@ -104,38 +65,13 @@ func (rw *responseWriter) WriteHeader(code int) {
 	}
 	rw.w = w
 
-	var newStream func(int, bool) uintptr
-	purego.RegisterLibFunc(&newStream, gtk, "g_unix_input_stream_new")
-	var unRef func(uintptr)
-	purego.RegisterLibFunc(&unRef, gtk, "g_object_unref")
-	stream := newStream(rFD, true)
-
-	/*	var reqFinish func(uintptr, uintptr, uintptr, uintptr, int64) int
-		purego.RegisterLibFunc(&reqFinish, webkit, "webkit_uri_scheme_request_finish")
-
-		header := rw.Header()
-			defer unRef(stream)
-		if err := reqFinish(rw.req, code, header, stream, contentLength); err != nil {
-			rw.finishWithError(http.StatusInternalServerError, fmt.Errorf("unable to finish request: %s", err))
-		}
-	*/
-	if err := webkit_uri_scheme_request_finish(rw.req, code, rw.Header(), stream, contentLength); err != nil {
+	// webkitURISchemeRequestFinish wraps the read end of the pipe in a
+	// GUnixInputStream and completes the request on the GTK main thread; the
+	// stream is created and released there too. See webkit_linux_purego.go and
+	// #5631.
+	if err := webkitURISchemeRequestFinish(rw.req, code, rw.Header(), rFD, contentLength); err != nil {
 		rw.finishWithError(http.StatusInternalServerError, fmt.Errorf("unable to finish request: %s", err))
 		return
-	}
-}
-
-func (rw *responseWriter) Finish() {
-	if !rw.wroteHeader {
-		rw.WriteHeader(http.StatusNotImplemented)
-	}
-
-	if rw.finished {
-		return
-	}
-	rw.finished = true
-	if rw.w != nil {
-		rw.w.Close()
 	}
 }
 
@@ -146,31 +82,29 @@ func (rw *responseWriter) finishWithError(code int, err error) {
 	}
 	rw.wErr = err
 
-	var newLiteral func(uint32, string, int, string) uintptr // is this correct?
-	purego.RegisterLibFunc(&newLiteral, gtk, "g_error_new_literal")
-	var newQuark func(string) uintptr
-	purego.RegisterLibFunc(&newQuark, gtk, "g_quark_from_string")
-	var freeError func(uintptr)
-	purego.RegisterLibFunc(&freeError, gtk, "g_error_free")
-	var finishError func(uintptr, uintptr)
-	purego.RegisterLibFunc(&finishError, webkit, "webkit_uri_scheme_request_finish_error")
+	msg := err.Error()
 
-	msg := string(err.Error())
-	//gquark := newQuark(msg)
-	gerr := newLiteral(1, msg, code, msg)
-	finishError(rw.req, gerr)
-	freeError(gerr)
+	// webkit_uri_scheme_request_finish_error touches the WebKit-owned request
+	// on the GTK main loop; this runs on an asset-server worker goroutine, so
+	// it must hop to the main thread. See mainthread_linux_purego.go and issue
+	// #5631.
+	invokeOnMainSync(func() {
+		gerr := g_error_new_literal(webviewAssetErrorQuark(), int32(code), msg)
+		webkit_uri_scheme_request_finish_error(rw.req, gerr)
+		g_error_free(gerr)
+	})
 }
 
 type nopCloser struct {
 	io.Writer
 }
 
-func (nopCloser) Close() error { return nil }
-
 func pipe() (r int, w *os.File, err error) {
 	var p [2]int
-	e := syscall.Pipe2(p[0:], 0)
+	// O_CLOEXEC, as in the cgo backends: a child process started while a
+	// response streams must not inherit the write end, or the reader never
+	// sees EOF and the fetch stalls.
+	e := syscall.Pipe2(p[0:], syscall.O_CLOEXEC)
 	if e != nil {
 		return 0, nil, fmt.Errorf("pipe2: %s", e)
 	}

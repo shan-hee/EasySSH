@@ -5,10 +5,6 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../time/models.js";
-
 /**
  * Record is deliberately outside the application database: restoring a database
  * must not erase the backup catalog. Passwords and root keys are never recorded.
@@ -16,12 +12,12 @@ import * as time$0 from "../../../../time/models.js";
 export class Record {
     "id": string;
     "name": string;
-    "created_at": time$0.Time;
+    "created_at": string;
     "size": number;
     "status": string;
     "source": string;
     "error"?: string;
-    "verified_at"?: time$0.Time | null;
+    "verified_at"?: string | null;
     "app_version"?: string;
     "driver"?: string;
     "schema_version"?: number;
@@ -36,7 +32,7 @@ export class Record {
             this["name"] = "";
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("size" in $$source)) {
             this["size"] = 0;

@@ -1,4 +1,4 @@
-//go:build linux && !gtk3 && !server
+//go:build linux && !android && !gtk3 && !server
 
 #ifndef LINUX_CGO_H
 #define LINUX_CGO_H
@@ -14,7 +14,12 @@
 #include <string.h>
 
 // Application flags for GTK4
-#define APPLICATION_DEFAULT_FLAGS G_APPLICATION_DEFAULT_FLAGS
+// NON_UNIQUE, as in the GTK3 path. With uniqueness on, a launch that finds the
+// bus name already taken joins the owner as a remote instance: "activate" is
+// forwarded to the primary and never fires locally, so waitForActivation in
+// WebviewWindow.Run blocks and no window is ever built. Single instance
+// behaviour is handled separately, through SingleInstanceOptions.
+#define APPLICATION_DEFAULT_FLAGS G_APPLICATION_NON_UNIQUE
 
 // ============================================================================
 // Type definitions
@@ -52,11 +57,13 @@ typedef struct AlertDialogData {
 extern void dispatchOnMainThreadCallback(unsigned int);
 extern void emit(WindowEvent* data);
 extern gboolean handleCloseRequest(GtkWindow*, uintptr_t);
-extern void handleNotifyState(GObject*, GParamSpec*, uintptr_t);
+extern void handleSurfaceSizeChanged(GObject*, GParamSpec*, uintptr_t);
+extern void handleSurfaceStateChanged(GObject*, GParamSpec*, uintptr_t);
 extern gboolean handleFocusEnter(GtkEventController*, uintptr_t);
 extern gboolean handleFocusLeave(GtkEventController*, uintptr_t);
 extern void handleLoadChanged(WebKitWebView*, WebKitLoadEvent, uintptr_t);
 extern gboolean handleNavigationPolicy(WebKitWebView*, WebKitPolicyDecision*, WebKitPolicyDecisionType, uintptr_t);
+extern gboolean handlePermissionRequest(WebKitWebView*, WebKitPermissionRequest*, uintptr_t);
 extern void handleButtonPressed(GtkGestureClick*, gint, gdouble, gdouble, uintptr_t);
 extern void handleButtonReleased(GtkGestureClick*, gint, gdouble, gdouble, uintptr_t);
 extern gboolean handleKeyPressed(GtkEventControllerKey*, guint, guint, GdkModifierType, uintptr_t);
@@ -72,6 +79,12 @@ extern void onDropFiles(char**, gint, gint, uintptr_t);
 
 // Forward declaration for activate callback
 void activateLinux(gpointer data);
+
+// Wrapper for the WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST macro
+int is_user_media_permission_request(WebKitPermissionRequest *request);
+// Whether a user-media request needs the microphone / camera respectively.
+int is_user_media_for_audio(WebKitPermissionRequest *request);
+int is_user_media_for_video(WebKitPermissionRequest *request);
 
 // ============================================================================
 // Main thread dispatch
@@ -125,6 +138,8 @@ char* build_accelerator_string(guint key, GdkModifierType mods);
 void set_action_enabled(const char *action_name, gboolean enabled);
 void set_action_state(const char *action_name, gboolean state);
 gboolean get_action_state(const char *action_name);
+char* get_action_state_string(const char *action_name);
+void set_action_state_string(const char *action_name, const char *value);
 void menu_remove_item(GMenu *menu, gint position);
 void menu_insert_item(GMenu *menu, gint position, GMenuItem *item);
 void show_context_menu(GtkWidget *parent, GMenu *menu_model, int x, int y);

@@ -1,12 +1,12 @@
-//go:build linux && cgo && gtk3 && !android && !server
+//go:build linux && cgo && gtk3 && !android && !server && !purego
 
 package application
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/wailsapp/wails/v3/internal/assetserver/webview"
@@ -41,6 +41,7 @@ static GtkWidget* new_isolated_webview(WebKitUserContentManager *manager) {
 }
 
 extern void dispatchOnMainThreadCallback(unsigned int);
+extern void handleMenuDestroy(void *, void *);
 
 static gboolean dispatchCallback(gpointer data) {
     struct CallbackID *args = data;
@@ -90,6 +91,7 @@ extern gboolean handleDeleteEvent(GtkWidget*, GdkEvent*, uintptr_t);
 extern gboolean handleFocusEvent(GtkWidget*, GdkEvent*, uintptr_t);
 extern void handleLoadChanged(WebKitWebView*, WebKitLoadEvent, uintptr_t);
 extern gboolean handleNavigationPolicy(WebKitWebView*, WebKitPolicyDecision*, WebKitPolicyDecisionType, uintptr_t);
+extern gboolean handlePermissionRequest(WebKitWebView*, WebKitPermissionRequest*, uintptr_t);
 void handleClick(void*);
 extern gboolean onButtonEvent(GtkWidget *widget, GdkEventButton *event, uintptr_t user_data);
 extern gboolean onMenuButtonEvent(GtkWidget *widget, GdkEventButton *event, uintptr_t user_data);
@@ -98,17 +100,36 @@ extern void onDragEnter(gpointer data);
 extern void onDragLeave(gpointer data);
 extern void onDragOver(gint x, gint y, gpointer data);
 extern gboolean onKeyPressEvent (GtkWidget *widget, GdkEventKey *event, uintptr_t user_data);
+extern gboolean onKeyReleaseEvent (GtkWidget *widget, GdkEventKey *event, uintptr_t user_data);
 extern void onProcessRequest(WebKitURISchemeRequest *request, uintptr_t user_data);
 extern void sendMessageToBackend(WebKitUserContentManager *contentManager, WebKitJavascriptResult *result, void *data);
 // exported below (end)
 
-static void signal_connect(void *widget, char *event, void *cb, void* data) {
-   // g_signal_connect is a macro and can't be called directly
-   g_signal_connect(widget, event, cb, data);
+static void signal_connect(void *widget, char *event, void *cb, uintptr_t data) {
+   // g_signal_connect is a macro and can't be called directly.
+   // data carries a window ID (not a real pointer); it is passed as the
+   // gpointer user_data value itself and recovered by the handlers as a
+   // uintptr_t. Keeping it integer-typed on the Go side avoids the GC
+   // scanning it as a stack pointer. See issue #5631.
+   g_signal_connect(widget, event, cb, (gpointer)data);
 }
 
 static WebKitWebView* webkit_web_view(GtkWidget *webview) {
 	return WEBKIT_WEB_VIEW(webview);
+}
+
+// Wrapper for the WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST macro
+static int is_user_media_permission_request(WebKitPermissionRequest *request) {
+	return WEBKIT_IS_USER_MEDIA_PERMISSION_REQUEST(request) ? 1 : 0;
+}
+
+// Whether a user-media request needs the microphone / camera respectively.
+static int is_user_media_for_audio(WebKitPermissionRequest *request) {
+	return webkit_user_media_permission_is_for_audio_device(WEBKIT_USER_MEDIA_PERMISSION_REQUEST(request)) ? 1 : 0;
+}
+
+static int is_user_media_for_video(WebKitPermissionRequest *request) {
+	return webkit_user_media_permission_is_for_video_device(WEBKIT_USER_MEDIA_PERMISSION_REQUEST(request)) ? 1 : 0;
 }
 
 static void* new_message_dialog(GtkWindow *parent, const gchar *msg, int dialogType, bool hasButtons) {
@@ -231,9 +252,12 @@ static void install_signal_handlers() {
 	#if defined(SIGSEGV)
 		fix_signal(SIGSEGV);
 	#endif
-	#if defined(SIGUSR1)
-		fix_signal(SIGUSR1);
-	#endif
+	// NOTE: Do NOT add SA_ONSTACK to SIGUSR1. WebKit's JavaScriptCore uses
+	// SIGUSR1 to suspend/resume threads for conservative GC stack scanning.
+	// Once JSC installs its own SIGUSR1 handler it owns the signal (Go no
+	// longer handles it), and forcing SA_ONSTACK makes that handler run on
+	// Go's alternate signal stack, breaking GC thread synchronisation and
+	// freezing WebKit during idle collection. See issue #5527.
 	#if defined(SIGXCPU)
 		fix_signal(SIGXCPU);
 	#endif
@@ -424,15 +448,15 @@ static void on_drag_leave(GtkWidget *widget, GdkDragContext *context, guint time
 }
 
 // Set up drag and drop handlers for external file drops with hover effects
-static void enableDND(GtkWidget *widget, gpointer data)
+static void enableDND(GtkWidget *widget, uintptr_t data)
 {
     // Core handlers for file drop
-    g_signal_connect(G_OBJECT(widget), "drag-data-received", G_CALLBACK(on_drag_data_received), data);
-    g_signal_connect(G_OBJECT(widget), "drag-drop", G_CALLBACK(on_drag_drop), data);
+    g_signal_connect(G_OBJECT(widget), "drag-data-received", G_CALLBACK(on_drag_data_received), (gpointer)data);
+    g_signal_connect(G_OBJECT(widget), "drag-drop", G_CALLBACK(on_drag_drop), (gpointer)data);
 
     // Hover effect handlers - return FALSE for internal drags to let WebKit handle them
-    g_signal_connect(G_OBJECT(widget), "drag-motion", G_CALLBACK(on_drag_motion), data);
-    g_signal_connect(G_OBJECT(widget), "drag-leave", G_CALLBACK(on_drag_leave), data);
+    g_signal_connect(G_OBJECT(widget), "drag-motion", G_CALLBACK(on_drag_motion), (gpointer)data);
+    g_signal_connect(G_OBJECT(widget), "drag-leave", G_CALLBACK(on_drag_leave), (gpointer)data);
 }
 
 // Block external file drops - consume the events to prevent WebKit from navigating to files
@@ -459,10 +483,10 @@ static gboolean on_drag_motion_blocked(GtkWidget *widget, GdkDragContext *contex
 }
 
 // Set up handlers that block external file drops while allowing internal HTML5 drag-and-drop
-static void disableDND(GtkWidget *widget, gpointer data)
+static void disableDND(GtkWidget *widget, uintptr_t data)
 {
-    g_signal_connect(G_OBJECT(widget), "drag-drop", G_CALLBACK(on_drag_drop_blocked), data);
-    g_signal_connect(G_OBJECT(widget), "drag-motion", G_CALLBACK(on_drag_motion_blocked), data);
+    g_signal_connect(G_OBJECT(widget), "drag-drop", G_CALLBACK(on_drag_drop_blocked), (gpointer)data);
+    g_signal_connect(G_OBJECT(widget), "drag-motion", G_CALLBACK(on_drag_motion_blocked), (gpointer)data);
 }
 
 // Store/retrieve an unsigned integer as a GObject data pointer without allocating memory.
@@ -480,12 +504,6 @@ import "C"
 // Calloc handles alloc/dealloc of C data
 type Calloc struct {
 	pool []unsafe.Pointer
-}
-
-// NewCalloc creates a new allocator. Returns a pointer so the allocation
-// pool is shared across calls without copying.
-func NewCalloc() *Calloc {
-	return &Calloc{}
 }
 
 // String creates a new C string and retains a reference to it.
@@ -508,26 +526,6 @@ type identifier C.uint
 type pointer unsafe.Pointer
 type GSList C.GSList
 type GSListPointer *GSList
-
-// getLinuxWebviewWindow safely extracts a linuxWebviewWindow from a Window interface
-// Returns nil if the window is not a WebviewWindow or not a Linux implementation
-func getLinuxWebviewWindow(window Window) *linuxWebviewWindow {
-	if window == nil {
-		return nil
-	}
-
-	webviewWindow, ok := window.(*WebviewWindow)
-	if !ok {
-		return nil
-	}
-
-	lw, ok := webviewWindow.impl.(*linuxWebviewWindow)
-	if !ok {
-		return nil
-	}
-
-	return lw
-}
 
 var (
 	nilPointer    pointer       = nil
@@ -584,11 +582,6 @@ func processApplicationEvent(eventID C.uint, data pointer) {
 	//	}
 	//}
 
-	switch event.Id {
-	case uint(events.Linux.SystemThemeChanged):
-		isDark := globalApplication.Env.IsDarkMode()
-		event.Context().setIsDarkMode(isDark)
-	}
 	applicationEvents <- event
 }
 
@@ -605,9 +598,8 @@ func appName() string {
 	return C.GoString(name)
 }
 
-func appNew(name string) pointer {
-	// Name is already sanitized by sanitizeAppName() in application_linux.go
-	appId := fmt.Sprintf("org.wails.%s", name)
+func appNew(appId string) pointer {
+	// Already resolved by applicationID() in application_linux_appid.go.
 	nameC := C.CString(appId)
 	defer C.free(unsafe.Pointer(nameC))
 	return pointer(C.gtk_application_new(nameC, C.APPLICATION_DEFAULT_FLAGS))
@@ -626,8 +618,13 @@ func appRun(app pointer) error {
 
 	signal := C.CString("activate")
 	defer C.free(unsafe.Pointer(signal))
-	C.signal_connect(unsafe.Pointer(application), signal, C.activateLinux, nil)
+	C.signal_connect(unsafe.Pointer(application), signal, C.activateLinux, 0)
 	status := C.g_application_run(application, 0, nil)
+	// The GTK main loop has stopped. Tell the asset-server webview layer to stop
+	// marshalling WebKit calls onto it, so any request still being completed on a
+	// worker goroutine runs inline instead of blocking on a loop that is gone.
+	// See #5631.
+	webview.DisableMainThreadDispatch()
 	C.g_application_release(application)
 	C.g_object_unref(C.gpointer(app))
 
@@ -639,13 +636,14 @@ func appRun(app pointer) error {
 }
 
 func appDestroy(application pointer) {
+	webview.CloseActiveRequests()
 	C.g_application_quit((*C.GApplication)(application))
 }
 
 func (w *linuxWebviewWindow) contextMenuSignals(menu pointer) {
 	c := NewCalloc()
 	defer c.Free()
-	winID := unsafe.Pointer(uintptr(C.uint(w.parent.ID())))
+	winID := C.uintptr_t(w.parent.ID())
 	C.signal_connect(unsafe.Pointer(menu), c.String("button-release-event"), C.onMenuButtonEvent, winID)
 }
 
@@ -673,7 +671,11 @@ func (a *linuxApp) getCurrentWindowID() uint {
 	if window == nil {
 		return uint(1)
 	}
+	// registerWindow and unregisterWindow write windowMap from other
+	// goroutines, so it is read under the same lock.
+	a.windowMapLock.Lock()
 	identifier, ok := a.windowMap[window]
+	a.windowMapLock.Unlock()
 	if ok {
 		return identifier
 	}
@@ -750,6 +752,36 @@ func clipboardSet(text string) {
 }
 
 // Menu
+// The destroy signal releases the Go state before a later rebuild can reuse a
+// pointer to a destroyed widget. Callbacks run on the GTK thread; the mutex
+// protects the registry from menus constructed on other goroutines.
+var (
+	menuDestroyCallbacks   = make(map[pointer]func())
+	menuDestroyCallbacksMu sync.Mutex
+)
+
+// menuOnDestroy registers callback to run when the GTK widget is destroyed.
+func menuOnDestroy(widget pointer, callback func()) {
+	menuDestroyCallbacksMu.Lock()
+	menuDestroyCallbacks[widget] = callback
+	menuDestroyCallbacksMu.Unlock()
+	signal := C.CString("destroy")
+	defer C.free(unsafe.Pointer(signal))
+	C.g_signal_connect_data(C.gpointer(widget), signal, C.GCallback(C.handleMenuDestroy), nil, nil, 0)
+}
+
+//export handleMenuDestroy
+func handleMenuDestroy(widget unsafe.Pointer, _ unsafe.Pointer) {
+	key := pointer(widget)
+	menuDestroyCallbacksMu.Lock()
+	callback := menuDestroyCallbacks[key]
+	delete(menuDestroyCallbacks, key)
+	menuDestroyCallbacksMu.Unlock()
+	if callback != nil {
+		callback()
+	}
+}
+
 func menuAddSeparator(menu *Menu) {
 	C.gtk_menu_shell_append(
 		(*C.GtkMenuShell)((menu.impl).(*linuxMenu).native),
@@ -818,8 +850,7 @@ func handleClick(idPtr unsafe.Pointer) {
 	case text, checkbox:
 		menuItemClicked <- item.id
 	case radio:
-		menuItem := (item.impl).(*linuxMenuItem)
-		if menuItem.isChecked() {
+		if menuItemChecked(pointer(idPtr)) {
 			menuItemClicked <- item.id
 		}
 	}
@@ -842,7 +873,11 @@ func attachMenuHandler(item *MenuItem) uint {
 	defer C.free(unsafe.Pointer(ident))
 	C.set_object_uint((*C.GObject)(widget), ident, C.guint(item.id))
 
-	gtkSignalToMenuItem[item.id] = item
+	if original := getMenuItemByID(item.id); original != nil {
+		gtkSignalToMenuItem[item.id] = original
+	} else {
+		gtkSignalToMenuItem[item.id] = item
+	}
 	return uint(handlerId)
 }
 
@@ -863,14 +898,6 @@ func menuItemDestroy(widget pointer) {
 }
 
 func menuItemAddProperties(menuItem *C.GtkWidget, label string, bitmap []byte) pointer {
-	/*
-		   // FIXME: Support accelerator configuration
-		   activate := C.CString("activate")
-			defer C.free(unsafe.Pointer(activate))
-			accelGroup := C.gtk_accel_group_new()
-			C.gtk_widget_add_accelerator(menuItem, activate, accelGroup,
-				C.GDK_KEY_m, C.GDK_CONTROL_MASK, C.GTK_ACCEL_VISIBLE)
-	*/
 	cLabel := C.CString(label)
 	defer C.free(unsafe.Pointer(cLabel))
 	lbl := unsafe.Pointer(C.gtk_accel_label_new(cLabel))
@@ -939,10 +966,20 @@ func menuItemSetDisabled(widget pointer, disabled bool) {
 
 func menuItemSetLabel(widget pointer, label string) {
 	value := C.CString(label)
-	C.gtk_menu_item_set_label(
-		(*C.GtkMenuItem)(widget),
-		value)
-	C.free(unsafe.Pointer(value))
+	defer C.free(unsafe.Pointer(value))
+	// menuItemAddProperties gives every item a GtkBox child (an optional image,
+	// then the accel label). gtk_menu_item_set_label only updates a GtkLabel
+	// child, so it did nothing here: set the label inside the box instead.
+	box := C.gtk_bin_get_child((*C.GtkBin)(widget))
+	if box == nil || C.g_type_check_instance_is_a((*C.GTypeInstance)(unsafe.Pointer(box)), C.gtk_box_get_type()) == 0 {
+		C.gtk_menu_item_set_label((*C.GtkMenuItem)(widget), value)
+		return
+	}
+	children := C.gtk_container_get_children((*C.GtkContainer)(unsafe.Pointer(box)))
+	defer C.g_list_free(children)
+	if last := C.g_list_last(children); last != nil {
+		C.gtk_label_set_text_with_mnemonic((*C.GtkLabel)(last.data), value)
+	}
 }
 
 func menuItemRemoveBitmap(widget pointer) {
@@ -1010,6 +1047,8 @@ func menuRadioItemNew(group *GSList, label string) pointer {
 }
 
 // screen related
+
+var errScreenDisplayUnavailable = errors.New("screen display unavailable")
 
 func getScreenByIndex(display *C.struct__GdkDisplay, index int) *Screen {
 	monitor := C.gdk_display_get_monitor(display, C.int(index))
@@ -1083,16 +1122,37 @@ func getScreenByIndex(display *C.struct__GdkDisplay, index int) *Screen {
 	}
 }
 
-func getScreens(app pointer) ([]*Screen, error) {
+func getScreensForDisplay(display pointer) ([]*Screen, error) {
+	if display == nil {
+		return nil, errScreenDisplayUnavailable
+	}
+
 	var screens []*Screen
-	window := C.gtk_application_get_active_window((*C.GtkApplication)(app))
-	gdkWindow := C.gtk_widget_get_window((*C.GtkWidget)(unsafe.Pointer(window)))
-	display := C.gdk_window_get_display(gdkWindow)
-	count := C.gdk_display_get_n_monitors(display)
+	gdkDisplay := (*C.GdkDisplay)(display)
+	count := C.gdk_display_get_n_monitors(gdkDisplay)
 	for i := 0; i < int(count); i++ {
-		screens = append(screens, getScreenByIndex(display, i))
+		screens = append(screens, getScreenByIndex(gdkDisplay, i))
 	}
 	return screens, nil
+}
+
+func getScreens(app pointer) ([]*Screen, error) {
+	// Service-only applications can reach screen discovery before GTK has an
+	// active (or realised) window. Prefer that window's display when available,
+	// but never pass a nil window/display through the GTK/GDK C API.
+	if app != nil {
+		window := C.gtk_application_get_active_window((*C.GtkApplication)(app))
+		if window != nil {
+			gdkWindow := C.gtk_widget_get_window((*C.GtkWidget)(unsafe.Pointer(window)))
+			if gdkWindow != nil {
+				if display := C.gdk_window_get_display(gdkWindow); display != nil {
+					return getScreensForDisplay(pointer(display))
+				}
+			}
+		}
+	}
+
+	return getScreensForDisplay(pointer(C.gdk_display_get_default()))
 }
 
 // widgets
@@ -1115,20 +1175,22 @@ func widgetSetVisible(widget pointer, hidden bool) {
 }
 
 func (w *linuxWebviewWindow) close() {
+	// Stop active loads before destroying the view so outstanding custom
+	// scheme requests release their native references and cancel their handlers.
+	C.webkit_web_view_stop_loading(C.webkit_web_view((*C.GtkWidget)(w.webview)))
 	C.gtk_widget_destroy(w.gtkWidget())
 	getNativeApplication().unregisterWindow(windowPointer(w.window))
 }
 
 func (w *linuxWebviewWindow) enableDND() {
-	// Pass window ID as pointer value (not pointer to ID) - same pattern as other signal handlers
-	winID := unsafe.Pointer(uintptr(w.parent.id))
-	C.enableDND((*C.GtkWidget)(w.webview), C.gpointer(winID))
+	// Pass the window ID as the gpointer user_data value itself (not a pointer
+	// to it) using an integer type, so the Go GC never scans it. See #5631.
+	C.enableDND((*C.GtkWidget)(w.webview), C.uintptr_t(w.parent.id))
 }
 
 func (w *linuxWebviewWindow) disableDND() {
 	// Block external file drops while allowing internal HTML5 drag-and-drop
-	winID := unsafe.Pointer(uintptr(w.parent.id))
-	C.disableDND((*C.GtkWidget)(w.webview), C.gpointer(winID))
+	C.disableDND((*C.GtkWidget)(w.webview), C.uintptr_t(w.parent.id))
 }
 
 func (w *linuxWebviewWindow) execJS(js string) {
@@ -1174,31 +1236,6 @@ func (w *linuxWebviewWindow) execJSDragOver(x, y int) {
 		nil,
 		nil,
 		nil)
-}
-
-// writeInt writes an integer to a byte slice and returns the number of bytes written
-func writeInt(buf []byte, n int) int {
-	if n < 0 {
-		buf[0] = '-'
-		return 1 + writeInt(buf[1:], -n)
-	}
-	if n == 0 {
-		buf[0] = '0'
-		return 1
-	}
-	// Count digits
-	tmp := n
-	digits := 0
-	for tmp > 0 {
-		digits++
-		tmp /= 10
-	}
-	// Write digits in reverse
-	for i := digits - 1; i >= 0; i-- {
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return digits
 }
 
 func getMousePosition() (int, int, *Screen) {
@@ -1247,6 +1284,9 @@ func (w *linuxWebviewWindow) destroy() {
 		w.gtkmenu = nil
 	}
 	// Free window
+	// Stop active loads before destroying the view so outstanding custom
+	// scheme requests release their native references and cancel their handlers.
+	C.webkit_web_view_stop_loading(C.webkit_web_view((*C.GtkWidget)(w.webview)))
 	C.gtk_widget_destroy(w.gtkWidget())
 }
 
@@ -1411,6 +1451,14 @@ func (w *linuxWebviewWindow) isMinimised() bool {
 }
 
 func (w *linuxWebviewWindow) isVisible() bool {
+	// The GTK widget is created lazily in run() (windowNew), so there is a
+	// startup window in which w.impl != nil (set at the top of WebviewWindow.Run)
+	// but w.window is still NULL. A window whose widget does not exist yet is, by
+	// definition, not visible; without this guard a visibility poll during that
+	// gap calls gtk_widget_is_visible(NULL), which trips a GTK-CRITICAL assertion.
+	if w.window == nil {
+		return false
+	}
 	if C.gtk_widget_is_visible(w.gtkWidget()) == 1 {
 		return true
 	}
@@ -1425,9 +1473,10 @@ func (w *linuxWebviewWindow) minimise() {
 	C.gtk_window_iconify(w.gtkWindow())
 }
 
-func windowNew(application pointer, menu pointer, _ LinuxMenuStyle, windowId uint, gpuPolicy WebviewGpuPolicy) (window, webview, vbox pointer) {
+func windowNew(application pointer, menu pointer, menuStyle LinuxMenuStyle, windowId uint, gpuPolicy WebviewGpuPolicy) (window, webview, vbox, menubar pointer) {
 	window = pointer(C.gtk_application_window_new((*C.GtkApplication)(application)))
 	C.g_object_ref_sink(C.gpointer(window))
+	windowAddMenuAccelGroup(window)
 	webview = windowNewWebview(windowId, gpuPolicy)
 	vbox = pointer(C.gtk_box_new(C.GTK_ORIENTATION_VERTICAL, 0))
 	name := C.CString("webview-box")
@@ -1436,16 +1485,97 @@ func windowNew(application pointer, menu pointer, _ LinuxMenuStyle, windowId uin
 
 	C.gtk_container_add((*C.GtkContainer)(window), (*C.GtkWidget)(vbox))
 	if menu != nil {
-		C.gtk_box_pack_start((*C.GtkBox)(vbox), (*C.GtkWidget)(menu), 0, 0, 0)
+		menubar = windowAttachMenuBar(window, vbox, menu, menuStyle)
 	}
 	C.gtk_box_pack_start((*C.GtkBox)(unsafe.Pointer(vbox)), (*C.GtkWidget)(webview), 1, 1, 0)
 	return
+}
+
+// windowAttachMenuBar packs the GtkMenuBar menu at the top of the window box.
+// GTK3 has no header-bar menu, so menuStyle does not apply. It returns the
+// widget windowDetachMenuBar takes back.
+func windowAttachMenuBar(_ pointer, vbox pointer, menu pointer, _ LinuxMenuStyle) pointer {
+	C.gtk_box_pack_start((*C.GtkBox)(vbox), (*C.GtkWidget)(menu), 0, 0, 0)
+	// pack_start appends after the children already packed at the start (the
+	// webview, when it is there): move the bar back to the top.
+	C.gtk_box_reorder_child((*C.GtkBox)(vbox), (*C.GtkWidget)(menu), 0)
+	// A widget packed into a shown window stays hidden until shown: run() shows
+	// the window's tree at startup, but a bar attached later must show itself
+	// (and its items), or its accelerators never fire.
+	C.gtk_widget_show_all((*C.GtkWidget)(menu))
+	return menu
+}
+
+// windowDetachMenuBar destroys a bar windowAttachMenuBar installed. Destroying
+// it, rather than only unpacking it, releases the widget and clears the
+// owning linuxMenu's native pointer, so a later Update builds a new bar.
+func windowDetachMenuBar(_ pointer, _ pointer, bar pointer, _ LinuxMenuStyle) {
+	C.gtk_widget_destroy((*C.GtkWidget)(bar))
+}
+
+// menuAccelGroup is the GtkAccelGroup behind menu accelerators. Every window
+// has it (windowAddMenuAccelGroup), so the accelerators work whichever window
+// has focus, as GTK4's app-wide accels do. GTK thread only.
+var menuAccelGroupPtr pointer
+
+func menuAccelGroup() pointer {
+	if menuAccelGroupPtr == nil {
+		menuAccelGroupPtr = pointer(C.gtk_accel_group_new())
+	}
+	return menuAccelGroupPtr
+}
+
+func windowAddMenuAccelGroup(window pointer) {
+	C.gtk_window_add_accel_group((*C.GtkWindow)(window), (*C.GtkAccelGroup)(menuAccelGroup()))
+}
+
+func windowRemoveMenuAccelGroup(window pointer) {
+	C.gtk_window_remove_accel_group((*C.GtkWindow)(window), (*C.GtkAccelGroup)(menuAccelGroup()))
+}
+
+// menuItemAddAccelerator binds keyval and modifiers to the item's activate
+// signal. GTK_ACCEL_VISIBLE makes the item's accel label show the shortcut.
+func menuItemAddAccelerator(item pointer, keyval, mods uint32) {
+	signal := C.CString("activate")
+	defer C.free(unsafe.Pointer(signal))
+	C.gtk_widget_add_accelerator((*C.GtkWidget)(item), signal,
+		(*C.GtkAccelGroup)(menuAccelGroup()),
+		C.guint(keyval), C.GdkModifierType(mods), C.GTK_ACCEL_VISIBLE)
+}
+
+func menuItemRemoveAccelerator(item pointer, keyval, mods uint32) {
+	C.gtk_widget_remove_accelerator((*C.GtkWidget)(item),
+		(*C.GtkAccelGroup)(menuAccelGroup()),
+		C.guint(keyval), C.GdkModifierType(mods))
 }
 
 func windowNewWebview(parentId uint, gpuPolicy WebviewGpuPolicy) pointer {
 	c := NewCalloc()
 	defer c.Free()
 	manager := C.webkit_user_content_manager_new()
+	linuxBlobBodyShimSource := C.CString(linuxBlobBodyFetchShimJS)
+	linuxBlobBodyShim := C.webkit_user_script_new(
+		linuxBlobBodyShimSource,
+		C.WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+		C.WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
+		nil,
+		nil,
+	)
+	C.webkit_user_content_manager_add_script(manager, linuxBlobBodyShim)
+	C.webkit_user_script_unref(linuxBlobBodyShim)
+	C.free(unsafe.Pointer(linuxBlobBodyShimSource))
+	// Drop reserved wails: messages posted from child frames (GHSA-2p5f-2gx8-mh8m).
+	childFrameGuardSource := C.CString(linuxChildFrameGuardJS)
+	childFrameGuard := C.webkit_user_script_new(
+		childFrameGuardSource,
+		C.WEBKIT_USER_CONTENT_INJECT_ALL_FRAMES,
+		C.WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START,
+		nil,
+		nil,
+	)
+	C.webkit_user_content_manager_add_script(manager, childFrameGuard)
+	C.webkit_user_script_unref(childFrameGuard)
+	C.free(unsafe.Pointer(childFrameGuardSource))
 	C.webkit_user_content_manager_register_script_message_handler(manager, c.String("external"))
 	var webView *C.GtkWidget
 	isolated := nativeWindowIsolated(parentId)
@@ -1543,6 +1673,7 @@ func (w *linuxWebviewWindow) setBorderless(borderless bool) {
 
 func (w *linuxWebviewWindow) setResizable(resizable bool) {
 	C.gtk_window_set_resizable(w.gtkWindow(), gtkBool(resizable))
+	w.execJS(fmt.Sprintf("if(window._wails&&window._wails.setResizable)window._wails.setResizable(%v);", resizable))
 }
 
 func (w *linuxWebviewWindow) setDefaultSize(width int, height int) {
@@ -1648,8 +1779,7 @@ func windowSetGeometryHints(window pointer, minWidth, minHeight, maxWidth, maxHe
 
 func (w *linuxWebviewWindow) setFrameless(frameless bool) {
 	C.gtk_window_set_decorated(w.gtkWindow(), gtkBool(!frameless))
-	// TODO: Deal with transparency for the titlebar if possible when !frameless
-	//       Perhaps we just make it undecorated and add a menu bar inside?
+	w.execJS(fmt.Sprintf("if(window._wails&&window._wails.flags)window._wails.flags.frameless=%v;", frameless))
 }
 
 // TODO: confirm this is working properly
@@ -1669,9 +1799,6 @@ func (w *linuxWebviewWindow) setHTML(html string) {
 
 func (w *linuxWebviewWindow) setAlwaysOnTop(alwaysOnTop bool) {
 	C.gtk_window_set_keep_above(w.gtkWindow(), gtkBool(alwaysOnTop))
-}
-
-func (w *linuxWebviewWindow) flash(_ bool) {
 }
 
 func (w *linuxWebviewWindow) setOpacity(opacity float64) {
@@ -1765,10 +1892,31 @@ func handleFocusEvent(widget *C.GtkWidget, event *C.GdkEvent, data C.uintptr_t) 
 		if focusEvent.in == C.TRUE {
 			processWindowEvent(C.uint(data), C.uint(events.Linux.WindowFocusIn))
 		} else {
+			// A key released while focus is elsewhere is never seen as a release.
+			keyRepeats.reset()
 			processWindowEvent(C.uint(data), C.uint(events.Linux.WindowFocusOut))
 		}
 	}
 	return C.gboolean(0)
+}
+
+//export handlePermissionRequest
+func handlePermissionRequest(webview *C.WebKitWebView, request *C.WebKitPermissionRequest, data C.uintptr_t) C.gboolean {
+	// WebKitGTK denies any permission request nobody handles, so without this
+	// getUserMedia always fails with NotAllowedError. Honour the window's
+	// Permissions for camera/microphone; leave every other request to WebKit's
+	// default handling (deny).
+	if C.is_user_media_permission_request(request) == 0 {
+		return C.gboolean(0)
+	}
+	needAudio := C.is_user_media_for_audio(request) != 0
+	needVideo := C.is_user_media_for_video(request) != 0
+	if allowMediaCapture(uint(data), needAudio, needVideo) {
+		C.webkit_permission_request_allow(request)
+	} else {
+		C.webkit_permission_request_deny(request)
+	}
+	return C.gboolean(1)
 }
 
 //export handleLoadChanged
@@ -1793,7 +1941,7 @@ func (w *linuxWebviewWindow) setupSignalHandlers(emit func(e events.WindowEventT
 	c := NewCalloc()
 	defer c.Free()
 
-	winID := unsafe.Pointer(uintptr(C.uint(w.parent.ID())))
+	winID := C.uintptr_t(w.parent.ID())
 
 	// Set up the window close event
 	wv := unsafe.Pointer(w.webview)
@@ -1801,13 +1949,15 @@ func (w *linuxWebviewWindow) setupSignalHandlers(emit func(e events.WindowEventT
 	C.signal_connect(unsafe.Pointer(w.window), c.String("focus-out-event"), C.handleFocusEvent, winID)
 	C.signal_connect(wv, c.String("load-changed"), C.handleLoadChanged, winID)
 	C.signal_connect(wv, c.String("decide-policy"), C.handleNavigationPolicy, winID)
+	C.signal_connect(wv, c.String("permission-request"), C.handlePermissionRequest, winID)
 	C.signal_connect(unsafe.Pointer(w.window), c.String("configure-event"), C.handleConfigureEvent, winID)
 
 	contentManager := C.webkit_web_view_get_user_content_manager(w.webKitWebView())
-	C.signal_connect(unsafe.Pointer(contentManager), c.String("script-message-received::external"), C.sendMessageToBackend, nil)
+	C.signal_connect(unsafe.Pointer(contentManager), c.String("script-message-received::external"), C.sendMessageToBackend, 0)
 	C.signal_connect(wv, c.String("button-press-event"), C.onButtonEvent, winID)
 	C.signal_connect(wv, c.String("button-release-event"), C.onButtonEvent, winID)
 	C.signal_connect(wv, c.String("key-press-event"), C.onKeyPressEvent, winID)
+	C.signal_connect(wv, c.String("key-release-event"), C.onKeyReleaseEvent, winID)
 }
 
 func getMouseButtons() (bool, bool, bool) {
@@ -1893,18 +2043,6 @@ func (w *linuxWebviewWindow) getZoom() float64 {
 
 const zoomInFactor = 1.10
 
-func (w *linuxWebviewWindow) zoomIn() {
-	w.setZoom(w.getZoom() * zoomInFactor)
-}
-
-func (w *linuxWebviewWindow) zoomOut() {
-	w.setZoom(w.getZoom() * (1.0 / zoomInFactor))
-}
-
-func (w *linuxWebviewWindow) zoomReset() {
-	w.setZoom(1.0)
-}
-
 func (w *linuxWebviewWindow) reload() {
 	uri := C.CString("wails://")
 	C.webkit_web_view_load_uri(w.webKitWebView(), uri)
@@ -1912,8 +2050,9 @@ func (w *linuxWebviewWindow) reload() {
 }
 
 func (w *linuxWebviewWindow) setZoom(zoom float64) {
-	if zoom < 1 { // 1.0 is the smallest allowable
-		zoom = 1
+	zoom, ok := zoomFactor(zoom, w.parent.options.Frameless)
+	if !ok {
+		return
 	}
 	C.webkit_web_view_set_zoom_level(w.webKitWebView(), C.double(zoom))
 }
@@ -1942,7 +2081,7 @@ func (w *linuxWebviewWindow) ignoreMouse(ignore bool) {
 //
 //export onButtonEvent
 func onButtonEvent(_ *C.GtkWidget, event *C.GdkEventButton, data C.uintptr_t) C.gboolean {
-	// Constants (defined here to be easier to use with purego)
+	// Constants defined here for readability
 	GdkButtonPress := C.GDK_BUTTON_PRESS     // 4
 	Gdk2ButtonPress := C.GDK_2BUTTON_PRESS   // 5 for double-click
 	GdkButtonRelease := C.GDK_BUTTON_RELEASE // 7
@@ -1981,7 +2120,7 @@ func onButtonEvent(_ *C.GtkWidget, event *C.GdkEventButton, data C.uintptr_t) C.
 
 //export onMenuButtonEvent
 func onMenuButtonEvent(_ *C.GtkWidget, event *C.GdkEventButton, data C.uintptr_t) C.gboolean {
-	// Constants (defined here to be easier to use with purego)
+	// Constants defined here for readability
 	GdkButtonRelease := C.GDK_BUTTON_RELEASE // 7
 
 	windowId := uint(C.uint(data))
@@ -2065,39 +2204,33 @@ func onUriList(extracted **C.char, x C.gint, y C.gint, data unsafe.Pointer) {
 	targetWindow.InitiateFrontendDropProcessing(filenames, int(x), int(y))
 }
 
-var debounceTimer *time.Timer
-var isDebouncing bool = false
+// keyRepeats drops X auto-repeat presses of a held key (keyRepeatFilter). It is
+// only used on the GTK thread.
+var keyRepeats keyRepeatFilter
+
+//export onKeyReleaseEvent
+func onKeyReleaseEvent(widget *C.GtkWidget, event *C.GdkEventKey, userData C.uintptr_t) C.gboolean {
+	keyRepeats.release(uint(event.hardware_keycode))
+	return C.gboolean(0)
+}
 
 //export onKeyPressEvent
 func onKeyPressEvent(_ *C.GtkWidget, event *C.GdkEventKey, userData C.uintptr_t) C.gboolean {
-	// Keypress re-emits if the key is pressed over a certain threshold so we need a debounce
-	if isDebouncing {
-		debounceTimer.Reset(50 * time.Millisecond)
-		// Still consume undo/redo during debounce so auto-repeat does not
-		// let stray events through to webkit2gtk's native handler.
-		if accelerator, ok := getKeyboardState(event); ok {
-			if accelerator == "Ctrl+Z" || accelerator == "Ctrl+Shift+Z" {
-				return C.gboolean(1)
-			}
-		}
-		return C.gboolean(0)
-	}
-
-	// Start the debounce
-	isDebouncing = true
-	debounceTimer = time.AfterFunc(50*time.Millisecond, func() {
-		isDebouncing = false
-	})
+	repeat := keyRepeats.press(uint(event.hardware_keycode))
 
 	windowID := uint(C.uint(userData))
 	if accelerator, ok := getKeyboardState(event); ok {
-		windowKeyEvents <- &windowKeyEvent{
-			windowId:          windowID,
-			acceleratorString: accelerator,
+		// A repeat is not a new key press, so it is not sent to the frontend.
+		if !repeat {
+			windowKeyEvents <- &windowKeyEvent{
+				windowId:          windowID,
+				acceleratorString: accelerator,
+			}
 		}
 		// Consume undo/redo so that webkit2gtk's native handler does not also fire.
 		// webkit2gtk's built-in Ctrl+Z is unreliable for <input> elements; we call
 		// document.execCommand('undo') instead via handleKeyEvent → undo()/redo().
+		// Repeats are consumed too, so auto-repeat does not reach webkit's handler.
 		if accelerator == "Ctrl+Z" || accelerator == "Ctrl+Shift+Z" {
 			return C.gboolean(1)
 		}
@@ -2273,7 +2406,6 @@ func runChooserDialog(window pointer, allowMultiple, createFolders, showHidden b
 		C.free(unsafe.Pointer(nameStr))
 	}
 
-	// FIXME: This should be consolidated - duplicate exists in linux_purego.go
 	buildStringAndFree := func(s C.gpointer) string {
 		bytes := []byte{}
 		p := unsafe.Pointer(s)
@@ -2415,7 +2547,8 @@ func runQuestionDialog(parent pointer, options *MessageDialog) int {
 	}
 
 	defer C.gtk_widget_destroy((*C.GtkWidget)(dialog))
-	return int(C.gtk_dialog_run((*C.GtkDialog)(unsafe.Pointer(dialog))))
+	response := int(C.gtk_dialog_run((*C.GtkDialog)(unsafe.Pointer(dialog))))
+	return dialogResponseIndex(response, options.Buttons)
 }
 
 func runSaveFileDialog(dialog *SaveFileDialogStruct) (chan string, error) {
@@ -2439,31 +2572,12 @@ func runSaveFileDialog(dialog *SaveFileDialogStruct) (chan string, error) {
 	return results, err
 }
 
-func (w *linuxWebviewWindow) cut() {
-	//C.webkit_web_view_execute_editing_command(w.webview, C.WEBKIT_EDITING_COMMAND_CUT)
-}
-
-func (w *linuxWebviewWindow) paste() {
-	//C.webkit_web_view_execute_editing_command(w.webview, C.WEBKIT_EDITING_COMMAND_PASTE)
-}
-
-func (w *linuxWebviewWindow) copy() {
-	//C.webkit_web_view_execute_editing_command(w.webview, C.WEBKIT_EDITING_COMMAND_COPY)
-}
-
-func (w *linuxWebviewWindow) selectAll() {
-	//C.webkit_web_view_execute_editing_command(w.webview, C.WEBKIT_EDITING_COMMAND_SELECT_ALL)
-}
-
-func (w *linuxWebviewWindow) undo() {
-	w.execJS("document.execCommand('undo')")
-}
-
-func (w *linuxWebviewWindow) redo() {
-	w.execJS("document.execCommand('redo')")
-}
-
-func (w *linuxWebviewWindow) delete() {
+// executeEditingCommand is the native half of the editing commands
+// (webview_window_linux_editing.go). GTK thread only.
+func (w *linuxWebviewWindow) executeEditingCommand(command string) {
+	value := C.CString(command)
+	defer C.free(unsafe.Pointer(value))
+	C.webkit_web_view_execute_editing_command(w.webKitWebView(), value)
 }
 
 //export handleNavigationPolicy

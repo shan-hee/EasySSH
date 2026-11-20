@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/wailsapp/wails/webview2/pkg/edge"
+	"github.com/wailsapp/wails/v3/internal/webview2/pkg/edge"
 	"golang.org/x/sys/windows"
 )
 
@@ -20,7 +20,6 @@ const (
 	navigationArgsGetURI              = 3
 	navigationArgsPutCancel           = 8
 	newWindowArgsPutHandled           = 6
-	webViewControllerClose            = 24
 )
 
 var (
@@ -125,13 +124,6 @@ func nativeNavigationInvoke(h *nativeNavigationHandler, _ unsafe.Pointer, args u
 		globalApplication.handleFatalError(err)
 	}
 	return 0
-}
-
-func closeNativeWebViewController(controller *edge.ICoreWebView2Controller) error {
-	hr, _, _ := nativeWebViewMethod(unsafe.Pointer(controller), webViewControllerClose).Call(
-		uintptr(unsafe.Pointer(controller)),
-	)
-	return nativeWebViewError(hr)
 }
 
 func (w *windowsWebviewWindow) installNavigationPolicy() error {

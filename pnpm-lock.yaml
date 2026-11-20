@@ -100,8 +100,8 @@ importers:
         specifier: workspace:*
         version: link:../../../packages/app
       '@wailsio/runtime':
-        specifier: 3.0.0-alpha.79
-        version: 3.0.0-alpha.79
+        specifier: 3.1.0
+        version: 3.1.0
       i18next:
         specifier: 'catalog:'
         version: 26.3.6(typescript@5.9.3)
@@ -2726,8 +2726,8 @@ packages:
       babel-plugin-react-compiler:
         optional: true
 
-  '@wailsio/runtime@3.0.0-alpha.79':
-    resolution: {integrity: sha512-NITzxKmJsMEruc39L166lbPJVECxzcbdqpHVqOOF7Cu/7Zqk/e3B/gNpkUjhNyo5rVb3V1wpS8oEgLUmpu1cwA==}
+  '@wailsio/runtime@3.1.0':
+    resolution: {integrity: sha512-noEAedvRyO8TLCrqhGwzrp+mbMxAIDa2rYmdJQOzvJV9MxgaZeXAJGNBiMiKMTSSy4ESOtQi4VH/5heSzi6ZmA==}
 
   '@workflow/serde@4.1.0':
     resolution: {integrity: sha512-pav4F2BoirECWR7Nf1TKt+2eETcBj7jj4cBefQ8VXQCA6NPkaKeLfj/zMgi+3zYV5ZIBT4GuUiphsj0/b9hPQQ==}
@@ -7788,7 +7788,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)
 
-  '@wailsio/runtime@3.0.0-alpha.79': {}
+  '@wailsio/runtime@3.1.0': {}
 
   '@workflow/serde@4.1.0': {}
 

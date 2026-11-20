@@ -5,10 +5,6 @@
 // @ts-ignore: Unused imports
 import { Create as $Create } from "@wailsio/runtime";
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../time/models.js";
-
 export type Record = { [_ in string]?: string };
 
 export type Snapshot = { [_ in string]?: Record };
@@ -94,11 +90,11 @@ export class VaultConflict {
  */
 export class VaultSummary {
     "source"?: string;
-    "updated_at"?: time$0.Time | null;
+    "updated_at"?: string | null;
     "deleted"?: boolean;
     "title"?: string;
     "messages"?: number;
-    "last_message_at"?: time$0.Time | null;
+    "last_message_at"?: string | null;
     "has_password"?: boolean;
     "fingerprint"?: string;
     "provider"?: string;

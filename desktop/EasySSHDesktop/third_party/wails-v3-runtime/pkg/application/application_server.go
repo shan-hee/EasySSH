@@ -28,6 +28,7 @@ type serverApp struct {
 	server      *http.Server
 	listener    net.Listener
 	broadcaster *WebSocketBroadcaster
+	bindHost    string
 }
 
 // newPlatformApp creates a new server-mode platform app.
@@ -51,6 +52,20 @@ func parsePort(s string) (int, error) {
 	return p, nil
 }
 
+// resolveServerHost returns the address the server binds to. The
+// WAILS_SERVER_HOST environment variable overrides the configured host
+// (useful for Docker/containers), and the default is localhost.
+func resolveServerHost(opts ServerOptions) string {
+	host := os.Getenv("WAILS_SERVER_HOST")
+	if host == "" {
+		host = opts.Host
+	}
+	if host == "" {
+		host = "localhost"
+	}
+	return host
+}
+
 // run starts the HTTP server and blocks until shutdown.
 func (h *serverApp) run() error {
 	// Set up common events
@@ -65,14 +80,8 @@ func (h *serverApp) run() error {
 
 	opts := h.app.options.Server
 
-	// Environment variables override config (useful for Docker/containers)
-	host := os.Getenv("WAILS_SERVER_HOST")
-	if host == "" {
-		host = opts.Host
-	}
-	if host == "" {
-		host = "localhost"
-	}
+	host := resolveServerHost(opts)
+	h.bindHost = host
 
 	port := opts.Port
 	if envPort := os.Getenv("WAILS_SERVER_PORT"); envPort != "" {
@@ -220,10 +229,16 @@ func (h *serverApp) createHandler() http.Handler {
 	// WebSocket endpoint for events
 	mux.Handle("/wails/events", h.broadcaster)
 
+	// Streams are real WebSockets here rather than the desktop build's held
+	// poll, since server mode already has a listener to upgrade on.
+	mux.HandleFunc("/wails/stream/ws", h.app.serveStreamWS)
+
 	// Serve all other requests through the asset server
 	mux.Handle("/", h.app.assets)
 
-	return mux
+	// A loopback bind is reachable only from this machine, so reject Host
+	// headers that a DNS-rebound page would send before any route runs.
+	return requireAllowedHost(mux, h.app, h.bindHost, h.app.options.Server)
 }
 
 // destroy stops the server and cleans up.
@@ -533,37 +548,38 @@ func (w *serverWebviewWindow) startDrag() error {
 func (w *serverWebviewWindow) startResize(border string) error {
 	return errors.New("resize not available in server mode")
 }
-func (w *serverWebviewWindow) print() error                               { return errors.New("print not available in server mode") }
-func (w *serverWebviewWindow) setEnabled(enabled bool)                    {}
-func (w *serverWebviewWindow) physicalBounds() Rect                       { return Rect{} }
-func (w *serverWebviewWindow) setPhysicalBounds(bounds Rect)              {}
-func (w *serverWebviewWindow) bounds() Rect                               { return Rect{} }
-func (w *serverWebviewWindow) setBounds(bounds Rect)                      {}
-func (w *serverWebviewWindow) position() (int, int)                       { return 0, 0 }
-func (w *serverWebviewWindow) setPosition(x int, y int)                   {}
-func (w *serverWebviewWindow) centerOnScreen(_ *Screen)                   {}
-func (w *serverWebviewWindow) relativePosition() (int, int)               { return 0, 0 }
-func (w *serverWebviewWindow) setRelativePosition(x int, y int)           {}
-func (w *serverWebviewWindow) flash(enabled bool)                         {}
-func (w *serverWebviewWindow) handleKeyEvent(acceleratorString string)    {}
-func (w *serverWebviewWindow) getBorderSizes() *LRTB                      { return &LRTB{} }
-func (w *serverWebviewWindow) setMinimiseButtonState(state ButtonState)   {}
-func (w *serverWebviewWindow) setMaximiseButtonState(state ButtonState)   {}
-func (w *serverWebviewWindow) setCloseButtonState(state ButtonState)      {}
-func (w *serverWebviewWindow) setFullscreenButtonState(state ButtonState) {}
-func (w *serverWebviewWindow) isIgnoreMouseEvents() bool                  { return false }
-func (w *serverWebviewWindow) setIgnoreMouseEvents(ignore bool)           {}
-func (w *serverWebviewWindow) cut()                                       {}
-func (w *serverWebviewWindow) copy()                                      {}
-func (w *serverWebviewWindow) paste()                                     {}
-func (w *serverWebviewWindow) undo()                                      {}
-func (w *serverWebviewWindow) delete()                                    {}
-func (w *serverWebviewWindow) selectAll()                                 {}
-func (w *serverWebviewWindow) redo()                                      {}
-func (w *serverWebviewWindow) showMenuBar()                               {}
-func (w *serverWebviewWindow) hideMenuBar()                               {}
-func (w *serverWebviewWindow) toggleMenuBar()                             {}
-func (w *serverWebviewWindow) setMenu(menu *Menu)                         {}
-func (w *serverWebviewWindow) snapAssist()                                {}
-func (w *serverWebviewWindow) attachModal(modalWindow *WebviewWindow)     {}
-func (w *serverWebviewWindow) setContentProtection(enabled bool)          {}
+func (w *serverWebviewWindow) print() error                                        { return errors.New("print not available in server mode") }
+func (w *serverWebviewWindow) setEnabled(enabled bool)                             {}
+func (w *serverWebviewWindow) physicalBounds() Rect                                { return Rect{} }
+func (w *serverWebviewWindow) setPhysicalBounds(bounds Rect)                       {}
+func (w *serverWebviewWindow) bounds() Rect                                        { return Rect{} }
+func (w *serverWebviewWindow) setBounds(bounds Rect)                               {}
+func (w *serverWebviewWindow) position() (int, int)                                { return 0, 0 }
+func (w *serverWebviewWindow) setPosition(x int, y int)                            {}
+func (w *serverWebviewWindow) centerOnScreen(_ *Screen)                            {}
+func (w *serverWebviewWindow) relativePosition() (int, int)                        { return 0, 0 }
+func (w *serverWebviewWindow) setRelativePosition(x int, y int)                    {}
+func (w *serverWebviewWindow) flash(enabled bool)                                  {}
+func (w *serverWebviewWindow) handleKeyEvent(acceleratorString string)             {}
+func (w *serverWebviewWindow) getBorderSizes() *LRTB                               { return &LRTB{} }
+func (w *serverWebviewWindow) setMinimiseButtonState(state ButtonState)            {}
+func (w *serverWebviewWindow) setMaximiseButtonState(state ButtonState)            {}
+func (w *serverWebviewWindow) setCloseButtonState(state ButtonState)               {}
+func (w *serverWebviewWindow) setFullscreenButtonState(state ButtonState)          {}
+func (w *serverWebviewWindow) isIgnoreMouseEvents() bool                           { return false }
+func (w *serverWebviewWindow) setIgnoreMouseEvents(ignore bool)                    {}
+func (w *serverWebviewWindow) cut()                                                {}
+func (w *serverWebviewWindow) copy()                                               {}
+func (w *serverWebviewWindow) paste()                                              {}
+func (w *serverWebviewWindow) undo()                                               {}
+func (w *serverWebviewWindow) delete()                                             {}
+func (w *serverWebviewWindow) selectAll()                                          {}
+func (w *serverWebviewWindow) redo()                                               {}
+func (w *serverWebviewWindow) showMenuBar()                                        {}
+func (w *serverWebviewWindow) hideMenuBar()                                        {}
+func (w *serverWebviewWindow) toggleMenuBar()                                      {}
+func (w *serverWebviewWindow) setMenu(menu *Menu)                                  {}
+func (w *serverWebviewWindow) snapAssist()                                         {}
+func (w *serverWebviewWindow) attachModal(modalWindow *WebviewWindow)              {}
+func (w *serverWebviewWindow) setContentProtection(enabled bool)                   {}
+func (w *serverWebviewWindow) setNonClientHitTestRegions([]nonClientHitTestRegion) {}

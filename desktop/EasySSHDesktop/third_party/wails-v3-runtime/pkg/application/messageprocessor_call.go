@@ -19,7 +19,7 @@ type nativeCallKey struct {
 	callID   string
 }
 
-func (m *MessageProcessor) cancelWindow(id uint) {
+func (m *MessageProcessor) CancelWindowCalls(id uint) {
 	m.l.Lock()
 	var cancels []context.CancelFunc
 	for key, cancel := range m.runningCalls {

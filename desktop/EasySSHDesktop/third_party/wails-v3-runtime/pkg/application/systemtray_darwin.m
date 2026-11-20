@@ -1,4 +1,4 @@
-//go:build darwin && !ios && !server
+//go:build darwin && !ios && !server && !purego
 
 #include "Cocoa/Cocoa.h"
 #include "menuitem_darwin.h"
@@ -6,16 +6,38 @@
 
 extern void systrayClickCallback(long, int);
 extern int systrayPreClickCallback(long, int);
+extern void systrayMenuDisplayedCallback(long, int);
+
+// Bit returned by +[NSEvent pressedMouseButtons] for the right mouse button.
+static const NSUInteger kRightMouseButtonBit = 1UL << 1;
+
+// See systemtray_darwin.h for the #5752 rationale.
+int systemTrayCoerceEventType(int rawEventType, unsigned long pressedMouseButtons) {
+	if (rawEventType == NSEventTypeLeftMouseDown || rawEventType == NSEventTypeRightMouseDown) {
+		return rawEventType;
+	}
+	if (pressedMouseButtons & kRightMouseButtonBit) {
+		return (int)NSEventTypeRightMouseDown;
+	}
+	return (int)NSEventTypeLeftMouseDown;
+}
 
 // StatusItemController.m
 @implementation StatusItemController
 
 - (void)statusItemClicked:(id)sender {
 	NSEvent *event = [NSApp currentEvent];
-	systrayClickCallback(self.id, event.type);
+	systrayClickCallback(self.id,
+		systemTrayCoerceEventType((int)event.type,
+		                          (unsigned long)[NSEvent pressedMouseButtons]));
+}
+
+- (void)menuWillOpen:(NSMenu *)menu {
+	systrayMenuDisplayedCallback(self.id, 1);
 }
 
 - (void)menuDidClose:(NSMenu *)menu {
+	systrayMenuDisplayedCallback(self.id, 0);
 	// Remove the menu from the status item so future clicks invoke the
 	// action handler instead of re-showing the menu.
 	self.statusItem.menu = nil;
@@ -74,10 +96,14 @@ void systemTraySetANSILabel(void* nsStatusItem, void* label) {
 
     NSMutableAttributedString* attributedString = (NSMutableAttributedString*) label;
 
-    // Set the label
-    NSStatusItem *statusItem = (NSStatusItem *)nsStatusItem;
-    [statusItem setAttributedTitle:attributedString];
-    // [attributedString release];
+    // Set the label on the main thread.
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // setAttributedTitle: copies the string, so drop the owning
+        // reference we accumulated while building it.
+        NSStatusItem *statusItem = (NSStatusItem *)nsStatusItem;
+        [statusItem setAttributedTitle:attributedString];
+        [attributedString release];
+    });
 }
 
 void* appendAttributedString(void *currentString, char *title, char *FG, char *BG) {
@@ -86,6 +112,9 @@ void* appendAttributedString(void *currentString, char *title, char *FG, char *B
     if( currentString != NULL ) {
         NSMutableAttributedString* current = (NSMutableAttributedString*)currentString;
         [current appendAttributedString:newString];
+        // appendAttributedString: copies the run; drop the +1 from
+        // createAttributedString
+        [newString release];
         newString = current;
     }
 
@@ -129,6 +158,8 @@ void* createAttributedString(char *title, char *FG, char *BG) {
             }
     }
     NSMutableAttributedString *attributedString = [[NSMutableAttributedString alloc] initWithString:[NSString stringWithUTF8String:title] attributes:dictionary];
+    // The attributed string keeps its own copy of the attributes
+    [dictionary release];
     return (void*)attributedString;
 }
 

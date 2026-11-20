@@ -20,9 +20,6 @@ import * as fs$0 from "../../../../io/fs/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as os$0 from "../../../../os/models.js";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as time$0 from "../../../../time/models.js";
 
 /**
  * AIConfigInput defines model for AIConfigInput.
@@ -166,7 +163,7 @@ export class AIHistoryPage {
     "next_after_id": string;
     "session_id": string;
     "total": number;
-    "updated_at": time$0.Time;
+    "updated_at": string;
 
     /** Creates a new AIHistoryPage instance. */
     constructor($$source: Partial<AIHistoryPage> = {}) {
@@ -189,7 +186,7 @@ export class AIHistoryPage {
             this["total"] = 0;
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -510,7 +507,7 @@ export class AISessionListItem {
      * Actor 执行归属信息，不构成授权凭据；本机所有者 ID 不要求 UUID。所有者后台自动任务的 session_id 为空，不创建登录会话；访客和设备必须关联真实会话。
      */
     "actor": Actor;
-    "created_at": time$0.Time;
+    "created_at": string;
 
     /**
      * CustomTitle 是否为用户手动重命名的标题。
@@ -537,7 +534,7 @@ export class AISessionListItem {
      * Title 会话标题。未手动命名时从首条用户消息生成。
      */
     "title": string;
-    "updated_at": time$0.Time;
+    "updated_at": string;
 
     /** Creates a new AISessionListItem instance. */
     constructor($$source: Partial<AISessionListItem> = {}) {
@@ -545,7 +542,7 @@ export class AISessionListItem {
             this["actor"] = (new Actor());
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("custom_title" in $$source)) {
             this["custom_title"] = false;
@@ -572,7 +569,7 @@ export class AISessionListItem {
             this["title"] = "";
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -603,7 +600,7 @@ export class AISessionOverview {
      * Actor 执行归属信息，不构成授权凭据；本机所有者 ID 不要求 UUID。所有者后台自动任务的 session_id 为空，不创建登录会话；访客和设备必须关联真实会话。
      */
     "actor": Actor;
-    "created_at": time$0.Time;
+    "created_at": string;
     "default_transport": AITransportType;
     "id": string;
     "message_count": number;
@@ -621,7 +618,7 @@ export class AISessionOverview {
      * Title 用户自定义标题；未重命名时省略。
      */
     "title"?: string;
-    "updated_at": time$0.Time;
+    "updated_at": string;
 
     /** Creates a new AISessionOverview instance. */
     constructor($$source: Partial<AISessionOverview> = {}) {
@@ -629,7 +626,7 @@ export class AISessionOverview {
             this["actor"] = (new Actor());
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("default_transport" in $$source)) {
             this["default_transport"] = AITransportType.$zero;
@@ -653,7 +650,7 @@ export class AISessionOverview {
             this["task_count"] = 0;
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -790,7 +787,7 @@ export class AccessContext {
      */
     "actor": Actor;
     "default_content": string;
-    "expires_at": time$0.Time;
+    "expires_at": string;
     "grant_name": string;
     "max_connections": number;
     "protocol_version": AccessProtocolVersion;
@@ -805,7 +802,7 @@ export class AccessContext {
             this["default_content"] = "";
         }
         if (!("expires_at" in $$source)) {
-            this["expires_at"] = null;
+            this["expires_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("grant_name" in $$source)) {
             this["grant_name"] = "";
@@ -958,7 +955,7 @@ export type ActivityCategory = string;
  * ActivityCoverage defines model for ActivityCoverage.
  */
 export class ActivityCoverage {
-    "available_from"?: time$0.Time | null;
+    "available_from"?: string | null;
     "complete_window": boolean;
     "known": boolean;
     "reason"?: string;
@@ -1011,19 +1008,19 @@ export enum ActivityKind {
  * ActivityOverview defines model for ActivityOverview.
  */
 export class ActivityOverview {
-    "as_of": time$0.Time;
+    "as_of": string;
     "carry_over": number;
     "connection_duration_is_lower_bound": boolean;
     "connection_duration_ms": number;
     "coverage": ActivityCoverage;
-    "end": time$0.Time;
+    "end": string;
     "metric_version": string;
     "page": number;
     "page_size": number;
     "records": ActivityWorkSummary[];
     "result_events": ActivityResultEvents;
     "servers": ActivityServerDistribution[];
-    "start": time$0.Time;
+    "start": string;
     "target_result_events": ActivityResultEvents;
     "targets": ActivityWorkMetrics;
     "timeline": ActivityTimeBucket[];
@@ -1034,7 +1031,7 @@ export class ActivityOverview {
     /** Creates a new ActivityOverview instance. */
     constructor($$source: Partial<ActivityOverview> = {}) {
         if (!("as_of" in $$source)) {
-            this["as_of"] = null;
+            this["as_of"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("carry_over" in $$source)) {
             this["carry_over"] = 0;
@@ -1049,7 +1046,7 @@ export class ActivityOverview {
             this["coverage"] = (new ActivityCoverage());
         }
         if (!("end" in $$source)) {
-            this["end"] = null;
+            this["end"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("metric_version" in $$source)) {
             this["metric_version"] = "";
@@ -1070,7 +1067,7 @@ export class ActivityOverview {
             this["servers"] = [];
         }
         if (!("start" in $$source)) {
-            this["start"] = null;
+            this["start"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("target_result_events" in $$source)) {
             this["target_result_events"] = (new ActivityResultEvents());
@@ -1182,15 +1179,15 @@ export class ActivityRecord {
     "bytes_processed": number;
     "bytes_total": number;
     "category": ActivityCategory;
-    "connection_uncertain_until"?: time$0.Time | null;
-    "created_at": time$0.Time;
+    "connection_uncertain_until"?: string | null;
+    "created_at": string;
     "detail_content"?: ContentReference | null;
     "detail_json"?: string;
     "duration_ms": number;
     "error_message"?: string;
-    "established_at"?: time$0.Time | null;
+    "established_at"?: string | null;
     "failure_count": number;
-    "finished_at"?: time$0.Time | null;
+    "finished_at"?: string | null;
     "id": types$0.UUID;
     "ip": string;
     "parent_work_id"?: types$0.UUID | null;
@@ -1203,18 +1200,18 @@ export class ActivityRecord {
     "source_id": string;
     "source_table": string;
     "speed_bps": number;
-    "started_at"?: time$0.Time | null;
+    "started_at"?: string | null;
     "status": ActivityStatus;
     "success_count": number;
     "task_content"?: ContentReference | null;
     "title": string;
     "total_count": number;
     "type": ActivityKind;
-    "updated_at": time$0.Time;
+    "updated_at": string;
     "user_agent": string;
     "username": string;
     "work_id": types$0.UUID;
-    "work_started_at": time$0.Time;
+    "work_started_at": string;
 
     /** Creates a new ActivityRecord instance. */
     constructor($$source: Partial<ActivityRecord> = {}) {
@@ -1240,7 +1237,7 @@ export class ActivityRecord {
             this["category"] = "";
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("duration_ms" in $$source)) {
             this["duration_ms"] = 0;
@@ -1291,7 +1288,7 @@ export class ActivityRecord {
             this["type"] = ActivityKind.$zero;
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("user_agent" in $$source)) {
             this["user_agent"] = "";
@@ -1303,7 +1300,7 @@ export class ActivityRecord {
             this["work_id"] = "";
         }
         if (!("work_started_at" in $$source)) {
-            this["work_started_at"] = null;
+            this["work_started_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -1480,17 +1477,17 @@ export enum ActivityStatus {
  * ActivityTimeBucket defines model for ActivityTimeBucket.
  */
 export class ActivityTimeBucket {
-    "end": time$0.Time;
+    "end": string;
     "established": number;
     "label": string;
     "results": ActivityResultEvents;
-    "start": time$0.Time;
+    "start": string;
     "started": number;
 
     /** Creates a new ActivityTimeBucket instance. */
     constructor($$source: Partial<ActivityTimeBucket> = {}) {
         if (!("end" in $$source)) {
-            this["end"] = null;
+            this["end"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("established" in $$source)) {
             this["established"] = 0;
@@ -1502,7 +1499,7 @@ export class ActivityTimeBucket {
             this["results"] = (new ActivityResultEvents());
         }
         if (!("start" in $$source)) {
-            this["start"] = null;
+            this["start"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("started" in $$source)) {
             this["started"] = 0;
@@ -1647,14 +1644,14 @@ export class ActivityWorkSummary {
     "bytes_processed": number;
     "bytes_total": number;
     "category": ActivityCategory;
-    "connection_uncertain_until"?: time$0.Time | null;
-    "created_at": time$0.Time;
+    "connection_uncertain_until"?: string | null;
+    "created_at": string;
     "duration_ms": number;
     "error_message"?: string;
-    "established_at"?: time$0.Time | null;
+    "established_at"?: string | null;
     "ever_failed": boolean;
     "failure_count": number;
-    "finished_at"?: time$0.Time | null;
+    "finished_at"?: string | null;
     "id": types$0.UUID;
     "ip": string;
     "observed_attempts": number;
@@ -1669,16 +1666,16 @@ export class ActivityWorkSummary {
     "source_id": string;
     "source_table": string;
     "speed_bps": number;
-    "started_at"?: time$0.Time | null;
+    "started_at"?: string | null;
     "status": ActivityStatus;
     "success_count": number;
     "title": string;
     "total_count": number;
     "type": ActivityKind;
-    "updated_at": time$0.Time;
+    "updated_at": string;
     "username": string;
     "work_id": types$0.UUID;
-    "work_started_at": time$0.Time;
+    "work_started_at": string;
 
     /** Creates a new ActivityWorkSummary instance. */
     constructor($$source: Partial<ActivityWorkSummary> = {}) {
@@ -1704,7 +1701,7 @@ export class ActivityWorkSummary {
             this["category"] = "";
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("duration_ms" in $$source)) {
             this["duration_ms"] = 0;
@@ -1767,7 +1764,7 @@ export class ActivityWorkSummary {
             this["type"] = ActivityKind.$zero;
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("username" in $$source)) {
             this["username"] = "";
@@ -1776,7 +1773,7 @@ export class ActivityWorkSummary {
             this["work_id"] = "";
         }
         if (!("work_started_at" in $$source)) {
-            this["work_started_at"] = null;
+            this["work_started_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -3124,7 +3121,7 @@ export class FileInfo {
     "is_dir": boolean;
     "is_link": boolean;
     "link_target"?: string;
-    "mod_time": time$0.Time;
+    "mod_time": string;
     "mode": os$0.FileMode;
     "name": string;
     "path": string;
@@ -3140,7 +3137,7 @@ export class FileInfo {
             this["is_link"] = false;
         }
         if (!("mod_time" in $$source)) {
-            this["mod_time"] = null;
+            this["mod_time"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("mode" in $$source)) {
             this["mode"] = fs$0.FileMode.$zero;
@@ -3401,7 +3398,7 @@ export enum SFTPDeletePathsResultMode {
  */
 export class SSHKey {
     "algorithm": string;
-    "created_at": time$0.Time;
+    "created_at": string;
     "fingerprint": string;
     "has_private_key": boolean;
     "has_saved_passphrase": boolean;
@@ -3410,7 +3407,7 @@ export class SSHKey {
     "name": string;
     "passphrase_required": boolean;
     "public_key": string;
-    "updated_at": time$0.Time;
+    "updated_at": string;
 
     /** Creates a new SSHKey instance. */
     constructor($$source: Partial<SSHKey> = {}) {
@@ -3418,7 +3415,7 @@ export class SSHKey {
             this["algorithm"] = "";
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("fingerprint" in $$source)) {
             this["fingerprint"] = "";
@@ -3445,7 +3442,7 @@ export class SSHKey {
             this["public_key"] = "";
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -3703,7 +3700,7 @@ export class Server {
     "connection_revision"?: number | null;
     "country"?: string;
     "country_code"?: string;
-    "created_at"?: time$0.Time | null;
+    "created_at"?: string | null;
     "description"?: string | null;
     "group"?: string | null;
 
@@ -3720,7 +3717,7 @@ export class Server {
      * JumpServerID 跳板机服务器 UUID；空字符串表示直连，更新时省略保持原值。
      */
     "jump_server_id"?: string | null;
-    "last_connected"?: time$0.Time | null;
+    "last_connected"?: string | null;
     "name": string;
     "os"?: string;
     "port": number;
@@ -3737,7 +3734,7 @@ export class Server {
      */
     "status"?: ServerStatus | null;
     "tags"?: string[] | null;
-    "updated_at"?: time$0.Time | null;
+    "updated_at"?: string | null;
     "username": string;
 
     /** Creates a new Server instance. */
@@ -4354,7 +4351,7 @@ export class TaskContent {
  */
 export class TaskEvent {
     "content"?: ContentReference | null;
-    "created_at": time$0.Time;
+    "created_at": string;
     "data_json"?: string;
     "id": number;
     "level": string;
@@ -4364,7 +4361,7 @@ export class TaskEvent {
     /** Creates a new TaskEvent instance. */
     constructor($$source: Partial<TaskEvent> = {}) {
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("id" in $$source)) {
             this["id"] = 0;
@@ -4518,14 +4515,14 @@ export class TaskOverview {
     "attempt": number;
     "bytes_processed": number;
     "bytes_total": number;
-    "cancel_requested_at"?: time$0.Time | null;
+    "cancel_requested_at"?: string | null;
     "cancelable": boolean;
-    "created_at": time$0.Time;
+    "created_at": string;
     "definition_id"?: types$0.UUID | null;
     "error_code"?: string;
     "error_message"?: string;
     "failure_count": number;
-    "finished_at"?: time$0.Time | null;
+    "finished_at"?: string | null;
     "id": types$0.UUID;
     "max_attempts": number;
     "parent_work_id"?: types$0.UUID | null;
@@ -4539,7 +4536,7 @@ export class TaskOverview {
     "source_id"?: string;
     "source_type"?: string;
     "stage"?: string;
-    "started_at"?: time$0.Time | null;
+    "started_at"?: string | null;
     "status": TaskRunStatus;
     "success_count": number;
     "task_type": string;
@@ -4547,9 +4544,9 @@ export class TaskOverview {
     "total_count": number;
     "trigger_type": TaskTriggerType;
     "truncated_fields"?: string[];
-    "updated_at": time$0.Time;
+    "updated_at": string;
     "work_id": types$0.UUID;
-    "work_started_at": time$0.Time;
+    "work_started_at": string;
 
     /** Creates a new TaskOverview instance. */
     constructor($$source: Partial<TaskOverview> = {}) {
@@ -4569,7 +4566,7 @@ export class TaskOverview {
             this["cancelable"] = false;
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("failure_count" in $$source)) {
             this["failure_count"] = 0;
@@ -4608,13 +4605,13 @@ export class TaskOverview {
             this["trigger_type"] = TaskTriggerType.$zero;
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("work_id" in $$source)) {
             this["work_id"] = "";
         }
         if (!("work_started_at" in $$source)) {
-            this["work_started_at"] = null;
+            this["work_started_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);
@@ -4829,22 +4826,22 @@ export class TransferJob {
      * Actor 执行归属信息，不构成授权凭据；本机所有者 ID 不要求 UUID。所有者后台自动任务的 session_id 为空，不创建登录会话；访客和设备必须关联真实会话。
      */
     "actor": Actor;
-    "artifact_cleaned_at"?: time$0.Time | null;
-    "artifact_expires_at"?: time$0.Time | null;
+    "artifact_cleaned_at"?: string | null;
+    "artifact_expires_at"?: string | null;
     "artifact_managed": boolean;
     "artifact_name": string;
     "artifact_size": number;
     "bytes_completed": number;
     "bytes_processed": number;
     "bytes_total": number;
-    "created_at": time$0.Time;
+    "created_at": string;
     "description": string;
     "detail_json"?: string | null;
     "error_message"?: string | null;
     "file_name": string;
     "files_completed": number;
     "files_total": number;
-    "finished_at"?: time$0.Time | null;
+    "finished_at"?: string | null;
     "id": types$0.UUID;
     "kind": TransferJobKind;
     "max_retries": number;
@@ -4858,12 +4855,12 @@ export class TransferJob {
     "source_server_id"?: types$0.UUID | null;
     "speed_bps": number;
     "stage": TransferJobStage;
-    "started_at"?: time$0.Time | null;
+    "started_at"?: string | null;
     "status": TransferJobStatus;
     "target_path": string;
     "target_server_id"?: types$0.UUID | null;
     "task_run_id"?: types$0.UUID | null;
-    "updated_at": time$0.Time;
+    "updated_at": string;
 
     /** Creates a new TransferJob instance. */
     constructor($$source: Partial<TransferJob> = {}) {
@@ -4889,7 +4886,7 @@ export class TransferJob {
             this["bytes_total"] = 0;
         }
         if (!("created_at" in $$source)) {
-            this["created_at"] = null;
+            this["created_at"] = "0001-01-01T00:00:00.000Z";
         }
         if (!("description" in $$source)) {
             this["description"] = "";
@@ -4943,7 +4940,7 @@ export class TransferJob {
             this["target_path"] = "";
         }
         if (!("updated_at" in $$source)) {
-            this["updated_at"] = null;
+            this["updated_at"] = "0001-01-01T00:00:00.000Z";
         }
 
         Object.assign(this, $$source);

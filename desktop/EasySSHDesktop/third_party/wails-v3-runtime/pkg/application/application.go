@@ -16,10 +16,12 @@ import (
 	"sync"
 
 	"github.com/wailsapp/wails/v3/internal/assetserver"
-	"github.com/wailsapp/wails/v3/internal/assetserver/bundledassets"
 	"github.com/wailsapp/wails/v3/internal/assetserver/webview"
 	"github.com/wailsapp/wails/v3/internal/capabilities"
 	"github.com/wailsapp/wails/v3/pkg/updater"
+
+	// A clear error, not hundreds, when no native backend is selected.
+	_ "github.com/wailsapp/wails/v3/internal/buildguard"
 )
 
 //go:embed assets/*
@@ -65,13 +67,19 @@ func New(appOptions Options) *App {
 		}
 	}
 
-	// Set up signal handling (platform-specific)
-	result.setupSignalHandler(appOptions)
-
 	result.logStartup()
 	result.logPlatformInfo()
 
 	result.customEventProcessor = NewWailsEventProcessor(result.Event.dispatch)
+	result.eventPayloads = newEventPayloadStore()
+	// The store owns a reaper goroutine; window close only drops that window's
+	// entries, so the store itself has to be shut down with the app.
+	result.OnShutdown(result.eventPayloads.close)
+
+	// Streams own session state and handler goroutines, so like the payload
+	// store they are shut down with the app rather than per window.
+	result.streams = newStreamManager(result)
+	result.OnShutdown(result.streams.close)
 
 	messageProc := NewMessageProcessor(result.Logger)
 	result.messageProcessor = messageProc
@@ -113,9 +121,26 @@ func New(appOptions Options) *App {
 		func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 				path := req.URL.Path
+				// Oversized events are parked host-side and fetched here rather
+				// than being spliced into an evaluateJavaScript source string.
+				if strings.HasPrefix(path, eventPayloadPath) {
+					result.serveEventPayload(rw, req)
+					return
+				}
+				// GoStream: the poll is held here for as long as the frontend
+				// has nothing to collect. Safe because every webview request
+				// gets its own goroutine (see the dispatchWorkers note in
+				// assetserver_webview.go).
+				if strings.HasPrefix(path, streamPath) {
+					result.serveStream(rw, req)
+					return
+				}
 				switch path {
 				case "/wails/runtime.js":
-					err := assetserver.ServeFile(rw, path, bundledassets.RuntimeJS)
+					// The prelude, where there is one, picks the stream
+					// transport before any module body runs. It cannot be
+					// deferred to custom.js — see stream_prelude_server.go.
+					err := assetserver.ServeFile(rw, path, runtimeJSWithPrelude())
 					if err != nil {
 						result.fatal("unable to serve runtime.js: %w", err)
 					}
@@ -241,6 +266,10 @@ type windowMessage struct {
 	windowId   uint
 	message    string
 	originInfo *OriginInfo
+	// childFrame is true when the platform reports that the message was posted
+	// by a child frame (iframe) rather than the window's main frame. Platforms
+	// that cannot identify the posting frame leave it false.
+	childFrame bool
 }
 
 type OriginInfo struct {
@@ -250,7 +279,7 @@ type OriginInfo struct {
 	FrameKnown  bool
 }
 
-var windowMessageBuffer = make(chan *windowMessage, 5)
+var windowMessageBuffer = make(chan *windowMessage, 64)
 
 // DropTargetDetails contains information about the HTML element
 // where files were dropped (the element with data-file-drop-target attribute).
@@ -282,6 +311,48 @@ func addDragAndDropMessage(windowId uint, filenames []string, dropTarget *DropTa
 
 var _ webview.Request = &webViewAssetRequest{}
 
+// serveEventPayload delivers an oversized event body that was parked by
+// DispatchWailsEvent. Payloads are one-shot and bound to the window they were
+// dispatched to, so a stale or cross-window id simply 404s.
+func (a *App) serveEventPayload(rw http.ResponseWriter, req *http.Request) {
+	if a.eventPayloads == nil {
+		http.NotFound(rw, req)
+		return
+	}
+
+	// Read-only endpoint; anything else is not something we serve.
+	if req.Method != http.MethodGet && req.Method != http.MethodHead {
+		rw.Header().Set("Allow", "GET, HEAD")
+		http.Error(rw, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Ids are always 32 hex chars. Checking the shape first keeps a stream of
+	// junk requests from doing map work on arbitrarily long keys.
+	id := strings.TrimPrefix(req.URL.Path, eventPayloadPath)
+	if len(id) != eventPayloadIDLen || !isHexString(id) {
+		http.NotFound(rw, req)
+		return
+	}
+
+	windowID, ok := RuntimeWindowID(req.Context())
+	if !ok {
+		http.NotFound(rw, req)
+		return
+	}
+
+	data, ok := a.eventPayloads.take(id, windowID)
+	if !ok {
+		http.NotFound(rw, req)
+		return
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+	rw.Header().Set("Cache-Control", "no-store")
+	rw.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	_, _ = rw.Write(data)
+}
+
 const webViewRequestHeaderWindowId = "x-wails-window-id"
 const webViewRequestHeaderWindowName = "x-wails-window-name"
 
@@ -306,6 +377,14 @@ func (r *webViewAssetRequest) URL() (string, error) {
 
 func (r *webViewAssetRequest) Method() (string, error) {
 	return r.Request.Method()
+}
+
+// Context preserves native request cancellation through the header-injecting wrapper.
+func (r *webViewAssetRequest) Context() context.Context {
+	if contextual, ok := r.Request.(interface{ Context() context.Context }); ok {
+		return contextual.Context()
+	}
+	return nil
 }
 
 func (r *webViewAssetRequest) Header() (http.Header, error) {
@@ -334,14 +413,13 @@ func (r *webViewAssetRequest) Close() error {
 	return r.Request.Close()
 }
 
-var webviewRequests = make(chan *webViewAssetRequest, 5)
+var webviewRequests = make(chan *webViewAssetRequest, 256)
 
 type eventHook struct {
 	callback func(event *ApplicationEvent)
 }
 
 type App struct {
-	messageProcessor              *MessageProcessor
 	ctx                           context.Context
 	cancel                        context.CancelFunc
 	options                       Options
@@ -351,19 +429,20 @@ type App struct {
 	applicationEventHooksLock     sync.RWMutex
 
 	// Manager pattern for organized API
-	Window      *WindowManager
-	ContextMenu *ContextMenuManager
-	KeyBinding  *KeyBindingManager
-	Browser     *BrowserManager
-	Env         *EnvironmentManager
-	Dialog      *DialogManager
-	Event       *EventManager
-	Menu        *MenuManager
-	Screen      *ScreenManager
-	Clipboard   *ClipboardManager
-	SystemTray  *SystemTrayManager
-	Autostart   *AutostartManager
-	Updater     *updater.Updater
+	Window         *WindowManager
+	ContextMenu    *ContextMenuManager
+	KeyBinding     *KeyBindingManager
+	Browser        *BrowserManager
+	Env            *EnvironmentManager
+	Dialog         *DialogManager
+	Event          *EventManager
+	Menu           *MenuManager
+	Screen         *ScreenManager
+	Clipboard      *ClipboardManager
+	SystemTray     *SystemTrayManager
+	Autostart      *AutostartManager
+	GlobalShortcut *GlobalShortcutManager
+	Updater        *updater.Updater
 
 	// Windows
 	windows     map[uint]Window
@@ -389,6 +468,9 @@ type App struct {
 
 	// platform app
 	impl platformApp
+	// earlyDispatch holds main-thread work sent before Run created impl; Run hands it on once impl exists.
+	earlyDispatchLock sync.Mutex
+	earlyDispatch     []func()
 
 	// The main application menu (private - use app.Menu.GetApplicationMenu/SetApplicationMenu)
 	applicationMenu *Menu
@@ -400,7 +482,16 @@ type App struct {
 	contextMenus     map[string]*ContextMenu
 	contextMenusLock sync.RWMutex
 
-	assets   *assetserver.AssetServer
+	assets *assetserver.AssetServer
+
+	// eventPayloads holds oversized Go→JS event bodies awaiting a one-shot
+	// fetch from the webview, keeping them out of evaluateJavaScript source.
+	eventPayloads *eventPayloadStore
+
+	// streams holds registered stream handlers and the per-page sessions that
+	// carry their connections. See stream.go.
+	streams *streamManager
+
 	startURL string
 
 	// Hooks
@@ -434,6 +525,9 @@ type App struct {
 
 	// singleInstanceManager handles single instance functionality
 	singleInstanceManager *singleInstanceManager
+
+	// messageProcessor handles runtime messages
+	messageProcessor *MessageProcessor
 }
 
 func (a *App) Config() Options {
@@ -514,6 +608,7 @@ func (a *App) init() {
 	a.Clipboard = newClipboardManager(a)
 	a.SystemTray = newSystemTrayManager(a)
 	a.Autostart = newAutostartManager(a)
+	a.GlobalShortcut = newGlobalShortcutManager(a)
 	a.Updater = updater.New(newUpdaterHost(a))
 }
 
@@ -576,7 +671,14 @@ func (a *App) Run() error {
 		return err
 	}
 
-	a.impl = newPlatformApp(a)
+	// Built outside earlyDispatchLock: construction can call back into dispatch (an ErrorHandler, a window
+	// procedure interceptor), which would wait on the lock. Work sent meanwhile still queues.
+	impl := newPlatformApp(a)
+	a.earlyDispatchLock.Lock()
+	a.impl = impl
+	early := a.earlyDispatch
+	a.earlyDispatch = nil
+	a.earlyDispatchLock.Unlock()
 
 	// Ensure services are shut down in case of failures.
 	defer a.shutdownServices()
@@ -584,84 +686,118 @@ func (a *App) Run() error {
 	// Ensure application context is canceled before service shutdown (duplicate calls don't hurt).
 	defer a.cancel()
 
-	// Startup services before dispatching any events.
-	// No need to hold the lock here because a.options.Services may only change when a.running is false.
-	services := a.options.Services
-	a.options.Services = nil
-	for i, service := range services {
-		if err := a.startupService(service); err != nil {
-			return fmt.Errorf("error starting service '%s': %w", getServiceName(service), err)
+	// startup performs the remaining startup sequence: start services, spawn the
+	// event-handling reader goroutines, run any pending windows, and apply the
+	// menu/icon. On desktop this runs inline on the main goroutine. On iOS it is
+	// deferred to a background goroutine (see below).
+	startup := func() error {
+		// Startup services before dispatching any events.
+		// No need to hold the lock here because a.options.Services may only change when a.running is false.
+		services := a.options.Services
+		a.options.Services = nil
+		for i, service := range services {
+			if err := a.startupService(service); err != nil {
+				return fmt.Errorf("error starting service '%s': %w", getServiceName(service), err)
+			}
+			// Schedule started services for shutdown.
+			a.options.Services = services[:i+1]
 		}
-		// Schedule started services for shutdown.
-		a.options.Services = services[:i+1]
-	}
 
-	go func() {
-		for {
-			event := <-applicationEvents
-			go a.Event.handleApplicationEvent(event)
+		// Start the MCP server when the application is built with -tags mcp.
+		// All configuration is read from environment variables (WAILS_MCP_HOST,
+		// WAILS_MCP_PORT, WAILS_MCP_TIMEOUT, WAILS_MCP_HIDE_CURSOR).
+		if err := startMCPServer(a); err != nil {
+			return fmt.Errorf("mcp: %w", err)
 		}
-	}()
-	go func() {
-		for {
-			event := <-windowEvents
-			go a.handleWindowEvent(event)
-		}
-	}()
-	go func() {
-		for {
-			request := <-webviewRequests
-			go a.handleWebViewRequest(request)
-		}
-	}()
-	go func() {
-		for {
-			event := <-windowMessageBuffer
-			go a.handleWindowMessage(event)
-		}
-	}()
-	go func() {
-		for {
-			event := <-windowKeyEvents
-			go a.handleWindowKeyEvent(event)
-		}
-	}()
-	go func() {
-		for {
-			dragAndDropMessage := <-windowDragAndDropBuffer
-			go a.handleDragAndDropMessage(dragAndDropMessage)
-		}
-	}()
 
-	go func() {
-		for {
-			menuItemID := <-menuItemClicked
-			go a.Menu.handleMenuItemClicked(menuItemID)
-		}
-	}()
-
-	a.runLock.Lock()
-	a.running = true
-	a.runLock.Unlock()
-
-	// No need to hold the lock here because
-	//   - a.pendingRun may only change while a.running is false.
-	//   - runnables are scheduled asynchronously anyway.
-	for _, pending := range a.pendingRun {
 		go func() {
-			defer handlePanic()
-			pending.Run()
+			for {
+				event := <-applicationEvents
+				go a.Event.handleApplicationEvent(event)
+			}
 		}()
-	}
-	a.pendingRun = nil
+		go func() {
+			for {
+				event := <-windowEvents
+				go a.handleWindowEvent(event)
+			}
+		}()
+		go func() {
+			for {
+				request := <-webviewRequests
+				go a.handleWebViewRequest(request)
+			}
+		}()
+		go func() {
+			for {
+				event := <-windowMessageBuffer
+				go a.handleWindowMessage(event)
+			}
+		}()
+		go func() {
+			for {
+				event := <-windowKeyEvents
+				go a.handleWindowKeyEvent(event)
+			}
+		}()
+		go func() {
+			for {
+				dragAndDropMessage := <-windowDragAndDropBuffer
+				go a.handleDragAndDropMessage(dragAndDropMessage)
+			}
+		}()
 
-	// set the application menu
-	if runtime.GOOS == "darwin" {
-		a.impl.setApplicationMenu(a.applicationMenu)
+		go func() {
+			for {
+				menuItemID := <-menuItemClicked
+				go a.Menu.handleMenuItemClicked(menuItemID)
+			}
+		}()
+
+		a.runLock.Lock()
+		a.running = true
+		a.runLock.Unlock()
+
+		// Bind any global shortcuts that were registered before the app started.
+		a.GlobalShortcut.flushPending()
+
+		// No need to hold the lock here because
+		//   - a.pendingRun may only change while a.running is false.
+		//   - runnables are scheduled asynchronously anyway.
+		for _, pending := range a.pendingRun {
+			go func() {
+				defer handlePanic()
+				pending.Run()
+			}()
+		}
+		a.pendingRun = nil
+
+		// Work sent before Run is replayed once startup is done, from another goroutine: on desktop it is posted to
+		// the native loop, so it runs after activation, and in server mode it cannot hold up startup.
+		if len(early) > 0 {
+			go func() {
+				defer handlePanic()
+				for _, fn := range early {
+					a.dispatchOnMainThread(fn)
+				}
+			}()
+		}
+
+		// set the application menu
+		if runtime.GOOS == "darwin" {
+			a.impl.setApplicationMenu(a.applicationMenu)
+		}
+		if a.options.Icon != nil {
+			a.impl.setIcon(a.options.Icon)
+		}
+		return nil
 	}
-	if a.options.Icon != nil {
-		a.impl.setIcon(a.options.Icon)
+
+	if err := startup(); err != nil {
+		return err
 	}
+	// Handle signals only after the application is ready to quit.
+	a.setupSignalHandler(a.options)
 
 	return a.impl.run()
 }
@@ -754,6 +890,9 @@ func (a *App) handleWindowMessage(event *windowMessage) {
 	}
 	// Check if the message starts with "wails:"
 	if strings.HasPrefix(event.message, "wails:") {
+		if event.childFrame {
+			return
+		}
 		a.debug("handleWindowMessage: Processing wails message", "windowId", event.windowId)
 		window.HandleMessage(event.message)
 	} else {
@@ -780,7 +919,15 @@ func (a *App) handleWindowEvent(event *windowEvent) {
 	window, ok := a.windows[event.WindowID]
 	a.windowsLock.RUnlock()
 	if !ok {
-		a.warning("Window #%d not found", event.WindowID)
+		// Post-removal lifecycle notifications are expected: the default
+		// WindowClosing listener removes the window from the manager, then
+		// AppKit (or the equivalent on other platforms) keeps posting
+		// windowWillClose / windowDidResignKey / etc. for the same window.
+		// On darwin hasListeners always returns true today, so those
+		// notifications are queued unconditionally and would warn here on
+		// every window close. The same applies to App.cleanup nilling the
+		// map during shutdown. None of these are bugs — just log them.
+		a.debug("Window event for unknown window", "windowID", event.WindowID, "eventID", event.EventID)
 		return
 	}
 	window.HandleWindowEvent(event.EventID)
@@ -818,6 +965,12 @@ func (a *App) cleanup() {
 	// may only change while a.performingShutdown is false.
 	for _, shutdownTask := range a.shutdownTasks {
 		InvokeSync(shutdownTask)
+	}
+	// Release any global shortcuts the application registered with the OS.
+	if a.GlobalShortcut != nil {
+		if err := a.GlobalShortcut.UnregisterAll(); err != nil {
+			a.handleError(err)
+		}
 	}
 	InvokeSync(func() {
 		a.shutdownServices()
@@ -859,7 +1012,24 @@ func (a *App) SetIcon(icon []byte) {
 	}
 }
 
+// platformAppReady reports whether the platform application exists yet. It is
+// the condition dispatchOnMainThread needs in order to run work rather than
+// queue it for Run to replay.
+func (a *App) platformAppReady() bool {
+	a.earlyDispatchLock.Lock()
+	defer a.earlyDispatchLock.Unlock()
+	return a.impl != nil
+}
+
 func (a *App) dispatchOnMainThread(fn func()) {
+	// Before Run there is no main loop to run fn on, so it waits for one.
+	a.earlyDispatchLock.Lock()
+	if a.impl == nil {
+		a.earlyDispatch = append(a.earlyDispatch, fn)
+		a.earlyDispatchLock.Unlock()
+		return
+	}
+	a.earlyDispatchLock.Unlock()
 	// If we are on the main thread, just call the function
 	if a.impl.isOnMainThread() {
 		fn()

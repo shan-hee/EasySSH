@@ -14,7 +14,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/wailsapp/wails/webview2/webviewloader"
+	"github.com/wailsapp/wails/v3/internal/webview2/webviewloader"
 
 	"github.com/wailsapp/wails/v3/internal/operatingsystem"
 
@@ -25,6 +25,10 @@ import (
 var (
 	wmTaskbarCreated = w32.RegisterWindowMessage(w32.MustStringToUTF16Ptr("TaskbarCreated"))
 )
+
+// taskbarRestartDebounce is how long TaskbarCreated broadcasts are ignored
+// after the first one, so one Explorer restart re-adds each tray icon once.
+const taskbarRestartDebounce = time.Second
 
 type windowsApp struct {
 	parent *App
@@ -46,8 +50,9 @@ type windowsApp struct {
 	focusedWindow w32.HWND
 
 	// system theme
-	isCurrentlyDarkMode bool
-	currentWindowID     uint
+	isCurrentlyDarkMode       bool
+	isSystemCurrentlyDarkMode bool
+	currentWindowID           uint
 
 	// Restart taskbar flag
 	restartingTaskbar atomic.Bool
@@ -223,6 +228,7 @@ func (m *windowsApp) init() {
 		panic(syscall.GetLastError())
 	}
 	m.isCurrentlyDarkMode = w32.IsCurrentlyDarkMode()
+	m.isSystemCurrentlyDarkMode = w32.IsSystemCurrentlyDarkMode()
 }
 
 func (m *windowsApp) wndProc(hwnd w32.HWND, msg uint32, wParam, lParam uintptr) uintptr {
@@ -257,29 +263,41 @@ func (m *windowsApp) wndProc(hwnd w32.HWND, msg uint32, wParam, lParam uintptr) 
 	}
 
 	switch msg {
+	case w32.WM_HOTKEY:
+		// A global shortcut fired. wParam holds the id we passed to
+		// RegisterHotKey. Route it to the global shortcut manager.
+		if app := globalApplication; app != nil && app.GlobalShortcut != nil {
+			app.GlobalShortcut.dispatch(int(wParam))
+		}
+		return 0
 	case wmTaskbarCreated:
 		if m.restartingTaskbar.Load() {
 			break
 		}
 		m.restartingTaskbar.Store(true)
 		m.reshowSystrays()
-		go func() {
-			// 1 second debounce
-			time.Sleep(1000)
+		// Explorer broadcasts TaskbarCreated several times while it restarts.
+		// The flag filters the repeats, so it has to stay set for about as long
+		// as a restart takes - time.Sleep takes a Duration, and an untyped 1000
+		// is 1000ns, which cleared it again before the next broadcast arrived.
+		time.AfterFunc(taskbarRestartDebounce, func() {
 			m.restartingTaskbar.Store(false)
-		}()
+		})
 	case w32.WM_SETTINGCHANGE:
 		settingChanged := w32.UTF16PtrToString((*uint16)(unsafe.Pointer(lParam)))
 		if settingChanged == "ImmersiveColorSet" {
 			isDarkMode := w32.IsCurrentlyDarkMode()
-			if isDarkMode != m.isCurrentlyDarkMode {
+			isSystemDarkMode := w32.IsSystemCurrentlyDarkMode()
+			if isDarkMode != m.isCurrentlyDarkMode || isSystemDarkMode != m.isSystemCurrentlyDarkMode {
+				m.isCurrentlyDarkMode = isDarkMode
+				m.isSystemCurrentlyDarkMode = isSystemDarkMode
+
 				eventContext := newApplicationEventContext()
 				eventContext.setIsDarkMode(isDarkMode)
 				applicationEvents <- &ApplicationEvent{
 					Id:  uint(events.Windows.SystemThemeChanged),
 					ctx: eventContext,
 				}
-				m.isCurrentlyDarkMode = isDarkMode
 			}
 		}
 		return 0
@@ -401,6 +419,18 @@ func setupDPIAwareness() error {
 }
 
 func newPlatformApp(app *App) *windowsApp {
+
+	// Force WebView2 visual hosting before any WebView2 environment is
+	// initialised. This is the documented Microsoft workaround for the
+	// "DPI-context-change hang" — most commonly seen when the Microsoft
+	// Remote Desktop iOS client provisions a Retina-optimised virtual
+	// monitor mid-session and every subsequent WebView2 controller call
+	// blocks the UI thread for ~2 s on synchronous DComp re-marshal.
+	// See WindowsOptions.UseVisualHosting for the full rationale.
+	if app.options.Windows.UseVisualHosting {
+		_ = os.Setenv("COREWEBVIEW2_FORCED_HOSTING_MODE",
+			"COREWEBVIEW2_HOSTING_MODE_WINDOW_TO_VISUAL")
+	}
 
 	err := setupDPIAwareness()
 	if err != nil {

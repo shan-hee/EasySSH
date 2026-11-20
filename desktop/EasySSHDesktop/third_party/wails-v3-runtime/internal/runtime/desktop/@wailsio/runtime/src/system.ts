@@ -28,7 +28,8 @@ const _invoke = (function () {
         }
         // Android WebView - uses addJavascriptInterface which exposes window.wails.invoke
         else if ((window as any).wails?.invoke) {
-            return (msg: any) => (window as any).wails.invoke(typeof msg === 'string' ? msg : JSON.stringify(msg));
+            const bridge = (window as any).wails;
+            return (msg: any) => bridge.invoke(typeof msg === 'string' ? msg : JSON.stringify(msg));
         }
     } catch(e) {}
 
@@ -119,6 +120,42 @@ export function IsLinux(): boolean {
  */
 export function IsMac(): boolean {
     return (window as any)._wails?.environment?.OS === "darwin";
+}
+
+/**
+ * Checks if the current operating system is iOS.
+ *
+ * @returns True if the operating system is iOS, otherwise false.
+ */
+export function IsIOS(): boolean {
+    return (window as any)._wails?.environment?.OS === "ios";
+}
+
+/**
+ * Checks if the current operating system is Android.
+ *
+ * @returns True if the operating system is Android, otherwise false.
+ */
+export function IsAndroid(): boolean {
+    return (window as any)._wails?.environment?.OS === "android";
+}
+
+/**
+ * Checks if the app is running on a mobile OS (iOS or Android).
+ *
+ * @returns True on iOS or Android, otherwise false.
+ */
+export function IsMobile(): boolean {
+    return IsIOS() || IsAndroid();
+}
+
+/**
+ * Checks if the app is running on a desktop OS (macOS, Windows or Linux).
+ *
+ * @returns True on macOS, Windows or Linux, otherwise false.
+ */
+export function IsDesktop(): boolean {
+    return IsMac() || IsWindows() || IsLinux();
 }
 
 /**

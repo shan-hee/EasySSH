@@ -17,7 +17,7 @@ import (
 // caps give comfortable headroom while keeping malformed / hostile archives
 // from exhausting disk or file descriptors.
 const (
-	maxArchiveEntries   = 50_000
+	maxArchiveEntries         = 50_000
 	maxArchiveTotalSize int64 = 2 << 30 // 2 GiB total uncompressed
 )
 
@@ -137,7 +137,10 @@ func extractZip(src, dst string) error {
 	rootClean := filepath.Clean(dst)
 
 	// Pass 1 — directories and regular files. Symlinks recorded for pass 2.
-	type pendingLink struct{ src *zip.File; target string }
+	type pendingLink struct {
+		src    *zip.File
+		target string
+	}
 	var symlinks []pendingLink
 	var written int64
 	for _, f := range zr.File {
@@ -368,12 +371,19 @@ func safeJoin(root, name string) (string, error) {
 	if clean == "" || clean == "." {
 		return root, nil
 	}
-	if filepath.IsAbs(clean) || strings.HasPrefix(clean, "..") {
+	// filepath.IsLocal rejects absolute paths, "..", "../x", volume names and
+	// (on Windows) reserved device names. It is also the check CodeQL's
+	// go/zipslip query recognises as a sanitiser.
+	if !filepath.IsLocal(clean) {
 		return "", fmt.Errorf("updater: archive entry escapes root: %s", name)
 	}
 	target := filepath.Join(root, clean)
-	rel, err := filepath.Rel(root, target)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+	// Defence in depth: the joined path must sit strictly below root.
+	prefix := root
+	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+		prefix += string(os.PathSeparator)
+	}
+	if !strings.HasPrefix(target, prefix) {
 		return "", fmt.Errorf("updater: archive entry escapes root: %s", name)
 	}
 	return target, nil

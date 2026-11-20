@@ -170,6 +170,32 @@ type ServerOptions struct {
 	// Default: 30 seconds
 	ShutdownTimeout time.Duration
 
+	// WebSocketOriginPatterns lists additional origins permitted to connect to
+	// the server's WebSocket endpoints and to call /wails/runtime. The request
+	// host is always permitted, so the default empty list enforces same-origin
+	// requests. It is intended for reverse-proxy deployments where the public
+	// origin differs from the Host seen by the application; add the public
+	// origin here when a proxy rewrites the Host header. Frontends served from
+	// a different origin calling /wails/runtime directly are not supported:
+	// the endpoint emits no CORS headers and rejects preflight requests.
+	// Patterns follow path.Match syntax; include a scheme to match both scheme
+	// and host.
+	//
+	// When the server binds a loopback address (the default "localhost",
+	// 127.0.0.0/8 or ::1), requests are also rejected with HTTP 403 unless
+	// their Host header is localhost, an IP literal, the bind host, or matches
+	// the host part of one of these patterns. This blocks DNS rebinding,
+	// where a hostile page repoints its own name at 127.0.0.1.
+	WebSocketOriginPatterns []string
+
+	// WebSocketAllowAllOrigins disables origin verification for the server's
+	// WebSocket endpoints and /wails/runtime. This is unsafe for servers
+	// reachable by untrusted browser content and should be enabled only when
+	// an application deliberately accepts that CSRF risk. It does not disable
+	// the loopback Host check; trust additional hostnames through
+	// WebSocketOriginPatterns.
+	WebSocketAllowAllOrigins bool
+
 	// TLS configures HTTPS. If nil, HTTP is used.
 	TLS *TLSOptions
 }
@@ -291,6 +317,26 @@ type WindowsOptions struct {
 	EnabledFeatures       []string
 	DisabledFeatures      []string
 	AdditionalBrowserArgs []string
+
+	// UseVisualHosting forces WebView2 to use IDCompositionVisual hosting
+	// instead of the default windowed (HWND-child) hosting. Set this to
+	// true if your app is used over RDP — particularly the Microsoft
+	// Remote Desktop iOS client, which provisions a Retina-optimised
+	// virtual monitor mid-session whose DPI context differs from the
+	// session's. With windowed hosting that DPI mismatch forces a
+	// synchronous DComp re-marshal on every WebView2 controller call
+	// (PutIsVisible, MoveFocus, first-paint, surface release), each
+	// blocking the UI thread for ~2 seconds and persisting until the
+	// server is rebooted. Visual hosting eliminates that re-marshal.
+	//
+	// Implementation: sets the COREWEBVIEW2_FORCED_HOSTING_MODE env var
+	// to COREWEBVIEW2_HOSTING_MODE_WINDOW_TO_VISUAL before WebView2 is
+	// initialised. Must be set before app.Run().
+	//
+	// See: https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/windowed-vs-visual-hosting
+	// See: https://github.com/MicrosoftEdge/WebView2Feedback/issues/5248
+	// See: https://github.com/MicrosoftEdge/WebView2Feedback/issues/4485
+	UseVisualHosting bool
 }
 
 /********* Linux Options *********/
@@ -306,8 +352,32 @@ type LinuxOptions struct {
 	//When a .desktop file is created this value helps with window grouping and desktop icons when the .desktop file's Name
 	//property differs form the executable's filename.
 	//
+	//Defaults to ApplicationID when that is set, because GTK takes the Wayland
+	//surface app_id from the program name: leaving this empty there would have
+	//windows fall back to the executable's name and stop matching the .desktop
+	//file. Applications that set neither option keep the executable's name.
+	//
 	//[see the docs]: https://docs.gtk.org/glib/func.set_prgname.html
 	ProgramName string
+
+	// ApplicationID overrides the GTK application id, which otherwise defaults
+	// to "org.wails." followed by a sanitised Name.
+	//
+	// The id has to satisfy g_application_id_is_valid(): two or more non-empty
+	// elements separated by a '.', each holding only the ASCII characters A-Z,
+	// a-z, 0-9, '_' and '-', none of them starting with a digit, and at most
+	// 255 characters in total, e.g. "com.example.MyApp". An id that does not is
+	// reported through the error handler and replaced with the derived default,
+	// because GTK only asserts on it and would abort the process instead.
+	//
+	// Sandboxed builds have to set this. A flatpak may only own bus names
+	// prefixed with its app id, and WebKit asks the portal to own
+	// "<application id>.Sandboxed.WebProcess-<uuid>" for the accessibility bus.
+	// With the default id that request is refused and the web process aborts,
+	// taking the application down from inside g_application_run.
+	//
+	// See: https://docs.gtk.org/gio/type_func.Application.id_is_valid.html
+	ApplicationID string
 }
 
 /********* iOS Options *********/
@@ -349,11 +419,11 @@ type IOSOptions struct {
 	UserAgent                   string
 	ApplicationNameForUserAgent string
 
-	// App-wide background colour for the main iOS window prior to any WebView creation.
-	// If AppBackgroundColourSet is true, the delegate will apply this colour to the app window
-	// during didFinishLaunching. Otherwise, it defaults to white.
-	AppBackgroundColourSet bool
-	BackgroundColour       RGBA
+	// BackgroundColour is the app-wide background colour for the main iOS window,
+	// shown before the WebView paints. Set it to match your web background to
+	// avoid a white flash on launch. Defaults to white when left at its zero
+	// value.
+	BackgroundColour RGBA
 
 	// EnableNativeTabs enables a native iOS UITabBar at the bottom of the screen.
 	// When enabled, the native tab bar will dispatch a 'nativeTabSelected' CustomEvent

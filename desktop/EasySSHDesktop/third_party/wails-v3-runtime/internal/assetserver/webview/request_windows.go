@@ -8,7 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/wailsapp/wails/webview2/pkg/edge"
+	"github.com/wailsapp/wails/v3/internal/webview2/pkg/edge"
 )
 
 // NewRequest creates as new WebViewRequest for chromium. This Method must be called from the Main-Thread!
@@ -121,9 +121,7 @@ func (r *request) Close() error {
 func (r *request) finishResponse() error {
 	var errs []error
 	if r.response != nil {
-		if err := r.response.Release(); err != nil {
-			errs = append(errs, err)
-		}
+		r.response.Release()
 		r.response = nil
 	}
 	if r.deferral != nil {
@@ -131,9 +129,7 @@ func (r *request) finishResponse() error {
 			errs = append(errs, err)
 		}
 
-		if err := r.deferral.Release(); err != nil {
-			errs = append(errs, err)
-		}
+		r.deferral.Release()
 		r.deferral = nil
 	}
 	return combineErrs(errs)
@@ -156,7 +152,8 @@ func (i *iStreamReleaseCloser) Close() error {
 		return nil
 	}
 	i.closed = true
-	return i.stream.Release()
+	i.stream.Release()
+	return nil
 }
 
 func getHeaders(req *edge.ICoreWebView2WebResourceRequest) (http.Header, error) {
