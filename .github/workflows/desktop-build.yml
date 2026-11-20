@@ -47,10 +47,12 @@ jobs:
         with:
           ref: refs/tags/v${{ inputs.version }}
 
-      # 仓库中打包资产为 0.0.0 占位，只在构建工作区写入版本
-      - name: 🏷️ 写入打包资产版本
-        working-directory: .
-        run: node scripts/release-version.mjs stamp "$EASYSSH_VERSION"
+      # exe 文件信息取自 info.json；仓库中为 0.0.0 占位，只在构建工作区写入版本
+      - name: 🏷️ 写入 exe 版本信息
+        run: |
+          jq --arg v "$EASYSSH_VERSION" '.fixed.file_version = $v | .info["0000"].ProductVersion = $v' \
+            build/windows/info.json > info.json.tmp
+          mv info.json.tmp build/windows/info.json
 
       # wails3 generate bindings 按宿主 (Linux) 平台分析 Go 代码，需要 gtk/webkit 头文件，
       # 即使最终构建目标是 Windows
@@ -88,24 +90,13 @@ jobs:
         run: wails3 task windows:build ARCH=${{ inputs.arch }}
 
       - name: 📦 打包桌面端 zip
-        id: artifact
-        run: |
-          PACKAGE_NAME="EasySSH-windows-${{ inputs.arch }}-desktop"
-          ZIP_NAME="${PACKAGE_NAME}.zip"
-
-          rm -rf "bin/${ZIP_NAME}"
-
-          cd bin
-          zip "$ZIP_NAME" EasySSH.exe
-
-          echo "artifact_name=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
-          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+        run: cd bin && zip "EasySSH-windows-${{ inputs.arch }}-desktop.zip" EasySSH.exe
 
       - name: 📤 上传构建产物
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.artifact.outputs.artifact_name }}
-          path: desktop/EasySSHDesktop/bin/${{ steps.artifact.outputs.zip_name }}
+          name: EasySSH-windows-${{ inputs.arch }}-desktop
+          path: desktop/EasySSHDesktop/bin/EasySSH-windows-${{ inputs.arch }}-desktop.zip
           if-no-files-found: error
           compression-level: 0
           retention-days: 7

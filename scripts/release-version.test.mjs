@@ -25,8 +25,8 @@ function fixture(t) {
     fs.rmSync(root, { recursive: true, force: true })
   })
   const git = (...args) => execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", ...args], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
-  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "--", "desktop/EasySSHDesktop/build", "server/internal/storage/schema", "desktop/EasySSHDesktop/internal/storage/schema"], { cwd: source, encoding: "utf8" })
-    .trim().split("\n").filter(name => /\.(?:go|sql|yml|yaml|json|xml|plist|nsi|nsh)$/.test(name) && fs.existsSync(path.join(source, name)))
+  const files = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "--", "server/internal/storage/schema", "desktop/EasySSHDesktop/internal/storage/schema"], { cwd: source, encoding: "utf8" })
+    .trim().split("\n").filter(name => /\.(?:go|sql)$/.test(name) && fs.existsSync(path.join(source, name)))
   files.push("scripts/release-version.mjs")
   for (const name of files) {
     fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true })
@@ -139,29 +139,4 @@ test("upgrades require rollback SQL", t => {
   for (const track of serverTracks) f.write(`${track}/${migrationName(schema + 1, "upgrade")}`, "-- +goose Up\nSELECT 1;\n")
   f.commit()
   expectFailure(f.run("check"), /Down 回滚段/)
-})
-
-test("stamp writes the release version into every desktop packaging asset", t => {
-  const f = fixture(t)
-  expectSuccess(f.run("stamp", "2.3.4"))
-  const build = "desktop/EasySSHDesktop/build"
-  assert.match(f.read(`${build}/config.yml`), /^  version: "2\.3\.4"/m)
-  const info = JSON.parse(f.read(`${build}/windows/info.json`))
-  assert.equal(info.fixed.file_version, "2.3.4")
-  assert.equal(info.info["0000"].ProductVersion, "2.3.4")
-  assert.match(f.read(`${build}/windows/nsis/wails_tools.nsh`), /!define INFO_PRODUCTVERSION "2\.3\.4"/)
-  for (const name of ["app_manifest.xml", "template.xml"]) assert.match(f.read(`${build}/windows/msix/${name}`), /\bVersion="2\.3\.4\.0"/)
-  for (const name of ["Info.plist", "Info.dev.plist"]) assert.equal(f.read(`${build}/darwin/${name}`).match(/<string>2\.3\.4<\/string>/g)?.length, 2)
-  assert.match(f.read(`${build}/linux/nfpm/nfpm.yaml`), /^version: "2\.3\.4"/m)
-})
-
-test("stamp fails before writing when a version field is missing", t => {
-  const f = fixture(t)
-  const name = "desktop/EasySSHDesktop/build/windows/info.json"
-  const json = JSON.parse(f.read(name))
-  delete json.fixed.file_version
-  f.write(name, JSON.stringify(json))
-  f.commit()
-  expectFailure(f.run("stamp", next), /info\.json 的版本字段缺失或重复/)
-  assert.equal(f.git("status", "--porcelain").trim(), "")
 })

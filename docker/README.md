@@ -96,7 +96,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 触发方式：
 
-- 推送 `vX.Y.Z` 标签（推荐使用 `./scripts/release.sh vX.Y.Z`）触发发布流水线 `.github/workflows/release.yml`，依次执行版本校验、自动化测试、镜像构建（`linux/amd64` 和 `linux/arm64`，均通过 Trivy 安全关卡后发布）、Windows 桌面端构建（默认 amd64）和 GitHub Release 创建。两种镜像架构共用版本标签和 `latest`，Docker 根据主机架构自动选择。
+- 推送 `vX.Y.Z` 标签（推荐使用 `node scripts/release-version.mjs publish vX.Y.Z`）触发发布流水线 `.github/workflows/release.yml`，依次执行版本校验、自动化测试、镜像构建（`linux/amd64` 和 `linux/arm64`，均通过 Trivy 安全关卡后发布）、Windows 桌面端构建（默认 amd64）和 GitHub Release 创建。两种镜像架构共用版本标签和 `latest`，Docker 根据主机架构自动选择。
 - 在 GitHub Actions 页面手动运行 `Build EasySSH Docker Image`，按已有标签的版本号重建镜像（同时构建 `linux/amd64` 和 `linux/arm64`，默认不更新 `latest`；不会创建 Release）。
 - 在 GitHub Actions 页面手动运行 `Build EasySSH Desktop`，按已有标签的版本号选择 Windows 架构（amd64 / arm64），产物以 artifact 形式上传。
 
@@ -147,7 +147,7 @@ docker exec -it easyssh sh
 版本号只来自 `vX.Y.Z` 标签，仓库中不保存版本号；推送标签即触发构建与发布。
 
 ```bash
-./scripts/release.sh v1.0.1
+node scripts/release-version.mjs publish v1.0.1
 ```
 
 ## 许可证

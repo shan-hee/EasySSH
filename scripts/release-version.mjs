@@ -1,9 +1,10 @@
 // 应用版本的唯一来源是 vX.Y.Z 标签；仓库内不保存版本号。
-//   check          校验迁移规则，并保证最近已发布标签的 SQL 未被改写（CI 每次推送）
-//   release x.y.z  在 check 基础上校验新版本高于既有标签（打标签前、标签流水线）
-//   stamp x.y.z    把版本写入桌面打包资产（仅在 CI 构建工作区执行，不提交）
+//   check           校验迁移规则，并保证最近已发布标签的 SQL 未被改写（CI 每次推送）
+//   release x.y.z   在 check 基础上校验新版本高于既有标签（标签流水线）
+//   publish vX.Y.Z  本地发版：校验后在已推送的当前提交上创建并推送标签，触发 release.yml
 import fs from "node:fs"
 import path from "node:path"
+import readline from "node:readline/promises"
 import { fileURLToPath } from "node:url"
 import { execFileSync } from "node:child_process"
 
@@ -94,44 +95,39 @@ function checkMigrations(schema, baseline) {
   console.log(`${schema.name} 数据库：各方言迁移连续一致，版本 ${latest}${baseline ? `；${baseline} 已发布 SQL 保持不变` : ""}`)
 }
 
-// 打包资产在仓库中保留 0.0.0 占位，发布构建前按标签写入；字段缺失或重复即失败。
-function stamp(target) {
-  const [major, minor, patch] = versionParts(target)
-  const fields = [
-    [`${desktop}/build/config.yml`, /^  version: "[^"]*"/gm, `  version: "${target}"`, 1],
-    [`${desktop}/build/windows/info.json`, /"(file_version|ProductVersion)"(\s*:\s*)"[^"]*"/g, (_, key, sep) => `"${key}"${sep}"${target}"`, 2],
-    [`${desktop}/build/windows/nsis/wails_tools.nsh`, /!define INFO_PRODUCTVERSION "[^"]*"/g, `!define INFO_PRODUCTVERSION "${target}"`, 1],
-    [`${desktop}/build/windows/msix/app_manifest.xml`, /\bVersion="[^"]*"/g, `Version="${major}.${minor}.${patch}.0"`, 1],
-    [`${desktop}/build/windows/msix/template.xml`, /\bVersion="[^"]*"/g, `Version="${major}.${minor}.${patch}.0"`, 1],
-    [`${desktop}/build/darwin/Info.plist`, /(<key>CFBundle(?:ShortVersionString|Version)<\/key>\s*<string>)[^<]*/g, `$1${target}`, 2],
-    [`${desktop}/build/darwin/Info.dev.plist`, /(<key>CFBundle(?:ShortVersionString|Version)<\/key>\s*<string>)[^<]*/g, `$1${target}`, 2],
-    [`${desktop}/build/linux/nfpm/nfpm.yaml`, /^version: "[^"]*"/gm, `version: "${target}"`, 1],
-  ]
-  const files = fields.map(([name, pattern, replacement, count]) => {
-    const before = read(name)
-    if ((before.match(pattern) ?? []).length !== count) fail(`${name} 的版本字段缺失或重复`)
-    return [name, before.replace(pattern, replacement)]
-  })
-  for (const [name, content] of files) fs.writeFileSync(path.join(root, name), content)
-  console.log(`已写入 ${files.length} 个桌面打包资产版本：${target}`)
+function validateRelease(version) {
+  versionParts(version)
+  const tag = `v${version}`
+  // 标签流水线中新标签已指向 HEAD；本地打标签前它还不存在。
+  if (git("tag", "--list", tag) && git("rev-list", "-n", "1", tag) !== git("rev-parse", "HEAD")) fail(`标签 ${tag} 已存在且不指向当前提交`)
+  const tags = releaseTags().filter(name => name !== tag)
+  if (tags.length && compare(version, tags[0].slice(1)) <= 0) fail(`新版本 ${version} 必须高于已发布版本 ${tags[0].slice(1)}`)
+  for (const schema of schemas) checkMigrations(schema, tags[0])
+}
+
+async function publish(tag) {
+  if (!/^v\d+\.\d+\.\d+$/.test(tag)) fail(`标签必须为 vX.Y.Z：${tag}`)
+  if (git("status", "--porcelain")) fail("工作区不干净；请先提交或清理改动，避免标签遗漏代码。")
+  const branch = git("branch", "--show-current")
+  if (!branch) fail("请先切换到发布分支，不要在 detached HEAD 上发版。")
+  // 标签必须指向远端分支上已有的提交，否则发布的代码与分支历史不一致。
+  git("fetch", "--quiet", "--tags", "origin", branch)
+  if (git("rev-parse", "HEAD") !== git("rev-parse", `origin/${branch}`)) fail(`HEAD 与 origin/${branch} 不一致；请先推送或同步分支。`)
+  validateRelease(tag.slice(1))
+  const prompt = readline.createInterface({ input: process.stdin, output: process.stdout })
+  const answer = await prompt.question(`将在 ${git("log", "-1", "--format=%h %s")} 上创建并推送 ${tag}（触发发布流水线）。确认? (y/n) `)
+  prompt.close()
+  if (answer.trim().toLowerCase() !== "y") return console.log("已取消，未创建标签。")
+  git("tag", "-a", tag, "-m", `Release ${tag}`)
+  execFileSync("git", ["push", "origin", `refs/tags/${tag}`], { cwd: root, stdio: "inherit" })
 }
 
 try {
-  const [mode, requested, ...extra] = process.argv.slice(2)
-  if (!["check", "release", "stamp"].includes(mode) || extra.length || (mode === "check") !== (requested === undefined)) fail("用法：node scripts/release-version.mjs check | release x.y.z | stamp x.y.z")
-  if (mode === "stamp") stamp(requested)
-  else {
-    let tags = releaseTags()
-    if (mode === "release") {
-      versionParts(requested)
-      const tag = `v${requested}`
-      // 标签流水线中新标签已指向 HEAD；本地打标签前它还不存在。
-      if (git("tag", "--list", tag) && git("rev-list", "-n", "1", tag) !== git("rev-parse", "HEAD")) fail(`标签 ${tag} 已存在且不指向当前提交`)
-      tags = tags.filter(name => name !== tag)
-      if (tags.length && compare(requested, tags[0].slice(1)) <= 0) fail(`新版本 ${requested} 必须高于已发布版本 ${tags[0].slice(1)}`)
-    }
-    for (const schema of schemas) checkMigrations(schema, tags[0])
-  }
+  const [mode, value, ...extra] = process.argv.slice(2)
+  if (!["check", "release", "publish"].includes(mode) || extra.length || (mode === "check") !== (value === undefined)) fail("用法：node scripts/release-version.mjs check | release x.y.z | publish vX.Y.Z")
+  if (mode === "check") for (const schema of schemas) checkMigrations(schema, releaseTags()[0])
+  else if (mode === "release") validateRelease(value)
+  else await publish(value)
 } catch (error) {
   console.error(`版本检查失败：${error.message}`)
   process.exitCode = 1

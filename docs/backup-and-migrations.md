@@ -372,7 +372,7 @@ EasySSHDesktop maintenance schema-rollback --file /backup/before-rollback.age --
 
 ## 统一发布版本入口
 
-版本号只来自 `vX.Y.Z` 标签。使用 VS Code 的 `Release: 推送版本标签` 任务，或 `bash scripts/release.sh vX.Y.Z`：在已推送到远端的当前提交上校验后创建并推送标签，触发 GitHub Actions 测试、构建和发布流程。该入口不修改文件、不连接数据库、不执行 SQL、不构建或运行测试。
+版本号只来自 `vX.Y.Z` 标签。使用 VS Code 的 `Release: 推送版本标签` 任务，或 `node scripts/release-version.mjs publish vX.Y.Z`：在已推送到远端的当前提交上校验后创建并推送标签，触发 GitHub Actions 测试、构建和发布流程。该入口不修改文件、不连接数据库、不执行 SQL、不构建或运行测试。
 
 迁移随业务代码一起提交（`scripts/new-migration.mjs` 同步 `schema.Version`）；不含数据库变化的发布不增加 schema 编号。`node scripts/release-version.mjs check` 检查迁移规则，并保证最近已发布标签中的 SQL 未被改写、删除或插队，CI 在每次推送时执行；发版时再以上一个标签为基线校验一次。
 
