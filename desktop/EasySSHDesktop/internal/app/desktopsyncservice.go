@@ -75,6 +75,7 @@ type DesktopSyncState struct {
 }
 type desktopSyncQuery interface {
 	Query(string, ...any) (*sql.Rows, error)
+	QueryRow(string, ...any) *sql.Row
 }
 
 func desktopSyncSnapshot(db desktopSyncQuery, spaceID string) (syncdata.Snapshot, map[string]string, error) {
@@ -100,7 +101,14 @@ func desktopSyncSnapshot(db desktopSyncQuery, spaceID string) (syncdata.Snapshot
 		connection := syncdata.Connection{Host: host, Port: port, Username: username, AuthMethod: method, JumpServerID: jumpID}
 		if localJumpID != "" && jumpID == "" {
 			rows.Close()
-			return nil, nil, errors.New("enroll the jump host in the same sync space before syncing this server")
+			var jumpName string
+			if err := db.QueryRow("SELECT COALESCE(NULLIF(name,''),host) FROM desktop_servers WHERE id=?", localJumpID).Scan(&jumpName); err != nil {
+				return nil, nil, err
+			}
+			if name == "" {
+				name = host
+			}
+			return nil, nil, fmt.Errorf("服务器「%s」依赖跳板机「%s」，请在本次加入时一并勾选该跳板机", name, jumpName)
 		}
 		if keyRef.ID != "" {
 			connection.Key = &keyRef
@@ -978,6 +986,8 @@ func (s *DesktopSyncService) Enroll(spaceID string, keys []string) error {
 	}
 	seen := map[string]bool{}
 	groupCopies := map[string]string{}
+	serverCopies := map[string]string{}
+	jumpLinks := map[string]string{}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, key := range keys {
 		if seen[key] {
@@ -1030,15 +1040,21 @@ func (s *DesktopSyncService) Enroll(spaceID string, keys []string) error {
 			if err != nil {
 				return err
 			}
+			if kind == "server" {
+				serverCopies[id] = newID
+			}
 			id = newID
 			if err = recordDesktopConfiguration(tx, kind+"_created", kind, id, name, "manual", []string{"definition"}, nil); err != nil {
 				return err
 			}
 		}
 		if kind == "server" {
-			var groupID string
-			if err := tx.QueryRow("SELECT COALESCE(group_id,'') FROM desktop_servers WHERE id=?", id).Scan(&groupID); err != nil {
+			var groupID, jumpID string
+			if err := tx.QueryRow("SELECT COALESCE(group_id,''),COALESCE(jump_server_id,'') FROM desktop_servers WHERE id=?", id).Scan(&groupID, &jumpID); err != nil {
 				return err
+			}
+			if jumpID != "" {
+				jumpLinks[id] = jumpID
 			}
 			targetGroup, err := ensureDesktopGroupEnrollment(tx, spaceID, groupID, groupCopies)
 			if err != nil {
@@ -1056,6 +1072,18 @@ func (s *DesktopSyncService) Enroll(spaceID string, keys []string) error {
 		}
 		if err = recordDesktopConfiguration(tx, kind+"_sync_enrolled", kind, id, name, "manual", []string{"sync_space_id"}, nil); err != nil {
 			return err
+		}
+	}
+	// The target can precede its jump host in the selection. Rebind only the
+	// enrolled servers, once every copy in this transaction has its local ID.
+	for id, jumpID := range jumpLinks {
+		if copiedJumpID := serverCopies[jumpID]; copiedJumpID != "" {
+			if _, err := tx.Exec("UPDATE desktop_servers SET jump_server_id=?,updated_at=?,connection_revision=connection_revision+1,os='' WHERE id=?", copiedJumpID, now, id); err != nil {
+				return err
+			}
+			if err := invalidateDesktopJumpDependents(tx, id); err != nil {
+				return err
+			}
 		}
 	}
 	snapshot, _, err := desktopSyncSnapshot(tx, spaceID)

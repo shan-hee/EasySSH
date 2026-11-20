@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/easyssh/shared/protocol"
 	"github.com/easyssh/shared/syncdata"
 	"github.com/google/uuid"
 )
@@ -195,6 +196,56 @@ func TestDesktopSyncEnrollmentAndAccountIsolation(t *testing.T) {
 	}
 	if copyID == localID || password != "" {
 		t.Fatal("cross-account copy reused record identity or credentials")
+	}
+}
+
+func TestDesktopSyncEnrollmentCopiesJumpChain(t *testing.T) {
+	s := newDesktopSyncTestService(t)
+	source, destination := uuid.NewString(), uuid.NewString()
+	activateSyncTestSpace(t, s, source)
+	var keys []string
+	parent := ""
+	for _, name := range []string{"gateway", "relay", "target"} {
+		server, err := s.servers.Create(protocol.ServerCreate{
+			Name: name, Host: name + ".test", Username: "user", AuthMethod: "password", JumpServerID: parent,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		parent = server.ID.String()
+		keys = append(keys, "server/"+parent)
+	}
+	if err := s.Enroll(source, keys); err != nil {
+		t.Fatal(err)
+	}
+	activateSyncTestSpace(t, s, destination)
+	if err := s.Enroll(destination, []string{keys[2]}); err == nil || !strings.Contains(err.Error(), "relay") {
+		t.Fatalf("expected missing relay in enrollment error, got %v", err)
+	}
+	if err := s.Enroll(destination, []string{keys[2], keys[1], keys[0]}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := s.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{}
+	jumps := map[string]string{}
+	for key, record := range state.Snapshot {
+		id, ok := strings.CutPrefix(key, "server/")
+		if !ok {
+			continue
+		}
+		connection, err := syncdata.ParseConnection(record["connection"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[record["name"]] = id
+		jumps[record["name"]] = connection.JumpServerID
+	}
+	if syncConfigurationCount(state.Snapshot) != 3 || len(ids) != 3 ||
+		jumps["target"] != ids["relay"] || jumps["relay"] != ids["gateway"] || jumps["gateway"] != "" {
+		t.Fatalf("unexpected copied route: ids=%v jumps=%v", ids, jumps)
 	}
 }
 

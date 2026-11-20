@@ -217,9 +217,13 @@ export const desktopSyncAdapter: SyncAdapter = {
   async enroll(spaceID, keys) {
     if (active) await active.catch(() => {})
     const records = keys.filter((key) => !key.startsWith("ai_session/"))
-    if (records.length) await call("Enroll", spaceID, records)
-    for (const key of keys.filter((key) => key.startsWith("ai_session/")))
-      await call("EnrollSession", spaceID, key.slice("ai_session/".length))
+    try {
+      if (records.length) await call("Enroll", spaceID, records)
+      for (const key of keys.filter((key) => key.startsWith("ai_session/")))
+        await call("EnrollSession", spaceID, key.slice("ai_session/".length))
+    } catch (error) {
+      throw new Error(syncErrorMessage(error))
+    }
     window.dispatchEvent(new Event("easyssh:sync-applied"))
     requestDesktopSync()
   },
