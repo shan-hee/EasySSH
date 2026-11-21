@@ -82,6 +82,30 @@
   "recentTasksDescription": "Command and script tasks triggered via MCP or API tokens. Inspect output or cancel running tasks directly here.",
   "recentTasksViewAll": "View in Task Center",
   "recentTasksEmpty": "No tasks have been triggered via MCP or API yet.",
+  "recentTasksEmptyHint": "Once a client calls EasySSH with a token, execution runs will stream here in real time.",
+  "protocolBadge": "Streamable HTTP · Bearer Auth",
+  "endpointLabel": "MCP Endpoint",
+  "activeTokensSummary": "{count} active tokens",
+  "toolsCountSummary": "{count} built-in tools",
+  "runningTasksSummary": "{count} running",
+  "tabs": {
+    "tokens": "Access tokens",
+    "tools": "Tool catalog",
+    "runs": "Recent runs"
+  },
+  "inactiveTokensTitle": "Revoked or inactive tokens ({count})",
+  "expiringSoon": "Expiring soon",
+  "toolCategories": {
+    "servers": "Servers & monitoring",
+    "files": "Filesystem",
+    "execution": "Commands & scripts",
+    "tasks": "Task control"
+  },
+  "toolSafety": {
+    "readonly": "Read-only",
+    "write": "File mutation",
+    "execute": "Remote execution"
+  },
   "toolsPermissionHelp": "Every call still checks token permissions; listing a tool does not grant access to it.",
   "toolsFailed": "Could not load tools. Please retry.",
   "commandWarning": "Arbitrary commands run with the remote account’s permissions. Disabling file writes does not prevent shell writes.",
@@ -163,6 +187,7 @@
   },
   "secret": {
     "description": "Use this token in your client. Keep it safe and out of repositories and logs.",
+    "tokenValueLabel": "Access token (Bearer)",
     "notStored": "This token was created by an earlier version, which kept only a hash, so it cannot be shown. Choose \"Rotate token\" in the list to get a new value you can view.",
     "loadFailed": "The token could not be loaded. Please try again."
   },
@@ -170,6 +195,7 @@
     "title": "Edit \"{name}\"",
     "description": "Change the purpose, servers and expiry. The token value stays the same.",
     "keepExpiry": "Keep current ({date})",
+    "keepExpiryShort": "Keep current",
     "effect": "Changes take effect when saved, and tasks this token is running are interrupted.",
     "nonUniform": "Servers previously had different permissions; saving applies the settings below to all of them.",
     "nameRequired": "Enter a name.",

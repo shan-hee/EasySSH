@@ -97,5 +97,27 @@
     "events": "In Events & Callbacks, choose long connection and add the event and callback",
     "publish": "Create and publish a version, then enter the App ID and App Secret below"
   },
-  "copyScopes": "Copy scopes"
+  "copyScopes": "Copy scopes",
+  "summaryTotal": "{count} channels",
+  "summaryConnected": "{count} connected",
+  "summaryPending": "{count} pending",
+  "serverCount": "{count} servers",
+  "bindingCount": "{count} bound accounts",
+  "sessionCount": "{count} sessions",
+  "openChat": "Open chat",
+  "backToChannels": "All channels",
+  "moreRequests": "+{count} more pending requests",
+  "latestSession": "Latest conversation",
+  "noSessionsYet": "No conversations yet — message the bot to start",
+  "connectTelegram": "Connect Telegram bot",
+  "connectFeishu": "Connect Feishu app",
+  "platformTagline": {
+    "telegram": "Receives direct messages via long polling without a public webhook.",
+    "feishu": "Uses a Feishu long connection for direct messages and group @mentions."
+  },
+  "openBotShort": "Open bot",
+  "bindingsManage": "Manage",
+  "formHintBotRequired": "Enter a name and bot credentials",
+  "formHintServerRequired": "Select at least 1 server in Access",
+  "formHintReady": "Ready to verify credentials and save"
 }

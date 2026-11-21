@@ -1,8 +1,27 @@
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
-import { ArrowLeft, BotMessageSquare, Check, ExternalLink, Plus, Settings2, Trash2, Users, X } from "lucide-react"
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  BotMessageSquare,
+  Check,
+  ExternalLink,
+  Loader2,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Send,
+  Server as ServerIcon,
+  Settings2,
+  Shield,
+  ShieldAlert,
+  Trash2,
+  Users,
+  X,
+} from "lucide-react"
 import { toast } from "sonner"
 import { PageHeader } from "@/components/page-header"
 import { DashboardPageContent } from "@/components/dashboard-page-content"
@@ -13,6 +32,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { chatConnectionsApi, type ChatBindRequest, type ChatConnection, type ChatConnectionInput, type ChatSession } from "@/lib/api/chat-connections"
@@ -26,92 +46,688 @@ import { cn } from "@/lib/utils"
 import { useRuntime } from "@/shell/runtime"
 import { PageLoading } from "@/components/page-loading"
 
+type Provider = ChatConnection["provider"]
+type EditorState =
+  | { mode: "new"; provider?: Provider }
+  | { mode: "edit"; connection: ChatConnection }
+  | null
+
 export default function ChatConnectionsPage() {
   const { t } = useTranslation("chatConnections")
   const { runtime } = useRuntime()
   const queryClient = useQueryClient()
-  const [connectionId, setConnectionId] = useState<string | null>(null)
+  // null => 渠道卡片墙；有值 => 沉浸式原生聊天气泡舞台
+  const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [managing, setManaging] = useState<string | null>(null)
-  const [editor, setEditor] = useState<ChatConnection | "new" | null>(null)
-  // Narrow screens show either the list or the conversation.
+  const [editor, setEditor] = useState<EditorState>(null)
+  // Narrow screens inside chat view show either the session list or the conversation.
   const [mobileChat, setMobileChat] = useState(false)
   const sidebar = useSidebarWidth()
   const web = runtime?.profile === "web"
-  const connections = useQuery({ queryKey: queryKeys.chatConnections.list, queryFn: chatConnectionsApi.list, enabled: web, refetchInterval: 5000 })
-  const connection = connections.data?.find(item => item.id === connectionId) ?? connections.data?.[0]
-  const sessions = useQuery({ queryKey: queryKeys.chatConnections.sessions(connection?.id ?? ""), queryFn: () => chatConnectionsApi.sessions(connection!.id), enabled: !!connection, refetchInterval: 5000 })
-  const detail = useQuery({ queryKey: queryKeys.chatConnections.detail(connection?.id ?? ""), queryFn: () => chatConnectionsApi.detail(connection!.id), enabled: !!connection, refetchInterval: 5000 })
+
+  const connections = useQuery({
+    queryKey: queryKeys.chatConnections.list,
+    queryFn: chatConnectionsApi.list,
+    enabled: web,
+    refetchInterval: 5000,
+  })
+  const connectionList = useMemo(() => connections.data ?? [], [connections.data])
+  const activeConnection = activeChatId
+    ? connectionList.find((item) => item.id === activeChatId) ?? null
+    : null
+  const managed = connectionList.find((item) => item.id === managing) ?? null
+
+  const sessions = useQuery({
+    queryKey: queryKeys.chatConnections.sessions(activeConnection?.id ?? ""),
+    queryFn: () => chatConnectionsApi.sessions(activeConnection!.id),
+    enabled: Boolean(activeConnection),
+    refetchInterval: 5000,
+  })
+  const detail = useQuery({
+    queryKey: queryKeys.chatConnections.detail(activeConnection?.id ?? ""),
+    queryFn: () => chatConnectionsApi.detail(activeConnection!.id),
+    enabled: Boolean(activeConnection),
+    refetchInterval: 5000,
+  })
   const requests = detail.data?.requests ?? []
-  const session = sessions.data?.find(item => item.id === sessionId) ?? sessions.data?.[0]
-  const managed = connections.data?.find(item => item.id === managing)
-  const refresh = async () => { await queryClient.invalidateQueries({ queryKey: queryKeys.chatConnections.root }) }
+  const session = sessions.data?.find((item) => item.id === sessionId) ?? sessions.data?.[0]
+
+  const refresh = async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.chatConnections.root })
+  }
+
+  const openChannelChat = (connection: ChatConnection, targetSessionId?: string | null) => {
+    setActiveChatId(connection.id)
+    setSessionId(targetSessionId ?? null)
+    setMobileChat(Boolean(targetSessionId))
+  }
+
   if (!web) return <p className="p-4 text-sm text-muted-foreground">{t("webOnly")}</p>
-  return <>
-    <PageHeader title={t("title")} />
-    <DashboardPageContent className="min-h-0">
-      {connections.isPending && <PageLoading />}
-      {connections.isError && <div role="alert" className="flex items-center gap-3 text-sm text-destructive">{t("loadFailed")}<Button variant="outline" size="sm" onClick={() => void connections.refetch()}>{t("retry")}</Button></div>}
-      {connections.data?.length === 0 && <section className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-10 text-center"><BotMessageSquare className="size-7 text-muted-foreground" /><p className="text-sm font-medium">{t("empty")}</p><p className="max-w-md text-sm text-muted-foreground">{t("emptyHelp")}</p><Button variant="outline" size="sm" onClick={() => setEditor("new")}>{t("create")}</Button></section>}
-      {connection && <div ref={sidebar.container} className="flex min-h-0 flex-1 overflow-hidden rounded-lg border bg-card" style={{ "--chat-sidebar": `${sidebar.width}px` } as CSSProperties}>
-        <aside className={cn("relative w-full shrink-0 flex-col border-r md:flex md:w-[var(--chat-sidebar)]", mobileChat ? "hidden" : "flex")}>
-          <div className="space-y-1.5 border-b p-3">
-            <div className="flex items-center gap-2">
-              <Select value={connection.id} onValueChange={value => {
-                if (value === NEW_CONNECTION) return setEditor("new")
-                setConnectionId(value); setSessionId(null)
-              }}>
-                <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label={t("connection")}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {connections.data?.map(item => <SelectItem key={item.id} value={item.id}><StatusDot status={item.status} />{item.name}<span className="text-xs text-muted-foreground">{t(`providers.${item.provider}`)}</span></SelectItem>)}
-                  <SelectSeparator />
-                  <SelectItem value={NEW_CONNECTION}><Plus className="size-4" />{t("create")}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button variant="ghost" size="icon-sm" aria-label={t("manage")} title={t("manage")} onClick={() => setManaging(connection.id)}><Settings2 className="size-4" /></Button>
+
+  const connectedCount = connectionList.filter((item) => item.status === "connected").length
+
+  return (
+    <>
+      <PageHeader title={t("title")} />
+      <DashboardPageContent className={cn("min-h-0", !activeConnection && "overflow-y-auto")}>
+        {connections.isPending && <PageLoading />}
+
+        {connections.isError && (
+          <div role="alert" className="flex items-center gap-3 rounded-xl border p-4 text-sm text-destructive">
+            {t("loadFailed")}
+            <Button variant="outline" size="sm" onClick={() => void connections.refetch()}>
+              {t("retry")}
+            </Button>
+          </div>
+        )}
+
+        {/* 空状态：Telegram / 飞书双平台直达引导卡片 */}
+        {connections.data?.length === 0 && (
+          <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center gap-6 py-8">
+            <div className="space-y-2 text-center">
+              <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <BotMessageSquare className="size-6" />
+              </div>
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">{t("empty")}</h2>
+              <p className="mx-auto max-w-lg text-sm text-muted-foreground">{t("emptyHelp")}</p>
             </div>
-            <p className="truncate px-1 text-xs text-muted-foreground">{botLabel(connection)} · {t(`connectionStatus.${connection.status}`)}</p>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              {(["telegram", "feishu"] as const).map((provider) => (
+                <div
+                  key={provider}
+                  className="flex flex-col justify-between gap-5 rounded-2xl border bg-card p-5 transition-all hover:border-foreground/20"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <PlatformAvatar provider={provider} size="lg" />
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground">{t(`providers.${provider}`)}</h3>
+                        <p className="text-xs text-muted-foreground">{t(`platformTagline.${provider}`)}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs leading-5 text-muted-foreground">{t(`setupHelp.${provider}`)}</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={provider === "telegram" ? "default" : "secondary"}
+                    className="w-full"
+                    onClick={() => setEditor({ mode: "new", provider })}
+                  >
+                    <Plus className="mr-1.5 size-4" />
+                    {t(provider === "telegram" ? "connectTelegram" : "connectFeishu")}
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {requests.length > 0 && <BindRequests connection={connection} requests={requests} />}
-            {sessions.isPending && <PageLoading className="min-h-0 py-8" />}
-            {sessions.data?.length === 0 && requests.length === 0 && <Invite connection={connection} />}
-            {sessions.data?.map(item => <button type="button" key={item.id} onClick={() => { setSessionId(item.id); setMobileChat(true) }}
-              className={cn("flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-muted/60", item.id === session?.id && "bg-muted")}>
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sky-500/15 text-sm font-medium text-sky-700 dark:text-sky-300">{initial(item.display_name)}</span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-baseline justify-between gap-2"><span className="truncate text-sm font-medium">{item.display_name || t("unnamed")}</span><time className="shrink-0 text-[11px] text-muted-foreground">{shortTime(item.updated_at)}</time></span>
-                <span className="block truncate text-xs text-muted-foreground">{busyStatuses.has(item.status) ? t(`sessionStatus.${item.status}`) : item.preview}</span>
+        )}
+
+        {/* 主视图：机器人渠道卡片墙 */}
+        {connectionList.length > 0 && !activeConnection && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 font-medium text-foreground tabular-nums">
+                  <BotMessageSquare className="size-3.5 text-primary" />
+                  {t("summaryTotal", { count: connectionList.length })}
+                </span>
+                <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1 tabular-nums">
+                  <span className={cn("size-1.5 rounded-full", connectedCount > 0 ? "bg-emerald-500" : "bg-muted-foreground/40")} />
+                  {t("summaryConnected", { count: connectedCount })}
+                </span>
+              </div>
+              <Button size="sm" onClick={() => setEditor({ mode: "new" })}>
+                <Plus className="mr-1.5 size-4" />
+                {t("create")}
+              </Button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+              {connectionList.map((item) => (
+                <BotChannelCard
+                  key={item.id}
+                  connection={item}
+                  onOpenChat={(targetSessionId) => openChannelChat(item, targetSessionId)}
+                  onManage={() => setManaging(item.id)}
+                  onEdit={() => setEditor({ mode: "edit", connection: item })}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 二级视图：沉浸式原生聊天气泡舞台 */}
+        {activeConnection && (
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
+            {/* 顶部返回与渠道上下文栏 */}
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 rounded-xl border bg-card px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2 text-xs"
+                  onClick={() => {
+                    setActiveChatId(null)
+                    setSessionId(null)
+                    setMobileChat(false)
+                  }}
+                >
+                  <ArrowLeft className="size-3.5" />
+                  <span>{t("backToChannels")}</span>
+                </Button>
+                <span className="h-4 w-px bg-border" aria-hidden="true" />
+                <PlatformAvatar provider={activeConnection.provider} size="sm" />
+                <Select
+                  value={activeConnection.id}
+                  onValueChange={(value) => {
+                    if (value === NEW_CONNECTION) return setEditor({ mode: "new" })
+                    setActiveChatId(value)
+                    setSessionId(null)
+                    setMobileChat(false)
+                  }}
+                >
+                  <SelectTrigger size="sm" className="h-8 max-w-[240px] border-none bg-transparent px-1.5 font-medium shadow-none hover:bg-muted/60" aria-label={t("connection")}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {connectionList.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        <StatusDot status={item.status} />
+                        {item.name}
+                        <span className="text-xs text-muted-foreground">{t(`providers.${item.provider}`)}</span>
+                      </SelectItem>
+                    ))}
+                    <SelectSeparator />
+                    <SelectItem value={NEW_CONNECTION}>
+                      <Plus className="size-4" />
+                      {t("create")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <ConnectionStatusPill status={activeConnection.status} />
+                <span className="hidden truncate text-xs text-muted-foreground sm:inline">
+                  {botLabel(activeConnection)}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 px-2.5 text-xs" asChild>
+                  <a href={botLink(activeConnection)} target="_blank" rel="noreferrer">
+                    <span>{t("openBotShort")}</span>
+                    <ExternalLink className="size-3" />
+                  </a>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2.5 text-xs"
+                  onClick={() => setManaging(activeConnection.id)}
+                >
+                  <Settings2 className="size-3.5" />
+                  <span>{t("manage")}</span>
+                </Button>
+              </div>
+            </div>
+
+            {activeConnection.last_error ? (
+              <div role="alert" className="flex shrink-0 items-start gap-2 rounded-xl border border-destructive/25 bg-destructive/[0.06] px-3.5 py-2 text-xs text-destructive">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                <span className="break-words">{activeConnection.last_error}</span>
+              </div>
+            ) : null}
+
+            {/* 原生聊天气泡双栏舞台 */}
+            <div
+              ref={sidebar.container}
+              className="flex min-h-0 flex-1 overflow-hidden rounded-2xl border bg-card"
+              style={{ "--chat-sidebar": `${sidebar.width}px` } as CSSProperties}
+            >
+              <aside className={cn("relative w-full shrink-0 flex-col border-r md:flex md:w-[var(--chat-sidebar)]", mobileChat ? "hidden" : "flex")}>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {requests.length > 0 && <BindRequests connection={activeConnection} requests={requests} />}
+                  {sessions.isPending && <PageLoading className="min-h-0 py-8" />}
+                  {sessions.data?.length === 0 && requests.length === 0 && <Invite connection={activeConnection} />}
+                  {sessions.data?.map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      onClick={() => {
+                        setSessionId(item.id)
+                        setMobileChat(true)
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-3 border-b border-border/50 px-3.5 py-2.5 text-left transition-colors last:border-b-0 hover:bg-muted/50",
+                        item.id === session?.id && "bg-muted/80",
+                      )}
+                    >
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sky-500/15 text-sm font-medium text-sky-700 dark:text-sky-300">
+                        {initial(item.display_name)}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-sm font-medium">{item.display_name || t("unnamed")}</span>
+                          <time className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{shortTime(item.updated_at)}</time>
+                        </span>
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                          {busyStatuses.has(item.status) ? t(`sessionStatus.${item.status}`) : item.preview}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  tabIndex={0}
+                  aria-label={t("resizeSidebar")}
+                  aria-valuemin={SIDEBAR_MIN}
+                  aria-valuemax={SIDEBAR_MAX}
+                  aria-valuenow={sidebar.width}
+                  className="absolute inset-y-0 -right-1 z-10 hidden w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20 focus-visible:outline-none md:block"
+                  {...sidebar.handle}
+                />
+              </aside>
+
+              <div className={cn("min-w-0 flex-1 md:flex", mobileChat ? "flex" : "hidden")}>
+                {session ? (
+                  <ChatTranscript
+                    key={`${activeConnection.id}:${session.id}`}
+                    connection={activeConnection}
+                    session={session}
+                    onBack={() => setMobileChat(false)}
+                  />
+                ) : (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
+                    <MessageSquare className="size-6 opacity-40" />
+                    <span>{t("selectSession")}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </DashboardPageContent>
+
+      {/* 右侧滑出管理抽屉：启停、绑定账号解绑、编辑与删除 */}
+      <Sheet open={managed !== null} onOpenChange={(open) => { if (!open) setManaging(null) }}>
+        <SheetContent side="right" className="flex w-[min(520px,95vw)] flex-col gap-0 p-0 sm:max-w-lg">
+          <SheetHeader className="shrink-0 border-b px-5 py-4 pr-12 text-left">
+            <div className="flex items-center gap-2.5">
+              {managed ? <PlatformAvatar provider={managed.provider} size="sm" /> : null}
+              <SheetTitle className="truncate">{managed?.name ?? t("title")}</SheetTitle>
+            </div>
+            <SheetDescription className="truncate">
+              {managed ? `${t(`providers.${managed.provider}`)} · ${botLabel(managed)} · ${t(`connectionStatus.${managed.status}`)}` : ""}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            {managed && (
+              <ConnectionDetail
+                key={managed.id}
+                id={managed.id}
+                onEdit={(item) => {
+                  setManaging(null)
+                  setEditor({ mode: "edit", connection: item })
+                }}
+                onDeleted={() => {
+                  if (activeChatId === managed.id) {
+                    setActiveChatId(null)
+                    setSessionId(null)
+                  }
+                  setManaging(null)
+                }}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Dialog open={editor !== null} onOpenChange={(open) => { if (!open) setEditor(null) }}>
+        <DialogContent className="flex h-[min(680px,calc(100dvh-3rem))] w-[min(920px,calc(100vw-2rem))] min-w-0 max-w-none flex-col gap-0 overflow-hidden p-0">
+          {editor !== null && (
+            <ConnectionForm
+              key={editor.mode === "new" ? `new-${editor.provider ?? "telegram"}` : editor.connection.id}
+              connection={editor.mode === "edit" ? editor.connection : undefined}
+              initialProvider={editor.mode === "new" ? editor.provider : undefined}
+              onSaved={async (value) => {
+                setEditor(null)
+                if (activeChatId) setActiveChatId(value.id)
+                await refresh()
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function BotChannelCard({
+  connection,
+  onOpenChat,
+  onManage,
+  onEdit,
+}: {
+  connection: ChatConnection
+  onOpenChat: (sessionId?: string | null) => void
+  onManage: () => void
+  onEdit: () => void
+}) {
+  const { t } = useTranslation("chatConnections")
+  const queryClient = useQueryClient()
+  const [toggling, setToggling] = useState(false)
+  const [requestBusyId, setRequestBusyId] = useState<string | null>(null)
+
+  const detail = useQuery({
+    queryKey: queryKeys.chatConnections.detail(connection.id),
+    queryFn: () => chatConnectionsApi.detail(connection.id),
+    refetchInterval: 10_000,
+  })
+  const sessions = useQuery({
+    queryKey: queryKeys.chatConnections.sessions(connection.id),
+    queryFn: () => chatConnectionsApi.sessions(connection.id),
+    refetchInterval: 10_000,
+  })
+
+  const activeBindings = (detail.data?.bindings ?? []).filter((b) => !b.revoked_at)
+  const pendingRequests = detail.data?.requests ?? []
+  const sessionList = sessions.data ?? []
+  const latestSession = sessionList[0] ?? null
+  const hasBusySession = sessionList.some((s) => busyStatuses.has(s.status))
+
+  const handleToggleEnabled = async (enabled: boolean) => {
+    if (toggling) return
+    setToggling(true)
+    try {
+      await chatConnectionsApi.setEnabled(connection.id, enabled)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.chatConnections.root })
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("actionFailed")))
+    } finally {
+      setToggling(false)
+    }
+  }
+
+  const handleRequestAction = async (request: ChatBindRequest, approve: boolean) => {
+    if (requestBusyId) return
+    setRequestBusyId(request.id)
+    try {
+      await (approve ? chatConnectionsApi.approve : chatConnectionsApi.ignore)(connection.id, request.id)
+      if (approve) toast.success(t("approved"))
+      await queryClient.invalidateQueries({ queryKey: queryKeys.chatConnections.root })
+    } catch (error) {
+      toast.error(getErrorMessage(error, t("actionFailed")))
+    } finally {
+      setRequestBusyId(null)
+    }
+  }
+
+  const firstPending = pendingRequests[0] ?? null
+
+  return (
+    <article
+      className={cn(
+        "flex flex-col justify-between gap-4 rounded-2xl border bg-card p-5 transition-all hover:border-foreground/20",
+        pendingRequests.length > 0 && "border-amber-500/35",
+        connection.status === "error" && "border-destructive/35",
+      )}
+    >
+      <div className="space-y-3.5">
+        {/* 顶部：平台品牌头像 + 名称 + 开关 */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <PlatformAvatar provider={connection.provider} size="md" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="truncate text-sm font-semibold text-foreground" title={connection.name}>
+                  {connection.name}
+                </h3>
+                <ConnectionStatusPill status={connection.status} />
+              </div>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {t(`providers.${connection.provider}`)} · {botLabel(connection)}
+              </p>
+            </div>
+          </div>
+
+          <Switch
+            checked={connection.enabled}
+            disabled={toggling}
+            aria-label={t("enabled")}
+            onCheckedChange={(checked) => void handleToggleEnabled(checked)}
+          />
+        </div>
+
+        {/* 能力与范围标签 */}
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 font-medium",
+              connection.permission_mode === "balanced"
+                ? "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                : "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+            )}
+          >
+            {connection.permission_mode === "balanced" ? (
+              <ShieldAlert className="size-3" />
+            ) : (
+              <Shield className="size-3" />
+            )}
+            {t(`modes.${connection.permission_mode}`)}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-md bg-muted/70 px-2 py-0.5 text-muted-foreground tabular-nums">
+            <ServerIcon className="size-3" />
+            {t("serverCount", { count: connection.server_ids.length })}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-md bg-muted/70 px-2 py-0.5 text-muted-foreground tabular-nums">
+            <Users className="size-3" />
+            {t("bindingCount", { count: activeBindings.length })}
+          </span>
+          {hasBusySession ? (
+            <span className="inline-flex items-center gap-1 rounded-md bg-sky-500/12 px-2 py-0.5 font-medium text-sky-700 dark:text-sky-300">
+              <Loader2 className="size-3 animate-spin" />
+              {t("sessionStatus.running")}
+            </span>
+          ) : null}
+        </div>
+
+        {/* 连接异常直接展示，不再藏于设置弹窗 */}
+        {connection.last_error ? (
+          <div className="flex items-start gap-2 rounded-xl border border-destructive/25 bg-destructive/[0.06] px-3 py-2 text-xs text-destructive">
+            <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+            <p className="line-clamp-2 break-words leading-5" title={connection.last_error}>
+              {connection.last_error}
+            </p>
+          </div>
+        ) : null}
+
+        {/* 待批准申请内联快速审批 */}
+        {firstPending ? (
+          <div className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="font-medium text-amber-800 dark:text-amber-300">
+                {t("requests")} · {pendingRequests.length}
               </span>
-            </button>)}
+              <time className="text-[11px] tabular-nums text-muted-foreground">
+                {shortTime(firstPending.updated_at)}
+              </time>
+            </div>
+            <div className="flex items-start gap-2.5">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-xs font-medium text-amber-700 dark:text-amber-300">
+                {firstPending.is_group ? <Users className="size-3.5" /> : initial(firstPending.display_name)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-foreground">{firstPending.display_name}</p>
+                {firstPending.message ? (
+                  <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{firstPending.message}</p>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                type="button"
+                size="sm"
+                className="h-7 flex-1 text-xs"
+                disabled={requestBusyId !== null}
+                onClick={() => void handleRequestAction(firstPending, true)}
+              >
+                <Check className="mr-1 size-3.5" />
+                {t("approve")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2.5 text-xs"
+                disabled={requestBusyId !== null}
+                onClick={() => void handleRequestAction(firstPending, false)}
+              >
+                <X className="mr-1 size-3.5" />
+                {t("ignore")}
+              </Button>
+            </div>
+            {pendingRequests.length > 1 ? (
+              <p className="text-[11px] text-amber-700/90 dark:text-amber-300/90">
+                {t("moreRequests", { count: pendingRequests.length - 1 })}
+              </p>
+            ) : null}
           </div>
-          <div role="separator" aria-orientation="vertical" tabIndex={0} aria-label={t("resizeSidebar")}
-            aria-valuemin={SIDEBAR_MIN} aria-valuemax={SIDEBAR_MAX} aria-valuenow={sidebar.width}
-            className="absolute inset-y-0 -right-1 z-10 hidden w-2 cursor-col-resize touch-none hover:bg-primary/20 focus-visible:bg-primary/20 focus-visible:outline-none md:block"
-            {...sidebar.handle} />
-        </aside>
-        <div className={cn("min-w-0 flex-1 md:flex", mobileChat ? "flex" : "hidden")}>
-          {session ? <ChatTranscript key={`${connection.id}:${session.id}`} connection={connection} session={session} onBack={() => setMobileChat(false)} /> : <div className="flex flex-1 items-center justify-center p-6 text-sm text-muted-foreground">{t("selectSession")}</div>}
+        ) : latestSession ? (
+          <button
+            type="button"
+            onClick={() => onOpenChat(latestSession.id)}
+            className="flex w-full items-center gap-2.5 rounded-xl border bg-muted/25 px-3 py-2.5 text-left transition-colors hover:bg-muted/50"
+          >
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sky-500/15 text-xs font-medium text-sky-700 dark:text-sky-300">
+              {initial(latestSession.display_name)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-xs font-medium text-foreground">
+                  {latestSession.display_name || t("unnamed")}
+                </span>
+                <time className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                  {shortTime(latestSession.updated_at)}
+                </time>
+              </div>
+              <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                {busyStatuses.has(latestSession.status)
+                  ? t(`sessionStatus.${latestSession.status}`)
+                  : latestSession.preview || t("latestSession")}
+              </p>
+            </div>
+          </button>
+        ) : (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-dashed bg-muted/15 px-3 py-2.5 text-xs text-muted-foreground">
+            <span className="truncate">{t("noSessionsYet")}</span>
+            <a
+              href={botLink(connection)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 font-medium text-foreground hover:underline"
+            >
+              <span>{t("openBotShort")}</span>
+              <ExternalLink className="size-3" />
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* 底部操作条：进入沉浸对话为主操作，管理/编辑/打开机器人为辅助 */}
+      <div className="flex items-center justify-between gap-2 border-t pt-3.5">
+        <Button type="button" size="sm" className="gap-1.5" onClick={() => onOpenChat(latestSession?.id)}>
+          <MessageSquare className="size-3.5" />
+          <span>{t("openChat")}</span>
+          {sessionList.length > 0 ? (
+            <span className="rounded-full bg-primary-foreground/20 px-1.5 py-0.25 text-[10px] font-semibold tabular-nums">
+              {sessionList.length}
+            </span>
+          ) : null}
+          <ArrowRight className="size-3.5" />
+        </Button>
+
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="size-8 text-muted-foreground hover:text-foreground"
+            title={t("openBotShort")}
+            aria-label={t("openBotShort")}
+            asChild
+          >
+            <a href={botLink(connection)} target="_blank" rel="noreferrer">
+              <ExternalLink className="size-3.5" />
+            </a>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="size-8 text-muted-foreground hover:text-foreground"
+            title={t("edit")}
+            aria-label={t("edit")}
+            onClick={onEdit}
+          >
+            <Pencil className="size-3.5" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1 px-2.5 text-xs"
+            onClick={onManage}
+          >
+            <Settings2 className="size-3.5" />
+            <span>{t("bindingsManage")}</span>
+          </Button>
         </div>
-      </div>}
-    </DashboardPageContent>
-    <Dialog open={managed !== undefined} onOpenChange={open => { if (!open) setManaging(null) }}>
-      <DialogContent containerClassName="p-2 sm:p-4" className="flex max-h-[calc(100dvh-1rem)] min-w-0 max-w-full flex-col overflow-hidden p-4 sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:p-6">
-        <DialogHeader className="shrink-0 pr-8 text-left [overflow-wrap:anywhere]">
-          <DialogTitle>{managed?.name ?? t("title")}</DialogTitle>
-          <DialogDescription>{managed ? `${t(`providers.${managed.provider}`)} · ${botLabel(managed)} · ${t(`connectionStatus.${managed.status}`)}` : ""}</DialogDescription>
-        </DialogHeader>
-        <div className="min-h-0 overflow-y-auto">
-          {managed && <ConnectionDetail key={managed.id} id={managed.id} onEdit={setEditor} onDeleted={() => setManaging(null)} />}
-        </div>
-      </DialogContent>
-    </Dialog>
-    <Dialog open={editor !== null} onOpenChange={open => { if (!open) setEditor(null) }}>
-      <DialogContent className="flex h-[min(680px,calc(100dvh-3rem))] w-[min(920px,calc(100vw-2rem))] min-w-0 max-w-none flex-col gap-0 overflow-hidden p-0">
-        {editor !== null && <ConnectionForm key={editor === "new" ? "new" : editor.id} connection={editor === "new" ? undefined : editor} onSaved={async value => { setEditor(null); setConnectionId(value.id); await refresh() }} />}
-      </DialogContent>
-    </Dialog>
-  </>
+      </div>
+    </article>
+  )
+}
+
+function PlatformAvatar({ provider, size = "md" }: { provider: Provider; size?: "sm" | "md" | "lg" }) {
+  const isTelegram = provider === "telegram"
+  const box = size === "lg" ? "size-10 rounded-xl" : size === "sm" ? "size-7 rounded-lg" : "size-9 rounded-xl"
+  const icon = size === "lg" ? "size-5" : size === "sm" ? "size-3.5" : "size-4"
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center",
+        box,
+        isTelegram
+          ? "bg-sky-500/12 text-sky-600 dark:text-sky-400"
+          : "bg-indigo-500/12 text-indigo-600 dark:text-indigo-400",
+      )}
+    >
+      {isTelegram ? <Send className={icon} /> : <BotMessageSquare className={icon} />}
+    </span>
+  )
+}
+
+function ConnectionStatusPill({ status }: { status: ChatConnection["status"] }) {
+  const { t } = useTranslation("chatConnections")
+  const styles: Record<ChatConnection["status"], string> = {
+    connected: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+    connecting: "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+    error: "border-destructive/25 bg-destructive/10 text-destructive",
+    disabled: "border-border bg-muted text-muted-foreground",
+  }
+  return (
+    <span className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium", styles[status])}>
+      {status === "connecting" ? (
+        <Loader2 className="size-2.5 animate-spin" />
+      ) : (
+        <StatusDot status={status} />
+      )}
+      <span>{t(`connectionStatus.${status}`)}</span>
+    </span>
+  )
 }
 
 const NEW_CONNECTION = "__new"
@@ -155,7 +771,6 @@ function useSidebarWidth() {
   return { container, width, handle }
 }
 
-type Provider = ChatConnection["provider"]
 // Feishu reports the application name; Telegram reports the bot's @username.
 const botLabel = (connection: ChatConnection) => connection.provider === "feishu" ? connection.bot_username : `@${connection.bot_username}`
 const botLink = (connection: ChatConnection) => connection.provider === "feishu"
@@ -311,9 +926,17 @@ function FormTab({ value, busy, children }: { value: string; busy: boolean; chil
   return <TabsContent value={value} className="mt-4 min-h-0 overflow-y-auto pl-0.5 pr-1"><fieldset disabled={busy} className="min-w-0 space-y-4 px-1">{children}</fieldset></TabsContent>
 }
 
-function ConnectionForm({ connection, onSaved }: { connection?: ChatConnection; onSaved: (value: ChatConnection) => Promise<void> }) {
+function ConnectionForm({
+  connection,
+  initialProvider,
+  onSaved,
+}: {
+  connection?: ChatConnection
+  initialProvider?: Provider
+  onSaved: (value: ChatConnection) => Promise<void>
+}) {
   const { t } = useTranslation("chatConnections")
-  const [provider, setProvider] = useState<Provider>(connection?.provider ?? "telegram")
+  const [provider, setProvider] = useState<Provider>(connection?.provider ?? initialProvider ?? "telegram")
   const [name, setName] = useState(connection?.name ?? "")
   const [token, setToken] = useState("")
   const [appId, setAppId] = useState(connection?.app_id ?? "")
@@ -323,70 +946,346 @@ function ConnectionForm({ connection, onSaved }: { connection?: ChatConnection; 
   const [enabled, setEnabled] = useState(connection?.enabled ?? true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
-  const sources = useQuery({ queryKey: queryKeys.chatConnections.servers, queryFn: () => loadAllServers(params => serversApi.list(params)) })
-  const selectedServerIds = serverIds.filter(id => sources.data?.some(server => server.id === id))
-  const selectedServers = sources.data?.filter(server => selectedServerIds.includes(server.id)) ?? []
+  const sources = useQuery({ queryKey: queryKeys.chatConnections.servers, queryFn: () => loadAllServers((params) => serversApi.list(params)) })
+  const selectedServerIds = serverIds.filter((id) => sources.data?.some((server) => server.id === id))
+  const selectedServers = sources.data?.filter((server) => selectedServerIds.includes(server.id)) ?? []
+
+  const botReady =
+    Boolean(name.trim()) &&
+    new TextEncoder().encode(name.trim()).length <= 100 &&
+    (Boolean(connection) || (Boolean(token.trim()) && (provider === "telegram" || Boolean(appId.trim()))))
+  const accessReady = selectedServerIds.length > 0 && selectedServerIds.length <= 100 && sources.isSuccess
+  const agentReady = systemPromptValid(systemPrompt, selectedServerIds)
+  const valid = botReady && accessReady && agentReady
+
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     if (busy || !valid) return
-    setBusy(true); setError("")
+    setBusy(true)
+    setError("")
     try {
       // Each platform accepts only its own credential fields.
       const credentials = provider === "feishu" ? { app_id: appId.trim(), app_secret: token.trim() } : { token: token.trim() }
-      const value = await chatConnectionsApi.save(connection?.id, { provider, name: name.trim(), ...credentials, permission_mode: mode, server_ids: selectedServerIds, system_prompt: systemPrompt, enabled })
+      const value = await chatConnectionsApi.save(connection?.id, {
+        provider,
+        name: name.trim(),
+        ...credentials,
+        permission_mode: mode,
+        server_ids: selectedServerIds,
+        system_prompt: systemPrompt,
+        enabled,
+      })
       setToken("")
       await onSaved(value)
-    } catch (error) { setError(getErrorMessage(error, t("saveFailed"))) } finally { setBusy(false) }
+    } catch (err) {
+      setError(getErrorMessage(err, t("saveFailed")))
+    } finally {
+      setBusy(false)
+    }
   }
-  const valid = !!name.trim() && new TextEncoder().encode(name.trim()).length <= 100 && (!!connection || (!!token.trim() && (provider === "telegram" || !!appId.trim()))) && selectedServerIds.length > 0 && selectedServerIds.length <= 100 && sources.isSuccess && systemPromptValid(systemPrompt, selectedServerIds)
-  return <form className="flex min-h-0 flex-1 flex-col" onSubmit={event => void submit(event)}>
-    <DialogHeader className="shrink-0 px-6 pt-6"><DialogTitle>{connection ? t("edit") : t("create")}</DialogTitle><DialogDescription className="sr-only">{t(`setupHelp.${provider}`)}</DialogDescription></DialogHeader>
-    <Tabs defaultValue="bot" className="min-h-0 flex-1 overflow-hidden px-6 pt-4">
-      <TabsList className="w-full shrink-0" aria-label={connection ? t("edit") : t("create")}>
-        {(["bot", "access", "agent"] as const).map(section => <TabsTrigger key={section} value={section}>{t(`sections.${section}`)}</TabsTrigger>)}
-      </TabsList>
-      <FormTab value="bot" busy={busy}>
-        {!connection && <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("platform")}>
-          {(["telegram", "feishu"] as const).map(item => <button key={item} type="button" role="radio" aria-checked={provider === item} onClick={() => { setProvider(item); setToken("") }}
-            className={cn("rounded-lg border px-3 py-2 text-sm transition-colors", provider === item ? "border-primary bg-primary/5 font-medium" : "hover:bg-muted/50")}>{t(`providers.${item}`)}</button>)}
-        </div>}
-        <p className="text-xs text-muted-foreground">{t(`setupHelp.${provider}`)}</p>
-        {provider === "feishu" && !connection && <FeishuSteps />}
-        <div className="space-y-2"><Label htmlFor="chat-name">{t("name")}</Label><Input id="chat-name" value={name} onChange={event => setName(event.target.value)} required maxLength={100} placeholder={t("namePlaceholder")} /></div>
-        {provider === "telegram"
-          ? <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2"><Label htmlFor="chat-token">Bot Token</Label><a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs underline">{t("openBotFather")}<ExternalLink className="size-3" /></a></div>
-            <Input id="chat-token" type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} required={!connection} placeholder={connection ? t("keepToken") : "123456:…"} />
-            <p className="text-xs text-muted-foreground">{t("tokenHelp")}</p>
+
+  const stepTabs = [
+    { key: "bot" as const, step: 1, done: botReady, badge: null as number | null },
+    { key: "access" as const, step: 2, done: accessReady, badge: selectedServerIds.length > 0 ? selectedServerIds.length : null },
+    { key: "agent" as const, step: 3, done: agentReady && accessReady, badge: null as number | null },
+  ]
+
+  const footerHint = error
+    ? { tone: "error" as const, text: error }
+    : !botReady
+      ? { tone: "warn" as const, text: t("formHintBotRequired") }
+      : !accessReady
+        ? { tone: "warn" as const, text: t("formHintServerRequired") }
+        : connection
+          ? { tone: "info" as const, text: t("editStopsWork") }
+          : { tone: "ok" as const, text: t("formHintReady") }
+
+  return (
+    <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => void submit(event)}>
+      <DialogHeader className="shrink-0 border-b px-6 py-4 pr-12">
+        <div className="flex items-start gap-3">
+          <PlatformAvatar provider={provider} size="md" />
+          <div className="min-w-0 flex-1 text-left">
+            <DialogTitle className="text-base">{connection ? t("edit") : t("create")}</DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs">{t(`platformTagline.${provider}`)}</DialogDescription>
           </div>
-          : <div className="grid gap-3 sm:grid-cols-2">
-            {/* The application identifies the connection; switching apps needs a new connection. */}
-            <div className="space-y-2"><Label htmlFor="chat-app-id">App ID</Label><Input id="chat-app-id" value={appId} onChange={event => setAppId(event.target.value)} required disabled={!!connection} placeholder="cli_…" /></div>
-            <div className="space-y-2"><Label htmlFor="chat-app-secret">App Secret</Label><Input id="chat-app-secret" type="password" autoComplete="new-password" value={token} onChange={event => setToken(event.target.value)} required={!connection} placeholder={connection ? t("keepSecret") : ""} /></div>
-          </div>}
-      </FormTab>
-      <FormTab value="access" busy={busy}>
-        <div className="space-y-2"><Label>{t("servers")}</Label><p className="text-xs text-muted-foreground">{t("serversHelp")}</p>
-          {sources.isError && <div role="alert" className="text-sm text-destructive">{t("loadFailed")}<Button type="button" variant="link" size="sm" onClick={() => void sources.refetch()}>{t("retry")}</Button></div>}
-          {sources.isSuccess && !sources.data.length ? <p className="text-sm text-muted-foreground">{t("noServers")}</p>
-            : <ServerScopePicker servers={sources.data ?? []} value={selectedServerIds} loading={sources.isPending} disabled={busy || !sources.isSuccess} onChange={setServerIds} />}
         </div>
-        <div className="space-y-2"><Label htmlFor="chat-mode">{t("permissionMode")}</Label><Select value={mode} onValueChange={value => setMode(value as ChatConnectionInput["permission_mode"])}><SelectTrigger id="chat-mode"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="readonly">{t("modes.readonly")}</SelectItem><SelectItem value="balanced">{t("modes.balanced")}</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">{t(`modeHelp.${mode}`)}</p></div>
-      </FormTab>
-      <FormTab value="agent" busy={busy}>
-        <div className="space-y-2"><Label htmlFor="chat-prompt">{t("systemPrompt")}</Label>
-          <SystemPromptEditor id="chat-prompt" value={systemPrompt} servers={selectedServers} disabled={busy} onChange={setSystemPrompt} />
+      </DialogHeader>
+
+      <Tabs defaultValue="bot" className="min-h-0 flex-1 overflow-hidden px-6 pt-4">
+        <TabsList className="grid h-auto w-full shrink-0 grid-cols-3 p-1" aria-label={connection ? t("edit") : t("create")}>
+          {stepTabs.map(({ key, step, done, badge }) => (
+            <TabsTrigger key={key} value={key} className="gap-1.5 py-1.5 text-xs">
+              <span
+                className={cn(
+                  "flex size-4 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold",
+                  done
+                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                    : "bg-muted-foreground/15 text-muted-foreground",
+                )}
+              >
+                {done ? <Check className="size-2.5 stroke-[3]" /> : step}
+              </span>
+              <span>{t(`sections.${key}`)}</span>
+              {badge !== null ? (
+                <span className="rounded-full bg-primary/10 px-1.5 py-0.25 text-[10px] font-medium tabular-nums text-primary">
+                  {badge}
+                </span>
+              ) : null}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <FormTab value="bot" busy={busy}>
+          {!connection && (
+            <div className="grid gap-2.5 sm:grid-cols-2" role="radiogroup" aria-label={t("platform")}>
+              {(["telegram", "feishu"] as const).map((item) => {
+                const selected = provider === item
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => {
+                      setProvider(item)
+                      setToken("")
+                    }}
+                    className={cn(
+                      "relative flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all",
+                      selected
+                        ? "border-primary bg-primary/[0.04] ring-1 ring-primary/15"
+                        : "bg-card hover:border-foreground/20 hover:bg-muted/30",
+                    )}
+                  >
+                    <PlatformAvatar provider={item} size="md" />
+                    <div className="min-w-0 flex-1 pr-4">
+                      <p className="text-sm font-medium text-foreground">{t(`providers.${item}`)}</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{t(`platformTagline.${item}`)}</p>
+                    </div>
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute right-3 top-3 flex size-4 items-center justify-center rounded-full border transition-colors",
+                        selected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-muted-foreground/30",
+                      )}
+                    >
+                      {selected ? <Check className="size-2.5 stroke-[3]" /> : null}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          <p className="text-xs leading-5 text-muted-foreground">{t(`setupHelp.${provider}`)}</p>
+
+          {provider === "feishu" && !connection && <FeishuSteps />}
+
+          <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="chat-name" className="text-xs">{t("name")}</Label>
+              <Input
+                id="chat-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
+                maxLength={100}
+                className="h-9 bg-background"
+                placeholder={t("namePlaceholder")}
+              />
+            </div>
+
+            {provider === "telegram" ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="chat-token" className="text-xs">Bot Token</Label>
+                  <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+                    {t("openBotFather")}
+                    <ExternalLink className="size-3" />
+                  </a>
+                </div>
+                <Input
+                  id="chat-token"
+                  type="password"
+                  autoComplete="new-password"
+                  value={token}
+                  onChange={(event) => setToken(event.target.value)}
+                  required={!connection}
+                  className="h-9 bg-background font-mono text-xs"
+                  placeholder={connection ? t("keepToken") : "123456:…"}
+                />
+                <p className="text-[11px] leading-5 text-muted-foreground">{t("tokenHelp")}</p>
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {/* The application identifies the connection; switching apps needs a new connection. */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="chat-app-id" className="text-xs">App ID</Label>
+                  <Input
+                    id="chat-app-id"
+                    value={appId}
+                    onChange={(event) => setAppId(event.target.value)}
+                    required
+                    disabled={!!connection}
+                    className="h-9 bg-background font-mono text-xs"
+                    placeholder="cli_…"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="chat-app-secret" className="text-xs">App Secret</Label>
+                  <Input
+                    id="chat-app-secret"
+                    type="password"
+                    autoComplete="new-password"
+                    value={token}
+                    onChange={(event) => setToken(event.target.value)}
+                    required={!connection}
+                    className="h-9 bg-background font-mono text-xs"
+                    placeholder={connection ? t("keepSecret") : ""}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </FormTab>
+
+        <FormTab value="access" busy={busy}>
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("permissionMode")}</Label>
+            <div className="grid gap-2.5 sm:grid-cols-2" role="radiogroup" aria-label={t("permissionMode")}>
+              {(["readonly", "balanced"] as const).map((item) => {
+                const selected = mode === item
+                const Icon = item === "balanced" ? ShieldAlert : Shield
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setMode(item)}
+                    className={cn(
+                      "relative flex items-start gap-3 rounded-xl border p-3.5 text-left transition-all",
+                      selected
+                        ? "border-primary bg-primary/[0.04] ring-1 ring-primary/15"
+                        : "bg-card hover:border-foreground/20 hover:bg-muted/30",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "flex size-8 shrink-0 items-center justify-center rounded-lg",
+                        item === "balanced"
+                          ? "bg-amber-500/12 text-amber-600 dark:text-amber-400"
+                          : "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400",
+                      )}
+                    >
+                      <Icon className="size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1 pr-4">
+                      <p className="text-sm font-medium text-foreground">{t(`modes.${item}`)}</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{t(`modeHelp.${item}`)}</p>
+                    </div>
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "absolute right-3 top-3 flex size-4 items-center justify-center rounded-full border transition-colors",
+                        selected
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-muted-foreground/30",
+                      )}
+                    >
+                      {selected ? <Check className="size-2.5 stroke-[3]" /> : null}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{t("servers")}</Label>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t("serversHelp")}</p>
+            </div>
+            {sources.isError && (
+              <div role="alert" className="text-sm text-destructive">
+                {t("loadFailed")}
+                <Button type="button" variant="link" size="sm" onClick={() => void sources.refetch()}>{t("retry")}</Button>
+              </div>
+            )}
+            {sources.isSuccess && !sources.data.length ? (
+              <p className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">{t("noServers")}</p>
+            ) : (
+              <ServerScopePicker
+                servers={sources.data ?? []}
+                value={selectedServerIds}
+                loading={sources.isPending}
+                disabled={busy || !sources.isSuccess}
+                onChange={setServerIds}
+              />
+            )}
+          </div>
+        </FormTab>
+
+        <FormTab value="agent" busy={busy}>
+          <div className="space-y-2 rounded-xl border bg-muted/20 p-4">
+            <Label htmlFor="chat-prompt" className="text-xs font-medium">{t("systemPrompt")}</Label>
+            <SystemPromptEditor id="chat-prompt" value={systemPrompt} servers={selectedServers} disabled={busy} onChange={setSystemPrompt} />
+          </div>
+          <label className="flex items-center justify-between gap-3 rounded-xl border bg-card p-4 text-sm">
+            <div>
+              <span className="block font-medium text-foreground">{t("enabled")}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{t(`platformTagline.${provider}`)}</span>
+            </div>
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </label>
+        </FormTab>
+      </Tabs>
+
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
+        <div className="flex min-w-0 items-center gap-2 text-xs">
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              footerHint.tone === "error"
+                ? "bg-destructive"
+                : footerHint.tone === "warn"
+                  ? "bg-amber-500"
+                  : footerHint.tone === "ok"
+                    ? "bg-emerald-500"
+                    : "bg-sky-500",
+            )}
+          />
+          <p
+            role={footerHint.tone === "error" ? "alert" : undefined}
+            className={cn(
+              "min-w-0 truncate",
+              footerHint.tone === "error"
+                ? "text-destructive"
+                : footerHint.tone === "warn"
+                  ? "text-amber-700 dark:text-amber-300"
+                  : "text-muted-foreground",
+            )}
+          >
+            {footerHint.text}
+          </p>
         </div>
-        <label className="flex items-center justify-between gap-3 rounded-lg border p-4 text-sm"><span>{t("enabled")}</span><Switch checked={enabled} onCheckedChange={setEnabled} /></label>
-      </FormTab>
-    </Tabs>
-    {connection && <p className="px-6 pt-2 text-xs text-muted-foreground">{t("editStopsWork")}</p>}
-    {error && <p role="alert" className="px-6 pt-2 text-sm text-destructive [overflow-wrap:anywhere]">{error}</p>}
-    <div className="flex shrink-0 justify-end gap-2 px-6 py-4">
-      <DialogClose asChild><Button type="button" variant="outline" disabled={busy}>{t("common:cancel")}</Button></DialogClose>
-      <Button type="submit" disabled={busy || !valid}>{busy ? t("saving") : t("save")}</Button>
-    </div>
-  </form>
+        <div className="flex shrink-0 items-center gap-2">
+          <DialogClose asChild>
+            <Button type="button" variant="outline" size="sm" disabled={busy}>
+              {t("common:cancel")}
+            </Button>
+          </DialogClose>
+          <Button type="submit" size="sm" disabled={busy || !valid}>
+            {busy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+            {busy ? t("saving") : t("save")}
+          </Button>
+        </div>
+      </div>
+    </form>
+  )
 }
 
 function ConnectionDetail({ id, onEdit, onDeleted }: { id: string; onEdit: (connection: ChatConnection) => void; onDeleted: () => void }) {
@@ -406,24 +1305,29 @@ function ConnectionDetail({ id, onEdit, onDeleted }: { id: string; onEdit: (conn
   if (detail.isError) return <div role="alert" className="rounded-lg border p-4 text-sm text-destructive">{t("loadFailed")}<Button variant="outline" size="sm" onClick={() => void detail.refetch()}>{t("retry")}</Button></div>
   const { connection, bindings } = detail.data
   return <div className="min-w-0 space-y-4">
-    <section className="space-y-3 rounded-lg border bg-card p-4">
+    <section className="space-y-3 rounded-xl border bg-muted/20 p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="mr-auto flex items-center gap-2 text-sm"><Switch checked={connection.enabled} disabled={busy} onCheckedChange={enabled => void run(() => chatConnectionsApi.setEnabled(id, enabled))} />{t("enabled")}</label>
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => onEdit(connection)}><Settings2 className="size-4" />{t("edit")}</Button>
-        <Button size="sm" variant="ghost" className="text-destructive" disabled={busy} onClick={() => void run(async () => { if (await confirm({ description: t("deleteConfirm"), variant: "destructive" })) { await chatConnectionsApi.remove(id); onDeleted() } })}><Trash2 className="size-4" />{t("delete")}</Button>
+        <label className="mr-auto flex items-center gap-2 text-sm font-medium"><Switch checked={connection.enabled} disabled={busy} onCheckedChange={enabled => void run(() => chatConnectionsApi.setEnabled(id, enabled))} />{t("enabled")}</label>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => onEdit(connection)}><Settings2 className="size-3.5" />{t("edit")}</Button>
+        <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={busy} onClick={() => void run(async () => { if (await confirm({ description: t("deleteConfirm"), variant: "destructive" })) { await chatConnectionsApi.remove(id); onDeleted() } })}><Trash2 className="size-3.5" />{t("delete")}</Button>
       </div>
-      {connection.last_error && <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">{connection.last_error}</p>}
+      {connection.last_error && <p role="alert" className="rounded-lg border border-destructive/25 bg-destructive/[0.06] px-3 py-2 text-xs text-destructive [overflow-wrap:anywhere]">{connection.last_error}</p>}
     </section>
-    <section className="space-y-3 rounded-lg border bg-card p-4">
-      <h3 className="text-sm font-semibold">{t("bindings")}</h3>
-      {bindings.length === 0 && <p className="text-sm text-muted-foreground">{t("noBindings")}</p>}
-      {bindings.map(binding => <div key={binding.id} className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <div className="min-w-0 [overflow-wrap:anywhere]"><p className="text-sm">{binding.display_name || binding.user_id}</p><p className="text-xs text-muted-foreground">ID: {binding.external_user_id || binding.user_id} · {binding.revoked_at ? t("revoked") : t("bound")}</p></div>
-        <div className="flex flex-wrap gap-2">
-          {binding.current_session_id && <Button size="sm" variant="ghost" asChild><Link to={`/dashboard/ai-assistant?session=${encodeURIComponent(binding.current_session_id)}`}>{t("openSession")}<ExternalLink className="size-3" /></Link></Button>}
-          {!binding.revoked_at && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { if (await confirm({ description: t("revokeConfirm"), variant: "destructive" })) await chatConnectionsApi.revoke(id, binding.id) })}>{t("revoke")}</Button>}
-        </div>
-      </div>)}
+    <section className="space-y-3 rounded-xl border bg-card p-4">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">{t("bindings")}</h3>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">{bindings.length}</span>
+      </div>
+      {bindings.length === 0 && <p className="text-xs text-muted-foreground">{t("noBindings")}</p>}
+      <div className="divide-y">
+        {bindings.map(binding => <div key={binding.id} className="flex flex-col gap-2.5 py-3 first:pt-1 last:pb-0 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="min-w-0 [overflow-wrap:anywhere]"><p className="text-sm font-medium">{binding.display_name || binding.user_id}</p><p className="text-xs text-muted-foreground">ID: {binding.external_user_id || binding.user_id} · {binding.revoked_at ? t("revoked") : t("bound")}</p></div>
+          <div className="flex flex-wrap gap-1.5">
+            {binding.current_session_id && <Button size="sm" variant="ghost" className="h-7 text-xs" asChild><Link to={`/dashboard/ai-assistant?session=${encodeURIComponent(binding.current_session_id)}`}>{t("openSession")}<ExternalLink className="size-3" /></Link></Button>}
+            {!binding.revoked_at && <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={() => void run(async () => { if (await confirm({ description: t("revokeConfirm"), variant: "destructive" })) await chatConnectionsApi.revoke(id, binding.id) })}>{t("revoke")}</Button>}
+          </div>
+        </div>)}
+      </div>
     </section>
     {confirmDialog}
   </div>

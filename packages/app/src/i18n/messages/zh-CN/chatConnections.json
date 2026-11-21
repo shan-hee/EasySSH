@@ -97,5 +97,27 @@
     "events": "在「事件与回调」选择长连接，添加事件和回调",
     "publish": "创建版本并发布，然后填写下方的 App ID 和 App Secret"
   },
-  "copyScopes": "复制权限"
+  "copyScopes": "复制权限",
+  "summaryTotal": "{count} 个渠道",
+  "summaryConnected": "{count} 在线",
+  "summaryPending": "{count} 待批准",
+  "serverCount": "{count} 台服务器",
+  "bindingCount": "{count} 个绑定账号",
+  "sessionCount": "{count} 个会话",
+  "openChat": "进入对话",
+  "backToChannels": "返回全部接入",
+  "moreRequests": "还有 {count} 条待批准申请",
+  "latestSession": "最近对话",
+  "noSessionsYet": "尚无对话，发送消息给机器人即可开始",
+  "connectTelegram": "连接 Telegram 机器人",
+  "connectFeishu": "连接飞书应用",
+  "platformTagline": {
+    "telegram": "通过长轮询接收私聊消息，无需公网回调地址。",
+    "feishu": "通过飞书长连接接收私聊与群内 @ 机器人消息。"
+  },
+  "openBotShort": "打开机器人",
+  "bindingsManage": "管理",
+  "formHintBotRequired": "请填写名称和机器人凭据",
+  "formHintServerRequired": "请在「访问范围」中至少选择 1 台服务器",
+  "formHintReady": "配置已就绪，保存时将自动验证凭据"
 }

@@ -82,6 +82,30 @@
   "recentTasksDescription": "展示由 MCP / API 令牌发起的命令与脚本任务，可直接查看结果或取消运行中的任务。",
   "recentTasksViewAll": "在任务管理中查看",
   "recentTasksEmpty": "暂无经由 MCP / API 触发的执行任务。",
+  "recentTasksEmptyHint": "创建令牌并在 Codex、Claude Code 或 Cursor 中调用后，执行记录会实时出现在这里。",
+  "protocolBadge": "Streamable HTTP · Bearer 认证",
+  "endpointLabel": "MCP 服务端点",
+  "activeTokensSummary": "{count} 个有效令牌",
+  "toolsCountSummary": "{count} 个内置工具",
+  "runningTasksSummary": "{count} 个运行中",
+  "tabs": {
+    "tokens": "访问令牌",
+    "tools": "工具目录",
+    "runs": "调用记录"
+  },
+  "inactiveTokensTitle": "已撤销或已失效令牌 ({count})",
+  "expiringSoon": "即将到期",
+  "toolCategories": {
+    "servers": "服务器与监控",
+    "files": "文件系统",
+    "execution": "命令与脚本",
+    "tasks": "任务控制"
+  },
+  "toolSafety": {
+    "readonly": "只读",
+    "write": "文件变更",
+    "execute": "远端执行"
+  },
   "toolsPermissionHelp": "每次调用都会检查令牌权限，列出工具不代表拥有调用权限。",
   "toolsFailed": "无法读取工具目录，请重试。",
   "commandWarning": "任意命令以远端账号的实际权限执行，关闭文件写入并不能限制 Shell 的写入能力。",
@@ -163,6 +187,7 @@
   },
   "secret": {
     "description": "在客户端中使用此令牌。请妥善保管，不要写入代码仓库或日志。",
+    "tokenValueLabel": "访问令牌 (Bearer)",
     "notStored": "此令牌创建于旧版本，服务器只保存了校验值，无法再次查看。在列表中选择“轮转令牌”后即可查看新的令牌值。",
     "loadFailed": "无法读取令牌，请重试。"
   },
@@ -170,6 +195,7 @@
     "title": "编辑「{name}」",
     "description": "调整用途、服务器范围和有效期，令牌值保持不变。",
     "keepExpiry": "保持不变（{date}）",
+    "keepExpiryShort": "保持当前",
     "effect": "保存后立即生效，该令牌正在运行的任务会被中断。",
     "nonUniform": "各服务器原本的权限不完全一致，保存后将统一为下方设置。",
     "nameRequired": "请填写名称。",
