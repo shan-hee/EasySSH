@@ -1,5 +1,5 @@
 import * as React from "react"
-import { AlertTriangle, Bell, CheckCheck, CircleCheck, Eraser, Info, Trash2, XCircle } from "lucide-react"
+import { AlertTriangle, Bell, CheckCheck, CircleCheck, Eraser, Info, Settings, Trash2, XCircle } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { PageLoading } from "@/components/page-loading"
@@ -37,6 +37,16 @@ interface NotificationCenterProps {
   source: NotificationCenterSource
   /** 打开任务中心；传入运行 ID 时定位到该次运行。 */
   onOpenTask: (runId?: string) => void
+  /** 打开通知偏好设置（Web 所有者端提供）。 */
+  onOpenSettings?: () => void
+}
+
+type NotificationFilter = "all" | "critical" | "unread"
+
+interface GroupedNotificationItem {
+  latest: NotificationCenterItem
+  items: NotificationCenterItem[]
+  unreadIds: string[]
 }
 
 // 实时事件断开期间的补偿刷新。
@@ -49,9 +59,37 @@ const severityIcons = {
   error: XCircle,
 } as const
 
-export function NotificationCenter({ source, onOpenTask }: NotificationCenterProps) {
+function isCriticalSeverity(severity: NotificationCenterItem["severity"]) {
+  return severity === "error" || severity === "warning"
+}
+
+/** 将连续重复的同源同类通知折叠为一条，避免定时任务连续异常刷屏。 */
+function groupConsecutiveNotifications(items: NotificationCenterItem[]): GroupedNotificationItem[] {
+  const groups: GroupedNotificationItem[] = []
+  for (const item of items) {
+    const prev = groups[groups.length - 1]
+    const key = `${item.event_type}|${item.severity}|${item.title}|${item.source_type ?? ""}`
+    const prevKey = prev
+      ? `${prev.latest.event_type}|${prev.latest.severity}|${prev.latest.title}|${prev.latest.source_type ?? ""}`
+      : null
+    if (prev && prevKey === key && prev.latest.message === item.message) {
+      prev.items.push(item)
+      if (!item.read_at) prev.unreadIds.push(item.id)
+    } else {
+      groups.push({
+        latest: item,
+        items: [item],
+        unreadIds: item.read_at ? [] : [item.id],
+      })
+    }
+  }
+  return groups
+}
+
+export function NotificationCenter({ source, onOpenTask, onOpenSettings }: NotificationCenterProps) {
   const { t, i18n } = useTranslation("headerActions")
   const [open, setOpen] = React.useState(false)
+  const [filter, setFilter] = React.useState<NotificationFilter>("all")
   const [items, setItems] = React.useState<NotificationCenterItem[] | null>(null)
   const [unreadCount, setUnreadCount] = React.useState(0)
   const [loadFailed, setLoadFailed] = React.useState(false)
@@ -99,16 +137,21 @@ export function NotificationCenter({ source, onOpenTask }: NotificationCenterPro
     })
   }, [load])
 
-  const openItem = (item: NotificationCenterItem) => {
+  const openGroup = (group: GroupedNotificationItem) => {
+    const item = group.latest
     if (item.source_type === "task_run" && item.source_id) {
       setOpen(false)
       onOpenTask(item.source_id)
     }
-    if (item.read_at) return
+    if (group.unreadIds.length === 0) return
+    const unreadSet = new Set(group.unreadIds)
     const readAt = new Date().toISOString()
-    setItems((current) => current?.map((entry) => (entry.id === item.id ? { ...entry, read_at: readAt } : entry)) ?? current)
-    setUnreadCount((count) => Math.max(0, count - 1))
-    commit(source.markRead(item.id), t("notificationsMarkReadFailed"))
+    setItems((current) => current?.map((entry) => (unreadSet.has(entry.id) ? { ...entry, read_at: readAt } : entry)) ?? current)
+    setUnreadCount((count) => Math.max(0, count - group.unreadIds.length))
+    commit(
+      Promise.all(group.unreadIds.map((id) => source.markRead(id))),
+      t("notificationsMarkReadFailed"),
+    )
   }
 
   const markAllRead = () => {
@@ -123,13 +166,43 @@ export function NotificationCenter({ source, onOpenTask }: NotificationCenterPro
     commit(source.clearRead(), t("notificationsClearReadFailed"))
   }
 
-  const remove = (item: NotificationCenterItem) => {
-    setItems((current) => current?.filter((entry) => entry.id !== item.id) ?? current)
-    if (!item.read_at) setUnreadCount((count) => Math.max(0, count - 1))
-    commit(source.remove(item.id), t("notificationsDeleteFailed"))
+  const removeGroup = (group: GroupedNotificationItem) => {
+    const removeIds = new Set(group.items.map((entry) => entry.id))
+    setItems((current) => current?.filter((entry) => !removeIds.has(entry.id)) ?? current)
+    if (group.unreadIds.length > 0) {
+      setUnreadCount((count) => Math.max(0, count - group.unreadIds.length))
+    }
+    commit(
+      Promise.all(group.items.map((entry) => source.remove(entry.id))),
+      t("notificationsDeleteFailed"),
+    )
   }
 
   const hasRead = items?.some((item) => item.read_at) ?? false
+  const criticalCount = React.useMemo(
+    () => (items ?? []).filter((item) => isCriticalSeverity(item.severity)).length,
+    [items],
+  )
+  const criticalUnreadCount = React.useMemo(
+    () => (items ?? []).filter((item) => !item.read_at && isCriticalSeverity(item.severity)).length,
+    [items],
+  )
+
+  const visibleGroups = React.useMemo(() => {
+    if (!items) return []
+    const filtered = items.filter((item) => {
+      if (filter === "critical") return isCriticalSeverity(item.severity)
+      if (filter === "unread") return !item.read_at
+      return true
+    })
+    return groupConsecutiveNotifications(filtered)
+  }, [filter, items])
+
+  const tooltipText = criticalUnreadCount > 0
+    ? t("notificationsTooltipCritical", { count: criticalUnreadCount, defaultValue: `${criticalUnreadCount} 条关键提醒` })
+    : unreadCount > 0
+      ? t("notificationsTooltipUnread", { count: unreadCount, defaultValue: `${unreadCount} 条未读通知` })
+      : t("notificationsTooltip")
 
   return (
     <Popover open={open} onOpenChange={(next) => {
@@ -139,21 +212,38 @@ export function NotificationCenter({ source, onOpenTask }: NotificationCenterPro
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button type="button" variant="ghost" size="icon-sm" className="relative" aria-label={t("notificationsTooltip")}>
+            <Button type="button" variant="ghost" size="icon-sm" className="relative" aria-label={tooltipText}>
               <Bell />
-              {unreadCount > 0 ? (
-                <span className="absolute right-0.5 top-0.5 flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-semibold leading-none text-destructive-foreground">
-                  {unreadCount > 99 ? "99+" : unreadCount}
+              {criticalUnreadCount > 0 ? (
+                <span className="absolute right-0.5 top-0.5 flex min-h-3.5 min-w-3.5 items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-semibold leading-none text-destructive-foreground tabular-nums">
+                  {criticalUnreadCount > 99 ? "99+" : criticalUnreadCount}
                 </span>
+              ) : unreadCount > 0 ? (
+                <span className="absolute right-1 top-1 size-2 rounded-full bg-primary ring-2 ring-background" />
               ) : null}
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{t("notificationsTooltip")}</TooltipContent>
+        <TooltipContent side="bottom">{tooltipText}</TooltipContent>
       </Tooltip>
       <PopoverContent align="end" sideOffset={8} className="w-[min(400px,calc(100vw-24px))] p-0 [--wails-draggable:no-drag]">
         <div className="flex h-11 items-center gap-0.5 border-b pl-3 pr-1.5">
           <span className="flex-1 text-sm font-semibold">{t("notificationsTitle")}</span>
+          {onOpenSettings ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-7"
+              onClick={() => {
+                setOpen(false)
+                onOpenSettings()
+              }}
+              title={t("notificationsSettings", { defaultValue: "通知偏好" })}
+              aria-label={t("notificationsSettings", { defaultValue: "通知偏好" })}
+            >
+              <Settings className="size-3.5" />
+            </Button>
+          ) : null}
           <Button variant="ghost" size="icon-sm" className="size-7" disabled={unreadCount === 0} onClick={markAllRead} title={t("notificationsMarkAllRead")} aria-label={t("notificationsMarkAllRead")}>
             <CheckCheck className="size-4" />
           </Button>
@@ -161,28 +251,71 @@ export function NotificationCenter({ source, onOpenTask }: NotificationCenterPro
             <Eraser className="size-4" />
           </Button>
         </div>
-        <ScrollArea className="h-[min(480px,60vh)]">
-          {items?.length ? (
+
+        <div className="flex items-center gap-1 border-b px-2.5 py-1.5">
+          {([
+            { id: "all", label: t("notificationsFilterAll", { defaultValue: "全部" }), count: items?.length ?? 0 },
+            { id: "critical", label: t("notificationsFilterCritical", { defaultValue: "关键" }), count: criticalCount },
+            { id: "unread", label: t("notificationsFilterUnread", { defaultValue: "未读" }), count: unreadCount },
+          ] as const).map((tab) => (
+            <Button
+              key={tab.id}
+              type="button"
+              variant={filter === tab.id ? "secondary" : "ghost"}
+              size="sm"
+              className="h-6 gap-1 px-2 text-xs"
+              onClick={() => setFilter(tab.id)}
+            >
+              <span>{tab.label}</span>
+              {tab.count > 0 ? (
+                <span className={cn(
+                  "rounded-full px-1 text-[10px] tabular-nums",
+                  tab.id === "critical" && criticalUnreadCount > 0
+                    ? "bg-destructive/15 text-destructive"
+                    : "text-muted-foreground",
+                )}>
+                  {tab.count}
+                </span>
+              ) : null}
+            </Button>
+          ))}
+        </div>
+
+        <ScrollArea className="h-[min(440px,56vh)]">
+          {visibleGroups.length > 0 ? (
             <div className="divide-y">
-              {items.map((item) => {
+              {visibleGroups.map((group) => {
+                const item = group.latest
                 const Icon = severityIcons[item.severity] ?? Info
-                const unread = !item.read_at
+                const unread = group.unreadIds.length > 0
                 return (
                   <div key={item.id} className="group relative flex gap-3 py-2.5 pl-4 pr-1.5 transition-colors hover:bg-muted/50">
-                    {unread ? <span className="absolute left-1.5 top-[17px] size-1.5 rounded-full bg-primary" /> : null}
+                    {unread ? (
+                      <span
+                        className={cn(
+                          "absolute left-1.5 top-[17px] size-1.5 rounded-full",
+                          isCriticalSeverity(item.severity) ? "bg-destructive" : "bg-primary",
+                        )}
+                      />
+                    ) : null}
                     <Icon className={cn("mt-0.5 size-4 shrink-0", severityClassName(item.severity))} />
-                    <button type="button" className="min-w-0 flex-1 text-left outline-none" onClick={() => openItem(item)}>
+                    <button type="button" className="min-w-0 flex-1 text-left outline-none" onClick={() => openGroup(group)}>
                       <span className="flex items-baseline gap-2">
                         <span className={cn("min-w-0 flex-1 truncate text-sm", unread ? "font-medium" : "text-muted-foreground")}>
                           {t(`notificationEvents.${item.event_type}`, { defaultValue: item.title })}
                         </span>
+                        {group.items.length > 1 ? (
+                          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                            ×{group.items.length}
+                          </span>
+                        ) : null}
                         <time dateTime={item.created_at} className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                           {formatNotificationTime(item.created_at, i18n.language)}
                         </time>
                       </span>
                       {item.message ? <span className="mt-0.5 line-clamp-2 text-xs leading-5 text-muted-foreground">{item.message}</span> : null}
                     </button>
-                    <Button variant="ghost" size="icon-sm" className="size-7 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => remove(item)} title={t("notificationsDelete")} aria-label={t("notificationsDelete")}>
+                    <Button variant="ghost" size="icon-sm" className="size-7 shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => removeGroup(group)} title={t("notificationsDelete")} aria-label={t("notificationsDelete")}>
                       <Trash2 className="size-3.5" />
                     </Button>
                   </div>
@@ -197,7 +330,13 @@ export function NotificationCenter({ source, onOpenTask }: NotificationCenterPro
           ) : items === null ? (
             <PageLoading className="min-h-0 py-12" />
           ) : (
-            <div className="px-4 py-12 text-center text-sm text-muted-foreground">{t("notificationsEmpty")}</div>
+            <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+              {filter === "critical"
+                ? t("notificationsEmptyCritical", { defaultValue: "暂无关键告警" })
+                : filter === "unread"
+                  ? t("notificationsEmptyUnread", { defaultValue: "暂无未读通知" })
+                  : t("notificationsEmpty")}
+            </div>
           )}
         </ScrollArea>
         <div className="border-t p-1">

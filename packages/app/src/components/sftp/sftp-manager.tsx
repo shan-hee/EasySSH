@@ -20,6 +20,7 @@ import type { TransferTaskActions } from "@/lib/session/transfer-controller"
 import { useWorkspaceSftpTranslator } from "@/components/ssh-workspace/use-workspace-translator"
 import { SftpWorkspaceToolbar } from "@/components/sftp/sftp-workspace-toolbar"
 import { SftpFileToolbar } from "@/components/sftp/sftp-file-toolbar"
+import { InlineTaskStrip, type InlineTaskStripProps } from "@/components/task-center/inline-task-strip"
 import { SftpFileBrowserPane } from "@/components/sftp/sftp-file-browser-pane"
 import { SftpFileEditorPane } from "@/components/sftp/sftp-file-editor-pane"
 import { useOptionalSshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
@@ -89,6 +90,8 @@ export interface SftpManagerProps {
   toolbarActions?: ReactNode
   /** 传输任务；未传入时使用工作区的传输管理。 */
   transfers?: TransferTaskActions
+  /** 原地跟踪的后台操作（如递归删除）；完成后自动刷新目录。 */
+  inlineTasks?: Omit<InlineTaskStripProps, "className">
   preferences?: SshWorkspacePreferenceAdapter
 }
 
@@ -143,6 +146,7 @@ export function SftpManager(props: SftpManagerProps) {
     terminalPathActions,
     toolbarActions,
     transfers: providedTransfers,
+    inlineTasks,
     preferences,
   } = props
   const treeLayout = useSftpTreeLayout(viewModeStorageKey, preferences ?? workspace?.adapters.preferences)
@@ -519,6 +523,15 @@ export function SftpManager(props: SftpManagerProps) {
             selectedCount={selectedFiles.length}
             onRefresh={() => { if (!isLoading) onRefresh() }}
           />
+          )}
+
+          {inlineTasks && inlineTasks.tasks.length > 0 && (
+            <InlineTaskStrip
+              tasks={inlineTasks.tasks}
+              onCancel={inlineTasks.onCancel}
+              onDismiss={inlineTasks.onDismiss}
+              onOpenTask={inlineTasks.onOpenTask}
+            />
           )}
 
           {error && (

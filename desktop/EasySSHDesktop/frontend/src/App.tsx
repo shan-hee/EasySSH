@@ -35,6 +35,7 @@ import { createDesktopMonitorApi } from "./adapters/desktop-monitor-api"
 import { createDesktopScriptAdapters } from "./adapters/desktop-script-api"
 import { desktopSystemInfoApi } from "./adapters/desktop-system-info"
 import { createDesktopSftpApi } from "./adapters/desktop-sftp-api"
+import { createDesktopTaskCenterApi, subscribeDesktopTaskEvents } from "./adapters/desktop-task-center-api"
 import { DesktopProviders } from "./shell/desktop-providers"
 import { DesktopWindowActions } from "./shell/desktop-titlebar"
 import { DesktopPageHeader } from "./shell/desktop-page-header"
@@ -101,6 +102,7 @@ function DesktopContent({ activeView, setActiveView }: {
   const desktopTerminalGatewayReady = Boolean(desktopGatewayWsBaseUrl && desktopGatewayToken)
   const desktopTerminalTransportReady = desktopTerminalGatewayReady || runtimeLoaded
   const sftpApi = useMemo(() => createDesktopSftpApi(desktopGateway, runtimeLoaded), [desktopGateway, runtimeLoaded])
+  const desktopTaskApi = useMemo(() => createDesktopTaskCenterApi(), [])
   const fileTransfer = useFileTransfer({
     api: sftpApi as FileTransferSftpApi,
     // 服务器间传输由终端的跨会话实例负责。
@@ -206,6 +208,10 @@ function DesktopContent({ activeView, setActiveView }: {
       },
     }),
     preferences: workspacePreferences,
+    taskTracker: {
+      api: desktopTaskApi,
+      subscribeEvents: subscribeDesktopTaskEvents,
+    },
     transferManager: {
       tasks: fileTransfer.tasks,
       downloadFile: fileTransfer.downloadFile,
@@ -225,6 +231,7 @@ function DesktopContent({ activeView, setActiveView }: {
     sessionController: workspaceSessionController,
   }), [
     activityLog,
+    desktopTaskApi,
     locale,
     tCommon,
     tSftp,

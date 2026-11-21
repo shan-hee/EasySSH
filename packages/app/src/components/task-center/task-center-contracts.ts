@@ -62,6 +62,8 @@ export interface TaskRunListParams {
   status?: TaskRunStatus[]
   task_type?: string[]
   trigger_type?: TaskRun["trigger_type"][]
+  definition_id?: string
+  exclude_micro?: boolean
   keyword?: string
   page?: number
   page_size?: number

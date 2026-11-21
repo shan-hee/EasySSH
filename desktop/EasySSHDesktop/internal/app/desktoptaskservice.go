@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/easyssh/shared/activitystats"
+	"github.com/easyssh/shared/taskprotocol"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	_ "modernc.org/sqlite"
@@ -68,6 +69,7 @@ type DesktopTaskListInput struct {
 	Statuses     []string `json:"status,omitempty"`
 	TaskTypes    []string `json:"task_type,omitempty"`
 	TriggerTypes []string `json:"trigger_type,omitempty"`
+	ExcludeMicro bool     `json:"exclude_micro,omitempty"`
 	Keyword      string   `json:"keyword,omitempty"`
 	Page         int      `json:"page"`
 	PageSize     int      `json:"page_size"`
@@ -463,7 +465,8 @@ func (s *DesktopTaskService) create(input desktopTaskCreateInput) (string, error
 	if err := tx.Commit(); err != nil {
 		return "", err
 	}
-	s.emitChanged("task.created", input.ID)
+	zero := 0
+	s.emitTaskEvent("task.created", input.ID, "queued", &zero, nil)
 	return input.ID, nil
 }
 
@@ -510,7 +513,7 @@ func (s *DesktopTaskService) start(id string, stage string) error {
 	now := desktopTaskNow()
 	changed, err := s.transition(id, `UPDATE desktop_task_runs SET status='running',stage=?,started_at=?,updated_at=? WHERE id=? AND status='queued'`, []any{stage, now, now, id}, "info", "任务开始执行")
 	if changed {
-		s.emitChanged("task.updated", id)
+		s.emitTaskEvent("task.updated", id, "running", nil, &stage)
 	}
 	if err == nil && !changed {
 		return errors.New("task is not queued")
@@ -527,7 +530,7 @@ func (s *DesktopTaskService) updateProgress(id string, progress int, stage strin
 	}
 	_, err := s.transition(id, `UPDATE desktop_task_runs SET progress = ?, stage = ?, bytes_processed = ?, bytes_total = CASE WHEN ? > 0 THEN ? ELSE bytes_total END, success_count = ?, failure_count = ?, updated_at = ? WHERE id = ? AND status IN ('queued','running','canceling')`, []any{progress, stage, processed, total, total, successCount, failureCount, desktopTaskNow(), id}, "", "")
 	if err == nil {
-		s.emitChanged("task.updated", id)
+		s.emitTaskEvent("task.updated", id, "", &progress, &stage)
 	}
 	return err
 }
@@ -606,17 +609,31 @@ func (s *DesktopTaskService) requestCancel(id string) (bool, error) {
 	now := desktopTaskNow()
 	changed, err := s.transition(id, `UPDATE desktop_task_runs SET status='canceling',cancel_requested_at=?,updated_at=? WHERE id=? AND status IN ('queued','running')`, []any{now, now, id}, "warning", "已请求取消任务")
 	if changed {
-		s.emitChanged("task.updated", id)
+		s.emitTaskEvent("task.updated", id, "canceling", nil, nil)
 	}
 	return changed, err
 }
 
 func (s *DesktopTaskService) emitChanged(eventType string, taskID string) {
+	s.emitTaskEvent(eventType, taskID, "", nil, nil)
+}
+
+func (s *DesktopTaskService) emitTaskEvent(eventType string, taskID string, status string, progress *int, stage *string) {
 	s.mu.Lock()
 	window := s.window
 	s.mu.Unlock()
 	if window != nil {
-		window.EmitEvent(desktopTaskChangedEvent, map[string]any{"type": eventType, "task_id": taskID})
+		payload := map[string]any{"type": eventType, "task_id": taskID}
+		if status != "" {
+			payload["status"] = status
+		}
+		if progress != nil {
+			payload["progress"] = *progress
+		}
+		if stage != nil {
+			payload["stage"] = *stage
+		}
+		window.EmitEvent(desktopTaskChangedEvent, payload)
 	}
 }
 
@@ -826,6 +843,11 @@ func buildDesktopTaskWhere(input DesktopTaskListInput) (string, []any) {
 	appendIn("status", input.Statuses)
 	appendIn("task_type", input.TaskTypes)
 	appendIn("trigger_type", input.TriggerTypes)
+	if input.ExcludeMicro {
+		microTypes := taskprotocol.ForegroundMicroTaskTypes()
+		clauses = append(clauses, "NOT (status = 'succeeded' AND (source_type = 'sftp_operation' OR task_type IN ("+desktopSQLPlaceholders(len(microTypes))+")))")
+		args = append(args, desktopStringsToAny(microTypes)...)
+	}
 	if input.Keyword != "" {
 		like := "%" + strings.ToLower(input.Keyword) + "%"
 		clauses = append(clauses, "(LOWER(title) LIKE ? OR LOWER(task_type) LIKE ? OR LOWER(resource) LIKE ? OR LOWER(server_name) LIKE ? OR LOWER(error_message) LIKE ?)")

@@ -3312,6 +3312,7 @@ export class DesktopTaskListInput {
     "status"?: string[];
     "task_type"?: string[];
     "trigger_type"?: string[];
+    "exclude_micro"?: boolean;
     "keyword"?: string;
     "page": number;
     "page_size": number;

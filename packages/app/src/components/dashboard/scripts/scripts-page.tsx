@@ -62,7 +62,7 @@ export default function ScriptsPage({
  desktopMode = false,
  onReturnToTerminal,
  ready: readyOverride,
- executionRedirectPath = "/dashboard/operation-logs?type=execution",
+ executionRedirectPath = "/dashboard/tasks",
  onExecutionStarted,
 }: ScriptsPageProps) {
  const { t } = useTranslation("scripts")
@@ -253,8 +253,11 @@ const handleExecuteScript = useCallback(async () => {
     await loadScripts()
 
     if (executionRedirectPath) {
-      // 跳转到统一操作日志中的执行记录视图
-      navigate(executionRedirectPath)
+      // 跳转到任务管理并直接打开该次执行详情
+      const target = executionRedirectPath === "/dashboard/tasks" && task.id
+        ? `/dashboard/tasks?run=${encodeURIComponent(task.id)}`
+        : executionRedirectPath
+      navigate(target)
     }
   } catch (error: unknown) {
     console.error("执行脚本失败:", error)

@@ -95,6 +95,7 @@ export type {
   SshWorkspaceSettingsAdapter,
   SshWorkspaceActivityLogAdapter,
   SshWorkspaceSftpSessionController,
+  SshWorkspaceTaskTrackerAdapter,
   SshWorkspaceThemeAdapter,
   SshWorkspaceTerminalSessionController,
   SshWorkspaceTransferHistoryAdapter,

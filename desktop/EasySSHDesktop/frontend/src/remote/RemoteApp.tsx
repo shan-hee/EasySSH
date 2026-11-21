@@ -171,6 +171,7 @@ function RemoteWorkspace({
           keyPrefix: `remote:${context.workspace.id}:`,
         }),
         transferManager: transfers.manager,
+        taskTracker: { api: taskCenterApi },
       }),
     [common, terminal, sftp, context.workspace.id, transfers.manager],
   )

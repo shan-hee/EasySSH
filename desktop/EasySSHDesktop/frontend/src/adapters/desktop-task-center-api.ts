@@ -29,6 +29,7 @@ export function createDesktopTaskCenterApi(): TaskCenterApi {
         status: params.status ?? [],
         task_type: params.task_type ?? [],
         trigger_type: params.trigger_type ?? [],
+        exclude_micro: params.exclude_micro ?? false,
         keyword: params.keyword ?? "",
         page: params.page ?? 1,
         page_size: params.page_size ?? DEFAULT_TABLE_PAGE_SIZE,
@@ -75,11 +76,22 @@ export function createDesktopTaskCenterApi(): TaskCenterApi {
 
 export function subscribeDesktopTaskEvents(listener: RealtimeEventListener): () => void {
   return Events.On(desktopTaskChangedEvent, (event) => {
-    const payload = (event.data ?? {}) as { type?: string; task_id?: string }
+    const payload = (event.data ?? {}) as {
+      type?: string
+      task_id?: string
+      status?: string
+      progress?: number
+      stage?: string
+    }
+    const data: Record<string, unknown> = {}
+    if (payload.task_id) data.task_id = payload.task_id
+    if (typeof payload.status === "string" && payload.status) data.status = payload.status
+    if (typeof payload.progress === "number") data.progress = payload.progress
+    if (typeof payload.stage === "string") data.stage = payload.stage
     const realtimeEvent: RealtimeEvent = {
       id: `${Date.now()}`,
       type: payload.type ?? "task.updated",
-      data: payload.task_id ? { task_id: payload.task_id } : {},
+      data,
       created_at: new Date().toISOString(),
     }
     listener(realtimeEvent)

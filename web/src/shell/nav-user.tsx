@@ -29,6 +29,12 @@ export const NavUser = React.memo(function NavUser() {
     new URLSearchParams(window.location.search).get("account_settings") === "security"
   ))
 
+  React.useEffect(() => {
+    const onOpenSettings = () => setSettingsOpen(true)
+    window.addEventListener("easyssh:open-account-settings", onOpenSettings)
+    return () => window.removeEventListener("easyssh:open-account-settings", onOpenSettings)
+  }, [])
+
   const handleLogout = React.useCallback(async () => {
     try {
       await logout()

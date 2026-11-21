@@ -8,7 +8,8 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import { toast } from "@/components/ui/sonner"
 import { SshWorkspace } from "@/components/ssh-workspace/ssh-workspace"
 import { defaultServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
-import { serversApi, sftpApi } from "@/lib/api"
+import { serversApi, sftpApi, taskCenterApi } from "@/lib/api"
+import { subscribeRealtimeEvents } from "@/lib/api/realtime-events"
 import { workspaceAccessTicketProvider } from "@/lib/access-ticket"
 import { createTerminalWorkspaceSessionControllerAdapter, createTerminalWorkspaceSessionStoreAdapter } from "@/stores/terminal-store"
 import { createBrowserWorkspacePreferenceAdapter, createWorkspaceAdapters, createWorkspaceI18nAdapter, createWorkspaceNotifierAdapter, createWorkspaceSettingsAdapter } from "@/lib/session/workspace-adapters"
@@ -86,6 +87,10 @@ function TerminalPageContent() {
     }),
     preferences: workspacePreferences,
     authTicketProvider: workspaceAccessTicketProvider,
+    taskTracker: {
+      api: taskCenterApi,
+      subscribeEvents: subscribeRealtimeEvents,
+    },
     sessionStore: workspaceSessionStore,
     sessionController: workspaceSessionController,
   }), [tCommon, t, tSftp, systemConfig?.download_exclude_patterns, workspacePreferences, workspaceSessionController, workspaceSessionStore])

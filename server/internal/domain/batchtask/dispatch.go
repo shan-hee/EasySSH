@@ -17,6 +17,21 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+type triggerTypeContextKey struct{}
+
+// WithTriggerType marks how a batch task dispatch was initiated (for example
+// TriggerAPI for MCP / external automation callers).
+func WithTriggerType(ctx context.Context, trigger taskcenter.TriggerType) context.Context {
+	return context.WithValue(ctx, triggerTypeContextKey{}, trigger)
+}
+
+func triggerTypeFromContext(ctx context.Context) taskcenter.TriggerType {
+	if trigger, ok := ctx.Value(triggerTypeContextKey{}).(taskcenter.TriggerType); ok && trigger != "" {
+		return trigger
+	}
+	return taskcenter.TriggerManual
+}
+
 // Dispatch makes a validated draft, its execution projection, and the durable
 // queue row visible together. No compensation can substitute for this boundary.
 func (r *repository) Dispatch(ctx context.Context, expected *BatchTask) (*taskcenter.TaskRun, error) {
@@ -57,7 +72,7 @@ func (r *repository) Dispatch(ctx context.Context, expected *BatchTask) (*taskce
 			return err
 		}
 		run := &taskcenter.TaskRun{ID: task.ID, Actor: actor, WorkID: task.ID, TaskType: task.TaskType, Title: task.TaskName,
-			SourceType: "batch_task", SourceID: task.ID.String(), TriggerType: taskcenter.TriggerManual, Runner: "server",
+			SourceType: "batch_task", SourceID: task.ID.String(), TriggerType: triggerTypeFromContext(ctx), Runner: "server",
 			Status: taskcenter.StatusQueued, Resource: strings.Join(task.ServerIDs, ","), PayloadJSON: string(payload), TotalCount: len(task.ServerIDs),
 			Cancelable: true, Retryable: false, MaxAttempts: 1,
 		}

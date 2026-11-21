@@ -25,8 +25,10 @@ import { useSystemConfig } from "@/contexts/system-config-context"
 import { useUpdateCheck } from "@/hooks/use-update-check"
 import { getEffectiveLocale, saveLocaleToStorage } from "@/utils/datetime"
 import { NotificationCenter, type NotificationCenterSource } from "@/components/notification-center"
+import { ActiveTasksPopover } from "@/components/task-center/active-tasks-popover"
 import { inboxNotificationsApi } from "@/lib/api/inbox-notifications"
 import { subscribeRealtimeEvents } from "@/lib/api/realtime-events"
+import { taskCenterApi } from "@/lib/api/task-center"
 
 type SupportedLocale = "zh-CN" | "en-US"
 
@@ -86,9 +88,17 @@ export function DashboardHeaderActions() {
 
   return (
     <div className="flex shrink-0 items-center gap-1">
+      <ActiveTasksPopover
+        api={taskCenterApi}
+        subscribeEvents={subscribeRealtimeEvents}
+        enabled={isAuthenticated}
+        onOpenTask={(runId) => navigate(runId ? `/dashboard/tasks?run=${encodeURIComponent(runId)}` : "/dashboard/tasks")}
+      />
+
       <NotificationCenter
         source={inboxNotificationSource}
         onOpenTask={(runId) => navigate(runId ? `/dashboard/tasks?run=${encodeURIComponent(runId)}` : "/dashboard/tasks")}
+        onOpenSettings={() => window.dispatchEvent(new CustomEvent("easyssh:open-account-settings", { detail: { section: "notifications" } }))}
       />
 
       <DropdownMenu>

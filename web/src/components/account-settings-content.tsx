@@ -50,6 +50,18 @@ const navItems = settingsNavItems
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`)
   }, [setOpen])
 
+  React.useEffect(() => {
+    const onOpenSection = (event: Event) => {
+      const section = (event as CustomEvent<{ section?: SettingsSection }>).detail?.section
+      if (section && settingsNavItems.some((item) => item.id === section)) {
+        setActiveSection(section)
+      }
+      setOpen(true)
+    }
+    window.addEventListener("easyssh:open-account-settings", onOpenSection)
+    return () => window.removeEventListener("easyssh:open-account-settings", onOpenSection)
+  }, [setOpen])
+
   const getSectionLabel = React.useCallback(
     (section: SettingsSection) => {
       switch (section) {

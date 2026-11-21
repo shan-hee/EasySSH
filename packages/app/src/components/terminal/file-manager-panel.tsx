@@ -59,6 +59,7 @@ export interface FileManagerPanelProps {
   onExecuteTerminalCommand?: (command: string) => void
   // 传输任务管理
   transfers?: TransferTaskActions
+  inlineTasks?: TerminalSftpPanelProps["inlineTasks"]
   backgroundColor?: string
 }
 

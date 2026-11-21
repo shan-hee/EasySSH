@@ -307,11 +307,13 @@ function TabTerminalContentComponent({
       notifier: workspace?.adapters.notifier,
       t: sftpTranslate,
       transferManager: workspace?.adapters.transferManager,
+      taskTracker: workspace?.adapters.taskTracker,
     }),
     [
       sftpTranslate,
       workspaceSftpApi,
       workspace?.adapters.notifier,
+      workspace?.adapters.taskTracker,
       workspace?.adapters.transferManager,
     ]
   )
@@ -837,6 +839,7 @@ function TabTerminalContentComponent({
               onExecuteTerminalCommand={handleExecuteTerminalCommand}
               onDisconnect={() => setTabState(session.id, { isFileManagerOpen: false })}
               transfers={transfers}
+              inlineTasks={sftpSession.inlineTasks}
               backgroundColor={hasWorkspaceBackground ? undefined : terminalSurfaceBackground}
             />
           )}

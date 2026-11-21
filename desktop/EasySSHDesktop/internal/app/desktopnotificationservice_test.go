@@ -104,3 +104,58 @@ func TestDesktopTaskCleanupRollsBackNotificationDeletion(t *testing.T) {
 		t.Fatal("cleanup did not remove source and inbox", result, err)
 	}
 }
+
+func TestDesktopNotificationFiltersMicroOpsAndCancellations(t *testing.T) {
+	tasks, _ := desktopTaskFixture(t)
+	notices := &DesktopNotificationService{db: tasks.db}
+
+	// Foreground SFTP micro-op success should stay silent.
+	mkdirID, err := tasks.create(desktopTaskCreateInput{
+		Actor: desktopLocalActor(), SourceType: "sftp_operation", TaskType: "sftp_mkdir", Title: "mkdir", TotalCount: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tasks.start(mkdirID, "sftp_mkdir"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tasks.persistCompletion(context.Background(), mkdirID, desktopTaskCompletion{Status: "succeeded", SuccessCount: 1, FinishedAt: desktopTaskNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	// User-canceled task should stay silent.
+	cancelID, err := tasks.create(desktopTaskCreateInput{
+		Actor: desktopLocalActor(), TaskType: "script", Title: "canceled script", TotalCount: 1, Cancelable: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tasks.start(cancelID, "executing"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tasks.persistCompletion(context.Background(), cancelID, desktopTaskCompletion{Status: "canceled", FinishedAt: desktopTaskNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Failed SFTP micro-op MUST still notify as critical error.
+	failedWriteID, err := tasks.create(desktopTaskCreateInput{
+		Actor: desktopLocalActor(), SourceType: "sftp_operation", TaskType: "sftp_write", Title: "write", TotalCount: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tasks.start(failedWriteID, "sftp_write"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tasks.persistCompletion(context.Background(), failedWriteID, desktopTaskCompletion{Status: "failed", FailureCount: 1, ErrorMessage: "permission denied", FinishedAt: desktopTaskNow()}); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := notices.List(20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list.Notifications) != 1 || list.Notifications[0].SourceID != failedWriteID || list.Notifications[0].Severity != "error" {
+		t.Fatalf("expected only failed micro-op notification, got %+v", list.Notifications)
+	}
+}

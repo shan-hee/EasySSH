@@ -67,8 +67,19 @@ func (h *TaskCenterHandler) List(c *gin.Context) {
 	for _, value := range splitTaskFilterValues(c.Query("trigger_type")) {
 		triggerTypes = append(triggerTypes, taskcenter.TriggerType(value))
 	}
+	var definitionID *uuid.UUID
+	if rawDefinitionID := strings.TrimSpace(c.Query("definition_id")); rawDefinitionID != "" {
+		parsed, err := uuid.Parse(rawDefinitionID)
+		if err != nil || parsed == uuid.Nil {
+			RespondError(c, http.StatusBadRequest, "invalid_definition_id", "Invalid definition ID")
+			return
+		}
+		definitionID = &parsed
+	}
+	excludeMicro := c.Query("exclude_micro") == "true" || c.Query("exclude_micro") == "1"
 	result, err := h.service.List(c.Request.Context(), &taskcenter.ListRequest{
 		Statuses: statuses, TaskTypes: taskTypes, TriggerTypes: triggerTypes,
+		DefinitionID: definitionID, ExcludeMicro: excludeMicro,
 		Keyword: c.Query("keyword"), Page: page, PageSize: pageSize,
 	})
 	if err != nil {

@@ -134,6 +134,8 @@ type ListRequest struct {
 	Statuses     []Status
 	TaskTypes    []string
 	TriggerTypes []TriggerType
+	DefinitionID *uuid.UUID
+	ExcludeMicro bool
 	Keyword      string
 	Page         int
 	PageSize     int

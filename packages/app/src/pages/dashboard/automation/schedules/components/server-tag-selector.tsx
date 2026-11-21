@@ -26,14 +26,20 @@ export function ServerTagSelector({
 }: ServerTagSelectorProps) {
   const [searchTerm, setSearchTerm] = useState("")
 
-  const onlineServers = servers.filter((s) => s.status === "online")
-  const selectedServers = onlineServers.filter((s) => selectedIds.includes(s.id))
-  const availableServers = onlineServers.filter((s) => !selectedIds.includes(s.id))
+  const serverMap = new Map(servers.map((s) => [s.id, s]))
+  const selectedEntries = selectedIds.map((id) => ({
+    id,
+    server: serverMap.get(id) ?? null,
+  }))
+  const availableServers = servers.filter((s) => !selectedIds.includes(s.id))
   const serverOptions = availableServers.map((server) => ({
     value: server.id,
     searchValue: `${server.name ?? ""} ${server.host}`,
     label: server.name || server.host,
-    description: server.name ? server.host : undefined,
+    description: [
+      server.name ? server.host : undefined,
+      server.status !== "online" ? t("serverStatusOffline") : undefined,
+    ].filter(Boolean).join(" · ") || undefined,
   }))
 
   const handleAdd = (serverId: string) => {
@@ -48,7 +54,7 @@ export function ServerTagSelector({
   }
 
   const handleSelectAll = () => {
-    onSelectedChange(onlineServers.map((s) => s.id))
+    onSelectedChange(servers.map((s) => s.id))
   }
 
   const handleClearAll = () => {
@@ -82,7 +88,7 @@ export function ServerTagSelector({
           <span className="text-sm text-muted-foreground">
             {t("selectedServersCount")}: {selectedIds.length}
           </span>
-          {selectedIds.length < onlineServers.length && (
+          {selectedIds.length < servers.length && (
             <Button
               type="button"
               variant="ghost"
@@ -101,18 +107,20 @@ export function ServerTagSelector({
           </div>
         ) : (
           <div className="flex flex-wrap gap-2">
-            {selectedServers.map((server) => (
+            {selectedEntries.map(({ id, server }) => (
               <Badge
-                key={server.id}
-                variant="secondary"
+                key={id}
+                variant={server ? (server.status === "online" ? "secondary" : "outline") : "destructive"}
                 className="pl-2 pr-1 py-1 text-xs gap-1 cursor-pointer hover:bg-secondary/80"
               >
-                <span className="max-w-[120px] truncate">
-                  {server.name || server.host}
+                <span className="max-w-[160px] truncate">
+                  {server
+                    ? `${server.name || server.host}${server.status !== "online" ? ` (${t("serverStatusOffline")})` : ""}`
+                    : t("serverStatusMissing")}
                 </span>
                 <button
                   type="button"
-                  onClick={() => handleRemove(server.id)}
+                  onClick={() => handleRemove(id)}
                   className="ml-1 rounded-full hover:bg-background/50 p-0.5"
                 >
                   <X className="h-3 w-3" />

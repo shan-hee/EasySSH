@@ -97,6 +97,7 @@ export interface DeleteOperationConfig<T extends { name: string }> {
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
   api: SftpOperationsApi
+  onBackgroundTask?: (taskId: string, meta: { title: string; targetPath: string }) => void
 }
 
 export async function performDelete<T extends { name: string }>({
@@ -108,6 +109,7 @@ export async function performDelete<T extends { name: string }>({
   notifier,
   setFiles,
   api,
+  onBackgroundTask,
 }: DeleteOperationConfig<T>): Promise<void> {
   const fullPath = joinSftpRemotePath(currentPath, fileName)
 
@@ -130,7 +132,16 @@ export async function performDelete<T extends { name: string }>({
   })
 
   const result = await deletePromise
-  if (result?.task_id) toast(t("toastDeleteTaskCreated", { file: fileName }), { action: { label: t("viewOperationTask"), onClick: () => openWorkspaceTask(result.task_id!) } })
+  if (result?.task_id) {
+    if (onBackgroundTask) {
+      onBackgroundTask(result.task_id, {
+        title: t("toastDeleteLoading", { file: fileName }),
+        targetPath: currentPath,
+      })
+    } else {
+      toast(t("toastDeleteTaskCreated", { file: fileName }), { action: { label: t("viewOperationTask"), onClick: () => openWorkspaceTask(result.task_id!) } })
+    }
+  }
 }
 
 export interface CreateFolderOperationConfig<T extends { name: string }> {
@@ -319,6 +330,7 @@ export interface BatchDeleteOperationConfig<T extends { name: string }> {
   notifier: SftpOperationNotifier
   setFiles: SftpFileListUpdater<T>
   api: SftpOperationsApi
+  onBackgroundTask?: (taskId: string, meta: { title: string; targetPath: string }) => void
 }
 
 export interface BatchDeleteResult {
@@ -338,6 +350,7 @@ export async function performBatchDelete<T extends { name: string }>({
   notifier,
   setFiles,
   api,
+  onBackgroundTask,
 }: BatchDeleteOperationConfig<T>): Promise<BatchDeleteResult> {
   const fullPaths = fileNames.map((fileName) => joinSftpRemotePath(currentPath, fileName))
 
@@ -390,6 +403,15 @@ export async function performBatchDelete<T extends { name: string }>({
   })
 
   const result = await batchDeletePromise
-  if (result.task_id) toast(t("toastBatchDeleteTaskCreated", { count: fileNames.length }), { action: { label: t("viewOperationTask"), onClick: () => openWorkspaceTask(result.task_id!) } })
+  if (result.task_id) {
+    if (onBackgroundTask) {
+      onBackgroundTask(result.task_id, {
+        title: t("toastBatchDeleteLoading", { count: fileNames.length }),
+        targetPath: currentPath,
+      })
+    } else {
+      toast(t("toastBatchDeleteTaskCreated", { count: fileNames.length }), { action: { label: t("viewOperationTask"), onClick: () => openWorkspaceTask(result.task_id!) } })
+    }
+  }
   return result
 }

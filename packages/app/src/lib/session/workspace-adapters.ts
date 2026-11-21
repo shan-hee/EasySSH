@@ -10,6 +10,7 @@ import type {
   SshWorkspaceSessionController,
   SshWorkspaceSessionStoreAdapter,
   SshWorkspaceSettingsAdapter,
+  SshWorkspaceTaskTrackerAdapter,
   SshWorkspaceThemeAdapter,
   SshWorkspaceTransferManager,
   WorkspaceSessionSnapshot,
@@ -221,6 +222,7 @@ export interface CreateWorkspaceAdaptersOptions {
   preferences?: SshWorkspacePreferenceAdapter
   serverPicker?: SshWorkspaceServerPicker
   transferManager?: SshWorkspaceTransferManager
+  taskTracker?: SshWorkspaceTaskTrackerAdapter
   activityLog?: SshWorkspaceActivityLogAdapter
   sessionStore?: SshWorkspaceSessionStoreAdapter
   sessionController?: SshWorkspaceSessionController
@@ -236,6 +238,7 @@ export function createWorkspaceAdapters({
   preferences,
   serverPicker,
   transferManager,
+  taskTracker,
   activityLog,
   sessionStore,
   sessionController,
@@ -250,6 +253,7 @@ export function createWorkspaceAdapters({
     preferences,
     serverPicker,
     transferManager,
+    taskTracker,
     activityLog,
     sessionStore,
     sessionController,

@@ -14,6 +14,7 @@ import (
 type Repository interface {
 	Create(ctx context.Context, notification *Notification) error
 	CompletionTask(context.Context, *Delivery) (*taskcenter.TaskRun, error)
+	PreviousScheduledRunFailed(ctx context.Context, definitionID, currentRunID uuid.UUID, before time.Time) (bool, error)
 	CommitCompletion(context.Context, *Delivery, *Notification, bool, []*Delivery) (bool, error)
 	UpdateDelivery(ctx context.Context, id uint, updates map[string]interface{}) error
 	ClaimDueDeliveries(ctx context.Context, now, staleBefore time.Time, limit int) ([]Delivery, error)
@@ -37,8 +38,37 @@ func (r *repository) CompletionTask(ctx context.Context, delivery *Delivery) (*t
 	if delivery.SourceType != "task_run" {
 		return nil, errors.New("invalid completion source")
 	}
-	err := r.db.WithContext(ctx).Select("id,task_type,title,status,resource,success_count,failure_count,error_message,started_at,finished_at").Where("id=? AND status IN ?", delivery.SourceID, []taskcenter.Status{taskcenter.StatusSucceeded, taskcenter.StatusFailed, taskcenter.StatusPartialSuccess, taskcenter.StatusCanceled, taskcenter.StatusTimeout, taskcenter.StatusUnknown}).First(&run).Error
+	err := r.db.WithContext(ctx).Select("id,source_type,trigger_type,definition_id,task_type,title,status,resource,total_count,bytes_total,success_count,failure_count,error_message,started_at,finished_at,created_at").Where("id=? AND status IN ?", delivery.SourceID, []taskcenter.Status{taskcenter.StatusSucceeded, taskcenter.StatusFailed, taskcenter.StatusPartialSuccess, taskcenter.StatusCanceled, taskcenter.StatusTimeout, taskcenter.StatusUnknown}).First(&run).Error
 	return &run, err
+}
+
+func (r *repository) PreviousScheduledRunFailed(ctx context.Context, definitionID, currentRunID uuid.UUID, before time.Time) (bool, error) {
+	var previous struct {
+		Status taskcenter.Status
+	}
+	query := r.db.WithContext(ctx).Model(&taskcenter.TaskRun{}).
+		Select("status").
+		Where("definition_id = ? AND id <> ? AND status IN ?", definitionID, currentRunID, []taskcenter.Status{
+			taskcenter.StatusSucceeded,
+			taskcenter.StatusFailed,
+			taskcenter.StatusPartialSuccess,
+			taskcenter.StatusTimeout,
+			taskcenter.StatusUnknown,
+		})
+	if !before.IsZero() {
+		query = query.Where("created_at <= ?", before)
+	}
+	err := query.Order("created_at DESC, id DESC").Limit(1).Take(&previous).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return previous.Status == taskcenter.StatusFailed ||
+		previous.Status == taskcenter.StatusTimeout ||
+		previous.Status == taskcenter.StatusPartialSuccess ||
+		previous.Status == taskcenter.StatusUnknown, nil
 }
 
 // Inbox insertion, external-channel enqueue and preparation settlement are one

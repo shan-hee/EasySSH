@@ -214,7 +214,13 @@ func (s *Service) call(ctx context.Context, name string, arguments json.RawMessa
 	case "list_scripts":
 		return s.scripts.Available(ctx, input.ServerID, protocol.ScriptCatalogInput{AfterID: input.AfterID, Limit: input.Limit})
 	case "execute_command", "execute_script":
-		req := &protocol.CreateBatchTaskRequest{TaskName: "Automation " + name, TaskType: "command", Content: input.Command, ServerIDs: []string{input.ServerID}, ExecutionMode: "sequential"}
+		title := "MCP " + name
+		if name == "execute_command" {
+			if preview := mcpCommandTitlePreview(input.Command); preview != "" {
+				title = "MCP: " + preview
+			}
+		}
+		req := &protocol.CreateBatchTaskRequest{TaskName: title, TaskType: "command", Content: input.Command, ServerIDs: []string{input.ServerID}, ExecutionMode: "sequential"}
 		if name == "execute_script" {
 			req.TaskType = "script"
 			req.Content = ""
@@ -222,11 +228,12 @@ func (s *Service) call(ctx context.Context, name string, arguments json.RawMessa
 			req.ScriptVersion = input.Version
 			req.Parameters = input.Parameters
 		}
-		task, err := s.batch.CreateBatchTask(ctx, req)
+		apiCtx := batchtask.WithTriggerType(ctx, taskcenter.TriggerAPI)
+		task, err := s.batch.CreateBatchTask(apiCtx, req)
 		if err != nil {
 			return nil, err
 		}
-		if err := s.batch.StartBatchTask(ctx, task.ID); err != nil {
+		if err := s.batch.StartBatchTask(apiCtx, task.ID); err != nil {
 			return nil, fmt.Errorf("task %s was created but not dispatched: %w", task.ID, err)
 		}
 		return s.task(ctx, task.ID, wait(10))
@@ -337,6 +344,21 @@ func newTask(run *taskcenter.TaskRun) (*Task, error) {
 		task.Results = append(task.Results, TaskTarget{ServerID: target.ServerID.String(), ServerName: target.ServerName, Status: string(target.Status), ExitCode: target.ExitCode, Output: target.Output, Error: target.ErrorMessage, DurationMs: target.Duration})
 	}
 	return task, nil
+}
+
+func mcpCommandTitlePreview(command string) string {
+	line := strings.TrimSpace(command)
+	if idx := strings.IndexAny(line, "\r\n"); idx >= 0 {
+		line = strings.TrimSpace(line[:idx])
+	}
+	if line == "" {
+		return ""
+	}
+	runes := []rune(line)
+	if len(runes) > 64 {
+		return string(runes[:64]) + "…"
+	}
+	return line
 }
 
 func utc(t *time.Time) *time.Time {

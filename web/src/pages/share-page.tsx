@@ -67,6 +67,7 @@ export default function SharePage() {
           storage: sessionStorage,
           keyPrefix: `access:${context?.actor.session_id}:`,
         }),
+        taskTracker: { api: taskCenterApi },
       }),
     [common, terminal, sftp, context?.actor.session_id],
   )

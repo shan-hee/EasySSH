@@ -11,6 +11,7 @@ import (
 	"github.com/easyssh/shared/resultstore"
 	"github.com/easyssh/shared/taskprotocol"
 	"github.com/google/uuid"
+	"time"
 )
 
 // These values describe effects already observed by the executor. Retrying
@@ -75,7 +76,11 @@ func (s *DesktopTaskService) completeOutcome(id string, outcome desktopTaskCompl
 	if changed && s.notifications != nil {
 		s.notifications.refreshTray()
 	}
-	s.emitChanged("task.completed", id)
+	progress := 0
+	if outcome.Status == "succeeded" || outcome.Status == "partial_success" {
+		progress = 100
+	}
+	s.emitTaskEvent("task.completed", id, outcome.Status, &progress, nil)
 	return nil
 }
 
@@ -141,13 +146,36 @@ func (s *DesktopTaskService) persistCompletion(ctx context.Context, id string, o
 	if err != nil {
 		return false, err
 	}
-	if err := insertDesktopNotification(tx, desktopTaskNotification(completed)); err != nil {
-		return false, err
+	if shouldNotifyDesktopTask(completed) {
+		if err := insertDesktopNotification(tx, desktopTaskNotification(completed)); err != nil {
+			return false, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+func shouldNotifyDesktopTask(run DesktopTaskRun) bool {
+	var duration time.Duration
+	if run.StartedAt != "" && run.FinishedAt != "" {
+		if start, err1 := time.Parse(time.RFC3339Nano, run.StartedAt); err1 == nil {
+			if end, err2 := time.Parse(time.RFC3339Nano, run.FinishedAt); err2 == nil && end.After(start) {
+				duration = end.Sub(start)
+			}
+		}
+	}
+	priority := taskprotocol.EvaluateTaskNotification(taskprotocol.TaskNotificationInput{
+		TaskType:    run.TaskType,
+		SourceType:  run.SourceType,
+		TriggerType: run.TriggerType,
+		Status:      run.Status,
+		TotalCount:  run.TotalCount,
+		BytesTotal:  run.BytesTotal,
+		Duration:    duration,
+	}, taskprotocol.DefaultTaskNotificationPreference())
+	return priority != taskprotocol.NotificationNone
 }
 
 // The caller holds desktopInstanceFilesMu through the source/activity commit.

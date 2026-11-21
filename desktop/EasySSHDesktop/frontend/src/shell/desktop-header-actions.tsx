@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import { Button } from "@easyssh/app/components/ui/button"
 import { ThemeMenu } from "@easyssh/app/components/theme-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@easyssh/app/components/ui/tooltip"
@@ -16,7 +17,9 @@ import {
 } from "@easyssh/app/components/ui/dropdown-menu"
 import { useTranslation } from "react-i18next"
 import { NotificationCenter } from "@easyssh/app/components/notification-center"
+import { ActiveTasksPopover } from "@easyssh/app/components/task-center/active-tasks-popover"
 import { desktopNotificationSource } from "../adapters/desktop-notifications-api"
+import { createDesktopTaskCenterApi, subscribeDesktopTaskEvents } from "../adapters/desktop-task-center-api"
 
 const localeOptions: Array<{ value: Locale; labelKey: "languageZhCN" | "languageEnUS" }> = [
   { value: "zh-CN", labelKey: "languageZhCN" },
@@ -33,9 +36,15 @@ export function DesktopHeaderActions({
   onOpenTask: (taskID?: string) => void
 }) {
   const { t } = useTranslation("headerActions")
+  const desktopTaskApi = useMemo(() => createDesktopTaskCenterApi(), [])
 
   return (
     <div className="flex shrink-0 items-center gap-1">
+      <ActiveTasksPopover
+        api={desktopTaskApi}
+        subscribeEvents={subscribeDesktopTaskEvents}
+        onOpenTask={onOpenTask}
+      />
       <NotificationCenter source={desktopNotificationSource} onOpenTask={onOpenTask} />
 
       <DropdownMenu>

@@ -87,7 +87,7 @@ export async function loadSystemBasicSettings() {
 }
 
 export const defaultTaskCenterListParams: TaskRunListParams = {
-  status: ["queued", "running", "canceling"],
+  exclude_micro: true,
   page: 1,
   page_size: DEFAULT_TABLE_PAGE_SIZE,
 }

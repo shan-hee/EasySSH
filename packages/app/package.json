@@ -29,6 +29,8 @@
     "./components/settings/settings-section": "./src/components/settings/settings-section.tsx",
     "./components/settings/sync-panel": "./src/components/settings/sync-panel.tsx",
     "./components/sftp/transfer-list": "./src/components/sftp/transfer-list.tsx",
+    "./components/task-center/active-tasks-popover": "./src/components/task-center/active-tasks-popover.tsx",
+    "./components/task-center/inline-task-strip": "./src/components/task-center/inline-task-strip.tsx",
     "./components/task-center/task-center-contracts": "./src/components/task-center/task-center-contracts.ts",
     "./components/task-center/task-center-view": "./src/components/task-center/task-center-view.tsx",
     "./components/theme-menu": "./src/components/theme-menu.tsx",

@@ -19,7 +19,7 @@ export function DesktopTaskCenterView({
   return (
     <DesktopWebViewShell locale={locale}>
       <div className="flex min-h-0 flex-1 flex-col">
-        <DesktopPageContent className="pt-4">
+        <DesktopPageContent className="pt-3" scrollable={false}>
           <TaskCenterView
             api={api}
             subscribeEvents={subscribeDesktopTaskEvents}

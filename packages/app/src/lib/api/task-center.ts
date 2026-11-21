@@ -25,7 +25,7 @@ export const taskCenterApi: TaskCenterApi = {
     const query = new URLSearchParams()
     Object.entries(params).forEach(([key, value]) => {
       if (Array.isArray(value) && value.length > 0) query.set(key, value.join(","))
-      else if (value !== undefined && value !== "") query.set(key, String(value))
+      else if (value !== undefined && value !== "" && value !== false) query.set(key, String(value))
     })
     return apiFetch<TaskRunListResponse>(`/tasks${query.size ? `?${query}` : ""}`)
   },

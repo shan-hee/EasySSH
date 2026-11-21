@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,26 +21,26 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Upload, Download, Server, Clock, Settings2 } from "lucide-react"
+import { Upload, Download, Server, Clock, Settings2, FileText } from "lucide-react"
 import type { ScheduledTaskType, Server as ApiServer, Script } from "@/lib/api"
 import { ServerTagSelector } from "./server-tag-selector"
 
 type ScheduledTaskDialogTask = {
-    task_name: string
-    description: string
-    task_type: ScheduledTaskType
-    command: string
-    script_id: string | null
-    cron_expression: string
-    timezone: string
-    enabled: boolean
-    server_ids: string[]
-    sftp_server_id: string
-    sftp_source_path: string
-    sftp_target_path: string
-    sftp_retention_days: number
-    sftp_upload_file: File | null
-    sftp_staged_job_id: string
+  task_name: string
+  description: string
+  task_type: ScheduledTaskType
+  command: string
+  script_id: string | null
+  cron_expression: string
+  timezone: string
+  enabled: boolean
+  server_ids: string[]
+  sftp_server_id: string
+  sftp_source_path: string
+  sftp_target_path: string
+  sftp_retention_days: number
+  sftp_upload_file: File | null
+  sftp_staged_job_id: string
 }
 
 type ScheduledTaskDialogProps = {
@@ -56,6 +56,24 @@ type ScheduledTaskDialogProps = {
   t: (key: string) => string
 }
 
+const CRON_PRESETS = [
+  { labelKey: "cronPresetEvery30m", value: "*/30 * * * *" },
+  { labelKey: "cronPresetHourly", value: "0 * * * *" },
+  { labelKey: "cronPresetDaily2am", value: "0 2 * * *" },
+  { labelKey: "cronPresetWeeklyMon", value: "0 3 * * 1" },
+] as const
+
+const BASE_TIMEZONES = [
+  { value: "Asia/Shanghai", labelKey: "timezoneAsiaShanghai" },
+  { value: "Asia/Hong_Kong", label: "Asia/Hong_Kong (UTC+8)" },
+  { value: "Asia/Tokyo", label: "Asia/Tokyo (UTC+9)" },
+  { value: "UTC", labelKey: "timezoneUTC" },
+  { value: "America/New_York", labelKey: "timezoneAmericaNewYork" },
+  { value: "America/Los_Angeles", label: "America/Los_Angeles (UTC-8)" },
+  { value: "Europe/London", labelKey: "timezoneEuropeLondon" },
+  { value: "Europe/Paris", label: "Europe/Paris (UTC+1)" },
+] as const
+
 export function ScheduledTaskDialog({
   open,
   onOpenChange,
@@ -63,13 +81,22 @@ export function ScheduledTaskDialog({
   task,
   onTaskChange,
   servers,
+  scripts,
   onSubmit,
   onOpenScriptLibrary,
   t,
 }: ScheduledTaskDialogProps) {
   const [currentTab, setCurrentTab] = useState("basic")
 
+  useEffect(() => {
+    if (open) {
+      setCurrentTab("basic")
+    }
+  }, [open])
+
   const isSftpTask = task.task_type === "sftp_upload" || task.task_type === "sftp_download"
+  const selectedScript = task.script_id ? scripts.find((s) => s.id === task.script_id) ?? null : null
+  const hasCustomTimezone = Boolean(task.timezone && !BASE_TIMEZONES.some((tz) => tz.value === task.timezone))
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -161,35 +188,65 @@ export function ScheduledTaskDialog({
 
           {/* 步骤 2: 任务配置 */}
           <TabsContent value="config" className="flex-1 min-h-0 overflow-y-auto scrollbar-custom mt-4 space-y-4 px-1">
-            {/* 命令/脚本任务 */}
-            {(task.task_type === "command" || task.task_type === "script") && (
+            {/* 命令任务 */}
+            {task.task_type === "command" && (
               <div className="space-y-2">
                 <Label htmlFor="task-command">
-                  {task.task_type === "command" ? t("fieldCommandLabel") : t("fieldScriptLabel")}{" "}
-                  <span className="text-destructive">*</span>
+                  {t("fieldCommandLabel")} <span className="text-destructive">*</span>
                 </Label>
-                <div className="flex gap-2">
-                  <Textarea
-                    id="task-command"
-                    placeholder={
-                      task.task_type === "command"
-                        ? t("fieldCommandPlaceholder")
-                        : t("fieldScriptPlaceholder")
-                    }
-                    className="font-mono min-h-[200px]"
-                    value={task.command}
-                    onChange={(e) => onTaskChange({ ...task, command: e.target.value })}
-                  />
-                  {task.task_type === "script" && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={onOpenScriptLibrary}
-                    >
+                <Textarea
+                  id="task-command"
+                  placeholder={t("fieldCommandPlaceholder")}
+                  className="font-mono min-h-[200px]"
+                  value={task.command}
+                  onChange={(e) => onTaskChange({ ...task, command: e.target.value })}
+                />
+              </div>
+            )}
+
+            {/* 脚本任务（后端强制绑定脚本库 script_id） */}
+            {task.task_type === "script" && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>
+                    {t("scriptSelectedLabel")} <span className="text-destructive">*</span>
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={onOpenScriptLibrary}
+                  >
+                    {task.script_id ? t("scriptChangeButton") : t("scriptLibraryButton")}
+                  </Button>
+                </div>
+
+                {selectedScript ? (
+                  <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      <FileText className="size-4 text-muted-foreground" />
+                      <span>{selectedScript.name}</span>
+                    </div>
+                    {selectedScript.description ? (
+                      <p className="text-xs text-muted-foreground">{selectedScript.description}</p>
+                    ) : null}
+                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2.5 font-mono text-xs">
+                      {selectedScript.content}
+                    </pre>
+                  </div>
+                ) : task.script_id ? (
+                  <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+                    ID: <code className="font-mono">{task.script_id}</code>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+                    <FileText className="size-6 opacity-50" />
+                    <p>{t("scriptChoosePlaceholder")}</p>
+                    <Button type="button" variant="outline" size="sm" onClick={onOpenScriptLibrary}>
                       {t("scriptLibraryButton")}
                     </Button>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -214,13 +271,12 @@ export function ScheduledTaskDialog({
                         <SelectValue placeholder={t("sftpSelectServer")} />
                       </SelectTrigger>
                       <SelectContent>
-                        {servers
-                          .filter((server) => server.status === "online")
-                          .map((server) => (
-                            <SelectItem key={server.id} value={server.id}>
-                              {server.name || server.host}
-                            </SelectItem>
-                          ))}
+                        {servers.map((server) => (
+                          <SelectItem key={server.id} value={server.id}>
+                            {server.name || server.host}
+                            {server.status !== "online" ? ` (${t("serverStatusOffline")})` : ""}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -252,8 +308,7 @@ export function ScheduledTaskDialog({
                     <p className="text-xs text-muted-foreground">
                       {mode === "edit"
                         ? t("sftpReplaceFileHint")
-                        : t("sftpStagedFileHint")
-                      }
+                        : t("sftpStagedFileHint")}
                     </p>
                   </div>
 
@@ -296,13 +351,12 @@ export function ScheduledTaskDialog({
                         <SelectValue placeholder={t("sftpSelectServer")} />
                       </SelectTrigger>
                       <SelectContent>
-                        {servers
-                          .filter((server) => server.status === "online")
-                          .map((server) => (
-                            <SelectItem key={server.id} value={server.id}>
-                              {server.name || server.host}
-                            </SelectItem>
-                          ))}
+                        {servers.map((server) => (
+                          <SelectItem key={server.id} value={server.id}>
+                            {server.name || server.host}
+                            {server.status !== "online" ? ` (${t("serverStatusOffline")})` : ""}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -367,6 +421,21 @@ export function ScheduledTaskDialog({
                 onChange={(e) => onTaskChange({ ...task, cron_expression: e.target.value })}
                 className="font-mono"
               />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">{t("cronPresetsLabel")}:</span>
+                {CRON_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.value}
+                    type="button"
+                    variant={task.cron_expression === preset.value ? "secondary" : "outline"}
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => onTaskChange({ ...task, cron_expression: preset.value })}
+                  >
+                    {t(preset.labelKey)}
+                  </Button>
+                ))}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {t("fieldCronHelp")}
               </p>
@@ -383,10 +452,14 @@ export function ScheduledTaskDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Asia/Shanghai">{t("timezoneAsiaShanghai")}</SelectItem>
-                  <SelectItem value="UTC">{t("timezoneUTC")}</SelectItem>
-                  <SelectItem value="America/New_York">{t("timezoneAmericaNewYork")}</SelectItem>
-                  <SelectItem value="Europe/London">{t("timezoneEuropeLondon")}</SelectItem>
+                  {BASE_TIMEZONES.map((tz) => (
+                    <SelectItem key={tz.value} value={tz.value}>
+                      {"labelKey" in tz ? t(tz.labelKey) : tz.label}
+                    </SelectItem>
+                  ))}
+                  {hasCustomTimezone ? (
+                    <SelectItem value={task.timezone}>{task.timezone}</SelectItem>
+                  ) : null}
                 </SelectContent>
               </Select>
             </div>

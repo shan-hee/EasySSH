@@ -113,7 +113,7 @@ export const dashboardRouteRegistry: readonly DashboardRouteDefinition[] = [
   },
   {
     url: "/dashboard/mcp",
-    namespaces: ["automation", "sharing"],
+    namespaces: ["automation", "sharing", "taskCenter"],
     path: "mcp",
     load: () => import("@easyssh/app/pages/dashboard/mcp-page"),
   },

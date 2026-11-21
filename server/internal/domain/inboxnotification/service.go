@@ -151,7 +151,36 @@ func (s *service) prepareCompletion(ctx context.Context, pending *Delivery) erro
 	if err != nil {
 		return err
 	}
-	if !shouldNotifyTask(owner, run.Status) || (!owner.NotifyTaskInApp && !owner.NotifyTaskExternal) {
+	if !owner.NotifyTaskInApp && !owner.NotifyTaskExternal {
+		return s.commitCompletion(ctx, pending, nil, false, nil)
+	}
+	recovered := false
+	if run.Status == taskcenter.StatusSucceeded && run.TriggerType == taskcenter.TriggerScheduled && run.DefinitionID != nil {
+		var checkErr error
+		recovered, checkErr = s.repo.PreviousScheduledRunFailed(ctx, *run.DefinitionID, run.ID, run.CreatedAt)
+		if checkErr != nil {
+			return checkErr
+		}
+	}
+	var duration time.Duration
+	if run.StartedAt != nil && run.FinishedAt != nil && run.FinishedAt.After(*run.StartedAt) {
+		duration = run.FinishedAt.Sub(*run.StartedAt)
+	}
+	priority := taskprotocol.EvaluateTaskNotification(taskprotocol.TaskNotificationInput{
+		TaskType:            run.TaskType,
+		SourceType:          run.SourceType,
+		TriggerType:         string(run.TriggerType),
+		Status:              string(run.Status),
+		TotalCount:          run.TotalCount,
+		BytesTotal:          run.BytesTotal,
+		Duration:            duration,
+		RecoveredFromFailed: recovered,
+	}, taskprotocol.TaskNotificationPreference{
+		NotifySuccess: owner.NotifyTaskSuccess,
+		NotifyFailure: owner.NotifyTaskFailure,
+		NotifyPartial: owner.NotifyTaskPartial,
+	})
+	if priority == taskprotocol.NotificationNone {
 		return s.commitCompletion(ctx, pending, nil, false, nil)
 	}
 	// Notifications contain a display summary; complete results stay on the source.
@@ -162,10 +191,11 @@ func (s *service) prepareCompletion(ctx context.Context, pending *Delivery) erro
 		}
 		*field = preview
 	}
-	severity, eventType, title := taskNotificationMeta(run)
+	severity, eventType, title := taskNotificationMeta(run, recovered)
 	message := taskNotificationMessage(run)
 	data, _ := json.Marshal(map[string]interface{}{
-		"task_id": run.ID, "task_type": run.TaskType, "status": run.Status,
+		"task_id": run.ID, "task_type": run.TaskType, "status": run.Status, "trigger_type": run.TriggerType,
+		"priority": priority, "recovered": recovered,
 		"resource": run.Resource, "success_count": run.SuccessCount, "failure_count": run.FailureCount,
 	})
 	now := time.Now()
@@ -173,9 +203,12 @@ func (s *service) prepareCompletion(ctx context.Context, pending *Delivery) erro
 		ID: pending.NotificationID, OwnerID: owner.ID, EventType: eventType, Severity: severity, Title: title, Message: message,
 		SourceType: "task_run", SourceID: run.ID.String(), DataJSON: string(data), CreatedAt: now,
 	}
-	deliveries, err := s.buildExternalDeliveries(ctx, owner, item, run)
-	if err != nil {
-		return err
+	var deliveries []*Delivery
+	if taskprotocol.ShouldSendExternalTaskNotification(priority, recovered, owner.NotifyTaskExternal) {
+		deliveries, err = s.buildExternalDeliveries(ctx, owner, item, run)
+		if err != nil {
+			return err
+		}
 	}
 	return s.commitCompletion(ctx, pending, item, owner.NotifyTaskInApp, deliveries)
 }
@@ -273,22 +306,12 @@ func (s *service) configuredChannels(ctx context.Context, hasEmail bool) ([]stri
 	return channels, nil
 }
 
-func shouldNotifyTask(owner *auth.Owner, status taskcenter.Status) bool {
-	switch status {
-	case taskcenter.StatusSucceeded:
-		return owner.NotifyTaskSuccess
-	case taskcenter.StatusPartialSuccess:
-		return owner.NotifyTaskPartial
-	case taskcenter.StatusFailed, taskcenter.StatusTimeout, taskcenter.StatusUnknown:
-		return owner.NotifyTaskFailure
-	default:
-		return false
-	}
-}
-
-func taskNotificationMeta(run *taskcenter.TaskRun) (string, string, string) {
+func taskNotificationMeta(run *taskcenter.TaskRun, recovered bool) (string, string, string) {
 	switch run.Status {
 	case taskcenter.StatusSucceeded:
+		if recovered {
+			return "success", "task.recovered", "计划任务已恢复正常"
+		}
 		return "success", "task.succeeded", "任务执行成功"
 	case taskcenter.StatusPartialSuccess:
 		return "warning", "task.partial_success", "任务部分成功"

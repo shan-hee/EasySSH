@@ -664,6 +664,11 @@ export interface SshWorkspaceSessionStoreAdapter {
   subscribe?: (listener: (snapshot: WorkspaceSessionSnapshot) => void) => () => void
 }
 
+export interface SshWorkspaceTaskTrackerAdapter {
+  api: Pick<import("@/components/task-center/task-center-contracts").TaskCenterApi, "get" | "cancel">
+  subscribeEvents?: import("@/components/task-center/task-center-contracts").SubscribeRealtimeEvents | null
+}
+
 export interface SshWorkspaceAdapters {
   apiClient: SshWorkspaceApiClient
   authTicketProvider?: SshWorkspaceAuthTicketProvider
@@ -674,6 +679,7 @@ export interface SshWorkspaceAdapters {
   preferences?: SshWorkspacePreferenceAdapter
   serverPicker?: SshWorkspaceServerPicker
   transferManager?: SshWorkspaceTransferManager
+  taskTracker?: SshWorkspaceTaskTrackerAdapter
   activityLog?: SshWorkspaceActivityLogAdapter
   sessionStore?: SshWorkspaceSessionStoreAdapter
   sessionController?: SshWorkspaceSessionController

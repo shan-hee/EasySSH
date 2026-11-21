@@ -65,7 +65,7 @@ export const createAppRouter = () => {
       },
       {
         path: "dashboard",
-        lazy: lazyPage(() => import("./layouts/dashboard-layout"), ["nav", "dashboard", "headerActions"]),
+        lazy: lazyPage(() => import("./layouts/dashboard-layout"), ["nav", "dashboard", "headerActions", "taskCenter"]),
         loader: dashboardLoader,
         ErrorBoundary: RouteErrorBoundary,
         children: [

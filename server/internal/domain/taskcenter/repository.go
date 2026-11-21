@@ -235,6 +235,12 @@ func (r *repository) listSnapshot(ctx context.Context, req *ListRequest) (*ListR
 	if len(req.TriggerTypes) > 0 {
 		query = query.Where("trigger_type IN ?", req.TriggerTypes)
 	}
+	if req.DefinitionID != nil {
+		query = query.Where("definition_id = ?", *req.DefinitionID)
+	}
+	if req.ExcludeMicro {
+		query = query.Where("NOT (status = ? AND (source_type = ? OR task_type IN ?))", StatusSucceeded, "sftp_operation", taskprotocol.ForegroundMicroTaskTypes())
+	}
 	if keyword := strings.TrimSpace(req.Keyword); keyword != "" {
 		like := "%" + strings.ToLower(keyword) + "%"
 		query = query.Where("LOWER(title) LIKE ? OR LOWER(task_type) LIKE ? OR LOWER(resource) LIKE ? OR LOWER(server_name) LIKE ? OR LOWER(error_message) LIKE ?", like, like, like, like, like)

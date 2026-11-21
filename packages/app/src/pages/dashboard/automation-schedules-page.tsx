@@ -30,6 +30,11 @@ import {
  Upload,
  Download,
  Calendar,
+ Activity,
+ AlertTriangle,
+ CheckCircle2,
+ History,
+ Zap,
 } from "lucide-react"
 import {
  scheduledTasksApi,
@@ -46,6 +51,8 @@ import { useClientAuth } from "@/components/client-auth-provider"
 import { useSystemConfig } from "@/hooks/use-system-config"
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog"
 import { formatInTimezone, getEffectiveLocale, getEffectiveTimezone } from "@/utils/datetime"
+import { loadAllServers } from "@/lib/server-utils"
+import { openWorkspaceTask } from "@/lib/workspace-task-navigation"
 import { useTranslation } from "react-i18next"
 import { createScheduledTaskColumns } from "./automation/schedules/components/scheduled-task-columns"
 import { ScheduledTaskDialog } from "./automation/schedules/components/scheduled-task-dialog"
@@ -140,26 +147,36 @@ const getTaskTypeIcon = (type: ScheduledTaskType) => {
  }
 }
 
-// 把"下次执行时间"转成"5 分钟后 / 2 小时后 / 明天"这样的相对表述，体现时间线的临近感
-const formatRelativeTime = (nextRunAt: string | undefined): string => {
+// 把"下次执行时间"转成相对表述，体现时间线的临近感
+const formatRelativeTime = (
+ nextRunAt: string | undefined,
+ nowMs: number,
+ t: (key: string, values?: Record<string, string | number>) => string,
+ locale: string,
+): string => {
  if (!nextRunAt) return "—"
  const target = new Date(nextRunAt).getTime()
- const now = Date.now()
- const diffMs = target - now
- if (diffMs <= 0) return "已到期"
+ if (Number.isNaN(target)) return "—"
+ const diffMs = target - nowMs
+ if (diffMs <= 0) return t("relativeDue")
  const mins = Math.round(diffMs / 60000)
- if (mins < 1) return "即将执行"
- if (mins < 60) return `${mins} 分钟后`
+ if (mins < 1) return t("relativeSoon")
+ if (mins < 60) return t("relativeMinutes", { count: mins })
  const hours = Math.round(mins / 60)
- if (hours < 24) return `${hours} 小时后`
+ if (hours < 24) return t("relativeHours", { count: hours })
  const days = Math.round(hours / 24)
- if (days === 1) return "明天"
- if (days < 7) return `${days} 天后`
- const d = new Date(nextRunAt)
- return `${d.getMonth() + 1}月${d.getDate()}日`
+ if (days === 1) return t("relativeTomorrow")
+ if (days < 7) return t("relativeDays", { count: days })
+ return new Date(nextRunAt).toLocaleDateString(locale, { month: "short", day: "numeric" })
 }
 
-export default function AutomationSchedulesPage({ embedded = false }: { embedded?: boolean }) {
+export default function AutomationSchedulesPage({
+ embedded = false,
+ onViewRuns,
+}: {
+ embedded?: boolean
+ onViewRuns?: (task: ScheduledTask) => void
+}) {
  const { ready } = useAuthReady()
  const { user } = useClientAuth()
  const { data: systemConfig } = useSystemConfig()
@@ -167,7 +184,11 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  const effectiveTimezone = getEffectiveTimezone(user, systemConfig || null)
  const { t } = useTranslation("automationSchedules")
  const { confirm: requestConfirm, confirmDialog } = useConfirmDialog()
- // 数据状态
+ const [nowMs, setNowMs] = useState(() => Date.now())
+ useEffect(() => {
+   const timer = window.setInterval(() => setNowMs(Date.now()), 60_000)
+   return () => window.clearInterval(timer)
+ }, [])
  // 对话框状态
  const [isDialogOpen, setIsDialogOpen] = useState(false)
  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create")
@@ -182,7 +203,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  command: "",
  script_id: null as string | null,
  cron_expression: "",
- timezone: "Asia/Shanghai",
+ timezone: effectiveTimezone || "Asia/Shanghai",
  enabled: true,
  server_ids: [] as string[],
  sftp_server_id: "",
@@ -199,14 +220,14 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  const administrationQuery = useQuery({
    queryKey: queryKeys.scheduledTasks.administration,
    queryFn: async () => {
-     const [tasksRes, serversRes, scriptsRes] = await Promise.all([
+     const [tasksRes, allServers, scriptsRes] = await Promise.all([
        scheduledTasksApi.list({ page: 1, limit: MAX_TABLE_PAGE_SIZE }),
-       serversApi.list(),
+       loadAllServers((params) => serversApi.list(params)),
        scriptsApi.list({ page: 1, limit: MAX_TABLE_PAGE_SIZE }),
      ])
      return {
        tasks: Array.isArray(tasksRes?.data) ? tasksRes.data : [],
-       servers: Array.isArray(serversRes?.data) ? serversRes.data : [],
+       servers: allServers,
        scripts: Array.isArray(scriptsRes?.data) ? scriptsRes.data : [],
      }
    },
@@ -237,9 +258,9 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
 
  useEffect(() => {
    if (administrationQuery.error) {
-     toast.error(getErrorMessage(administrationQuery.error, "加载数据失败"))
+     toast.error(getErrorMessage(administrationQuery.error, t("toastLoadFailed")))
    }
- }, [administrationQuery.error])
+ }, [administrationQuery.error, t])
 
 
 	 // 过滤脚本
@@ -266,6 +287,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
 
  // 打开新建对话框
  const handleOpenCreateDialog = useCallback(() => {
+ setEditingTaskId(null)
  setTaskForm({
  task_name: "",
  description: "",
@@ -273,7 +295,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  command: "",
  script_id: null,
  cron_expression: "",
- timezone: "Asia/Shanghai",
+ timezone: effectiveTimezone || "Asia/Shanghai",
  enabled: true,
  server_ids: [],
  sftp_server_id: "",
@@ -285,7 +307,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  })
  setDialogMode("create")
  setIsDialogOpen(true)
- }, [])
+ }, [effectiveTimezone])
 
  // 服务器选择处理 - 已移到对话框组件内部
 
@@ -317,7 +339,7 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  return
  }
 
- if (taskForm.task_type === "script" && !taskForm.script_id && !taskForm.command) {
+ if (taskForm.task_type === "script" && !taskForm.script_id) {
  toast.error(t("toastScriptRequired"))
  return
  }
@@ -328,12 +350,12 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  }
 
  if (isSftpUpload && (!taskForm.sftp_server_id || !taskForm.sftp_target_path || !taskForm.sftp_upload_file)) {
- toast.error("请选择 SFTP 服务器、目标目录和要暂存的文件")
+ toast.error(t("toastSftpUploadRequired"))
  return
  }
 
  if (isSftpDownload && (!taskForm.sftp_server_id || !taskForm.sftp_source_path)) {
- toast.error("请选择 SFTP 服务器并填写远端文件路径")
+ toast.error(t("toastSftpDownloadRequired"))
  return
  }
 
@@ -406,13 +428,14 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  // 编辑任务
  const handleEdit = (task: ScheduledTask) => {
  const payload = parseScheduledPayload(task.payload_json)
+ const linkedScript = task.script_id ? scripts.find((s) => s.id === task.script_id) : undefined
  setEditingTaskId(task.id)
  setTaskForm({
  task_name: task.task_name,
  description: task.description || "",
  task_type: task.task_type,
- command: task.command || "",
- script_id: null,
+ command: task.command || linkedScript?.content || "",
+ script_id: task.script_id ?? null,
  cron_expression: task.cron_expression,
  timezone: task.timezone,
  enabled: task.enabled,
@@ -441,18 +464,28 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
 
  if (editingTaskId === null) return
 
+ if (taskForm.task_type === "command" && !taskForm.command) {
+ toast.error(t("toastCmdRequired"))
+ return
+ }
+
+ if (taskForm.task_type === "script" && !taskForm.script_id) {
+ toast.error(t("toastScriptRequired"))
+ return
+ }
+
  if (!isSftpTask && taskForm.server_ids.length === 0) {
  toast.error(t("toastSelectServer"))
  return
  }
 
  if (isSftpUpload && (!taskForm.sftp_server_id || !taskForm.sftp_target_path || (!taskForm.sftp_staged_job_id && !taskForm.sftp_upload_file))) {
- toast.error("SFTP 上传任务需要服务器、目标目录和暂存文件")
+ toast.error(t("toastSftpUploadRequired"))
  return
  }
 
  if (isSftpDownload && (!taskForm.sftp_server_id || !taskForm.sftp_source_path)) {
- toast.error("SFTP 下载任务需要服务器和远端文件路径")
+ toast.error(t("toastSftpDownloadRequired"))
  return
  }
 
@@ -501,7 +534,8 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  await scheduledTasksApi.update(editingTaskId, {
  task_name: taskForm.task_name,
  task_type: taskForm.task_type,
- command: isSftpTask ? undefined : taskForm.command || undefined,
+ command: taskForm.task_type === "command" ? taskForm.command || undefined : undefined,
+ script_id: taskForm.task_type === "script" ? taskForm.script_id || undefined : undefined,
  payload_json: payloadJSON,
  server_ids: serverIds,
  cron_expression: taskForm.cron_expression,
@@ -567,8 +601,17 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  try {
  // 认证基于 HttpOnly Cookie
 
- await scheduledTasksApi.trigger(taskId)
- toast.success(t("toastTriggerSuccess"))
+ const result = await scheduledTasksApi.trigger(taskId)
+ if (result?.task_run_id) {
+   toast.success(t("toastTriggerSuccess"), {
+     action: {
+       label: t("toastTriggerViewRun"),
+       onClick: () => openWorkspaceTask(result.task_run_id),
+     },
+   })
+ } else {
+   toast.success(t("toastTriggerSuccess"))
+ }
  await loadData()
  } catch (error: unknown) {
  console.error("触发任务失败:", error)
@@ -593,91 +636,207 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
  onTrigger: handleTrigger,
  onEdit: handleEdit,
  onDelete: handleDelete,
+ onViewRuns,
  formatDate,
  })
 
  const upcomingTasks = useMemo(() => (
- [...tasks]
- .filter((task) => task.enabled && task.next_run_at)
- .sort((a, b) => new Date(a.next_run_at || 0).getTime() - new Date(b.next_run_at || 0).getTime())
- .slice(0, 4)
+   [...tasks]
+     .filter((task) => task.enabled && task.next_run_at)
+     .sort((a, b) => new Date(a.next_run_at || 0).getTime() - new Date(b.next_run_at || 0).getTime())
+     .slice(0, 4)
  ), [tasks])
+
+ const scheduleStats = useMemo(() => {
+   let enabled = 0
+   let attention = 0
+   let totalRuns = 0
+   let totalFailures = 0
+   for (const task of tasks) {
+     if (task.enabled) enabled += 1
+     if (task.last_status === "failed" || task.last_status === "unknown") attention += 1
+     totalRuns += task.run_count || 0
+     totalFailures += task.failure_count || 0
+   }
+   const disabled = Math.max(0, tasks.length - enabled)
+   const successRate = totalRuns > 0 ? Math.round(((Math.max(0, totalRuns - totalFailures)) / totalRuns) * 100) : null
+   return {
+     total: tasks.length,
+     enabled,
+     disabled,
+     attention,
+     totalRuns,
+     successRate,
+   }
+ }, [tasks])
 
  return (
  <>
  {confirmDialog}
   {!embedded ? <PageHeader title={t("pageTitle")} /> : null}
 
- <DashboardPageContent className={cn("min-h-auto gap-3 sm:gap-4", embedded && "px-0 pb-0")}>
-   <div className="flex shrink-0 flex-col gap-2 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-     <p>集中查看定时任务、执行节奏和失败风险，便于快速判断调度状态。</p>
-     <div className="flex items-center gap-2">
-       <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.12)]" />
-       <span>调度服务运行中</span>
+ <DashboardPageContent className={cn("min-h-auto gap-3", embedded && "px-0 pb-0")}>
+   {/* 与运行记录页统一的 4 张卡片化 KPI 概览 */}
+   <div className="grid shrink-0 grid-cols-2 gap-2.5 lg:grid-cols-4">
+     <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-3.5 py-3">
+       <div className="min-w-0">
+         <div className="truncate text-xs text-muted-foreground">{t("statsTotalTasks")}</div>
+         <div className="mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums">
+           {scheduleStats.total.toLocaleString()}
+         </div>
+         <div className="mt-1.5 truncate text-[11px] text-muted-foreground">
+           {t("statsActiveCountSub", { enabled: scheduleStats.enabled, disabled: scheduleStats.disabled })}
+         </div>
+       </div>
+       <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+         <Calendar className="size-4" />
+       </div>
+     </div>
+
+     <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-3.5 py-3">
+       <div className="min-w-0">
+         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+           <span className="truncate">{t("statsEnabled")}</span>
+           {scheduleStats.enabled > 0 ? (
+             <span className="relative flex size-2 shrink-0">
+               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-75" />
+               <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+             </span>
+           ) : null}
+         </div>
+         <div className="mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums text-emerald-600 dark:text-emerald-400">
+           {scheduleStats.enabled.toLocaleString()}
+         </div>
+         <div className="mt-1.5 truncate text-[11px] text-muted-foreground">{t("statsEnabledDesc")}</div>
+       </div>
+       <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/12 text-emerald-600 dark:text-emerald-400">
+         <CheckCircle2 className="size-4" />
+       </div>
+     </div>
+
+     <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-3.5 py-3">
+       <div className="min-w-0">
+         <div className="truncate text-xs text-muted-foreground">{t("statsAttention")}</div>
+         <div className={cn("mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums", scheduleStats.attention > 0 && "text-destructive")}>
+           {scheduleStats.attention.toLocaleString()}
+         </div>
+         <div className="mt-1.5 truncate text-[11px] text-muted-foreground">{t("statsAttentionDesc")}</div>
+       </div>
+       <div className={cn(
+         "flex size-9 shrink-0 items-center justify-center rounded-lg",
+         scheduleStats.attention > 0 ? "bg-destructive/12 text-destructive" : "bg-muted text-muted-foreground",
+       )}>
+         <AlertTriangle className="size-4" />
+       </div>
+     </div>
+
+     <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-3.5 py-3">
+       <div className="min-w-0">
+         <div className="truncate text-xs text-muted-foreground">{t("statsTotalRuns")}</div>
+         <div className="mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums">
+           {scheduleStats.totalRuns.toLocaleString()}
+         </div>
+         <div className="mt-1.5 truncate text-[11px] text-muted-foreground">
+           {scheduleStats.successRate !== null
+             ? t("statsSuccessRateSub", { rate: scheduleStats.successRate })
+             : t("statsTotalRunsDesc")}
+         </div>
+       </div>
+       <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/12 text-sky-600 dark:text-sky-400">
+         <Activity className="size-4" />
+       </div>
      </div>
    </div>
 
-   <Card className="shrink-0 gap-0 p-4 sm:p-5">
-     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-       <div>
-         <h2 className="text-base font-semibold">调度时间线</h2>
-         <p className="mt-1 text-sm text-muted-foreground">最近准备执行的任务按时间排列，便于快速确认下一批执行窗口。</p>
+   <Card className="shrink-0 gap-0 rounded-xl p-4 sm:p-5">
+     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+       <div className="min-w-0">
+         <h2 className="text-sm font-semibold">{t("timelineHeading")}</h2>
+         <p className="mt-0.5 text-xs text-muted-foreground">{t("timelineDescription")}</p>
        </div>
-       <Button size="sm" onClick={handleOpenCreateDialog}>
-         <Plus className="mr-2 h-4 w-4" />
+       <Button size="sm" className="shrink-0" onClick={handleOpenCreateDialog}>
+         <Plus className="mr-1.5 size-4" />
          {t("newTask")}
        </Button>
      </div>
      {upcomingTasks.length === 0 ? (
-       <div className="mt-4 flex items-center gap-3 rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
-         <Calendar className="h-5 w-5 shrink-0 opacity-50" />
+       <div className="mt-4 flex items-center gap-3 rounded-lg border border-dashed bg-muted/20 px-4 py-5 text-xs text-muted-foreground">
+         <Calendar className="size-4 shrink-0 opacity-60" />
          <span>{t("emptyAll")}</span>
        </div>
      ) : (
-       <div className="mt-5 overflow-x-auto pb-2">
-         <div className="relative min-w-[720px]">
+       <div className="mt-4 overflow-x-auto pb-1">
+         <div className="relative min-w-[740px]">
            {/* 时间轨道：从"现在"锚点向右延伸的渐变线 */}
-           <div className="pointer-events-none absolute left-10 right-0 top-9 h-px bg-gradient-to-r from-emerald-500/60 via-border to-transparent" />
-           <div className="flex items-start">
+           <div className="pointer-events-none absolute left-10 right-0 top-[34px] h-px bg-gradient-to-r from-emerald-500/60 via-border to-transparent" />
+           <div className="flex items-start gap-3">
              {/* "现在"锚点 */}
-             <div className="flex w-20 shrink-0 flex-col items-center">
+             <div className="flex w-16 shrink-0 flex-col items-center">
                <span className="mb-2 h-5 rounded-full bg-emerald-500/10 px-2 text-[11px] font-medium leading-5 text-emerald-700 dark:text-emerald-300">
-                 现在
+                 {t("timelineNow")}
                </span>
-               <div className="relative h-4 w-4">
+               <div className="relative size-3.5">
                  <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-60" />
                  <span className="absolute inset-0 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.18)]" />
                </div>
              </div>
-             {/* 任务节点：按临近顺序等距排列 */}
-             <div className="flex flex-1 justify-between">
+             {/* 任务节点：按临近顺序自适应平铺 */}
+             <div className="grid flex-1 grid-cols-4 gap-3">
                {upcomingTasks.slice(0, 4).map((task, index) => {
                  const tone = getTaskTypeTone(task.task_type)
                  const node = getToneNode(tone)
                  const isNext = index === 0
                  return (
-                   <div key={task.id} className="flex w-[150px] shrink-0 flex-col items-center">
+                   <div key={task.id} className="group flex min-w-0 flex-col items-center">
                      <span
                        className={cn(
                          "mb-2 h-5 rounded-full px-2 text-[11px] font-medium leading-5 tabular-nums",
                          isNext ? node.soft : "bg-muted/60 text-muted-foreground",
                        )}
                      >
-                       {formatRelativeTime(task.next_run_at)}
+                       {formatRelativeTime(task.next_run_at, nowMs, t, effectiveLocale)}
                      </span>
-                     <div className={cn("relative h-4 w-4 rounded-full transition-transform", node.dot, isNext && node.glow)} />
-                     <div className="mt-3 w-[150px] rounded-lg border bg-background p-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
-                       <div className="flex items-center gap-1.5">
-                         <span className={cn("shrink-0", node.text)}>{getTaskTypeIcon(task.task_type)}</span>
-                         <span className="truncate text-xs font-medium">{task.task_name}</span>
+                     <div className={cn("relative size-3.5 rounded-full transition-transform group-hover:scale-110", node.dot, isNext && node.glow)} />
+                     <div className="mt-3 w-full rounded-xl border bg-background/80 p-3 text-left transition-all hover:border-foreground/20 hover:bg-muted/20">
+                       <div className="flex items-center justify-between gap-1.5">
+                         <div className="flex min-w-0 items-center gap-1.5">
+                           <span className={cn("shrink-0", node.text)}>{getTaskTypeIcon(task.task_type)}</span>
+                           <span className="truncate text-xs font-medium" title={task.task_name}>{task.task_name}</span>
+                         </div>
+                         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                           <Button
+                             type="button"
+                             variant="ghost"
+                             size="icon-sm"
+                             className="size-6 text-muted-foreground hover:text-foreground"
+                             title={t("actionImmediateRun")}
+                             aria-label={t("actionImmediateRun")}
+                             onClick={() => void handleTrigger(task.id)}
+                           >
+                             <Zap className="size-3" />
+                           </Button>
+                           {onViewRuns ? (
+                             <Button
+                               type="button"
+                               variant="ghost"
+                               size="icon-sm"
+                               className="size-6 text-muted-foreground hover:text-foreground"
+                               title={t("actionViewRuns")}
+                               aria-label={t("actionViewRuns")}
+                               onClick={() => onViewRuns(task)}
+                             >
+                               <History className="size-3" />
+                             </Button>
+                           ) : null}
+                         </div>
                        </div>
                        <div className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                         <Clock className="h-3 w-3 shrink-0" />
+                         <Clock className="size-3 shrink-0" />
                          <span className="truncate tabular-nums">{formatDate(task.next_run_at)}</span>
                        </div>
-                       <div className="mt-2 flex items-center justify-between gap-1">
-                         <code className="truncate rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">{task.cron_expression}</code>
-                         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{(task.server_ids || []).length} 台</span>
+                       <div className="mt-2 flex items-center justify-between gap-1.5">
+                         <code className="truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">{task.cron_expression}</code>
+                         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{t("timelineServerCount", { count: (task.server_ids || []).length })}</span>
                        </div>
                      </div>
                    </div>
@@ -695,7 +854,6 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
      columns={columns}
      loading={loading}
      emptyMessage={t("emptyAll")}
-     enableRowSelection={true}
      getRowId={(task) => task.id}
      density="compact"
      toolbar={(table) => (
@@ -718,20 +876,15 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
              options: [
                { label: t("typeCommand"), value: "command" },
                { label: t("typeScript"), value: "script" },
-               { label: "SFTP 上传", value: "sftp_upload" },
-               { label: "SFTP 下载", value: "sftp_download" },
+               { label: t("typeSftpUpload"), value: "sftp_upload" },
+               { label: t("typeSftpDownload"), value: "sftp_download" },
              ],
            },
          ]}
          onRefresh={handleRefresh}
          showRefresh={true}
          isRefreshing={refreshing}
-       >
-         <Button size="sm" onClick={() => setIsDialogOpen(true)}>
-           <Plus className="mr-2 h-4 w-4" />
-           {t("newTask")}
-         </Button>
-       </DataTableToolbar>
+       />
      )}
    />
  </DashboardPageContent>

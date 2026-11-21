@@ -19,7 +19,7 @@ export interface ScheduledTask {
   next_run_at?: string
   run_count: number
   failure_count: number
-  last_status?: "success" | "failed" | "canceled"
+  last_status?: "success" | "failed" | "canceled" | "unknown"
   description: string
   created_at: string
   updated_at: string
@@ -41,6 +41,7 @@ export interface CreateScheduledTaskRequest {
 export interface UpdateScheduledTaskRequest {
   task_name?: string
   task_type?: ScheduledTaskType
+  script_id?: string
   command?: string
   payload_json?: string
   server_ids?: string[]

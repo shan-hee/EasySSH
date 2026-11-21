@@ -30,8 +30,17 @@ test("progress events patch cached runs without reporting a status transition", 
 test("status transitions request an authoritative refresh", () => {
   const current: TaskRunListResponse = { runs: [run()], total: 1, page: 1, page_size: 20, total_pages: 1 }
   const result = patchTaskRunList(current, {
-    taskId: "run-1", status: "succeeded", progress: 100, updatedAt: "2026-01-01T00:00:02Z",
+    taskId: "run-1", status: "succeeded", progress: 100, updatedAt: "2026-01-01T00:00:02Z", hasConcreteUpdate: true,
   })
   assert.equal(result.statusChanged, true)
   assert.equal(result.data.runs[0].status, "succeeded")
+})
+
+test("event without status, progress, or stage marks hasConcreteUpdate as false", () => {
+  const patch = taskRealtimePatchFromEvent({
+    data: { task_id: "run-1" },
+    created_at: "2026-01-01T00:00:03Z",
+  })
+  assert.ok(patch)
+  assert.equal(patch.hasConcreteUpdate, false)
 })

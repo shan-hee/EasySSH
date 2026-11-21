@@ -1,7 +1,6 @@
 import type { Column, ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  AlertTriangle,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -16,6 +16,7 @@ import {
   Play,
   Pause,
   Edit,
+  History,
   Trash2,
   CheckCircle,
   XCircle,
@@ -34,6 +35,7 @@ interface ScheduledTaskColumnsOptions {
   onTrigger: (taskId: string) => void
   onEdit: (task: ScheduledTask) => void
   onDelete: (taskId: string) => void
+  onViewRuns?: (task: ScheduledTask) => void
   formatDate: (dateString: string | undefined) => string
 }
 
@@ -82,47 +84,21 @@ function getTypeIcon(type: string) {
   }
 }
 
-function calculateSuccessRate(task: ScheduledTask): string {
-  if (task.run_count === 0) return "100.0"
-  const successCount = task.run_count - task.failure_count
-  return ((successCount / task.run_count) * 100).toFixed(1)
+function calculateSuccessRateNumber(task: ScheduledTask): number {
+  if (task.run_count === 0) return -1
+  const successCount = Math.max(0, task.run_count - task.failure_count)
+  return (successCount / task.run_count) * 100
 }
 
 export function createScheduledTaskColumns(
   t: I18nT,
   options: ScheduledTaskColumnsOptions
 ): ColumnDef<ScheduledTask>[] {
-  const { onToggle, onTrigger, onEdit, onDelete, formatDate } = options
+  const { onToggle, onTrigger, onEdit, onDelete, onViewRuns, formatDate } = options
 
   const meta = (m: DataTableColumnMeta): DataTableColumnMeta => m
 
   return [
-    {
-      id: "select",
-      size: 44,
-      minSize: 44,
-      maxSize: 44,
-      meta: meta({ align: "center" }),
-      header: ({ table }) => (
-        <Checkbox
-          checked={
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && "indeterminate")
-          }
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label="select all"
-        />
-      ),
-      cell: ({ row }) => (
-        <Checkbox
-          checked={row.getIsSelected()}
-          onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label="select row"
-        />
-      ),
-      enableSorting: false,
-      enableHiding: false,
-    },
     {
       id: "task_name",
       accessorKey: "task_name",
@@ -157,8 +133,8 @@ export function createScheduledTaskColumns(
         const typeLabels: Record<string, string> = {
           command: t("typeCommand"),
           script: t("typeScript"),
-          sftp_upload: "SFTP 上传",
-          sftp_download: "SFTP 下载",
+          sftp_upload: t("typeSftpUpload"),
+          sftp_download: t("typeSftpDownload"),
         }
         return (
           <div className="flex w-full min-w-0 items-center gap-2">
@@ -201,12 +177,16 @@ export function createScheduledTaskColumns(
         if (!task.enabled) {
           return <Badge variant="secondary">{t("statusDisabled")}</Badge>
         }
-        if (task.last_status === "success") {
-          return <Badge className="bg-green-100 text-green-800">{t("statusRunning")}</Badge>
-        } else if (task.last_status === "failed") {
-          return <Badge className="bg-red-100 text-red-800">{t("statusFailed")}</Badge>
+        if (task.last_status === "failed") {
+          return <Badge variant="destructive">{t("statusFailed")}</Badge>
         }
-        return <Badge className="bg-blue-100 text-blue-800">{t("statusPending")}</Badge>
+        if (task.last_status === "unknown") {
+          return <Badge variant="secondary">{t("lastStatusUnknown")}</Badge>
+        }
+        if (task.last_status === "success") {
+          return <Badge variant="outline" className="border-emerald-500/40 text-emerald-700 dark:text-emerald-300">{t("statusEnabled")}</Badge>
+        }
+        return <Badge variant="outline">{t("statusPending")}</Badge>
       },
       filterFn: (row, id, value) => {
         const enabled = row.getValue(id) as boolean
@@ -227,16 +207,24 @@ export function createScheduledTaskColumns(
         const task = row.original
         return (
           <div className="flex w-full min-w-0 flex-col py-0.5 text-sm">
-            <span className="truncate">{formatDate(task.last_run_at)}</span>
+            <span className="truncate tabular-nums">{formatDate(task.last_run_at)}</span>
             {task.last_status && (
               <div className="mt-1 flex items-center gap-1">
                 {task.last_status === "success" ? (
-                  <CheckCircle className="h-3 w-3 shrink-0 text-green-600" />
+                  <CheckCircle className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                ) : task.last_status === "canceled" || task.last_status === "unknown" ? (
+                  <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
                 ) : (
-                  <XCircle className="h-3 w-3 shrink-0 text-red-600" />
+                  <XCircle className="h-3 w-3 shrink-0 text-destructive" />
                 )}
                 <span className="truncate text-xs text-muted-foreground">
-                  {task.last_status === "success" ? t("lastStatusSuccess") : t("lastStatusFailed")}
+                  {task.last_status === "success"
+                    ? t("lastStatusSuccess")
+                    : task.last_status === "canceled"
+                      ? t("lastStatusCanceled")
+                      : task.last_status === "unknown"
+                        ? t("lastStatusUnknown")
+                        : t("lastStatusFailed")}
                 </span>
               </div>
             )}
@@ -254,7 +242,7 @@ export function createScheduledTaskColumns(
       header: ({ column }) => <SortableHeader column={column} label={t("tableColNextRun")} />,
       cell: ({ row }) => {
         const nextRun = row.getValue("next_run_at") as string
-        return <span className="block truncate text-sm">{formatDate(nextRun)}</span>
+        return <span className="block truncate tabular-nums text-sm">{formatDate(nextRun)}</span>
       },
     },
 
@@ -273,14 +261,18 @@ export function createScheduledTaskColumns(
 
     {
       id: "success_rate",
-      accessorFn: (row) => calculateSuccessRate(row),
+      accessorFn: (row) => calculateSuccessRateNumber(row),
       size: 110,
       minSize: 90,
       meta: meta({ align: "center" }),
       header: ({ column }) => <SortableHeader column={column} label={t("tableColSuccessRate")} />,
       cell: ({ row }) => {
-        const rate = calculateSuccessRate(row.original)
-        return <span className="block tabular-nums text-sm">{rate}%</span>
+        const rate = calculateSuccessRateNumber(row.original)
+        return (
+          <span className="block tabular-nums text-sm text-muted-foreground">
+            {rate < 0 ? "-" : `${rate.toFixed(1)}%`}
+          </span>
+        )
       },
     },
 
@@ -318,6 +310,12 @@ export function createScheduledTaskColumns(
                   <Zap className="mr-2 h-4 w-4" />
                   {t("actionImmediateRun")}
                 </DropdownMenuItem>
+                {onViewRuns ? (
+                  <DropdownMenuItem onClick={() => onViewRuns(task)}>
+                    <History className="mr-2 h-4 w-4" />
+                    {t("actionViewRuns")}
+                  </DropdownMenuItem>
+                ) : null}
                 <DropdownMenuItem onClick={() => onEdit(task)}>
                   <Edit className="mr-2 h-4 w-4" />
                   {t("actionEdit")}

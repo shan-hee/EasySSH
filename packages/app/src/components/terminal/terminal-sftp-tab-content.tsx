@@ -110,6 +110,7 @@ export function TerminalSftpTabContent({
     notifier,
     t: tSftp,
     transferManager: workspace?.adapters.transferManager,
+    taskTracker: workspace?.adapters.taskTracker,
     serverName: server.name || `${server.username}@${server.host}:${server.port}`,
     authMethod: getServerAuthMethod(server),
     runWithCredentialRetry: canRetrySftpCredentials ? runWithCredentialRetry : undefined,
@@ -195,6 +196,7 @@ export function TerminalSftpTabContent({
         onSaveFile={sftp.saveFile}
         onRenameSession={onRenameSession}
         transfers={transfers}
+        inlineTasks={sftp.inlineTasks}
       />
       {canRetrySftpCredentials && credentialDialog}
     </div>

@@ -6,17 +6,22 @@ export interface TaskRealtimePatch {
   progress?: number
   stage?: string
   updatedAt: string
+  hasConcreteUpdate: boolean
 }
 
 export function taskRealtimePatchFromEvent(event: { data: Record<string, unknown>; created_at: string }): TaskRealtimePatch | null {
   const taskId = typeof event.data.task_id === "string" ? event.data.task_id : null
   if (!taskId) return null
+  const status = typeof event.data.status === "string" ? event.data.status as TaskRunStatus : undefined
+  const progress = typeof event.data.progress === "number" ? event.data.progress : undefined
+  const stage = typeof event.data.stage === "string" ? event.data.stage : undefined
   return {
     taskId,
-    status: typeof event.data.status === "string" ? event.data.status as TaskRunStatus : undefined,
-    progress: typeof event.data.progress === "number" ? event.data.progress : undefined,
-    stage: typeof event.data.stage === "string" ? event.data.stage : undefined,
+    status,
+    progress,
+    stage,
     updatedAt: event.created_at,
+    hasConcreteUpdate: status !== undefined || progress !== undefined || stage !== undefined,
   }
 }
 

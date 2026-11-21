@@ -23,7 +23,8 @@ import {
   type SftpSessionApi,
   type SftpSessionApiAdapter,
 } from "@/lib/session/sftp-session-api";
-import type { SshWorkspaceTransferManager } from "@/lib/session/workspace";
+import type { SshWorkspaceTaskTrackerAdapter, SshWorkspaceTransferManager } from "@/lib/session/workspace";
+import { useInlineTaskTracker } from "@/hooks/use-inline-task-tracker";
 import type { TransferTaskActions } from "@/lib/session/transfer-controller";
 import type { TransferJob } from "@/lib/transfer-job-types";
 import type { TerminalAuthMethod } from "@/lib/websocket-terminal";
@@ -77,6 +78,7 @@ export interface UseSftpSessionOptions {
   t?: TranslateFunction;
   fileTransferOptions?: UseFileTransferOptions;
   transferManager?: SshWorkspaceTransferManager;
+  taskTracker?: SshWorkspaceTaskTrackerAdapter;
   initialPathBackStack?: string[];
   initialPathForwardStack?: string[];
   serverName?: string;
@@ -116,6 +118,7 @@ export function useSftpSession(
     t,
     fileTransferOptions,
     transferManager,
+    taskTracker,
     initialPathBackStack = [],
     initialPathForwardStack = [],
     serverName = serverId,
@@ -530,6 +533,43 @@ export function useSftpSession(
     [serverId, currentPath, files, fileTransfer, sessionNotifier, tSftp]
   );
 
+  const inlineTaskTracker = useInlineTaskTracker({
+    api: taskTracker?.api,
+    subscribeEvents: taskTracker?.subscribeEvents,
+  });
+
+  const trackBackgroundDelete = useCallback(
+    (taskId: string, { title, targetPath }: { title: string; targetPath: string }) => {
+      if (!taskTracker?.api) return;
+      inlineTaskTracker.track(taskId, {
+        title,
+        taskType: "sftp_recursive_delete",
+        cancelable: true,
+        onSettled: () => {
+          directorySource.invalidate([targetPath]);
+          if (
+            loadedCacheRef.current === directoryCache &&
+            currentPathRef.current === targetPath &&
+            (!activeDirectoryRequest.current || activeDirectoryRequest.current.path === targetPath)
+          ) {
+            void loadDirectory(currentPathRef.current, { force: true });
+          }
+        },
+      });
+    },
+    [directoryCache, directorySource, inlineTaskTracker, loadDirectory, taskTracker?.api],
+  );
+
+  const inlineTasks = useMemo(
+    () => ({
+      tasks: inlineTaskTracker.tasks,
+      onCancel: taskTracker?.api ? inlineTaskTracker.cancel : undefined,
+      onDismiss: inlineTaskTracker.dismiss,
+      onOpenTask: inlineTaskTracker.openInTaskCenter,
+    }),
+    [inlineTaskTracker.cancel, inlineTaskTracker.dismiss, inlineTaskTracker.openInTaskCenter, inlineTaskTracker.tasks, taskTracker?.api],
+  );
+
   /**
    * 删除文件或目录 (使用通用函数)
    */
@@ -543,8 +583,9 @@ export function useSftpSession(
       notifier: sessionNotifier,
       setFiles: updateDirectoryFiles,
       api: operationApi,
+      onBackgroundTask: taskTracker?.api ? trackBackgroundDelete : undefined,
     }),
-    [serverId, currentPath, operationApi, sessionNotifier, tSftp, updateDirectoryFiles]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp, taskTracker?.api, trackBackgroundDelete, updateDirectoryFiles]
   );
 
   /**
@@ -653,8 +694,9 @@ export function useSftpSession(
       notifier: sessionNotifier,
       setFiles: updateDirectoryFiles,
       api: operationApi,
+      onBackgroundTask: taskTracker?.api ? trackBackgroundDelete : undefined,
     }),
-    [serverId, currentPath, operationApi, sessionNotifier, tSftp, updateDirectoryFiles]
+    [serverId, currentPath, operationApi, sessionNotifier, tSftp, taskTracker?.api, trackBackgroundDelete, updateDirectoryFiles]
   );
 
   /**
@@ -731,6 +773,7 @@ export function useSftpSession(
     failedPath,
     error,
     transfers,
+    inlineTasks,
     pathBackStack,
     pathForwardStack,
     canGoBack: pathBackStack.length > 0,
