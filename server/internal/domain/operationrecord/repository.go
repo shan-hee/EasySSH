@@ -147,8 +147,8 @@ func (r *repository) List(ctx context.Context, req *ListRequest) (*ListResponse,
 	if req.PageSize < 1 {
 		req.PageSize = 20
 	}
-	if req.PageSize > 100 {
-		req.PageSize = 100
+	if req.PageSize > 500 {
+		req.PageSize = 500
 	}
 
 	records := make([]*OperationRecordSummary, 0)

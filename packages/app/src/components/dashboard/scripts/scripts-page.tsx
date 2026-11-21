@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/error-utils"
 import { loadAllServers } from "@/lib/server-utils"
-import { DataTable } from "@/components/ui/data-table"
+import { DataTable, DEFAULT_TABLE_PAGE_SIZE } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import { ColumnVisibility } from "@/components/ui/column-visibility"
 import {
@@ -86,7 +86,7 @@ export default function ScriptsPage({
  const [executing, setExecuting] = useState(false)
  // DataTable 分页与列可见性
  const [page, setPage] = useState(1)
- const [pageSize, setPageSize] = useState(20)
+ const [pageSize, setPageSize] = useState(DEFAULT_TABLE_PAGE_SIZE)
  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
    name: true,

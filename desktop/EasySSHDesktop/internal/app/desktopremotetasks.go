@@ -21,7 +21,7 @@ func remoteTaskQuery(input protocol.TaskListInput) (url.Values, protocol.TaskLis
 	if input.PageSize == 0 {
 		input.PageSize = 20
 	}
-	if input.Page < 1 || input.Page > 1000000 || input.PageSize < 1 || input.PageSize > 100 || !remoteText(input.Keyword, 512) || len(input.Statuses) > 9 || len(input.TaskTypes) > 32 || len(input.TriggerTypes) > 4 {
+	if input.Page < 1 || input.Page > 1000000 || input.PageSize < 1 || input.PageSize > 500 || !remoteText(input.Keyword, 512) || len(input.Statuses) > 9 || len(input.TaskTypes) > 32 || len(input.TriggerTypes) > 4 {
 		return nil, input, remoteError("invalid_task_query")
 	}
 	q := url.Values{"page": {strconv.Itoa(input.Page)}, "page_size": {strconv.Itoa(input.PageSize)}}

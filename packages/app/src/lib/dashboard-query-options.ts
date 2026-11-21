@@ -14,6 +14,7 @@ import type {
 } from "@/components/task-center/task-center-contracts"
 import type { AuditLogListParams } from "@/lib/log-types"
 import { queryKeys } from "@/lib/query-keys"
+import { DEFAULT_TABLE_PAGE_SIZE } from "@/lib/table-pagination"
 
 export function dashboardOverviewQueryOptions() {
   return queryOptions({
@@ -25,7 +26,7 @@ export function dashboardOverviewQueryOptions() {
 
 export function scriptsListQueryOptions(
   page = 1,
-  pageSize = 20,
+  pageSize = DEFAULT_TABLE_PAGE_SIZE,
   client: Pick<typeof scriptsApi, "list">,
 ) {
   return queryOptions({
@@ -38,7 +39,7 @@ export function scriptsListQueryOptions(
 
 export const defaultAuditLogListParams: AuditLogListParams = {
   page: 1,
-  page_size: 20,
+  page_size: DEFAULT_TABLE_PAGE_SIZE,
   sort_by: "created_at",
   sort_order: "desc",
 }
@@ -57,7 +58,7 @@ export function auditLogsQueryOptions(
 
 export const defaultOperationRecordListParams: OperationRecordListParams = {
   page: 1,
-  page_size: 20,
+  page_size: DEFAULT_TABLE_PAGE_SIZE,
   sort_by: "created_at",
   sort_order: "desc",
 }
@@ -88,7 +89,7 @@ export async function loadSystemBasicSettings() {
 export const defaultTaskCenterListParams: TaskRunListParams = {
   status: ["queued", "running", "canceling"],
   page: 1,
-  page_size: 50,
+  page_size: DEFAULT_TABLE_PAGE_SIZE,
 }
 
 export function taskCenterRunsQueryOptions(

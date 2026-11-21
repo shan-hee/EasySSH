@@ -163,7 +163,7 @@ func (s *service) ListScripts(ctx context.Context, req *ListScriptsRequest) (*Li
 	if req.Limit < 1 {
 		req.Limit = 20
 	}
-	req.Limit = min(100, req.Limit)
+	req.Limit = min(500, req.Limit)
 	rows, total, err := s.repo.List(ctx, req)
 	if err != nil {
 		return nil, err

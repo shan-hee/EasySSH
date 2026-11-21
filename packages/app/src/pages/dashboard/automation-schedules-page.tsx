@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
+import { MAX_TABLE_PAGE_SIZE } from "@/lib/table-pagination"
 import {
  Plus,
  Search,
@@ -199,9 +200,9 @@ export default function AutomationSchedulesPage({ embedded = false }: { embedded
    queryKey: queryKeys.scheduledTasks.administration,
    queryFn: async () => {
      const [tasksRes, serversRes, scriptsRes] = await Promise.all([
-       scheduledTasksApi.list({ page: 1, limit: 100 }),
+       scheduledTasksApi.list({ page: 1, limit: MAX_TABLE_PAGE_SIZE }),
        serversApi.list(),
-       scriptsApi.list({ page: 1, limit: 100 }),
+       scriptsApi.list({ page: 1, limit: MAX_TABLE_PAGE_SIZE }),
      ])
      return {
        tasks: Array.isArray(tasksRes?.data) ? tasksRes.data : [],

@@ -1,4 +1,5 @@
 import { withServerConnection } from "@easyssh/app/lib/api/connections"
+import { DEFAULT_TABLE_PAGE_SIZE } from "@easyssh/app/lib/table-pagination"
 import type { PlatformTransport } from "@easyssh/app/contracts/platform-transport"
 import type { Server } from "@easyssh/app/lib/server-types"
 import * as Remote from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app/desktopremoteworkspaceservice"
@@ -218,7 +219,7 @@ export const remoteTransport: PlatformTransport = {
             await Remote.ListRemoteTasks(
               P.TaskListInput.createFrom({
                 page: Number(q.get("page")) || 1,
-                page_size: Number(q.get("page_size")) || 50,
+                page_size: Number(q.get("page_size")) || DEFAULT_TABLE_PAGE_SIZE,
                 keyword: q.get("keyword") || "",
                 statuses: q.get("status")?.split(","),
                 task_types: q.get("task_type")?.split(","),

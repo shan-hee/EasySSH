@@ -81,6 +81,7 @@
     "./lib/sftp-types": "./src/lib/sftp-types.ts",
     "./lib/sync/types": "./src/lib/sync/types.ts",
     "./lib/sync/web-adapter": "./src/lib/sync/web-adapter.ts",
+    "./lib/table-pagination": "./src/lib/table-pagination.ts",
     "./lib/utils": "./src/lib/utils.ts",
     "./lib/vite-env": "./src/lib/vite-env.ts",
     "./pages/dashboard/ai-assistant-page": "./src/pages/dashboard/ai-assistant-page.tsx",

@@ -417,7 +417,7 @@ func (s *service) ListScheduledTasks(ctx context.Context, req *protocol.ListSche
 	if req == nil {
 		req = &protocol.ListScheduledTasksRequest{}
 	}
-	if req.Page < 0 || req.Page > 1000000 || req.Limit < 0 || req.Limit > 100 || (req.TaskType != "" && !isValidTaskType(string(req.TaskType))) {
+	if req.Page < 0 || req.Page > 1000000 || req.Limit < 0 || req.Limit > 500 || (req.TaskType != "" && !isValidTaskType(string(req.TaskType))) {
 		return nil, ErrInvalidScheduledTaskData
 	}
 	if req.Page < 1 {

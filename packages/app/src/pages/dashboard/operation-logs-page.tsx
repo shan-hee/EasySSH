@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dialog"
 import { toast } from "@/components/ui/sonner"
 import { getErrorMessage } from "@/lib/error-utils"
-import { DataTable } from "@/components/ui/data-table"
+import { DataTable, DEFAULT_TABLE_PAGE_SIZE } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 import {
@@ -205,7 +205,7 @@ function OperationLogsContent() {
   const [appliedFilters, setAppliedFilters] = React.useState<LogFilterValues>(() => createDefaultFilters(initialType))
   const [sort, setSort] = React.useState<LogSortState>(defaultLogSort)
   const [page, setPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(20)
+  const [pageSize, setPageSize] = React.useState(DEFAULT_TABLE_PAGE_SIZE)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = React.useState(false)
   const [copied, setCopied] = React.useState(false)

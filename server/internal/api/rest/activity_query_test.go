@@ -22,7 +22,7 @@ func TestActivityQueriesRejectInvalidBoundsAndReversedDates(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			queries := []string{"start_date=2026-10-31&end_date=2026-10-30"}
 			if name == "operation-list" || name == "audit-list" {
-				queries = append(queries, "page=bad", "page=0", "page=1000001", "page_size=101", "page_size=")
+				queries = append(queries, "page=bad", "page=0", "page=1000001", "page_size=501", "page_size=")
 			} else {
 				queries = append(queries, "days=bad", "days=0", "days=366", "days=")
 			}
@@ -36,4 +36,25 @@ func TestActivityQueriesRejectInvalidBoundsAndReversedDates(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestActivityQueriesAcceptMaxPageSize500(t *testing.T) {
+	t.Run("operation-list", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/?page=1&page_size=500", nil)
+		req, ok := parseOperationRecordListRequest(ctx)
+		if !ok || req.PageSize != 500 {
+			t.Fatalf("expected page_size=500 accepted, got ok=%v req=%+v", ok, req)
+		}
+	})
+	t.Run("audit-list", func(t *testing.T) {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Request = httptest.NewRequest(http.MethodGet, "/?page=1&page_size=500", nil)
+		req, ok := parseAuditLogListRequest(ctx)
+		if !ok || req.PageSize != 500 {
+			t.Fatalf("expected page_size=500 accepted, got ok=%v req=%+v", ok, req)
+		}
+	})
 }

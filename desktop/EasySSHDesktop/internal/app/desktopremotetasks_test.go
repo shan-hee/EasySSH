@@ -61,6 +61,14 @@ func TestRemoteTaskListUsesSourceScopeAndLiteralQuery(t *testing.T) {
 	if _, err := session.listRemoteTasks(context.Background(), input); err == nil || calls != 2 {
 		t.Fatal("invalid pagination dispatched")
 	}
+	input.Page = 1
+	input.PageSize = 501
+	if _, err := session.listRemoteTasks(context.Background(), input); err == nil || calls != 2 {
+		t.Fatal("oversized page_size dispatched")
+	}
+	if q, normalized, err := remoteTaskQuery(protocol.TaskListInput{Page: 1, PageSize: 500}); err != nil || normalized.PageSize != 500 || q.Get("page_size") != "500" {
+		t.Fatalf("expected page_size=500 accepted: err=%v normalized=%+v q=%v", err, normalized, q)
+	}
 }
 func TestRemoteTaskCancelLostReceiptNeverReplays(t *testing.T) {
 	var run protocol.TaskRun

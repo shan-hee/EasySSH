@@ -51,7 +51,7 @@ func TestServiceNormalizesListPagination(t *testing.T) {
 	if _, _, err := service.List(context.Background(), req); err != nil {
 		t.Fatal(err)
 	}
-	if repo.request.Page != 1 || repo.request.PageSize != 100 {
+	if repo.request.Page != 1 || repo.request.PageSize != 500 {
 		t.Fatalf("unexpected normalized pagination: page=%d page_size=%d", repo.request.Page, repo.request.PageSize)
 	}
 }

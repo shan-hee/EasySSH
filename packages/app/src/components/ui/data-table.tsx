@@ -27,8 +27,17 @@ import { resolveColumnClass } from "@/components/ui/column-meta"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  TABLE_PAGE_SIZE_OPTIONS,
+} from "@/lib/table-pagination"
 import { cn } from "@/lib/utils"
 import { useTranslation } from "react-i18next"
+
+export {
+  DEFAULT_TABLE_PAGE_SIZE,
+  TABLE_PAGE_SIZE_OPTIONS,
+} from "@/lib/table-pagination"
 
 export type TableDensity = "compact" | "standard" | "comfortable"
 
@@ -39,6 +48,7 @@ interface DataTableProps<TData, TValue = unknown> {
   currentPage?: number
   pageCount?: number
   pageSize?: number
+  pageSizeOptions?: readonly number[]
   totalRows?: number
   onPageChange?: (page: number) => void
   onPageSizeChange?: (pageSize: number) => void
@@ -93,6 +103,7 @@ export function DataTable<TData, TValue = unknown>({
   currentPage: currentPageProp,
   pageCount,
   pageSize: pageSizeProp,
+  pageSizeOptions = TABLE_PAGE_SIZE_OPTIONS,
   totalRows,
   onPageChange,
   onPageSizeChange,
@@ -111,7 +122,9 @@ export function DataTable<TData, TValue = unknown>({
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({})
   const [internalCurrentPage, setInternalCurrentPage] = React.useState(1)
-  const [internalPageSize, setInternalPageSize] = React.useState(pageSizeProp ?? 20)
+  const [internalPageSize, setInternalPageSize] = React.useState(
+    pageSizeProp ?? DEFAULT_TABLE_PAGE_SIZE
+  )
   const [inputPage, setInputPage] = React.useState("")
   const scrollContainerRef = React.useRef<HTMLDivElement>(null)
 
@@ -333,14 +346,15 @@ export function DataTable<TData, TValue = unknown>({
               {tCommon("tablePerPage")}
             </span>
             <Select value={pageSize.toString()} onValueChange={(value) => handlePageSizeChange(Number(value))}>
-              <SelectTrigger className="w-[70px] h-8">
+              <SelectTrigger className="w-[78px] h-8">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="20">20</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
+                {pageSizeOptions.map((option) => (
+                  <SelectItem key={option} value={option.toString()}>
+                    {option}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <span className="text-sm text-muted-foreground whitespace-nowrap">

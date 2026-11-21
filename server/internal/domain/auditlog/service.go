@@ -78,8 +78,8 @@ func (s *service) List(ctx context.Context, req *ListAuditLogsRequest) ([]*Audit
 	if req.PageSize < 1 {
 		req.PageSize = 20
 	}
-	if req.PageSize > 100 {
-		req.PageSize = 100
+	if req.PageSize > 500 {
+		req.PageSize = 500
 	}
 	return s.repo.List(ctx, req)
 }

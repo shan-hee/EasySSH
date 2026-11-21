@@ -24,7 +24,7 @@ import type {
   AuditLogStatus,
   AuditLogSummary,
 } from "@/lib/log-types"
-import { DataTable } from "@/components/ui/data-table"
+import { DataTable, DEFAULT_TABLE_PAGE_SIZE } from "@/components/ui/data-table"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import type { DataTableColumnMeta } from "@/components/ui/column-meta"
 import {
@@ -217,7 +217,7 @@ export function LogsClient({ defaultAction, desktopMode = false, overview, serve
   const { ready } = useAuthReady()
   const { t } = useTranslation("logsAudit")
   const [page, setPage] = React.useState(1)
-  const [pageSize, setPageSize] = React.useState(20)
+  const [pageSize, setPageSize] = React.useState(DEFAULT_TABLE_PAGE_SIZE)
   const [selectedLogId, setSelectedLogId] = React.useState<string | null>(null)
   const [isDetailDialogOpen, setIsDetailDialogOpen] = React.useState(false)
   const [copied, setCopied] = React.useState(false)

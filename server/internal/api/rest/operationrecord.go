@@ -126,7 +126,7 @@ func parseOperationRecordListRequest(c *gin.Context) (*operationrecord.ListReque
 	if !ok {
 		return nil, false
 	}
-	pageSize, ok := parseBoundedQueryInt(c, "page_size", 20, 1, 100)
+	pageSize, ok := parseBoundedQueryInt(c, "page_size", 20, 1, 500)
 	if !ok {
 		return nil, false
 	}

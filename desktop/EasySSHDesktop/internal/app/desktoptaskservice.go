@@ -803,8 +803,8 @@ func normalizeDesktopTaskListInput(input DesktopTaskListInput) DesktopTaskListIn
 	if input.PageSize < 1 {
 		input.PageSize = 50
 	}
-	if input.PageSize > 100 {
-		input.PageSize = 100
+	if input.PageSize > 500 {
+		input.PageSize = 500
 	}
 	input.Statuses = normalizeDesktopTaskStrings(input.Statuses)
 	input.TaskTypes = normalizeDesktopTaskStrings(input.TaskTypes)

@@ -28,7 +28,7 @@ func scheduledProtocolContext(t *testing.T) context.Context {
 func TestScheduledInvalidQueryStopsBeforeRepository(t *testing.T) {
 	s := &service{}
 	ctx := scheduledProtocolContext(t)
-	for _, input := range []protocol.ListScheduledTasksRequest{{Page: -1}, {Page: 1000001}, {Limit: -1}, {Limit: 101}, {TaskType: "other"}} {
+	for _, input := range []protocol.ListScheduledTasksRequest{{Page: -1}, {Page: 1000001}, {Limit: -1}, {Limit: 501}, {TaskType: "other"}} {
 		if _, err := s.ListScheduledTasks(ctx, &input); !errors.Is(err, ErrInvalidScheduledTaskData) {
 			t.Fatalf("invalid query accepted: %+v %v", input, err)
 		}

@@ -8,10 +8,12 @@ import {
   type DesktopActivityLogItem,
   type DesktopActivityLogListParams,
 } from "../../bindings/github.com/easyssh/easyssh-desktop/internal/app"
-import type {
-  AuditLog,
-  AuditLogListParams,
-  AuditLogListResponse,
+import {
+  DEFAULT_TABLE_PAGE_SIZE,
+  MAX_TABLE_PAGE_SIZE,
+  type AuditLog,
+  type AuditLogListParams,
+  type AuditLogListResponse,
 } from "@easyssh/app/desktop"
 import {
   mapDesktopActivityLogItemToAuditLog,
@@ -99,7 +101,7 @@ function sortLogs(logs: AuditLog[], params?: AuditLogListParams) {
 async function fetchDesktopLogs(params?: AuditLogListParams) {
   const request: DesktopActivityLogListParams = {
     page: 1,
-    limit: 100,
+    limit: MAX_TABLE_PAGE_SIZE,
     action: params?.action,
     serverId: params?.server_id,
     status: normalizeDesktopActivityLogStatusFilter(params?.status),
@@ -125,7 +127,7 @@ export function createDesktopLogsApi() {
   return {
     async list(params?: AuditLogListParams): Promise<AuditLogListResponse> {
       const page = Math.max(1, params?.page || 1)
-      const pageSize = Math.max(1, Math.min(params?.page_size || 20, 100))
+      const pageSize = Math.max(1, Math.min(params?.page_size || DEFAULT_TABLE_PAGE_SIZE, MAX_TABLE_PAGE_SIZE))
       const logs = sortLogs(filterLogs(await fetchDesktopLogs(params), params), params)
       const total = logs.length
       const totalPages = total > 0 ? Math.ceil(total / pageSize) : 1

@@ -11,7 +11,7 @@ import { DashboardPageContent } from "@/components/dashboard-page-content"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { DataTableColumnMeta } from "@/components/ui/column-meta"
-import { DataTable } from "@/components/ui/data-table"
+import { DataTable, DEFAULT_TABLE_PAGE_SIZE } from "@/components/ui/data-table"
 import { DataTableFacetedFilter } from "@/components/ui/data-table-faceted-filter"
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -62,7 +62,7 @@ export function TaskCenterView({
   const { t, i18n } = useTranslation("taskCenter")
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(DEFAULT_TABLE_PAGE_SIZE)
   const [statusFilter, setStatusFilter] = useState("active")
   const [taskTypeFilters, setTaskTypeFilters] = useState<string[]>([])
   const [triggerFilters, setTriggerFilters] = useState<TaskRun["trigger_type"][]>([])

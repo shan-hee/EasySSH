@@ -19,6 +19,11 @@ export type { InstanceBackupAdapter } from "@/components/settings/instance-backu
 export type { ServerConnectionConfigsApi } from "@/components/servers/server-connection-configs"
 export { DEFAULT_SYSTEM_CONFIG, StaticSystemConfigProvider } from "@/contexts/system-config-context"
 export {
+  DEFAULT_TABLE_PAGE_SIZE,
+  MAX_TABLE_PAGE_SIZE,
+  TABLE_PAGE_SIZE_OPTIONS,
+} from "@/lib/table-pagination"
+export {
   authMethodCredentialFields,
   authMethodFactors,
   normalizeSSHAuthMethod,

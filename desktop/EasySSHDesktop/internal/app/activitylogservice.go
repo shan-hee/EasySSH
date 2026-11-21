@@ -282,8 +282,8 @@ func normalizeActivityListParams(params DesktopActivityLogListParams) DesktopAct
 		params.Limit = 20
 	}
 
-	if params.Limit > 100 {
-		params.Limit = 100
+	if params.Limit > 500 {
+		params.Limit = 500
 	}
 
 	params.Action = strings.TrimSpace(params.Action)

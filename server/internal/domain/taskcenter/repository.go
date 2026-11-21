@@ -249,8 +249,8 @@ func (r *repository) listSnapshot(ctx context.Context, req *ListRequest) (*ListR
 	if req.PageSize < 1 {
 		req.PageSize = 20
 	}
-	if req.PageSize > 100 {
-		req.PageSize = 100
+	if req.PageSize > 500 {
+		req.PageSize = 500
 	}
 	var runs []*TaskRunSummary
 	if err := query.Select(taskSummarySelect).Order("created_at DESC,id DESC").Offset((req.Page - 1) * req.PageSize).Limit(req.PageSize).Find(&runs).Error; err != nil {

@@ -3,6 +3,7 @@ import { DesktopContentService } from "../../bindings/github.com/easyssh/easyssh
 import { ContentReadInput, TaskEventInput } from "../../bindings/github.com/easyssh/shared/protocol/models"
 import type { ContentChunkReader } from "@easyssh/app/lib/content"
 import { Events } from "@wailsio/runtime"
+import { DEFAULT_TABLE_PAGE_SIZE } from "@easyssh/app/lib/table-pagination"
 
 import type {
   RealtimeEvent,
@@ -30,7 +31,7 @@ export function createDesktopTaskCenterApi(): TaskCenterApi {
         trigger_type: params.trigger_type ?? [],
         keyword: params.keyword ?? "",
         page: params.page ?? 1,
-        page_size: params.page_size ?? 50,
+        page_size: params.page_size ?? DEFAULT_TABLE_PAGE_SIZE,
       }))
       return result as unknown as Awaited<ReturnType<TaskCenterApi["list"]>>
     },
